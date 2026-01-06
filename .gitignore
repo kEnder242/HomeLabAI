@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Project Specific
+server.log
+tmp/
+*.wav
+*.mp3
+
+# Ignore raw data/models (too big)
+models/
+data/
+
+# Secrets (BE CAREFUL)
+# my_config.yaml is currently tracked but SCRUBBED. 
+# If you add real keys, add it here!
