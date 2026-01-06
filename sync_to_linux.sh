@@ -7,7 +7,7 @@ TARGET_HOST="jallred@z87-Linux.local"
 TARGET_DIR="~/VoiceGateway/"
 
 echo "Syncing to $TARGET_HOST:$TARGET_DIR ..."
-rsync -avz -e "ssh -i ~/.ssh/id_rsa_wsl" \
+rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_wsl" \
     --exclude '.venv' \
     --exclude '.git' \
     --exclude '__pycache__' \
