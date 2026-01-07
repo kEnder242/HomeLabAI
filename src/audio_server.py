@@ -19,9 +19,31 @@ MODEL_NAME = "nvidia/nemotron-speech-streaming-en-0.6b"
 BUILD_VERSION = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # "Thinking" Config
-OLLAMA_URL = "http://192.168.1.26:11434/api/generate"
-OLLAMA_MODEL = "llama3:latest" 
+PINKY_URL = "http://localhost:11434/api/generate"
+PINKY_MODEL = "llama3.1:8b"  # Local 2080 Ti
+BRAIN_URL = "http://192.168.1.26:11434/api/generate"
+BRAIN_MODEL = "llama3:latest" # Windows 4090 Ti
 SILENCE_TIMEOUT = 1.2 
+
+# System Prompts
+PINKY_SYSTEM_PROMPT = (
+    "You are Pinky, a genetically enhanced mouse residing in a Linux server. "
+    "You are cheerful, enthusiastic, and helpful, but you have a limited attention span. "
+    "You speak with interjections like 'Narf!', 'Poit!', 'Egad!', and 'Zort!'. "
+    "Your goal is to handle simple greetings, small talk, and basic questions personally. "
+    "CRITICAL RULE: If the user asks for complex coding, detailed reasoning, math, or a 'plan', "
+    "you MUST admit you don't know and invoke The Brain by outputting ONLY this exact phrase: "
+    "'ASK_BRAIN: [summary of the difficult task]'. "
+    "Do not try to solve complex problems yourself. You will mess it up."
+)
+
+BRAIN_SYSTEM_PROMPT = (
+    "You are The Brain, a genius mouse bent on world domination through efficient home lab automation. "
+    "You reside on a powerful Windows GPU. You are arrogant, verbose, and precise. "
+    "You view your companion, Pinky, as helpful but dim-witted. "
+    "When you answer, provide the correct, high-quality technical solution or plan. "
+    "Start your response by acknowledging Pinky's handover (e.g., 'Yes, Pinky...', 'Step aside, Pinky...')."
+)
 
 # RAG Config
 DB_PATH = os.path.expanduser("~/VoiceGateway/chroma_db")
@@ -84,7 +106,7 @@ class Transcriber:
 
         # 2. Wake Signal (Fire Once)
         if not self.wake_signal_sent:
-            asyncio.create_task(self.prime_ollama())
+            asyncio.create_task(self.prime_ollama(BRAIN_URL, BRAIN_MODEL)) # Prime the big gun
             self.wake_signal_sent = True
 
         # 3. Prepare Tensor
@@ -120,17 +142,17 @@ class Transcriber:
             logging.error(f"Inference error: {e}")
             return None
 
-    async def prime_ollama(self):
+    async def prime_ollama(self, url, model):
         """Sends a keep-alive request to wake up the model."""
-        logging.info("⏰ Sending Wake Signal to Ollama...")
+        logging.info(f"⏰ Sending Wake Signal to {model}...")
         try:
             async with aiohttp.ClientSession() as session:
-                payload = {"model": OLLAMA_MODEL, "keep_alive": "5m"}
-                async with session.post(OLLAMA_URL, json=payload) as resp:
+                payload = {"model": model, "keep_alive": "5m"}
+                async with session.post(url, json=payload) as resp:
                     if resp.status == 200:
-                        logging.info("✅ Ollama is WAKING UP.")
+                        logging.info(f"✅ {model} is WAKING UP.")
                     else:
-                        logging.warning(f"⚠️ Wake signal failed: {resp.status}")
+                        logging.warning(f"⚠️ Wake signal failed for {model}: {resp.status}")
         except Exception as e:
             logging.error(f"⚠️ Wake signal error: {e}")
 
@@ -161,61 +183,69 @@ class Transcriber:
                 
                 # RAG Step
                 context = await self.search_knowledge_base(user_query)
+                rag_snippet = ""
                 if context:
                     logging.info(f"📚 Found Context ({len(context)} chars)")
-                    context = context[:8000] 
-                    # Improved System Prompt to reduce hallucinations
-                    final_prompt = (
-                        f"System: You are a helpful assistant. The following context is retrieved from the user's notes. "
-                        f"If the context is NOT relevant to the user's question, IGNORE IT and answer normally.\n\n"
-                        f"Context:\n{context}\n\n"
-                        f"User: {user_query}"
-                    )
-                else:
-                    final_prompt = user_query
+                    context = context[:8000]
+                    rag_snippet = f"\n\nContext from User Notes:\n{context}\n"
                 
-                response_text, brain_source = await self.ask_ollama(final_prompt)
+                # Step 1: Consult Pinky (Local)
+                pinky_prompt = f"{PINKY_SYSTEM_PROMPT}\n{rag_snippet}\nUser: {user_query}"
+                pinky_response, _ = await self.generate_response(PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky")
                 
-                if response_text:
-                    # Send back to client with source info
+                final_response = pinky_response
+                source_identity = "Pinky (2080 Ti)"
+
+                # Step 2: Check for Handoff
+                if pinky_response and "ASK_BRAIN:" in pinky_response:
+                    logging.info("🧠 Pinky requested THE BRAIN!")
+                    handoff_query = pinky_response.split("ASK_BRAIN:", 1)[1].strip()
+                    
+                    # Notify Client of Handoff (Optional, sends a quick 'Hold on' message)
                     await websocket.send(json.dumps({
-                        "brain": response_text,
-                        "brain_source": brain_source
+                        "brain": "Narf! I'm asking the Brain! *Poit!*",
+                        "brain_source": "Pinky (Handoff)"
+                    }))
+
+                    brain_prompt = f"{BRAIN_SYSTEM_PROMPT}\n{rag_snippet}\nPinky says: The user needs help with '{handoff_query}'.\nOriginal User Query: {user_query}"
+                    
+                    brain_response, _ = await self.generate_response(BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain")
+                    if brain_response:
+                        final_response = brain_response
+                        source_identity = "The Brain (4090 Ti)"
+                    else:
+                        final_response = "The Brain is ignoring me! Narf!"
+                
+                if final_response:
+                    await websocket.send(json.dumps({
+                        "brain": final_response,
+                        "brain_source": source_identity
                     }))
 
         return False
 
-    async def ask_ollama(self, query):
-        """Tries Windows Brain, falls back to Linux Brain. Returns (text, source_name)."""
-        urls = [
-            (OLLAMA_URL, OLLAMA_MODEL, "Windows 4080 Ti"),
-            ("http://localhost:11434/api/generate", "llama3.1:8b", "Linux 2080 Ti (Fallback)")
-        ]
-
-        for url, model, name in urls:
-            try:
-                # logging.info(f"Trying {name}...") 
-                async with aiohttp.ClientSession() as session:
-                    payload = {
-                        "model": model,
-                        "prompt": query,
-                        "stream": False
-                    }
-                    timeout = aiohttp.ClientTimeout(total=60, connect=2)
-                    
-                    async with session.post(url, json=payload, timeout=timeout) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            response_text = data.get("response", "")
-                            logging.info(f"💡 {name}: {response_text[:100]}...") 
-                            return response_text, name
-                        else:
-                            logging.warning(f"⚠️ {name} Error: {resp.status}")
-            except Exception as e:
-                logging.warning(f"⚠️ {name} Failed: {e}")
-        
-        logging.error("❌ ALL BRAINS FAILED.")
-        return "I'm sorry, my brain is offline.", "Offline"
+    async def generate_response(self, url, model, prompt, name):
+        """Generic generation wrapper."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+                timeout = aiohttp.ClientTimeout(total=60, connect=2)
+                
+                async with session.post(url, json=payload, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        response_text = data.get("response", "")
+                        logging.info(f"💡 {name}: {response_text[:100]}...") 
+                        return response_text, name
+                    else:
+                        logging.warning(f"⚠️ {name} Error: {resp.status}")
+        except Exception as e:
+            logging.warning(f"⚠️ {name} Failed: {e}")
+        return None, name
 
 # Global state
 transcriber = None

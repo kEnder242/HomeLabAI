@@ -126,6 +126,32 @@ https://pytorch.org/blog/beyond-quantization-bringing-sparse-inference-to-pytorc
 - Google Nested Learning:  
 https://research.google/blog/introducing-nested-learning-a-new-ml-paradigm-for-continual-learning/
 
+## Voice Gateway (Pinky and the Brain)
+
+This project implements a personality-driven voice assistant architecture across the hybrid home lab.
+
+### Persona Mapping & Hardware
+*   **Pinky (The Gateway):** 
+    *   **Host:** `z87-Linux` (RTX 2080 Ti).
+    *   **Model:** `llama3.1:8b`.
+    *   **Role:** Always-on STT (NeMo), RAG lookup, and simple interactions. 
+    *   **Style:** Cheerful, enthusiastic, and prone to non-sequiturs ("Narf!", "Poit!").
+*   **The Brain (The Mastermind):**
+    *   **Host:** Windows 11 (RTX 4090 Ti).
+    *   **Model:** `llama3:latest` (Ollama).
+    *   **Role:** Complex reasoning, coding, and strategic planning.
+    *   **Style:** Arrogant, verbose, and precise.
+
+### The Handoff Logic
+Pinky acts as the triage layer. For complex requests, Pinky is instructed to use the trigger:
+`ASK_BRAIN: [summary of task]`
+
+The orchestrator (`audio_server.py`) detects this string, notifies the user, and invokes The Brain on the Windows host with the relevant context and Pinky's request.
+
+### Deployment Workflow
+*   **Linux Server:** Deployed via `sync_to_linux.sh` (rsync to `z87-Linux`).
+*   **Windows Client:** Deployed via `sync_to_windows.sh` (copies to GDrive mount on Linux, which syncs to Windows).
+
 ---
 
 ## DeepAgent Configuration and Bug Fixes
