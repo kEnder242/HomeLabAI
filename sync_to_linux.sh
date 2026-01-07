@@ -10,6 +10,7 @@ echo "Syncing to $TARGET_HOST:$TARGET_DIR ..."
 rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_wsl" \
     --exclude '.venv' \
     --exclude '.git' \
+    --exclude 'chroma_db' \
     --exclude '__pycache__' \
     --exclude '*.pyc' \
     --exclude 'tmp_unzip_dir_for_rclone' \

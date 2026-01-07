@@ -4,6 +4,8 @@ import pyaudio
 import sys
 import json
 
+VERSION = "2026-01-06-v3"
+
 # Configuration
 HOST = "z87-Linux.local" 
 # HOST = "192.168.1.XX" # Fallback
@@ -17,12 +19,12 @@ async def receive_messages(websocket):
     """Listens for text responses from the server."""
     try:
         async for message in websocket:
-            try:
-                data = json.loads(message)
-                text = data.get("text", "")
-                print(f"\n[SERVER]: {text}")
-            except json.JSONDecodeError:
-                print(f"\n[RAW]: {message}")
+            data = json.loads(message)
+            if "brain" in data:
+                source = data.get("brain_source", "Unknown Brain")
+                print(f"\n\n🤖 [{source}]: {data['brain']}\n")
+            elif "text" in data:
+                print(f"[YOU]: {data['text']}")
     except websockets.exceptions.ConnectionClosed:
         print("\n[DISCONNECTED] Server closed connection.")
 

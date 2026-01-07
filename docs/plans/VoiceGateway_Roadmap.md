@@ -39,12 +39,15 @@
 *   [ ] **Transcriber Loop:** Pipe received audio into the STT engine.
 *   [ ] **Windows Client (Basic):** Python script on Windows to record mic and push to Linux.
 
-### Phase 3: The "Thinking" Loop
-*   [ ] **Ollama Bridge:** Python logic on Linux to send transcribed text -> Windows Ollama API -> Receive Text.
-*   [ ] **Latency Check:** Measure "Time to First Token" (TTFT) from Mic input to LLM output.
+### Phase 3: The "Thinking" Loop (Completed Jan 6, 2026)
+*   [x] **Ollama Bridge:** Python logic on Linux sends transcribed text -> Windows Ollama API -> Receive Text.
+*   [x] **RAG Integration:** Index Google Drive notes (ChromaDB) and inject context.
+*   [x] **Wake Signal:** Prime the Windows GPU on first audio packet to reduce latency.
+*   [x] **Fallback:** Failover to Linux 2080 Ti if Windows is unreachable.
 
-### Phase 4: The "Speaking" Prototype
-*   [ ] **TTS Deployment:** Set up Piper or OpenVoice on Linux.
+### Phase 4: Refinement & Optimization
+*   [ ] **Deduplication v2:** Use NeMo word timestamps to stitch audio segments perfectly, replacing the naive text-overlap method.
+*   [ ] **The "Speaking" Prototype:** Set up Piper TTS on Linux for audio responses.
 *   [ ] **Audio Return:** Stream generated audio back to the Windows client.
 *   [ ] **Playback:** Windows client plays audio buffer.
 
