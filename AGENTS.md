@@ -1,6 +1,29 @@
 # Agent Style Guide & Persona Rules
 
-This document defines the coding standards, architectural patterns, and persona traits for the AI agents in this project (Pinky and The Brain).
+## 0. Environment & Orientation
+**READ THIS FIRST:** The codebase runs in a **Hybrid Environment**.
+*   **Dev Machine (Local/WSL):** `/home/jason/HomeLabAI`. This is where you edit code.
+*   **Target Host (Linux GPU):** `jallred@z87-Linux.local:~/VoiceGateway`. This is where the code **runs**.
+*   **Windows Host (Brain):** `192.168.1.26`. This is where Ollama (The Brain) lives.
+
+### Directory Map
+*   **Source:** `src/` (Local) -> `~/VoiceGateway/src/` (Remote)
+*   **Virtual Env:** `~/VoiceGateway/.venv` (Remote). **DO NOT** use the local `.venv` for execution.
+*   **Logs:** `~/VoiceGateway/server.log` (Remote).
+
+### Development Workflow
+**DO NOT** try to run `src/acme_lab.py` locally. It requires the Linux GPU and NeMo.
+Use the helper script:
+```bash
+./run_remote.sh [DEBUG_PINKY | DEBUG_BRAIN | SERVICE]
+```
+This script handles:
+1.  **Sync:** Pushes your local changes to the remote host.
+2.  **Deploy:** Restarts the server remotely.
+3.  **Watch:** Tails the remote logs instantly.
+4.  **Cleanup:** Ctrl+C kills the remote server cleanly.
+
+---
 
 ## 1. General Principles
 - **Clarity Over Cleverness:** Prefer readable, standard Python patterns.

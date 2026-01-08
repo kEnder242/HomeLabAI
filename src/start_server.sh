@@ -1,7 +1,14 @@
 #!/bin/bash
+MODE=${1:-SERVICE} # Default to SERVICE if no arg provided
+
 cd ~/VoiceGateway
-# Kill old instance
-pkill -f audio_server.py || true
+# Kill old instances
+pkill -f acme_lab.py || true
+pkill -f pinky_node.py || true
+pkill -f archive_node.py || true
+pkill -f brain_node.py || true
+
+echo "Starting Acme Lab in $MODE mode..."
 # Start new instance detached
-nohup ./.venv/bin/python src/audio_server.py > server.log 2>&1 < /dev/null &
-echo "Server started with PID $!"
+nohup ./.venv/bin/python -u src/acme_lab.py --mode "$MODE" > server.log 2>&1 < /dev/null &
+echo "Acme Lab PID: $!"

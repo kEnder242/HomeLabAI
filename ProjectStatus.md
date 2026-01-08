@@ -1,137 +1,45 @@
-# Project Status: Voice-Activated Personal Knowledge Assistant
+# Project Status: Acme Lab (Voice-Activated Personal Knowledge Assistant)
 
-**Date:** January 6, 2026
-**Current Phase:** Phase 3.5: Personality Injection (Pinky & Brain)
+**Date:** January 8, 2026
+**Current Phase:** Phase 4: The Acme Lab Architecture
 
-## Architecture
-*   **Gateway (Pinky):** `z87-Linux` (NVIDIA 2080 Ti)
-    *   **Voice Engine:** NVIDIA NeMo + Nemotron-0.6b (Streaming).
-    *   **Role:** The Enthusiastic Sidekick. Handles STT, RAG lookup, and simple queries.
-    *   **Model:** `llama3.1:8b` (Local).
-*   **Brain (The Brain):** Windows 11 (NVIDIA 4080 Ti)
-    *   **Role:** The Mastermind. Handles complex reasoning and coding.
-    *   **Model:** `llama3:latest` (Ollama).
-    *   **Trigger:** Invoked when Pinky says `"ASK_BRAIN:"`.
+## Architecture: "The Neural Mesh"
+We have transitioned from a monolithic script to an **Event-Driven Mesh** using the **Acme Lab** metaphor.
+
+*   **The Lab (Host):** `src/acme_lab.py`
+    *   A neutral event bus. connects Equipment (Ear) to Residents (Nodes).
+    *   **Modes:**
+        *   `SERVICE`: Lazy loading (Green).
+        *   `DEBUG_BRAIN`: Eager loading (Hot).
+        *   `DEBUG_PINKY`: Local logic only.
+
+*   **Residents (Nodes):**
+    *   **Pinky (`pinky_node.py`):** The Persona. Handles Triage.
+    *   **Brain (`brain_node.py`):** The Genius. Handles deep compute (Windows).
+    *   **Archives (`archive_node.py`):** The Memory. Handles ChromaDB & Summarization.
 
 ## Completed Milestones
-1.  **Data Foundation:** Google Drive synced and mounted.
-2.  **Voice Environment:** NeMo installed, Model loaded on Linux GPU.
-3.  **Phase 1 (Hearing):** Real-time streaming transcription (Windows Mic -> Linux Server) verified.
-4.  **Phase 2 (Thinking):** End-to-End Voice Query -> LLM Response verified.
-5.  **Persona Architecture:** 
-    *   Implemented "Pinky" vs "Brain" routing in `audio_server.py`.
-    *   Defined distinct System Prompts for each role.
-    *   Pinky defaults to answering; hands off to Brain for complex tasks.
-6.  **Observability:**
-    *   **Structured Logging:** `logs/conversation.log` captures `[USER]`, `[PINKY]`, and `[BRAIN]` interactions.
-    *   **Live Viewer:** `src/view_logs.py` provides a color-coded real-time transcript.
-7.  **Persona Guard Rails:**
-    *   Implemented `stop` sequences and `num_predict` limits for Pinky to prevent rambling/hallucination.
-8.  **Character Profiles:**
-    *   Drafted [Persona Profiles](docs/plans/Persona_Profiles.md) including Pinky's "Idiot Savant" trait.
-
-## Dev Tools
-*   `./sync_to_linux.sh`: Deploys code to server.
-*   **Debug Strategy:** "The Watcher" (Start detached server -> Tail logs -> User Test -> Server auto-exit).
-*   **Research:** [Research & Inspiration](docs/plans/Research_and_Inspiration.md) - Curated list of models, architectures, and ideas.
-
-
+1.  **Architecture Design:** Defined "Pinky-as-a-Bus" vs "Pinky-as-a-Node".
+2.  **Tooling:** Created `run_remote.sh` for seamless Local -> Remote development loops.
+3.  **Environment:** Mapped out `HomeLabAI` (Repo) vs `AcmeLab` (Remote Runtime).
 
 ## Master Backlog & Roadmap
 
-
-
-
-
-
-
-### Phase A: Architecture Refactor (The Foundation)
-
-*   **[DONE] Refactor to MCP:** Split `audio_server.py`. Created `PinkyMCPHost` and `BrainMCPServer`.
-*   **[DONE] Unified Tooling:** Replaced `ASK_BRAIN:` string parsing with structured MCP tool calls.
-*   **[TODO] [Diff: 1] AGENTS.md:** Create a style guide for The Brain to ensure consistent code generation.
-
-
-
-
-
-
+### Phase A: The Lab Build (Current Sprint)
+*   **[TODO]** Rename remote `VoiceGateway` -> `AcmeLab`.
+*   **[TODO]** Refactor `pinky_mcp_host.py` into `acme_lab.py` + nodes.
+*   **[TODO]** Implement `archive_node.py` (ChromaDB extraction).
+*   **[TODO]** Verify "Wake-up" chain: Audio -> Pinky -> Lab -> Brain.
 
 ### Phase B: Core Features (The "Pinky" Suite)
-
-
-
-*   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`). Pinky can manage Windows models.
-
-
-
+*   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`).
 *   **[AUTO] [Diff: 2] God Mode:** Add `call_external_api` tool to Pinky's belt.
-
-
-
-*   **[AUTO] [Diff: 4] Live Participation ("War Room"):** Upgrade the logging/viewing system to a proper Event Bus so you can see tool calls live.
-
-
-
-
-
-
+*   **[AUTO] [Diff: 4] Live Participation:** Upgrade logging to Event Bus visualization.
 
 ### Phase C: Intelligence & Memory
+*   **[AUTO] [Diff: 4] Tiered Memory:** CLaRa Integration (Apple-7B) for session summarization.
+*   **[AUTO] [Diff: 3] Task State Manager:** Pinky tracks "ToDo" lists.
 
-
-
-*   **[AUTO] [Diff: 4] Tiered Memory:** Implement Session Summaries and CLaRa integration.
-
-
-
-*   **[AUTO] [Diff: 3] Task State Manager:** Pinky tracks "ToDo" lists across sessions.
-
-
-
-
-
-
-
-### Phase D: Hardware & Infrastructure (User Heavy)
-
-
-
-*   **[USER] [Diff: 2] Smart Power (WOL):** Configure Windows BIOS/NIC. Test `wakeonlan`.
-
-
-
-*   **[USER] [Diff: 3] Secure Remote Access:** VPN/Tailscale setup.
-
-
-
-*   **[USER] [Diff: 2] Streaming Awareness:** Script to detect Windows processes.
-
-
-
-
-
-
-
-### Integration Demos (Human-in-the-Loop)
-
-
-
-*   **[DEMO] The "Hello" Test:** User says "Hello" -> Verify Pinky skips RAG and answers instantly.
-
-
-
-*   **[DEMO] The "Hard Question" Test:** User asks for code -> Verify Pinky hands off to Brain (via Tool Call).
-
-
-
-*   **[DEMO] The "Interruption" Test:** User speaks while Brain is thinking -> Verify "Barge-In" stops generation.
-
-
-
-
-
-
-
-
-
+## Dev Tools
+*   `./run_remote.sh [MODE]`: The primary development tool.
+*   `./sync_to_linux.sh`: Deployment script.
