@@ -5,7 +5,7 @@
 
 MODE=${1:-DEBUG_PINKY}
 REMOTE_HOST="jallred@z87-Linux.local"
-REMOTE_DIR="~/VoiceGateway"
+REMOTE_DIR="~/AcmeLab"
 
 echo "🚀 [1/3] Syncing code to $REMOTE_HOST..."
 ./sync_to_linux.sh > /dev/null

@@ -13,7 +13,7 @@ from equipment.ear_node import EarNode
 
 # Configuration
 PORT = 8765
-PYTHON_PATH = "/home/jallred/VoiceGateway/.venv/bin/python"
+PYTHON_PATH = "/home/jallred/AcmeLab/.venv/bin/python"
 
 # Logging
 logging.basicConfig(
@@ -140,8 +140,10 @@ class AcmeLab:
                     logging.info(f"🎤 TURN COMPLETE: '{query}'")
                     await self.process_query(query, websocket)
 
+        except websockets.exceptions.ConnectionClosed:
+            logging.info("Client Disconnected (Normal).")
         except Exception as e:
-            logging.error(f"Client Disconnected: {e}")
+            logging.error(f"Client Disconnected (Error): {e}")
 
     async def process_query(self, query, websocket):
         """The Main Lab Logic Router."""

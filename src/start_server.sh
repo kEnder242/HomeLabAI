@@ -1,7 +1,7 @@
 #!/bin/bash
 MODE=${1:-SERVICE} # Default to SERVICE if no arg provided
 
-cd ~/VoiceGateway
+cd ~/AcmeLab
 # Kill old instances
 pkill -f acme_lab.py || true
 pkill -f pinky_node.py || true

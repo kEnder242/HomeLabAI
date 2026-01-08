@@ -4,7 +4,7 @@
 # Usage: ./sync_to_linux.sh
 
 TARGET_HOST="jallred@z87-Linux.local"
-TARGET_DIR="~/VoiceGateway/"
+TARGET_DIR="~/AcmeLab/"
 
 echo "Syncing to $TARGET_HOST:$TARGET_DIR ..."
 rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_wsl" \

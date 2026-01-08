@@ -6,7 +6,7 @@ import logging
 import datetime
 
 # Configuration
-DB_PATH = os.path.expanduser("~/VoiceGateway/chroma_db")
+DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_NAME = "personal_knowledge"
 
 # Initialize MCP

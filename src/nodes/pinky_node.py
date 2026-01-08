@@ -4,7 +4,7 @@ import json
 import logging
 
 # Configuration
-PINKY_MODEL = "llama3.1:8b" # Upgraded from Mistral
+PINKY_MODEL = "mistral:7b" # Known working local model
 LOCAL_LLM_URL = "http://localhost:11434/api/generate"
 
 SYSTEM_PROMPT = (
