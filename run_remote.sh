@@ -23,7 +23,5 @@ trap "echo '🛑 Stopping remote server...'; ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HO
 ssh -t -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "
     cd $REMOTE_DIR && \
     chmod +x src/start_server.sh && \
-    ./src/start_server.sh $MODE && \
-    echo '📺 [3/3] Tailing logs (Ctrl+C to stop)...' && \
-    tail -f server.log
+    ./src/start_server.sh $MODE
 "

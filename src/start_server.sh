@@ -11,4 +11,8 @@ pkill -f brain_node.py || true
 echo "Starting Acme Lab in $MODE mode..."
 # Start new instance detached
 nohup ./.venv/bin/python -u src/acme_lab.py --mode "$MODE" > server.log 2>&1 < /dev/null &
-echo "Acme Lab PID: $!"
+PID=$!
+echo "Acme Lab PID: $PID"
+
+# Follow logs until the server process exits
+tail --pid=$PID -f server.log

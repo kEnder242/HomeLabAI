@@ -4,32 +4,55 @@ import pyaudio
 import sys
 import json
 
-VERSION = "2026-01-06-v3"
+VERSION = "2026-01-08-v4"
 
 # Configuration
 HOST = "z87-Linux.local" 
-# HOST = "192.168.1.XX" # Fallback
 PORT = 8765
-CHUNK = 2048 # Larger chunk for network efficiency
+CHUNK = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 
+# State
+LAB_READY = False
+
 async def receive_messages(websocket):
     """Listens for text responses from the server."""
+    global LAB_READY
     try:
         async for message in websocket:
             data = json.loads(message)
-            if "brain" in data:
-                source = data.get("brain_source", "Unknown Brain")
-                print(f"\n\n🤖 [{source}]: {data['brain']}\n")
+            
+            # Status Event
+            if data.get("type") == "status":
+                if data.get("state") == "ready":
+                    LAB_READY = True
+                    print(f"\n✅ [ACME LAB]: {data.get('message', 'Ready')}")
+                    print("🎤 Microphone is LIVE. Speak now... (Ctrl+C to stop)")
+
+            # Final Transcript Event
+            elif data.get("type") == "final":
+                print(f"\n📨 [SENT]: \"{data['text']}\"")
+
+            # Partial Transcript
             elif "text" in data:
-                print(f"[YOU]: {data['text']}")
+                # Overwrite line for partials to keep it clean
+                sys.stdout.write(f"\r👂 Hearing: {data['text']}   ")
+                sys.stdout.flush()
+
+            # Brain/Pinky Response
+            elif "brain" in data:
+                source = data.get("brain_source", "Unknown Brain")
+                content = data['brain']
+                print(f"\n\n🤖 [{source}]: {content}\n")
+                
     except websockets.exceptions.ConnectionClosed:
         print("\n[DISCONNECTED] Server closed connection.")
 
 async def send_audio(websocket):
     """Streams microphone audio to the server."""
+    global LAB_READY
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT,
                     channels=CHANNELS,
@@ -37,15 +60,21 @@ async def send_audio(websocket):
                     input=True,
                     frames_per_buffer=CHUNK)
     
-    print("\n[MIC ACTIVE] Speak now... (Ctrl+C to stop)")
+    print("⏳ Connecting to Lab...")
+    
+    # Wait for Ready Signal (handled in receive loop) usually fast, 
+    # but we don't want to stream silence before the server acknowledges.
+    while not LAB_READY:
+        await asyncio.sleep(0.1)
+
     try:
         while True:
             data = stream.read(CHUNK, exception_on_overflow=False)
             try:
                 await websocket.send(data)
             except websockets.exceptions.ConnectionClosedOK:
-                break # Exit loop cleanly if connection closes
-            await asyncio.sleep(0.01) # Yield to let receive_messages run
+                break 
+            await asyncio.sleep(0.01)
     except KeyboardInterrupt:
         pass
     except websockets.exceptions.ConnectionClosedError:
@@ -58,23 +87,19 @@ async def send_audio(websocket):
 
 async def main():
     uri = f"ws://{HOST}:{PORT}"
-    print(f"Connecting to {uri}...")
     try:
         async with websockets.connect(uri) as websocket:
-            print("[CONNECTED] Link established.")
-            
             # Run send and receive in parallel
-            sender = asyncio.create_task(send_audio(websocket))
             receiver = asyncio.create_task(receive_messages(websocket))
+            sender = asyncio.create_task(send_audio(websocket))
             
-            # Wait until one terminates (usually sender via Ctrl+C)
-            done, pending = await asyncio.wait(
+            await asyncio.wait(
                 [sender, receiver],
                 return_when=asyncio.FIRST_COMPLETED
             )
             
-            for task in pending:
-                task.cancel()
+            for task in [sender, receiver]:
+                if not task.done(): task.cancel()
                 
     except Exception as e:
         print(f"[ERROR] Connection failed: {e}")

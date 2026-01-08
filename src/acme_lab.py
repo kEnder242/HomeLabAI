@@ -107,6 +107,7 @@ class AcmeLab:
 
     async def client_handler(self, websocket):
         logging.info("Client connected to Lab.")
+        await websocket.send(json.dumps({"type": "status", "state": "ready", "message": "Acme Lab Ears Open."}))
         audio_buffer = np.zeros(0, dtype=np.int16)
         
         try:
@@ -135,12 +136,13 @@ class AcmeLab:
                         await websocket.send(json.dumps({"text": text}))
                     
                     # Overlap
-                    audio_buffer = audio_buffer[16000-4000:] # 0.25s overlap
+                    audio_buffer = audio_buffer[16000-8000:] # 0.5s overlap
 
                 # Turn End Check
                 query = self.ear.check_turn_end()
                 if query:
                     logging.info(f"🎤 TURN COMPLETE: '{query}'")
+                    await websocket.send(json.dumps({"type": "final", "text": query}))
                     await self.process_query(query, websocket)
 
         except websockets.exceptions.ConnectionClosed:
@@ -170,10 +172,19 @@ class AcmeLab:
             decision_json = result.content[0].text
             decision = json.loads(decision_json)
             
-            router = decision.get("router", "local")
+            action = decision.get("action", "REPLY")
+            # Backwards compatibility check
+            if "router" in decision:
+                action = "ESCALATE" if decision["router"] == "brain" else "REPLY"
+                
             message = decision.get("message", "Narf!")
 
-            if router == "brain":
+            if action == "SHUTDOWN":
+                logging.info("🛑 Shutdown Requested via Voice Command.")
+                await websocket.send(json.dumps({"brain": "Goodbye! Closing the Lab... Zort!", "brain_source": "Pinky"}))
+                sys.exit(0)
+
+            elif action == "ESCALATE":
                 # Escalate
                 await websocket.send(json.dumps({"brain": message, "brain_source": "Pinky"}))
                 

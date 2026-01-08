@@ -3,6 +3,12 @@
 **Concept:** A "Pinky and the Brain" inspired home lab agent.
 **Analogy:** "Acme Labs" is the infrastructure. "Pinky" and "The Brain" are residents (agents) living inside it.
 
+## 🧠 UX Philosophy: "Talk & Read"
+We optimize for a specific human-centric workflow: **Voice Input, Text Output.**
+*   **Speed:** Speaking is faster than typing. Reading is faster than listening.
+*   **Flow:** No waiting for TTS (Text-to-Speech) to drone on. You speak, see the answer instantly, and keep moving.
+*   **The Loop:** A tight feedback loop where the AI acts as a "Co-Pilot" you can mutter to while coding.
+
 ## 🏗️ Architecture: The Neural Mesh
 
 The system is built as an Event-Driven Mesh using the **Model Context Protocol (MCP)**.

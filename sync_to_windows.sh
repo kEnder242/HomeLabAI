@@ -3,7 +3,7 @@
 # then moves it to the GDrive mount for Windows to pick up.
 
 TARGET_HOST="jallred@z87-Linux.local"
-REMOTE_SRC="~/VoiceGateway/src/mic_test.py"
+REMOTE_SRC="~/AcmeLab/src/mic_test.py"
 GDRIVE_DEST="~/knowledge_base/HomeLabAIProject/src/mic_test.py"
 
 # Step 1: Sync to Linux (standard workflow)
