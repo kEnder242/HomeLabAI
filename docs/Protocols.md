@@ -12,7 +12,11 @@ This document defines the rules of engagement for the Agent (AI) and User.
     *   The Agent expects the tool call to timeout or be cancelled by the User. This is NOT a failure; it is the design.
     *   *Agent Thought:* "I am now holding the server open. I will wait here until the User disconnects me."
 3.  **Real-Time Monitoring:** The Agent watches the logs for success criteria (e.g., `[PINKY] Hello`).
-4.  **Disconnection:** The User signals completion by cancelling the tool call or typing "Stop".
+4.  **The Voice Feedback Loop:**
+    *   **Listen to the User:** The Agent acknowledges that during voice demos, the User will speak "Live Feedback" (e.g., "Pinky is too slow" or "The Brain should stay awake").
+    *   **Post-Demo Log Analysis:** Immediately after the demo ends, the Agent MUST `cat` the server logs to extract these verbal insights.
+    *   **Backlog Integration:** Verberal feedback from logs must be explicitly added to `ProjectStatus.md` as `[Voice-Derived]` tasks.
+5.  **Disconnection:** The User signals completion by cancelling the tool call or typing "Stop".
 5.  **Post-Action:** Upon disconnection, the Agent immediately asks: "I saw X and Y. Did it behave as expected?"
 
 ---

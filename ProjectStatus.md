@@ -25,16 +25,16 @@ We have transitioned from a monolithic script to an **Event-Driven Mesh** using 
 
 ## Master Backlog & Roadmap
 
-### Phase A: The Lab Build (Current Sprint)
-*   **[TODO]** Rename remote `VoiceGateway` -> `AcmeLab`.
-*   **[TODO]** Refactor `pinky_mcp_host.py` into `acme_lab.py` + nodes.
-*   **[TODO]** Implement `archive_node.py` (ChromaDB extraction).
-*   **[TODO]** Verify "Wake-up" chain: Audio -> Pinky -> Lab -> Brain.
+### Phase A: Architecture Refactor (The Foundation)
+*   **[DONE] Refactor to MCP:** Split `audio_server.py`. Created `PinkyMCPHost` and `BrainMCPServer`.
+*   **[DONE] Acme Lab Transition:** Modularized into `acme_lab.py`, `nodes/`, and `equipment/`.
+*   **[TODO] [Voice-Derived] Async Boot:** Refactor `AcmeLab.boot_sequence` to open the WebSocket and start the EarNode *parallel* to Brain Priming to reduce perceived startup latency.
+*   **[TODO] [Diff: 2] AGENTS.md:** Create a style guide for The Brain.
 
 ### Phase B: Core Features (The "Pinky" Suite)
+*   **[TODO] [Voice-Derived] Conversational Keep-Alive:** Pinky should trigger a `brain.wake_up()` signal on *every* user turn during active conversation to reset the Windows Ollama timeout.
+*   **[TODO] [Voice-Derived] Rolling Window Tuning:** Fine-tune the overlap/buffer in `EarNode` to reduce the "That took a little bit of time" effect noticed during the demo.
 *   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`).
-*   **[AUTO] [Diff: 2] God Mode:** Add `call_external_api` tool to Pinky's belt.
-*   **[AUTO] [Diff: 4] Live Participation:** Upgrade logging to Event Bus visualization.
 
 ### Phase C: Intelligence & Memory
 *   **[AUTO] [Diff: 4] Tiered Memory:**
