@@ -47,17 +47,9 @@
 
 ### Phase A: Architecture Refactor (The Foundation)
 
-
-
-*   **[AUTO] [Diff: 5] Refactor to MCP:** Split `audio_server.py`. Create `PinkyMCPHost` and `BrainMCPServer`. *Prerequisite for almost everything else.*
-
-
-
-*   **[AUTO] [Diff: 3] Unified Tooling:** Replace `ASK_BRAIN:` string parsing with structured MCP tool calls.
-
-
-
-*   **[AUTO] [Diff: 1] AGENTS.md:** Create a style guide for The Brain to ensure consistent code generation.
+*   **[DONE] Refactor to MCP:** Split `audio_server.py`. Created `PinkyMCPHost` and `BrainMCPServer`.
+*   **[DONE] Unified Tooling:** Replaced `ASK_BRAIN:` string parsing with structured MCP tool calls.
+*   **[TODO] [Diff: 1] AGENTS.md:** Create a style guide for The Brain to ensure consistent code generation.
 
 
 

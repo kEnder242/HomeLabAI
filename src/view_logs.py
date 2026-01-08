@@ -2,7 +2,7 @@ import time
 import re
 import os
 
-LOG_FILE = "logs/conversation.log"
+LOG_FILE = "logs/pinky.log"
 
 # ANSI Colors
 RESET = "\033[0m"
