@@ -4,7 +4,7 @@ import pyaudio
 import sys
 import json
 
-VERSION = "2026-01-08-v5"
+VERSION = "1.0.2"
 
 # Configuration
 HOST = "z87-Linux.local" 
@@ -28,15 +28,22 @@ async def receive_messages(websocket):
             # Status Event
             if data.get("type") == "status":
                 state = data.get("state")
+                server_ver = data.get("version", "Unknown")
+                
+                # Version Check
+                if server_ver != VERSION:
+                    print(f"\n⚠️ [VERSION MISMATCH]: Client {VERSION} vs Server {server_ver}")
+                    print("⚠️ Please run sync_to_windows.sh to update.")
+
                 if state == "ready":
                     LAB_READY = True
-                    print(f"\n✅ [ACME LAB]: {data.get('message', 'Ready')}")
+                    print(f"\n✅ [ACME LAB v{server_ver}]: {data.get('message', 'Ready')}")
                     print("🎤 Microphone is LIVE. Speak now... (Ctrl+C to stop)")
                 elif state == "waiting":
-                    print(f"\n⏳ [LOBBY]: {data.get('message', 'Please wait...')}")
+                    print(f"\n⏳ [LOBBY v{server_ver}]: {data.get('message', 'Please wait...')}")
                 elif state == "shutdown":
                     print("\n🛑 [ACME LAB]: Lab is closing. Goodbye!")
-                    SHUTDOWN_EVENT.set() # Trigger graceful exit
+                    SHUTDOWN_EVENT.set()
                     return
 
             # Final Transcript Event
@@ -62,32 +69,37 @@ async def send_audio(websocket):
     """Streams microphone audio to the server."""
     global LAB_READY
     p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    frames_per_buffer=CHUNK)
+    stream = None
     
-    print("⏳ Connecting to Lab...")
-    
-    while not LAB_READY and not SHUTDOWN_EVENT.is_set():
-        await asyncio.sleep(0.1)
-
     try:
+        stream = p.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        input=True,
+                        frames_per_buffer=CHUNK)
+        
+        print("⏳ Connecting to Lab...")
+        
+        while not LAB_READY and not SHUTDOWN_EVENT.is_set():
+            await asyncio.sleep(0.1)
+
         while not SHUTDOWN_EVENT.is_set():
-            # Use non-blocking behavior for mic check
             data = stream.read(CHUNK, exception_on_overflow=False)
             try:
                 await websocket.send(data)
             except websockets.exceptions.ConnectionClosedOK:
                 break 
             await asyncio.sleep(0.01)
+            
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f"[MIC ERROR]: {e}")
     finally:
         print("[MIC CLOSED]")
-        stream.stop_stream()
-        stream.close()
+        if stream:
+            stream.stop_stream()
+            stream.close()
         p.terminate()
 
 async def main():
@@ -103,7 +115,7 @@ async def main():
             
             # Cleanup
             for task in [sender, receiver]:
-                if not task.done(): task.cancel() 
+                if not task.done(): task.cancel()
                 
     except Exception as e:
         print(f"[ERROR] Connection failed: {e}")

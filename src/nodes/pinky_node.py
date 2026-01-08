@@ -15,7 +15,7 @@ SYSTEM_PROMPT = (
     "Rules:"
     "1. If the user mentions 'The Brain' or 'Brain' (in ANY context), you MUST set action='ESCALATE'."
     "2. If user asks for complex coding, detailed reasoning, or math, you MUST set action='ESCALATE'."
-    "3. If user says 'Shutdown', 'End Session', or 'Stop', set action='SHUTDOWN'."
+    "3. If user says 'Shutdown', 'End Session', 'Stop', or 'Goodbye' (or variations like 'Goodbye Pinky'), set action='SHUTDOWN'."
     "4. For simple greetings or small talk NOT mentioning the Brain, set action='REPLY'."
     "Output MUST be valid JSON: { 'action': 'REPLY'|'ESCALATE'|'SHUTDOWN', 'message': '...' }"
 )

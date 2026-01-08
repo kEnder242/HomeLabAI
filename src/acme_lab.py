@@ -14,6 +14,7 @@ from equipment.ear_node import EarNode
 # Configuration
 PORT = 8765
 PYTHON_PATH = "/home/jallred/AcmeLab/.venv/bin/python"
+VERSION = "1.0.2"
 
 # Logging
 logging.basicConfig(
@@ -33,6 +34,9 @@ class AcmeLab:
     async def broadcast(self, message_dict):
         """Sends a JSON message to all connected clients."""
         if not self.connected_clients: return
+        # Ensure version is in all status broadcasts
+        if "type" in message_dict and message_dict["type"] == "status":
+            message_dict["version"] = VERSION
         message = json.dumps(message_dict)
         # Create tasks for sending to avoid blocking
         for ws in self.connected_clients:
@@ -42,7 +46,7 @@ class AcmeLab:
 
     async def load_residents_and_equipment(self):
         """The Heavy Lifting: Connects MCP nodes and loads ML models."""
-        logging.info("🏗️  Loading Residents & Equipment...")
+        logging.info(f"🏗️  Loading Residents & Equipment (v{VERSION})...")
         
         # 1. MCP Residents (Pinky, Archive, Brain)
         archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
@@ -113,11 +117,14 @@ class AcmeLab:
         self.connected_clients.add(websocket)
         logging.info("Client entered the Lobby.")
         
-        # Send current status immediately
+        # Send current status immediately with Version
+        status_msg = {"type": "status", "version": VERSION}
         if self.status == "BOOTING":
-            await websocket.send(json.dumps({"type": "status", "state": "waiting", "message": "Elevator... Ding! Loading..."}))
+            status_msg.update({"state": "waiting", "message": "Elevator... Ding! Loading..."})
         elif self.status == "READY":
-            await websocket.send(json.dumps({"type": "status", "state": "ready", "message": "Lab is Open."}))
+            status_msg.update({"state": "ready", "message": "Lab is Open."})
+        
+        await websocket.send(json.dumps(status_msg))
 
         audio_buffer = np.zeros(0, dtype=np.int16)
         
@@ -140,15 +147,15 @@ class AcmeLab:
                 chunk = np.frombuffer(message, dtype=np.int16)
                 audio_buffer = np.concatenate((audio_buffer, chunk))
                 
-                # Chunk Processing (1.0s buffer, 0.5s overlap)
-                if len(audio_buffer) >= 16000:
-                    window = audio_buffer[:16000]
+                # Chunk Processing (1.5s buffer, 0.5s overlap) - FIXED CHOPPING
+                if len(audio_buffer) >= 24000:
+                    window = audio_buffer[:24000]
                     text = self.ear.process_audio(window)
                     if text:
                         logging.info(f"Tx: {text}")
                         await websocket.send(json.dumps({"text": text}))
                     
-                    audio_buffer = audio_buffer[16000-8000:] 
+                    audio_buffer = audio_buffer[24000-8000:] 
 
                 # Turn End Check
                 query = self.ear.check_turn_end()
