@@ -35,6 +35,8 @@ We have transitioned from a monolithic script to an **Event-Driven Mesh** using 
 *   **[DONE] [Voice-Derived] Rolling Window Tuning:** Tuned `EarNode` to 1.0s buffer / 0.25s overlap.
 *   **[DONE] [Voice-Derived] Pinky Triage Tuning:** Hard-wired "Brain" keyword to trigger escalation.
 *   **[DONE] [Voice-Derived] Silence Tuning:** Reverted timeout to 1.2s to reduce aggressive cut-offs.
+*   **[TODO] [Voice-Derived] Multi-Mouse Dialogue:** Explore logic for Pinky and Brain to talk to each other (facilitated by AcmeLab).
+*   **[TODO] [Voice-Derived] Facilitator Role:** Refine Pinky's knowledge of the 'HomeLab AI Project' to act as a better guide.
 *   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`).
 
 ### Phase C: Intelligence & Memory

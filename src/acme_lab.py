@@ -197,7 +197,7 @@ class AcmeLab:
             if action == "SHUTDOWN":
                 logging.info("🛑 Shutdown Requested.")
                 await websocket.send(json.dumps({"brain": "Closing the Lab... Zort!", "brain_source": "Pinky"}))
-                await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Closing."})
+                await self.broadcast({"type": "status", "state": "shutdown", "message": "Lab is Closing."})
                 self.shutdown_event.set()
                 return
 
