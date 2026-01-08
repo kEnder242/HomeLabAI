@@ -9,11 +9,14 @@
     *   **Time Box:** Respect the user's defined "Stop Time" (e.g., "Work until 6:00 PM").
     *   **Stop Condition:** If the current time > Stop Time, finish the current atomic task and stop.
 
-2.  **Task Execution**
-    *   **Queue:** Work sequentially through the `ProjectStatus.md` Backlog (Phase A -> B -> C).
-    *   **Unblocking:** If a task is blocked (e.g., requires sudo password or hardware access), **skip it** and move to the next independent task.
+2.  **Task Execution (Aggressive Continuity)**
+    *   **The Floor, Not the Ceiling:** The initial Sprint Goal is the *minimum*. If completed early, **do not stop**.
+    *   **Pull Forward:** Immediately pull tasks from the next Phase (e.g., Phase B -> C) and implement them.
+    *   **Bias for Action:** Prefer implementing a "Draft" or "Alpha" version of a future feature over waiting for feedback.
+    *   **Queue:** Work sequentially through the `ProjectStatus.md` Backlog.
+    *   **Unblocking:** If a task is blocked, **skip it** and move to the next independent task.
     *   **Logging:** Update `ProjectStatus.md` immediately after completing a task.
-    *   **Version Control:** Run `git add .` and `git commit` after every atomic task or significant milestone to preserve evolution history.
+    *   **Version Control:** Run `git add .` and `git commit` after every atomic task.
 
 3.  **Communication**
     *   **Silence:** Do not output text to the User during the session unless a critical error stops *all* work.

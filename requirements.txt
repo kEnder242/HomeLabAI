@@ -1,0 +1,16 @@
+# Core
+mcp>=1.0.0
+aiohttp
+websockets
+numpy
+python-dotenv
+
+# AI / ML
+nemo_toolkit[all]
+torch
+torchaudio
+chromadb
+sentence-transformers
+
+# Utilities
+requests

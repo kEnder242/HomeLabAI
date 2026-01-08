@@ -100,7 +100,9 @@ class AcmeLab:
                         await asyncio.Future() # Run forever
 
         except Exception as e:
+            import traceback
             logging.error(f"💥 Lab Explosion: {e}")
+            logging.error(traceback.format_exc())
 
     async def client_handler(self, websocket):
         logging.info("Client connected to Lab.")
