@@ -100,6 +100,10 @@ class AcmeLab:
                 # 5. Hold the Line (Wait for Voice Shutdown)
                 await self.shutdown_event.wait()
                 logging.info("🛑 Shutdown Event Triggered. Cleaning up...")
+        
+        logging.info("🏁 LAB SHUTDOWN COMPLETE")
+        import os
+        os._exit(0)
 
     async def boot_sequence(self, mode):
         self.mode = mode

@@ -20,7 +20,7 @@ trap "echo '🛑 Stopping remote server...'; ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HO
 
 # Start server and immediately tail logs
 # We use -t to allocate a TTY for color output if possible, but mainly to keep the session alive
-ssh -t -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "
+ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "
     cd $REMOTE_DIR && \
     chmod +x src/start_server.sh && \
     ./src/start_server.sh $MODE

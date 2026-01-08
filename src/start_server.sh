@@ -16,3 +16,5 @@ echo "Acme Lab PID: $PID"
 
 # Follow logs until the server process exits
 tail --pid=$PID -f server.log
+echo "Lab process $PID has ended."
+exit 0
