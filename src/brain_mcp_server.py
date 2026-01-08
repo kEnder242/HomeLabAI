@@ -21,6 +21,23 @@ BRAIN_SYSTEM_PROMPT = (
 )
 
 @mcp.tool()
+async def wake_up() -> str:
+    """
+    Wakes up the Brain's GPU model (Ollama) without generating text.
+    Use this when audio is first detected to reduce latency.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Send a keep-alive request (empty prompt or specific keep_alive payload)
+            payload = {"model": BRAIN_MODEL, "keep_alive": "5m"}
+            async with session.post(BRAIN_URL, json=payload, timeout=5) as resp:
+                if resp.status == 200:
+                    return "The Brain is awake."
+                return f"Wake failed: {resp.status}"
+    except Exception as e:
+        return f"Wake error: {e}"
+
+@mcp.tool()
 async def deep_think(query: str, context: str = "") -> str:
     """
     Perform complex reasoning, coding, or planning.

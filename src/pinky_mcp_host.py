@@ -22,7 +22,7 @@ BUILD_VERSION = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Pinky (Local) Config
 PINKY_URL = "http://localhost:11434/api/generate"
-PINKY_MODEL = "llama3.1:8b"
+PINKY_MODEL = "mistral:7b"
 SILENCE_TIMEOUT = 1.2
 
 # System Prompts
@@ -69,7 +69,8 @@ def get_new_text(old_text, new_window_text):
     return new_window_text
 
 class Transcriber:
-    def __init__(self):
+    def __init__(self, on_speech_start=None):
+        self.on_speech_start = on_speech_start
         logging.info(f"[{BUILD_VERSION}] Loading {MODEL_NAME}...")
         self.model = nemo_asr.models.ASRModel.from_pretrained(MODEL_NAME)
         self.model.eval()
@@ -87,11 +88,18 @@ class Transcriber:
         self.full_transcript = ""
         self.last_speech_time = time.time()
         self.turn_pending = False
+        self.wake_signal_sent = False
 
     @torch.no_grad()
     def transcribe(self, audio_data):
         rms = np.sqrt(np.mean(audio_data.astype(np.float32)**2))
         if rms < SILENCE_THRESHOLD: return None
+
+        # Wake Signal
+        if not self.wake_signal_sent:
+            self.wake_signal_sent = True
+            if self.on_speech_start:
+                asyncio.create_task(self.on_speech_start())
 
         audio_signal = audio_data.astype(np.float32) / 32768.0
         audio_signal = torch.tensor(audio_signal).unsqueeze(0).to("cuda")
@@ -116,9 +124,18 @@ class Transcriber:
         return None
 
 class PinkyMCPHost:
-    def __init__(self, transcriber):
-        self.transcriber = transcriber
+    def __init__(self):
+        self.transcriber = Transcriber(on_speech_start=self.wake_brain)
         self.brain_session = None
+
+    async def wake_brain(self):
+        """Call the Brain's wake_up tool."""
+        if self.brain_session:
+            logging.info("⏰ Sending Wake Signal to The Brain...")
+            try:
+                await self.brain_session.call_tool("wake_up", arguments={})
+            except Exception as e:
+                logging.error(f"⚠️ Wake signal failed: {e}")
 
     async def connect_brain(self):
         """Connect to the Brain MCP Server via stdio."""
@@ -168,7 +185,7 @@ class PinkyMCPHost:
                 try:
                     result = await asyncio.wait_for(
                         self.brain_session.call_tool("deep_think", arguments={"query": query, "context": context}),
-                        timeout=60.0
+                        timeout=300.0
                     )
                     response_text = result.content[0].text
                     logging.info(f"[BRAIN] {response_text}")
@@ -200,9 +217,12 @@ class PinkyMCPHost:
                     if resp.status == 200:
                         data = await resp.json()
                         return data.get("response", "Narf!")
+                    else:
+                        logging.error(f"Pinky API Error: {resp.status} - {await resp.text()}")
         except Exception as e:
+            logging.error(f"Pinky Connection Failed: {e}")
             return f"Egad! Pinky failed: {e}"
-        return "Narf!"
+        return "Narf! (Error)"
 
 async def audio_handler(websocket, host):
     logging.info("Client connected!")
@@ -245,8 +265,7 @@ async def audio_handler(websocket, host):
         logging.info(f"Handler exiting: {e}")
 
 async def main():
-    transcriber = Transcriber()
-    host = PinkyMCPHost(transcriber)
+    host = PinkyMCPHost()
     
     python_path = "/home/jallred/VoiceGateway/.venv/bin/python"
     server_params = StdioServerParameters(
