@@ -85,7 +85,7 @@ class AcmeLab:
                     # 4. SIGNAL READY
                     self.status = "READY"
                     logging.info("[READY] Lab is Fully Operational!")
-                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})))
+                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
 
                     # 5. Wait for voice-triggered shutdown
                     await self.shutdown_event.wait()
@@ -173,7 +173,7 @@ class AcmeLab:
             if action == "SHUTDOWN":
                 logging.info("[STOP] Shutdown Requested via Voice.")
                 await websocket.send(json.dumps({"brain": "Closing the Lab... Zort!", "brain_source": "Pinky"}))
-                await self.broadcast({"type": "status", "state": "shutdown", "message": "Lab is Closing."}))
+                await self.broadcast({"type": "status", "state": "shutdown", "message": "Lab is Closing."})
                 self.shutdown_event.set()
 
             elif action == "DUAL":
