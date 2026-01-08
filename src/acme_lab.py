@@ -30,6 +30,7 @@ class AcmeLab:
         self.mode = "SERVICE"
         self.status = "BOOTING"
         self.connected_clients = set()
+        self.shutdown_event = asyncio.Event()
 
     async def broadcast(self, message_dict):
         """Sends a JSON message to all connected clients."""
@@ -96,8 +97,9 @@ class AcmeLab:
                 logging.info("🎉 Lab is Fully Operational!")
                 await self.broadcast({"type": "status", "state": "ready", "message": "Elevator... Ding! Lab is Open."})
 
-                # 5. Hold the Line (Run Forever)
-                await asyncio.Future()
+                # 5. Hold the Line (Wait for Voice Shutdown)
+                await self.shutdown_event.wait()
+                logging.info("🛑 Shutdown Event Triggered. Cleaning up...")
 
     async def boot_sequence(self, mode):
         self.mode = mode
@@ -195,8 +197,9 @@ class AcmeLab:
             if action == "SHUTDOWN":
                 logging.info("🛑 Shutdown Requested.")
                 await websocket.send(json.dumps({"brain": "Closing the Lab... Zort!", "brain_source": "Pinky"}))
-                await self.broadcast({"type": "status", "state": "shutdown", "message": "Lab is Closing."})
-                sys.exit(0)
+                await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Closing."})
+                self.shutdown_event.set()
+                return
 
             elif action == "ESCALATE":
                 await websocket.send(json.dumps({"brain": message, "brain_source": "Pinky"}))
