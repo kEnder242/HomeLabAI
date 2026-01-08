@@ -37,7 +37,10 @@ We have transitioned from a monolithic script to an **Event-Driven Mesh** using 
 *   **[AUTO] [Diff: 4] Live Participation:** Upgrade logging to Event Bus visualization.
 
 ### Phase C: Intelligence & Memory
-*   **[AUTO] [Diff: 4] Tiered Memory:** CLaRa Integration (Apple-7B) for session summarization.
+*   **[AUTO] [Diff: 4] Tiered Memory:**
+    *   **Episodic:** ChromaDB raw logs (Done).
+    *   **Semantic:** Implement `SemanticMemory` class in `ArchiveNode` to track User Preferences/Facts (Ref: MarkTechPost).
+    *   **Summarization:** CLaRa Integration (Apple-7B).
 *   **[AUTO] [Diff: 3] Task State Manager:** Pinky tracks "ToDo" lists.
 
 ## Dev Tools
