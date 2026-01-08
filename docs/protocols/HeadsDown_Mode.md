@@ -13,6 +13,7 @@
     *   **Queue:** Work sequentially through the `ProjectStatus.md` Backlog (Phase A -> B -> C).
     *   **Unblocking:** If a task is blocked (e.g., requires sudo password or hardware access), **skip it** and move to the next independent task.
     *   **Logging:** Update `ProjectStatus.md` immediately after completing a task.
+    *   **Version Control:** Run `git add .` and `git commit` after every atomic task or significant milestone to preserve evolution history.
 
 3.  **Communication**
     *   **Silence:** Do not output text to the User during the session unless a critical error stops *all* work.
