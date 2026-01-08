@@ -201,7 +201,8 @@ class AcmeLab:
                 self.shutdown_event.set()
                 return
 
-            elif action == "ESCALATE":
+            if action == "ESCALATE":
+                logging.info(f"🧠 ESCALATING to Brain. Pinky says: {message}")
                 await websocket.send(json.dumps({"brain": message, "brain_source": "Pinky"}))
                 
                 if self.mode == "DEBUG_PINKY":
