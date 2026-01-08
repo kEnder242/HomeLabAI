@@ -73,7 +73,7 @@ class EarNode:
             logging.error(f"EarNode Inference Error: {e}")
         return None
 
-    def check_turn_end(self, silence_timeout=1.2):
+    def check_turn_end(self, silence_timeout=0.8):
         """
         Checks if the user has stopped speaking.
         Returns the full query if turn ended, else None.

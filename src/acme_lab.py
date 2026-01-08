@@ -78,25 +78,26 @@ class AcmeLab:
                     
                     logging.info("✅ Residents Connected.")
 
-                    # 2. Prime the Residents (Mode Logic)
-                    if mode == "SERVICE":
-                        logging.info("🍃 Service Mode: Passive. Brain sleeping until called.")
-                        
-                    elif mode == "DEBUG_BRAIN":
-                        logging.info("🔥 Brain Debug Mode: Priming (Force Wake)...")
-                        await brain.call_tool("wake_up")
-                        logging.info("✅ Brain is PRIMED.")
-                        
-                    elif mode == "DEBUG_PINKY":
-                        logging.info("🐹 Pinky Debug Mode: Brain ignored.")
-
-                    # 3. Start Equipment (Ear)
-                    self.ear = EarNode(callback=None) # Callback wired in handler
+                    # 2. Start Equipment (Ear)
+                    # We start Ear before opening doors so handler has it ready
+                    self.ear = EarNode(callback=None) 
                     logging.info("👂 EarNode Initialized.")
 
-                    # 4. Open WebSocket (The "Door")
+                    # 3. Open WebSocket (The "Door")
                     logging.info(f"🚪 Lab Doors Open on Port {PORT}")
                     async with websockets.serve(self.client_handler, "0.0.0.0", PORT):
+                        
+                        # 4. Prime the Residents (Inside the Open Door)
+                        # This allows clients to connect while we wait for Brain
+                        if mode == "SERVICE":
+                            logging.info("🍃 Service Mode: Passive. Brain sleeping until called.")
+                        elif mode == "DEBUG_BRAIN":
+                            logging.info("🔥 Brain Debug Mode: Priming (Force Wake)...")
+                            await brain.call_tool("wake_up")
+                            logging.info("✅ Brain is PRIMED.")
+                        elif mode == "DEBUG_PINKY":
+                            logging.info("🐹 Pinky Debug Mode: Brain ignored.")
+                            
                         await asyncio.Future() # Run forever
 
         except Exception as e:
@@ -126,15 +127,15 @@ class AcmeLab:
                 audio_buffer = np.concatenate((audio_buffer, chunk))
                 
                 # Chunk Processing
-                if len(audio_buffer) >= 24000: # 1.5s buffer
-                    window = audio_buffer[:24000]
+                if len(audio_buffer) >= 16000: # 1.0s buffer
+                    window = audio_buffer[:16000]
                     text = self.ear.process_audio(window)
                     if text:
                         logging.info(f"Tx: {text}")
                         await websocket.send(json.dumps({"text": text}))
                     
                     # Overlap
-                    audio_buffer = audio_buffer[24000-8000:] # 0.5s overlap
+                    audio_buffer = audio_buffer[16000-4000:] # 0.25s overlap
 
                 # Turn End Check
                 query = self.ear.check_turn_end()
@@ -150,6 +151,10 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         """The Main Lab Logic Router."""
         
+        # Keep-Alive: Poke the Brain on every turn to reset timeout
+        if self.mode != "DEBUG_PINKY":
+            asyncio.create_task(self.residents['brain'].call_tool("wake_up"))
+
         # 1. Get Context (Archive)
         try:
             context = ""

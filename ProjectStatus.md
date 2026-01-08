@@ -28,12 +28,12 @@ We have transitioned from a monolithic script to an **Event-Driven Mesh** using 
 ### Phase A: Architecture Refactor (The Foundation)
 *   **[DONE] Refactor to MCP:** Split `audio_server.py`. Created `PinkyMCPHost` and `BrainMCPServer`.
 *   **[DONE] Acme Lab Transition:** Modularized into `acme_lab.py`, `nodes/`, and `equipment/`.
-*   **[TODO] [Voice-Derived] Async Boot:** Refactor `AcmeLab.boot_sequence` to open the WebSocket and start the EarNode *parallel* to Brain Priming to reduce perceived startup latency.
+*   **[DONE] [Voice-Derived] Async Boot:** Refactored `AcmeLab.boot_sequence` to open the WebSocket *parallel* to Brain Priming.
 *   **[TODO] [Diff: 2] AGENTS.md:** Create a style guide for The Brain.
 
 ### Phase B: Core Features (The "Pinky" Suite)
-*   **[TODO] [Voice-Derived] Conversational Keep-Alive:** Pinky should trigger a `brain.wake_up()` signal on *every* user turn during active conversation to reset the Windows Ollama timeout.
-*   **[TODO] [Voice-Derived] Rolling Window Tuning:** Fine-tune the overlap/buffer in `EarNode` to reduce the "That took a little bit of time" effect noticed during the demo.
+*   **[DONE] [Voice-Derived] Conversational Keep-Alive:** Pinky triggers `brain.wake_up()` on every user turn.
+*   **[DONE] [Voice-Derived] Rolling Window Tuning:** Tuned `EarNode` to 1.0s buffer / 0.25s overlap.
 *   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`).
 
 ### Phase C: Intelligence & Memory
