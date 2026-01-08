@@ -58,7 +58,15 @@ BUFFER_SAMPLES = int(SAMPLE_RATE * BUFFER_DURATION)
 OVERLAP_SAMPLES = int(SAMPLE_RATE * OVERLAP_DURATION)
 
 # Logging Setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/conversation.log"),
+        logging.StreamHandler()
+    ]
+)
 
 def get_new_text(old_text, new_window_text):
     if not old_text:
@@ -158,6 +166,11 @@ class Transcriber:
 
     async def search_knowledge_base(self, query):
         """Queries ChromaDB for context."""
+        # Heuristic Check: Skip RAG for common greetings or very short queries
+        casual_greetings = ["hello", "hi", "hey", "pinky", "how are you", "narf", "poit"]
+        if query.lower().strip() in casual_greetings or len(query.split()) < 3:
+            return ""
+
         try:
             results = self.collection.query(query_texts=[query], n_results=2)
             if results and results['documents']:
@@ -179,7 +192,7 @@ class Transcriber:
             self.full_transcript = "" 
             
             if user_query:
-                logging.info(f"🤔 Thinking about: '{user_query}'")
+                logging.info(f"[USER] {user_query}")
                 
                 # RAG Step
                 context = await self.search_knowledge_base(user_query)
@@ -191,8 +204,15 @@ class Transcriber:
                 
                 # Step 1: Consult Pinky (Local)
                 pinky_prompt = f"{PINKY_SYSTEM_PROMPT}\n{rag_snippet}\nUser: {user_query}"
-                pinky_response, _ = await self.generate_response(PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky")
+                pinky_options = {
+                    "num_predict": 200,
+                    "stop": ["User:", "The Brain:", "[USER]", "[BRAIN]"]
+                }
+                pinky_response, _ = await self.generate_response(PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky", pinky_options)
                 
+                if pinky_response:
+                     logging.info(f"[PINKY] {pinky_response}")
+
                 final_response = pinky_response
                 source_identity = "Pinky (2080 Ti)"
 
@@ -209,8 +229,11 @@ class Transcriber:
 
                     brain_prompt = f"{BRAIN_SYSTEM_PROMPT}\n{rag_snippet}\nPinky says: The user needs help with '{handoff_query}'.\nOriginal User Query: {user_query}"
                     
-                    brain_response, _ = await self.generate_response(BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain")
+                    # Brain gets more room to breathe
+                    brain_options = {"num_predict": 2048}
+                    brain_response, _ = await self.generate_response(BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain", brain_options)
                     if brain_response:
+                        logging.info(f"[BRAIN] {brain_response}")
                         final_response = brain_response
                         source_identity = "The Brain (4090 Ti)"
                     else:
@@ -224,14 +247,15 @@ class Transcriber:
 
         return False
 
-    async def generate_response(self, url, model, prompt, name):
+    async def generate_response(self, url, model, prompt, name, options=None):
         """Generic generation wrapper."""
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {
                     "model": model,
                     "prompt": prompt,
-                    "stream": False
+                    "stream": False,
+                    "options": options or {}
                 }
                 timeout = aiohttp.ClientTimeout(total=60, connect=2)
                 
@@ -257,6 +281,21 @@ async def audio_handler(websocket):
     
     try:
         async for message in websocket:
+            # DEBUG: Text Injection
+            if isinstance(message, str):
+                try:
+                    data = json.loads(message)
+                    if "debug_text" in data:
+                        text = data["debug_text"]
+                        logging.info(f"🐛 Debug Text Injected: '{text}'")
+                        transcriber.full_transcript += " " + text
+                        transcriber.last_speech_time = time.time()
+                        transcriber.turn_pending = True
+                        # Force immediate check if desired, or let the loop handle it
+                except json.JSONDecodeError:
+                    pass
+                continue
+
             chunk = np.frombuffer(message, dtype=np.int16)
             audio_buffer = np.concatenate((audio_buffer, chunk))
             
