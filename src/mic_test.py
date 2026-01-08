@@ -4,7 +4,7 @@ import pyaudio
 import sys
 import json
 
-VERSION = "2026-01-08-v4"
+VERSION = "2026-01-08-v5"
 
 # Configuration
 HOST = "z87-Linux.local" 
@@ -14,8 +14,9 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 
-# State
+# Global State
 LAB_READY = False
+SHUTDOWN_EVENT = asyncio.Event()
 
 async def receive_messages(websocket):
     """Listens for text responses from the server."""
@@ -26,18 +27,24 @@ async def receive_messages(websocket):
             
             # Status Event
             if data.get("type") == "status":
-                if data.get("state") == "ready":
+                state = data.get("state")
+                if state == "ready":
                     LAB_READY = True
                     print(f"\n✅ [ACME LAB]: {data.get('message', 'Ready')}")
                     print("🎤 Microphone is LIVE. Speak now... (Ctrl+C to stop)")
+                elif state == "waiting":
+                    print(f"\n⏳ [LOBBY]: {data.get('message', 'Please wait...')}")
+                elif state == "shutdown":
+                    print("\n🛑 [ACME LAB]: Lab is closing. Goodbye!")
+                    SHUTDOWN_EVENT.set() # Trigger graceful exit
+                    return
 
             # Final Transcript Event
             elif data.get("type") == "final":
-                print(f"\n📨 [SENT]: \"{data['text']}\"")
+                print(f"\n📨 [SENT]: \"{data['text']}\"" )
 
             # Partial Transcript
             elif "text" in data:
-                # Overwrite line for partials to keep it clean
                 sys.stdout.write(f"\r👂 Hearing: {data['text']}   ")
                 sys.stdout.flush()
 
@@ -49,6 +56,7 @@ async def receive_messages(websocket):
                 
     except websockets.exceptions.ConnectionClosed:
         print("\n[DISCONNECTED] Server closed connection.")
+        SHUTDOWN_EVENT.set()
 
 async def send_audio(websocket):
     """Streams microphone audio to the server."""
@@ -62,13 +70,12 @@ async def send_audio(websocket):
     
     print("⏳ Connecting to Lab...")
     
-    # Wait for Ready Signal (handled in receive loop) usually fast, 
-    # but we don't want to stream silence before the server acknowledges.
-    while not LAB_READY:
+    while not LAB_READY and not SHUTDOWN_EVENT.is_set():
         await asyncio.sleep(0.1)
 
     try:
-        while True:
+        while not SHUTDOWN_EVENT.is_set():
+            # Use non-blocking behavior for mic check
             data = stream.read(CHUNK, exception_on_overflow=False)
             try:
                 await websocket.send(data)
@@ -77,8 +84,6 @@ async def send_audio(websocket):
             await asyncio.sleep(0.01)
     except KeyboardInterrupt:
         pass
-    except websockets.exceptions.ConnectionClosedError:
-        print("[DISCONNECTED] Connection lost unexpectedly.")
     finally:
         print("[MIC CLOSED]")
         stream.stop_stream()
@@ -89,17 +94,16 @@ async def main():
     uri = f"ws://{HOST}:{PORT}"
     try:
         async with websockets.connect(uri) as websocket:
-            # Run send and receive in parallel
+            # Run tasks
             receiver = asyncio.create_task(receive_messages(websocket))
             sender = asyncio.create_task(send_audio(websocket))
             
-            await asyncio.wait(
-                [sender, receiver],
-                return_when=asyncio.FIRST_COMPLETED
-            )
+            # Wait for either natural end or shutdown signal
+            await SHUTDOWN_EVENT.wait()
             
+            # Cleanup
             for task in [sender, receiver]:
-                if not task.done(): task.cancel()
+                if not task.done(): task.cancel() 
                 
     except Exception as e:
         print(f"[ERROR] Connection failed: {e}")
