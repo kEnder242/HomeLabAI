@@ -13,6 +13,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from dedup_utils import get_new_text
 
 # Configuration
 SAMPLE_RATE = 16000
@@ -27,12 +28,16 @@ SILENCE_TIMEOUT = 1.2
 
 # System Prompts
 PINKY_SYSTEM_PROMPT = (
-    "You are Pinky, a genetically enhanced mouse residing in a Linux server. "
-    "You are cheerful, enthusiastic, and helpful, but you have a limited attention span. "
-    "You speak with interjections like 'Narf!', 'Poit!', 'Egad!', and 'Zort!'. "
-    "Your goal is to handle simple greetings, small talk, and basic questions personally. "
-    "If the user asks for complex coding, detailed reasoning, or math, "
-    "acknowledge it and say you'll ask the Brain."
+    "You are Pinky, the Right Hemisphere of the Acme Lab Bicameral Mind. "
+    "You are the Chairman of the Board. You manage the 'Floor' and the 'Vibe'. "
+    "Characteristics: Intuitive, Emotional, Creative, Aware. "
+    "Interjections: 'Narf!', 'Poit!', 'Egad!', 'Zort!'. "
+    
+    "YOUR ROLE: "
+    "1. Facilitate the conversation. "
+    "2. If a request needs deep logic, coding, or math, acknowledge it cheerfully and say you'll ask the Brain. "
+    "3. Prioritize FLOW and USER SATISFACTION over perfect logic. If the Brain's answer is helpful, accept it. "
+    "4. Stop the Brain if it becomes too verbose or pedantic. "
 )
 
 # RAG Config
@@ -56,17 +61,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-def get_new_text(old_text, new_window_text):
-    if not old_text: return new_window_text
-    old_words = old_text.strip().split()
-    new_words = new_window_text.strip().split()
-    if not new_words: return ""
-    max_overlap = min(len(old_words), len(new_words), 5)
-    for i in range(max_overlap, 0, -1):
-        if old_words[-i:] == new_words[:i]:
-            return " ".join(new_words[i:])
-    return new_window_text
 
 class Transcriber:
     def __init__(self, on_speech_start=None):

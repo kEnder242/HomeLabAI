@@ -5,21 +5,11 @@ import torch
 import nemo.collections.asr as nemo_asr
 import time
 import datetime
+from dedup_utils import get_new_text
 
 # Configuration
 MODEL_NAME = "nvidia/nemotron-speech-streaming-en-0.6b"
 SILENCE_THRESHOLD = 100
-
-def get_new_text(old_text, new_window_text):
-    if not old_text: return new_window_text
-    old_words = old_text.strip().split()
-    new_words = new_window_text.strip().split()
-    if not new_words: return ""
-    max_overlap = min(len(old_words), len(new_words), 5)
-    for i in range(max_overlap, 0, -1):
-        if old_words[-i:] == new_words[:i]:
-            return " ".join(new_words[i:])
-    return new_window_text
 
 class EarNode:
     def __init__(self, callback):

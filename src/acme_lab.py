@@ -31,7 +31,7 @@ class AcmeLab:
     def __init__(self):
         self.residents = {}
         self.ear = None
-        self.mode = "SERVICE"
+        self.mode = "HOSTING"
         self.status = "BOOTING"
         self.connected_clients = set()
         self.shutdown_event = asyncio.Event()
@@ -141,8 +141,8 @@ class AcmeLab:
                             query = data["debug_text"]
                             if query == "SHUTDOWN_PROTOCOL_OVERRIDE":
                                 logging.info("[TEST] Remote Shutdown Received.")
-                                if self.mode in ["SERVICE"]:
-                                    logging.warning("[SECURITY] Remote Shutdown Ignored in SERVICE mode.")
+                                if self.mode in ["HOSTING"]:
+                                    logging.warning("[SECURITY] Remote Shutdown Ignored in HOSTING mode.")
                                 else:
                                     self.shutdown_event.set()
                                 break
@@ -211,6 +211,11 @@ class AcmeLab:
         finally:
             if websocket in self.connected_clients:
                 self.connected_clients.remove(websocket)
+            
+            # Auto-Shutdown in Debug Modes
+            if self.mode != "HOSTING" and len(self.connected_clients) == 0:
+                logging.info("[DEBUG] Last client disconnected. Shutting down Lab.")
+                self.shutdown_event.set()
 
     async def process_query(self, query, websocket):
         """The Main Lab Logic Router (Round Table Loop)."""
@@ -297,11 +302,64 @@ class AcmeLab:
             logging.error(f"[ERROR] Loop Exception: {e}")
             await websocket.send(json.dumps({"brain": f"Lab Error: {e}", "brain_source": "System"}))
 
+import signal
+
+
+
 if __name__ == "__main__":
+
+
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", default="SERVICE", choices=["SERVICE", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
+
+
+
+    parser.add_argument("--mode", default="HOSTING", choices=["HOSTING", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
+
+
+
     args = parser.parse_args()
+
+
+
+
+
+    
+
     lab = AcmeLab()
+
+    
+
+    def handle_sigint():
+
+        logging.info("[SIGNAL] Caught SIGINT/SIGTERM. Shutting down...")
+
+        if not lab.shutdown_event.is_set():
+
+            lab.shutdown_event.set()
+
+
+
+    loop = asyncio.new_event_loop()
+
+    asyncio.set_event_loop(loop)
+
+    
+
+    loop.add_signal_handler(signal.SIGINT, handle_sigint)
+
+    loop.add_signal_handler(signal.SIGTERM, handle_sigint)
+
+
+
     try:
-        asyncio.run(lab.boot_sequence(args.mode))
-    except KeyboardInterrupt: pass
+
+        loop.run_until_complete(lab.boot_sequence(args.mode))
+
+    except (KeyboardInterrupt, asyncio.CancelledError):
+
+        pass
+
+    finally:
+
+        logging.info("Exiting...")

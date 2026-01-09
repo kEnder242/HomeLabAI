@@ -7,8 +7,10 @@ This document defines the rules of engagement for the Agent (AI) and User.
 **Context:** Used when verifying a new feature or after a "Heads Down" sprint.
 
 ### The Rules
-1.  **Agent Drives:** The Agent runs the server command (`./run_remote.sh`). The Agent **does not** just output the command and ask the User to copy-paste it.
-2.  **Hold The Line:** The Agent executes the command (e.g., `tail -f`) and **waits**.
+1.  **Agent Drives:** The Agent runs the server command (`./run_remote.sh DEBUG_BRAIN`).
+    *   *Note:* `DEBUG_BRAIN` loads the full stack but exits when the client disconnects.
+2.  **Client Deploy:** If `mic_test.py` was modified, the Agent MUST run `./sync_to_windows.sh` BEFORE asking the User to connect.
+3.  **Hold The Line:** The Agent executes the command (e.g., `tail -f`) and **waits**.
     *   The Agent expects the tool call to timeout or be cancelled by the User. This is NOT a failure; it is the design.
     *   *Agent Thought:* "I am now holding the server open. I will wait here until the User disconnects me."
 3.  **Real-Time Monitoring:** The Agent watches the logs for success criteria (e.g., `[PINKY] Hello`).
@@ -51,7 +53,7 @@ This document defines the rules of engagement for the Agent (AI) and User.
     *   **Standard:** Use `./run_remote.sh` (Nohup/Tail) for demos and tests.
     *   **Investigation:** Use `ssh ... bash src/start_tmux.sh` to attach to a persistent session if debugging crashes.
 *   **Modes:**
-    *   `SERVICE`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
+    *   `HOSTING`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
     *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
     *   `DEBUG_PINKY`: **Fast Boot.** Skips Brain Prime. Shuts down on disconnect. Use for Logic Tests.
     *   `MOCK_BRAIN`: **Fast Boot.** Simulates Brain responses. Shuts down on disconnect. Use for Flow Tests.

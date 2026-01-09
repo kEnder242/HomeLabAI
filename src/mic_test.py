@@ -60,6 +60,16 @@ async def receive_messages(websocket):
                 source = data.get("brain_source", "Unknown Brain")
                 content = data['brain']
                 print(f"\n\n[{source}]: {content}\n")
+
+            # Debug Events (Brain Activity)
+            elif data.get("type") == "debug":
+                event = data.get("event")
+                if event == "BRAIN_OUTPUT":
+                    print(f"\n🧠 [THE BRAIN]: {data.get('data')}")
+                elif event == "PINKY_DECISION":
+                    decision = data.get("data", {})
+                    tool = decision.get("tool")
+                    print(f"\n🐹 [PINKY THOUGHT]: Decided to use '{tool}'")
                 
     except websockets.exceptions.ConnectionClosed:
         print("\n[DISCONNECTED] Server closed connection.")

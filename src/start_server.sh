@@ -1,5 +1,5 @@
 #!/bin/bash
-MODE=${1:-SERVICE} # Default to SERVICE if no arg provided
+MODE=${1:-HOSTING} # Default to HOSTING if no arg provided
 
 cd ~/AcmeLab
 # Kill old instances

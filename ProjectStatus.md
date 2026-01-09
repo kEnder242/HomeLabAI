@@ -9,12 +9,26 @@
 *   **The Freezer (Backlog Ideas):** [Future_Concepts.md](docs/plans/Future_Concepts.md) (Intercom, Dreaming, Red Phone)
 *   **History:** `docs/archive/` (Old Roadmaps, Post-Mortems)
 
+## 🗣️ Glossary & Shortcuts (How to Talk to Agent)
+Use these terms to trigger specific, pre-agreed workflows.
+
+*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol`.
+    *   *Agent Action:* Runs server (`HOSTING` mode), holds the line, and watches logs for your voice feedback.
+*   **"Heads Down"**: Trigger `Builder Protocol`.
+    *   *Agent Action:* Works autonomously on the Backlog for ~30-45m. No chit-chat.
+*   **"Fast Loop"**: Trigger `Debug Protocol`.
+    *   *Agent Action:* Uses `DEBUG_PINKY` mode (10s boot) and runs automated scripts (`test_shutdown.py`).
+*   **"Reflex"**: Refers to hardcoded logic in `pinky_node.py` that bypasses the LLM (e.g., Shutdown, Stop).
+*   **"Loop of Doom"**: Refers to Pinky and Brain getting stuck in a delegation cycle.
+*   **"The Echo"**: Refers to the STT phrase repetition bug.
+*   **"Sync to Windows"**: Reminder to run deployment script if `mic_test.py` changed.
+
 ## ⚠️ Known Traps (Read Before Working)
-*   **Startup Blindness:** In `SERVICE` mode, loading takes ~45s. `start_tmux.sh` waits silently for "Lab Doors Open". Do not cancel unless it exceeds 60s.
+*   **Startup Blindness:** In `HOSTING` mode, loading takes ~45s. `start_tmux.sh` waits silently for "Lab Doors Open". Do not cancel unless it exceeds 60s.
 *   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...` (Forgot this 3 times today).
 *   **Process Management:** Use `src/start_tmux.sh`. Do NOT use raw `nohup`.
 *   **Sync:** `sync_to_linux.sh` BEFORE restarting server.
-*   **Fast Loop:** Use `DEBUG_PINKY` mode for logic tests (10s boot) vs `SERVICE` mode (60s boot).
+*   **Fast Loop:** Use `DEBUG_PINKY` mode for logic tests (10s boot) vs `HOSTING` mode (60s boot).
 
 ## Architecture: "The Bicameral Mind"
 We have evolved the architecture into a **Conversational State Machine** modeling two hemispheres.
@@ -43,7 +57,10 @@ We have evolved the architecture into a **Conversational State Machine** modelin
 *   **[CRITICAL] Bicameral Balance (Fix Loop of Doom):**
     *   **Status:** Prompts updated. Need verification.
 *   **[CRITICAL] Shutdown Logic (The Goodbye):**
-    *   **Status:** **Fixed.** Reflex logic added to `pinky_node.py`.
+    *   **Status:** **Fixed (Temporary Reflex).** Hardcoded check in `pinky_node.py`.
+*   **[TODO] Deprecate Reflex (Agentic Purity):**
+    *   **Goal:** Restore Pinky's agency. Remove hardcoded regex.
+    *   **Method:** Improve prompt engineering or use a specialized "Router" model so Pinky *chooses* shutdown naturally.
 *   **[TODO] Revisit Delegation (Voice Feedback):**
     *   **Observation:** "Okay, you're in a loop." Pinky re-delegates when Brain uses future tense ("I shall...").
     *   **Task:** Tune Brain prompt to be Result-Oriented ("Here is X", not "I will find X").
