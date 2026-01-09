@@ -102,10 +102,21 @@ async def send_audio(websocket):
             stream.close()
         p.terminate()
 
+async def connect_with_retry(uri, max_retries=10, delay=1.0):
+    for i in range(max_retries):
+        try:
+            ws = await websockets.connect(uri)
+            return ws
+        except (ConnectionRefusedError, OSError):
+            print(f"⏳ Waiting for Lab... ({i+1}/{max_retries})")
+            await asyncio.sleep(delay)
+    raise ConnectionRefusedError("Could not connect to Acme Lab.")
+
 async def main():
     uri = f"ws://{HOST}:{PORT}"
     try:
-        async with websockets.connect(uri) as websocket:
+        ws = await connect_with_retry(uri)
+        async with ws as websocket:
             # Run tasks
             receiver = asyncio.create_task(receive_messages(websocket))
             sender = asyncio.create_task(send_audio(websocket))

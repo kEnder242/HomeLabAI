@@ -1,51 +1,51 @@
 # Project Status: Acme Lab (Voice-Activated Personal Knowledge Assistant)
 
 **Date:** January 8, 2026
-**Current Phase:** Phase 4: The Acme Lab Architecture
+**Current Phase:** Phase 5: The Agentic Facilitator
 
-## Architecture: "The Neural Mesh"
-We have transitioned from a monolithic script to an **Event-Driven Mesh** using the **Acme Lab** metaphor.
+## Architecture: "The Round Table"
+We have evolved the architecture into a **Conversational State Machine**.
+Pinky is now the **Agentic Facilitator**, managing the "Floor" and deciding when to involve the Brain.
 
 *   **The Lab (Host):** `src/acme_lab.py`
-    *   A neutral event bus. connects Equipment (Ear) to Residents (Nodes).
-    *   **Modes:**
-        *   `SERVICE`: Lazy loading (Green).
-        *   `DEBUG_BRAIN`: Eager loading (Hot).
-        *   `DEBUG_PINKY`: Local logic only.
+    *   **Role:** Turn Manager, Physics Engine (Barge-In), and Connection Broker.
+    *   **Modes:** `SERVICE` (Production), `MOCK_BRAIN` (Logic Testing).
+    *   **Features:** Fast Boot, Smart Shutdown, Asynchronous Interrupts (Barge-In).
 
 *   **Residents (Nodes):**
-    *   **Pinky (`pinky_node.py`):** The Persona. Handles Triage.
-    *   **Brain (`brain_node.py`):** The Genius. Handles deep compute (Windows).
-    *   **Archives (`archive_node.py`):** The Memory. Handles ChromaDB & Summarization.
+    *   **Pinky:** The Facilitator. Uses Tools (`delegate`, `critique`, `reply`) to drive flow.
+    *   **Brain:** The Specialist. Pure compute.
+    *   **Archives:** The Librarian.
 
 ## Completed Milestones
-1.  **Architecture Design:** Defined "Pinky-as-a-Bus" vs "Pinky-as-a-Node".
-2.  **Tooling:** Created `run_remote.sh` for seamless Local -> Remote development loops.
-3.  **Environment:** Mapped out `HomeLabAI` (Repo) vs `AcmeLab` (Remote Runtime).
+1.  **Round Table Logic (Pass 1):** Pinky successfully loops through delegation and critique cycles.
+2.  **Fast Test Loop:** Optimized validation suite from 60s+ to ~10s execution.
+3.  **Mock Infrastructure:** Enabled `MOCK_BRAIN` for rapid logic iteration.
+4.  **Asynchronous Interrupts (Phase 2):** Successfully implemented "Barge-In" (Voice/Manual) to cancel current tasks.
 
 ## Master Backlog & Roadmap
 
 ### Phase A: Architecture Refactor (The Foundation)
 *   **[DONE] Refactor to MCP:** Split `audio_server.py`. Created `PinkyMCPHost` and `BrainMCPServer`.
 *   **[DONE] Acme Lab Transition:** Modularized into `acme_lab.py`, `nodes/`, and `equipment/`.
-*   **[DONE] [Voice-Derived] Async Boot:** Refactored `AcmeLab.boot_sequence` to open the WebSocket *parallel* to Brain Priming.
-*   **[TODO] [Diff: 2] AGENTS.md:** Create a style guide for The Brain.
+*   **[DONE] Round Table Logic:** Implemented `process_query` loop and Pinky `facilitate` tool.
+*   **[DONE] Fast Test Loop:** Optimized `test_round_table.py` and `mic_test.py`.
 
-### Phase B: Core Features (The "Pinky" Suite)
-*   **[DONE] [Voice-Derived] Rolling Window Tuning:** Tuned `EarNode` to 1.0s buffer / 0.25s overlap.
-*   **[DONE] [Voice-Derived] Pinky Triage Tuning:** Hard-wired "Brain" keyword to trigger escalation.
-*   **[DONE] [Voice-Derived] Silence Tuning:** Reverted timeout to 1.2s to reduce aggressive cut-offs.
-*   **[TODO] [Voice-Derived] Multi-Mouse Dialogue:** Explore logic for Pinky and Brain to talk to each other (facilitated by AcmeLab).
-*   **[TODO] [Voice-Derived] Facilitator Role:** Refine Pinky's knowledge of the 'HomeLab AI Project' to act as a better guide.
-*   **[AUTO] [Diff: 3] Pinky Model Manager:** Implement Ollama API tools (`pull`, `list`).
+### Phase B: Interrupts & Flow (The Physics)
+*   **[DONE] Asynchronous Barge-In:** Enable Lab to cancel Brain generation on voice activity.
+*   **[TODO] Multi-Mouse Dialogue:** Refine Pinky/Brain banter during handoffs.
+*   **[TODO] Facilitator Role:** Expand Pinky's prompt to handle project meta-data.
 
 ### Phase C: Intelligence & Memory
 *   **[AUTO] [Diff: 4] Tiered Memory:**
     *   **Episodic:** ChromaDB raw logs (Done).
-    *   **Semantic:** Implement `SemanticMemory` class in `ArchiveNode` to track User Preferences/Facts (Ref: MarkTechPost).
+    *   **Semantic:** Implement `SemanticMemory` class in `ArchiveNode`.
     *   **Summarization:** CLaRa Integration (Apple-7B).
 *   **[AUTO] [Diff: 3] Task State Manager:** Pinky tracks "ToDo" lists.
 
 ## Dev Tools
 *   `./run_remote.sh [MODE]`: The primary development tool.
-*   `./sync_to_linux.sh`: Deployment script.
+*   `src/test_round_table.py`: Logic Validation (Fast).
+*   `src/test_audio_pipeline.py`: Hardware Validation (Fast).
+*   `src/test_interrupt.py`: Barge-In Validation (Fast).
+*   `src/mic_test.py`: Interactive Client (Robust).

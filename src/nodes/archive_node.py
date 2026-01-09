@@ -18,7 +18,7 @@ chroma_client = chromadb.PersistentClient(path=DB_PATH)
 ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
-collection = chroma_client.get_collection(
+collection = chroma_client.get_or_create_collection(
     name=COLLECTION_NAME, embedding_function=ef
 )
 

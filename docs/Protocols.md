@@ -47,3 +47,16 @@ This document defines the rules of engagement for the Agent (AI) and User.
 *   **Tooling:**
     *   `./run_remote.sh [MODE]`: Syncs and runs the Lab.
     *   `./sync_to_linux.sh`: Syncs code only.
+
+---
+
+## 4. Testing Protocols
+
+### The "Fast Test Loop" Requirement
+**Goal:** Optimize the development feedback loop by eliminating unnecessary waits.
+**Rules:**
+1.  **Zero Sleep:** Test scripts MUST NOT rely on fixed `sleep` commands for synchronization.
+2.  **Smart Connect:** Scripts must poll/retry connections (e.g., `connect_with_retry`) to start immediately upon server readiness.
+3.  **Clean Shutdown:** Test scripts are responsible for sending a shutdown signal to the server upon completion, ensuring no zombie processes remain.
+4.  **Telemetry:** All test scripts must output total execution time to verify compliance.
+5.  **Target Time:** A complete logic validation suite should run in under **10 seconds** total.

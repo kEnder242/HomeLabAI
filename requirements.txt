@@ -1,16 +1,17 @@
-# Core
-mcp>=1.0.0
-aiohttp
-websockets
-numpy
-python-dotenv
 
 # AI / ML
+# Core
+# Utilities
+aiohttp
+chromadb
+chromadb==1.4.0
+mcp>=1.0.0
 nemo_toolkit[all]
+numpy
+python-dotenv
+requests
+sentence-transformers
+sentence-transformers==5.2.0
 torch
 torchaudio
-chromadb
-sentence-transformers
-
-# Utilities
-requests
+websockets
