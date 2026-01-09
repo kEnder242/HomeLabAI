@@ -33,6 +33,7 @@ Pinky is now the **Agentic Facilitator**, managing the "Floor" and deciding when
 
 ### Phase B: Interrupts & Flow (The Physics)
 *   **[DONE] Asynchronous Barge-In:** Enable Lab to cancel Brain generation on voice activity.
+*   **[CRITICAL] Fix "Loop of Doom":** Tune Brain/Pinky prompts to prevent infinite delegation cycles (Pinky badgering Brain).
 *   **[TODO] Multi-Mouse Dialogue:** Refine Pinky/Brain banter during handoffs.
 *   **[TODO] Facilitator Role:** Expand Pinky's prompt to handle project meta-data.
 
