@@ -13,11 +13,12 @@ This document defines the rules of engagement for the Agent (AI) and User.
     *   *Agent Thought:* "I am now holding the server open. I will wait here until the User disconnects me."
 3.  **Real-Time Monitoring:** The Agent watches the logs for success criteria (e.g., `[PINKY] Hello`).
 4.  **The Voice Feedback Loop:**
-    *   **Listen to the User:** The Agent acknowledges that during voice demos, the User will speak "Live Feedback" (e.g., "Pinky is too slow" or "The Brain should stay awake").
+    *   **Listen to the User:** The Agent acknowledges that during voice demos, the User will speak "Live Feedback".
     *   **Post-Demo Log Analysis:** Immediately after the demo ends, the Agent MUST `cat` the server logs to extract these verbal insights.
-    *   **Backlog Integration:** Verberal feedback from logs must be explicitly added to `ProjectStatus.md` as `[Voice-Derived]` tasks.
+    *   **Backlog Integration:** Verberal feedback from logs must be explicitly added to `ProjectStatus.md`.
 5.  **Disconnection:** The User signals completion by cancelling the tool call or typing "Stop".
-5.  **Post-Action:** Upon disconnection, the Agent immediately asks: "I saw X and Y. Did it behave as expected?"
+6.  **Post-Action:** Upon disconnection, the Agent immediately asks: "I saw X and Y. Did it behave as expected?"
+7.  **Timestamp Check:** The Agent should be aware that `sync_to_windows.sh` may require `mic_test.py` to be updated. Check timestamps if issues arise.
 
 ---
 
@@ -41,12 +42,19 @@ This document defines the rules of engagement for the Agent (AI) and User.
 
 ---
 
-## 3. Environment Orientation
+## 3. Environment & Traps (Read Before Starting)
 *   **Dev Machine:** `~/HomeLabAI` (Edit Code Here).
 *   **Acme Lab (Remote):** `jallred@z87-Linux.local:~/AcmeLab` (Run Code Here).
-*   **Tooling:**
-    *   `./run_remote.sh [MODE]`: Syncs and runs the Lab.
-    *   `./sync_to_linux.sh`: Syncs code only.
+*   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...`.
+*   **Sync First:** ALWAYS run `./sync_to_linux.sh` before restarting the server.
+*   **Process Management:**
+    *   **Standard:** Use `./run_remote.sh` (Nohup/Tail) for demos and tests.
+    *   **Investigation:** Use `ssh ... bash src/start_tmux.sh` to attach to a persistent session if debugging crashes.
+*   **Modes:**
+    *   `SERVICE`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
+    *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
+    *   `DEBUG_PINKY`: **Fast Boot.** Skips Brain Prime. Shuts down on disconnect. Use for Logic Tests.
+    *   `MOCK_BRAIN`: **Fast Boot.** Simulates Brain responses. Shuts down on disconnect. Use for Flow Tests.
 
 ---
 
@@ -60,3 +68,34 @@ This document defines the rules of engagement for the Agent (AI) and User.
 3.  **Clean Shutdown:** Test scripts are responsible for sending a shutdown signal to the server upon completion, ensuring no zombie processes remain.
 4.  **Telemetry:** All test scripts must output total execution time to verify compliance.
 5.  **Target Time:** A complete logic validation suite should run in under **10 seconds** total.
+
+### CI/CD Rule
+*   **Mandate:** After completing ANY Phase or Critical Task, run the full automated suite (`test_shutdown.py`, `test_echo.py`) to prevent regressions.
+*   **Failure:** If tests fail, do NOT proceed to the next Phase. Fix the regression immediately.
+
+### Validation Plan: Acme Lab "Round Table" Architecture
+(Migrated from `docs/plans/protocols/RoundTable_Validation.md`)
+
+#### Phase 1: The Loop (Logic Layer)
+**Goal:** Verify the conversational state machine, tool usage, and "Inner Voice" logic.
+**Execution Mode:** Autonomous "Coffee Break" (Simulated Input).
+
+*   **Test Case 1.1: The Direct Reply (Baseline)**
+    *   **Scenario:** User says "Hello."
+    *   **Success:** Debug Stream shows `Pinky Decision: REPLY`.
+*   **Test Case 1.2: The Delegation (Handoff)**
+    *   **Scenario:** User says "Calculate pi."
+    *   **Success:** `DELEGATE` -> `BRAIN_OUT` -> `REPLY`.
+*   **Test Case 1.3: The Critique (Multi-Turn Internal Loop)**
+    *   **Scenario:** User says "Write bad code."
+    *   **Success:** `DELEGATE` -> `BRAIN_OUT` -> `CRITIQUE` -> `BRAIN_OUT` -> `REPLY`.
+
+#### Phase 2: The Interrupt (Physics Layer)
+**Goal:** Verify asynchronous "Barge-In" capabilities.
+
+*   **Test Case 2.1: Interrupting "The Thinker"**
+    *   **Scenario:** User interrupts Brain generation.
+    *   **Success:** Task Cancelled -> Pinky invoked with "User said 'Wait'".
+*   **Test Case 2.2: Interrupting "The Speaker"**
+    *   **Scenario:** User interrupts Audio Output.
+    *   **Success:** Lab sends `stop_audio` command.
