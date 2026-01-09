@@ -148,8 +148,18 @@ class AcmeLab:
                                 break
                             
                             if query == "BARGE_IN":
-                                # ... (existing logic) ...
+                                if self.current_processing_task and not self.current_processing_task.done():
+                                    logging.info("[BARGE-IN] Manual interrupt received.")
+                                    self.current_processing_task.cancel()
+                                continue
 
+                            # Cancel existing task if a new debug_text query comes in
+                            if self.current_processing_task and not self.current_processing_task.done():
+                                logging.info("[BARGE-IN] New query received. Cancelling previous task.")
+                                self.current_processing_task.cancel()
+                            
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
+                        
                         elif data.get("type") == "handshake":
                             client_ver = data.get("version", "0.0.0")
                             if client_ver != VERSION:
