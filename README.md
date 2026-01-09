@@ -1,67 +1,76 @@
 # Acme Lab: Voice-Activated Personal Knowledge Assistant
 
-**Concept:** A "Pinky and the Brain" inspired home lab agent.
-**Analogy:** "Acme Labs" is the infrastructure. "Pinky" and "The Brain" are residents (agents) living inside it.
+**Acme Lab** is a hybrid AI orchestrator inspired by "Pinky and the Brain." It models a **Bicameral Mind** using distributed hardware.
 
-## 🧠 UX Philosophy: "Talk & Read"
-We optimize for a specific human-centric workflow: **Voice Input, Text Output.**
-*   **Speed:** Speaking is faster than typing. Reading is faster than listening.
-*   **Flow:** No waiting for TTS (Text-to-Speech) to drone on. You speak, see the answer instantly, and keep moving.
-*   **The Loop:** A tight feedback loop where the AI acts as a "Co-Pilot" you can mutter to while coding.
+## 🔭 High-Level Vision
+We believe the future of personal AI is a synthesis of two distinct cognitive styles:
+*   **The Right Hemisphere (Pinky):** Intuitive, Emotional, Aware. He manages the "Vibe," the connection to reality, and the user interface.
+*   **The Left Hemisphere (The Brain):** Logical, Abstract, Precise. He manages the "Truth," the planning, and the deep reasoning.
 
-## 🏗️ Architecture: The Neural Mesh
+### The "Talk & Read" Philosophy
+*   **Voice Input:** Because speaking is faster than typing.
+*   **Text Output:** Because reading is faster than listening.
+*   **The Loop:** A tight, low-latency feedback loop designed for "Vibe Coding" and brainstorming.
 
-The system is built as an Event-Driven Mesh using the **Model Context Protocol (MCP)**.
+---
 
-### 1. The Lab (Host)
-*   **File:** `src/acme_lab.py`
-*   **Role:** The neutral "Event Bus". It connects Equipment (Mic/Speakers) to Residents.
-*   **Hardware:** Runs on `z87-Linux` (NVIDIA 2080 Ti).
-*   **Tech:** Python `asyncio`, `websockets`, `mcp`.
+## 🏗️ Architecture: The Bicameral Mesh
 
-### 2. The Residents (Nodes)
-*   **🐹 Pinky (Persona):** `src/nodes/pinky_node.py`
-    *   **Model:** `mistral:7b` (Fast, Local).
-    *   **Role:** Triage, Greetings, "Narf!". Decides when to wake the Brain.
-*   **🧠 The Brain (Genius):** `src/nodes/brain_node.py`
-    *   **Model:** `llama3:70b` (Remote Windows GPU).
-    *   **Role:** Deep Reasoning, Coding, Planning.
-*   **📚 The Archives (Memory):** `src/nodes/archive_node.py`
-    *   **Tech:** ChromaDB, SentenceTransformers.
-    *   **Role:** Long-term memory and "CLaRa" session summarization.
+The system is an **Event-Driven Conversational State Machine**.
 
-### 3. The Equipment
-*   **👂 EarNode:** `src/equipment/ear_node.py` (NVIDIA NeMo Streaming ASR).
-*   **📢 MouthNode:** (Coming Soon) Piper TTS / WebSocket Frontend.
+### 1. The Lab (Corpus Callosum)
+*   **Host:** `z87-Linux` (NVIDIA 2080 Ti).
+*   **File:** `src/acme_lab.py`.
+*   **Role:** The **Translator**. It converts Pinky's "Vibes" into The Brain's "Parameters" and The Brain's "Logic" into Pinky's "Actions."
+
+### 2. The Hemispheres (Nodes)
+*   **🐹 Pinky (Right Brain):**
+    *   **Model:** `mistral:7b` (Local).
+    *   **Role:** The Experience Engine. Handling Sensory IO, Emotion, and Presence.
+    *   **Tools:** `delegate_to_brain`, `critique_brain`, `reply_to_user`.
+*   **🧠 The Brain (Left Brain):**
+    *   **Model:** `llama3:70b` (Remote Windows GPU via Ollama).
+    *   **Role:** The Reasoning Engine. Handling Logic, Code, and Memory Consolidation ("Dreaming").
+
+### 3. The Archives (Memory)
+*   **Tech:** ChromaDB.
+*   **Role:** The "Pile" (Episodic Memory) and the "Library" (Semantic Memory).
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Environment Orientation
-*   **Dev Machine:** Where you edit code (`~/HomeLabAI`).
-*   **Target Host:** `jallred@z87-Linux.local` (`~/AcmeLab`).
-*   **Windows Host:** `192.168.1.26` (Ollama).
+*   **Dev Machine:** WSL (`~/HomeLabAI`).
+*   **Target Host:** `z87-Linux.local` (`~/AcmeLab`).
 
 ### 2. Deployment
-Do not run `acme_lab.py` locally. It requires the Linux GPU environment.
-Use the helper script:
-
+Use the helper script to sync and run remotely:
 ```bash
 ./run_remote.sh [MODE]
 ```
 **Modes:**
-*   `SERVICE`: Passive mode. Brain sleeps until called. (Default)
-*   `DEBUG_BRAIN`: Forces Brain wake-up on boot.
-*   `DEBUG_PINKY`: Local logic only. Brain disconnected.
+*   `SERVICE`: Standard operation.
+*   `MOCK_BRAIN`: Fast logic testing (simulates Brain responses).
+*   `DEBUG_PINKY`: Local logic only.
 
-### 3. Requirements
-See `requirements.txt`.
-Remote venv: `~/AcmeLab/.venv`
+### 3. Key Commands
+*   **`src/test_round_table.py`**: Validate the logic loop (Fast).
+*   **`src/mic_test.py`**: Interactive Voice Client.
 
 ---
 
-## 📜 Credits
-*   **JARVIS / Iron Man:** The functional goal.
-*   **Pinky & The Brain:** The personality engine.
-*   **DeepAgent:** The legacy orchestrator roots.
+## 📚 Research & Inspiration
+
+A collection of papers and projects influencing our design.
+
+*   **[NVIDIA Nemotron-Speech-Streaming](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b):** Powering our low-latency "Hearing" layer.
+*   **[Recursive Language Models (RLMs)](https://www.marktechpost.com/2026/01/02/recursive-language-models-rlms-from-mits-blueprint-to-prime-intellects-rlmenv-for-long-horizon-llm-agents/?amp):** Inspiration for our "Pinky Reads Tools" approach.
+*   **[Local Multi-Agent Orchestration](https://www.marktechpost.com/2025/12/05/how-to-design-a-fully-local-multi-agent-orchestration-system-using-tinyllama-for-intelligent-task-decomposition-and-autonomous-collaboration/?amp):** Validates the Small (Pinky) -> Large (Brain) routing strategy.
+
+---
+
+## 📜 Project History
+*   **Jan 2026:** Refined into "Bicameral Mind" architecture (Right/Left Brain).
+*   **Dec 2025:** Initial "Voice Gateway" prototype (Pinky & The Brain 1.0).
+*   **Origins:** Forked from `DeepAgent`.
