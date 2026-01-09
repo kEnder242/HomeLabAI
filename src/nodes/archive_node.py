@@ -46,6 +46,21 @@ def get_context(query: str, n_results: int = 3) -> str:
         return f"Archive Search Error: {e}"
 
 @mcp.tool()
+def get_stream_dump() -> dict:
+    """
+    Retrieve all raw logs from the short-term stream for processing.
+    Returns a dict with 'documents' and 'ids'.
+    """
+    try:
+        results = stream.get()
+        return {
+            "documents": results.get('documents', []),
+            "ids": results.get('ids', [])
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@mcp.tool()
 def save_interaction(user_query: str, response: str) -> str:
     """
     Save a raw conversation turn to the Short-Term Stream.
