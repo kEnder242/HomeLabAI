@@ -4,8 +4,8 @@ import json
 import logging
 
 # Configuration
-PINKY_MODEL = "mistral:latest" # Known working local model
-LOCAL_LLM_URL = "http://localhost:11434/api/generate"
+PINKY_MODEL = "mistral:7b" # Known working local model
+LOCAL_LLM_URL = "http://127.0.0.1:11434/api/generate"
 
 SYSTEM_PROMPT = (
     "Identity: You are Pinky, the Agentic Facilitator of Acme Lab. "
@@ -20,7 +20,7 @@ SYSTEM_PROMPT = (
     "- reply_to_user(text, mood): Speak to the user. Ends the turn. "
     "- delegate_to_brain(instruction, context): Send a task to The Brain. "
     "- critique_brain(feedback): Send Brain's last output back for correction. "
-    "- manage_lab(action): 'shutdown' or 'pause'. "
+    "- manage_lab(action): 'shutdown' (Trigger ONLY if user says 'Stop', 'Goodbye', 'Bye'). "
     "Output Format: JSON object with keys 'tool' and 'parameters'."
 )
 

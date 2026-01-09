@@ -18,7 +18,7 @@ except ImportError:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 # Logging
 logging.basicConfig(
@@ -141,21 +141,31 @@ class AcmeLab:
                             query = data["debug_text"]
                             if query == "SHUTDOWN_PROTOCOL_OVERRIDE":
                                 logging.info("[TEST] Remote Shutdown Received.")
-                                self.shutdown_event.set()
+                                if self.mode in ["SERVICE"]:
+                                    logging.warning("[SECURITY] Remote Shutdown Ignored in SERVICE mode.")
+                                else:
+                                    self.shutdown_event.set()
                                 break
                             
                             if query == "BARGE_IN":
-                                if self.current_processing_task and not self.current_processing_task.done():
-                                    logging.info("[BARGE-IN] Manual interrupt received.")
-                                    self.current_processing_task.cancel()
-                                continue
+                                # ... (existing logic) ...
 
-                            # Cancel existing task if a new debug_text query comes in
-                            if self.current_processing_task and not self.current_processing_task.done():
-                                logging.info("[BARGE-IN] New query received. Cancelling previous task.")
-                                self.current_processing_task.cancel()
-                            
-                            self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
+                        elif data.get("type") == "handshake":
+                            client_ver = data.get("version", "0.0.0")
+                            if client_ver != VERSION:
+                                logging.error(f"❌ [VERSION MISMATCH] Client ({client_ver}) != Server ({VERSION}). Connection Refused.")
+                                await websocket.send(json.dumps({"brain": f"SYSTEM ALERT: Client outdated ({client_ver}). Please update.", "brain_source": "System"}))
+                                
+                                if self.mode in ["SERVICE"]:
+                                    await websocket.close()
+                                else:
+                                    # Fail Fast in Debug Mode
+                                    logging.info("[DEBUG] Mismatch triggered Fail-Fast Shutdown.")
+                                    self.shutdown_event.set()
+                                return
+                            else:
+                                logging.info(f"[HANDSHAKE] Client verified (v{client_ver}).")
+
                     except: pass
                     continue
 
@@ -248,6 +258,7 @@ class AcmeLab:
 
                     # Add to context and continue loop
                     lab_context += f"\nBrain: {brain_out}"
+                    logging.info(f"[BRAIN] Output: {brain_out[:100]}...") # Log first 100 chars
                     await self.broadcast({"type": "debug", "event": "BRAIN_OUTPUT", "data": brain_out})
 
                 elif tool == "critique_brain":

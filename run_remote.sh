@@ -18,10 +18,15 @@ echo "🔋 [2/3] Starting Acme Lab in $MODE mode..."
 # We use a trap to kill the remote server when this script is Ctrl+C'd
 trap "echo '🛑 Stopping remote server...'; ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HOST 'pkill -f acme_lab.py'; exit" INT TERM
 
-# Start server and immediately tail logs
-# We use -t to allocate a TTY for color output if possible, but mainly to keep the session alive
-ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "
-    cd $REMOTE_DIR && \
-    chmod +x src/start_server.sh && \
-    ./src/start_server.sh $MODE
-"
+# Start server in background using the helper script
+echo "🔋 [2/3] Starting Acme Lab in $MODE mode (Background)..."
+
+ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "bash ~/AcmeLab/src/start_background.sh $MODE"
+
+echo "📜 [3/3] Tailing logs (Ctrl+C to stop)..."
+# We tail the log locally. We use a loop to check if the process is still alive.
+# If the process dies (e.g. version mismatch), we stop tailing and exit.
+
+ssh -i ~/.ssh/id_rsa_wsl $REMOTE_HOST "tail -f --pid=\$(cat $REMOTE_DIR/server.pid) $REMOTE_DIR/server.log"
+
+echo "🛑 Server process exited."
