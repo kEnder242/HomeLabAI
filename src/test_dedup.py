@@ -39,6 +39,13 @@ def test_deduplication():
     print(f"Test 5: '{t1}' + '{t2}' -> '{res5}' (Expected: 'sleeping')")
     assert res5.lower() == "sleeping"
 
+    # Case 6: Full Phrase Repetition (The Pause Echo)
+    t1 = "Who is in here? In here"
+    t2 = "In here"
+    res6 = get_new_text(t1, t2)
+    print(f"Test 6: '{t1}' + '{t2}' -> '{res6}' (Expected: '')")
+    assert res6 == ""
+
     print("✅ All tests passed!")
 
 if __name__ == "__main__":

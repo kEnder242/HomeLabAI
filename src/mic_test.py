@@ -14,6 +14,14 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 
+# ANSI Colors
+COLOR_RESET = "\033[0m"
+COLOR_PINK = "\033[95m"
+COLOR_CYAN = "\033[96m"
+COLOR_YELLOW = "\033[93m"
+COLOR_GREEN = "\033[92m"
+COLOR_RED = "\033[91m"
+
 # Global State
 LAB_READY = False
 SHUTDOWN_EVENT = asyncio.Event()
@@ -30,25 +38,20 @@ async def receive_messages(websocket):
                 state = data.get("state")
                 server_ver = data.get("version", "Unknown")
                 
-                # Version Check
-                if server_ver != VERSION:
-                    print(f"\n[VERSION MISMATCH]: Client {VERSION} vs Server {server_ver}")
-                    print("Please run sync_to_windows.sh to update.")
-
                 if state == "ready":
                     LAB_READY = True
-                    print(f"\n[ACME LAB v{server_ver}]: {data.get('message', 'Ready')}")
+                    print(f"\n{COLOR_GREEN}[ACME LAB v{server_ver}]: {data.get('message', 'Ready')}{COLOR_RESET}")
                     print("Microphone is LIVE. Speak now... (Ctrl+C to stop)")
                 elif state == "waiting":
-                    print(f"\n[LOBBY v{server_ver}]: {data.get('message', 'Please wait...')}")
+                    print(f"\n{COLOR_YELLOW}[LOBBY v{server_ver}]: {data.get('message', 'Please wait...')}{COLOR_RESET}")
                 elif state == "shutdown":
-                    print("\n[ACME LAB]: Lab is closing. Goodbye!")
+                    print(f"\n{COLOR_RED}[ACME LAB]: Lab is closing. Goodbye!{COLOR_RESET}")
                     SHUTDOWN_EVENT.set()
                     return
 
             # Final Transcript Event
             elif data.get("type") == "final":
-                print(f"\n[SENT]: \"{data['text']}\"" )
+                print(f"\n{COLOR_YELLOW}[USER]: \"{data['text']}\"{COLOR_RESET}" )
 
             # Partial Transcript
             elif "text" in data:
@@ -59,20 +62,21 @@ async def receive_messages(websocket):
             elif "brain" in data:
                 source = data.get("brain_source", "Unknown Brain")
                 content = data['brain']
-                print(f"\n\n[{source}]: {content}\n")
+                color = COLOR_PINK if "Pinky" in source else COLOR_CYAN
+                print(f"\n\n{color}[{source}]: {content}{COLOR_RESET}\n")
 
             # Debug Events (Brain Activity)
             elif data.get("type") == "debug":
                 event = data.get("event")
                 if event == "BRAIN_OUTPUT":
-                    print(f"\n🧠 [THE BRAIN]: {data.get('data')}")
+                    print(f"\n{COLOR_CYAN}🧠 [THE BRAIN]: {data.get('data')}{COLOR_RESET}")
                 elif event == "PINKY_DECISION":
                     decision = data.get("data", {})
                     tool = decision.get("tool")
-                    print(f"\n🐹 [PINKY THOUGHT]: Decided to use '{tool}'")
+                    print(f"\n{COLOR_PINK}🐹 [PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
                 
     except websockets.exceptions.ConnectionClosed:
-        print("\n[DISCONNECTED] Server closed connection.")
+        print(f"\n{COLOR_RED}[DISCONNECTED] Server closed connection.{COLOR_RESET}")
         SHUTDOWN_EVENT.set()
 
 async def send_audio(websocket):
@@ -104,15 +108,13 @@ async def send_audio(websocket):
     except asyncio.CancelledError:
         pass
     except KeyboardInterrupt:
-        print("\n[STOP] User requested shutdown...")
+        print(f"\n{COLOR_RED}[STOP] User requested shutdown...{COLOR_RESET}")
         try:
-            # Send Kill Signal to Server
             await websocket.send(json.dumps({"debug_text": "SHUTDOWN_PROTOCOL_OVERRIDE"}))
         except: pass
     except Exception as e:
-        print(f"[MIC ERROR]: {e}")
+        print(f"{COLOR_RED}[MIC ERROR]: {e}{COLOR_RESET}")
     finally:
-        print("[MIC CLOSED]")
         if stream:
             stream.stop_stream()
             stream.close()
@@ -133,22 +135,18 @@ async def main():
     try:
         ws = await connect_with_retry(uri)
         async with ws as websocket:
-            # 1. Send Handshake
             await websocket.send(json.dumps({"type": "handshake", "version": VERSION}))
             
-            # Run tasks
             receiver = asyncio.create_task(receive_messages(websocket))
             sender = asyncio.create_task(send_audio(websocket))
             
-            # Wait for either natural end or shutdown signal
             await SHUTDOWN_EVENT.wait()
             
-            # Cleanup
             for task in [sender, receiver]:
-                if not task.done(): task.cancel()
+                if not task.done(): task.cancel() 
                 
     except Exception as e:
-        print(f"[ERROR] Connection failed: {e}")
+        print(f"{COLOR_RED}[ERROR] Connection failed: {e}{COLOR_RESET}")
 
 if __name__ == "__main__":
     try:
