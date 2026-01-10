@@ -1,76 +1,88 @@
-# Acme Lab: Voice-Activated Personal Knowledge Assistant
+# HomeLabAI: A Distributed Voice-Native Ecosystem
 
-**Acme Lab** is a hybrid AI orchestrator inspired by "Pinky and the Brain." It models a **Bicameral Mind** using distributed hardware.
+**HomeLabAI** is a proactive, voice-first AI ecosystem designed for the modern home lab. It functions as a distributed agentic partner—integrating Linux servers, Windows workstations, and personal knowledge bases—to act as a highly specialized, context-aware "Jarvis."
 
-## 🔭 High-Level Vision
-We believe the future of personal AI is a synthesis of two distinct cognitive styles:
-*   **The Right Hemisphere (Pinky):** Intuitive, Emotional, Aware. He manages the "Vibe," the connection to reality, and the user interface.
-*   **The Left Hemisphere (The Brain):** Logical, Abstract, Precise. He manages the "Truth," the planning, and the deep reasoning.
-
-### The "Talk & Read" Philosophy
-*   **Voice Input:** Because speaking is faster than typing.
-*   **Text Output:** Because reading is faster than listening.
-*   **The Loop:** A tight, low-latency feedback loop designed for "Vibe Coding" and brainstorming.
+By leveraging a hybrid compute model, HomeLabAI achieves low-latency voice interaction without sacrificing the deep reasoning capabilities of large-scale language models.
 
 ---
 
-## 🏗️ Architecture: The Bicameral Mesh
+## 🔭 The High-Level Vision
+The project is built on the philosophy that a personal AI should be a synthesis of two distinct cognitive styles, modeled after the **Bicameral Mind**:
 
-The system is an **Event-Driven Conversational State Machine**.
+*   **The Right Hemisphere (Pinky):** Intuitive, Aware, and Presence-focused. This layer manages the "Vibe," sensory input/output, and immediate user interaction.
+*   **The Left Hemisphere (The Brain):** Logical, Abstract, and Strategic. This layer manages the "Truth," complex planning, and deep reasoning.
+
+### The "Talk & Read" Philosophy
+*   **Voice Input:** Optimized for speed and natural brainstorming.
+*   **Text Output:** Designed for rapid scanning and information density.
+*   **The Loop:** A tight, low-latency feedback loop that facilitates seamless collaboration between human and machine.
+
+---
+
+## 🏗️ The Acme Lab Model: Architecture
+HomeLabAI employs the **Acme Lab** pattern—an event-driven conversational state machine that distributes cognitive load across specialized nodes.
 
 ### 1. The Lab (Corpus Callosum)
-*   **Host:** `z87-Linux` (NVIDIA 2080 Ti).
-*   **File:** `src/acme_lab.py`.
-*   **Role:** The **Translator**. It converts Pinky's "Vibes" into The Brain's "Parameters" and The Brain's "Logic" into Pinky's "Actions."
+*   **Role:** The **Translator**. It serves as the central orchestrator, converting sensory "Vibes" from the Experience layer into structured "Parameters" for the Reasoning layer, and vice-versa.
+*   **Host:** Linux Coordinator Node (GPU accelerated).
+*   **Core Logic:** `src/acme_lab.py`.
 
 ### 2. The Hemispheres (Nodes)
-*   **🐹 Pinky (Right Brain):**
-    *   **Model:** `mistral:7b` (Local).
-    *   **Role:** The Experience Engine. Handling Sensory IO, Emotion, and Presence.
-    *   **Tools:** `delegate_to_brain`, `critique_brain`, `reply_to_user`.
-*   **🧠 The Brain (Left Brain):**
-    *   **Model:** `llama3:70b` (Remote Windows GPU via Ollama).
-    *   **Role:** The Reasoning Engine. Handling Logic, Code, and Memory Consolidation ("Dreaming").
+*   **🐹 Pinky (The Experience Node):**
+    *   **Model:** Lightweight local LLM (e.g., Mistral/Llama-8B).
+    *   **Focus:** Sensory IO, emotion detection, and real-time response.
+*   **🧠 The Brain (The Reasoning Node):**
+    *   **Model:** Large-scale inference engine (e.g., Llama-70B via Ollama).
+    *   **Focus:** Logic, strategic planning, and long-term memory consolidation (**Dreaming**).
 
 ### 3. The Archives (Memory)
-*   **Tech:** ChromaDB.
-*   **Role:** The "Pile" (Episodic Memory) and the "Library" (Semantic Memory).
+*   **Technology:** Vector database (ChromaDB) and local filesystem RAG.
+*   **Role:** Managing the "Pile" (Episodic Memory) and the "Library" (Semantic Knowledge).
 
 ---
 
 ## 🚀 Getting Started
 
-### 1. Environment Orientation
-*   **Dev Machine:** WSL (`~/HomeLabAI`).
-*   **Target Host:** `z87-Linux.local` (`~/AcmeLab`).
+### 1. Environment Topology
+*   **Development:** WSL / Local Environment.
+*   **Orchestration Node:** Remote Linux host managing STT and Pinky logic.
+*   **Inference Node:** High-power GPU host (Windows/Linux) running Ollama.
 
-### 2. Deployment
-Use the helper script to sync and run remotely:
+### 2. Deployment & Execution
 ```bash
 ./run_remote.sh [MODE]
 ```
-**Modes:**
-*   `SERVICE`: Standard operation.
-*   `MOCK_BRAIN`: Fast logic testing (simulates Brain responses).
-*   `DEBUG_PINKY`: Local logic only.
-
-### 3. Key Commands
-*   **`src/test_round_table.py`**: Validate the logic loop (Fast).
-*   **`src/mic_test.py`**: Interactive Voice Client.
+**Operation Modes:**
+*   `HOSTING`: Standard production-ready operation (Persistent).
+*   `MOCK_BRAIN`: Rapid testing mode that simulates the Reasoning Node.
+*   **`DEBUG_PINKY`**: Local-only validation of the Experience Node logic.
 
 ---
 
 ## 📚 Research & Inspiration
+HomeLabAI is influenced by emerging research in agentic workflows and local model deployment:
 
-A collection of papers and projects influencing our design.
-
+### Voice & Mind (Hearing & Logic)
 *   **[NVIDIA Nemotron-Speech-Streaming](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b):** Powering our low-latency "Hearing" layer.
-*   **[Recursive Language Models (RLMs)](https://www.marktechpost.com/2026/01/02/recursive-language-models-rlms-from-mits-blueprint-to-prime-intellects-rlmenv-for-long-horizon-llm-agents/?amp):** Inspiration for our "Pinky Reads Tools" approach.
-*   **[Local Multi-Agent Orchestration](https://www.marktechpost.com/2025/12/05/how-to-design-a-fully-local-multi-agent-orchestration-system-using-tinyllama-for-intelligent-task-decomposition-and-autonomous-collaboration/?amp):** Validates the Small (Pinky) -> Large (Brain) routing strategy.
+*   **[Apple CLaRa](https://huggingface.co/apple/CLaRa-7B-Instruct):** Planned for the **Dreaming** phase; a RAG model designed for high-fidelity semantic compression.
+
+### Knowledge & RAG (Memory)
+*   **[sentence-transformers (MiniLM)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2):** Our primary embedding model for local RAG.
+*   **[OpenNotebook](https://github.com/lfnovo/open-notebook):** A local, private alternative to NotebookLM for research management.
+
+---
+
+## 🗺️ Internal Blueprint
+Refer to internal documentation for technical deep-dives:
+
+*   **[Architecture Refinement](docs/plans/Architecture_Refinement_2026.md):** The technical theory behind the Bicameral Mind.
+*   **[Future Concepts (The Freezer)](docs/plans/Future_Concepts.md):** Roadmap for hardware intercoms and desktop integration.
+*   **[RAG Integration Plan](docs/plans/RAG_Integration_Plan.md):** Strategy for tiered memory and long-term knowledge retention.
+*   **[Agent Protocols](docs/Protocols.md):** Operational rules for development, testing, and deployment.
 
 ---
 
 ## 📜 Project History
-*   **Jan 2026:** Refined into "Bicameral Mind" architecture (Right/Left Brain).
+*   **Jan 2026:** Rebranded as HomeLabAI; refined the "Bicameral Mind" (Acme Lab) architecture.
 *   **Dec 2025:** Initial "Voice Gateway" prototype (Pinky & The Brain 1.0).
-*   **Origins:** Forked from `DeepAgent`.
+*   **Origins:** Originally developed as a hybrid extension for the `DeepAgent` framework.

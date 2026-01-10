@@ -1,10 +1,10 @@
-# Project Status: Acme Lab (Voice-Activated Personal Knowledge Assistant)
+# Project Status: HomeLabAI
 
 **Date:** January 9, 2026
 **Current Phase:** Phase 6: Semantic Wisdom
 
 ## 🗺️ Documentation Map
-*   **Design & Vision:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md) (The Bicameral Mind)
+*   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md) (The Acme Lab Model)
 *   **Rules of Engagement:** [Protocols.md](docs/Protocols.md) (Demos, Testing, & Heads Down)
 *   **The Freezer:** [Future_Concepts.md](docs/plans/Future_Concepts.md) (Intercom, Red Phone)
 *   **Post-Mortems:** `docs/archive/` (Recent: `Session_PostMortem_2026-01-09.md`)

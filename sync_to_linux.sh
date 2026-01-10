@@ -1,5 +1,5 @@
 #!/bin/bash
-# Syncs the current directory to the VoiceGateway folder on z87-Linux
+# Syncs the current directory to the AcmeLab folder on z87-Linux
 # Excludes heavy local folders like .venv or git
 # Usage: ./sync_to_linux.sh
 

@@ -1,25 +1,25 @@
 # Agent Style Guide & Persona Rules
 
 ## 0. Environment & Orientation
-**READ THIS FIRST:** The codebase runs in a **Hybrid Environment**.
+**READ THIS FIRST:** HomeLabAI runs in a **Hybrid Environment**.
 *   **Dev Machine (Local/WSL):** `/home/jason/HomeLabAI`. This is where you edit code.
-*   **Target Host (Linux GPU):** `jallred@z87-Linux.local:~/VoiceGateway`. This is where the code **runs**.
-*   **Windows Host (Brain):** `192.168.1.26`. This is where Ollama (The Brain) lives.
+*   **Target Host (Linux Coordinator):** `jallred@z87-Linux.local:~/AcmeLab`. This is where the code **runs**.
+*   **Inference Host (The Brain):** `192.168.1.26`. This is where Ollama (The Brain) lives.
 
 ### Directory Map
-*   **Source:** `src/` (Local) -> `~/VoiceGateway/src/` (Remote)
-*   **Virtual Env:** `~/VoiceGateway/.venv` (Remote). **DO NOT** use the local `.venv` for execution.
-*   **Logs:** `~/VoiceGateway/server.log` (Remote).
+*   **Source:** `src/` (Local) -> `~/AcmeLab/src/` (Remote)
+*   **Virtual Env:** `~/AcmeLab/.venv` (Remote). **DO NOT** use the local `.venv` for execution.
+*   **Logs:** `~/AcmeLab/server.log` (Remote).
 
 ### Development Workflow
 **DO NOT** try to run `src/acme_lab.py` locally. It requires the Linux GPU and NeMo.
 Use the helper script:
 ```bash
-./run_remote.sh [DEBUG_PINKY | DEBUG_BRAIN | SERVICE]
+./run_remote.sh [DEBUG_PINKY | DEBUG_BRAIN | HOSTING]
 ```
 This script handles:
 1.  **Sync:** Pushes your local changes to the remote host.
-2.  **Deploy:** Restarts the server remotely.
+2.  **Deploy:** Restarts the server remotely (`~/AcmeLab`).
 3.  **Watch:** Tails the remote logs instantly.
 4.  **Cleanup:** Ctrl+C kills the remote server cleanly.
 

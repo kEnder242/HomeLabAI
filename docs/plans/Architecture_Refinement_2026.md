@@ -1,10 +1,10 @@
-# Acme Lab: The Architecture of Two Minds
+# HomeLabAI: The Architecture of Two Minds
 
 **Date:** January 9, 2026
-**Theme:** The Bicameral Mind (Right & Left Hemispheres)
+**Theme:** The Bicameral Mind (The Acme Lab Model)
 
 ## 1. The Core Analogy
-We are modeling a bicameral mind using distinct hardware nodes. This aligns perfectly with the "Pinky and the Brain" personas.
+HomeLabAI models a bicameral mind using distinct hardware nodes. This architecture, known as **Acme Lab**, aligns perfectly with the "Pinky and the Brain" personas.
 
 ### 🐹 Pinky: The Right Hemisphere (The Experience Engine)
 *   **Hardware:** Local Linux (Low Latency, Always On, Close to Sensors).
