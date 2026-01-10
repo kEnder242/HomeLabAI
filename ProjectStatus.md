@@ -1,85 +1,46 @@
 # Project Status: Acme Lab (Voice-Activated Personal Knowledge Assistant)
 
 **Date:** January 9, 2026
-**Current Phase:** Phase 5: The Agentic Facilitator
+**Current Phase:** Phase 6: Semantic Wisdom
 
-## 🗺️ Documentation Map (Start Here)
+## 🗺️ Documentation Map
 *   **Design & Vision:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md) (The Bicameral Mind)
 *   **Rules of Engagement:** [Protocols.md](docs/Protocols.md) (Demos, Testing, & Heads Down)
-*   **The Freezer (Backlog Ideas):** [Future_Concepts.md](docs/plans/Future_Concepts.md) (Intercom, Dreaming, Red Phone)
-*   **History:** `docs/archive/` (Old Roadmaps, Post-Mortems)
+*   **The Freezer:** [Future_Concepts.md](docs/plans/Future_Concepts.md) (Intercom, Red Phone)
+*   **Post-Mortems:** `docs/archive/` (Recent: `Session_PostMortem_2026-01-09.md`)
 
-## 🗣️ Glossary & Shortcuts (How to Talk to Agent)
-Use these terms to trigger specific, pre-agreed workflows.
-
-*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol`.
-    *   *Agent Action:* Runs server (`HOSTING` mode), holds the line, and watches logs for your voice feedback.
+## 🗣️ Glossary & Shortcuts
+*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_BRAIN`).
 *   **"Heads Down"**: Trigger `Builder Protocol`.
-    *   *Agent Action:* Works autonomously on the Backlog for ~30-45m. No chit-chat.
-*   **"Fast Loop"**: Trigger `Debug Protocol`.
-    *   *Agent Action:* Uses `DEBUG_PINKY` mode (10s boot) and runs automated scripts (`test_shutdown.py`).
-*   **"Reflex"**: Refers to hardcoded logic in `pinky_node.py` that bypasses the LLM (e.g., Shutdown, Stop).
-*   **"Loop of Doom"**: Refers to Pinky and Brain getting stuck in a delegation cycle.
-*   **"The Echo"**: Refers to the STT phrase repetition bug.
-*   **"Sync to Windows"**: Reminder to run deployment script if `mic_test.py` changed.
+*   **"Fast Loop"**: Trigger `Debug Protocol` (uses `DEBUG_PINKY` + `src/run_tests.sh`).
+*   **"The Dream"**: Trigger `src/dream_cycle.py` to consolidate memory.
 
-## ⚠️ Known Traps (Read Before Working)
-*   **Startup Blindness:** In `HOSTING` mode, loading takes ~45s. `start_tmux.sh` waits silently for "Lab Doors Open". Do not cancel unless it exceeds 60s.
-*   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...` (Forgot this 3 times today).
-*   **Process Management:** Use `src/start_tmux.sh`. Do NOT use raw `nohup`.
-*   **Sync:** `sync_to_linux.sh` BEFORE restarting server.
-*   **Fast Loop:** Use `DEBUG_PINKY` mode for logic tests (10s boot) vs `HOSTING` mode (60s boot).
+## ⚠️ Known Traps
+*   **Startup Blindness:** `HOSTING` mode takes ~45s. Do not cancel early.
+*   **Client Outdated:** Run `sync_to_windows.sh` if `mic_test.py` changed.
+*   **SSH Key:** Always use `-i ~/.ssh/id_rsa_wsl`.
 
-## Architecture: "The Bicameral Mind"
-We have evolved the architecture into a **Conversational State Machine** modeling two hemispheres.
-
-*   **The Lab (Host):** `src/acme_lab.py` (The Corpus Callosum)
-    *   **Role:** Translator, Turn Manager, Physics Engine.
-    *   **Features:** Barge-In, Shared Context Object (SCO).
-
-*   **Residents (Nodes):**
-    *   **Pinky (Right Brain):** The Experience Engine. Intuitive, Emotional, Sensory.
-    *   **Brain (Left Brain):** The Reasoning Engine. Logical, Abstract, Planner.
-
-## Completed Milestones
-1.  **Round Table Logic (Pass 1):** Pinky successfully loops through delegation and critique cycles.
-2.  **Fast Test Loop:** Optimized validation suite from 60s+ to ~10s execution.
-3.  **Mock Infrastructure:** Enabled `MOCK_BRAIN` for rapid logic iteration.
-4.  **Asynchronous Interrupts (Phase 2):** Successfully implemented "Barge-In" (Voice/Manual).
+## Completed Milestones (Session Jan 9)
+1.  **CI/CD Infrastructure:** `src/run_tests.sh` is now green and mandatory.
+2.  **Audio Fix v2:** `dedup_utils.py` handles phrase repetition.
+3.  **Visible Brain:** `mic_test.py` colorized; Brain's "inner thoughts" exposed to user.
+4.  **Dream Cycle (Pass 1):** `dream_cycle.py` successfully consolidates raw logs into wisdom.
+5.  **Robust Shutdown:** Pinky uses "Reflexes" to ensure the Lab closes on "Goodbye".
 
 ## Master Backlog & Roadmap
 
-### Phase B: Tuning the Corpus Callosum (Immediate Focus)
-**Goal:** Balance the Right (Flow) and Left (Logic) hemispheres.
+### Phase B: Tuning the Corpus Callosum (Refinement)
+*   **[DONE] Audio Deduplication:** Fuzzy matching implemented.
+*   **[DONE] Result-Oriented Brain:** Prompt updated to stop future-tense loops.
+*   **[TODO] Vibe Check Integration:** Enhance Pinky to use `sentiment` to modulate Brain's verbosity.
 
-*   **[CRITICAL] Audio Deduplication (The Echo):**
-    *   **Status:** **Implemented & Verified** (Unit Test). Need final integration check.
-*   **[CRITICAL] Bicameral Balance (Fix Loop of Doom):**
-    *   **Status:** Prompts updated. Need verification.
-*   **[CRITICAL] Shutdown Logic (The Goodbye):**
-    *   **Status:** **Fixed (Temporary Reflex).** Hardcoded check in `pinky_node.py`.
-*   **[TODO] Deprecate Reflex (Agentic Purity):**
-    *   **Goal:** Restore Pinky's agency. Remove hardcoded regex.
-    *   **Method:** Improve prompt engineering or use a specialized "Router" model so Pinky *chooses* shutdown naturally.
-*   **[TODO] Revisit Delegation (Voice Feedback):**
-    *   **Observation:** "Okay, you're in a loop." Pinky re-delegates when Brain uses future tense ("I shall...").
-    *   **Task:** Tune Brain prompt to be Result-Oriented ("Here is X", not "I will find X").
-*   **[TODO] Audio Deduplication Refinement:**
-    *   **Observation:** "In here... In here" repetition persists on pauses.
-    *   **Task:** Handle full-phrase repetition in `dedup_utils.py`.
-*   **[TODO] Brain Visibility (UI):**
-    *   **Observation:** "I still can't see Brain."
-    *   **Task:** Improve `mic_test.py` to make Brain output visually distinct (Colors/Prefix).
-
-### Phase C: Dreaming & Memory (Next Up)
-**Goal:** Implement the "Day/Night" cycle for memory consolidation.
-
-*   **[AUTO] [Diff: 4] Day & Night Collections:**
-    *   Split `ArchiveNode` into `short_term_stream` (Right Brain Pile) and `long_term_wisdom` (Left Brain Archive).
-*   **[AUTO] [Diff: 5] The Dream Scheduler:**
-    *   Implement a "Dreaming Mode" where the Brain wakes up (Idle/Night) to summarize the Stream into Wisdom.
+### Phase C: Intelligence & Memory (Active)
+*   **[DONE] Tiered Memory:** Split Archive into Stream and Wisdom.
+*   **[DONE] Dream Cycle:** Brain autonomously summarizes logs.
+*   **[TODO] Memory Retrieval:** Improve Pinky's prompt to use the "Wisdom" collection more effectively during greetings.
+*   **[TODO] Semantic Search Tuning:** Adjust `n_results` and thresholds for RAG lookups.
 
 ## Dev Tools
-*   `./run_remote.sh [MODE]`: The primary development tool.
-*   `src/test_round_table.py`: Logic Validation (Fast).
-*   `src/mic_test.py`: Interactive Voice Client.
+*   `./run_remote.sh [MODE]`: Primary execution.
+*   `src/run_tests.sh`: Automated CI/CD.
+*   `src/dream_cycle.py`: Memory maintenance.

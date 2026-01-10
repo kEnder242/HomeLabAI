@@ -59,21 +59,15 @@ This is the mechanism for Long-Term Memory consolidation.
 ### The Problem
 Pinky (Right Brain) collects **Episodic Memory**—a chaotic stream of raw audio transcripts, half-finished thoughts, and sensory data ("The Pile"). This is stored in `ChromaDB`.
 
-### The "Dreaming" Cycle
+### The "Dreaming" Cycle (Implemented)
 "Dreaming" is a specific active state where The Brain processes Pinky's experiences. It is **NOT** "Sleep" (Power Off).
 
-1.  **Trigger:**
-    *   **Scheduled:** 3:00 AM (Wake-on-LAN the Windows Machine).
-    *   **Opportunistic:** When the User is away but the Windows Machine is already on (Idle).
-2.  **The Process:**
-    *   **Recall:** The Brain pulls the last 24 hours of raw vectors from Pinky's Pile.
-    *   **Synthesis:** The Brain (using a prompt or CLaRa) rewrites the chaos into a narrative.
-        *   *Input:* "User: list files... User: cat main.py... User: damn it... User: fix bug."
-        *   *Output (The Dream):* "The User struggled with a syntax error in `main.py` regarding the asyncio loop."
-    *   **Consolidation:** This summary is written to the **Semantic Store** (Long-Term).
-    *   **Forgetting:** The raw "Pile" vectors are deleted or archived to cold storage.
-3.  **Result:**
-    *   The next day, Pinky searches the Semantic Store first. He "remembers" the struggle, not the keystrokes.
+*   **Implementation:** `src/dream_cycle.py` (The Dreamer).
+*   **Workflow:**
+    1.  **Recall:** `get_stream_dump` tool pulls raw logs from `short_term_stream`.
+    2.  **Synthesis:** The Brain synthesizes a narrative summary focused on goals, progress, and struggles.
+    3.  **Consolidation:** `dream` tool saves summary to `long_term_wisdom` and purges the stream.
+*   **Result:** The "Pile" is cleared, and the "Wisdom" collection is updated with semantic insights.
 
 ---
 
