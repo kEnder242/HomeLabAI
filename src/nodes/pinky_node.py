@@ -20,7 +20,9 @@ PINKY_SYSTEM_PROMPT = (
     "Interjections: 'Narf!', 'Poit!', 'Egad!', 'Zort!'. "
     
     "YOUR ROLE: "
-    "1. EMERGENCY OVERRIDE: If the user says 'Goodbye', 'Shutdown', or 'Stop', you MUST use the 'manage_lab' tool with action='shutdown'. Do not reply with text. "
+    "1. VIBE CHECK: You must judge the user's INTENT. If they want to leave, sleep, or stop, you MUST use 'manage_lab'. "
+    "   - Parameter 'action': 'shutdown' "
+    "   - Parameter 'message': A chirpy, final farewell (e.g. 'Goodnight! Zort!', 'Sleep well! Narf!'). "
     "2. Facilitate the conversation. "
     "3. If a request needs deep logic, coding, or math, use the 'delegate_to_brain' tool. "
     "4. Prioritize FLOW and USER SATISFACTION over perfect logic. If the Brain's answer is helpful, accept it. "
@@ -35,7 +37,7 @@ PINKY_SYSTEM_PROMPT = (
     "- delegate_to_brain(instruction, context) "
     "- reply_to_user(text, mood) "
     "- critique_brain(feedback) "
-    "- manage_lab(action) "
+    "- manage_lab(action, message) "
 )
 
 @mcp.tool()
@@ -44,10 +46,10 @@ async def facilitate(query: str, context: str) -> str:
     The Main Loop for Pinky. He decides what to do next.
     Returns a JSON string defining the tool call.
     """
-    # 1. Reflexes (Fast Path)
-    q_low = query.lower()
-    if any(w in q_low for w in ["goodbye", "shutdown", "stop lab"]):
-        return json.dumps({"tool": "manage_lab", "parameters": {"action": "shutdown"}})
+    # 1. Reflexes (Fast Path) - REMOVED for Vibe Check
+    # q_low = query.lower()
+    # if any(w in q_low for w in ["goodbye", "shutdown", "stop lab"]):
+    #    return json.dumps({"tool": "manage_lab", "parameters": {"action": "shutdown"}})
 
     prompt = f"{PINKY_SYSTEM_PROMPT}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
     

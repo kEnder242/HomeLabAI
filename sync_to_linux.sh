@@ -15,6 +15,10 @@ rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_wsl" \
     --exclude '__pycache__' \
     --exclude '*.pyc' \
     --exclude 'tmp_unzip_dir_for_rclone' \
+    --exclude 'docs/' \
+    --exclude 'AGENTS.md' \
+    --exclude 'GEMINI.md' \
+    --exclude 'ProjectStatus.md' \
     ./ "$TARGET_HOST:$TARGET_DIR"
 
 echo "Sync Complete."

@@ -5,15 +5,22 @@ import logging
 import argparse
 import sys
 import numpy as np
+import random
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+import os
+
 # Equipment
-try:
-    from equipment.ear_node import EarNode
-except ImportError:
-    logging.warning("[STT] EarNode dependencies missing. Voice input will be unavailable.")
+if os.environ.get("DISABLE_EAR") == "1":
+    logging.info("[CONFIG] EarNode disabled via env var.")
     EarNode = None
+else:
+    try:
+        from equipment.ear_node import EarNode
+    except ImportError:
+        logging.warning("[STT] EarNode dependencies missing. Voice input will be unavailable.")
+        EarNode = None
 
 # Configuration
 PORT = 8765
@@ -28,6 +35,17 @@ logging.basicConfig(
 )
 
 class AcmeLab:
+    NERVOUS_TICS = [
+        "Thinking... Narf!",
+        "Consulting the Big Guy...",
+        "One moment, the Brain is loading...",
+        "Processing... Poit!",
+        "Just a second... Zort!",
+        "Checking the archives...",
+        "Egad, this is heavy math...",
+        "Stand by..."
+    ]
+
     def __init__(self):
         self.residents = {}
         self.ear = None
@@ -49,6 +67,32 @@ class AcmeLab:
             try:
                 await ws.send(message)
             except: pass
+
+    async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
+        """
+        Wraps a coroutine (like a Brain call). If it takes longer than 'delay',
+        starts sending 'Nervous Tics' to the user to fill dead air.
+        """
+        task = asyncio.create_task(coro)
+        
+        while not task.done():
+            # Wait for either task completion or the delay
+            done, pending = await asyncio.wait([task], timeout=delay)
+            
+            if task in done:
+                return task.result()
+            
+            # If we are here, the task is still running after 'delay'
+            tic = random.choice(self.NERVOUS_TICS)
+            logging.info(f"[TIC] Emitting: {tic}")
+            try:
+                await websocket.send(json.dumps({"brain": tic, "brain_source": "Pinky (Reflex)"}))
+            except: pass
+            
+            # Increase delay slightly for next tic to avoid spamming (backoff)
+            delay = min(delay * 1.5, 5.0) 
+            
+        return task.result()
 
     async def load_residents_and_equipment(self):
         """The Heavy Lifting: Connects MCP nodes and loads ML models."""
@@ -265,10 +309,20 @@ class AcmeLab:
                     
                     # Mock or Real Brain
                     if self.mode == "MOCK_BRAIN":
-                        brain_out = f"FINAL RESULT: I have analyzed '{instruction}' and completed the task."
-                        await asyncio.sleep(2.0) # Longer sleep for interrupt testing
+                        # WRAP call with Nervous Tics even in MOCK mode to test the Tic logic
+                        async def mock_brain_task():
+                            await asyncio.sleep(3.0) # Ensure it triggers the 2.0s Tic
+                            # Return a mock object mimicking the MCP result structure
+                            return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"FINAL RESULT: I have analyzed '{instruction}'."})]})()
+
+                        brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
+                        brain_out = brain_res.content[0].text
                     else:
-                        brain_res = await self.residents['brain'].call_tool("deep_think", arguments={"query": instruction, "context": lab_context})
+                        # WRAP call with Nervous Tics
+                        brain_res = await self.monitor_task_with_tics(
+                            self.residents['brain'].call_tool("deep_think", arguments={"query": instruction, "context": lab_context}),
+                            websocket
+                        )
                         brain_out = brain_res.content[0].text
 
                     # Add to context and continue loop
@@ -283,8 +337,10 @@ class AcmeLab:
                 
                 elif tool == "manage_lab":
                     action = params.get("action", "")
+                    message = params.get("message", "Closing Lab...")
+                    
                     if action == "shutdown":
-                         await websocket.send(json.dumps({"brain": "Closing Lab...", "brain_source": "System"}))
+                         await websocket.send(json.dumps({"brain": message, "brain_source": "Pinky"}))
                          self.shutdown_event.set()
                          break
                 
@@ -304,62 +360,28 @@ class AcmeLab:
 
 import signal
 
-
-
 if __name__ == "__main__":
 
-
-
     parser = argparse.ArgumentParser()
-
-
-
     parser.add_argument("--mode", default="HOSTING", choices=["HOSTING", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
-
-
-
     args = parser.parse_args()
 
-
-
-
-
-    
-
     lab = AcmeLab()
-
     
-
     def handle_sigint():
-
         logging.info("[SIGNAL] Caught SIGINT/SIGTERM. Shutting down...")
-
         if not lab.shutdown_event.is_set():
-
             lab.shutdown_event.set()
 
-
-
     loop = asyncio.new_event_loop()
-
     asyncio.set_event_loop(loop)
-
     
-
     loop.add_signal_handler(signal.SIGINT, handle_sigint)
-
     loop.add_signal_handler(signal.SIGTERM, handle_sigint)
 
-
-
     try:
-
         loop.run_until_complete(lab.boot_sequence(args.mode))
-
     except (KeyboardInterrupt, asyncio.CancelledError):
-
         pass
-
     finally:
-
         logging.info("Exiting...")

@@ -7,4 +7,6 @@ echo "🚀 [1/3] Syncing code to jallred@z87-Linux.local..."
 
 # 2. Run Remote (Nohup/Tail)
 echo "🔋 [2/3] Starting Acme Lab in $MODE mode..."
-ssh -t -i ~/.ssh/id_rsa_wsl jallred@z87-Linux.local "bash ~/AcmeLab/src/start_server.sh $MODE"
+# Use nohup to keep it running after disconnect
+# We use a trick to get the PID: print it inside the shell
+ssh -i ~/.ssh/id_rsa_wsl jallred@z87-Linux.local "cd ~/AcmeLab && (pkill -f acme_lab.py || true) && DISABLE_EAR=$DISABLE_EAR nohup ./.venv/bin/python3 -u src/acme_lab.py --mode $MODE > server_boot.log 2>&1 & echo \"Acme Lab PID: \$!\""

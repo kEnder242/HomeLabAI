@@ -45,13 +45,16 @@ This document defines the rules of engagement for the Agent (AI) and User.
 ---
 
 ## 3. Environment & Traps (Read Before Starting)
-*   **Dev Machine:** `~/HomeLabAI` (Edit Code Here).
-*   **Acme Lab (Remote):** `jallred@z87-Linux.local:~/AcmeLab` (Run Code Here).
+*   **Dev Machine:** `~/HomeLabAI` (Source of Truth).
+    *   **Documentation:** stored here for Developer Context. **Do NOT sync docs to the runtime server.** They are for *us*, not the machine.
+    *   **Code:** Staged here, then deployed.
+*   **Acme Lab (Remote):** `jallred@z87-Linux.local:~/AcmeLab` (Runtime Only).
+    *   **Role:** Execution environment. Only `src/` and `*.sh` scripts belong here.
 *   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...`.
 *   **Sync First:** ALWAYS run `./sync_to_linux.sh` before restarting the server.
 *   **Process Management:**
-    *   **Standard:** Use `./run_remote.sh` (Nohup/Tail) for demos and tests.
-    *   **Investigation:** Use `ssh ... bash src/start_tmux.sh` to attach to a persistent session if debugging crashes.
+    *   **Standard (BKM):** Use `ssh ... bash src/start_server_fast.sh` (Tmux). Reliable & Debuggable.
+    *   **Deprecated:** `run_remote.sh` (Nohup). Flaky log management.
 *   **Modes:**
     *   `HOSTING`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
     *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
@@ -59,6 +62,17 @@ This document defines the rules of engagement for the Agent (AI) and User.
     *   `MOCK_BRAIN`: **Fast Boot.** Simulates Brain responses. Shuts down on disconnect. Use for Flow Tests.
 
 ---
+
+### Remote Execution Standards (BKM)
+**Goal:** Reliability over simplicity.
+1.  **Process Management:** **NEVER use `nohup`.** ALWAYS use `tmux` for background services.
+    *   *Why?* Tmux provides a persistent handle for logs (`capture-pane`) and lifecycle management (`kill-session`).
+2.  **Environment Variables:** Variables do NOT cross SSH boundaries.
+    *   *Bad:* `export VAR=1; ssh host "./script"`
+    *   *Good:* `ssh host "VAR=1 ./script"`
+3.  **Readiness Checks:** Do NOT grep logs to see if a server is ready. Poll the **Port/Socket**.
+    *   Logs buffer. Ports open instantly.
+4.  **Mocking:** Heavy ML models (Ear, Brain) must be mockable via Env Vars (`DISABLE_EAR=1`) for fast logic testing.
 
 ## 4. Testing Protocols
 
@@ -70,6 +84,12 @@ This document defines the rules of engagement for the Agent (AI) and User.
 3.  **Clean Shutdown:** Test scripts are responsible for sending a shutdown signal to the server upon completion, ensuring no zombie processes remain.
 4.  **Telemetry:** All test scripts must output total execution time to verify compliance.
 5.  **Target Time:** A complete logic validation suite should run in under **10 seconds** total.
+
+### Timeouts & Latency (The "Cognitive Gap")
+We distinguish between **Reflex** and **Cognitive** operations. Tests must be tuned accordingly.
+*   **Logic Tests (Python/Regex):** Timeout **< 5s**. Fail fast. If it takes longer, the code is broken.
+*   **Cognitive Tests (LLM/Inference):** Timeout **> 30s**. Allow for GPU spin-up and token generation.
+    *   *Note:* CI/CD should prioritize **MOCK** modes (simulated LLMs) to keep runs fast (<10s). Use Real LLMs only for integration/release checks.
 
 ### CI/CD Rule
 *   **Mandate:** After completing ANY Phase or Critical Task, run the full automated suite (`test_shutdown.py`, `test_echo.py`) to prevent regressions.

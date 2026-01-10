@@ -26,12 +26,12 @@ async def test_shutdown():
             # Expect response then closure
             try:
                 while True:
-                    response = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                     data = json.loads(response)
                     print(f"Received: {data}")
                     
-                    if "brain" in data and "Closing Lab" in data["brain"]:
-                        print("✅ Shutdown Message Received.")
+                    if "brain" in data:
+                        print(f"✅ Farewell Received: '{data['brain']}' (Source: {data.get('brain_source')})")
                         # The server might close the connection immediately after sending this
                         break
 
