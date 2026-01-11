@@ -51,9 +51,28 @@ fi
 # 5. Run Tests
 FAIL=0
 
+# Helper to restart server
+function restart_server {
+    echo "🔄 Restarting Server..."
+    ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "tmux kill-session -t acme_fast 2>/dev/null"
+    ./src/start_server_fast.sh MOCK_BRAIN
+    
+    echo "⏳ Waiting for Lab Readiness..."
+    for i in $(seq 1 $MAX_RETRIES); do
+        ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "nc -zv 127.0.0.1 8765" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 echo -e "\n--- [TEST 1] Intercom Protocol ---"
 ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "cd ~/AcmeLab && ./.venv/bin/python3 src/test_intercom_flow.py"
 if [ $? -ne 0 ]; then FAIL=1; fi
+
+restart_server
 
 echo -e "\n--- [TEST 2] Memory Integration ---"
 ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "cd ~/AcmeLab && ./.venv/bin/python3 src/test_memory_integration.py"

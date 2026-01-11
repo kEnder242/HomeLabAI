@@ -20,12 +20,11 @@
 *   **Client Outdated:** Run `sync_to_windows.sh` if `mic_test.py` changed.
 *   **SSH Key:** Always use `-i ~/.ssh/id_rsa_wsl`.
 
-## Completed Milestones (Session Jan 9)
-1.  **CI/CD Infrastructure:** `src/run_tests.sh` is now green and mandatory.
-2.  **Audio Fix v2:** `dedup_utils.py` handles phrase repetition.
-3.  **Visible Brain:** `mic_test.py` colorized; Brain's "inner thoughts" exposed to user.
-4.  **Dream Cycle (Pass 1):** `dream_cycle.py` successfully consolidates raw logs into wisdom.
-5.  **Robust Shutdown:** Pinky uses "Reflexes" to ensure the Lab closes on "Goodbye".
+## Completed Milestones (Session Jan 11)
+1.  **Version Unity (v2.0.0):** Server, Client, and Test Suite synchronized. Added strict handshake validation.
+2.  **Intercom Client (Alpha):** `intercom.py` implemented with "Spacebar Toggle" for Voice/Text switching.
+3.  **Boot Robustness:** `acme_lab.py` patched to abort boot sequence on shutdown signal (Fixes "Zombie Boot").
+4.  **CI/CD Hardening:** `run_tests.sh` updated to restart server between tests and enforce handshake.
 
 ## Master Backlog & Roadmap
 
@@ -38,13 +37,13 @@
 *   **[DONE] Tiered Memory:** Split Archive into Stream and Wisdom.
 *   **[DONE] Dream Cycle:** Brain autonomously summarizes logs.
 *   **[DONE] Memory Retrieval:** Pinky contextually recalls Wisdom during greetings.
-*   **[TODO] Semantic Search Tuning:** Adjust `n_results` and thresholds for RAG lookups.
+*   **[FAILED] Semantic Search Tuning:** Memory Test failed retrieval. Pinky claims no access. Needs prompt tuning.
 *   **[TODO] The Librarian:** Bulk ingest 18 years of notes from `~/knowledge_base` into the Archive.
 
-### Phase C.5: The Client Upgrade (Design Pending)
-*   **[TODO] Naming:** Select "Acme Lab" themed name (Notepad, Clipboard, Red Phone?).
-*   **[TODO] Type & Talk:** Implement "Toggle Mode" (Mic vs. Keyboard) to keep client lightweight.
+### Phase C.5: The Client Upgrade (In Progress)
+*   **[DONE] Type & Talk:** `intercom.py` supports Spacebar Toggle.
 *   **[TODO] Edit Logic:** "Oops, I meant..." correction flow (Appends revision, doesn't rewrite DB).
+*   **[TODO] Naming:** Select "Acme Lab" themed name.
 
 ### Phase D: The Toolkit (Research Assistant)
 *   **[TODO] Web Search Tool:** Give Brain access to the outside world.
