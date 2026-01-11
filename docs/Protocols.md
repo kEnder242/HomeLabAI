@@ -78,10 +78,14 @@ This document defines the rules of engagement for the Agent (AI) and User.
 *   **Sync First:** ALWAYS run `./sync_to_linux.sh` before restarting the server.
 *   **Process Management:**
     *   **HOSTING Mode (Daemon):** Use `./run_remote.sh HOSTING`.
-        *   *Why?* Uses `nohup` & exits immediately. Safe for long-running services.
+        *   *Context:* Long-term "Set and Forget".
+        *   *Warning:* Logs are not easily streamed. Use only when stable.
     *   **DEBUG Mode (Interactive):** Use `ssh ... bash src/start_server.sh [MODE]`.
-        *   *Why?* Uses `tail --pid` to stream logs to your console. Safe ONLY because `DEBUG` modes auto-shutdown on disconnect.
-    *   **Deep Debug:** Use `ssh ... bash src/start_server_fast.sh` (Tmux) for persistent sessions you need to re-attach to.
+        *   *Context:* Manual testing where you want to see logs and auto-kill on disconnect.
+    *   **CI/CD & Deep Debug (Standard):** Use `./src/start_server_fast.sh [MODE]`.
+        *   *Context:* Automated scripts or persistent debugging.
+        *   *Why:* Uses Tmux. Allows identifying PIDs, attaching to logs (`tmux capture-pane`), and clean kills.
+
 *   **Modes:**
     *   `HOSTING`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
     *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
@@ -92,8 +96,9 @@ This document defines the rules of engagement for the Agent (AI) and User.
 
 ### Remote Execution Standards (BKM)
 **Goal:** Reliability over simplicity.
-1.  **Process Management:** **NEVER use `nohup`.** ALWAYS use `tmux` for background services.
+1.  **Process Management:** **Prefer Tmux (`start_server_fast.sh`) over Nohup.**
     *   *Why?* Tmux provides a persistent handle for logs (`capture-pane`) and lifecycle management (`kill-session`).
+    *   *Rule:* Never use `nohup` for scripts that need to be monitored or killed programmatically.
 2.  **Environment Variables:** Variables do NOT cross SSH boundaries.
     *   *Bad:* `export VAR=1; ssh host "./script"`
     *   *Good:* `ssh host "VAR=1 ./script"`
