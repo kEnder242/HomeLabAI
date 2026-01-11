@@ -18,13 +18,11 @@ echo "🚀 Starting Remote Server (MOCK_BRAIN) via Tmux..."
 
 # 3. Wait for Readiness (Using a Python waiter is safer than log grep)
 echo "⏳ Waiting for Lab Readiness (Polling Socket)..."
-# We can use one of our test scripts to poll until ready
-ssh -i ~/.ssh/id_rsa_wsl jallred@192.168.1.221 "cd ~/AcmeLab && ./.venv/bin/python3 -c 'import asyncio, websockets; async def c(): async with websockets.connect(\"ws://localhost:8765\"): pass; asyncio.run(c())' 2>/dev/null"
 # Loop with timeout
 MAX_RETRIES=40
 READY=0
 for i in $(seq 1 $MAX_RETRIES); do
-    ssh -i ~/.ssh/id_rsa_wsl jallred@192.168.1.221 "cd ~/AcmeLab && ./.venv/bin/python3 -c 'import asyncio, websockets; async def c(): async with websockets.connect(\"ws://localhost:8765\"): pass; asyncio.run(c())'" 2>/dev/null
+    ssh -i ~/.ssh/id_rsa_wsl jallred@192.168.1.221 "nc -zv 127.0.0.1 8765" > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         READY=1
         echo "✅ Server is listening!"
