@@ -120,6 +120,8 @@ class AcmeLab:
                     self.residents['brain'] = brain
                     logging.info("[LAB] Residents Connected.")
 
+                    if self.shutdown_event.is_set(): return
+
                     # 2. EarNode (Heavy ML Load)
                     if EarNode:
                         logging.info("[BUILD] Loading EarNode in background thread...")
@@ -128,11 +130,15 @@ class AcmeLab:
                     else:
                         logging.warning("[STT] EarNode skipped (missing dependencies).")
 
+                    if self.shutdown_event.is_set(): return
+
                     # 3. Prime Brain (Mode Logic)
                     if self.mode == "DEBUG_BRAIN":
                         logging.info("[BRAIN] Priming Brain...")
                         await brain.call_tool("wake_up")
                         logging.info("[BRAIN] Brain Primed.")
+
+                    if self.shutdown_event.is_set(): return
 
                     # 4. SIGNAL READY
                     self.status = "READY"
