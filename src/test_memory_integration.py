@@ -16,7 +16,7 @@ async def test_memory():
     try:
         async with websockets.connect(URI) as ws:
             # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "2.0.0-alpha", "client": "test_suite"}))
+            await ws.send(json.dumps({"type": "handshake", "version": "2.0.0", "client": "test_suite"}))
             
             # Wait for Ready
             while True:
