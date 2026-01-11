@@ -46,7 +46,7 @@ class AcmeLab:
         "Stand by..."
     ]
 
-    def __init__(self):
+    def __init__(self, afk_timeout=None):
         self.residents = {}
         self.ear = None
         self.mode = "HOSTING"
@@ -54,6 +54,18 @@ class AcmeLab:
         self.connected_clients = set()
         self.shutdown_event = asyncio.Event()
         self.current_processing_task = None
+        self.afk_timeout = afk_timeout
+
+    async def afk_watcher(self):
+        """Shuts down the Lab if no client connects within the timeout."""
+        if not self.afk_timeout: return
+        
+        logging.info(f"[AFK] Watcher started (Timeout: {self.afk_timeout}s).")
+        await asyncio.sleep(self.afk_timeout)
+        
+        if not self.connected_clients and not self.shutdown_event.is_set():
+            logging.warning("[AFK] No client connected. Shutting down.")
+            self.shutdown_event.set()
 
     async def broadcast(self, message_dict):
         """Sends a JSON message to all connected clients."""
@@ -164,6 +176,10 @@ class AcmeLab:
 
         async with websockets.serve(self.client_handler, "0.0.0.0", PORT):
             logging.info(f"[DOOR] Lab Doors Open on Port {PORT}")
+            
+            # Start AFK Watcher
+            asyncio.create_task(self.afk_watcher())
+
             # Run the main application logic (blocks until shutdown)
             await self.load_residents_and_equipment()
 
@@ -386,9 +402,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="HOSTING", choices=["HOSTING", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
+    parser.add_argument("--afk-timeout", type=int, default=None, help="Shutdown if no client connects within N seconds.")
     args = parser.parse_args()
 
-    lab = AcmeLab()
+    lab = AcmeLab(afk_timeout=args.afk_timeout)
     
     def handle_sigint():
         logging.info("[SIGNAL] Caught SIGINT/SIGTERM. Shutting down...")

@@ -18,7 +18,8 @@ echo "🚀 Starting Acme Lab (Fast Mode) in Tmux..."
 ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "tmux kill-session -t acme_fast 2>/dev/null || true"
 
 # Start new session
-ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "tmux new-session -d -s acme_fast 'cd ~/AcmeLab && DISABLE_EAR=1 ./.venv/bin/python3 src/acme_lab.py --mode $MODE'"
+# We use 'tee' to allow seeing output in attach mode if needed, but primarily for persistence.
+ssh -i ~/.ssh/id_rsa_wsl "$TARGET" "cd ~/AcmeLab && ./.venv/bin/python3 -u src/acme_lab.py --mode $MODE > session.log 2>&1"
 
 # Verify
 sleep 2

@@ -14,6 +14,7 @@ rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_wsl" \
     --exclude 'chroma_db' \
     --exclude '__pycache__' \
     --exclude '*.pyc' \
+    --exclude 'session.log' \
     --exclude 'tmp_unzip_dir_for_rclone' \
     --exclude 'docs/' \
     --exclude 'AGENTS.md' \

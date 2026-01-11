@@ -26,25 +26,24 @@ This document defines the rules of engagement for the Agent (AI) and User.
 
 ---
 
-## 1. Interactive Demo Protocol (The "Co-Pilot" Mode)
-**Goal:** Allow the User to test the system live while the Agent monitors the logs.
-**Context:** Used when verifying a new feature or after a "Heads Down" sprint.
+## 1. Co-Pilot Protocol v2 (The Integration Loop)
+**Goal:** Tight, blocking debug loop where Agent and User collaborate synchronously.
 
 ### The Rules
-1.  **Agent Drives:** The Agent runs the server command (`./run_remote.sh DEBUG_BRAIN`).
-    *   *Note:* `DEBUG_BRAIN` loads the full stack but exits when the client disconnects.
-2.  **Client Deploy:** If `mic_test.py` was modified, the Agent MUST run `./sync_to_windows.sh` BEFORE asking the User to connect.
-3.  **Hold The Line:** The Agent executes the command (e.g., `tail -f`) and **waits**.
-    *   The Agent expects the tool call to timeout or be cancelled by the User. This is NOT a failure; it is the design.
-    *   *Agent Thought:* "I am now holding the server open. I will wait here until the User disconnects me."
-3.  **Real-Time Monitoring:** The Agent watches the logs for success criteria (e.g., `[PINKY] Hello`).
-4.  **The Voice Feedback Loop:**
-    *   **Listen to the User:** The Agent acknowledges that during voice demos, the User will speak "Live Feedback".
-    *   **Post-Demo Log Analysis:** Immediately after the demo ends, the Agent MUST `cat` the server logs to extract these verbal insights.
-    *   **Backlog Integration:** Verberal feedback from logs must be explicitly added to `ProjectStatus.md`.
-5.  **Disconnection:** The User signals completion by cancelling the tool call or typing "Stop".
-6.  **Post-Action:** Upon disconnection, the Agent immediately asks: "I saw X and Y. Did it behave as expected?"
-7.  **Timestamp Check:** The Agent should be aware that `sync_to_windows.sh` may require `mic_test.py` to be updated. Check timestamps if issues arise.
+1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
+2.  **Execute (Blocking):** Agent runs `src/run_integration.sh` and **waits**.
+    *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
+    *   *Visibility:* Agent is blind during execution. Logs are processed *after* the server returns.
+3.  **User Action:**
+    *   Run `python src/intercom.py`.
+    *   Execute Test Plan.
+    *   **Disconnect (Ctrl+C)** to signal completion and return control to Agent.
+4.  **Analysis (Post-Mortem):**
+    *   Agent mines logs for **Verbal Feedback** ("Pinky, note that X is broken") and **Implicit Errors** (Tracebacks).
+    *   Agent updates `ProjectStatus.md` immediately with findings.
+5.  **Safety Valves:**
+    *   **AFK Protection:** If no client connects within 60s, Server auto-terminates.
+    *   **Crash Recovery:** If Server crashes, the script returns the traceback immediately.
 
 ---
 
@@ -141,10 +140,11 @@ We distinguish between **Reflex** and **Cognitive** operations. Tests must be tu
     ```bash
     HOST_IP=$(ping -c 1 $HOST_DNS | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
     ```
+    *   **Network Defaults:** Scripts default to `z87-Linux.local`. If your network changes, grep for this string to update all scripts.
 
 ### B. The Zombie Trap (Process Lifecycle)
-*   **Problem:** `tmux kill-session` sends `SIGHUP` to the shell. If the Python application doesn't handle `SIGHUP`, it may leave child processes (like `archive_node`) running as zombies, holding DB locks and ports.
-*   **Best Practice:** Always attach `signal.SIGHUP` handlers in Python servers that run inside Tmux.
+*   **Problem:** Abrupt termination (e.g., `tmux kill-session`, `sigkill`, or SSH disconnect) can leave child processes running if the parent doesn't propagate the signal.
+*   **Best Practice:** Always attach `signal.SIGHUP` and `signal.SIGTERM` handlers in Python servers to ensure clean teardown of child processes (like DB locks).
     ```python
     if hasattr(signal, 'SIGHUP'): loop.add_signal_handler(signal.SIGHUP, shutdown)
     ```

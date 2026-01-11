@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import pyaudio
 import sys
+import os
 import json
 import logging
 from enum import Enum, auto
@@ -201,4 +202,11 @@ async def main():
         print(f"\n{COLOR_RED}Fatal: {e}{COLOR_RESET}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print(f"\n{COLOR_RED}Goodbye!{COLOR_RESET}")
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
