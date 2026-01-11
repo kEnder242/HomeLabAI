@@ -2,6 +2,30 @@
 
 This document defines the rules of engagement for the Agent (AI) and User.
 
+## 0. Critical Concept: Decoupling Command & Observation
+**Theory:** In a distributed system, **Command** (launching a process) and **Observation** (watching it) must be separate actions. Traps occur when we treat the remote system as a local synchronous function.
+*   **Command:** Launch and disconnect immediately (Fire & Forget) to retain agency.
+*   **Observation:** Poll sockets or tail logs *separately*.
+*   **Propagation:** Explicitly push code to the edges.
+
+### The Traps (Examples of Failure)
+**🛑 The "SSH Hang" Trap (Coupled Command/Observation)**
+*   **Trigger:** Using a blocking `tail` command (like in `start_server.sh`) for **HOSTING** mode.
+*   **Result:** The server runs forever, so `tail` never exits. The Agent hangs indefinitely.
+*   **Fix:** For `HOSTING` (Service) mode, ALWAYS use `run_remote.sh` (Fire-and-forget). Only use `start_server.sh` for `DEBUG` modes that auto-shutdown.
+
+**🛑 The "Startup Blindness" Trap (Passive Observation)**
+*   **Trigger:** Assuming the server is dead because logs are silent for 30s.
+*   **Reality:** Heavy ML models (Ear/Brain) take **~45 seconds** to load. This is normal.
+*   **Fix:** Do not cancel early. Poll the port/socket if unsure, but do not rely on log grepping (buffering delays).
+
+**🛑 The "Windows Deployment" Trap (Passive Propagation)**
+*   **Trigger:** Modifying `mic_test.py` locally and expecting the Windows client to update.
+*   **Result:** Windows runs old code against a new server. Chaos ensues.
+*   **Fix:** You MUST run `./sync_to_windows.sh` to push client changes to the Google Drive bridge.
+
+---
+
 ## 1. Interactive Demo Protocol (The "Co-Pilot" Mode)
 **Goal:** Allow the User to test the system live while the Agent monitors the logs.
 **Context:** Used when verifying a new feature or after a "Heads Down" sprint.
@@ -53,8 +77,11 @@ This document defines the rules of engagement for the Agent (AI) and User.
 *   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...`.
 *   **Sync First:** ALWAYS run `./sync_to_linux.sh` before restarting the server.
 *   **Process Management:**
-    *   **Standard (BKM):** Use `ssh ... bash src/start_server_fast.sh` (Tmux). Reliable & Debuggable.
-    *   **Deprecated:** `run_remote.sh` (Nohup). Flaky log management.
+    *   **HOSTING Mode (Daemon):** Use `./run_remote.sh HOSTING`.
+        *   *Why?* Uses `nohup` & exits immediately. Safe for long-running services.
+    *   **DEBUG Mode (Interactive):** Use `ssh ... bash src/start_server.sh [MODE]`.
+        *   *Why?* Uses `tail --pid` to stream logs to your console. Safe ONLY because `DEBUG` modes auto-shutdown on disconnect.
+    *   **Deep Debug:** Use `ssh ... bash src/start_server_fast.sh` (Tmux) for persistent sessions you need to re-attach to.
 *   **Modes:**
     *   `HOSTING`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
     *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
