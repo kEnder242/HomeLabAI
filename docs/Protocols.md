@@ -122,6 +122,26 @@ We distinguish between **Reflex** and **Cognitive** operations. Tests must be tu
 *   **Mandate:** After completing ANY Phase or Critical Task, run the full automated suite (`test_shutdown.py`, `test_echo.py`) to prevent regressions.
 *   **Failure:** If tests fail, do NOT proceed to the next Phase. Fix the regression immediately.
 
+## 5. Best Practices: Distributed Execution
+
+### A. The mDNS Trap (Networking)
+*   **Problem:** mDNS (`host.local`) is reliable for humans but brittle for high-frequency scripts. Rapid loops can cause resolver errors (`Invalid argument`).
+*   **Best Practice:** Resolve hostname to IP **ONCE** at the start of the script, then use the IP for all loop operations.
+    ```bash
+    HOST_IP=$(ping -c 1 $HOST_DNS | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+    ```
+
+### B. The Zombie Trap (Process Lifecycle)
+*   **Problem:** `tmux kill-session` sends `SIGHUP` to the shell. If the Python application doesn't handle `SIGHUP`, it may leave child processes (like `archive_node`) running as zombies, holding DB locks and ports.
+*   **Best Practice:** Always attach `signal.SIGHUP` handlers in Python servers that run inside Tmux.
+    ```python
+    if hasattr(signal, 'SIGHUP'): loop.add_signal_handler(signal.SIGHUP, shutdown)
+    ```
+
+### C. The Socket Check (Readiness)
+*   **Problem:** Checking server readiness by grepping logs is prone to race conditions (buffering). Python one-liners for socket checks are syntax-heavy and fragile.
+*   **Best Practice:** Use `nc -zv IP PORT` (Netcat) for robust, instant port polling.
+
 ### Validation Plan: Acme Lab "Round Table" Architecture
 (Migrated from `docs/plans/protocols/RoundTable_Validation.md`)
 

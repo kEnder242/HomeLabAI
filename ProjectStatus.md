@@ -37,8 +37,9 @@
 ### Phase C: Intelligence & Memory (Active)
 *   **[DONE] Tiered Memory:** Split Archive into Stream and Wisdom.
 *   **[DONE] Dream Cycle:** Brain autonomously summarizes logs.
-*   **[TODO] Memory Retrieval:** Improve Pinky's prompt to use the "Wisdom" collection more effectively during greetings.
+*   **[DONE] Memory Retrieval:** Pinky contextually recalls Wisdom during greetings.
 *   **[TODO] Semantic Search Tuning:** Adjust `n_results` and thresholds for RAG lookups.
+*   **[TODO] The Librarian:** Bulk ingest 18 years of notes from `~/knowledge_base` into the Archive.
 
 ### Phase C.5: The Client Upgrade (Design Pending)
 *   **[TODO] Naming:** Select "Acme Lab" themed name (Notepad, Clipboard, Red Phone?).
