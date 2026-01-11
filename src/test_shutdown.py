@@ -9,7 +9,11 @@ async def test_shutdown():
     print(f"Connecting to {uri}...")
     try:
         async with websockets.connect(uri) as websocket:
-            print("Connected. Waiting for READY status...")
+            print("Connected. Sending Handshake...")
+            # Handshake (v2.0.0)
+            await websocket.send(json.dumps({"type": "handshake", "version": "2.0.0"}))
+
+            print("Waiting for READY status...")
             
             # Wait for READY status
             while True:

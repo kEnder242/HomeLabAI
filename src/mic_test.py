@@ -4,7 +4,7 @@ import pyaudio
 import sys
 import json
 
-VERSION = "1.0.4"
+VERSION = "2.0.0"
 
 # Configuration
 HOST = "z87-Linux.local" 

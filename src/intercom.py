@@ -16,7 +16,7 @@ except ImportError:
     print("⚠️  Running in Non-Windows Mode. Keyboard Toggle (SPACE) will not work natively.")
 
 # --- CONFIGURATION ---
-VERSION = "2.0.0-alpha"
+VERSION = "2.0.0"
 HOST = "z87-Linux.local" 
 PORT = 8765
 CHUNK = 2048

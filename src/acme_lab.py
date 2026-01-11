@@ -25,7 +25,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "1.0.4"
+VERSION = "2.0.0"
 
 # Logging
 logging.basicConfig(

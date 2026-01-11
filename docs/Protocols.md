@@ -69,6 +69,12 @@ This document defines the rules of engagement for the Agent (AI) and User.
 ---
 
 ## 3. Environment & Traps (Read Before Starting)
+
+### Release Synchronization (The "Handshake" Rule)
+*   **Coupling:** The Server (`acme_lab.py`) and Clients (`intercom.py`, `mic_test.py`) use a strict handshake.
+*   **Rule:** When updating `VERSION` in `acme_lab.py`, you **MUST** update `intercom.py` and `mic_test.py` to match.
+*   **Validation:** Use `src/test_shutdown.py` (which performs a handshake) to verify compatibility.
+
 *   **Dev Machine:** `~/HomeLabAI` (Source of Truth).
     *   **Documentation:** stored here for Developer Context. **Do NOT sync docs to the runtime server.** They are for *us*, not the machine.
     *   **Code:** Staged here, then deployed.
@@ -146,6 +152,12 @@ We distinguish between **Reflex** and **Cognitive** operations. Tests must be tu
 ### C. The Socket Check (Readiness)
 *   **Problem:** Checking server readiness by grepping logs is prone to race conditions (buffering). Python one-liners for socket checks are syntax-heavy and fragile.
 *   **Best Practice:** Use `nc -zv IP PORT` (Netcat) for robust, instant port polling.
+
+### D. Execution Contexts (Local vs. Remote)
+*   **Trap:** Running an orchestrator script (like `start_server_fast.sh`) on the *remote* machine when it contains `ssh` commands intended for the *local* machine.
+*   **Rule:** Scripts must be explicitly designed as **Host-Side** (runs on Linux) or **Client-Side** (runs on WSL/Windows).
+    *   `run_remote.sh`, `start_server_fast.sh` -> **Client-Side** (Local).
+    *   `acme_lab.py`, `nodes/*.py` -> **Host-Side** (Remote).
 
 ### Validation Plan: Acme Lab "Round Table" Architecture
 (Migrated from `docs/plans/protocols/RoundTable_Validation.md`)
