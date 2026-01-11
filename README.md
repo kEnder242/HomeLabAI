@@ -39,6 +39,17 @@ HomeLabAI employs the **Acme Lab** pattern—an event-driven conversational stat
 *   **Technology:** Vector database (ChromaDB) and local filesystem RAG.
 *   **Role:** Managing the "Pile" (Episodic Memory) and the "Library" (Semantic Knowledge).
 
+### 4. The Interfaces (Nerves)
+How the user interacts with the Lab. All external signals are serialized through Pinky (The Secretary).
+
+*   **🎤 The Intercom (Desktop Client):**
+    *   **Role:** The primary "Hotline." A lightweight console app for high-fidelity voice and text.
+    *   **Features:** Spacebar toggle for "Mute & Focus" (Type/Talk hybrid).
+*   **📟 The Pager (Mobile - Planned):**
+    *   **Role:** Outbound notifications ("Task Complete") sent to your phone.
+*   **📝 The Fridge Note (Web - Planned):**
+    *   **Role:** Passive, secure web UI for dropping links or files without waking the Brain.
+
 ---
 
 ## 🚀 Getting Started
@@ -56,6 +67,12 @@ HomeLabAI employs the **Acme Lab** pattern—an event-driven conversational stat
 *   `HOSTING`: Standard production-ready operation (Persistent).
 *   `MOCK_BRAIN`: Rapid testing mode that simulates the Reasoning Node.
 *   **`DEBUG_PINKY`**: Local-only validation of the Experience Node logic.
+
+### 3. Client Access
+The Lab is headless. To interact, run the Intercom client on your local machine:
+```bash
+python src/intercom.py
+```
 
 ---
 
