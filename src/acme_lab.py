@@ -220,6 +220,18 @@ class AcmeLab:
                             else:
                                 logging.info(f"[HANDSHAKE] Client verified (v{client_ver}).")
 
+                        elif data.get("type") == "text_input":
+                            query = data.get("content", "")
+                            logging.info(f"[TEXT] Rx: {query}")
+                            
+                            # Interrupt Logic (Barge-In)
+                            if self.current_processing_task and not self.current_processing_task.done():
+                                logging.info("[BARGE-IN] Text input received. Interrupting...")
+                                self.current_processing_task.cancel()
+
+                            # Start Processing
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
+
                     except: pass
                     continue
 
