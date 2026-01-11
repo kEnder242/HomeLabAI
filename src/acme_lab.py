@@ -286,8 +286,12 @@ class AcmeLab:
             while turn_count < MAX_TURNS:
                 turn_count += 1
                 
+                # 1.5 Retrieve Wisdom (Memory)
+                memory_hit = await self.residents['archive'].call_tool("get_context", arguments={"query": query, "n_results": 2})
+                memory_text = memory_hit.content[0].text if memory_hit and memory_hit.content else ""
+                
                 # 2. Pinky Decides (Facilitator)
-                result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context})
+                result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context, "memory": memory_text})
                 decision_text = result.content[0].text
                 
                 # Try to parse JSON. If Pinky messes up, fallback to REPLY

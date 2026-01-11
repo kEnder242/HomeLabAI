@@ -41,7 +41,7 @@ PINKY_SYSTEM_PROMPT = (
 )
 
 @mcp.tool()
-async def facilitate(query: str, context: str) -> str:
+async def facilitate(query: str, context: str, memory: str = "") -> str:
     """
     The Main Loop for Pinky. He decides what to do next.
     Returns a JSON string defining the tool call.
@@ -51,7 +51,7 @@ async def facilitate(query: str, context: str) -> str:
     # if any(w in q_low for w in ["goodbye", "shutdown", "stop lab"]):
     #    return json.dumps({"tool": "manage_lab", "parameters": {"action": "shutdown"}})
 
-    prompt = f"{PINKY_SYSTEM_PROMPT}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
+    prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
     
     try:
         async with aiohttp.ClientSession() as session:
