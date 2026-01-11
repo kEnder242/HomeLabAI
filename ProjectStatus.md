@@ -32,13 +32,26 @@
 ### Phase B: Tuning the Corpus Callosum (Refinement)
 *   **[DONE] Audio Deduplication:** Fuzzy matching implemented.
 *   **[DONE] Result-Oriented Brain:** Prompt updated to stop future-tense loops.
-*   **[TODO] Vibe Check Integration:** Enhance Pinky to use `sentiment` to modulate Brain's verbosity.
+*   **[DONE] Vibe Check Integration:** Pinky uses `manage_lab` to decide when to exit.
 
 ### Phase C: Intelligence & Memory (Active)
 *   **[DONE] Tiered Memory:** Split Archive into Stream and Wisdom.
 *   **[DONE] Dream Cycle:** Brain autonomously summarizes logs.
 *   **[TODO] Memory Retrieval:** Improve Pinky's prompt to use the "Wisdom" collection more effectively during greetings.
 *   **[TODO] Semantic Search Tuning:** Adjust `n_results` and thresholds for RAG lookups.
+
+### Phase C.5: The Client Upgrade (Design Pending)
+*   **[TODO] Naming:** Select "Acme Lab" themed name (Notepad, Clipboard, Red Phone?).
+*   **[TODO] Type & Talk:** Implement "Toggle Mode" (Mic vs. Keyboard) to keep client lightweight.
+*   **[TODO] Edit Logic:** "Oops, I meant..." correction flow (Appends revision, doesn't rewrite DB).
+
+### Phase D: The Toolkit (Research Assistant)
+*   **[TODO] Web Search Tool:** Give Brain access to the outside world.
+*   **[TODO] Research Loop:** Pinky Triage -> Brain Plan -> Search -> Summarize -> Download.
+
+### Future Concepts (The Freezer)
+*   **Telegram/Web Interface:** Send Pinky a telegram; receive notifications on mobile.
+*   **Hardware Intercom:** ESP32 integration.
 
 ## Dev Tools
 *   `./run_remote.sh [MODE]`: Primary execution.
