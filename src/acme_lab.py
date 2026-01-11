@@ -394,6 +394,8 @@ if __name__ == "__main__":
     
     loop.add_signal_handler(signal.SIGINT, handle_sigint)
     loop.add_signal_handler(signal.SIGTERM, handle_sigint)
+    if hasattr(signal, 'SIGHUP'):
+        loop.add_signal_handler(signal.SIGHUP, handle_sigint)
 
     try:
         loop.run_until_complete(lab.boot_sequence(args.mode))
