@@ -153,12 +153,16 @@ We distinguish between **Reflex** and **Cognitive** operations. Tests must be tu
 *   **Problem:** Checking server readiness by grepping logs is prone to race conditions (buffering). Python one-liners for socket checks are syntax-heavy and fragile.
 *   **Best Practice:** Use `nc -zv IP PORT` (Netcat) for robust, instant port polling.
 
-### D. Execution Contexts (Local vs. Remote)
-*   **Trap:** Running an orchestrator script (like `start_server_fast.sh`) on the *remote* machine when it contains `ssh` commands intended for the *local* machine.
-*   **Rule:** Scripts must be explicitly designed as **Host-Side** (runs on Linux) or **Client-Side** (runs on WSL/Windows).
-    *   `run_remote.sh`, `start_server_fast.sh` -> **Client-Side** (Local).
-    *   `acme_lab.py`, `nodes/*.py` -> **Host-Side** (Remote).
+## 6. The Exit Strategy Protocol
+**Goal:** Ensure state persistence and documentation parity before session end.
+**Full Details:** See `docs/plans/Protocol_Exit_Strategy.md`.
 
+*   **Trigger:** "Closing up shop" or similar.
+*   **Action:** 
+    1. Update **Post-Mortem** and **Backlog**.
+    2. Atomic **Git Commit**.
+    3. Final **Sync** (Linux/Windows).
+    4. Save key **Memories**.
 ### Validation Plan: Acme Lab "Round Table" Architecture
 (Migrated from `docs/plans/protocols/RoundTable_Validation.md`)
 
