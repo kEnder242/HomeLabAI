@@ -25,151 +25,23 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [LAB] %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
-
-class AcmeLab:
-    NERVOUS_TICS = [
-        "Thinking... Narf!",
-        "Consulting the Big Guy...",
-        "One moment, the Brain is loading...",
-        "Processing... Poit!",
-        "Just a second... Zort!",
-        "Checking the archives...",
-        "Egad, this is heavy math...",
-        "Stand by..."
-    ]
-
-    def __init__(self, afk_timeout=None):
-        self.residents = {}
-        self.ear = None
-        self.mode = "HOSTING"
-        self.status = "BOOTING"
-        self.connected_clients = set()
-        self.shutdown_event = asyncio.Event()
-        self.current_processing_task = None
-        self.afk_timeout = afk_timeout
-
-    async def afk_watcher(self):
-        """Shuts down the Lab if no client connects within the timeout."""
-        if not self.afk_timeout: return
-        
-        logging.info(f"[AFK] Watcher started (Timeout: {self.afk_timeout}s).")
-        await asyncio.sleep(self.afk_timeout)
-        
-        if not self.connected_clients and not self.shutdown_event.is_set():
-            logging.warning("[AFK] No client connected. Shutting down.")
-            self.shutdown_event.set()
-
-    async def broadcast(self, message_dict):
-        """Sends a JSON message to all connected clients."""
-        if not self.connected_clients: return
-        # Ensure version is in status broadcasts
-        if message_dict.get("type") == "status":
-            message_dict["version"] = VERSION
-        
-        message = json.dumps(message_dict)
-        for ws in self.connected_clients:
-            try:
-                await ws.send(message)
-            except: pass
-
-    async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
-        """
-        Wraps a coroutine (like a Brain call). If it takes longer than 'delay',
-        starts sending 'Nervous Tics' to the user to fill dead air.
-        """
-        task = asyncio.create_task(coro)
-        
-        while not task.done():
-            # Wait for either task completion or the delay
-            done, pending = await asyncio.wait([task], timeout=delay)
-            
-            if task in done:
-                return task.result()
-            
-            # If we are here, the task is still running after 'delay'
-            tic = random.choice(self.NERVOUS_TICS)
-            logging.info(f"[TIC] Emitting: {tic}")
-            try:
-                await websocket.send(json.dumps({"brain": tic, "brain_source": "Pinky (Reflex)"}))
-            except: pass
-            
-            # Increase delay slightly for next tic to avoid spamming (backoff)
-            delay = min(delay * 1.5, 5.0) 
-            
-        return task.result()
-
-    async def load_residents_and_equipment(self):
-        """The Heavy Lifting: Connects MCP nodes and loads ML models."""
-        logging.info(f"[BUILD] Loading Residents & Equipment (v{VERSION})...")
-        
-        archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
-        pinky_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/pinky_node.py"])
-        brain_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
-
-        try:
-            async with stdio_client(archive_params) as (ar, aw), \
-                       stdio_client(pinky_params) as (pr, pw), \
-                       stdio_client(brain_params) as (br, bw):
-                
-                async with ClientSession(ar, aw) as archive, \
-                           ClientSession(pr, pw) as pinky, \
-                           ClientSession(br, bw) as brain:
-                    
-                    await archive.initialize()
-                    await pinky.initialize()
-                    await brain.initialize()
-                    
-                    self.residents['archive'] = archive
-                    self.residents['pinky'] = pinky
-                    self.residents['brain'] = brain
-                    logging.info("[LAB] Residents Connected.")
-
-                    if self.shutdown_event.is_set(): return
-
-                    # 2. EarNode (Heavy ML Load)
-                    if EarNode:
-                        logging.info("[BUILD] Loading EarNode in background thread...")
-                        self.ear = await asyncio.to_thread(EarNode, callback=None)
-                        logging.info("[STT] EarNode Initialized.")
-                    else:
-                        logging.warning("[STT] EarNode skipped (missing dependencies).")
-
-                    if self.shutdown_event.is_set(): return
-
-                    # 3. Prime Brain (Mode Logic)
-                    if self.mode == "DEBUG_BRAIN":
-                        logging.info("[BRAIN] Priming Brain...")
-                        await brain.call_tool("wake_up")
-                        logging.info("[BRAIN] Brain Primed.")
-
-                    if self.shutdown_event.is_set(): return
-
+# ... (lines 100-112) ...
                     # 4. SIGNAL READY
                     self.status = "READY"
                     logging.info("[READY] Lab is Fully Operational!")
                     await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
 
-                    # 5. Wait for voice-triggered shutdown
+                    # 5. Start AFK Watcher (Only after ready)
+                    asyncio.create_task(self.afk_watcher())
+
+                    # 6. Wait for voice-triggered shutdown
                     await self.shutdown_event.wait()
                     logging.info("[STOP] Shutdown Event Triggered.")
 
         except Exception as e:
-            import traceback
-            logging.error(f"[ERROR] Lab Explosion: {e}")
-            logging.error(traceback.format_exc())
-        finally:
-            logging.info("[FINISH] LAB SHUTDOWN COMPLETE")
-            import os
-            os._exit(0)
-
+# ... (lines 142-146) ...
     async def boot_sequence(self, mode):
         self.mode = mode
         logging.info(f"[LAB] Acme Lab Booting (Mode: {mode})...")
@@ -177,9 +49,6 @@ class AcmeLab:
         async with websockets.serve(self.client_handler, "0.0.0.0", PORT):
             logging.info(f"[DOOR] Lab Doors Open on Port {PORT}")
             
-            # Start AFK Watcher
-            asyncio.create_task(self.afk_watcher())
-
             # Run the main application logic (blocks until shutdown)
             await self.load_residents_and_equipment()
 

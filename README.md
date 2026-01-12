@@ -66,6 +66,7 @@ How the user interacts with the Lab. All external signals are serialized through
 **Operation Modes:**
 *   `HOSTING`: Standard production-ready operation (Persistent).
 *   `MOCK_BRAIN`: Rapid testing mode that simulates the Reasoning Node.
+*   `DEBUG_BRAIN`: Interactive Demo. Loads Full Stack but shuts down on disconnect.
 *   **`DEBUG_PINKY`**: Local-only validation of the Experience Node logic.
 
 ### 3. Client Access
@@ -73,6 +74,7 @@ The Lab is headless. To interact, run the Intercom client on your local machine:
 ```bash
 python src/intercom.py
 ```
+> **⚠️ Note:** The Client version must strictly match the Server version. Mismatches will be rejected.
 
 ---
 

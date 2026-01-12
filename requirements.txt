@@ -1,4 +1,3 @@
-
 # AI / ML
 # Core
 # Utilities
@@ -15,3 +14,4 @@ sentence-transformers==5.2.0
 torch
 torchaudio
 websockets
+colorama

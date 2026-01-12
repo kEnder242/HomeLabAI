@@ -16,8 +16,15 @@ except ImportError:
     IS_WINDOWS = False
     print("⚠️  Running in Non-Windows Mode. Keyboard Toggle (SPACE) will not work natively.")
 
+# --- COLOR HANDLING ---
+try:
+    import colorama
+    colorama.init(autoreset=True)
+except ImportError:
+    pass # Fallback to raw ANSI if colorama is missing
+
 # --- CONFIGURATION ---
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 HOST = "z87-Linux.local" 
 PORT = 8765
 CHUNK = 2048
@@ -50,15 +57,14 @@ async def get_user_input():
     return await asyncio.to_thread(sys.stdin.readline)
 
 async def check_keyboard_trigger():
-    """Polls for SPACE key to toggle modes (Windows Only)."""
+    """Polls for ANY key to toggle modes (Windows Only)."""
     if not IS_WINDOWS:
         return False
     
     if msvcrt.kbhit():
-        key = msvcrt.getch()
-        # Check for SPACE (b' ') or ENTER (b'\r')
-        if key == b' ' or key == b'\r':
-            return True
+        while msvcrt.kbhit():
+            msvcrt.getch() # Fully clear the buffer (handles multi-byte keys)
+        return True
     return False
 
 async def receive_messages(websocket):
@@ -73,27 +79,37 @@ async def receive_messages(websocket):
                 s = data.get("state")
                 if s == "ready":
                     STATE = ClientState.LISTENING
-                    print(f"\n{COLOR_GREEN}[ACME LAB]: Ready. {COLOR_RESET}")
+                    print(f"{COLOR_GREEN}[ACME LAB]: Ready. {COLOR_RESET}")
                     print(f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}")
                 elif s == "shutdown":
-                    print(f"\n{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
+                    print(f"{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
                     STATE = ClientState.SHUTDOWN
                     SHUTDOWN_EVENT.set()
                     return
 
             # 2. Transcription & Responses
             elif "text" in data and STATE == ClientState.LISTENING:
-                sys.stdout.write(f"\r👂 Hearing: {data['text']}   ")
+                sys.stdout.write(f"\rHearing: {data['text']}   ")
                 sys.stdout.flush()
             
             elif data.get("type") == "final":
-                 print(f"\n{COLOR_YELLOW}🗣️  [YOU]: {data['text']}{COLOR_RESET}")
+                 print(f"\n{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
 
             elif "brain" in data:
                 source = data.get("brain_source", "Unknown")
                 content = data['brain']
                 c = COLOR_PINK if "Pinky" in source else COLOR_CYAN
-                print(f"\n\n{c}[{source}]: {content}{COLOR_RESET}\n")
+                print(f"{c}[{source}]: {content}{COLOR_RESET}")
+
+            # 3. Debug Events (Brain Activity)
+            elif data.get("type") == "debug":
+                event = data.get("event")
+                if event == "BRAIN_OUTPUT":
+                    print(f"{COLOR_CYAN}[THE BRAIN]: {data.get('data')}{COLOR_RESET}")
+                elif event == "PINKY_DECISION":
+                    decision = data.get("data", {})
+                    tool = decision.get("tool")
+                    print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
 
     except websockets.exceptions.ConnectionClosed:
         SHUTDOWN_EVENT.set()
@@ -128,7 +144,7 @@ async def audio_and_input_loop(websocket):
                 if await check_keyboard_trigger():
                     STATE = ClientState.TYPING
                     stream.stop_stream() # Mute Mic
-                    print(f"\n\n{COLOR_BLUE}📝 [TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}")
+                    print(f"{COLOR_BLUE}[TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}")
                     sys.stdout.write(">> ")
                     sys.stdout.flush()
                 

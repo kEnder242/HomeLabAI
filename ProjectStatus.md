@@ -33,12 +33,12 @@
 *   **[DONE] Result-Oriented Brain:** Prompt updated to stop future-tense loops.
 *   **[DONE] Vibe Check Integration:** Pinky uses `manage_lab` to decide when to exit.
 
-### Phase C: Intelligence & Memory (Active)
-*   **[DONE] Tiered Memory:** Split Archive into Stream and Wisdom.
-*   **[DONE] Dream Cycle:** Brain autonomously summarizes logs.
-*   **[DONE] Memory Retrieval:** Pinky contextually recalls Wisdom during greetings.
-*   **[FAILED] Semantic Search Tuning:** Memory Test failed retrieval. Pinky claims no access. Needs prompt tuning.
-*   **[TODO] The Librarian:** Bulk ingest 18 years of notes from `~/knowledge_base` into the Archive.
+## Current Sprint: Bicameral Mind v2.0 Refinement
+
+*   **[ACTIVE] Semantic Routing Implementation:** Move decision logic to archive_node using vector anchors. (See `docs/plans/Feature_SemanticRouting.md`).
+*   **[DONE] Intercom Client v2.0:** Windows client with SPACE-to-talk, Text mode, and clean (No-Emoji) UI.
+*   **[DONE] Pinky Prompt v2.0:** Shifted Pinky from "Chairman" to "Gateway/Receptionist".
+*   **[PENDING] Memory Integration Finalization:** Verify ChromaDB lock-file issue on Linux host is permanently resolved.
 
 ### Phase C.5: The Client Upgrade (In Progress)
 *   **[DONE] Type & Talk:** `intercom.py` supports Spacebar Toggle.
