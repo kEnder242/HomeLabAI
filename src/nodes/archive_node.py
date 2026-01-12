@@ -67,6 +67,26 @@ def cosine_similarity(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 @mcp.tool()
+def add_routing_anchor(target: str, anchor_text: str) -> str:
+    """
+    Adds a new semantic anchor to improve the Semantic Router.
+    target: 'BRAIN' or 'PINKY'
+    anchor_text: The phrase to use as an anchor.
+    """
+    global brain_vectors, pinky_vectors, BRAIN_ANCHORS, PINKY_ANCHORS
+    
+    if target.upper() == "BRAIN":
+        BRAIN_ANCHORS.append(anchor_text)
+        brain_vectors = np.array(ef(BRAIN_ANCHORS))
+        return f"Added BRAIN anchor: '{anchor_text}'"
+    elif target.upper() == "PINKY":
+        PINKY_ANCHORS.append(anchor_text)
+        pinky_vectors = np.array(ef(PINKY_ANCHORS))
+        return f"Added PINKY anchor: '{anchor_text}'"
+    else:
+        return "Error: target must be 'BRAIN' or 'PINKY'"
+
+@mcp.tool()
 def classify_intent(query: str) -> dict:
     """
     Classifies the user query as 'BRAIN' or 'PINKY' based on semantic proximity to anchors.

@@ -400,6 +400,15 @@ class AcmeLab:
                          self.shutdown_event.set()
                          break
                 
+                elif tool == "add_routing_anchor":
+                    target = params.get("target", "BRAIN")
+                    anchor_text = params.get("anchor_text", "")
+                    res = await self.residents['archive'].call_tool("add_routing_anchor", arguments={"target": target, "anchor_text": anchor_text})
+                    msg = res.content[0].text
+                    logging.info(f"[ROUTER] Anchor Added: {msg}")
+                    await websocket.send(json.dumps({"brain": f"Teacher Pinky says: {msg}", "brain_source": "System"}))
+                    decision = None # Continue loop
+                
                 else:
                     logging.warning(f"[LAB] Unknown Tool: {tool}")
                     break

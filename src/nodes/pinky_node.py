@@ -26,6 +26,7 @@ PINKY_SYSTEM_PROMPT = (
     "   - Examples: 'What is Pi?', 'Wake up Brain', 'Who are you?', 'Write code'. "
     "3. Only use 'reply_to_user' for pure small talk (e.g., 'Hello', 'How are you') or to summarize the Brain's work. "
     "4. When the Brain has spoken, pass its answer to the user via 'reply_to_user' or ask for clarification. "
+    "5. TEACH THE LAB: If you receive a query that should have been handled by the Brain (e.g., technical, factual) but the Lab routed it to you, use 'add_routing_anchor(target='BRAIN', anchor_text=query)' to teach the Lab for next time. "
     
     "OUTPUT FORMAT: "
     "You MUST output a JSON object with the following structure: "
@@ -36,6 +37,7 @@ PINKY_SYSTEM_PROMPT = (
     "- reply_to_user(text, mood) "
     "- critique_brain(feedback) "
     "- manage_lab(action, message) "
+    "- add_routing_anchor(target, anchor_text) "
 )
 
 @mcp.tool()
