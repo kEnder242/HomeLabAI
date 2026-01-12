@@ -27,7 +27,131 @@ PORT = 8765
 PYTHON_PATH = sys.executable
 VERSION = "2.1.0"
 
-# ... (lines 100-112) ...
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - [LAB] %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
+class AcmeLab:
+    NERVOUS_TICS = [
+        "Thinking... Narf!",
+        "Consulting the Big Guy...",
+        "One moment, the Brain is loading...",
+        "Processing... Poit!",
+        "Just a second... Zort!",
+        "Checking the archives...",
+        "Egad, this is heavy math...",
+        "Stand by..."
+    ]
+
+    def __init__(self, afk_timeout=None):
+        self.residents = {}
+        self.ear = None
+        self.mode = "HOSTING"
+        self.status = "BOOTING"
+        self.connected_clients = set()
+        self.shutdown_event = asyncio.Event()
+        self.current_processing_task = None
+        self.afk_timeout = afk_timeout
+
+    async def afk_watcher(self):
+        """Shuts down the Lab if no client connects within the timeout."""
+        if not self.afk_timeout: return
+        
+        logging.info(f"[AFK] Watcher started (Timeout: {self.afk_timeout}s).")
+        await asyncio.sleep(self.afk_timeout)
+        
+        if not self.connected_clients and not self.shutdown_event.is_set():
+            logging.warning("[AFK] No client connected. Shutting down.")
+            self.shutdown_event.set()
+
+    async def broadcast(self, message_dict):
+        """Sends a JSON message to all connected clients."""
+        if not self.connected_clients: return
+        # Ensure version is in status broadcasts
+        if message_dict.get("type") == "status":
+            message_dict["version"] = VERSION
+        
+        message = json.dumps(message_dict)
+        for ws in self.connected_clients:
+            try:
+                await ws.send(message)
+            except: pass
+
+    async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
+        """
+        Wraps a coroutine (like a Brain call). If it takes longer than 'delay',
+        starts sending 'Nervous Tics' to the user to fill dead air.
+        """
+        task = asyncio.create_task(coro)
+        
+        while not task.done():
+            # Wait for either task completion or the delay
+            done, pending = await asyncio.wait([task], timeout=delay)
+            
+            if task in done:
+                return task.result()
+            
+            # If we are here, the task is still running after 'delay'
+            tic = random.choice(self.NERVOUS_TICS)
+            logging.info(f"[TIC] Emitting: {tic}")
+            try:
+                await websocket.send(json.dumps({"brain": tic, "brain_source": "Pinky (Reflex)"}))
+            except: pass
+            
+            # Increase delay slightly for next tic to avoid spamming (backoff)
+            delay = min(delay * 1.5, 5.0) 
+            
+        return task.result()
+
+    async def load_residents_and_equipment(self):
+        """The Heavy Lifting: Connects MCP nodes and loads ML models."""
+        logging.info(f"[BUILD] Loading Residents & Equipment (v{VERSION})...")
+        
+        archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
+        pinky_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/pinky_node.py"])
+        brain_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
+
+        try:
+            async with stdio_client(archive_params) as (ar, aw), \
+                       stdio_client(pinky_params) as (pr, pw), \
+                       stdio_client(brain_params) as (br, bw):
+                
+                async with ClientSession(ar, aw) as archive, \
+                           ClientSession(pr, pw) as pinky, \
+                           ClientSession(br, bw) as brain:
+                    
+                    await archive.initialize()
+                    await pinky.initialize()
+                    await brain.initialize()
+                    
+                    self.residents['archive'] = archive
+                    self.residents['pinky'] = pinky
+                    self.residents['brain'] = brain
+                    logging.info("[LAB] Residents Connected.")
+
+                    if self.shutdown_event.is_set(): return
+
+                    # 2. EarNode (Heavy ML Load)
+                    if EarNode:
+                        logging.info("[BUILD] Loading EarNode in background thread...")
+                        self.ear = await asyncio.to_thread(EarNode, callback=None)
+                        logging.info("[STT] EarNode Initialized.")
+                    else:
+                        logging.warning("[STT] EarNode skipped (missing dependencies).")
+
+                    if self.shutdown_event.is_set(): return
+
+                    # 3. Prime Brain (Mode Logic)
+                    if self.mode == "DEBUG_BRAIN":
+                        logging.info("[BRAIN] Priming Brain...")
+                        await brain.call_tool("wake_up")
+                        logging.info("[BRAIN] Brain Primed.")
+
+                    if self.shutdown_event.is_set(): return
+
                     # 4. SIGNAL READY
                     self.status = "READY"
                     logging.info("[READY] Lab is Fully Operational!")
@@ -41,7 +165,14 @@ VERSION = "2.1.0"
                     logging.info("[STOP] Shutdown Event Triggered.")
 
         except Exception as e:
-# ... (lines 142-146) ...
+            import traceback
+            logging.error(f"[ERROR] Lab Explosion: {e}")
+            logging.error(traceback.format_exc())
+        finally:
+            logging.info("[FINISH] LAB SHUTDOWN COMPLETE")
+            import os
+            os._exit(0)
+
     async def boot_sequence(self, mode):
         self.mode = mode
         logging.info(f"[LAB] Acme Lab Booting (Mode: {mode})...")
@@ -174,6 +305,21 @@ VERSION = "2.1.0"
             turn_count = 0
             MAX_TURNS = 10 
 
+            # --- NEW: SEMANTIC ROUTING (FAST PATH) ---
+            routing_res = await self.residents['archive'].call_tool("classify_intent", arguments={"query": query})
+            routing_data = json.loads(routing_res.content[0].text) if routing_res.content else {}
+            
+            if routing_data.get("target") == "BRAIN":
+                logging.info(f"[LAB] Semantic Routing: FAST-PATH to BRAIN (Confidence: {routing_data.get('confidence')})")
+                await self.broadcast({"type": "debug", "event": "LAB_ROUTING", "data": "FAST-PATH: Brain Mode"})
+                
+                # Directly execute the Brain delegation logic
+                # We reuse the same loop structure but force the first decision
+                decision = {"tool": "delegate_to_brain", "parameters": {"instruction": query}}
+            else:
+                logging.info(f"[LAB] Semantic Routing: CHAT-PATH to PINKY (Confidence: {routing_data.get('confidence')})")
+                decision = None
+
             while turn_count < MAX_TURNS:
                 turn_count += 1
                 
@@ -181,16 +327,16 @@ VERSION = "2.1.0"
                 memory_hit = await self.residents['archive'].call_tool("get_context", arguments={"query": query, "n_results": 2})
                 memory_text = memory_hit.content[0].text if memory_hit and memory_hit.content else ""
                 
-                # 2. Pinky Decides (Facilitator)
-                result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context, "memory": memory_text})
-                decision_text = result.content[0].text
-                
-                # Try to parse JSON. If Pinky messes up, fallback to REPLY
-                try:
-                    decision = json.loads(decision_text)
-                except json.JSONDecodeError:
-                    logging.warning(f"[PINKY] Invalid JSON: {decision_text}")
-                    decision = {"tool": "reply_to_user", "parameters": {"text": decision_text, "mood": "confused"}}
+                # 2. Decision Logic
+                if not decision:
+                    result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context, "memory": memory_text})
+                    decision_text = result.content[0].text
+                    
+                    try:
+                        decision = json.loads(decision_text)
+                    except json.JSONDecodeError:
+                        logging.warning(f"[PINKY] Invalid JSON: {decision_text}")
+                        decision = {"tool": "reply_to_user", "parameters": {"text": decision_text, "mood": "confused"}}
 
                 tool = decision.get("tool")
                 params = decision.get("parameters", {})
@@ -216,10 +362,9 @@ VERSION = "2.1.0"
                     
                     # Mock or Real Brain
                     if self.mode == "MOCK_BRAIN":
-                        # WRAP call with Nervous Tics even in MOCK mode to test the Tic logic
+                        # WRAP call with Nervous Tics
                         async def mock_brain_task():
-                            await asyncio.sleep(3.0) # Ensure it triggers the 2.0s Tic
-                            # Return a mock object mimicking the MCP result structure
+                            await asyncio.sleep(3.0) 
                             return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"FINAL RESULT: I have analyzed '{instruction}'."})]})()
 
                         brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
@@ -236,11 +381,15 @@ VERSION = "2.1.0"
                     lab_context += f"\nBrain: {brain_out}"
                     logging.info(f"[BRAIN] Output: {brain_out[:100]}...") # Log first 100 chars
                     await self.broadcast({"type": "debug", "event": "BRAIN_OUTPUT", "data": brain_out})
+                    
+                    # IMPORTANT: After Brain speaks, Pinky gets a turn to summarize or closing remark
+                    decision = None # Force re-evaluation by Pinky for the next turn
 
                 elif tool == "critique_brain":
                     feedback = params.get("feedback", "Try again.")
                     logging.info(f"[PINKY] Critique: {feedback}")
                     lab_context += f"\nPinky (Critique): {feedback}"
+                    decision = None # Loop back
                 
                 elif tool == "manage_lab":
                     action = params.get("action", "")

@@ -4,6 +4,7 @@ from chromadb.utils import embedding_functions
 import os
 import logging
 import datetime
+import numpy as np
 
 # Configuration
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
@@ -20,6 +21,78 @@ chroma_client = chromadb.PersistentClient(path=DB_PATH)
 ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
+# Semantic Anchors for Routing
+BRAIN_ANCHORS = [
+    "Calculate pi to 10 decimal places",
+    "Write python code for a websocket server",
+    "Analyze the following data and find trends",
+    "Perform complex reasoning about thermodynamics",
+    "Wake up the Brain",
+    "What are the hard facts about climate change?",
+    "Solve this math problem",
+    "Explain the theory of relativity",
+    "What is the capital of France?",
+    "Who won the world cup in 2022?",
+    "Tell me about quantum physics",
+    "Give me a technical summary",
+    "How does a nuclear reactor work?",
+    "Research the history of Rome",
+    "Compare these two technologies"
+]
+
+PINKY_ANCHORS = [
+    "Hello there!",
+    "Tell me a joke about mice",
+    "How are you doing today?",
+    "Good morning Pinky",
+    "What do you think about the vibe?",
+    "Narf!",
+    "Let's just chat for a bit",
+    "What's your favorite non-sequitur?",
+    "Hi!",
+    "How's life?",
+    "Just wanted to say hi",
+    "Zort!",
+    "Poit!",
+    "Egad!"
+]
+
+# Pre-compute Anchor Embeddings
+logging.info("🧠 Pre-computing Semantic Anchors...")
+brain_vectors = np.array(ef(BRAIN_ANCHORS))
+pinky_vectors = np.array(ef(PINKY_ANCHORS))
+
+def cosine_similarity(v1, v2):
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+@mcp.tool()
+def classify_intent(query: str) -> dict:
+    """
+    Classifies the user query as 'BRAIN' or 'PINKY' based on semantic proximity to anchors.
+    """
+    query_vector = np.array(ef([query])[0])
+    
+    # Calculate max similarity to each set of anchors
+    brain_sim = max([cosine_similarity(query_vector, bv) for bv in brain_vectors])
+    pinky_sim = max([cosine_similarity(query_vector, pv) for pv in pinky_vectors])
+    
+    # Decision Logic
+    # We want a bias towards Pinky for chat, but Brain for anything specific.
+    threshold = 0.4 # Lowered to be more sensitive to Brain tasks
+    
+    target = "PINKY"
+    if brain_sim > pinky_sim and brain_sim > threshold:
+        target = "BRAIN"
+    elif brain_sim > 0.6: # High enough confidence regardless of Pinky score
+        target = "BRAIN"
+        
+    return {
+        "target": target,
+        "brain_similarity": float(brain_sim),
+        "pinky_similarity": float(pinky_sim),
+        "confidence": float(max(brain_sim, pinky_sim))
+    }
 
 # Initialize Collections
 stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)

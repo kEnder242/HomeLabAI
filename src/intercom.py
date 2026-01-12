@@ -51,19 +51,34 @@ class ClientState(Enum):
 # Global Context
 STATE = ClientState.LOBBY
 SHUTDOWN_EVENT = asyncio.Event()
+PENDING_CHAR = "" # Stores the key that triggered text mode
 
 async def get_user_input():
     """Blocking input wrapped in a thread."""
-    return await asyncio.to_thread(sys.stdin.readline)
+    global PENDING_CHAR
+    text = await asyncio.to_thread(sys.stdin.readline)
+    if PENDING_CHAR:
+        full_text = PENDING_CHAR + text
+        PENDING_CHAR = ""
+        return full_text
+    return text
 
 async def check_keyboard_trigger():
     """Polls for ANY key to toggle modes (Windows Only)."""
+    global PENDING_CHAR
     if not IS_WINDOWS:
         return False
     
     if msvcrt.kbhit():
+        char_bytes = msvcrt.getch()
+        try:
+            # Try to decode the trigger char so we can re-inject it
+            PENDING_CHAR = char_bytes.decode('utf-8')
+        except:
+            PENDING_CHAR = "" # Ignore non-decodable keys
+            
         while msvcrt.kbhit():
-            msvcrt.getch() # Fully clear the buffer (handles multi-byte keys)
+            msvcrt.getch() # Clear the rest of the buffer (arrows, etc)
         return True
     return False
 

@@ -2,7 +2,7 @@
 # Syncs the local src/mic_test.py to the Linux host, 
 # then moves it to the GDrive mount for Windows to pick up.
 
-TARGET_HOST="jallred@z87-Linux.local"
+TARGET_HOST="jallred@192.168.1.221"
 REMOTE_SRC_IC="~/AcmeLab/src/intercom.py"
 GDRIVE_DEST_IC="~/knowledge_base/HomeLabAIProject/src/intercom.py"
 

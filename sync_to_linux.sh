@@ -3,7 +3,7 @@
 # Excludes heavy local folders like .venv or git
 # Usage: ./sync_to_linux.sh
 
-TARGET_HOST="jallred@z87-Linux.local"
+TARGET_HOST="jallred@192.168.1.221"
 TARGET_DIR="~/AcmeLab/"
 
 echo "Syncing to $TARGET_HOST:$TARGET_DIR ..."
