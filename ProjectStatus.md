@@ -34,7 +34,7 @@
 ## Master Backlog & Roadmap
 
 ### Phase A: Infrastructure & Reliability (Next Up)
-*   **[TODO] CI/CD Migration:** Move to `pytest`.
+*   **[DONE] CI/CD Migration:** Moved to `pytest` with `src/conftest.py` fixtures and `src/preflight_check.py` for priming.
 *   **[TODO] Knowledge Indexing Strategy:** "Latest-on-Top" logic for RAG.
 *   **[TODO] The Sandbox:** Implement `conduct_experiment` (Docker-based code execution).
 
