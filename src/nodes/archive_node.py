@@ -6,9 +6,27 @@ import sys
 import logging
 import datetime
 import numpy as np
+from tqdm import tqdm
+import os
 
 # Force logging to stderr to avoid corrupting MCP stdout
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+
+# Force tqdm to write to stderr (or disable it) to protect MCP stdout
+# This is critical for SentenceTransformers which uses tqdm
+class TqdmStderr(tqdm):
+    def __init__(self, *args, **kwargs):
+        kwargs['file'] = sys.stderr
+        super().__init__(*args, **kwargs)
+
+# Monkey patch tqdm if necessary, or just rely on library settings
+# SentenceTransformers allows passing a 'device' but not easily a tqdm_file globally.
+# Easier approach: Set environment variable to disable TQDM if we can, or redirect logging.
+os.environ["TQDM_DISABLE"] = "1" 
+
+from mcp.server.fastmcp import FastMCP
+import chromadb
+from chromadb.utils import embedding_functions
 
 # Configuration
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")

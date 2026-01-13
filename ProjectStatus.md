@@ -17,6 +17,7 @@
 
 ## ⚠️ Known Traps
 *   **Startup Blindness:** `HOSTING` mode takes ~45s. Do not cancel early.
+*   **Pytest Timeouts:** `pytest` suites involving ChromaDB fixtures may hang on initialization. Use `src/preflight_check.py` first.
 *   **Client Outdated:** Run `sync_to_windows.sh` if `mic_test.py` changed.
 *   **SSH Key:** Always use `-i ~/.ssh/id_rsa_wsl`.
 
@@ -30,13 +31,14 @@
     *   Implemented `write_draft` tool with 'The Editor' (deterministic cleaning).
     *   Added support for specific tool delegation in `acme_lab.py`.
 3.  **Persona Alignment:** Pinky now understands "His Notes" (Clipboard), "The Library" (RAG), and "The Drafting Table" (Drafts).
+4.  **Infrastructure:** Migrated CI/CD to `pytest` with `conftest.py` fixtures and `preflight_check.py`.
 
 ## Master Backlog & Roadmap
 
 ### Phase A: Infrastructure & Reliability (Next Up)
-*   **[DONE] CI/CD Migration:** Moved to `pytest` with `src/conftest.py` fixtures and `src/preflight_check.py` for priming.
 *   **[TODO] Knowledge Indexing Strategy:** "Latest-on-Top" logic for RAG.
 *   **[TODO] The Sandbox:** Implement `conduct_experiment` (Docker-based code execution).
+*   **[TODO] Pytest Tuning:** Investigate persistent stdout buffering causing test timeouts.
 
 ### Phase C.5: The Client Upgrade
 *   **[DONE] Type & Talk:** `intercom.py` supports Spacebar Toggle.
