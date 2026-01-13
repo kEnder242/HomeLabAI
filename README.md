@@ -38,6 +38,7 @@ HomeLabAI employs the **Acme Lab** pattern—an event-driven conversational stat
 ### 3. The Archives (Memory)
 *   **Technology:** Vector database (ChromaDB) and local filesystem RAG.
 *   **Role:** Managing the "Pile" (Episodic Memory) and the "Library" (Semantic Knowledge).
+*   **Feature:** **Adaptive Semantic Caching** (based on [Reddy/VentureBeat](docs/plans/Semantic_Caching_Strategy.md)) to bypass inference for repeated queries.
 
 ### 4. The Interfaces (Nerves)
 How the user interacts with the Lab. All external signals are serialized through Pinky (The Secretary).
@@ -88,6 +89,7 @@ HomeLabAI is influenced by emerging research in agentic workflows and local mode
 ### Knowledge & RAG (Memory)
 *   **[sentence-transformers (MiniLM)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2):** Our primary embedding model for local RAG.
 *   **[OpenNotebook](https://github.com/lfnovo/open-notebook):** A local, private alternative to NotebookLM for research management.
+*   **[Semantic Caching (VentureBeat)](https://venturebeat.com/orchestration/why-your-llm-bill-is-exploding-and-how-semantic-caching-can-cut-it-by-73):** Primary source for our caching architecture (Thresholds & TTL).
 
 ---
 

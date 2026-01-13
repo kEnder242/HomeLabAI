@@ -1,191 +1,58 @@
 # Operational Protocols
 
-This document defines the rules of engagement for the Agent (AI) and User.
-
-## 0. Critical Concept: Decoupling Command & Observation
-**Theory:** In a distributed system, **Command** (launching a process) and **Observation** (watching it) must be separate actions. Traps occur when we treat the remote system as a local synchronous function.
-*   **Command:** Launch and disconnect immediately (Fire & Forget) to retain agency.
-*   **Observation:** Poll sockets or tail logs *separately*.
-*   **Propagation:** Explicitly push code to the edges.
-
-### The Traps (Examples of Failure)
-**🛑 The "SSH Hang" Trap (Coupled Command/Observation)**
-*   **Trigger:** Using a blocking `tail` command (like in `start_server.sh`) for **HOSTING** mode.
-*   **Result:** The server runs forever, so `tail` never exits. The Agent hangs indefinitely.
-*   **Fix:** For `HOSTING` (Service) mode, ALWAYS use `run_remote.sh` (Fire-and-forget). Only use `start_server.sh` for `DEBUG` modes that auto-shutdown.
-
-**🛑 The "Startup Blindness" Trap (Passive Observation)**
-*   **Trigger:** Assuming the server is dead because logs are silent for 30s.
-*   **Reality:** Heavy ML models (Ear/Brain) take **~45 seconds** to load. This is normal.
-*   **Fix:** Do not cancel early. Poll the port/socket if unsure, but do not rely on log grepping (buffering delays).
-
-**🛑 The "Windows Deployment" Trap (Passive Propagation)**
-*   **Trigger:** Modifying `mic_test.py` locally and expecting the Windows client to update.
-*   **Result:** Windows runs old code against a new server. Chaos ensues.
-*   **Fix:** You MUST run `./sync_to_windows.sh` to push client changes to the Google Drive bridge.
+This document defines the standard operating procedures for the HomeLabAI development cycle.
 
 ---
 
-## 1. Co-Pilot Protocol v2 (The Integration Loop)
-**Goal:** Tight, blocking debug loop where Agent and User collaborate synchronously.
+## 1. The Design Studio Protocol (Brainstorming)
+**Trigger:** "Let's brainstorm..." or "Enter Design Mode."
+**Goal:** alignment on Naming, Architecture, and Persona *before* code.
 
-### The Rules
-1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
-2.  **Execute (Blocking):** Agent runs `src/run_integration.sh` and **waits**.
-    *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
-    *   *Visibility:* Agent is blind during execution. Logs are processed *after* the server returns.
-3.  **User Action:**
-    *   Run `python src/intercom.py`.
-    *   Execute Test Plan.
-    *   **Disconnect (Ctrl+C)** to signal completion and return control to Agent.
-4.  **Analysis (Post-Mortem):**
-    *   Agent mines logs for **Verbal Feedback** ("Pinky, note that X is broken") and **Implicit Errors** (Tracebacks).
-    *   Agent updates `ProjectStatus.md` immediately with findings.
-5.  **Safety Valves:**
-    *   **AFK Protection:** If no client connects within 60s, Server auto-terminates.
-    *   **Crash Recovery:** If Server crashes, the script returns the traceback immediately.
+1.  **The Pitch:** Agent summarizes the goal in one sentence.
+2.  **The Options:** Agent presents 2-3 implementation paths (e.g., Simple, Robust, Narrative).
+3.  **The Naming Ceremony:** Explicit agreement on **Nouns** (Folders, DB Collections) and **Verbs** (Tool Names).
+4.  **The Storyboard:** A pseudo-script of the interaction (User -> Pinky -> Brain -> Tool) to verify "Vibe".
+5.  **The Contract:** A bulleted implementation spec. User gives "Greenlight".
 
 ---
 
-## 2. Heads Down Protocol (The "Builder" Mode)
-**Goal:** Enable long, autonomous work sessions where the Agent executes multiple tasks without User intervention.
+## 2. The Interactive Demo Protocol ("Co-Pilot Mode")
+**Goal:** Verify system behavior with live audio/text in a safe, auto-closing environment.
 
-### Rules of Engagement
-1.  **Aggressive Continuity:**
-    *   **The Floor, Not the Ceiling:** The Sprint Goal is the *minimum*. If completed early, **do not stop**.
-    *   **Pull Forward:** Immediately implement tasks from the next Phase.
-    *   **Bias for Action:** Draft "Alpha" features rather than waiting for feedback.
-
-2.  **Execution Loop:**
-    *   **Queue:** Work sequentially through `ProjectStatus.md`.
-    *   **Unblocking:** If blocked (e.g., sudo/hardware), **skip** and move to the next task.
-    *   **Versioning:** `git commit` after every atomic task.
-
-3.  **Exit Strategy:**
-    *   Finish only when the Time Limit is reached or the Backlog is empty.
-    *   Provide a summary of all completed items.
+1.  **Deploy:** Run `./sync_to_linux.sh` to push latest code.
+2.  **Launch:** Agent runs `./run_remote.sh DEBUG_BRAIN`.
+    *   *Note:* Uses `start_server_fast.sh` (Tmux) to prevent SSH hangs.
+3.  **Monitor:** Agent tails the remote log.
+4.  **Interact:** User speaks/types via Client.
+5.  **Feedback:** Agent captures specific "Vibe Checks" or bugs from logs.
+6.  **Close:** Client disconnect triggers server shutdown.
 
 ---
 
-## 3. Environment & Traps (Read Before Starting)
+## 3. The Builder Protocol ("Heads Down")
+**Goal:** Deep work on complex features without full system restarts.
 
-### Release Synchronization (The "Handshake" Rule)
-*   **Coupling:** The Server (`acme_lab.py`) and Clients (`intercom.py`, `mic_test.py`) use a strict handshake.
-*   **Rule:** When updating `VERSION` in `acme_lab.py`, you **MUST** update `intercom.py` and `mic_test.py` to match.
-*   **Validation:** Use `src/test_shutdown.py` (which performs a handshake) to verify compatibility.
-
-*   **Dev Machine:** `~/HomeLabAI` (Source of Truth).
-    *   **Documentation:** stored here for Developer Context. **Do NOT sync docs to the runtime server.** They are for *us*, not the machine.
-    *   **Code:** Staged here, then deployed.
-*   **Acme Lab (Remote):** `jallred@z87-Linux.local:~/AcmeLab` (Runtime Only).
-    *   **Role:** Execution environment. Only `src/` and `*.sh` scripts belong here.
-*   **SSH Key:** `ssh -i ~/.ssh/id_rsa_wsl ...`.
-*   **Sync First:** ALWAYS run `./sync_to_linux.sh` before restarting the server.
-*   **Process Management:**
-    *   **HOSTING Mode (Daemon):** Use `./run_remote.sh HOSTING`.
-        *   *Context:* Long-term "Set and Forget".
-        *   *Warning:* Logs are not easily streamed. Use only when stable.
-    *   **DEBUG Mode (Interactive):** Use `ssh ... bash src/start_server.sh [MODE]`.
-        *   *Context:* Manual testing where you want to see logs and auto-kill on disconnect.
-    *   **CI/CD & Deep Debug (Standard):** Use `./src/start_server_fast.sh [MODE]`.
-        *   *Context:* Automated scripts or persistent debugging.
-        *   *Why:* Uses Tmux. Allows identifying PIDs, attaching to logs (`tmux capture-pane`), and clean kills.
-
-*   **Modes:**
-    *   `HOSTING`: **Persistent.** Loads ML models. Stays alive after disconnects. Use for Long-Term Hosting.
-    *   `DEBUG_BRAIN`: **Interactive Demo.** Loads Full Stack (Ear+Brain). Shuts down on disconnect. Use for Manual Testing.
-    *   `DEBUG_PINKY`: **Fast Boot.** Skips Brain Prime. Shuts down on disconnect. Use for Logic Tests.
-    *   `MOCK_BRAIN`: **Fast Boot.** Simulates Brain responses. Shuts down on disconnect. Use for Flow Tests.
+1.  **State Check:** Verify `ProjectStatus.md` is current.
+2.  **Branching (Optional):** If risk is high, create a git branch.
+3.  **Test-Driven:** Write the `test_*.py` script *before* the feature code.
+4.  **Local Validation:** Run tests locally (`DEBUG_PINKY` mode) first.
+5.  **Commit:** Frequent commits after each logical step.
 
 ---
 
-### Remote Execution Standards (BKM)
-**Goal:** Reliability over simplicity.
-1.  **Process Management:** **Prefer Tmux (`start_server_fast.sh`) over Nohup.**
-    *   *Why?* Tmux provides a persistent handle for logs (`capture-pane`) and lifecycle management (`kill-session`).
-    *   *Rule:* Never use `nohup` for scripts that need to be monitored or killed programmatically.
-2.  **Environment Variables:** Variables do NOT cross SSH boundaries.
-    *   *Bad:* `export VAR=1; ssh host "./script"`
-    *   *Good:* `ssh host "VAR=1 ./script"`
-3.  **Readiness Checks:** Do NOT grep logs to see if a server is ready. Poll the **Port/Socket**.
-    *   Logs buffer. Ports open instantly.
-4.  **Mocking:** Heavy ML models (Ear, Brain) must be mockable via Env Vars (`DISABLE_EAR=1`) for fast logic testing.
+## 4. The Debug Protocol ("Fast Loop")
+**Goal:** Isolate specific bugs in the Pinky/Orchestrator layer.
 
-## 4. Testing Protocols
+1.  **Mode:** Use `DEBUG_PINKY` (No Brain/STT loading time).
+2.  **Tool:** Use `src/run_tests.sh` for regression testing.
+3.  **Focus:** Logic errors, JSON parsing, Tool selection.
 
-### The "Fast Test Loop" Requirement
-**Goal:** Optimize the development feedback loop by eliminating unnecessary waits.
-**Rules:**
-1.  **Zero Sleep:** Test scripts MUST NOT rely on fixed `sleep` commands for synchronization.
-2.  **Smart Connect:** Scripts must poll/retry connections (e.g., `connect_with_retry`) to start immediately upon server readiness.
-3.  **Clean Shutdown:** Test scripts are responsible for sending a shutdown signal to the server upon completion, ensuring no zombie processes remain.
-4.  **Telemetry:** All test scripts must output total execution time to verify compliance.
-5.  **Target Time:** A complete logic validation suite should run in under **10 seconds** total.
+---
 
-### Timeouts & Latency (The "Cognitive Gap")
-We distinguish between **Reflex** and **Cognitive** operations. Tests must be tuned accordingly.
-*   **Logic Tests (Python/Regex):** Timeout **< 5s**. Fail fast. If it takes longer, the code is broken.
-*   **Cognitive Tests (LLM/Inference):** Timeout **> 30s**. Allow for GPU spin-up and token generation.
-    *   *Note:* CI/CD should prioritize **MOCK** modes (simulated LLMs) to keep runs fast (<10s). Use Real LLMs only for integration/release checks.
+## 5. The Exit Protocol ("Close Up Shop")
+**Trigger:** End of session.
 
-### CI/CD Rule
-*   **Mandate:** After completing ANY Phase or Critical Task, run the full automated suite (`test_shutdown.py`, `test_echo.py`) to prevent regressions.
-*   **Failure:** If tests fail, do NOT proceed to the next Phase. Fix the regression immediately.
-
-## 5. Best Practices: Distributed Execution
-
-### A. The mDNS Trap (Networking)
-*   **Problem:** mDNS (`host.local`) is reliable for humans but brittle for high-frequency scripts. Rapid loops can cause resolver errors (`Invalid argument`).
-*   **Best Practice:** Resolve hostname to IP **ONCE** at the start of the script, then use the IP for all loop operations.
-    ```bash
-    HOST_IP=$(ping -c 1 $HOST_DNS | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-    ```
-    *   **Network Defaults:** Scripts default to `z87-Linux.local`. If your network changes, grep for this string to update all scripts.
-
-### B. The Zombie Trap (Process Lifecycle)
-*   **Problem:** Abrupt termination (e.g., `tmux kill-session`, `sigkill`, or SSH disconnect) can leave child processes running if the parent doesn't propagate the signal.
-*   **Best Practice:** Always attach `signal.SIGHUP` and `signal.SIGTERM` handlers in Python servers to ensure clean teardown of child processes (like DB locks).
-    ```python
-    if hasattr(signal, 'SIGHUP'): loop.add_signal_handler(signal.SIGHUP, shutdown)
-    ```
-
-### C. The Socket Check (Readiness)
-*   **Problem:** Checking server readiness by grepping logs is prone to race conditions (buffering). Python one-liners for socket checks are syntax-heavy and fragile.
-*   **Best Practice:** Use `nc -zv IP PORT` (Netcat) for robust, instant port polling.
-
-## 6. The Exit Strategy Protocol
-**Goal:** Ensure state persistence and documentation parity before session end.
-**Full Details:** See `docs/plans/Protocol_Exit_Strategy.md`.
-
-*   **Trigger:** "Closing up shop" or similar.
-*   **Action:** 
-    1. Update **Post-Mortem** and **Backlog**.
-    2. Atomic **Git Commit**.
-    3. Final **Sync** (Linux/Windows).
-    4. Save key **Memories**.
-### Validation Plan: Acme Lab "Round Table" Architecture
-(Migrated from `docs/plans/protocols/RoundTable_Validation.md`)
-
-#### Phase 1: The Loop (Logic Layer)
-**Goal:** Verify the conversational state machine, tool usage, and "Inner Voice" logic.
-**Execution Mode:** Autonomous "Coffee Break" (Simulated Input).
-
-*   **Test Case 1.1: The Direct Reply (Baseline)**
-    *   **Scenario:** User says "Hello."
-    *   **Success:** Debug Stream shows `Pinky Decision: REPLY`.
-*   **Test Case 1.2: The Delegation (Handoff)**
-    *   **Scenario:** User says "Calculate pi."
-    *   **Success:** `DELEGATE` -> `BRAIN_OUT` -> `REPLY`.
-*   **Test Case 1.3: The Critique (Multi-Turn Internal Loop)**
-    *   **Scenario:** User says "Write bad code."
-    *   **Success:** `DELEGATE` -> `BRAIN_OUT` -> `CRITIQUE` -> `BRAIN_OUT` -> `REPLY`.
-
-#### Phase 2: The Interrupt (Physics Layer)
-**Goal:** Verify asynchronous "Barge-In" capabilities.
-
-*   **Test Case 2.1: Interrupting "The Thinker"**
-    *   **Scenario:** User interrupts Brain generation.
-    *   **Success:** Task Cancelled -> Pinky invoked with "User said 'Wait'".
-*   **Test Case 2.2: Interrupting "The Speaker"**
-    *   **Scenario:** User interrupts Audio Output.
-    *   **Success:** Lab sends `stop_audio` command.
+1.  **Status Update:** Update `ProjectStatus.md` (Active -> Done/Backlog).
+2.  **Memory:** Save key architectural decisions to Long-Term Memory.
+3.  **Analysis:** Create a `Refactoring_Analysis` doc if technical debt was found.
+4.  **Commit:** Final git push.

@@ -11,6 +11,7 @@ DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 # Tiered Memory Collections
 COLLECTION_STREAM = "short_term_stream" # The Pile (Raw logs)
 COLLECTION_WISDOM = "long_term_wisdom" # The Library (Consolidated)
+COLLECTION_CACHE = "semantic_cache" # The Vault (Expensive Brain Responses)
 
 # Initialize MCP
 mcp = FastMCP("The Archives")
@@ -21,6 +22,11 @@ chroma_client = chromadb.PersistentClient(path=DB_PATH)
 ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
+# Initialize Collections
+stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
+wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
+cache = chroma_client.get_or_create_collection(name=COLLECTION_CACHE, embedding_function=ef)
 
 # Semantic Anchors for Routing
 BRAIN_ANCHORS = [
@@ -113,6 +119,62 @@ def classify_intent(query: str) -> dict:
         "pinky_similarity": float(pinky_sim),
         "confidence": float(max(brain_sim, pinky_sim))
     }
+
+@mcp.tool()
+def consult_clipboard(query: str, threshold: float = 0.35, max_age_days: int = 14) -> str | None:
+    """
+    Check the Semantic Clipboard (Cache) for a similar past Brain response.
+    threshold: Distance threshold (0.35 approx 94% similarity - FAQ level).
+    max_age_days: Ignore notes older than this.
+    Returns the cached response or None.
+    """
+    try:
+        results = cache.query(query_texts=[query], n_results=1)
+        if not results['documents'][0]:
+            return None
+            
+        distance = results['distances'][0][0]
+        metadata = results['metadatas'][0][0]
+        
+        if distance < threshold:
+            # TTL Check
+            timestamp_str = metadata.get("timestamp")
+            if timestamp_str:
+                try:
+                    stored_time = datetime.datetime.fromisoformat(timestamp_str)
+                    age = datetime.datetime.now() - stored_time
+                    if age.days > max_age_days:
+                        logging.info(f"🏚️ Clipboard Note Expired (Age: {age.days} days).")
+                        return None
+                except ValueError:
+                    logging.warning("Invalid timestamp in clipboard metadata.")
+            
+            logging.info(f"⚡ Clipboard Found Note! Distance: {distance:.4f}")
+            return metadata['response']
+        else:
+            logging.info(f"💨 Clipboard Empty. Distance: {distance:.4f}")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Clipboard check error: {e}")
+        return None
+
+@mcp.tool()
+def scribble_note(query: str, response: str) -> str:
+    """
+    Scribble a new note on the Clipboard (Cache a response).
+    Useful for expensive 'Brain' queries.
+    """
+    try:
+        timestamp = datetime.datetime.now().isoformat()
+        cache.add(
+            documents=[query],
+            metadatas=[{"response": response, "timestamp": timestamp}],
+            ids=[f"cache_{timestamp}"]
+        )
+        return "Note scribbled."
+    except Exception as e:
+        return f"Clipboard error: {e}"
 
 # Initialize Collections
 stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)

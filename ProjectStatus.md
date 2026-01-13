@@ -1,13 +1,13 @@
 # Project Status: HomeLabAI
 
-**Date:** January 9, 2026
-**Current Phase:** Phase 6: Semantic Wisdom
+**Date:** January 12, 2026
+**Current Phase:** Phase 7: Infrastructure & Polish
 
 ## 🗺️ Documentation Map
 *   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md) (The Acme Lab Model)
 *   **Rules of Engagement:** [Protocols.md](docs/Protocols.md) (Demos, Testing, & Heads Down)
-*   **The Freezer:** [Future_Concepts.md](docs/plans/Future_Concepts.md) (Intercom, Red Phone)
-*   **Post-Mortems:** `docs/archive/` (Recent: `Session_PostMortem_2026-01-09.md`)
+*   **Semantic Caching:** [Semantic_Caching_Strategy.md](docs/plans/Semantic_Caching_Strategy.md) (The Clipboard Protocol)
+*   **Post-Mortems:** `docs/archive/`
 
 ## 🗣️ Glossary & Shortcuts
 *   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_BRAIN`).
@@ -20,38 +20,28 @@
 *   **Client Outdated:** Run `sync_to_windows.sh` if `mic_test.py` changed.
 *   **SSH Key:** Always use `-i ~/.ssh/id_rsa_wsl`.
 
-## Completed Milestones (Session Jan 11)
-1.  **Version Unity (v2.0.0):** Server, Client, and Test Suite synchronized. Added strict handshake validation.
-2.  **Intercom Client (Alpha):** `intercom.py` implemented with "Spacebar Toggle" for Voice/Text switching.
-3.  **Boot Robustness:** `acme_lab.py` patched to abort boot sequence on shutdown signal (Fixes "Zombie Boot").
-4.  **CI/CD Hardening:** `run_tests.sh` updated to restart server between tests and enforce handshake.
+## Completed Milestones (Session Jan 12)
+1.  **Semantic Caching (The Clipboard Protocol):**
+    *   Implemented `semantic_cache` in ChromaDB with adaptive thresholds (0.35 distance).
+    *   Added TTL (14 days) and Exclusion Rules (Time/Weather).
+    *   Renamed tools to match persona: `consult_clipboard`, `scribble_note`.
+2.  **Agency Phase: The Drafting Table:**
+    *   Created `~/AcmeLab/drafts/` for Brain-generated documents.
+    *   Implemented `write_draft` tool with 'The Editor' (deterministic cleaning).
+    *   Added support for specific tool delegation in `acme_lab.py`.
+3.  **Persona Alignment:** Pinky now understands "His Notes" (Clipboard), "The Library" (RAG), and "The Drafting Table" (Drafts).
 
 ## Master Backlog & Roadmap
 
-### Phase B: Tuning the Corpus Callosum (Refinement)
-*   **[DONE] Audio Deduplication:** Fuzzy matching implemented.
-*   **[DONE] Result-Oriented Brain:** Prompt updated to stop future-tense loops.
-*   **[DONE] Vibe Check Integration:** Pinky uses `manage_lab` to decide when to exit.
+### Phase A: Infrastructure & Reliability (Next Up)
+*   **[TODO] CI/CD Migration:** Move to `pytest`.
+*   **[TODO] Knowledge Indexing Strategy:** "Latest-on-Top" logic for RAG.
+*   **[TODO] The Sandbox:** Implement `conduct_experiment` (Docker-based code execution).
 
-## Current Sprint: Bicameral Mind v2.0 Refinement
-
-*   **[ACTIVE] Semantic Routing Implementation:** Move decision logic to archive_node using vector anchors. (See `docs/plans/Feature_SemanticRouting.md`).
-*   **[DONE] Intercom Client v2.0:** Windows client with SPACE-to-talk, Text mode, and clean (No-Emoji) UI.
-*   **[DONE] Pinky Prompt v2.0:** Shifted Pinky from "Chairman" to "Gateway/Receptionist".
-*   **[PENDING] Memory Integration Finalization:** Verify ChromaDB lock-file issue on Linux host is permanently resolved.
-
-### Phase C.5: The Client Upgrade (In Progress)
+### Phase C.5: The Client Upgrade
 *   **[DONE] Type & Talk:** `intercom.py` supports Spacebar Toggle.
-*   **[TODO] Edit Logic:** "Oops, I meant..." correction flow (Appends revision, doesn't rewrite DB).
-*   **[TODO] Naming:** Select "Acme Lab" themed name.
-
-### Phase D: The Toolkit (Research Assistant)
-*   **[TODO] Web Search Tool:** Give Brain access to the outside world.
-*   **[TODO] Research Loop:** Pinky Triage -> Brain Plan -> Search -> Summarize -> Download.
-
-### Future Concepts (The Freezer)
-*   **Telegram/Web Interface:** Send Pinky a telegram; receive notifications on mobile.
-*   **Hardware Intercom:** ESP32 integration.
+*   **[TODO] Edit Logic:** "Oops, I meant..." correction flow.
+*   **[TODO] Naming:** Select "Acme Lab" themed name for client.
 
 ## Dev Tools
 *   `./run_remote.sh [MODE]`: Primary execution.

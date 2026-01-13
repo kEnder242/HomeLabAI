@@ -106,6 +106,16 @@ class AcmeLab:
             
         return task.result()
 
+    def should_cache_query(self, query: str) -> bool:
+        """Determines if a query is safe to cache (not time-sensitive)."""
+        forbidden_words = ["time", "date", "weather", "status", "current", "now", "latest", "news", "update", "schedule"]
+        q_lower = query.lower()
+        for word in forbidden_words:
+            # Simple word boundary check would be better, but substring is safer for now
+            if word in q_lower:
+                return False
+        return True
+
     async def load_residents_and_equipment(self):
         """The Heavy Lifting: Connects MCP nodes and loads ML models."""
         logging.info(f"[BUILD] Loading Residents & Equipment (v{VERSION})...")
@@ -358,24 +368,52 @@ class AcmeLab:
 
                 elif tool == "delegate_to_brain":
                     instruction = params.get("instruction", query)
-                    logging.info(f"[BRAIN] Delegated: {instruction}")
+                    ignore_clipboard = params.get("ignore_clipboard", False)
+                    target_tool = params.get("tool", "deep_think")
+                    tool_args = params.get("args", {"query": instruction, "context": lab_context})
                     
-                    # Mock or Real Brain
-                    if self.mode == "MOCK_BRAIN":
-                        # WRAP call with Nervous Tics
-                        async def mock_brain_task():
-                            await asyncio.sleep(3.0) 
-                            return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"FINAL RESULT: I have analyzed '{instruction}'."})]})()
-
-                        brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
-                        brain_out = brain_res.content[0].text
+                    logging.info(f"[BRAIN] Delegated: {instruction} (Tool: {target_tool}, Ignore Clipboard: {ignore_clipboard})")
+                    
+                    # --- CLIPBOARD CHECK ---
+                    brain_out = None
+                    is_cacheable = self.should_cache_query(instruction)
+                    
+                    if is_cacheable and not ignore_clipboard and target_tool == "deep_think":
+                        try:
+                            cache_res = await self.residents['archive'].call_tool("consult_clipboard", arguments={"query": instruction})
+                            if cache_res and cache_res.content and cache_res.content[0].text != "None":
+                                raw_answer = cache_res.content[0].text
+                                brain_out = f"[FROM CLIPBOARD] {raw_answer}"
+                                logging.info("[BRAIN] Clipboard Found Note! Skipping inference.")
+                                await self.broadcast({"type": "debug", "event": "CLIPBOARD_HIT", "data": "Served from Semantic Clipboard"})
+                        except Exception as e:
+                            logging.warning(f"[CLIPBOARD] Check failed: {e}")
+                    elif ignore_clipboard:
+                        logging.info("[CLIPBOARD] Forced Skip (User Request).")
                     else:
-                        # WRAP call with Nervous Tics
-                        brain_res = await self.monitor_task_with_tics(
-                            self.residents['brain'].call_tool("deep_think", arguments={"query": instruction, "context": lab_context}),
-                            websocket
-                        )
+                        logging.info("[CLIPBOARD] Skipping check for volatile query or specific tool.")
+
+                    if not brain_out:
+                        # Call the Brain tool (Real or Mock)
+                        if self.mode == "MOCK_BRAIN":
+                            async def mock_brain_task():
+                                await asyncio.sleep(2.0)
+                                return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"MOCK RESULT: Processed {target_tool} with {tool_args}"})]})()
+                            brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
+                        else:
+                            brain_res = await self.monitor_task_with_tics(
+                                self.residents['brain'].call_tool(target_tool, arguments=tool_args),
+                                websocket
+                            )
+                        
                         brain_out = brain_res.content[0].text
+                        
+                        # --- SCRIBBLE NOTE (Only for standard thinking) ---
+                        if is_cacheable and target_tool == "deep_think":
+                            try:
+                                await self.residents['archive'].call_tool("scribble_note", arguments={"query": instruction, "response": brain_out})
+                            except Exception as e:
+                                logging.warning(f"[CLIPBOARD] Scribble failed: {e}")
 
                     # Add to context and continue loop
                     lab_context += f"\nBrain: {brain_out}"
