@@ -79,10 +79,13 @@ This document defines the standard operating procedures for the HomeLabAI develo
 
 ---
 
-## 5. The Exit Protocol ("Close Up Shop")
-**Trigger:** End of session.
+## 5. The Checkpoint Protocol (Save State)
+**Trigger:** "Checkpoint", "Save", "Close up shop", or end of a feature.
+**Goal:** Ensure 100% state persistence so the next Agent can resume immediately.
 
-1.  **Status Update:** Update `ProjectStatus.md` (Active -> Done/Backlog).
-2.  **Memory:** Save key architectural decisions to Long-Term Memory.
-3.  **Analysis:** Create a `Refactoring_Analysis` doc if technical debt was found.
-4.  **Commit:** Final git push.
+1.  **Status Update:** Update `ProjectStatus.md`.
+    *   Mark completed items `[DONE]`.
+    *   Define the **Next Action** clearly.
+2.  **Memory:** Save key architectural decisions or user preferences to Long-Term Memory.
+3.  **Code:** `git add .` and `git commit` with a semantic message.
+4.  **Handover:** Provide a 1-sentence summary of "Where we are" and "What to do next."
