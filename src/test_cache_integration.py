@@ -1,62 +1,59 @@
-import asyncio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-import sys
+import pytest
+import asyncio # Not explicitly needed in test file, but good for context
+import os
 
 # Configuration
-PYTHON_PATH = sys.executable
-ARCHIVE_SCRIPT = "src/nodes/archive_node.py"
+DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts") # Needed for cleaning up test artifacts
 
-async def test_cache_logic():
-    print("🧪 Starting Semantic Cache Integration Test...")
+@pytest.mark.asyncio
+async def test_clipboard_logic(archive_client):
+    """
+    Tests the semantic clipboard (cache) functionality of the archive node.
+    """
+    session = archive_client # Use the client provided by the fixture
     
-    server_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_SCRIPT])
+    print("\n🧪 Starting Semantic Clipboard Integration Test...")
     
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            print("✅ Archive Node Connected.")
-            
-            # 1. Test Miss
-            query_1 = "What is the airspeed velocity of an unladen swallow?"
-            print(f"\n1. Testing Cache Miss for: '{query_1}'")
-            res_1 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
-            
-            # FastMCP returns empty content for None
-            if not res_1.content:
-                 print("   ✅ Correct: Cache Miss (Empty Result).")
-            elif res_1.content[0].text == "None":
-                 print("   ✅ Correct: Cache Miss (String None).")
-            else:
-                 print(f"   ❌ Failed: Expected Miss, got '{res_1.content[0].text}'")
+    # 1. Test Miss
+    query_1 = "What is the airspeed velocity of an unladen swallow?"
+    print(f"\n1. Testing Clipboard Empty for: '{query_1}'")
+    res_1 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
+    
+    if not res_1.content:
+         print("   ✅ Correct: Clipboard Empty (No Note).")
+    elif res_1.content[0].text == "None":
+         print("   ✅ Correct: Clipboard Empty (String None).")
+    else:
+         print(f"   ❌ Failed: Expected Empty, got '{res_1.content[0].text}'")
 
-            # 2. Test Store
-            response_1 = "African or European?"
-            print(f"\n2. Storing Response: '{response_1}'")
-            res_2 = await session.call_tool("scribble_note", arguments={"query": query_1, "response": response_1})
-            print(f"   Result: {res_2.content[0].text}")
+    # 2. Test Store
+    response_1 = "African or European?"
+    print(f"\n2. Scribbling Note: '{response_1}'")
+    res_2 = await session.call_tool("scribble_note", arguments={"query": query_1, "response": response_1})
+    print(f"   Result: {res_2.content[0].text}")
 
-            # 3. Test Exact Hit
-            print(f"\n3. Testing Exact Hit for: '{query_1}'")
-            res_3 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
-            content_3 = res_3.content[0].text
-            print(f"   Result: {content_3}")
-            if content_3 == response_1:
-                print("   ✅ Correct: Exact Hit.")
-            else:
-                print(f"   ❌ Failed: Expected '{response_1}', got '{content_3}'")
+    # 3. Test Exact Hit
+    print(f"\n3. Consulting Clipboard (Exact Match) for: '{query_1}'")
+    res_3 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
+    content_3 = res_3.content[0].text
+    print(f"   Result: {content_3}")
+    assert content_3 == response_1, f"Expected '{response_1}', got '{content_3}'"
+    print("   ✅ Correct: Exact Note Found.")
 
-            # 4. Test Semantic Hit
-            query_semantic = "Tell me the speed of a swallow carrying nothing"
-            print(f"\n4. Testing Semantic Hit for: '{query_semantic}'")
-            res_4 = await session.call_tool("consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4}) 
-            # Note: Using lax threshold 0.4 for test safety, though 0.35 is default
-            content_4 = res_4.content[0].text
-            print(f"   Result: {content_4}")
-            if content_4 == response_1:
-                print("   ✅ Correct: Semantic Hit.")
-            else:
-                print(f"   ❌ Failed: Expected '{response_1}', got '{content_4}'")
+    # 4. Test Semantic Hit
+    print(f"\n4. Consulting Clipboard (Semantic Match) for: '{query_semantic}'")
+    # Note: Using lax threshold 0.4 for test safety, though 0.35 is default for consult_clipboard
+    res_4 = await session.call_tool("consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4}) 
+    content_4 = res_4.content[0].text
+    print(f"   Result: {content_4}")
+    assert content_4 == response_1, f"Expected '{response_1}', got '{content_4}'"
+    print("   ✅ Correct: Semantic Note Found.")
 
-if __name__ == "__main__":
-    asyncio.run(test_cache_logic())
+    # 5. Test TTL (Need to simulate time passing or use explicit timestamp for control)
+    # This is more complex and might require a separate helper tool or mock date.
+    # For now, we'll rely on the default TTL handling.
+
+    # 6. Test File Cleanup (Ensure test artifacts are removed)
+    # This test doesn't create files, so no cleanup needed.
+
+

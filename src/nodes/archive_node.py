@@ -2,9 +2,13 @@ from mcp.server.fastmcp import FastMCP
 import chromadb
 from chromadb.utils import embedding_functions
 import os
+import sys
 import logging
 import datetime
 import numpy as np
+
+# Force logging to stderr to avoid corrupting MCP stdout
+logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 
 # Configuration
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
@@ -175,6 +179,29 @@ def scribble_note(query: str, response: str) -> str:
         return "Note scribbled."
     except Exception as e:
         return f"Clipboard error: {e}"
+
+@mcp.tool()
+def clear_collection(collection_name: str) -> str:
+    """
+    Clears all items from a specified collection. USE WITH CAUTION.
+    Designed for test cleanup.
+    """
+    if collection_name == COLLECTION_CACHE:
+        chroma_client.delete_collection(name=COLLECTION_CACHE)
+        global cache
+        cache = chroma_client.get_or_create_collection(name=COLLECTION_CACHE, embedding_function=ef)
+        return f"Collection '{collection_name}' cleared."
+    elif collection_name == COLLECTION_STREAM:
+        chroma_client.delete_collection(name=COLLECTION_STREAM)
+        global stream
+        stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
+        return f"Collection '{collection_name}' cleared."
+    elif collection_name == COLLECTION_WISDOM:
+        chroma_client.delete_collection(name=COLLECTION_WISDOM)
+        global wisdom
+        wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
+        return f"Collection '{collection_name}' cleared."
+    return f"Error: Invalid collection name '{collection_name}'."
 
 # Initialize Collections
 stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
