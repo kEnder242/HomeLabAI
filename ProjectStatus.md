@@ -21,6 +21,14 @@
 *   **Client Outdated:** Run `sync_to_windows.sh` if `mic_test.py` changed.
 *   **SSH Key:** Always use `-i ~/.ssh/id_rsa_wsl`.
 
+## Remote Access Configuration (Travel Mode)
+*   **Domain:** `jason-lab.dev`
+*   **Services (Systemd on z87-Linux):**
+    *   `cloudflared.service`: Tunnels traffic to Cloudflare.
+    *   `code-server@jallred.service`: VS Code on port 8080 (`code.jason-lab.dev`).
+    *   `acme-pager.service`: Streamlit Pager on port 8501 (`pager.jason-lab.dev`).
+*   **⚠️ Debug Warning:** These services run automatically. If debugging locally via SSH, stop them (`sudo systemctl stop acme-pager`) to free up ports 8080/8501, or use different ports for dev instances.
+
 ## Completed Milestones (Session Jan 12)
 1.  **Semantic Caching (The Clipboard Protocol):**
     *   Implemented `semantic_cache` in ChromaDB with adaptive thresholds (0.35 distance).
