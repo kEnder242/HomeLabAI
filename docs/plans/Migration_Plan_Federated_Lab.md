@@ -53,10 +53,14 @@ We are splitting the "Home Lab" into two distinct, loosely coupled repositories 
 *   **Strategy:** `Portfolio_Dev` owns the PagerDuty client (`monitor/notify_pd.py`).
 *   **Integration:** `HomeLabAI` triggers alerts via a local Webhook (provided by the Portfolio web app) or by executing the script if permissions allow.
 
-### Goal 2: Acme Labs Web Page
-*   **Strategy:** Build a unified landing page in `Portfolio_Dev/web/`.
+### Goal 2: Acme Labs Web Page (The Web Intercom)
+*   **Concept:** Port the `intercom.py` functionality (Voice Input, Talk & Read) to a web interface hosted by `Portfolio_Dev`.
+*   **Strategy:**
+    *   **Frontend (`Portfolio_Dev`):** Implement Web Audio API for Push-to-Talk and streaming.
+    *   **Backend (`HomeLabAI`):** Accept audio streams via WebSocket/API from the Portfolio web app.
 *   **Features:**
-    *   Status of Pinky/Brain.
+    *   Live Audio Input (Mic) to Pinky.
+    *   Real-time Text Output log (Talk & Read UI).
     *   "Mission Control" Sidebar (Goal #3).
     *   Links to VS Code and Grafana.
 
