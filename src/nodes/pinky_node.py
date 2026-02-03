@@ -3,6 +3,8 @@ import aiohttp
 import json
 import logging
 import sys
+import subprocess
+import os
 
 # Force logging to stderr to avoid corrupting MCP stdout
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
@@ -34,6 +36,7 @@ PINKY_SYSTEM_PROMPT = (
     "   - If the Brain's output starts with '[THE EDITOR]', say: 'I've filed that draft on his table...' or 'He's finished scribbling that plan...' "
     "   - If the answer comes from 'RELEVANT MEMORY' (The Library), attribute it to 'your files'. "
     "4. SMALL TALK: Only use 'reply_to_user' for greetings or summarizing the Brain. "
+    "5. URGENT ALERTS: If you detect system issues (Heat, Load) or a critical task completes, use 'trigger_pager'. "
     
     "OUTPUT FORMAT: "
     "You MUST output a JSON object with the following structure: "
@@ -45,7 +48,26 @@ PINKY_SYSTEM_PROMPT = (
     "- critique_brain(feedback) "
     "- manage_lab(action, message) "
     "- add_routing_anchor(target, anchor_text) "
+    "- trigger_pager(summary, severity, source) "
 )
+
+@mcp.tool()
+async def trigger_pager(summary: str, severity: str = "info", source: str = "Pinky") -> str:
+    """
+    Triggers the PagerDuty alert system and logs the event.
+    Use this for thermal warnings, task completions, or system anomalies.
+    """
+    script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_pd.py")
+    try:
+        # Running with --dry-run as per mock stage
+        cmd = ["python3", script_path, summary, "--source", source, "--severity", severity, "--dry-run"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return f"Zort! Paged the human: {summary}"
+        else:
+            return f"Egad! Pager failed: {result.stderr}"
+    except Exception as e:
+        return f"Narf! Couldn't find the pager: {e}"
 
 @mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:

@@ -44,7 +44,7 @@ This document defines the standard operating procedures for the HomeLabAI develo
 ### The Rules
 1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
 2.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
-    *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
+    *   *Timeout:** The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
     *   *Visibility:* Agent is blind during execution. Logs are processed *after* the server returns.
 3.  **User Action:**
     *   Run `python src/intercom.py`.
@@ -89,3 +89,32 @@ This document defines the standard operating procedures for the HomeLabAI develo
 2.  **Memory:** Save key architectural decisions or user preferences to Long-Term Memory.
 3.  **Code:** `git add .` and `git commit` with a semantic message.
 4.  **Handover:** Provide a 1-sentence summary of "Where we are" and "What to do next."
+
+---
+
+## 6. The BKM Protocol (Point-of-Failure Reporting)
+**Trigger:** "BKM Style", "BKM Report", or end of a deployment/fix.
+**Goal:** Deliver high-density, action-oriented documentation modeled after SRE Playbooks and Validation Engineering BKMs.
+
+### The Rules
+1.  **Preparation (The "Soil"):** Provide 1-liner installation or environment setup commands (e.g., `pip`, `echo`, `chmod`).
+2.  **The Critical Logic (The "Core"):** Distill the code down to the absolute essential lines that make the feature work. No filler.
+3.  **Trigger Points (The "Action"):** Provide the exact CLI command or tool call used to execute/validate the work.
+4.  **Retrospective (The "Scars"):** Explicitly list mis-steps, bugs found during the process, and the specific fixes applied. This is for learning from the struggle.
+
+### Characteristics
+*   **Monospace Preferred:** Use code blocks for all commands and logic.
+*   **No Chitchat:** Keep the summaries technical and direct.
+*   **Atomic:** Each section should be independent and usable as a reference during a "Point of Failure."
+
+## 7. The BKM-Pointer Summary (Referential Documentation)
+**Trigger:** "Update generic document", "Add pointer", or when documenting a specific implementation within a broader architectural file.
+**Goal:** Avoid duplication by creating lightweight "signposts" that guide future engineers to a solution pattern without copy-pasting the full playbook.
+
+### The Structure
+1.  **GOAL:** A 1-sentence statement of what the feature achieves.
+2.  **KEYWORD:** The specific search term, API flag, or variable name that is critical to the solution (e.g., `decision: "access_request"`).
+3.  **SCOPE:** Where this applies (Application ID, Account Level, File Path).
+4.  **LOGIC:** A condensed summary of the "How".
+5.  **PAYLOAD/CONFIG:** The specific JSON snippet, configuration block, or command arguments required.
+6.  **AUTH/CONTEXT:** Required permissions or environment state.
