@@ -118,3 +118,14 @@ This document defines the standard operating procedures for the HomeLabAI develo
 4.  **LOGIC:** A condensed summary of the "How".
 5.  **PAYLOAD/CONFIG:** The specific JSON snippet, configuration block, or command arguments required.
 6.  **AUTH/CONTEXT:** Required permissions or environment state.
+
+---
+
+## 8. Session Scars & Lessons Learned
+*This section documents hard-won knowledge from specific development sessions.*
+
+### 8.1 Feb 5, 2026 (The "Bootstrap & Airlock" Session)
+*   **The Double-Directory Trap:** When working in the `Dev_Lab` root, agents frequently miscalculate relative paths, resulting in `Dev_Lab/Dev_Lab/filename`. **BKM:** Always verify `ls -F` after a write/move. Use absolute paths or `./` explicitly when creating new directories.
+*   **Extension Automation:** Gemini CLI extension installation (`gemini extensions install`) hangs on confirmation prompts. **BKM:** Use the `--consent` flag for non-interactive automation.
+*   **Sub-Agent Protocol:** Sub-agents (like `cli_help`) may fail with `ERROR_NO_COMPLETE_TASK_CALL`. **BKM:** If a sub-agent hangs, prefer `google_web_search` or direct file reads to bypass the loop.
+*   **Public/Private CORS:** To check "System Health" on a public page (`www`) without leaking data or hitting CORS errors, use `fetch(url, { mode: 'no-cors' })`. This acts as a reliable "network ping" to see if the tunnel is open.
