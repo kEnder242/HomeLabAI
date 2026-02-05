@@ -370,9 +370,19 @@ class AcmeLab:
                     instruction = params.get("instruction", query)
                     ignore_clipboard = params.get("ignore_clipboard", False)
                     target_tool = params.get("tool", "deep_think")
-                    tool_args = params.get("args", {"query": instruction, "context": lab_context})
                     
-                    logging.info(f"[BRAIN] Delegated: {instruction} (Tool: {target_tool}, Ignore Clipboard: {ignore_clipboard})")
+                    # Fix: Inject memory_text into the brain's context if available
+                    augmented_context = lab_context
+                    if memory_text:
+                        augmented_context = f"Relevant Archives:\n{memory_text}\n\nCurrent Context:\n{lab_context}"
+
+                    tool_args = params.get("args", {"query": instruction, "context": augmented_context})
+                    
+                    logging.info(f"[BRAIN] Delegated: {instruction}")
+                    if memory_text:
+                        logging.info("[DEBUG] RAG Data present in Brain context.")
+                    else:
+                        logging.info("[DEBUG] No RAG Data for this turn.")
                     
                     # --- CLIPBOARD CHECK ---
                     brain_out = None
