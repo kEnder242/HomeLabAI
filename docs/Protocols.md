@@ -129,3 +129,19 @@ This document defines the standard operating procedures for the HomeLabAI develo
 *   **Extension Automation:** Gemini CLI extension installation (`gemini extensions install`) hangs on confirmation prompts. **BKM:** Use the `--consent` flag for non-interactive automation.
 *   **Sub-Agent Protocol:** Sub-agents (like `cli_help`) may fail with `ERROR_NO_COMPLETE_TASK_CALL`. **BKM:** If a sub-agent hangs, prefer `google_web_search` or direct file reads to bypass the loop.
 *   **Public/Private CORS:** To check "System Health" on a public page (`www`) without leaking data or hitting CORS errors, use `fetch(url, { mode: 'no-cors' })`. This acts as a reliable "network ping" to see if the tunnel is open.
+
+---
+
+## 9. The Cold Start Protocol (Session Orientation)
+**Trigger:** Start of a new session, new agent, or "Welcome Idea."
+**Goal:** Rapidly synchronize the agent's mental model with the current lab state, protocols, and guardrails.
+
+1.  **The Bootloader:** Read the root `README.md`.
+2.  **The Now:** Read `Portfolio_Dev/00_FEDERATED_STATUS.md` and `HomeLabAI/ProjectStatus.md`.
+3.  **The Rules:** Read `Portfolio_Dev/DEV_LAB_STRATEGY.md` and `HomeLabAI/docs/Protocols.md`.
+4.  **The Context Check:**
+    *   **Git Guardrail:** Confirm `git push` is restricted.
+    *   **Environments:** Locate and acknowledge the two isolated venvs.
+    *   **LLMs:** Verify status of Pinky (Linux) and The Brain (Windows).
+    *   **Archives:** Identify deprecated plans and archived logs to distinguish "Old" vs "New".
+5.  **Grounding Report:** Present a concise summary of findings to the Lead Engineer and wait for alignment.
