@@ -19,53 +19,38 @@ class EarNode:
         self.model.eval()
         self.model = self.model.to("cuda")
         
-        # FIX: Sledgehammer - Recursively disable CUDA Graphs in all sub-objects
-        # This solves the 'expected 6, got 5' error in NeMo 2.x
-        def disable_cuda_graphs(obj, depth=0):
-            if depth > 8: return 
-            
-            # 1. Force modes if methods exist
-            if hasattr(obj, 'force_cuda_graphs_mode'):
-                try:
-                    obj.force_cuda_graphs_mode("no_graphs")
-                except: pass
-            
-            if hasattr(obj, 'disable_cuda_graphs'):
-                try:
-                    obj.disable_cuda_graphs()
-                except: pass
-
-            # 2. Set flags
-            for attr in ['cuda_graphs', 'allow_cuda_graphs', 'cuda_graphs_mode']:
-                if hasattr(obj, attr):
-                    try:
-                        # Set to False or None depending on what it expects
-                        if attr == 'cuda_graphs_mode':
-                            setattr(obj, attr, None)
-                        else:
-                            setattr(obj, attr, False)
-                    except: pass
-
-            # 3. Recurse
-            if hasattr(obj, '__dict__'):
-                for attr_name in obj.__dict__:
-                    try:
-                        sub_obj = getattr(obj, attr_name)
-                        disable_cuda_graphs(sub_obj, depth + 1)
-                    except: pass
-            
-            # 4. Handle nn.Modules specifically
-            if hasattr(obj, 'children'):
-                for child in obj.children():
-                    disable_cuda_graphs(child, depth + 1)
-
-        disable_cuda_graphs(self.model)
-        logging.info("👂 EarNode: CUDA Graphs definitively disabled (Heads-Up Fix).")
-        
+        self.cuda_graph_failed = False
         self.full_transcript = ""
         self.last_speech_time = time.time()
         self.turn_pending = False
         self.wake_signal_sent = False
+
+    def _sledgehammer_disable_graphs(self):
+        """Recursively disables CUDA Graphs across the entire model tree."""
+        logging.warning("⚠️ EarNode: Triggering Sledgehammer recovery (disabling CUDA Graphs)...")
+        def disable_recursive(obj, depth=0):
+            if depth > 8: return 
+            if hasattr(obj, 'force_cuda_graphs_mode'):
+                try: obj.force_cuda_graphs_mode("no_graphs")
+                except: pass
+            if hasattr(obj, 'disable_cuda_graphs'):
+                try: obj.disable_cuda_graphs()
+                except: pass
+            for attr in ['cuda_graphs', 'allow_cuda_graphs', 'cuda_graphs_mode']:
+                if hasattr(obj, attr):
+                    try: setattr(obj, attr, None if attr == 'cuda_graphs_mode' else False)
+                    except: pass
+            if hasattr(obj, '__dict__'):
+                for attr_name in obj.__dict__:
+                    try: disable_recursive(getattr(obj, attr_name), depth + 1)
+                    except: pass
+            if hasattr(obj, 'children'):
+                for child in obj.children():
+                    disable_recursive(child, depth + 1)
+        
+        disable_recursive(self.model)
+        self.cuda_graph_failed = True
+        logging.info("👂 EarNode: Self-healed into Eager Mode.")
 
     @torch.no_grad()
     def process_audio(self, audio_data):
@@ -79,33 +64,46 @@ class EarNode:
         audio_signal = audio_data.astype(np.float32) / 32768.0
         audio_signal = torch.tensor(audio_signal).unsqueeze(0).to("cuda")
         
-        try:
-            # Reverting to the January logic which was stable
-            outputs = self.model.forward(
-                input_signal=audio_signal, 
-                input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
-            )
-            
-            # Extract encoded tensors (Standard RNNT indices)
-            encoded = outputs[0]
-            encoded_len = outputs[1]
-
-            current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(encoded, encoded_len)
-            
-            if current_hypotheses and len(current_hypotheses) > 0:
-                raw_text = current_hypotheses[0].text
-                if raw_text:
-                    logging.info(f"👂 EarNode: Hypothesis found: {raw_text}")
-                if not raw_text: return None
+        # We try twice: once optimistically, once after healing if needed
+        for attempt in range(2):
+            try:
+                outputs = self.model.forward(
+                    input_signal=audio_signal, 
+                    input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
+                )
                 
-                incremental_text = get_new_text(self.full_transcript, raw_text)
-                if incremental_text:
-                    self.full_transcript += " " + incremental_text
-                    self.last_speech_time = time.time()
-                    self.turn_pending = True
-                    return incremental_text.strip()
-        except Exception as e:
-            logging.error(f"EarNode Inference Error: {e}")
+                # Robust extraction: NeMo RNNT forward usually returns (encoded, encoded_len, ...)
+                if isinstance(outputs, (list, tuple)) and len(outputs) >= 2:
+                    encoded = outputs[0]
+                    encoded_len = outputs[1]
+                else:
+                    encoded = outputs
+                    encoded_len = torch.tensor([encoded.shape[1]]).to("cuda")
+
+                current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(encoded, encoded_len)
+                
+                if current_hypotheses and len(current_hypotheses) > 0:
+                    raw_text = current_hypotheses[0].text
+                    if raw_text:
+                        logging.info(f"👂 EarNode: Hypothesis found: {raw_text}")
+                    if not raw_text: return None
+                    
+                    incremental_text = get_new_text(self.full_transcript, raw_text)
+                    if incremental_text:
+                        self.full_transcript += " " + incremental_text
+                        self.last_speech_time = time.time()
+                        self.turn_pending = True
+                        return incremental_text.strip()
+                return None # No text found but no error
+
+            except Exception as e:
+                # Catch the specific unpacking error or any other graph-related crash
+                if ("unpack" in str(e) or "cu_call" in str(e)) and not self.cuda_graph_failed:
+                    self._sledgehammer_disable_graphs()
+                    continue 
+                else:
+                    logging.error(f"EarNode Inference Error: {e}")
+                    return None
         return None
 
     def check_turn_end(self, silence_timeout=1.2):
