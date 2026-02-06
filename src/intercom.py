@@ -24,7 +24,7 @@ except ImportError:
     pass # Fallback to raw ANSI if colorama is missing
 
 # --- CONFIGURATION ---
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 HOST = "z87-Linux.local" 
 PORT = 8765
 CHUNK = 2048
