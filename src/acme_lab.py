@@ -7,6 +7,7 @@ import argparse
 import sys
 import numpy as np
 import random
+import time
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -26,7 +27,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "2.1.0"
+VERSION = "2.4.0"
 
 # Logging
 logging.basicConfig(
@@ -217,8 +218,14 @@ class AcmeLab:
         await ws.send_str(json.dumps(status_msg))
 
         audio_buffer = np.zeros(0, dtype=np.int16)
+        last_heartbeat = time.time()
         try:
             async for message in ws:
+                # Heartbeat for audio troubleshooting
+                if time.time() - last_heartbeat > 5.0:
+                    logging.info(f"[MIC] Heartbeat... Buffer size: {len(audio_buffer)}")
+                    last_heartbeat = time.time()
+
                 if message.type == aiohttp.WSMsgType.TEXT:
                     if self.status != "READY": continue
                     
@@ -250,15 +257,10 @@ class AcmeLab:
                         elif data.get("type") == "handshake":
                             client_ver = data.get("version", "0.0.0")
                             if client_ver != VERSION:
-                                logging.error(f"❌ [VERSION MISMATCH] Client ({client_ver}) != Server ({VERSION}). Connection Refused.")
-                                await ws.send_str(json.dumps({"brain": f"SYSTEM ALERT: Client outdated ({client_ver}). Please update.", "brain_source": "System"}))
-                                
-                                if self.mode in ["SERVICE"]:
-                                    await ws.close()
-                                else:
-                                    # Fail Fast in Debug Mode
-                                    logging.info("[DEBUG] Mismatch triggered Fail-Fast Shutdown.")
-                                    self.shutdown_event.set()
+                                error_msg = f"VERSION MISMATCH: Client ({client_ver}) != Server ({VERSION}). Please run './sync_to_windows.sh' and wait for GDrive to sync."
+                                logging.error(f"❌ {error_msg}")
+                                await ws.send_str(json.dumps({"brain": error_msg, "brain_source": "System"}))
+                                await ws.close()
                                 return
                             else:
                                 logging.info(f"[HANDSHAKE] Client verified (v{client_ver}).")
@@ -266,6 +268,9 @@ class AcmeLab:
                         elif data.get("type") == "text_input":
                             query = data.get("content", "")
                             logging.info(f"[TEXT] Rx: {query}")
+                            
+                            # Echo back to client for UI consistency
+                            await ws.send_str(json.dumps({"type": "final", "text": query}))
                             
                             # Interrupt Logic (Barge-In)
                             if self.current_processing_task and not self.current_processing_task.done():
@@ -284,8 +289,9 @@ class AcmeLab:
                     if self.ear:
                         audio_buffer = np.concatenate((audio_buffer, chunk))
                         
-                        if len(audio_buffer) >= 24000:
-                            window = audio_buffer[:24000]
+                        # Increased buffer window from 24000 to 32000 to satisfy model context
+                        if len(audio_buffer) >= 32000:
+                            window = audio_buffer[:32000]
                             text = self.ear.process_audio(window)
                             if text:
                                 logging.info(f"[STT] Tx: {text}")
@@ -296,7 +302,7 @@ class AcmeLab:
                                     await ws.send_str(json.dumps({"type": "control", "command": "stop_audio"}))
 
                                 await ws.send_str(json.dumps({"text": text}))
-                            audio_buffer = audio_buffer[24000-8000:] 
+                            audio_buffer = audio_buffer[32000-8000:] 
 
                         query = self.ear.check_turn_end()
                         if query:
@@ -481,9 +487,10 @@ class AcmeLab:
                     break
 
         except asyncio.CancelledError:
-            logging.info(f"[LAB] Session '{query}' was CANCELLED (Barge-In).")
+            logging.info(f"[LAB] Session was CANCELLED (Barge-In).")
             try:
-                await websocket.send_str(json.dumps({"brain": "Stopping... Narf!", "brain_source": "Pinky"}))
+                # Attempt to tell client to stop audio, but ignore if resource closed
+                await websocket.send_str(json.dumps({"type": "control", "command": "stop_audio"}))
             except: pass
             raise 
         except Exception as e:

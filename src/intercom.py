@@ -24,7 +24,7 @@ except ImportError:
     pass # Fallback to raw ANSI if colorama is missing
 
 # --- CONFIGURATION ---
-VERSION = "2.1.0"
+VERSION = "2.4.0"
 HOST = "z87-Linux.local" 
 PORT = 8765
 CHUNK = 2048
@@ -51,37 +51,22 @@ class ClientState(Enum):
 # Global Context
 STATE = ClientState.LOBBY
 SHUTDOWN_EVENT = asyncio.Event()
-PENDING_CHAR = "" # Stores the key that triggered text mode
 
 async def get_user_input():
     """Blocking input wrapped in a thread."""
-    global PENDING_CHAR
-    text = await asyncio.to_thread(sys.stdin.readline)
-    if PENDING_CHAR:
-        # Prepend the character that triggered the mode switch
-        full_text = PENDING_CHAR + text
-        print(f"\r>> {full_text.strip()}") # Show the full word to the user
-        PENDING_CHAR = ""
-        return full_text
-    return text
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, sys.stdin.readline)
 
 async def check_keyboard_trigger():
-    """Polls for ANY key to toggle modes (Windows Only)."""
-    global PENDING_CHAR
+    """Polls for SPACE key to toggle modes (Windows Only)."""
     if not IS_WINDOWS:
         return False
     
     if msvcrt.kbhit():
-        char_bytes = msvcrt.getch()
-        try:
-            # Try to decode the trigger char so we can re-inject it
-            PENDING_CHAR = char_bytes.decode('utf-8')
-        except:
-            PENDING_CHAR = "" # Ignore non-decodable keys
-            
-        while msvcrt.kbhit():
-            msvcrt.getch() # Clear the rest of the buffer (arrows, etc)
-        return True
+        char = msvcrt.getch()
+        # Trigger text mode only on SPACE (32)
+        if char == b' ':
+            return True
     return False
 
 async def receive_messages(websocket):
@@ -189,7 +174,6 @@ async def audio_and_input_loop(websocket):
                         "timestamp": 0 # TODO: Add real time
                     }
                     await websocket.send(json.dumps(payload))
-                    print(f"{COLOR_YELLOW}📝 [YOU]: {user_text}{COLOR_RESET}")
                 
                 # 3. Return to Listening
                 print(f"{COLOR_GREEN}[CLIENT] Mic Resumed.{COLOR_RESET}")
