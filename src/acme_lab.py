@@ -1,5 +1,6 @@
 import asyncio
-import websockets
+import aiohttp
+from aiohttp import web
 import json
 import logging
 import argparse
@@ -77,7 +78,7 @@ class AcmeLab:
         message = json.dumps(message_dict)
         for ws in self.connected_clients:
             try:
-                await ws.send(message)
+                await ws.send_str(message)
             except: pass
 
     async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
@@ -98,7 +99,7 @@ class AcmeLab:
             tic = random.choice(self.NERVOUS_TICS)
             logging.info(f"[TIC] Emitting: {tic}")
             try:
-                await websocket.send(json.dumps({"brain": tic, "brain_source": "Pinky (Reflex)"}))
+                await websocket.send_str(json.dumps({"brain": tic, "brain_source": "Pinky (Reflex)"}))
             except: pass
             
             # Increase delay slightly for next tic to avoid spamming (backoff)
@@ -187,14 +188,24 @@ class AcmeLab:
         self.mode = mode
         logging.info(f"[LAB] Acme Lab Booting (Mode: {mode})...")
 
-        async with websockets.serve(self.client_handler, "0.0.0.0", PORT):
-            logging.info(f"[DOOR] Lab Doors Open on Port {PORT}")
-            
-            # Run the main application logic (blocks until shutdown)
-            await self.load_residents_and_equipment()
+        app = web.Application()
+        app.add_routes([web.get('/', self.client_handler)])
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', PORT)
+        await site.start()
+        
+        logging.info(f"[DOOR] Lab Doors Open on Port {PORT}")
+        
+        # Run the main application logic (blocks until shutdown)
+        await self.load_residents_and_equipment()
 
-    async def client_handler(self, websocket):
-        self.connected_clients.add(websocket)
+    async def client_handler(self, request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        
+        self.connected_clients.add(ws)
         logging.info("[LAB] Client entered the Lobby.")
         
         status_msg = {"type": "status", "version": VERSION}
@@ -203,16 +214,16 @@ class AcmeLab:
         else:
             status_msg.update({"state": "ready", "message": "Lab is Open."})
         
-        await websocket.send(json.dumps(status_msg))
+        await ws.send_str(json.dumps(status_msg))
 
         audio_buffer = np.zeros(0, dtype=np.int16)
         try:
-            async for message in websocket:
-                if self.status != "READY": continue
-
-                if isinstance(message, str):
+            async for message in ws:
+                if message.type == aiohttp.WSMsgType.TEXT:
+                    if self.status != "READY": continue
+                    
                     try:
-                        data = json.loads(message)
+                        data = json.loads(message.data)
                         if "debug_text" in data:
                             query = data["debug_text"]
                             if query == "SHUTDOWN_PROTOCOL_OVERRIDE":
@@ -234,16 +245,16 @@ class AcmeLab:
                                 logging.info("[BARGE-IN] New query received. Cancelling previous task.")
                                 self.current_processing_task.cancel()
                             
-                            self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
                         
                         elif data.get("type") == "handshake":
                             client_ver = data.get("version", "0.0.0")
                             if client_ver != VERSION:
                                 logging.error(f"❌ [VERSION MISMATCH] Client ({client_ver}) != Server ({VERSION}). Connection Refused.")
-                                await websocket.send(json.dumps({"brain": f"SYSTEM ALERT: Client outdated ({client_ver}). Please update.", "brain_source": "System"}))
+                                await ws.send_str(json.dumps({"brain": f"SYSTEM ALERT: Client outdated ({client_ver}). Please update.", "brain_source": "System"}))
                                 
                                 if self.mode in ["SERVICE"]:
-                                    await websocket.close()
+                                    await ws.close()
                                 else:
                                     # Fail Fast in Debug Mode
                                     logging.info("[DEBUG] Mismatch triggered Fail-Fast Shutdown.")
@@ -262,48 +273,52 @@ class AcmeLab:
                                 self.current_processing_task.cancel()
 
                             # Start Processing
-                            self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
 
                     except: pass
-                    continue
 
-                chunk = np.frombuffer(message, dtype=np.int16)
-                if self.ear:
-                    audio_buffer = np.concatenate((audio_buffer, chunk))
+                elif message.type == aiohttp.WSMsgType.BINARY:
+                    if self.status != "READY": continue
                     
-                    if len(audio_buffer) >= 24000:
-                        window = audio_buffer[:24000]
-                        text = self.ear.process_audio(window)
-                        if text:
-                            logging.info(f"[STT] Tx: {text}")
-                            # BARGE-IN on Speech Detection
-                            if self.current_processing_task and not self.current_processing_task.done():
-                                logging.info("[BARGE-IN] Speech detected. Interrupting...")
-                                self.current_processing_task.cancel()
-                                await websocket.send(json.dumps({"type": "control", "command": "stop_audio"}))
+                    chunk = np.frombuffer(message.data, dtype=np.int16)
+                    if self.ear:
+                        audio_buffer = np.concatenate((audio_buffer, chunk))
+                        
+                        if len(audio_buffer) >= 24000:
+                            window = audio_buffer[:24000]
+                            text = self.ear.process_audio(window)
+                            if text:
+                                logging.info(f"[STT] Tx: {text}")
+                                # BARGE-IN on Speech Detection
+                                if self.current_processing_task and not self.current_processing_task.done():
+                                    logging.info("[BARGE-IN] Speech detected. Interrupting...")
+                                    self.current_processing_task.cancel()
+                                    await ws.send_str(json.dumps({"type": "control", "command": "stop_audio"}))
 
-                            await websocket.send(json.dumps({"text": text}))
-                        audio_buffer = audio_buffer[24000-8000:] 
+                                await ws.send_str(json.dumps({"text": text}))
+                            audio_buffer = audio_buffer[24000-8000:] 
 
-                    query = self.ear.check_turn_end()
-                    if query:
-                        logging.info(f"[MIC] TURN COMPLETE: '{query}'")
-                        await websocket.send(json.dumps({"type": "final", "text": query}))
-                        self.current_processing_task = asyncio.create_task(self.process_query(query, websocket))
-                else:
-                    # No ear, just ignore audio chunks
-                    pass
+                        query = self.ear.check_turn_end()
+                        if query:
+                            logging.info(f"[MIC] TURN COMPLETE: '{query}'")
+                            await ws.send_str(json.dumps({"type": "final", "text": query}))
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
+                    else:
+                        # No ear, just ignore audio chunks
+                        pass
 
-        except websockets.exceptions.ConnectionClosed:
-            logging.info("[LAB] Client left the Lobby.")
+        except Exception as e:
+            logging.error(f"[LAB] Connection Error: {e}")
         finally:
-            if websocket in self.connected_clients:
-                self.connected_clients.remove(websocket)
+            if ws in self.connected_clients:
+                self.connected_clients.remove(ws)
             
             # Auto-Shutdown in Debug Modes
             if self.mode != "HOSTING" and len(self.connected_clients) == 0:
                 logging.info("[DEBUG] Last client disconnected. Shutting down Lab.")
                 self.shutdown_event.set()
+        
+        return ws
 
     async def process_query(self, query, websocket):
         """The Main Lab Logic Router (Round Table Loop)."""
@@ -363,7 +378,7 @@ class AcmeLab:
                 # 3. Execute Decision
                 if tool == "reply_to_user":
                     text = params.get("text", "Narf!")
-                    await websocket.send(json.dumps({"brain": text, "brain_source": "Pinky"}))
+                    await websocket.send_str(json.dumps({"brain": text, "brain_source": "Pinky"}))
                     break # End of Turn
 
                 elif tool == "delegate_to_brain":
@@ -405,21 +420,25 @@ class AcmeLab:
 
                     if not brain_out:
                         # Call the Brain tool (Real or Mock)
-                        if self.mode == "MOCK_BRAIN":
-                            async def mock_brain_task():
-                                await asyncio.sleep(2.0)
-                                return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"MOCK RESULT: Processed {target_tool} with {tool_args}"})]})()
-                            brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
-                        else:
-                            brain_res = await self.monitor_task_with_tics(
-                                self.residents['brain'].call_tool(target_tool, arguments=tool_args),
-                                websocket
-                            )
+                        try:
+                            if self.mode == "MOCK_BRAIN":
+                                async def mock_brain_task():
+                                    await asyncio.sleep(2.0)
+                                    return type('obj', (object,), {'content': [type('obj', (object,), {'text': f"MOCK RESULT: Processed {target_tool} with {tool_args}"})]})()
+                                brain_res = await self.monitor_task_with_tics(mock_brain_task(), websocket)
+                            else:
+                                brain_res = await self.monitor_task_with_tics(
+                                    self.residents['brain'].call_tool(target_tool, arguments=tool_args),
+                                    websocket
+                                )
+                            
+                            brain_out = brain_res.content[0].text
+                        except Exception as e:
+                            logging.error(f"[BRAIN] Connection Failed: {e}")
+                            brain_out = f"[SYSTEM ALERT] The Brain is currently offline or unreachable. Pinky, please handle this yourself."
                         
-                        brain_out = brain_res.content[0].text
-                        
-                        # --- SCRIBBLE NOTE (Only for standard thinking) ---
-                        if is_cacheable and target_tool == "deep_think":
+                        # --- SCRIBBLE NOTE (Only for standard thinking and successful brain output) ---
+                        if is_cacheable and target_tool == "deep_think" and "[SYSTEM ALERT]" not in brain_out:
                             try:
                                 await self.residents['archive'].call_tool("scribble_note", arguments={"query": instruction, "response": brain_out})
                             except Exception as e:
@@ -444,7 +463,7 @@ class AcmeLab:
                     message = params.get("message", "Closing Lab...")
                     
                     if action == "shutdown":
-                         await websocket.send(json.dumps({"brain": message, "brain_source": "Pinky"}))
+                         await websocket.send_str(json.dumps({"brain": message, "brain_source": "Pinky"}))
                          self.shutdown_event.set()
                          break
                 
@@ -454,7 +473,7 @@ class AcmeLab:
                     res = await self.residents['archive'].call_tool("add_routing_anchor", arguments={"target": target, "anchor_text": anchor_text})
                     msg = res.content[0].text
                     logging.info(f"[ROUTER] Anchor Added: {msg}")
-                    await websocket.send(json.dumps({"brain": f"Teacher Pinky says: {msg}", "brain_source": "System"}))
+                    await websocket.send_str(json.dumps({"brain": f"Teacher Pinky says: {msg}", "brain_source": "System"}))
                     decision = None # Continue loop
                 
                 else:
@@ -464,12 +483,12 @@ class AcmeLab:
         except asyncio.CancelledError:
             logging.info(f"[LAB] Session '{query}' was CANCELLED (Barge-In).")
             try:
-                await websocket.send(json.dumps({"brain": "Stopping... Narf!", "brain_source": "Pinky"}))
+                await websocket.send_str(json.dumps({"brain": "Stopping... Narf!", "brain_source": "Pinky"}))
             except: pass
             raise 
         except Exception as e:
             logging.error(f"[ERROR] Loop Exception: {e}")
-            await websocket.send(json.dumps({"brain": f"Lab Error: {e}", "brain_source": "System"}))
+            await websocket.send_str(json.dumps({"brain": f"Lab Error: {e}", "brain_source": "System"}))
 
 import signal
 
