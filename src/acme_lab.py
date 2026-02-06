@@ -470,7 +470,10 @@ class AcmeLab:
                     
                     if action == "shutdown":
                          await websocket.send_str(json.dumps({"brain": message, "brain_source": "Pinky"}))
-                         self.shutdown_event.set()
+                         if self.mode in ["HOSTING"]:
+                             logging.info("[SECURITY] Pinky requested shutdown, but ignored in HOSTING mode.")
+                         else:
+                             self.shutdown_event.set()
                          break
                 
                 elif tool == "add_routing_anchor":
