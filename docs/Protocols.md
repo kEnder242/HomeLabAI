@@ -43,21 +43,17 @@ This document defines the standard operating procedures for the HomeLabAI develo
 
 ### The Rules
 1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
-2.  **Pre-flight:** Agent verifies infrastructure (Cloudflare, WebSockets, Local Server) is listening before starting the blocking task.
-3.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
+2.  **Versioning:** Agent MUST bump the system `VERSION` (e.g. to 2.2.0) if any client/server logic changed. This forces the user to sync and prevents "Old Code" traps.
+3.  **Local Execution:** Server runs locally (via `copilot.sh`) to avoid SSH password prompts and reduce latency.
+4.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
     *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
-    *   *Visibility:* Agent is blind during execution. Logs are processed *after* the server returns.
-4.  **User Action:**
-    *   Run `python src/intercom.py` (or refresh Web Intercom).
-    *   Execute Test Plan.
-    *   **Verbal Feedback:** If a bug is found, tell Pinky: *"Pinky, note that [bug description]"*.
-    *   **Disconnect (Ctrl+C)** to signal completion and return control to Agent.
-5.  **Analysis (Post-Mortem):**
-    *   Agent mines logs for **Verbal Feedback** and **Implicit Errors** (Tracebacks).
-    *   Agent updates `ProjectStatus.md` immediately with findings.
-6.  **Safety Valves:**
-    *   **AFK Protection:** If no client connects within 60s, Server auto-terminates.
-    *   **Crash Recovery:** If Server crashes, the script returns the traceback immediately.
+5.  **User Action:**
+    *   **Verify Version:** Run `python src/intercom.py`. Confirm it says `Connected to vX.X.X`. 
+    *   **Sync:** If a version mismatch occurs, run `./sync_to_windows.sh` and wait for GDrive.
+    *   **Test:** Execute Test Plan.
+    *   **Verbal Feedback:** Tell Pinky: *"Pinky, note that [bug description]"*.
+    *   **Disconnect (Ctrl+C)** to signal completion.
+6.  **Analysis (Post-Mortem):** Agent mines logs for **Verbal Feedback** and findings.
 
 ---
 
