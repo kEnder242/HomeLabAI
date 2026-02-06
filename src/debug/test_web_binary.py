@@ -11,7 +11,7 @@ async def test_web_binary_stream():
     try:
         async with websockets.connect(uri) as ws:
             # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "2.4.1", "client": "web-test"}))
+            await ws.send(json.dumps({"type": "handshake", "version": "2.5.0", "client": "web-test"}))
             resp = await ws.recv()
             print(f"✅ Handshake: {resp}")
 

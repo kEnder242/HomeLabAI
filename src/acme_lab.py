@@ -27,7 +27,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 # Logging
 logging.basicConfig(
@@ -261,7 +261,7 @@ class AcmeLab:
                                 logging.error(f"❌ {error_msg}")
                                 await ws.send_str(json.dumps({"brain": error_msg, "brain_source": "System"}))
                                 await ws.close()
-                                return
+                                return ws
                             else:
                                 logging.info(f"[HANDSHAKE] Client verified (v{client_ver}).")
 
