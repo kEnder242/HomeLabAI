@@ -1,50 +1,36 @@
 # Project Status: HomeLabAI
 
 **Date:** February 5, 2026
-**Current Phase:** Phase 8: Federated Hybrid Cloud (Resilience & RAG)
+**Current Phase:** Phase 8: Federated Hybrid Cloud (Resilience & Web Voice)
 **Global Status:** [../Portfolio_Dev/00_FEDERATED_STATUS.md](../Portfolio_Dev/00_FEDERATED_STATUS.md)
 
 ## 🗺️ Documentation Map
-*   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md) (The Acme Lab Model)
-*   **Rules of Engagement:** [Protocols.md](docs/Protocols.md) (Demos, Testing, & Heads Down)
-*   **AI Master Plan:** [AI_MASTER_PLAN.md](docs/plans/AI_MASTER_PLAN.md) (Long-haul Roadmap)
-*   **Tech ROI:** [TECHNOLOGY_ROI.md](docs/plans/TECHNOLOGY_ROI.md) (Optimization Matrix)
+*   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md)
+*   **AI Master Plan:** [AI_MASTER_PLAN.md](docs/plans/AI_MASTER_PLAN.md) (Synthesized Keep Research)
+*   **EarNode Retrospective:** [SESSION_BKM_FEB_05.md](../Portfolio_Dev/SESSION_BKM_FEB_05.md)
 
 ## 🗣️ Glossary & Shortcuts
 *   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_PINKY`).
 *   **"Heads Down"**: Trigger `Builder Protocol`.
-*   **"Fast Loop"**: Trigger `Debug Protocol` (uses `DEBUG_PINKY` + `src/run_tests.sh`).
 *   **"The Dream"**: Trigger `src/dream_cycle.py` to consolidate memory.
 
 ## ⚠️ Known Traps
-*   **Startup Blindness:** `HOSTING` mode takes ~45s. Do not cancel early.
-*   **EarNode CUDA Graphs:** MUST be disabled recursively due to CUDA 12.8 mismatch.
-*   **Keyboard Handover:** Use **SPACE** to toggle text mode to prevent character eating.
-*   **Cloudflare WS:** Requires `aiohttp` for header tolerance (keep-alive).
+*   **EarNode CUDA Graphs:** Auto-detected. System self-heals if CUDA 12.8 conflict occurs.
+*   **Cache Walls:** Web Intercom requires `intercom_v2.js?v=3.0` to bypass Cloudflare/Browser cache.
+*   **Aiohttp Handshake:** Always ensure handlers return the `web.WebSocketResponse` object.
 
 ## Completed Milestones (Session Feb 5)
-1.  **RAG Context Bridge [DONE]:**
-    *   Fixed bug where RAG context was not forwarded to the Brain node.
-2.  **EarNode Recovery [DONE]:**
-    *   Resolved `ValueError: not enough values to unpack` by disabling CUDA Graphs recursively.
-    *   Verified stability with isolated test `src/test_earnode_isolated.py`.
-3.  **Infrastructure Automation [DONE]:**
-    *   Automated NVIDIA MPS setup (`src/debug/enable_mps.sh`).
-    *   Programmatically provisioned Cloudflare DNS and Access policies.
-4.  **Web Intercom Bootstrap [DONE]:**
-    *   Scaffolded `intercom.html` and migrated server to `aiohttp`.
+1.  **EarNode Resilience (v2.5.0):**
+    *   Implemented recursive graph disabling fallback.
+    *   Verified stability with isolated testing.
+2.  **Web Voice (v3.0.0):**
+    *   Implemented browser-based PCM capture (16kHz mono).
+    *   Integrated binary streaming into `aiohttp` server.
+    *   Resolved UI/Script synchronization crashes.
+3.  **Infrastructure:**
+    *   Provisioned `acme.jason-lab.dev` with Access Bypass for Lab IP.
 
 ## Master Backlog & Roadmap
-
-### Phase A: Infrastructure & Reliability (Next Up)
-*   **[TODO] Liger-Kernel:** Integrate fused kernels for 84% VRAM reduction.
-*   **[TODO] NVIDIA MPS Persistence:** Move `mps_env.sh` setup to systemd or bashrc.
-
-### Phase C.5: The Client Upgrade
-*   **[PLANNED] Web Audio:** Implement MediaStream API for voice input in browser.
-*   **[DONE] Web Text:** Basic WebSocket console operational.
-
-## Dev Tools
-*   `./src/copilot.sh [MODE]`: Synchronous local integration testing.
-*   `src/run_tests.sh`: Automated CI/CD.
-*   `src/test_earnode_isolated.py`: Isolated mic stability verification.
+*   **[TODO] Liger-Kernel:** Bench-test 80% VRAM reduction.
+*   **[TODO] Web Audio Feedback:** Add "Pinky is Speaking" visual cues to UI.
+*   **[PLANNED] Year-to-Year Resume:** Re-index archives for 2005-2024 work history.
