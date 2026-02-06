@@ -43,17 +43,19 @@ This document defines the standard operating procedures for the HomeLabAI develo
 
 ### The Rules
 1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
-2.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
-    *   *Timeout:** The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
+2.  **Pre-flight:** Agent verifies infrastructure (Cloudflare, WebSockets, Local Server) is listening before starting the blocking task.
+3.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
+    *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
     *   *Visibility:* Agent is blind during execution. Logs are processed *after* the server returns.
-3.  **User Action:**
-    *   Run `python src/intercom.py`.
+4.  **User Action:**
+    *   Run `python src/intercom.py` (or refresh Web Intercom).
     *   Execute Test Plan.
+    *   **Verbal Feedback:** If a bug is found, tell Pinky: *"Pinky, note that [bug description]"*.
     *   **Disconnect (Ctrl+C)** to signal completion and return control to Agent.
-4.  **Analysis (Post-Mortem):**
-    *   Agent mines logs for **Verbal Feedback** ("Pinky, note that X is broken") and **Implicit Errors** (Tracebacks).
+5.  **Analysis (Post-Mortem):**
+    *   Agent mines logs for **Verbal Feedback** and **Implicit Errors** (Tracebacks).
     *   Agent updates `ProjectStatus.md` immediately with findings.
-5.  **Safety Valves:**
+6.  **Safety Valves:**
     *   **AFK Protection:** If no client connects within 60s, Server auto-terminates.
     *   **Crash Recovery:** If Server crashes, the script returns the traceback immediately.
 
@@ -124,11 +126,15 @@ This document defines the standard operating procedures for the HomeLabAI develo
 ## 8. Session Scars & Lessons Learned
 *This section documents hard-won knowledge from specific development sessions.*
 
-### 8.1 Feb 5, 2026 (The "Bootstrap & Airlock" Session)
-*   **The Double-Directory Trap:** When working in the `Dev_Lab` root, agents frequently miscalculate relative paths, resulting in `Dev_Lab/Dev_Lab/filename`. **BKM:** Always verify `ls -F` after a write/move. Use absolute paths or `./` explicitly when creating new directories.
-*   **Extension Automation:** Gemini CLI extension installation (`gemini extensions install`) hangs on confirmation prompts. **BKM:** Use the `--consent` flag for non-interactive automation.
-*   **Sub-Agent Protocol:** Sub-agents (like `cli_help`) may fail with `ERROR_NO_COMPLETE_TASK_CALL`. **BKM:** If a sub-agent hangs, prefer `google_web_search` or direct file reads to bypass the loop.
-*   **Public/Private CORS:** To check "System Health" on a public page (`www`) without leaking data or hitting CORS errors, use `fetch(url, { mode: 'no-cors' })`. This acts as a reliable "network ping" to see if the tunnel is open.
+### 8.2 Feb 5, 2026 (Cloudflare & WebSocket Resilience)
+*   **The WebSocket Incompatibility Trap:** Standard libraries like Python's `websockets` are strict about HTTP headers. Cloudflare Access injects headers like `Connection: keep-alive` which causes an `InvalidUpgrade` error in strict servers.
+    *   **BKM:** Use `aiohttp.web` for WebSocket servers behind Cloudflare. It is more tolerant of proxy-injected headers and allows the handshake to complete where strict libraries fail.
+*   **The DNS/Tunnel Gap:** Updating `config.yml` only configures the local daemon. It does not update the public internet.
+    *   **BKM:** Always run `cloudflared tunnel route dns <ID> <hostname>` after adding a new ingress rule to bridge the gap between the tunnel and public DNS.
+*   **The Zero Trust WebSocket Block:** Browsers cannot establish `wss://` connections if the endpoint redirects to a Cloudflare Access login page.
+    *   **BKM:** If an Intercom or API is failing to connect, verify the subdomain isn't behind a "Redirect" policy. Use a "Service Auth" or "Bypass" policy for the specific WebSocket route.
+*   **Keyboard Buffer Handover:** Using `msvcrt` to detect mode-switch keys (like SPACE) often eats the first character of the subsequent `stdin.readline`.
+    *   **BKM:** Explicitly capture the trigger character and prepend it to the result of the text input stream to preserve word integrity (e.g., "Cool" vs "ool").
 
 ---
 

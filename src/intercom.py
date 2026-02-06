@@ -58,7 +58,9 @@ async def get_user_input():
     global PENDING_CHAR
     text = await asyncio.to_thread(sys.stdin.readline)
     if PENDING_CHAR:
+        # Prepend the character that triggered the mode switch
         full_text = PENDING_CHAR + text
+        print(f"\r>> {full_text.strip()}") # Show the full word to the user
         PENDING_CHAR = ""
         return full_text
     return text

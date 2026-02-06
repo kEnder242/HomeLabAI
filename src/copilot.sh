@@ -20,12 +20,9 @@ echo "🚀 Starting Blocking Integration Server (Mode: $MODE)..."
 echo "⏳ Timeout: 300s (Agent Safety Cap)"
 echo "💡 Instructions: Run Client -> Test -> Ctrl+C to finish."
 
-# 2. Run Synchronously via SSH
-# -t: Force pseudo-terminal (allows colored output/signals)
-# command: python3 ...
-# We wrap in timeout 290s to ensure we return before the Agent tool call (300s) times out.
-
-ssh -t -i ~/.ssh/id_rsa_wsl "$TARGET" "cd ~/AcmeLab && timeout 290s ./.venv/bin/python3 -u src/acme_lab.py --mode $MODE --afk-timeout 60"
+# 2. Run Synchronously
+# We removed the explicit -i key path to rely on ambient SSH agent/config
+ssh -t "$TARGET" "cd ~/AcmeLab && timeout 290s ./.venv/bin/python3 -u src/acme_lab.py --mode $MODE --afk-timeout 60"
 
 EXIT_CODE=$?
 echo "🛑 Server Returned (Exit Code: $EXIT_CODE)."
