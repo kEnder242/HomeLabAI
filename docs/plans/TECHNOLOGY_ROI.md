@@ -16,6 +16,8 @@ We prioritize optimizations that slash **P99 latency** for voice interactions an
 | **vLLM Serving** | Linux (Coordinator)| **Extreme** | High | Replaces Ollama for the Web Intercom. SOTA throughput. Possible conflict with NeMo EarNode. |
 | **MAXS Reasoning**| Windows (4090) | **Med** | High | Meta-Adaptive Exploration. Logic for "lookahead" before tool calls. Best for deep-think tasks. |
 | **Voxtral (STT)** | Browser / Linux | **High** | Med | Mistral's sonic-speed transcription. Backup for NeMo if EarNode latency spikes. |
+| **TTCS (Curriculum)**| Linux (Pinky) | **Med** | High | Test-time synthesis to sharpen 7B-model reasoning. |
+| **FS-Researcher** | Full System | **High** | Med | File-system based memory scaling for long-horizon tasks (Field Notes validation). |
 
 ---
 
