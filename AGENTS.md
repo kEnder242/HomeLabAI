@@ -19,6 +19,7 @@ All technical reports, post-mortems, and engineering notes must follow the BKM (
 - **Stateless logic:** Prefer reading from the file system (FS-Researcher pattern) over relying on internal LLM context memory.
 - **Concurrency:** Respect the hardware. Check Prometheus `node_load1` before initiating heavy AI "burns." Max load threshold: `2.0`.
 - **Legacy preservation:** NEVER delete legacy functional patterns. Use subclassing or versioning (`v2`, `_experimental`) for new features.
+- **Frontend Deployment:** After any CSS or JS modifications, you MUST run the automated build script to synchronize hashes: `python3 field_notes/build_site.py`.
 
 ## 🤖 Persona & Tone
 - **Technical Density:** Avoid conversational filler, emojis, or preambles.
