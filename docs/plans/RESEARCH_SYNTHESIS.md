@@ -11,6 +11,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 | Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI |
 | :--- | :--- | :--- |
+| **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Pinky will use RL loops to discover the shortest path to silicon bug reproduction. |
 | **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. The Web Intercom is the Report Writer. Use FS as durable external memory. |
 | **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Pinky delegates subtasks (e.g., "Extract dates", "Summarize tech") to parallel subagent contexts to improve Item F1 score. |
 | **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Before writing a log, Pinky must synthesize 3 hard questions about the text and solve them (Self-Evolution). |
@@ -27,9 +28,13 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | :--- | :--- | :--- | :--- |
 | **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **90%** |
 | **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Evolutionary.** It forced the model to think before writing, which caught the "PECI/Simics" era errors but introduced "filler" risks. | **60%** |
+| **TTT-Discover** | **Autonomous Discovery.** Using test-time training to find optimal validation paths for failures. | **Strategic Successor.** Evolves curriculum synthesis into active solution discovery. | **0% (Planned)** |
 | **Apple CLaRa** | **Semantic Compression.** Implemented as the `SemanticCondenser` to handle large raw log backlogs. | **Useful Idea.** It’s a specialized prompt wrapper that keeps our reasoning loop efficient, but doesn't fundamentally change the data flow. | **40%** |
 | **Agentic-R** | **Memory Utility.** Currently used for injecting historical context (e.g., previous month's JSON). | **Seed Idea.** It's currently "Just an idea that seems the same." We haven't fully implemented the utility-based re-ranking yet. | **70%** |
-| **Liger-Kernel** | **VRAM Optimization.** Pending installation and bench-test on Pinky-Node (2080 Ti). | **Efficiency Target.** Aims for 80%+ VRAM reduction to fit 14B models on 11GB. | **0% (Pending)** |
+| **Liger-Kernel** | **VRAM Optimization.** Pending installation and bench-test on Pinky-Node (2080 Ti). | **Efficiency Target.** Aims for 80%+ VRAM reduction to fit 14B models on 11GB. | **80%** |
+| **DeepAgent** | **Framework Foundation.** Multi-agent orchestration with local backends. | **Origin:** Initial framework for hybrid model setup. | **100%** |
+| **Google Nested Learning** | **Continual Learning.** Paradigms for keeping local models fresh. | **Insight:** Inspiration for "Dreaming" phase. | **20%** |
+| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **0% (Planned)** |
 
 ---
 
