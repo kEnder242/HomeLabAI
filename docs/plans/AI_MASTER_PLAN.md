@@ -33,6 +33,8 @@ To transform the Acme Lab into a high-throughput, low-latency agentic ecosystem 
 1.  **WideSeek-R1:** Scaling width for broad information seeking.
 2.  **Agentic-R:** Learning to retrieve for agentic search (RAG improvement).
 3.  **MiMo-V2-Flash:** Multi-Objective Reinforcement Learning for text-to-visualization.
+4.  **TTCS (arXiv:2601.22628):** Test-Time Curriculum Synthesis for self-evolving reasoning loops.
+5.  **FS-Researcher (arXiv:2602.01566):** Dual-agent frameworks using file-systems for long-horizon memory scaling.
 
 ---
 
