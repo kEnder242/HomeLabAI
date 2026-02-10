@@ -125,6 +125,15 @@ async def wake_up() -> str:
         return f"Wake error: {e}"
 
 @mcp.tool()
+async def switch_model(model_name: str) -> str:
+    """
+    Changes the active model for the Brain.
+    """
+    global BRAIN_MODEL
+    BRAIN_MODEL = model_name
+    return f"Brain active model switched to '{model_name}'. Ready for reasoning."
+
+@mcp.tool()
 async def deep_think(query: str, context: str = "") -> str:
     """
     Perform complex reasoning, coding, or planning.
