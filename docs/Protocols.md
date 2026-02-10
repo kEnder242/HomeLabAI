@@ -147,3 +147,12 @@ This document defines the standard operating procedures for the HomeLabAI develo
     *   **LLMs:** Verify status of Pinky (Linux) and The Brain (Windows).
     *   **Archives:** Identify deprecated plans and archived logs to distinguish "Old" vs "New".
 5.  **Grounding Report:** Present a concise summary of findings to the Lead Engineer and wait for alignment.
+
+---
+
+## 10. Communication Guardrails (The "Jason Rules")
+1.  **"Discuss with me":** This is a mandatory instruction to HALT all implementation. The Agent must present thoughts, architectural options, and risks, and WAIT for explicit approval before touching code.
+2.  **"Heads Down" Conclusion:** Every heads-down cycle must end with a **"Heads Up"** report.
+    *   **Verbosity:** The report must be detailed and verbose (reversing any minimalist CLI compression).
+    *   **Implications:** Explicitly state the impact of changes on performance, security, and the "Path Backwards."
+    *   **State Check:** Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
