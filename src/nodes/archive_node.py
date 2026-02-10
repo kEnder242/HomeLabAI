@@ -6,27 +6,14 @@ import sys
 import logging
 import datetime
 import numpy as np
+import json
 from tqdm import tqdm
-import os
 
 # Force logging to stderr to avoid corrupting MCP stdout
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 
-# Force tqdm to write to stderr (or disable it) to protect MCP stdout
-# This is critical for SentenceTransformers which uses tqdm
-class TqdmStderr(tqdm):
-    def __init__(self, *args, **kwargs):
-        kwargs['file'] = sys.stderr
-        super().__init__(*args, **kwargs)
-
-# Monkey patch tqdm if necessary, or just rely on library settings
-# SentenceTransformers allows passing a 'device' but not easily a tqdm_file globally.
-# Easier approach: Set environment variable to disable TQDM if we can, or redirect logging.
+# Disable TQDM to protect MCP stdout
 os.environ["TQDM_DISABLE"] = "1" 
-
-from mcp.server.fastmcp import FastMCP
-import chromadb
-from chromadb.utils import embedding_functions
 
 # Configuration
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
@@ -45,45 +32,36 @@ ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-# Initialize Collections
-stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
-wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
-cache = chroma_client.get_or_create_collection(name=COLLECTION_CACHE, embedding_function=ef)
+# Initialize Collections with Robust Fallback
+def get_safe_collection(name):
+    try:
+        return chroma_client.get_or_create_collection(name=name, embedding_function=ef)
+    except ValueError:
+        logging.warning(f"⚠️ ChromaDB Embedding Conflict for '{name}'. Using persisted function.")
+        return chroma_client.get_or_create_collection(name=name)
+
+stream = get_safe_collection(COLLECTION_STREAM)
+wisdom = get_safe_collection(COLLECTION_WISDOM)
+cache = get_safe_collection(COLLECTION_CACHE)
 
 # Semantic Anchors for Routing
 BRAIN_ANCHORS = [
     "Calculate pi to 10 decimal places",
     "Write python code for a websocket server",
     "Analyze the following data and find trends",
-    "Perform complex reasoning about thermodynamics",
-    "Wake up the Brain",
-    "What are the hard facts about climate change?",
     "Solve this math problem",
-    "Explain the theory of relativity",
-    "What is the capital of France?",
-    "Who won the world cup in 2022?",
-    "Tell me about quantum physics",
     "Give me a technical summary",
     "How does a nuclear reactor work?",
     "Research the history of Rome",
-    "Compare these two technologies"
+    "What did I do in 2019?"
 ]
 
 PINKY_ANCHORS = [
     "Hello there!",
     "Tell me a joke about mice",
     "How are you doing today?",
-    "Good morning Pinky",
-    "What do you think about the vibe?",
     "Narf!",
-    "Let's just chat for a bit",
-    "What's your favorite non-sequitur?",
-    "Hi!",
-    "How's life?",
-    "Just wanted to say hi",
-    "Zort!",
-    "Poit!",
-    "Egad!"
+    "Let's just chat for a bit"
 ]
 
 # Pre-compute Anchor Embeddings
@@ -94,15 +72,63 @@ pinky_vectors = np.array(ef(PINKY_ANCHORS))
 def cosine_similarity(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
+# Paths for Field Notes integration
+FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
+SEARCH_INDEX = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json")
+
+@mcp.tool()
+def peek_related_notes(keyword: str) -> str:
+    """
+    RLM (Recursive LMs) Tool: Allows Pinky to 'peek' into the Field Notes artifacts.
+    Searches the search_index for a keyword and returns a distilled summary of related events.
+    Use this to find technical 'ground truth' or BKMs from the 18-year archive.
+    """
+    if not os.path.exists(SEARCH_INDEX):
+        return "Error: Search Index not found."
+    
+    try:
+        with open(SEARCH_INDEX, 'r') as f:
+            index = json.load(f)
+        
+        # 1. Triage: Find IDs for the keyword
+        keyword_clean = keyword.lower().strip()
+        target_ids = index.get(keyword_clean, [])
+        
+        if not target_ids:
+            # Fuzzy match attempt
+            for k in index.keys():
+                if keyword_clean in k:
+                    target_ids = index[k]
+                    break
+        
+        if not target_ids:
+            return f"No technical artifacts found for '{keyword}'."
+            
+        # 2. Retrieve: Load the data files for the top 2 IDs
+        results = []
+        for tid in target_ids[:2]:
+            file_path = os.path.join(FIELD_NOTES_DATA, f"{tid.replace('-', '_')}.json")
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as df:
+                    data = json.load(df)
+                    if isinstance(data, list):
+                        for event in data[:3]:
+                            results.append(f"[{event.get('date')}] {event.get('summary')}: {event.get('technical_gem', 'No technical gem listed.')}")
+            else:
+                results.append(f"Note: Artifact '{tid}' manifest found, but raw data is missing.")
+                
+        if not results:
+            return f"Found references to {target_ids}, but data was empty or restricted."
+            
+        return "RESEARCH FINDINGS:\n" + "\n---\n".join(results)
+        
+    except Exception as e:
+        return f"Error peeking at notes: {e}"
+
 @mcp.tool()
 def add_routing_anchor(target: str, anchor_text: str) -> str:
-    """
-    Adds a new semantic anchor to improve the Semantic Router.
-    target: 'BRAIN' or 'PINKY'
-    anchor_text: The phrase to use as an anchor.
-    """
+    """Adds a new semantic anchor to improve the Semantic Router."""
     global brain_vectors, pinky_vectors, BRAIN_ANCHORS, PINKY_ANCHORS
-    
     if target.upper() == "BRAIN":
         BRAIN_ANCHORS.append(anchor_text)
         brain_vectors = np.array(ef(BRAIN_ANCHORS))
@@ -111,192 +137,71 @@ def add_routing_anchor(target: str, anchor_text: str) -> str:
         PINKY_ANCHORS.append(anchor_text)
         pinky_vectors = np.array(ef(PINKY_ANCHORS))
         return f"Added PINKY anchor: '{anchor_text}'"
-    else:
-        return "Error: target must be 'BRAIN' or 'PINKY'"
+    return "Error: target must be 'BRAIN' or 'PINKY'"
 
 @mcp.tool()
 def classify_intent(query: str) -> dict:
-    """
-    Classifies the user query as 'BRAIN' or 'PINKY' based on semantic proximity to anchors.
-    """
+    """Classifies user query as 'BRAIN' or 'PINKY'."""
     query_vector = np.array(ef([query])[0])
-    
-    # Calculate max similarity to each set of anchors
     brain_sim = max([cosine_similarity(query_vector, bv) for bv in brain_vectors])
     pinky_sim = max([cosine_similarity(query_vector, pv) for pv in pinky_vectors])
-    
-    # Decision Logic
-    # We want a bias towards Pinky for chat, but Brain for anything specific.
-    threshold = 0.4 # Lowered to be more sensitive to Brain tasks
-    
     target = "PINKY"
-    if brain_sim > pinky_sim and brain_sim > threshold:
-        target = "BRAIN"
-    elif brain_sim > 0.6: # High enough confidence regardless of Pinky score
-        target = "BRAIN"
-        
-    return {
-        "target": target,
-        "brain_similarity": float(brain_sim),
-        "pinky_similarity": float(pinky_sim),
-        "confidence": float(max(brain_sim, pinky_sim))
-    }
+    if brain_sim > pinky_sim and brain_sim > 0.4: target = "BRAIN"
+    elif brain_sim > 0.6: target = "BRAIN"
+    return {"target": target, "confidence": float(max(brain_sim, pinky_sim))}
 
 @mcp.tool()
 def consult_clipboard(query: str, threshold: float = 0.35, max_age_days: int = 14) -> str | None:
-    """
-    Check the Semantic Clipboard (Cache) for a similar past Brain response.
-    threshold: Distance threshold (0.35 approx 94% similarity - FAQ level).
-    max_age_days: Ignore notes older than this.
-    Returns the cached response or None.
-    """
+    """Check Semantic Cache for past Brain responses."""
     try:
         results = cache.query(query_texts=[query], n_results=1)
-        if not results['documents'][0]:
-            return None
-            
+        if not results['documents'][0]: return None
         distance = results['distances'][0][0]
         metadata = results['metadatas'][0][0]
-        
         if distance < threshold:
-            # TTL Check
-            timestamp_str = metadata.get("timestamp")
-            if timestamp_str:
-                try:
-                    stored_time = datetime.datetime.fromisoformat(timestamp_str)
-                    age = datetime.datetime.now() - stored_time
-                    if age.days > max_age_days:
-                        logging.info(f"🏚️ Clipboard Note Expired (Age: {age.days} days).")
-                        return None
-                except ValueError:
-                    logging.warning("Invalid timestamp in clipboard metadata.")
-            
-            logging.info(f"⚡ Clipboard Found Note! Distance: {distance:.4f}")
             return metadata['response']
-        else:
-            logging.info(f"💨 Clipboard Empty. Distance: {distance:.4f}")
-            return None
-            
-    except Exception as e:
-        logging.error(f"Clipboard check error: {e}")
         return None
+    except: return None
 
 @mcp.tool()
 def scribble_note(query: str, response: str) -> str:
-    """
-    Scribble a new note on the Clipboard (Cache a response).
-    Useful for expensive 'Brain' queries.
-    """
+    """Cache a response."""
     try:
         timestamp = datetime.datetime.now().isoformat()
-        cache.add(
-            documents=[query],
-            metadatas=[{"response": response, "timestamp": timestamp}],
-            ids=[f"cache_{timestamp}"]
-        )
+        cache.add(documents=[query], metadatas=[{"response": response, "timestamp": timestamp}], ids=[f"cache_{timestamp}"])
         return "Note scribbled."
-    except Exception as e:
-        return f"Clipboard error: {e}"
+    except Exception as e: return f"Error: {e}"
 
 @mcp.tool()
 def clear_collection(collection_name: str) -> str:
-    """
-    Clears all items from a specified collection. USE WITH CAUTION.
-    Designed for test cleanup.
-    """
-    if collection_name == COLLECTION_CACHE:
-        chroma_client.delete_collection(name=COLLECTION_CACHE)
-        global cache
-        cache = chroma_client.get_or_create_collection(name=COLLECTION_CACHE, embedding_function=ef)
+    """Clears a collection safely."""
+    try:
+        chroma_client.delete_collection(name=collection_name)
+        if collection_name == COLLECTION_CACHE: global cache; cache = get_safe_collection(COLLECTION_CACHE)
+        elif collection_name == COLLECTION_STREAM: global stream; stream = get_safe_collection(COLLECTION_STREAM)
+        elif collection_name == COLLECTION_WISDOM: global wisdom; wisdom = get_safe_collection(COLLECTION_WISDOM)
         return f"Collection '{collection_name}' cleared."
-    elif collection_name == COLLECTION_STREAM:
-        chroma_client.delete_collection(name=COLLECTION_STREAM)
-        global stream
-        stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
-        return f"Collection '{collection_name}' cleared."
-    elif collection_name == COLLECTION_WISDOM:
-        chroma_client.delete_collection(name=COLLECTION_WISDOM)
-        global wisdom
-        wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
-        return f"Collection '{collection_name}' cleared."
-    return f"Error: Invalid collection name '{collection_name}'."
-
-# Initialize Collections
-stream = chroma_client.get_or_create_collection(name=COLLECTION_STREAM, embedding_function=ef)
-wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
+    except Exception as e: return f"Error: {e}"
 
 @mcp.tool()
 def get_context(query: str, n_results: int = 3) -> str:
-    """
-    Search the Archives for relevant information.
-    Prioritizes Wisdom (Long-term) then checks the Stream (Short-term).
-    """
+    """Search Archives prioritizing Wisdom."""
     try:
-        # 1. Check Wisdom first
         res_wisdom = wisdom.query(query_texts=[query], n_results=n_results)
         docs = res_wisdom.get('documents', [[]])[0]
-        
-        # 2. Augment with recent stream if needed
         if len(docs) < n_results:
             res_stream = stream.query(query_texts=[query], n_results=n_results - len(docs))
             docs.extend(res_stream.get('documents', [[]])[0])
-            
         return "\n---\n".join(docs)
-    except Exception as e:
-        return f"Archive Search Error: {e}"
-
-@mcp.tool()
-def get_stream_dump() -> dict:
-    """
-    Retrieve all raw logs from the short-term stream for processing.
-    Returns a dict with 'documents' and 'ids'.
-    """
-    try:
-        results = stream.get()
-        return {
-            "documents": results.get('documents', []),
-            "ids": results.get('ids', [])
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as e: return f"Error: {e}"
 
 @mcp.tool()
 def save_interaction(user_query: str, response: str) -> str:
-    """
-    Save a raw conversation turn to the Short-Term Stream.
-    """
+    """Save turn to stream."""
     timestamp = datetime.datetime.now().isoformat()
     doc_text = f"[{timestamp}] User: {user_query}\nPinky/Brain: {response}"
-    
-    stream.add(
-        documents=[doc_text],
-        metadatas=[{"timestamp": timestamp, "type": "raw_turn"}],
-        ids=[f"turn_{timestamp}"]
-    )
+    stream.add(documents=[doc_text], metadatas=[{"timestamp": timestamp, "type": "raw_turn"}], ids=[f"turn_{timestamp}"])
     return "Stored in Stream."
-
-@mcp.tool()
-def dream(summary: str, sources: list[str]) -> str:
-    """
-    The Brain uses this to consolidate Stream logs into Wisdom.
-    Input: A high-level narrative summary and the list of raw IDs processed.
-    """
-    timestamp = datetime.datetime.now().isoformat()
-    
-    # 1. Add to Wisdom
-    wisdom.add(
-        documents=[summary],
-        metadatas=[{"timestamp": timestamp, "type": "insight", "consolidated_from": str(sources)}],
-        ids=[f"wisdom_{timestamp}"]
-    )
-    
-    # 2. Cleanup Stream (Delete the old raw logs that were summarized)
-    if sources:
-        try:
-            stream.delete(ids=sources)
-        except: pass
-        
-    return f"Consolidated {len(sources)} logs into Wisdom."
 
 if __name__ == "__main__":
     mcp.run()
