@@ -200,6 +200,15 @@ class AcmeLab:
         self.mode = mode
         logging.info(f"[LAB] Acme Lab Booting (Mode: {mode})...")
 
+        # --- NEW: ROUND TABLE LOCK ---
+        lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../Portfolio_Dev/field_notes/data/round_table.lock")
+        try:
+            with open(lock_path, "w") as f:
+                f.write(str(os.getpid()))
+            logging.info(f"[LOCK] Round Table Lock created at {lock_path}")
+        except Exception as e:
+            logging.error(f"[LOCK] Failed to create lock: {e}")
+
         app = web.Application()
         app.add_routes([web.get('/', self.client_handler)])
         
