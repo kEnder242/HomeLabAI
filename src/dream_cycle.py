@@ -11,19 +11,37 @@ PYTHON_PATH = sys.executable
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Root of HomeLabAI
 ARCHIVE_NODE = os.path.join(BASE_DIR, "src/nodes/archive_node.py")
 BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.26:11434/api/generate")
+PINKY_URL = "http://localhost:11434/api/generate"
 
 async def remote_brain_think(prompt, context):
-    """Fallback for remote synthesis if Brain node is not local."""
+    """Fallback for remote synthesis if Brain node is not local. Now with Pinky-Fallback."""
     import aiohttp
+    
+    # Check Brain Health first (Windows 4090)
+    use_pinky = False
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.head(BRAIN_URL, timeout=2) as resp:
+                if resp.status != 200:
+                    use_pinky = True
+    except:
+        use_pinky = True
+
+    target_url = PINKY_URL if use_pinky else BRAIN_URL
+    model = "mistral:7b" if use_pinky else "llama3:latest"
+    
+    if use_pinky:
+        logging.warning("⚠️ Brain (4090) is offline. Falling back to Pinky (2080 Ti) for Dreaming.")
+
     try:
         async with aiohttp.ClientSession() as session:
             payload = {
-                "model": "llama3:latest",
+                "model": model,
                 "prompt": f"[TECHNICAL CONTEXT]\n{context}\n\n[TASK]: {prompt}",
                 "stream": False,
                 "options": {"num_predict": 1024, "temperature": 0.3}
             }
-            async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
+            async with session.post(target_url, json=payload, timeout=60) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return data.get("response", "Synthesis failed.")
