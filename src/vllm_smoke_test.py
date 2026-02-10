@@ -7,7 +7,7 @@ URL = "http://localhost:8088/v1/completions"
 def smoke_test():
     print("--- vLLM + Liger Smoke Test ---")
     payload = {
-        "model": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+        "model": "TheBloke/Mistral-7B-Instruct-v0.2-AWQ",
         "prompt": "Narf! What is the meaning of life?",
         "max_tokens": 50,
         "temperature": 0.1
