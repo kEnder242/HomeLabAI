@@ -57,6 +57,39 @@ class AcmeLab:
         self.shutdown_event = asyncio.Event()
         self.current_processing_task = None
         self.afk_timeout = afk_timeout
+        self.lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../Portfolio_Dev/field_notes/data/round_table.lock")
+        self.last_activity = 0.0
+
+    async def manage_session_lock(self, active=True):
+        """Creates or removes the round_table.lock to prioritize Intercom."""
+        try:
+            if active:
+                os.makedirs(os.path.dirname(self.lock_path), exist_ok=True)
+                with open(self.lock_path, "w") as f:
+                    f.write(str(os.getpid()))
+                self.last_activity = time.time()
+                logging.info(f"[LOCK] Intercom Active. Round Table Lock created.")
+            else:
+                if os.path.exists(self.lock_path):
+                    os.remove(self.lock_path)
+                    logging.info(f"[LOCK] Intercom Idle. Round Table Lock removed.")
+        except Exception as e:
+            logging.error(f"[LOCK] Error managing lock: {e}")
+
+    async def session_monitor(self):
+        """Monitors client activity and releases lock after 5 minutes of silence."""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(30)
+            if self.connected_clients and os.path.exists(self.lock_path):
+                # 5 minute timeout (300s)
+                if time.time() - self.last_activity > 300:
+                    logging.info("[LOCK] Session timeout hit. Releasing lock for background tasks.")
+                    await self.manage_session_lock(active=False)
+            
+            # Re-acquire if someone talks again after a timeout
+            if self.connected_clients and not os.path.exists(self.lock_path):
+                # This is handled in the text/audio handlers, but we could check here too
+                pass
 
     async def afk_watcher(self):
         """Shuts down the Lab if no client connects within the timeout."""
@@ -200,14 +233,8 @@ class AcmeLab:
         self.mode = mode
         logging.info(f"[LAB] Acme Lab Booting (Mode: {mode})...")
 
-        # --- NEW: ROUND TABLE LOCK ---
-        lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../Portfolio_Dev/field_notes/data/round_table.lock")
-        try:
-            with open(lock_path, "w") as f:
-                f.write(str(os.getpid()))
-            logging.info(f"[LOCK] Round Table Lock created at {lock_path}")
-        except Exception as e:
-            logging.error(f"[LOCK] Failed to create lock: {e}")
+        # Start background monitor for session timeouts
+        asyncio.create_task(self.session_monitor())
 
         app = web.Application()
         app.add_routes([web.get('/', self.client_handler)])
@@ -228,6 +255,9 @@ class AcmeLab:
         
         self.connected_clients.add(ws)
         logging.info("[LAB] Client entered the Lobby.")
+        
+        # Acquire lock on connection
+        await self.manage_session_lock(active=True)
         
         status_msg = {"type": "status", "version": VERSION}
         if self.status == "BOOTING":
@@ -281,6 +311,8 @@ class AcmeLab:
                         elif data.get("type") == "text_input":
                             query = data.get("content", "")
                             logging.info(f"[TEXT] Rx: {query}")
+                            self.last_activity = time.time()
+                            await self.manage_session_lock(active=True)
                             
                             # Echo back removed to fix UI duplication (Echo Bug)
                             # await ws.send_str(json.dumps({"type": "final", "text": query, "source": "text"}))
@@ -308,6 +340,8 @@ class AcmeLab:
                             text = self.ear.process_audio(window)
                             if text:
                                 logging.info(f"[STT] Tx: {text}")
+                                self.last_activity = time.time()
+                                await self.manage_session_lock(active=True)
                                 # BARGE-IN on Speech Detection
                                 if self.current_processing_task and not self.current_processing_task.done():
                                     logging.info("[BARGE-IN] Speech detected. Interrupting...")
@@ -332,6 +366,11 @@ class AcmeLab:
             if ws in self.connected_clients:
                 self.connected_clients.remove(ws)
             
+            # Release lock if no more clients
+            if not self.connected_clients:
+                logging.info("[LOCK] No more clients. Releasing session lock.")
+                await self.manage_session_lock(active=False)
+
             # Auto-Shutdown in Debug Modes
             if self.mode != "SERVICE_UNATTENDED" and len(self.connected_clients) == 0:
                 logging.info("[DEBUG] Last client disconnected. Shutting down Lab.")
