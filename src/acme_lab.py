@@ -528,6 +528,33 @@ class AcmeLab:
                     msg = res.content[0].text
                     await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
                     decision = None
+
+                elif tool == "build_cv_summary":
+                    year = params.get("year", "2024")
+                    logging.info(f"[PORTFOLIO] Building 3x3 CVT for {year}")
+                    
+                    # 1. Gather Data
+                    res_context = await self.residents['archive'].call_tool("get_cv_context", arguments={"year": year})
+                    cv_data = res_context.content[0].text
+                    
+                    # 2. Instruct Brain with specific 3x3 CVT Schema
+                    cv_prompt = (
+                        f"You are the Senior Silicon Validation Architect. Build a 3x3 CVT summary for the year {year}. "
+                        "FORMAT: "
+                        "3 Strategic Pillars (from Focal data) + 3 Technical Scars (from Artifacts) per pillar. "
+                        "Use the [THE EDITOR] tag. Focus on impact and specific tool names. "
+                        "Include 'Evidence' links where possible."
+                    )
+                    
+                    # Force Brain turn
+                    decision = {
+                        "tool": "delegate_to_brain", 
+                        "parameters": {
+                            "instruction": cv_prompt,
+                            "args": {"query": cv_prompt, "context": cv_data}
+                        }
+                    }
+                    # We continue the loop so delegate_to_brain executes immediately
                 
                 elif tool == "add_routing_anchor":
                     target = params.get("target", "BRAIN")

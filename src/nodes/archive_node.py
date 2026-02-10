@@ -77,6 +77,37 @@ FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"
 SEARCH_INDEX = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json")
 
 @mcp.tool()
+def get_cv_context(year: str) -> str:
+    """
+    Retrieves both strategic (Focal) and technical (Artifact) context for a specific year.
+    Used to build high-density 3x3 CVT resume summaries.
+    """
+    context = []
+    
+    # 1. Get Strategic 'Focal' Insights from Wisdom
+    try:
+        # We query the wisdom collection for 'Performance Review' or 'Focal' for the year
+        res_strat = wisdom.query(query_texts=[f"{year} performance review focal insights"], n_results=3)
+        context.append("STRATEGIC PILLARS (Review Data):")
+        context.extend(res_strat.get('documents', [[]])[0])
+    except: pass
+
+    # 2. Get Technical Artifacts for that year
+    file_path = os.path.join(FIELD_NOTES_DATA, f"{year}.json")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                # Sort by rank and take top 10 potential candidates
+                data.sort(key=lambda x: x.get('rank', 2), reverse=True)
+                context.append(f"\nTECHNICAL ARTIFACTS ({year}):")
+                for event in data[:10]:
+                    context.append(f"- [{event.get('date')}] {event.get('summary')}: {event.get('technical_gem', '')}")
+        except: pass
+    
+    return "\n".join(context)
+
+@mcp.tool()
 def prune_drafts() -> str:
     """
     Clears all files in the drafts/ directory.
