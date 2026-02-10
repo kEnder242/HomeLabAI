@@ -9,16 +9,17 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 ## 🔬 Implementation Mapping: Paper-to-Code
 
-| Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI |
-| :--- | :--- | :--- |
-| **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Pinky will use RL loops to discover the shortest path to silicon bug reproduction. |
-| **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. The Web Intercom is the Report Writer. Use FS as durable external memory. |
-| **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Pinky delegates subtasks (e.g., "Extract dates", "Summarize tech") to parallel subagent contexts to improve Item F1 score. |
-| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Before writing a log, Pinky must synthesize 3 hard questions about the text and solve them (Self-Evolution). |
-| **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** Re-rank historical JSON context based on its utility to the *final answer*, not just text similarity. |
-| **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** Compress raw monthly logs into high-density "Technical Abstracts" before ingestion by The Brain. |
-| **MiMo-V2-Flash** | Multi-Objective RL: Post-execution feedback. | **Observability:** Use Grafana/Prometheus feedback to "reward" the agent's visualization scripts (RL-Text2Vis). |
-| **RLM** (Recursive LMs) | Context as a Code-Readable String. | **Pattern:** Implement `peek_related_notes()` allowing Pinky to read the FS like a string via tools. |
+| Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI | Status |
+| :--- | :--- | :--- | :--- |
+| **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **95%** |
+| **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
+| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** `CurriculumEngine` uses Synthesize-then-Solve loop for log extraction. | **90%** |
+| **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
+| **RLM** (Recursive LMs) | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
+| **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
+| **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel subagent contexts for extraction. | **0%** |
+| **MiMo-V2-Flash** | Multi-Objective RL: Post-execution feedback. | **Observability:** Planned: Use Grafana feedback to reward agents. | **0%** |
+| **Dreaming** | Subconscious Compression. | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **80%** |
 
 ---
 
