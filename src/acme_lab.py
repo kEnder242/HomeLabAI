@@ -491,6 +491,15 @@ class AcmeLab:
                     vibe = res.content[0].text
                     await websocket.send_str(json.dumps({"brain": vibe, "brain_source": "Pinky"}))
                     decision = None # Continue loop
+
+                elif tool == "switch_brain_model":
+                    model_name = params.get("model_name", "llama3:latest")
+                    # Update Brain Node configuration (in-memory)
+                    # Note: Since the Brain node is a separate MCP process, we communicate via tool call
+                    res = await self.residents['brain'].call_tool("switch_model", arguments={"model_name": model_name})
+                    result_msg = res.content[0].text
+                    await websocket.send_str(json.dumps({"brain": f"Teacher Pinky says: {result_msg}", "brain_source": "System"}))
+                    decision = None # Continue loop
                 
                 elif tool == "add_routing_anchor":
                     target = params.get("target", "BRAIN")
