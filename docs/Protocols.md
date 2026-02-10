@@ -10,9 +10,9 @@ This document defines the standard operating procedures for the HomeLabAI develo
 
 ### The Traps (Examples of Failure)
 **🛑 The "SSH Hang" Trap (Coupled Command/Observation)**
-*   **Trigger:** Using a blocking `tail` command (like in `start_server.sh`) for **HOSTING** mode.
+*   **Trigger:** Using a blocking `tail` command (like in `start_server.sh`) for **SERVICE_UNATTENDED** mode.
 *   **Result:** The server runs forever, so `tail` never exits. The Agent hangs indefinitely.
-*   **Fix:** For `HOSTING` (Service) mode, ALWAYS use `run_remote.sh` (Fire-and-forget). Only use `start_server.sh` for `DEBUG` modes that auto-shutdown.
+*   **Fix:** For **SERVICE_UNATTENDED** (Service) mode, ALWAYS use `run_remote.sh` (Fire-and-forget). Only use `start_server.sh` for `DEBUG` modes that auto-shutdown.
 
 **🛑 The "Startup Blindness" Trap (Passive Observation)**
 *   **Trigger:** Assuming the server is dead because logs are silent for 30s.

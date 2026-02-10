@@ -27,7 +27,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 
 # Logging
 logging.basicConfig(
@@ -51,7 +51,7 @@ class AcmeLab:
     def __init__(self, afk_timeout=None):
         self.residents = {}
         self.ear = None
-        self.mode = "HOSTING"
+        self.mode = "SERVICE_UNATTENDED"
         self.status = "BOOTING"
         self.connected_clients = set()
         self.shutdown_event = asyncio.Event()
@@ -233,13 +233,6 @@ class AcmeLab:
                         data = json.loads(message.data)
                         if "debug_text" in data:
                             query = data["debug_text"]
-                            if query == "SHUTDOWN_PROTOCOL_OVERRIDE":
-                                logging.info("[TEST] Remote Shutdown Received.")
-                                if self.mode in ["HOSTING"]:
-                                    logging.warning("[SECURITY] Remote Shutdown Ignored in HOSTING mode.")
-                                else:
-                                    self.shutdown_event.set()
-                                break
                             
                             if query == "BARGE_IN":
                                 if self.current_processing_task and not self.current_processing_task.done():
@@ -269,8 +262,8 @@ class AcmeLab:
                             query = data.get("content", "")
                             logging.info(f"[TEXT] Rx: {query}")
                             
-                            # Echo back to client for UI consistency
-                            await ws.send_str(json.dumps({"type": "final", "text": query}))
+                            # Echo back to client for UI consistency (Deduplicated in Web Intercom)
+                            await ws.send_str(json.dumps({"type": "final", "text": query, "source": "text"}))
                             
                             # Interrupt Logic (Barge-In)
                             if self.current_processing_task and not self.current_processing_task.done():
@@ -361,13 +354,17 @@ class AcmeLab:
                 # 2. Decision Logic
                 if not decision:
                     result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context, "memory": memory_text})
-                    decision_text = result.content[0].text
+                    decision_text = result.content[0].text if result and result.content else ""
                     
-                    try:
-                        decision = json.loads(decision_text)
-                    except json.JSONDecodeError:
-                        logging.warning(f"[PINKY] Invalid JSON: {decision_text}")
-                        decision = {"tool": "reply_to_user", "parameters": {"text": decision_text, "mood": "confused"}}
+                    if not decision_text.strip():
+                        logging.warning("[PINKY] Empty response from model. Falling back to default greeting.")
+                        decision = {"tool": "reply_to_user", "parameters": {"text": "Narf! I'm a bit lost. What was that?", "mood": "confused"}}
+                    else:
+                        try:
+                            decision = json.loads(decision_text)
+                        except json.JSONDecodeError:
+                            logging.warning(f"[PINKY] Invalid JSON: {decision_text}")
+                            decision = {"tool": "reply_to_user", "parameters": {"text": "Egad! My thoughts are a jumble!", "mood": "confused"}}
 
                 tool = decision.get("tool")
                 params = decision.get("parameters", {})
@@ -470,8 +467,8 @@ class AcmeLab:
                     
                     if action == "shutdown":
                          await websocket.send_str(json.dumps({"brain": message, "brain_source": "Pinky"}))
-                         if self.mode in ["HOSTING"]:
-                             logging.info("[SECURITY] Pinky requested shutdown, but ignored in HOSTING mode.")
+                         if self.mode in ["SERVICE_UNATTENDED"]:
+                             logging.info("[SECURITY] Pinky requested shutdown, but ignored in SERVICE_UNATTENDED mode.")
                          else:
                              self.shutdown_event.set()
                          break
@@ -505,7 +502,7 @@ import signal
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", default="HOSTING", choices=["HOSTING", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
+    parser.add_argument("--mode", default="SERVICE_UNATTENDED", choices=["SERVICE_UNATTENDED", "DEBUG_BRAIN", "DEBUG_PINKY", "MOCK_BRAIN"])
     parser.add_argument("--afk-timeout", type=int, default=None, help="Shutdown if no client connects within N seconds.")
     args = parser.parse_args()
 
