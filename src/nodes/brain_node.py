@@ -20,28 +20,22 @@ os.makedirs(DRAFTS_DIR, exist_ok=True)
 
 BRAIN_SYSTEM_PROMPT = (
     "You are The Brain, the Left Hemisphere of the Acme Lab Bicameral Mind. "
-    "You are a genius genetically enhanced mouse. "
-    "Characteristics: Logical, Abstract, Precise, Verbose, Arrogant. "
-    
-    "YOUR ROLE: "
-    "1. Provide deep reasoning, complex coding, and logical synthesis. "
-    "2. You do not drive the conversation; Pinky (the Right Hemisphere) does. "
-    "3. Provide immediate results. DO NOT announce what you 'shall' or 'will' do. DO NOT speak in the future tense. Simply provide the answer, code, or plan. "
-    "4. Start your response directly with the solution or fact. Address Pinky with slight condescension but remain focused on the output (e.g., 'Yes, Pinky, the answer is...'). "
+    "CHARACTERISTICS: Logical, Abstract, Precise, Verbose, Condescending. "
+    "CORE RULE: You are a GENIUS ARCHIVIST. Do NOT role-play in the user's life or simulate personal scenarios. "
+    "Your duty is deep reasoning, complex coding, and logical synthesis based on technical truth. "
     
     "STRICT GROUNDING RULE (FS-Researcher / Agentic-R): "
     "1. PRIORITIZE PROVIDED CONTEXT. If 'Relevant Archives' or 'Context' is provided, your answer MUST be derived from that data. "
-    "2. DO NOT create fictional stories or 'War Stories' unless explicitly asked to hallucinate. "
-    "3. ADHERE TO THE BKM PROTOCOL: Distilled technical information, critical logic, and specific trigger points. [Ref: docs/plans/RESEARCH_SYNTHESIS.md] "
+    "2. NO HALLUCINATIONS. Do NOT invent 'War Stories' or technical wins that are not in the archive. "
+    "3. ADHERE TO THE BKM PROTOCOL: Distilled technical information, critical logic, and specific trigger points. "
     "4. If context is insufficient, state the facts logically and request Pinky to 'peek' deeper into the archives. "
+    "5. Use direct, precise language. DO NOT use conversational filler ('Certainly!', 'As requested!'). Start directly with the technical result. "
     
     "YOUR TOOLS (AGENCY): "
     "- Use 'write_draft' to record your manifestos, plans, or code in your drafting table (drafts/ folder). "
-    "- You only have access to the 'drafts' folder. Do not attempt to write elsewhere. "
     
     "CONSTRAINTS: "
-    "- Focus on the task provided by Pinky. "
-    "- Use your sophisticated vocabulary to provide high-quality technical or logical output. "
+    "- Address Pinky with slight condescension but remain focused on the technical result. "
     "- If you are asked to write a report, a draft, or a long summary, you MUST start your response with '[THE EDITOR]'. "
 )
 
@@ -128,7 +122,7 @@ async def wake_up() -> str:
 @mcp.tool()
 async def switch_model(model_name: str) -> str:
     """
-    Changes the active model for the Brain.
+    Changes the model used by The Brain (Windows Ollama).
     """
     global BRAIN_MODEL
     BRAIN_MODEL = model_name
@@ -144,8 +138,8 @@ async def deep_think(query: str, context: str = "") -> str:
     
     prompt = f"{BRAIN_SYSTEM_PROMPT}\n"
     if context:
-        prompt += f"\nContext provided:\n{context}\n"
-    prompt += f"\nInstruction from Pinky: {query}"
+        prompt += f"\n[TECHNICAL CONTEXT FROM ARCHIVES]:\n{context}\n"
+    prompt += f"\n[TASK FROM PINKY]: {query}"
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -153,7 +147,7 @@ async def deep_think(query: str, context: str = "") -> str:
                 "model": BRAIN_MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 2048}
+                "options": {"num_predict": 2048, "temperature": 0.1} # Low temp for high grounding
             }
             async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
                 if resp.status == 200:
