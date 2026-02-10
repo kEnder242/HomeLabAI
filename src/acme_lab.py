@@ -500,6 +500,19 @@ class AcmeLab:
                     result_msg = res.content[0].text
                     await websocket.send_str(json.dumps({"brain": f"Teacher Pinky says: {result_msg}", "brain_source": "System"}))
                     decision = None # Continue loop
+
+                elif tool == "sync_rag":
+                    logging.info("[CURATOR] Triggering RAG Bridge Sync.")
+                    import subprocess
+                    script_path = os.path.join(os.path.dirname(__file__), "bridge_burn_to_rag.py")
+                    python_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv/bin/python3")
+                    try:
+                        res = subprocess.run([python_bin, script_path], capture_output=True, text=True)
+                        msg = "Sync complete! I've updated the wisdom archives." if res.returncode == 0 else f"Sync failed: {res.stderr}"
+                    except Exception as e:
+                        msg = f"Sync crashed: {e}"
+                    await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
+                    decision = None
                 
                 elif tool == "add_routing_anchor":
                     target = params.get("target", "BRAIN")

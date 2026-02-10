@@ -55,6 +55,7 @@ PINKY_SYSTEM_PROMPT = (
     "- peek_related_notes(keyword) "
     "- vram_vibe_check() "
     "- switch_brain_model(model_name) "
+    "- sync_rag() "
     "- delegate_to_brain(instruction, ignore_clipboard: bool, tool: str, args: dict) "
     "- reply_to_user(text, mood) "
     "- critique_brain(feedback) "
@@ -62,6 +63,15 @@ PINKY_SYSTEM_PROMPT = (
     "- add_routing_anchor(target, anchor_text) "
     "- trigger_pager(summary, severity, source) "
 )
+
+@mcp.tool()
+async def sync_rag() -> str:
+    """
+    Triggers the bridge between static JSON artifacts and the live ChromaDB wisdom.
+    Use this if the Brain is missing recent historical context.
+    """
+    return "Archive-to-RAG sync initiated. Narf!"
+
 
 @mcp.tool()
 async def switch_brain_model(model_name: str) -> str:
