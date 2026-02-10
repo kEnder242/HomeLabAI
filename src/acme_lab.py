@@ -27,7 +27,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.1.6"
+VERSION = "3.1.9"
 
 # Logging
 logging.basicConfig(
@@ -250,7 +250,7 @@ class AcmeLab:
                         elif data.get("type") == "handshake":
                             client_ver = data.get("version", "0.0.0")
                             if client_ver != VERSION:
-                                error_msg = f"VERSION MISMATCH: Client ({client_ver}) != Server ({VERSION}). Please copy 'src/intercom.py' to your Google Drive bridge and wait for sync."
+                                error_msg = f"VERSION MISMATCH: Client ({client_ver}) != Server ({VERSION})."
                                 logging.error(f"❌ {error_msg}")
                                 await ws.send_str(json.dumps({"brain": error_msg, "brain_source": "System"}))
                                 await ws.close()
