@@ -250,7 +250,7 @@ class AcmeLab:
                         elif data.get("type") == "handshake":
                             client_ver = data.get("version", "0.0.0")
                             if client_ver != VERSION:
-                                error_msg = f"VERSION MISMATCH: Client ({client_ver}) != Server ({VERSION}). Please run './sync_to_windows.sh' and wait for GDrive to sync."
+                                error_msg = f"VERSION MISMATCH: Client ({client_ver}) != Server ({VERSION}). Please copy 'src/intercom.py' to your Google Drive bridge and wait for sync."
                                 logging.error(f"❌ {error_msg}")
                                 await ws.send_str(json.dumps({"brain": error_msg, "brain_source": "System"}))
                                 await ws.close()
@@ -461,9 +461,17 @@ class AcmeLab:
                     lab_context += f"\nPinky (Critique): {feedback}"
                     decision = None # Loop back
                 
+                elif tool == "peek_related_notes":
+                    keyword = params.get("keyword", "")
+                    res = await self.residents['archive'].call_tool("peek_related_notes", arguments={"keyword": keyword})
+                    discovery = res.content[0].text
+                    logging.info(f"[DISCOVERY] Found data for '{keyword}'")
+                    lab_context += f"\nSystem (Archives): {discovery}"
+                    decision = None # Loop back to Pinky
+
                 elif tool == "manage_lab":
                     action = params.get("action", "")
-                    message = params.get("message", "Closing Lab...")
+                    message = params.get("message", "Action complete.")
                     
                     if action == "shutdown":
                          await websocket.send_str(json.dumps({"brain": message, "brain_source": "Pinky"}))
@@ -472,6 +480,17 @@ class AcmeLab:
                          else:
                              self.shutdown_event.set()
                          break
+                    elif action == "lobotomize_brain":
+                        logging.info("[CURATOR] Lobotomizing Brain (Clearing Context).")
+                        lab_context = f"User: {query}\n[SYSTEM]: Context has been cleared by Pinky."
+                        await websocket.send_str(json.dumps({"brain": "Narf! I've cleared the Brain's memory. Much better.", "brain_source": "Pinky"}))
+                        decision = None
+                
+                elif tool == "vram_vibe_check":
+                    res = await self.residents['archive'].call_tool("vram_vibe_check")
+                    vibe = res.content[0].text
+                    await websocket.send_str(json.dumps({"brain": vibe, "brain_source": "Pinky"}))
+                    decision = None # Continue loop
                 
                 elif tool == "add_routing_anchor":
                     target = params.get("target", "BRAIN")
