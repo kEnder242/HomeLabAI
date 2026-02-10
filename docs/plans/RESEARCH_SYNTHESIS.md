@@ -58,6 +58,19 @@ data/
 
 ---
 
+## 🔮 Tabled & Future Exploration
+These ideas were identified in the **AI Master Plan (2026)** and are scheduled for post-Phase 9 development:
+
+| Anchor | Description | Strategy | Status |
+| :--- | :--- | :--- | :--- |
+| **vLLM Serving** | Transition from Ollama to vLLM for model serving. | Achieve SOTA serving throughput for the Web Intercom. | **Planned** |
+| **MAXS** | Meta-Adaptive Exploration (arXiv:2601.12538). | Lookahead hooks to estimate "Value of Information" before tool calls. | **Tabled** |
+| **Internal Debate** | Facilitate consensus between multiple Brain nodes. | Improve accuracy on complex reasoning tasks via multi-perspective check. | **Researching** |
+| **Voxtral** | Sonic-speed transcription benchmarking. | Transition from NeMo EarNode to native high-speed Mistral STT. | **Planned** |
+| **3x3 CVT** | Automated Resume/CV Indexer. | Re-index 18 years of notes into a high-density candidate-value format. | **Planned** |
+
+---
+
 ## 📝 Stale Content Strategy: `Research_and_Inspiration.md`
 To prevent the "Goldmine" from becoming "Sludge":
 1. **Archive the Stale:** Move items older than 3 months to `docs/archive/RESEARCH_RETIRED.md`.
