@@ -122,15 +122,15 @@ This document defines the standard operating procedures for the HomeLabAI develo
 ## 8. Session Scars & Lessons Learned
 *This section documents hard-won knowledge from specific development sessions.*
 
-### 8.2 Feb 5, 2026 (Cloudflare & WebSocket Resilience)
-*   **The WebSocket Incompatibility Trap:** Standard libraries like Python's `websockets` are strict about HTTP headers. Cloudflare Access injects headers like `Connection: keep-alive` which causes an `InvalidUpgrade` error in strict servers.
-    *   **BKM:** Use `aiohttp.web` for WebSocket servers behind Cloudflare. It is more tolerant of proxy-injected headers and allows the handshake to complete where strict libraries fail.
-*   **The DNS/Tunnel Gap:** Updating `config.yml` only configures the local daemon. It does not update the public internet.
-    *   **BKM:** Always run `cloudflared tunnel route dns <ID> <hostname>` after adding a new ingress rule to bridge the gap between the tunnel and public DNS.
-*   **The Zero Trust WebSocket Block:** Browsers cannot establish `wss://` connections if the endpoint redirects to a Cloudflare Access login page.
-    *   **BKM:** If an Intercom or API is failing to connect, verify the subdomain isn't behind a "Redirect" policy. Use a "Service Auth" or "Bypass" policy for the specific WebSocket route.
-*   **Keyboard Buffer Handover:** Using `msvcrt` to detect mode-switch keys (like SPACE) often eats the first character of the subsequent `stdin.readline`.
-    *   **BKM:** Explicitly capture the trigger character and prepend it to the result of the text input stream to preserve word integrity (e.g., "Cool" vs "ool").
+### 8.3 Feb 9, 2026 (System Grounding & Curator Stability)
+*   **The "Trippy" Tool Loop (Bicameral Hallucination):** If the Brain hallucinates a tool name (e.g., `answer`, `reply_to_user`) and the Orchestrator doesn't handle it, Pinky may re-delegate the error message back to the Brain, creating an infinite "trippy" loop.
+    *   **BKM:** The Orchestrator MUST catch unknown tools and inject an explicit `System: Error - Unknown tool 'X'. Valid tools are: [...]` message into the `lab_context`. This breaks the loop by providing the agents with the ground-truth "Schema" for self-correction.
+*   **The AFK Watcher Safety:** In Co-Pilot sessions, if the Agent loses connection or forgets to shut down the server, it consumes VRAM and electricity.
+    *   **BKM:** Use the `--afk-timeout <seconds>` flag in `acme_lab.py`. This ensures the server shuts down automatically if no client connects within the specified window (e.g., 60s).
+*   **Direct Model Access (DMA) vs. Ollama:** Local reasoning (Liger-Kernel) is faster but consumes VRAM that the Brain needs.
+    *   **BKM:** Use `get_engine_v2(mode="HYBRID")` for Pinky. This offloads heavy reasoning to the Windows Brain (Ollama) while keeping Pinky's local context small and fast.
+*   **Strategic Document RAG:** Standard log artifacts lack high-level context. 
+    *   **BKM:** The RAG bridge (`bridge_burn_to_rag.py`) must explicitly ingest Strategy Docs (like `RESEARCH_SYNTHESIS.md`) to anchor the Brain's reasoning in the project's long-term vision.
 
 ---
 

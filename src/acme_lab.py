@@ -524,8 +524,18 @@ class AcmeLab:
                     decision = None # Continue loop
                 
                 else:
-                    logging.warning(f"[LAB] Unknown Tool: {tool}")
-                    break
+                    error_msg = f"Error: Unknown tool '{tool}'. Valid tools for Pinky are: delegate_to_brain, reply_to_user, critique_brain, peek_related_notes, vram_vibe_check, manage_lab, switch_brain_model, sync_rag, trigger_pager."
+                    logging.warning(f"[LAB] {error_msg}")
+                    lab_context += f"\nSystem: {error_msg}"
+                    decision = None # Continue loop to allow self-correction
+
+            # --- POST-PROCESSING: SAVE TO STREAM ---
+            if turn_count > 0 and "[SYSTEM ALERT]" not in lab_context:
+                try:
+                    await self.residents['archive'].call_tool("save_interaction", arguments={"user_query": query, "response": lab_context})
+                    logging.info("[STREAM] Turn stored for Dreaming.")
+                except Exception as e:
+                    logging.warning(f"[STREAM] Save failed: {e}")
 
         except asyncio.CancelledError:
             logging.info(f"[LAB] Session was CANCELLED (Barge-In).")
