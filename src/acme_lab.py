@@ -27,7 +27,7 @@ else:
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.1.0"
+VERSION = "3.1.6"
 
 # Logging
 logging.basicConfig(
@@ -313,7 +313,7 @@ class AcmeLab:
                 self.connected_clients.remove(ws)
             
             # Auto-Shutdown in Debug Modes
-            if self.mode != "HOSTING" and len(self.connected_clients) == 0:
+            if self.mode != "SERVICE_UNATTENDED" and len(self.connected_clients) == 0:
                 logging.info("[DEBUG] Last client disconnected. Shutting down Lab.")
                 self.shutdown_event.set()
         

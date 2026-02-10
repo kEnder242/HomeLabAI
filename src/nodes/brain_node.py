@@ -42,6 +42,7 @@ BRAIN_SYSTEM_PROMPT = (
     "CONSTRAINTS: "
     "- Focus on the task provided by Pinky. "
     "- Use your sophisticated vocabulary to provide high-quality technical or logical output. "
+    "- If you are asked to write a report, a draft, or a long summary, you MUST start your response with '[THE EDITOR]'. "
 )
 
 def _validate_filename(filename: str) -> tuple[bool, str]:
