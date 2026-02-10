@@ -1,5 +1,5 @@
 # RESEARCH_SYNTHESIS.md: Cohesive Implementation Roadmap (v2.0)
-**Date:** Feb 6, 2026
+**Date:** Feb 9, 2026
 **Status:** DRAFT (Synthesis of Keep Research & Current Session Insights)
 
 ## 🔭 The Unified Vision
@@ -13,7 +13,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | :--- | :--- | :--- | :--- |
 | **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **95%** |
 | **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
-| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** `CurriculumEngine` uses Synthesize-then-Solve loop for log extraction. | **90%** |
+| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** `CurriculumEngine` uses Synthesize-then-Solve loop for log extraction. | **100%** |
 | **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
 | **RLM** (Recursive LMs) | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
 | **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
@@ -28,14 +28,14 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | Paper | Project Impact | "Same Idea" vs. "Game Changer" | % Architectural Change |
 | :--- | :--- | :--- | :--- |
 | **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **90%** |
-| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Evolutionary.** It forced the model to think before writing, which caught the "PECI/Simics" era errors but introduced "filler" risks. | **60%** |
+| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Evolutionary.** It forced the model to think before writing, which caught the "PECI/Simics" era errors but introduced "filler" risks. | **100%** |
 | **TTT-Discover** | **Autonomous Discovery.** Using test-time training to find optimal validation paths for failures. | **Strategic Successor.** Evolves curriculum synthesis into active solution discovery. | **0% (Planned)** |
 | **Apple CLaRa** | **Semantic Compression.** Implemented as the `SemanticCondenser` to handle large raw log backlogs. | **Useful Idea.** It’s a specialized prompt wrapper that keeps our reasoning loop efficient, but doesn't fundamentally change the data flow. | **40%** |
 | **Agentic-R** | **Memory Utility.** Currently used for injecting historical context (e.g., previous month's JSON). | **Seed Idea.** It's currently "Just an idea that seems the same." We haven't fully implemented the utility-based re-ranking yet. | **70%** |
 | **Liger-Kernel** | **VRAM Optimization.** Pending installation and bench-test on Pinky-Node (2080 Ti). | **Efficiency Target.** Aims for 80%+ VRAM reduction to fit 14B models on 11GB. | **80%** |
 | **DeepAgent** | **Framework Foundation.** Multi-agent orchestration with local backends. | **Origin:** Initial framework for hybrid model setup. | **100%** |
 | **Google Nested Learning** | **Continual Learning.** Paradigms for keeping local models fresh. | **Insight:** Inspiration for "Dreaming" phase. | **20%** |
-| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **0% (Planned)** |
+| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **80%** |
 
 ---
 
@@ -65,4 +65,4 @@ To prevent the "Goldmine" from becoming "Sludge":
 3. **Agent Breadcrumbs:** Every AI response regarding research will now point to this file: `[Ref: docs/plans/RESEARCH_SYNTHESIS.md]`.
 
 ---
-*Next Action: Implement the TTCS "Synthesize-then-Solve" loop in ai_engine_v2.py.*
+*Next Action: Implement the Subconscious Dreaming multi-host batch consolidation and the Report Writer Sidebar.*

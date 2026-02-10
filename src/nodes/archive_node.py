@@ -221,5 +221,38 @@ def save_interaction(user_query: str, response: str) -> str:
     stream.add(documents=[doc_text], metadatas=[{"timestamp": timestamp, "type": "raw_turn"}], ids=[f"turn_{timestamp}"])
     return "Stored in Stream."
 
+@mcp.tool()
+def get_stream_dump() -> str:
+    """
+    Returns all raw interaction logs currently in the short-term stream.
+    Used by the Dream Cycle for synthesis.
+    """
+    try:
+        data = stream.get()
+        return json.dumps({"documents": data['documents'], "ids": data['ids']})
+    except Exception as e:
+        return json.dumps({"documents": [], "ids": [], "error": str(e)})
+
+@mcp.tool()
+def dream(summary: str, sources: list[str]) -> str:
+    """
+    Consolidates synthesized wisdom into long-term memory and purges raw sources.
+    This is the 'Subconscious Compression' phase.
+    """
+    try:
+        timestamp = datetime.datetime.now().isoformat()
+        # 1. Store the high-density wisdom
+        wisdom.add(
+            documents=[summary],
+            metadatas=[{"timestamp": timestamp, "type": "dream_summary", "source_count": len(sources)}],
+            ids=[f"dream_{timestamp}"]
+        )
+        # 2. Purge the raw chaotic memories
+        if sources:
+            stream.delete(ids=sources)
+        return f"Dreaming complete. Consolidated {len(sources)} memories into Diamond Wisdom."
+    except Exception as e:
+        return f"Dream failed: {e}"
+
 if __name__ == "__main__":
     mcp.run()
