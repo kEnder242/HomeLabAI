@@ -126,6 +126,24 @@ def peek_related_notes(keyword: str) -> str:
         return f"Error peeking at notes: {e}"
 
 @mcp.tool()
+def vram_vibe_check() -> str:
+    """
+    Checks the local system health (VRAM / Temperature).
+    Returns a string describing the current system vibe.
+    """
+    try:
+        import subprocess
+        # Get Temperature and Utilization
+        cmd = ["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu,utilization.memory", "--format=csv,noheader,nounits"]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            temp, gpu, vram = res.stdout.strip().split(", ")
+            return f"The vibe is... {temp}C at {gpu}% GPU load. VRAM is {vram}% full. Narf!"
+        return "The vibe is... mysterious. (nvidia-smi failed)"
+    except Exception as e:
+        return f"Egad! I couldn't check the vibe: {e}"
+
+@mcp.tool()
 def add_routing_anchor(target: str, anchor_text: str) -> str:
     """Adds a new semantic anchor to improve the Semantic Router."""
     global brain_vectors, pinky_vectors, BRAIN_ANCHORS, PINKY_ANCHORS

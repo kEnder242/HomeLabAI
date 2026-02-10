@@ -51,6 +51,7 @@ class ClientState(Enum):
 # Global Context
 STATE = ClientState.LOBBY
 SHUTDOWN_EVENT = asyncio.Event()
+IS_HEARING = False # Track if we are currently mid-transcription line
 
 async def get_user_input():
     """Blocking input wrapped in a thread."""
@@ -71,7 +72,7 @@ async def check_keyboard_trigger():
 
 async def receive_messages(websocket):
     """Listens for server responses and updates the UI."""
-    global STATE
+    global STATE, IS_HEARING
     try:
         async for message in websocket:
             data = json.loads(message)
@@ -86,6 +87,7 @@ async def receive_messages(websocket):
                         print(f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}")
                     STATE = ClientState.LISTENING
                 elif s == "shutdown":
+                    if IS_HEARING: print(""); IS_HEARING = False
                     print(f"{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
                     STATE = ClientState.SHUTDOWN
                     SHUTDOWN_EVENT.set()
@@ -93,13 +95,16 @@ async def receive_messages(websocket):
 
             # 2. Transcription & Responses
             elif "text" in data and STATE == ClientState.LISTENING:
+                IS_HEARING = True
                 sys.stdout.write(f"\rHearing: {data['text']}   ")
                 sys.stdout.flush()
             
             elif data.get("type") == "final":
-                 print(f"\n{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
+                 if IS_HEARING: print(""); IS_HEARING = False
+                 print(f"{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
 
             elif "brain" in data:
+                if IS_HEARING: print(""); IS_HEARING = False
                 source = data.get("brain_source", "Unknown")
                 content = data['brain']
                 c = COLOR_PINK if "Pinky" in source else COLOR_CYAN
@@ -109,11 +114,14 @@ async def receive_messages(websocket):
             elif data.get("type") == "debug":
                 event = data.get("event")
                 if event == "BRAIN_OUTPUT":
+                    if IS_HEARING: print(""); IS_HEARING = False
                     print(f"{COLOR_CYAN}[THE BRAIN]: {data.get('data')}{COLOR_RESET}")
                 elif event == "PINKY_DECISION":
                     decision = data.get("data", {})
                     tool = decision.get("tool")
-                    print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
+                    if tool != "facilitate": # Only show 'active' tools
+                        if IS_HEARING: print(""); IS_HEARING = False
+                        print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
 
     except websockets.exceptions.ConnectionClosed:
         SHUTDOWN_EVENT.set()

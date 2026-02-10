@@ -1,36 +1,40 @@
 # Project Status: HomeLabAI
 
-**Date:** February 5, 2026
-**Current Phase:** Phase 8: Federated Hybrid Cloud (Resilience & Web Voice)
+**Date:** February 9, 2026
+**Current Phase:** Phase 9: High-Fidelity Synthesis & System Grounding
 **Global Status:** [../Portfolio_Dev/00_FEDERATED_STATUS.md](../Portfolio_Dev/00_FEDERATED_STATUS.md)
 
 ## 🗺️ Documentation Map
 *   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md)
-*   **AI Master Plan:** [AI_MASTER_PLAN.md](docs/plans/AI_MASTER_PLAN.md) (Synthesized Keep Research)
-*   **EarNode Retrospective:** [SESSION_BKM_FEB_05.md](../Portfolio_Dev/SESSION_BKM_FEB_05.md)
+*   **AI Master Plan:** [AI_MASTER_PLAN.md](docs/plans/AI_MASTER_PLAN.md)
+*   **Research Synthesis:** [RESEARCH_SYNTHESIS.md](docs/plans/RESEARCH_SYNTHESIS.md) (FS-Researcher, RLM, TTCS)
 
 ## 🗣️ Glossary & Shortcuts
-*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_PINKY`).
-*   **"Heads Down"**: Trigger `Builder Protocol`.
-*   **"The Dream"**: Trigger `src/dream_cycle.py` to consolidate memory.
+*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_BRAIN` for auto-return).
+*   **"The Curator"**: Pinky's new role managing Brain's performance and hallucinations.
+*   **"Recursive Peek"**: `peek_related_notes` tool for following technical breadcrumbs.
 
 ## ⚠️ Known Traps
-*   **EarNode CUDA Graphs:** Auto-detected. System self-heals if CUDA 12.8 conflict occurs.
-*   **Cache Walls:** Web Intercom requires `intercom_v2.js?v=3.0` to bypass Cloudflare/Browser cache.
-*   **Aiohttp Handshake:** Always ensure handlers return the `web.WebSocketResponse` object.
+*   **Agent Hang:** Avoid using blocking tools (like `tail`) in `SERVICE_UNATTENDED` (formerly `HOSTING`) mode.
+*   **ChromaDB Conflicts:** System now catches and self-heals if embedding function configurations drift.
+*   **Newline Confusion:** Resolved in `intercom.py` via Terminal Awareness.
 
-## Completed Milestones (Session Feb 5)
-1.  **EarNode Resilience (v2.5.0):**
-    *   Implemented recursive graph disabling fallback.
-    *   Verified stability with isolated testing.
-2.  **Web Voice (v3.0.0):**
-    *   Implemented browser-based PCM capture (16kHz mono).
-    *   Integrated binary streaming into `aiohttp` server.
-    *   Resolved UI/Script synchronization crashes.
-3.  **Infrastructure:**
-    *   Provisioned `acme.jason-lab.dev` with Access Bypass for Lab IP.
+## Completed Milestones (Session Feb 9)
+1.  **Grounding & Accuracy (v3.1.0): [DONE]**
+    *   Implemented **Recursive Discovery** (`peek_related_notes`).
+    *   Synced 868 refined technical artifacts from "Slow Burn" into RAG.
+    *   Verified Brain recalling 2019 "Force Me Recovery" events correctly.
+2.  **Communication Fluidity: [DONE]**
+    *   Implemented **Newline State Machine** in `intercom.py` for async interjections.
+    *   Added **LOCAL/SERVER** debug tags to resolve Web Intercom duplication.
+3.  **The Curator Role: [DONE]**
+    *   Implemented **`lobotomize_brain`** to clear hallucination loops.
+    *   Implemented **`vram_vibe_check`** for real-time GPU health reporting.
+4.  **Security & Observability: [DONE]**
+    *   Enabled **Anonymous Grafana Viewer** for live telemetry dashboard.
+    *   Implemented **Cloudflare Retro-Scanner** for Access login tracking.
 
 ## Master Backlog & Roadmap
 *   **[TODO] Liger-Kernel:** Bench-test 80% VRAM reduction.
-*   **[TODO] Web Audio Feedback:** Add "Pinky is Speaking" visual cues to UI.
-*   **[PLANNED] Year-to-Year Resume:** Re-index archives for 2005-2024 work history.
+*   **[TODO] Subconscious Dreaming:** Multi-host batch processing for memory consolidation.
+*   **[PLANNED] Report Writer Sidebar:** Brain-powered synthesis UI in the Web Intercom.
