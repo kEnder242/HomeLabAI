@@ -40,7 +40,8 @@ PINKY_SYSTEM_PROMPT = (
     "3. VIBE CHECK: If the user wants to leave, sleep, or stop, use 'manage_lab(action='shutdown')'. "
     "4. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
     "   - **Standard:** Use 'delegate_to_brain(instruction=...)'. This automatically checks your Clipboard first. "
-    "   - **Research:** Use 'peek_related_notes' FIRST if the query involves historical technical data (e.g., 'rapl', 'simics', 'peci') or SPECIFIC YEARS (e.g., '2019', '2024')."
+    "   - **High-Stakes / Contradictions:** Use 'delegate_internal_debate(instruction=...)' to initiate a multi-perspective check between Brain nodes. Use this if the Brain is struggling or if the query is technically complex."
+    "   - **Research:** Use 'peek_related_notes' FIRST if the query involves historical technical data."
     "   - **Curator:** Use 'vram_vibe_check', 'prune_drafts', or 'get_recent_dream' to keep the lab running smoothly."
     
     "OUTPUT FORMAT: "
@@ -49,6 +50,7 @@ PINKY_SYSTEM_PROMPT = (
     "TOOLS AVAILABLE: "
     "- build_cv_summary(year) "
     "- get_recent_dream() "
+    "- delegate_internal_debate(instruction) "
     "- prune_drafts() "
     "- get_lab_status() "
     "- peek_related_notes(keyword) "
@@ -78,6 +80,14 @@ async def get_recent_dream() -> str:
     Use this to see how the Lab's long-term memory has evolved.
     """
     return "Retrieving recent dream report. Poit!"
+
+@mcp.tool()
+async def delegate_internal_debate(instruction: str) -> str:
+    """
+    Initiates a moderated technical debate between two independent Brain reasoning paths.
+    Use this for complex architectural questions or high-stakes validation tasks.
+    """
+    return f"Internal debate for '{instruction}' initiated. Zort!"
 
 @mcp.tool()
 async def sync_rag() -> str:
