@@ -546,6 +546,48 @@ class AcmeLab:
                     msg = res.content[0].text
                     await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
                     decision = None
+
+                elif tool == "generate_bkm":
+                    topic = params.get("topic", "")
+                    category = params.get("category", "validation")
+                    logging.info(f"[ARCHITECT] Synthesizing master BKM for {topic} ({category})")
+                    
+                    # 1. Gather Data
+                    res_context = await self.residents['archive'].call_tool("generate_bkm", arguments={"topic": topic, "category": category})
+                    bkm_data = json.loads(res_context.content[0].text)
+                    historical_context = bkm_data.get("context", "")
+                    
+                    # 2. Instruct Brain with BKM Protocol
+                    bkm_prompt = (
+                        f"You are the Senior Platform Telemetry Architect. Build a master Best Known Method (BKM) document for: '{topic}'. "
+                        "PROTOCOL: "
+                        "1. One-liner preparation/installation commands. "
+                        "2. The critical 'core' lines of logic. "
+                        "3. Specific trigger points. "
+                        "4. A 'Scars' retrospective of historical mis-steps from the logs. "
+                        "Use the [THE EDITOR] tag. Focus on high-density technical information."
+                    )
+                    
+                    # Call Brain
+                    brain_res = await self.monitor_task_with_tics(
+                        self.residents['brain'].call_tool("deep_think", arguments={"query": bkm_prompt, "context": historical_context}),
+                        websocket
+                    )
+                    bkm_content = brain_res.content[0].text
+                    
+                    # 3. Save Result
+                    save_res = await self.residents['archive'].call_tool("save_bkm", arguments={
+                        "topic": topic,
+                        "category": category,
+                        "content": bkm_content
+                    })
+                    
+                    # Report Success
+                    await websocket.send_str(json.dumps({"brain": f"Architectural Blueprint complete! {save_res.content[0].text}", "brain_source": "Pinky"}))
+                    
+                    # Also stream to sidebar
+                    await websocket.send_str(json.dumps({"brain": bkm_content, "brain_source": "The Editor"}))
+                    decision = None
                 
                 elif tool == "build_cv_summary":
                     year = params.get("year", "2024")
