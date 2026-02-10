@@ -341,5 +341,31 @@ def dream(summary: str, sources: list[str]) -> str:
     except Exception as e:
         return f"Dream failed: {e}"
 
+@mcp.tool()
+def get_recent_dream() -> str:
+    """
+    Retrieves the most recent synthesized dream summary from the wisdom collection.
+    Use this to see how the Lab's memory has evolved recently.
+    """
+    try:
+        # Query for dream_summary type
+        res = wisdom.get(where={"type": "dream_summary"})
+        if not res['documents']:
+            return "No recent dreams found in the archives."
+        
+        # Sort by timestamp in metadata (manual sort since Chroma get doesn't always sort)
+        items = []
+        for i in range(len(res['documents'])):
+            items.append({
+                "doc": res['documents'][i],
+                "meta": res['metadatas'][i]
+            })
+        
+        items.sort(key=lambda x: x['meta'].get('timestamp', ''), reverse=True)
+        latest = items[0]
+        return f"[DREAM FROM {latest['meta']['timestamp']}]:\n{latest['doc']}"
+    except Exception as e:
+        return f"Error retrieving dream: {e}"
+
 if __name__ == "__main__":
     mcp.run()

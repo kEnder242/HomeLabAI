@@ -10,7 +10,7 @@ from mcp.client.stdio import stdio_client
 PYTHON_PATH = sys.executable
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Root of HomeLabAI
 ARCHIVE_NODE = os.path.join(BASE_DIR, "src/nodes/archive_node.py")
-BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.15:11434/api/generate")
+BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.26:11434/api/generate")
 
 async def remote_brain_think(prompt, context):
     """Fallback for remote synthesis if Brain node is not local."""
@@ -19,7 +19,7 @@ async def remote_brain_think(prompt, context):
         async with aiohttp.ClientSession() as session:
             payload = {
                 "model": "llama3:latest",
-                "prompt": f"{context}\n\n[TASK]: {prompt}",
+                "prompt": f"[TECHNICAL CONTEXT]\n{context}\n\n[TASK]: {prompt}",
                 "stream": False,
                 "options": {"num_predict": 1024, "temperature": 0.3}
             }
@@ -52,20 +52,22 @@ async def run_dream_cycle():
                     logging.info("💤 No memories found. Returning to sleep.")
                     return
 
-                logging.info(f"🧠 Synthesizing {len(docs)} turns via The Brain...")
+                logging.info(f"🧠 Synthesizing {len(docs)} turns via The Brain (4090)...")
 
-                # 2. Synthesis (Use Remote 4090 if possible)
+                # 2. Synthesis (Use Remote 4090)
                 narrative_input = "\n---\n".join(docs)
                 prompt = (
                     "Synthesize these interaction logs into a high-density 'Diamond Wisdom' paragraph. "
-                    "Focus on technical decisions and validation scars. Ignore filler."
+                    "Analyze the technical progression, identifying specific decisions made and validation scars uncovered. "
+                    "Ignore greetings, character filler, and nervous tics. "
+                    "Provide a report suitable for long-term strategic grounding."
                 )
                 
                 summary = await remote_brain_think(prompt, narrative_input)
                 logging.info("✨ Synthesis complete.")
 
                 # 3. Consolidation
-                logging.info("💾 Storing wisdom and purging stream...")
+                logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
                 await archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
 
                 logging.info("✅ Dream Cycle Finished. The Lab has evolved.")
