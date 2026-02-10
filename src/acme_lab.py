@@ -273,8 +273,8 @@ class AcmeLab:
                             query = data.get("content", "")
                             logging.info(f"[TEXT] Rx: {query}")
                             
-                            # Echo back to client for UI consistency (Deduplicated in Web Intercom)
-                            await ws.send_str(json.dumps({"type": "final", "text": query, "source": "text"}))
+                            # Echo back removed to fix UI duplication (Echo Bug)
+                            # await ws.send_str(json.dumps({"type": "final", "text": query, "source": "text"}))
                             
                             # Interrupt Logic (Barge-In)
                             if self.current_processing_task and not self.current_processing_task.done():
@@ -336,7 +336,7 @@ class AcmeLab:
         
         try:
             # 1. Initialize Context
-            lab_context = f"User: {query}"
+            lab_history = [f"User: {query}"]
             turn_count = 0
             MAX_TURNS = 10 
 
@@ -364,6 +364,9 @@ class AcmeLab:
 
             while turn_count < MAX_TURNS:
                 turn_count += 1
+                
+                # Maintain Sliding Window (Last 3 turns)
+                lab_context = "\n".join(lab_history[-6:]) # Each turn is User + Response (3 turns = 6 lines)
                 
                 # 1.5 Retrieve Wisdom (Memory)
                 memory_hit = await self.residents['archive'].call_tool("get_context", arguments={"query": query, "n_results": 2})
@@ -399,6 +402,7 @@ class AcmeLab:
                 if tool == "reply_to_user":
                     text = params.get("text", "Narf!")
                     await websocket.send_str(json.dumps({"brain": text, "brain_source": "Pinky"}))
+                    lab_history.append(f"Pinky: {text}")
                     break # End of Turn
 
                 elif tool == "delegate_to_brain" or tool == "delegate_internal_debate":
@@ -465,7 +469,7 @@ class AcmeLab:
                                     logging.warning(f"[CLIPBOARD] Scribble failed: {e}")
 
                     # Add to context and continue loop
-                    lab_context += f"\nBrain: {brain_out}"
+                    lab_history.append(f"Brain: {brain_out}")
                     logging.info(f"[BRAIN] Output: {brain_out[:100]}...")
                     await self.broadcast({"type": "debug", "event": "BRAIN_OUTPUT", "data": brain_out})
                     decision = None # Force re-evaluation by Pinky
@@ -473,14 +477,14 @@ class AcmeLab:
                 elif tool == "critique_brain":
                     feedback = params.get("feedback", "Try again.")
                     logging.info(f"[PINKY] Critique: {feedback}")
-                    lab_context += f"\nPinky (Critique): {feedback}"
+                    lab_history.append(f"Pinky (Critique): {feedback}")
                     decision = None # Loop back
                 
                 elif tool == "get_lab_status":
                     res = await self.residents['archive'].call_tool("get_lab_status")
                     report = res.content[0].text
                     await websocket.send_str(json.dumps({"brain": f"Lab Status: {report}", "brain_source": "Pinky"}))
-                    lab_context += f"\nSystem (Lab Status): {report}"
+                    lab_history.append(f"System (Lab Status): {report}")
                     decision = None 
                     turn_count = MAX_TURNS - 1 
 
@@ -489,7 +493,7 @@ class AcmeLab:
                     res = await self.residents['archive'].call_tool("peek_related_notes", arguments={"keyword": keyword})
                     discovery = res.content[0].text
                     logging.info(f"[DISCOVERY] Found data for '{keyword}'")
-                    lab_context += f"\nSystem (Archives): {discovery}"
+                    lab_history.append(f"System (Archives): {discovery}")
                     decision = None 
 
                 elif tool == "manage_lab":
@@ -505,7 +509,7 @@ class AcmeLab:
                          break
                     elif action == "lobotomize_brain":
                         logging.info("[CURATOR] Lobotomizing Brain (Clearing Context).")
-                        lab_context = f"User: {query}\n[SYSTEM]: Context has been cleared by Pinky."
+                        lab_history = [f"User: {query}", "[SYSTEM]: Context has been cleared by Pinky."]
                         await websocket.send_str(json.dumps({"brain": "Narf! I've cleared the Brain's memory. Much better.", "brain_source": "Pinky"}))
                         decision = None
                 
@@ -551,13 +555,9 @@ class AcmeLab:
                     topic = params.get("topic", "")
                     category = params.get("category", "validation")
                     logging.info(f"[ARCHITECT] Synthesizing master BKM for {topic} ({category})")
-                    
-                    # 1. Gather Data
                     res_context = await self.residents['archive'].call_tool("generate_bkm", arguments={"topic": topic, "category": category})
                     bkm_data = json.loads(res_context.content[0].text)
                     historical_context = bkm_data.get("context", "")
-                    
-                    # 2. Instruct Brain with BKM Protocol
                     bkm_prompt = (
                         f"You are the Senior Platform Telemetry Architect. Build a master Best Known Method (BKM) document for: '{topic}'. "
                         "PROTOCOL: "
@@ -567,25 +567,17 @@ class AcmeLab:
                         "4. A 'Scars' retrospective of historical mis-steps from the logs. "
                         "Use the [THE EDITOR] tag. Focus on high-density technical information."
                     )
-                    
-                    # Call Brain
                     brain_res = await self.monitor_task_with_tics(
                         self.residents['brain'].call_tool("deep_think", arguments={"query": bkm_prompt, "context": historical_context}),
                         websocket
                     )
                     bkm_content = brain_res.content[0].text
-                    
-                    # 3. Save Result
                     save_res = await self.residents['archive'].call_tool("save_bkm", arguments={
                         "topic": topic,
                         "category": category,
                         "content": bkm_content
                     })
-                    
-                    # Report Success
                     await websocket.send_str(json.dumps({"brain": f"Architectural Blueprint complete! {save_res.content[0].text}", "brain_source": "Pinky"}))
-                    
-                    # Also stream to sidebar
                     await websocket.send_str(json.dumps({"brain": bkm_content, "brain_source": "The Editor"}))
                     decision = None
                 
@@ -619,15 +611,15 @@ class AcmeLab:
                     decision = None 
                 
                 else:
-                    error_msg = f"Error: Unknown tool '{tool}'. Valid tools for Pinky are: delegate_to_brain, reply_to_user, critique_brain, peek_related_notes, vram_vibe_check, manage_lab, switch_brain_model, sync_rag, trigger_pager."
+                    error_msg = f"Error: Unknown tool '{tool}'. Valid tools for Pinky are: delegate_to_brain, reply_to_user, critique_brain, peek_related_notes, vram_vibe_check, manage_lab, switch_brain_model, sync_rag, trigger_pager, generate_bkm, build_cv_summary."
                     logging.warning(f"[LAB] {error_msg}")
-                    lab_context += f"\nSystem: {error_msg}"
+                    lab_history.append(f"System: {error_msg}")
                     decision = None 
 
             # --- POST-PROCESSING: SAVE TO STREAM ---
-            if turn_count > 0 and "[SYSTEM ALERT]" not in lab_context:
+            if turn_count > 0 and "[SYSTEM ALERT]" not in "\n".join(lab_history):
                 try:
-                    await self.residents['archive'].call_tool("save_interaction", arguments={"user_query": query, "response": lab_context})
+                    await self.residents['archive'].call_tool("save_interaction", arguments={"user_query": query, "response": "\n".join(lab_history)})
                     logging.info("[STREAM] Turn stored for Dreaming.")
                 except Exception as e:
                     logging.warning(f"[STREAM] Save failed: {e}")
