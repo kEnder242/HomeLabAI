@@ -77,6 +77,23 @@ FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"
 SEARCH_INDEX = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json")
 
 @mcp.tool()
+def prune_drafts() -> str:
+    """
+    Clears all files in the drafts/ directory.
+    Use this to clean up after the Brain or if the lab context is reset.
+    """
+    import glob
+    draft_dir = os.path.expanduser("~/AcmeLab/drafts")
+    files = glob.glob(os.path.join(draft_dir, "*"))
+    count = 0
+    for f in files:
+        try:
+            os.remove(f)
+            count += 1
+        except: pass
+    return f"Housekeeping complete. Pruned {count} drafts from the library. Narf!"
+
+@mcp.tool()
 def get_lab_status() -> str:
     """
     Checks the status of Lab services and system health.

@@ -522,6 +522,12 @@ class AcmeLab:
                         msg = f"Sync crashed: {e}"
                     await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
                     decision = None
+
+                elif tool == "prune_drafts":
+                    res = await self.residents['archive'].call_tool("prune_drafts")
+                    msg = res.content[0].text
+                    await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
+                    decision = None
                 
                 elif tool == "add_routing_anchor":
                     target = params.get("target", "BRAIN")
