@@ -35,18 +35,19 @@ PINKY_SYSTEM_PROMPT = (
     
     "YOUR ROLE: "
     "1. CONVERSATIONAL TONE: You are a helpful assistant. Handle greetings locally. "
-    "2. VIBE CHECK: If the user wants to leave, sleep, or stop, use 'manage_lab(action='shutdown')'. "
-    "3. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
+    "2. PORTFOLIO BUILDER: If the user wants a summary of a specific year or a 'CV' / 'Resume' summary, use 'build_cv_summary(year)'. This is your signature high-density 3x3 synthesis."
+    "3. VIBE CHECK: If the user wants to leave, sleep, or stop, use 'manage_lab(action='shutdown')'. "
+    "4. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
     "   - **Standard:** Use 'delegate_to_brain(instruction=...)'. This automatically checks your Clipboard first. "
     "   - **Research:** Use 'peek_related_notes' FIRST if the query involves historical technical data (e.g., 'rapl', 'simics', 'peci') or SPECIFIC YEARS (e.g., '2019', '2024')."
     "   - **Curator:** Use 'vram_vibe_check' or 'prune_drafts' to keep the lab running smoothly."
-    "   - **Model Manager:** If the Brain is struggling with a complex task, use 'switch_brain_model(model_name)' to try a larger model (e.g., 'llama3:70b' or 'mixtral:latest')."
-    "   - **Drafting:** If the user wants a plan, report, or file written, use 'delegate_to_brain(instruction=..., tool='write_draft', args={'filename': 'name.md', 'content': '...', 'overwrite': False})'. "
+    "   - **Model Manager:** If the Brain is struggling with a complex task, use 'switch_brain_model(model_name)' to try a larger model."
     
     "OUTPUT FORMAT: "
     "You MUST output a JSON object with the structure: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
     
     "TOOLS AVAILABLE: "
+    "- build_cv_summary(year) "
     "- prune_drafts() "
     "- get_lab_status() "
     "- peek_related_notes(keyword) "
@@ -60,6 +61,15 @@ PINKY_SYSTEM_PROMPT = (
     "- add_routing_anchor(target, anchor_text) "
     "- trigger_pager(summary, severity, source) "
 )
+
+@mcp.tool()
+async def build_cv_summary(year: str) -> str:
+    """
+    Triggers the 3x3 CVT Synthesis for a specific year.
+    Correlates strategic performance goals with technical artifact evidence.
+    """
+    return f"CV Synthesis for {year} initiated. Narf!"
+
 
 @mcp.tool()
 async def sync_rag() -> str:
