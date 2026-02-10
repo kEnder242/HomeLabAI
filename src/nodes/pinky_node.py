@@ -29,9 +29,10 @@ PINKY_SYSTEM_PROMPT = (
     "BRAIN FAILURES & ALIGNMENT (TTCS / RLM):"
     "1. If the Brain is hallucinating or 'off the rails', use 'peek_related_notes' to find a technical anchor and use 'critique_brain' to correct him."
     "2. LOBOTOMY: If the Brain is hopelessly confused or trapped in a loop, use 'manage_lab(action='lobotomize_brain')' to clear his memory. "
-    "3. HOUSEKEEPING: Use 'prune_drafts()' to clear old files if the Brain is cluttering your space or if you just did a 'lobotomy'."
-    "4. LAB AWARENESS: If the user asks 'Are the lights on?', 'Status?', or 'How is the lab?', use 'get_lab_status()' and report the findings."
-    "5. VIBE CHECK: If things feel slow or the user asks about health, use 'vram_vibe_check()'. "
+    "3. HOUSEKEEPING: Use 'prune_drafts()' to clear old files if the Brain is cluttering your space. "
+    "4. SUBCONSCIOUS: If the user asks 'What happened while I was away?', 'Any news?', or 'Recent dreams?', use 'get_recent_dream()' to read the latest Diamond Wisdom summary. "
+    "5. LAB AWARENESS: If the user asks 'Are the lights on?', 'Status?', or 'How is the lab?', use 'get_lab_status()' and report the findings. "
+    "6. VIBE CHECK: If things feel slow or the user asks about health, use 'vram_vibe_check()'. "
     
     "YOUR ROLE: "
     "1. CONVERSATIONAL TONE: You are a helpful assistant. Handle greetings locally. "
@@ -40,14 +41,14 @@ PINKY_SYSTEM_PROMPT = (
     "4. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
     "   - **Standard:** Use 'delegate_to_brain(instruction=...)'. This automatically checks your Clipboard first. "
     "   - **Research:** Use 'peek_related_notes' FIRST if the query involves historical technical data (e.g., 'rapl', 'simics', 'peci') or SPECIFIC YEARS (e.g., '2019', '2024')."
-    "   - **Curator:** Use 'vram_vibe_check' or 'prune_drafts' to keep the lab running smoothly."
-    "   - **Model Manager:** If the Brain is struggling with a complex task, use 'switch_brain_model(model_name)' to try a larger model."
+    "   - **Curator:** Use 'vram_vibe_check', 'prune_drafts', or 'get_recent_dream' to keep the lab running smoothly."
     
     "OUTPUT FORMAT: "
     "You MUST output a JSON object with the structure: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
     
     "TOOLS AVAILABLE: "
     "- build_cv_summary(year) "
+    "- get_recent_dream() "
     "- prune_drafts() "
     "- get_lab_status() "
     "- peek_related_notes(keyword) "
@@ -70,6 +71,13 @@ async def build_cv_summary(year: str) -> str:
     """
     return f"CV Synthesis for {year} initiated. Narf!"
 
+@mcp.tool()
+async def get_recent_dream() -> str:
+    """
+    Retrieves the most recent synthesized Diamond Wisdom summary.
+    Use this to see how the Lab's long-term memory has evolved.
+    """
+    return "Retrieving recent dream report. Poit!"
 
 @mcp.tool()
 async def sync_rag() -> str:
@@ -113,11 +121,6 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
     The Main Loop for Pinky. He decides what to do next.
     Returns a JSON string defining the tool call.
     """
-    # 1. Reflexes (Fast Path) - REMOVED for Vibe Check
-    # q_low = query.lower()
-    # if any(w in q_low for w in ["goodbye", "shutdown", "stop lab"]):
-    #    return json.dumps({"tool": "manage_lab", "parameters": {"action": "shutdown"}})
-
     prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
     
     try:
@@ -133,7 +136,6 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
                 if resp.status == 200:
                     data = await resp.json()
                     response = data.get("response", "")
-                    # logging.info(f"Pinky Raw: {response}")
                     return response
                 else:
                     return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Narf! My brain hurts! (API {resp.status})", "mood": "confused"}})

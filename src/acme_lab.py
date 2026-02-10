@@ -523,14 +523,19 @@ class AcmeLab:
                     await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
                     decision = None
 
-                elif tool == "prune_drafts":
-                    res = await self.residents['archive'].call_tool("prune_drafts")
-                    msg = res.content[0].text
-                    await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
-                    decision = None
-
-                elif tool == "build_cv_summary":
-                    year = params.get("year", "2024")
+                                elif tool == "prune_drafts":
+                                    res = await self.residents['archive'].call_tool("prune_drafts")
+                                    msg = res.content[0].text
+                                    await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
+                                    decision = None
+                
+                                elif tool == "get_recent_dream":
+                                    res = await self.residents['archive'].call_tool("get_recent_dream")
+                                    msg = res.content[0].text
+                                    await websocket.send_str(json.dumps({"brain": msg, "brain_source": "Pinky"}))
+                                    decision = None
+                                
+                                elif tool == "build_cv_summary":                    year = params.get("year", "2024")
                     logging.info(f"[PORTFOLIO] Building 3x3 CVT for {year}")
                     
                     # 1. Gather Data
