@@ -94,20 +94,20 @@ async def switch_brain_model(model_name: str) -> str:
 @mcp.tool()
 async def trigger_pager(summary: str, severity: str = "info", source: str = "Pinky") -> str:
     """
-    Triggers the PagerDuty alert system and logs the event.
+    Triggers the notification gatekeeper and logs the event.
     Use this for thermal warnings, task completions, or system anomalies.
     """
-    script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_pd.py")
+    script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_gatekeeper.py")
     try:
         # Running with --dry-run as per mock stage
         cmd = ["python3", script_path, summary, "--source", source, "--severity", severity, "--dry-run"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            return f"Zort! Paged the human: {summary}"
+            return f"Zort! Logged the event: {summary}"
         else:
-            return f"Egad! Pager failed: {result.stderr}"
+            return f"Egad! Log failed: {result.stderr}"
     except Exception as e:
-        return f"Narf! Couldn't find the pager: {e}"
+        return f"Narf! Couldn't find the gatekeeper: {e}"
 
 @mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:

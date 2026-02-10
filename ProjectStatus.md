@@ -36,6 +36,7 @@
 4.  **Security & Observability: [DONE]**
     *   Enabled **Anonymous Grafana Viewer** for live telemetry dashboard.
     *   Implemented **Cloudflare Retro-Scanner** for Access login tracking.
+    *   Implemented **Notification Gatekeeper**: Triage system for ntfy.sh (Critical) and local logging.
 5.  **Infrastructure & Reasoning (v3.1.9): [DONE]**
     *   **Liger-Kernel:** Bench-tested 80% VRAM reduction.
     *   **Subconscious Dreaming:** Multi-host batch processing active (`dream_cycle.py`).
@@ -43,10 +44,11 @@
 6.  **Concurrency & Semantic Integrity (v3.1.10): [DONE]**
     *   **Round Table Lock:** Implemented `round_table.lock` to prevent VRAM battles.
     *   **Semantic De-duper:** 85% fuzzy threshold active in `nibble_v2.py` (Day-grounded).
-    *   **vLLM V1 Pilot:** Initialized with AWQ quantization on port 8088.
+    *   **vLLM V1 Pilot:** Stable on port 8088 using Mistral-7B AWQ and Liger patches.
+    *   **BKM Registry:** Hierarchical expertise storage seeded with 3 master blueprints.
     *   **Slow Burn Reset:** Restored polite `MAX_LOAD=2.0` and `SLEEP_INTERVAL=60`.
 
 ## Master Backlog & Roadmap
 *   **[TODO] Fallback Dreaming:** Port Pinky fallback to memory consolidation.
 *   **[PLANNED] Report Writer Sidebar:** Brain-powered synthesis UI in the Web Intercom (UI Shell exists, needs backend hook).
-*   **[NEXT] vLLM Validation:** Verify port 8088 responsiveness after AWQ weights load.
+*   **[TODO] TTT-Discover:** RL-based autonomous validation discovery loops.
