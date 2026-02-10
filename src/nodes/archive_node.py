@@ -77,6 +77,45 @@ FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"
 SEARCH_INDEX = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json")
 
 @mcp.tool()
+def get_lab_status() -> str:
+    """
+    Checks the status of Lab services and system health.
+    Verifies reachability of Grafana, the Pager, and the Public Airlock.
+    """
+    import requests
+    import subprocess
+    
+    status = []
+    
+    # 1. System Load & Thermal
+    try:
+        cmd = ["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu", "--format=csv,noheader,nounits"]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            temp, gpu = res.stdout.strip().split(", ")
+            status.append(f"GPU: {temp}C / {gpu}% Load")
+    except: pass
+
+    # 2. Service Reachability (Internal)
+    services = {
+        "Grafana": "http://localhost:3000",
+        "Prometheus": "http://localhost:9090",
+        "Airlock": "https://www.jason-lab.dev"
+    }
+    
+    for name, url in services.items():
+        try:
+            r = requests.get(url, timeout=2)
+            if r.status_code < 500:
+                status.append(f"{name}: ONLINE")
+            else:
+                status.append(f"{name}: ERROR ({r.status_code})")
+        except:
+            status.append(f"{name}: OFFLINE")
+
+    return " | ".join(status)
+
+@mcp.tool()
 def peek_related_notes(keyword: str) -> str:
     """
     RLM (Recursive LMs) Tool: Allows Pinky to 'peek' into the Field Notes artifacts.
