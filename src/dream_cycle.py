@@ -8,7 +8,9 @@ from mcp.client.stdio import stdio_client
 
 # Configuration
 PYTHON_PATH = sys.executable
-BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.15:11434/api/generate") # Default to internal lab IP
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Root of HomeLabAI
+ARCHIVE_NODE = os.path.join(BASE_DIR, "src/nodes/archive_node.py")
+BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.15:11434/api/generate")
 
 async def remote_brain_think(prompt, context):
     """Fallback for remote synthesis if Brain node is not local."""
@@ -32,7 +34,7 @@ async def run_dream_cycle():
     logging.basicConfig(level=logging.INFO, format='[DREAM] %(message)s')
     logging.info("🌙 Starting the Diamond Dream Cycle...")
 
-    archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
+    archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE])
     
     try:
         async with stdio_client(archive_params) as (ar, aw):
