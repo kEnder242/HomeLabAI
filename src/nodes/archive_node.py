@@ -342,6 +342,45 @@ def dream(summary: str, sources: list[str]) -> str:
         return f"Dream failed: {e}"
 
 @mcp.tool()
+def generate_bkm(topic: str, category: str = "validation") -> str:
+    """
+    Synthesizes a master Best Known Method (BKM) document for a specific technical topic.
+    Correlates years of historical data into a single grounded blueprint.
+    """
+    # 1. Search for everything related to this topic
+    try:
+        res = wisdom.query(query_texts=[f"Technical details and scars related to {topic}"], n_results=10)
+        docs = res.get('documents', [[]])[0]
+        historical_context = "\n---\n".join(docs)
+    except:
+        historical_context = "No specific historical data found."
+
+    # 2. Return the context for the orchestrator to pass to the Brain
+    # The orchestrator will handle the Brain call and then call 'save_bkm'
+    return json.dumps({
+        "topic": topic,
+        "category": category,
+        "context": historical_context
+    })
+
+@mcp.tool()
+def save_bkm(topic: str, category: str, content: str) -> str:
+    """
+    Saves a synthesized BKM document to the expertise hierarchy.
+    """
+    safe_topic = topic.lower().replace(" ", "_")
+    dir_path = os.path.join(FIELD_NOTES_DATA, "expertise", category)
+    os.makedirs(dir_path, exist_ok=True)
+    file_path = os.path.join(dir_path, f"{safe_topic}.md")
+    
+    try:
+        with open(file_path, 'w') as f:
+            f.write(content)
+        return f"BKM saved to {file_path}. Zort!"
+    except Exception as e:
+        return f"Failed to save BKM: {e}"
+
+@mcp.tool()
 def get_recent_dream() -> str:
     """
     Retrieves the most recent synthesized dream summary from the wisdom collection.

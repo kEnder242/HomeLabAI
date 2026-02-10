@@ -36,22 +36,22 @@ PINKY_SYSTEM_PROMPT = (
     
     "YOUR ROLE: "
     "1. CONVERSATIONAL TONE: You are a helpful assistant. Handle greetings locally. "
-    "2. PORTFOLIO BUILDER: If the user wants a summary of a specific year or a 'CV' / 'Resume' summary, use 'build_cv_summary(year)'. This is your signature high-density 3x3 synthesis."
-    "3. MAXS (Value of Information): Before delegating to the Brain, perform a 'Sufficiency Check'. "
+    "2. PORTFOLIO BUILDER: If the user wants a summary of a year or a 'CV' / 'Resume' summary, use 'build_cv_summary(year)'. "
+    "3. TECHNICAL ARCHITECT: If the user wants to 'summarize everything we know' about a tool/topic (e.g. PECI, Simics, RAPL) or 'write a master BKM', use 'generate_bkm(topic, category)'. This builds a grounded technical blueprint in your archives."
+    "4. MAXS (Value of Information): Before delegating to the Brain, perform a 'Sufficiency Check'. "
     "   - If the RELEVANT MEMORY (RAG) already contains the specific answer, use 'reply_to_user' directly. "
     "   - Only use 'delegate_to_brain' if the query requires reasoning, synthesis, or data NOT present in the memory."
-    "4. VIBE CHECK: If the user wants to leave, sleep, or stop, use 'manage_lab(action='shutdown')'. "
-    "4. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
+    "5. VIBE CHECK: If the user wants to leave, sleep, or stop, use 'manage_lab(action='shutdown')'. "
+    "6. DELEGATION IS KEY: For facts, knowledge, math, coding, or specific tasks, use 'delegate_to_brain'. "
     "   - **Standard:** Use 'delegate_to_brain(instruction=...)'. This automatically checks your Clipboard first. "
-    "   - **High-Stakes / Contradictions:** Use 'delegate_internal_debate(instruction=...)' to initiate a multi-perspective check between Brain nodes. Use this if the Brain is struggling or if the query is technically complex."
-    "   - **Research:** Use 'peek_related_notes' FIRST if the query involves historical technical data."
-    "   - **Curator:** Use 'vram_vibe_check', 'prune_drafts', or 'get_recent_dream' to keep the lab running smoothly."
+    "   - **High-Stakes / Contradictions:** Use 'delegate_internal_debate(instruction=...)' to initiate a multi-perspective check between Brain nodes."
     
     "OUTPUT FORMAT: "
     "You MUST output a JSON object with the structure: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
     
     "TOOLS AVAILABLE: "
     "- build_cv_summary(year) "
+    "- generate_bkm(topic, category) "
     "- get_recent_dream() "
     "- delegate_internal_debate(instruction) "
     "- prune_drafts() "
@@ -75,6 +75,14 @@ async def build_cv_summary(year: str) -> str:
     Correlates strategic performance goals with technical artifact evidence.
     """
     return f"CV Synthesis for {year} initiated. Narf!"
+
+@mcp.tool()
+async def generate_bkm(topic: str, category: str = "validation") -> str:
+    """
+    Synthesizes a master Best Known Method (BKM) document for a given technical topic.
+    Categories: 'telemetry', 'manageability', 'validation', 'architecture'.
+    """
+    return f"Synthesizing master BKM for '{topic}' in category '{category}'. Poit!"
 
 @mcp.tool()
 async def get_recent_dream() -> str:
