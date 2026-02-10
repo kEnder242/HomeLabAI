@@ -41,14 +41,12 @@
     *   **Liger-Kernel:** Bench-tested 80% VRAM reduction.
     *   **Subconscious Dreaming:** Multi-host batch processing active (`dream_cycle.py`).
     *   **MAXS Lookahead:** Meta-Adaptive Exploration hooks active in `acme_lab.py`.
-6.  **Concurrency & Semantic Integrity (v3.1.10): [DONE]**
-    *   **Round Table Lock:** Implemented `round_table.lock` to prevent VRAM battles.
-    *   **Semantic De-duper:** 85% fuzzy threshold active in `nibble_v2.py` (Day-grounded).
-    *   **vLLM V1 Pilot:** Stable on port 8088 using Mistral-7B AWQ and Liger patches.
-    *   **BKM Registry:** Hierarchical expertise storage seeded with 3 master blueprints.
-    *   **Slow Burn Reset:** Restored polite `MAX_LOAD=2.0` and `SLEEP_INTERVAL=60`.
+6.  **Telemetry & Orchestration (v3.1.15): [DONE]**
+    *   **NVIDIA DCGM:** Enterprise-grade GPU metrics integrated into the Docker stack.
+    *   **vLLM Stabilization:** 0.4 VRAM cap verified alongside EarNode.
+    *   **Session Locking:** Yield-on-demand active for background scans.
+    *   **IPMI SEL Alerting:** Stateful Down/Up transitions implemented in Gatekeeper.
 
 ## Master Backlog & Roadmap
 *   **[TODO] Fallback Dreaming:** Port Pinky fallback to memory consolidation.
-*   **[PLANNED] Report Writer Sidebar:** Brain-powered synthesis UI in the Web Intercom (UI Shell exists, needs backend hook).
 *   **[TODO] TTT-Discover:** RL-based autonomous validation discovery loops.
