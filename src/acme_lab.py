@@ -461,6 +461,15 @@ class AcmeLab:
                     lab_context += f"\nPinky (Critique): {feedback}"
                     decision = None # Loop back
                 
+                elif tool == "get_lab_status":
+                    res = await self.residents['archive'].call_tool("get_lab_status")
+                    report = res.content[0].text
+                    await websocket.send_str(json.dumps({"brain": f"Lab Status: {report}", "brain_source": "Pinky"}))
+                    # FORCE SUMMARY: Add report to context and allow Pinky ONE more turn to conclude
+                    lab_context += f"\nSystem (Lab Status): {report}"
+                    decision = None # One more turn for Pinky to say something nice
+                    turn_count = MAX_TURNS - 1 # Ensure we don't loop forever
+
                 elif tool == "peek_related_notes":
                     keyword = params.get("keyword", "")
                     res = await self.residents['archive'].call_tool("peek_related_notes", arguments={"keyword": keyword})
