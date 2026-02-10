@@ -45,9 +45,14 @@ def main():
             
             for event in data:
                 summary = event.get('summary', '')
-                gem = event.get('technical_gem', 'No gem.')
+                gem = event.get('technical_gem', '')
+                evidence = event.get('evidence', '')
                 date = event.get('date', 'Unknown')
-                content = f"[{date}] TECHNICAL EVENT: {summary}. Gem: {gem}"
+                
+                # High-density content block for RAG
+                content = f"[{date}] {summary}"
+                if gem: content += f"\nTECHNICAL GEM: {gem}"
+                if evidence: content += f"\nEVIDENCE: {evidence}"
                 
                 event_id = f"artifact_{hashlib.md5(content.encode()).hexdigest()}"
                 
