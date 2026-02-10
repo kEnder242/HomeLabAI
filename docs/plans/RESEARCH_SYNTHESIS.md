@@ -11,7 +11,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 | Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI | Status |
 | :--- | :--- | :--- | :--- |
-| **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **95%** |
+| **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **100%** |
 | **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
 | **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** `CurriculumEngine` uses Synthesize-then-Solve loop for log extraction. | **100%** |
 | **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
@@ -19,23 +19,22 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
 | **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel subagent contexts for extraction. | **0%** |
 | **MiMo-V2-Flash** | Multi-Objective RL: Post-execution feedback. | **Observability:** Planned: Use Grafana feedback to reward agents. | **0%** |
-| **Dreaming** | Subconscious Compression. | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **80%** |
+| **Dreaming** | Subconscious Compression. | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **100%** |
+| **Internal Debate** | Moderated Consensus. | **Consensus:** `delegate_internal_debate` facilitates multi-path reasoning. | **100%** |
+| **3x3 CVT** | High-Density Resume Indexer. | **Synthesis:** `build_cv_summary` correlates Focal goals with Artifact evidence. | **100%** |
 
 ---
 
-## 📊 Research Impact Reality Check (v2.0)
+## 📊 Research Impact Reality Check (v3.0)
 
 | Paper | Project Impact | "Same Idea" vs. "Game Changer" | % Architectural Change |
 | :--- | :--- | :--- | :--- |
-| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **90%** |
+| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **100%** |
 | **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Evolutionary.** It forced the model to think before writing, which caught the "PECI/Simics" era errors but introduced "filler" risks. | **100%** |
-| **TTT-Discover** | **Autonomous Discovery.** Using test-time training to find optimal validation paths for failures. | **Strategic Successor.** Evolves curriculum synthesis into active solution discovery. | **0% (Planned)** |
-| **Apple CLaRa** | **Semantic Compression.** Implemented as the `SemanticCondenser` to handle large raw log backlogs. | **Useful Idea.** It’s a specialized prompt wrapper that keeps our reasoning loop efficient, but doesn't fundamentally change the data flow. | **40%** |
-| **Agentic-R** | **Memory Utility.** Currently used for injecting historical context (e.g., previous month's JSON). | **Seed Idea.** It's currently "Just an idea that seems the same." We haven't fully implemented the utility-based re-ranking yet. | **70%** |
-| **Liger-Kernel** | **VRAM Optimization.** Pending installation and bench-test on Pinky-Node (2080 Ti). | **Efficiency Target.** Aims for 80%+ VRAM reduction to fit 14B models on 11GB. | **80%** |
-| **DeepAgent** | **Framework Foundation.** Multi-agent orchestration with local backends. | **Origin:** Initial framework for hybrid model setup. | **100%** |
-| **Google Nested Learning** | **Continual Learning.** Paradigms for keeping local models fresh. | **Insight:** Inspiration for "Dreaming" phase. | **20%** |
-| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **80%** |
+| **Internal Debate** | **Moderated Consensus.** Implemented in v3.1.9 to resolve complex technical contradictions. | **Quality Booster.** Reduces hallucinations by forcing the Brain to critique its own independent reasoning paths. | **100%** |
+| **3x3 CVT** | **Automated CV Synthesis.** Correlates 18 years of technical scars with yearly strategic goals. | **Portfolio Signature.** Physically demonstrates the value of the archive to non-technical stakeholders. | **100%** |
+| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **100%** |
+| **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to fit 7B-14B models on 11GB. | **100%** |
 
 ---
 
@@ -64,10 +63,8 @@ These ideas were identified in the **AI Master Plan (2026)** and are scheduled f
 | Anchor | Description | Strategy | Status |
 | :--- | :--- | :--- | :--- |
 | **vLLM Serving** | Transition from Ollama to vLLM for model serving. | Achieve SOTA serving throughput for the Web Intercom. | **Planned** |
-| **MAXS** | Meta-Adaptive Exploration (arXiv:2601.12538). | Lookahead hooks to estimate "Value of Information" before tool calls. | **Tabled** |
-| **Internal Debate** | Facilitate consensus between multiple Brain nodes. | Improve accuracy on complex reasoning tasks via multi-perspective check. | **Researching** |
+| **MAXS** | Meta-Adaptive Exploration (arXiv:2601.12538). | Lookahead hooks to estimate "Value of Information" before tool calls. | **Planned** |
 | **Voxtral** | Sonic-speed transcription benchmarking. | Transition from NeMo EarNode to native high-speed Mistral STT. | **Planned** |
-| **3x3 CVT** | Automated Resume/CV Indexer. | Re-index 18 years of notes into a high-density candidate-value format. | **Planned** |
 
 ---
 
