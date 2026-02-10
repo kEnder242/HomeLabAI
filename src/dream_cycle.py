@@ -1,79 +1,76 @@
 import asyncio
 import logging
 import sys
+import os
+import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # Configuration
 PYTHON_PATH = sys.executable
+BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.15:11434/api/generate") # Default to internal lab IP
+
+async def remote_brain_think(prompt, context):
+    """Fallback for remote synthesis if Brain node is not local."""
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "model": "llama3:latest",
+                "prompt": f"{context}\n\n[TASK]: {prompt}",
+                "stream": False,
+                "options": {"num_predict": 1024, "temperature": 0.3}
+            }
+            async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("response", "Synthesis failed.")
+    except Exception as e:
+        return f"Remote Brain Error: {e}"
 
 async def run_dream_cycle():
     logging.basicConfig(level=logging.INFO, format='[DREAM] %(message)s')
-    logging.info("🌙 Starting the Dream Cycle...")
+    logging.info("🌙 Starting the Diamond Dream Cycle...")
 
     archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
-    brain_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
-
+    
     try:
-        async with stdio_client(archive_params) as (ar, aw), \
-                   stdio_client(brain_params) as (br, bw):
-            
-            async with ClientSession(ar, aw) as archive, \
-                       ClientSession(br, bw) as brain:
-                
+        async with stdio_client(archive_params) as (ar, aw):
+            async with ClientSession(ar, aw) as archive:
                 await archive.initialize()
-                await brain.initialize()
                 
-                # 1. Recall: Get raw logs from the short-term stream
-                logging.info("📥 Recalling raw memories from the stream...")
+                # 1. Recall
+                logging.info("📥 Recalling chaotic memories from the stream...")
                 result = await archive.call_tool("get_stream_dump", arguments={})
-                
-                import json
-                try:
-                    data = json.loads(result.content[0].text)
-                except Exception as e:
-                    logging.error(f"Failed to parse stream dump: {e}")
-                    return
-
+                data = json.loads(result.content[0].text)
                 docs = data.get("documents", [])
                 ids = data.get("ids", [])
 
                 if not docs:
-                    logging.info("💤 No raw memories in the stream. Returning to sleep.")
+                    logging.info("💤 No memories found. Returning to sleep.")
                     return
 
-                logging.info(f"🧠 Found {len(docs)} memories. Asking the Brain to synthesize Diamond Wisdom...")
+                logging.info(f"🧠 Synthesizing {len(docs)} turns via The Brain...")
 
-                # 2. Synthesis: Brain processes the logs into a high-density narrative
+                # 2. Synthesis (Use Remote 4090 if possible)
                 narrative_input = "\n---\n".join(docs)
-                brain_prompt = (
-                    "You are the Brain of the Acme Lab. Synthesize the following chaotic stream of conversation logs "
-                    "into a concise, high-density 'Technical Narrative'. "
-                    "Identify key technical decisions, validation scars, and strategic wins. "
-                    "Ignore greetings, small talk, and repetitive 'Nervous Tics'. "
-                    "Output a high-density paragraph suitable for long-term wisdom storage."
+                prompt = (
+                    "Synthesize these interaction logs into a high-density 'Diamond Wisdom' paragraph. "
+                    "Focus on technical decisions and validation scars. Ignore filler."
                 )
                 
-                brain_res = await brain.call_tool("deep_think", arguments={
-                    "query": brain_prompt,
-                    "context": narrative_input
-                })
-                summary = brain_res.content[0].text
-                
+                summary = await remote_brain_think(prompt, narrative_input)
                 logging.info("✨ Synthesis complete.")
 
-                # 3. Consolidation: Save to Wisdom and Clear Stream
-                logging.info(f"💾 Consolidating {len(ids)} memories into Wisdom and purging stream...")
-                await archive.call_tool("dream", arguments={
-                    "summary": summary,
-                    "sources": ids
-                })
+                # 3. Consolidation
+                logging.info("💾 Storing wisdom and purging stream...")
+                await archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
 
-                logging.info("✅ Dream Cycle Finished successfully. The Lab is now wiser.")
-
+                logging.info("✅ Dream Cycle Finished. The Lab has evolved.")
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
 
 if __name__ == "__main__":
     asyncio.run(run_dream_cycle())
+
