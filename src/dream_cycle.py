@@ -24,34 +24,34 @@ async def run_dream_cycle():
                 await archive.initialize()
                 await brain.initialize()
                 
-                # 1. Recall: Get raw logs
+                # 1. Recall: Get raw logs from the short-term stream
                 logging.info("📥 Recalling raw memories from the stream...")
                 result = await archive.call_tool("get_stream_dump", arguments={})
                 
-                # FastMCP/MCP return results in content[0].text or as a JSON string
-                # Since we return a dict, we need to handle the structure
                 import json
                 try:
                     data = json.loads(result.content[0].text)
-                except:
-                    logging.error("Failed to parse stream dump.")
+                except Exception as e:
+                    logging.error(f"Failed to parse stream dump: {e}")
                     return
 
                 docs = data.get("documents", [])
                 ids = data.get("ids", [])
 
                 if not docs:
-                    logging.info("💤 No raw memories to process. Returning to sleep.")
+                    logging.info("💤 No raw memories in the stream. Returning to sleep.")
                     return
 
-                logging.info(f"🧠 Found {len(docs)} memories. Asking the Brain to synthesize...")
+                logging.info(f"🧠 Found {len(docs)} memories. Asking the Brain to synthesize Diamond Wisdom...")
 
-                # 2. Synthesis: Brain processes the logs
+                # 2. Synthesis: Brain processes the logs into a high-density narrative
                 narrative_input = "\n---\n".join(docs)
                 brain_prompt = (
-                    "Synthesize the following chaotic stream of conversation logs into a concise, "
-                    "high-level narrative of Jason's goals, progress, and struggles. "
-                    "Identify key technical insights or decisions made."
+                    "You are the Brain of the Acme Lab. Synthesize the following chaotic stream of conversation logs "
+                    "into a concise, high-density 'Technical Narrative'. "
+                    "Identify key technical decisions, validation scars, and strategic wins. "
+                    "Ignore greetings, small talk, and repetitive 'Nervous Tics'. "
+                    "Output a high-density paragraph suitable for long-term wisdom storage."
                 )
                 
                 brain_res = await brain.call_tool("deep_think", arguments={
@@ -61,16 +61,16 @@ async def run_dream_cycle():
                 summary = brain_res.content[0].text
                 
                 logging.info("✨ Synthesis complete.")
-                # logging.info(f"Dream Summary: {summary[:200]}...")
 
                 # 3. Consolidation: Save to Wisdom and Clear Stream
-                logging.info("💾 Storing wisdom and purging the stream...")
+                logging.info(f"💾 Consolidating {len(ids)} memories into Wisdom and purging stream...")
                 await archive.call_tool("dream", arguments={
                     "summary": summary,
                     "sources": ids
                 })
 
-                logging.info("✅ Dream Cycle Finished successfully.")
+                logging.info("✅ Dream Cycle Finished successfully. The Lab is now wiser.")
+
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
