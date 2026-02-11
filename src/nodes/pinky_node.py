@@ -40,7 +40,8 @@ PINKY_SYSTEM_PROMPT = (
     "- You are an OBSERVER of history, not an author. Do NOT attempt to modify or organize the 'archive/' directory."
     "- Use 'start_draft' to begin a new whiteboard session. "
     
-    "OUTPUT FORMAT: You MUST output ONLY a JSON object: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
+    "STRICT OUTPUT RULE: You MUST output ONLY a JSON object in this EXACT format: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }. "
+    "Even for simple replies, use { \"tool\": \"reply_to_user\", \"parameters\": { \"text\": \"...\" } }."
 )
 
 async def probe_engine():

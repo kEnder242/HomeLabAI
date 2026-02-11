@@ -154,5 +154,6 @@ This document defines the standard operating procedures for the HomeLabAI develo
 1.  **"Discuss with me":** This is a mandatory instruction to HALT all implementation. The Agent must present thoughts, architectural options, and risks, and WAIT for explicit approval before touching code.
 2.  **"Heads Down" Conclusion:** Every heads-down cycle must end with a **"Heads Up"** report.
     *   **Verbosity:** The report must be detailed and verbose (reversing any minimalist CLI compression).
+    *   **Frequency:** Only **one** Heads Up report is allowed per Heads Down cycle. The Agent must not communicate until the entire requested sprint is complete or a critical blocker is hit.
     *   **Implications:** Explicitly state the impact of changes on performance, security, and the "Path Backwards."
     *   **State Check:** Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
