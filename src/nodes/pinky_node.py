@@ -50,7 +50,16 @@ PINKY_SYSTEM_PROMPT = (
 )
 
 async def probe_engine():
-    """Detects which engine is currently running on the local node."""
+    """Detects which engine to use based on PINKY_ENGINE env var or probing."""
+    # 1. Respect Explicit Environment Variable
+    env_engine = os.environ.get("PINKY_ENGINE")
+    if env_engine:
+        if env_engine.upper() == "VLLM":
+            return "VLLM", VLLM_URL, VLLM_MODEL
+        elif env_engine.upper() == "OLLAMA":
+            return "OLLAMA", OLLAMA_URL, OLLAMA_MODEL
+
+    # 2. Fallback to Probe (Legacy/Automatic mode)
     async with aiohttp.ClientSession() as session:
         for host in ["127.0.0.1", "localhost"]:
             try:
@@ -84,6 +93,10 @@ async def vram_vibe_check() -> str:
                 u_d = await r1.json()
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_FREE"}) as r2:
                 f_d = await r2.json()
+            
+            if not u_d['data']['result'] or not f_d['data']['result']:
+                return "Narf! VRAM data missing from Prometheus. DCGM might be down."
+                
             used = float(u_d['data']['result'][0]['value'][1])
             free = float(f_d['data']['result'][0]['value'][1])
             pct = (used / (used+free)) * 100
@@ -101,8 +114,12 @@ async def get_lab_health() -> str:
             for k, query in q.items():
                 async with session.get(PROMETHEUS_URL, params={"query": query}) as r:
                     d = await r.json()
-                    res[k] = d['data']['result'][0]['value'][1]
-            return f"Silicon: {res['temp']}C, {float(res['power']):.1f}W. Humming! Zort!"
+                    if d['data']['result']:
+                        res[k] = d['data']['result'][0]['value'][1]
+                    else:
+                        res[k] = "N/A"
+            
+            return f"Silicon: {res['temp']}C, {res['power']}W. Humming! Zort!"
     except Exception as e:
         return f"Egad! Stuttering: {e}"
 

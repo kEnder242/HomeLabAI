@@ -164,7 +164,11 @@ async def deep_think(query: str, context: str = "") -> str:
                 "model": BRAIN_MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 2048, "temperature": 0.1} # Low temp for high grounding
+                "options": {
+                    "num_predict": 2048, 
+                    "temperature": 0.1,
+                    "num_ctx": 2048
+                } # Low temp for high grounding
             }
             async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
                 if resp.status == 200:

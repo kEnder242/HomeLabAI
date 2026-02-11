@@ -147,6 +147,7 @@ class AcmeLab:
                                     self.status = "READY"
                                     logging.info("[READY] Lab is Open (Lobby Active).")
                                     await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
+                                    
                                     await self.shutdown_event.wait()
 
         except Exception as e:
@@ -162,6 +163,16 @@ class AcmeLab:
             await self.broadcast({"type": "status", "state": "ready", "message": "EarNode Online."})
         except Exception as e:
             logging.error(f"[STT] Load Failed: {e}")
+
+    async def prime_brain(self):
+        """Wakes up the Brain's GPU model."""
+        if 'brain' in self.residents:
+            try:
+                logging.info("[BRAIN] Priming Brain (wake_up)...")
+                await self.residents['brain'].call_tool("wake_up")
+                logging.info("[BRAIN] Brain Primed.")
+            except Exception as e:
+                logging.warning(f"[BRAIN] Priming failed: {e}")
 
     async def boot_sequence(self, mode):
         self.mode = mode
@@ -180,8 +191,26 @@ class AcmeLab:
         self.connected_clients.add(ws)
         await self.manage_session_lock(active=True)
         
+        # Demand-Driven Priming: Wake Brain when someone enters the Lobby
+        logging.info("[LOBBY] Client entered. Poking Brain...")
+        asyncio.create_task(self.prime_brain())
+        
         try:
             await ws.send_str(json.dumps({"type": "status", "version": VERSION, "state": "ready" if self.status == "READY" else "lobby", "message": "Lab foyer is open."}))
+            
+            # Background task to poll for turn ends from EarNode
+            async def ear_poller():
+                while not ws.closed:
+                    if self.ear:
+                        query = self.ear.check_turn_end()
+                        if query:
+                            logging.info(f"[EAR] Transcription Finished: {query}")
+                            await self.broadcast({"type": "final", "text": query})
+                            asyncio.create_task(self.process_query(query, ws))
+                    await asyncio.sleep(0.1)
+            
+            poller_task = asyncio.create_task(ear_poller())
+
             async for message in ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
                     try:
@@ -195,9 +224,24 @@ class AcmeLab:
                                 await ws.send_str(json.dumps({"brain": "Narf! Still warming up...", "brain_source": "Pinky"}))
                                 continue
                             query = data.get("content", "")
+                            logging.info(f"[USER] Intercom Input: {query}")
+                            # Keep-Alive: Poke the Brain
+                            asyncio.create_task(self.prime_brain())
                             self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
                     except Exception: pass
+                
+                elif message.type == aiohttp.WSMsgType.BINARY:
+                    if self.ear:
+                        # Process audio chunk
+                        logging.debug(f"[MIC] Binary Packet Received ({len(message.data)} bytes)")
+                        audio_data = np.frombuffer(message.data, dtype=np.int16)
+                        text = self.ear.process_audio(audio_data)
+                        if text:
+                            # Broadcast incremental transcription
+                            await self.broadcast({"text": text})
+
         finally:
+            if 'poller_task' in locals(): poller_task.cancel()
             if ws in self.connected_clients: self.connected_clients.remove(ws)
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
@@ -211,6 +255,7 @@ class AcmeLab:
             
             # Extract JSON from Pinky's response
             import re
+            logging.info(f"[DEBUG] Pinky Raw Response: {res.content[0].text[:200]}...")
             m = re.search(r'\{.*\}', res.content[0].text, re.DOTALL)
             if m:
                 dec = json.loads(m.group(0))
@@ -222,6 +267,29 @@ class AcmeLab:
                     text = params.get("text", "Poit!")
                     await self.broadcast({"brain": text, "brain_source": "Pinky"})
                 
+                elif tool == "get_lab_health":
+                    # Execute tool via Pinky resident
+                    res = await self.residents['pinky'].call_tool("get_lab_health")
+                    await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+
+                elif tool == "vram_vibe_check":
+                    # Execute tool via Pinky resident
+                    res = await self.residents['pinky'].call_tool("vram_vibe_check")
+                    await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+
+                elif tool == "lab_shutdown":
+                    await self.broadcast({"brain": "Poit! Shutting down the lab...", "brain_source": "Pinky"})
+                    # Execute tool via Archive resident (which now has shutdown_lab)
+                    res = await self.residents['archive'].call_tool("shutdown_lab")
+                    if res.content[0].text == "SIGNAL_SHUTDOWN":
+                        self.shutdown_event.set()
+
+                elif tool == "diagnostic_report":
+                    await self.broadcast({"brain": "Narf! Generating diagnostic report...", "brain_source": "Pinky"})
+                    # Execute tool via Archive resident (get_lab_status)
+                    res = await self.residents['archive'].call_tool("get_lab_status")
+                    await self.broadcast({"brain": f"Report: {res.content[0].text}", "brain_source": "Pinky"})
+
                 elif tool in ["ask_brain", "query_brain"]:
                     summary = params.get("summary") or params.get("question") or query
                     await self.broadcast({"brain": f"ASK_BRAIN: {summary}", "brain_source": "Pinky"})
@@ -234,10 +302,16 @@ class AcmeLab:
                     await self.broadcast({"brain": brain_res.content[0].text, "brain_source": "The Brain"})
                 
                 else:
-                    # Generic tool fallback
-                    await self.broadcast({"type": "debug", "event": "PINKY_DECISION", "data": dec})
+                    # Generic tool fallback: If Pinky tries to use a tool we haven't mapped in acme_lab.py,
+                    # just ask him to reply to the user directly with his 'thought' or intent.
+                    await self.broadcast({"type": "debug", "event": "PINKY_UNMAPPED_TOOL", "data": dec})
+                    
                     if "text" in params:
                         await self.broadcast({"brain": params["text"], "brain_source": "Pinky"})
+                    else:
+                        # Fallback: re-prompt Pinky to just talk
+                        res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"You tried to use tool '{tool}' but it is unavailable. Just reply to me directly.", "context": "", "memory": ""})
+                        await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
 
         except Exception as e: 
             logging.error(f"[ERR] process_query failed: {e}")
