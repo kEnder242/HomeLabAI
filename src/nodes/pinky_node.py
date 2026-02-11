@@ -114,8 +114,8 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
         async with aiohttp.ClientSession() as session:
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE)"}) as r:
                 d = await r.json()
-                if float(d['data']['result'][0]['value'][1]) > 0.95:
-                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Narf! GPU OOM (95%+). Try 'lobotomize_brain'!", "mood": "panic"}})
+                if float(d['data']['result'][0]['value'][1]) > 0.98:
+                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Narf! GPU is truly stuffed (98%+). I need a lobotomy!", "mood": "panic"}})
     except: pass
 
     engine_type, url, model = await probe_engine()
