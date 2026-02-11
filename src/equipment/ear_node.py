@@ -19,7 +19,9 @@ class EarNode:
         self.model.eval()
         self.model = self.model.to("cuda")
         
-        self.cuda_graph_failed = False
+        # Proactively trigger sledgehammer to prevent startup crashes on CUDA 12.8
+        self._sledgehammer_disable_graphs()
+        
         self.full_transcript = ""
         self.last_speech_time = time.time()
         self.turn_pending = False
