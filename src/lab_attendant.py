@@ -95,7 +95,11 @@ class LabAttendant:
         else:
             process_env.pop("DISABLE_EAR", None) # Ensure it's not set if enabling
         
-        logger.info(f"Starting Lab server in mode: {mode}, env: {process_env.get('DISABLE_EAR', 'N/A')}")
+        # Explicit Engine Selection
+        if "PINKY_ENGINE" in os.environ:
+            process_env["PINKY_ENGINE"] = os.environ["PINKY_ENGINE"]
+        
+        logger.info(f"Starting Lab server in mode: {mode}, ear: {not data.get('disable_ear', True)}, engine: {process_env.get('PINKY_ENGINE', 'AUTO')}")
 
         # Ensure SERVER_LOG exists and is empty for a clean run
         with open(SERVER_LOG, 'w') as f: f.write('')

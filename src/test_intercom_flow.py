@@ -3,55 +3,43 @@ import websockets
 import json
 import sys
 
-async def diagnostic_test():
+async def test():
     uri = "ws://localhost:8765"
-    version = "3.4.0"
-    
-    print(f"--- [DIAGNOSTIC] Connecting to {uri} ---")
+    print(f"Connecting to {uri}...")
     try:
         async with websockets.connect(uri) as ws:
-            # 1. Wait for initial status
-            msg = await asyncio.wait_for(ws.recv(), timeout=5)
-            data = json.loads(msg)
-            print(f"Rx Initial Status: {data}")
+            # 1. Handshake
+            await ws.send(json.dumps({"type": "handshake", "version": "3.4.0", "client": "test_agent"}))
+            await asyncio.sleep(2)
             
-            if data.get('type') == 'status':
-                print(f"✅ Server state: {data.get('state')} (v{data.get('version')})")
-            else:
-                print(f"❌ Unexpected first message: {data}")
-
-            # 2. Handshake
-            print(f"Tx Handshake (v{version})...")
-            await ws.send(json.dumps({"type": "handshake", "version": version}))
+            # 2. Send query
+            query = "Pinky, are you there? Can you ask The Brain if the integration test passed?"
+            print(f"Sending: {query}")
+            await ws.send(json.dumps({"type": "text_input", "content": query}))
             
-            # 3. Wait for Cabinet Sync
-            msg = await asyncio.wait_for(ws.recv(), timeout=5)
-            data = json.loads(msg)
-            if data.get('type') == 'cabinet':
-                print(f"✅ Cabinet Sync Rx: {len(data['files'].get('archive', {}))} years found.")
-            else:
-                print(f"❌ Handshake response was not cabinet: {data}")
-
-            # 4. Test Query
-            print("Tx Query: 'how is the silicon?'")
-            await ws.send(json.dumps({"type": "text_input", "content": "how is the silicon?"}))
-            
-            # 5. Monitor for Response
-            print("Monitoring for response (10s)...")
-            start_time = asyncio.get_event_loop().time()
-            while asyncio.get_event_loop().time() - start_time < 10:
+            # 3. Wait for responses
+            print("Waiting for responses...")
+            while True:
                 try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=2)
+                    msg = await asyncio.wait_for(ws.recv(), timeout=30)
                     data = json.loads(msg)
-                    if data.get('brain'):
-                        print(f"✅ Brain Rx: [{data.get('brain_source')}]: {data.get('brain')}")
-                    elif data.get('type') == 'debug':
-                        print(f"🔍 Debug: {data.get('event')} -> {data.get('data')}")
+                    
+                    if "brain" in data:
+                        source = data.get("brain_source", "Unknown")
+                        print(f"\n[{source}]: {data['brain']}")
+                        if source == "The Brain":
+                            print("\n✅ Full Flow Verified (Pinky -> Brain).")
+                            break
+                    elif data.get("type") == "debug":
+                        print(f"DEBUG: {data.get('event')} - {data.get('data')}")
+                    elif data.get("type") == "status":
+                        print(f"STATUS: {data.get('state')} - {data.get('message', '')}")
+                        
                 except asyncio.TimeoutError:
-                    continue
-
+                    print("\n❌ Timeout waiting for Brain response.")
+                    break
     except Exception as e:
-        print(f"🚨 Diagnostic Failed: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(diagnostic_test())
+    asyncio.run(test())

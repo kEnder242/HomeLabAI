@@ -128,5 +128,11 @@ def get_lab_status() -> str:
     except: pass
     return " | ".join(out)
 
+@mcp.tool()
+def shutdown_lab() -> str:
+    """Signals the main lab server to shut down."""
+    # We return a specific string that acme_lab.py will recognize
+    return "SIGNAL_SHUTDOWN"
+
 if __name__ == "__main__":
     mcp.run()
