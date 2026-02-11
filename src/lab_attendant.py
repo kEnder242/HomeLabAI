@@ -9,12 +9,13 @@ import signal
 import psutil # For graceful process management
 import sys 
 import argparse
+import datetime # ADDED THIS
 
 # --- Configuration ---
 LAB_PORT = 8765
 ATTENDANT_PORT = 9999
 LAB_SERVER_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/acme_lab.py")
-LAB_DIR = os.path.dirname(LAB_SERVER_PATH)
+LAB_DIR = os.path.dirname(os.path.dirname(LAB_SERVER_PATH)) # Corrected: Go up two levels from acme_lab.py to HomeLabAI
 LAB_VENV_PYTHON = os.path.join(LAB_DIR, ".venv", "bin", "python3")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 ROUND_TABLE_LOCK = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table.lock")
@@ -62,24 +63,17 @@ class LabAttendant:
         else:
             env.pop("DISABLE_EAR", None) # Ensure it's not set if not disabling
 
+        # Ensure SERVER_LOG exists and is empty for a clean run
+        with open(SERVER_LOG, 'w') as f: f.write('')
+
         try:
-            # nohup is used here for its robust backgrounding, output redirection is handled by Python's logging
-            command = [
-                "nohup",
-                LAB_VENV_PYTHON,
-                LAB_SERVER_PATH,
-                "--mode", mode
-            ]
-            
-            # Direct stdout/stderr to files managed by acme_lab's logging.FileHandler
-            # We explicitly open /dev/null for nohup's default output, as acme_lab handles its own log
+            # Launch acme_lab.py and redirect its stderr to SERVER_LOG
             lab_process = subprocess.Popen(
-                command, 
+                [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", mode],
                 cwd=LAB_DIR, 
                 env=env,
-                start_new_session=True, # Detach from parent process group
-                stdout=subprocess.DEVNULL, # acme_lab writes to server.log internally
-                stderr=subprocess.DEVNULL
+                stdout=subprocess.DEVNULL, # acme_lab.py only logs to stderr now
+                stderr=open(SERVER_LOG, 'a', buffering=1) # Redirect stderr to SERVER_LOG, line-buffered
             )
             current_lab_mode = mode
             logger.info(f"Lab server launched with PID: {lab_process.pid}")
@@ -130,11 +124,19 @@ class LabAttendant:
         logger.info("Performing cleanup...")
         try:
             if os.path.exists(SERVER_LOG):
-                os.remove(SERVER_LOG)
-                logger.info(f"Removed {SERVER_LOG}")
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                archive_path = f"{SERVER_LOG}.{timestamp}"
+                os.rename(SERVER_LOG, archive_path)
+                logger.info(f"Archived {SERVER_LOG} to {archive_path}")
+            else:
+                logger.info(f"{SERVER_LOG} not found, no archive needed.")
+            
             if os.path.exists(ROUND_TABLE_LOCK):
                 os.remove(ROUND_TABLE_LOCK)
                 logger.info(f"Removed {ROUND_TABLE_LOCK}")
+            else:
+                logger.info(f"{ROUND_TABLE_LOCK} not found.")
+
             return web.json_response({"status": "success", "message": "Cleanup complete."})
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
