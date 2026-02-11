@@ -19,8 +19,9 @@ nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --quantization "awq" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.4 \
+    --gpu-memory-utilization 0.5 \
     --max-model-len 4096 \
+    --enforce-eager \
     > $LOG_FILE 2>&1 &
 
 SERVER_PID=$!
