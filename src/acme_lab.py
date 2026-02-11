@@ -226,6 +226,17 @@ class AcmeLab:
                         elif data.get("type") == "select_file":
                             self.active_file = data.get("filename")
                             logging.info(f"[WORKBENCH] Active file set to: {self.active_file}")
+                        elif data.get("type") == "read_file":
+                            filename = data.get("filename")
+                            try:
+                                res = await self.residents['archive'].call_tool("read_document", arguments={"filename": filename})
+                                await ws.send_str(json.dumps({
+                                    "type": "file_content",
+                                    "filename": filename,
+                                    "content": res.content[0].text
+                                }))
+                            except Exception as e:
+                                logging.warning(f"[WORKBENCH] Read failed: {e}")
                     except: pass
                 elif message.type == aiohttp.WSMsgType.BINARY:
                     if self.status != "READY" or not self.ear: continue
