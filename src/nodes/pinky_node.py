@@ -41,6 +41,63 @@ PINKY_SYSTEM_PROMPT = (
     "OUTPUT FORMAT: You MUST output ONLY a JSON object: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
 )
 
+PROMETHEUS_URL = "http://localhost:9090/api/v1/query"
+
+@mcp.tool()
+async def vram_vibe_check() -> str:
+    """
+    Performs a high-fidelity GPU memory check using DCGM metrics.
+    Returns a natural language report of current VRAM load and headroom.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Query Used and Free
+            async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_USED"}) as r1:
+                used_data = await r1.json()
+            async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_FREE"}) as r2:
+                free_data = await r2.json()
+            
+            used_mib = float(used_data['data']['result'][0]['value'][1])
+            free_mib = float(res_free_data := await r2.json()) # Fix: redundant await, cleaning up
+            # Actually, let's keep it simple and clean
+            used = float(used_data['data']['result'][0]['value'][1])
+            free = float(free_data['data']['result'][0]['value'][1])
+            total = used + free
+            pct = (used / total) * 100
+            
+            report = f"VRAM is at {pct:.1f}%. We have {free/1024:.1f}GB headroom. "
+            if pct > 90:
+                report += "Egad! It's getting crowded in here! Narf!"
+            else:
+                report += "Plenty of room for activities. Poit!"
+            return report
+    except Exception as e:
+        return f"Narf! I couldn't feel the pulse of the GPU: {e}"
+
+@mcp.tool()
+async def get_lab_health() -> str:
+    """
+    Retrieves enterprise-grade silicon telemetry via DCGM.
+    Includes XID errors, Temperature, and Power Draw.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            queries = {
+                "temp": "DCGM_FI_DEV_GPU_TEMP",
+                "power": "DCGM_FI_DEV_POWER_USAGE",
+                "xid": "DCGM_FI_DEV_XID_ERRORS"
+            }
+            results = {}
+            for key, q in queries.items():
+                async with session.get(PROMETHEUS_URL, params={"query": q}) as r:
+                    data = await r.json()
+                    results[key] = data['data']['result'][0]['value'][1]
+            
+            return (f"Silicon Status: Temp {results['temp']}C, Power {float(results['power']):.1f}W. "
+                    f"XID Errors: {results['xid']}. The lab is humming! Zort!")
+    except Exception as e:
+        return f"Egad! The telemetry link is stuttering: {e}"
+
 @mcp.tool()
 async def build_cv_summary(year: str) -> str:
     """
@@ -113,8 +170,24 @@ async def trigger_pager(summary: str, severity: str = "info", source: str = "Pin
 async def facilitate(query: str, context: str, memory: str = "") -> str:
     """
     The Main Loop for Pinky. He decides what to do next.
-    Returns a JSON string defining the tool call.
+    Now with pre-emptive VRAM triage.
     """
+    # --- PRE-EMPTIVE TRIAGE ---
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE)"}) as r:
+                data = await r.json()
+                usage = float(data['data']['result'][0]['value'][1])
+                if usage > 0.95:
+                    return json.dumps({
+                        "tool": "reply_to_user", 
+                        "parameters": {
+                            "text": "Narf! The GPU is totally tapped out (95%+). I can't think clearly! Maybe try 'manage_lab(action=\"lobotomize_brain\")' to clear some space? Poit!",
+                            "mood": "panic"
+                        }
+                    })
+    except: pass # Silent skip if telemetry is down
+
     prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
     
     try:
