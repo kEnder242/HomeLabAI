@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
 mcp = FastMCP("The Brain")
 
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
-BRAIN_MODEL = "llama3:latest"
+BRAIN_MODEL = "llama3.1:8b"
 DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
 
 # Ensure drafts directory exists
