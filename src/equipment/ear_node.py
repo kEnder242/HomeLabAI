@@ -5,6 +5,7 @@ import json
 import numpy as np
 import threading
 import torch
+from dedup_utils import get_new_text
 
 # NeMo imports
 try:
@@ -16,6 +17,9 @@ try:
 except ImportError as e:
     logging.error(f"[EAR_NODE] NeMo import failed: {e}")
     EncDecRNNTBPEModel = None
+
+# Configuration
+SILENCE_THRESHOLD = 100
 
 class EarNode:
     def __init__(self, callback=None):
@@ -150,6 +154,11 @@ class EarNode:
         """Processes an audio chunk and returns any transcribed text."""
         # This will only be called if self.model is successfully loaded
         try:
+            # 1. Silence Check (RMS)
+            rms = np.sqrt(np.mean(audio_chunk.astype(np.float32)**2))
+            if rms < SILENCE_THRESHOLD:
+                return None
+
             # Normalize audio: int16 to float32 normalized to [-1, 1]
             if audio_chunk.dtype == np.int16:
                 audio_float = audio_chunk.astype(np.float32) / 32768.0
@@ -167,12 +176,14 @@ class EarNode:
                     hyp = hyp[0]
                 
                 if hasattr(hyp, 'text'):
-                    incremental_text = hyp.text
+                    raw_text = hyp.text
                 else:
-                    incremental_text = str(hyp)
+                    raw_text = str(hyp)
                 
-                # Filter out partial words or noise, very basic
-                if incremental_text and len(incremental_text.split()) > 0 and incremental_text.strip() != "":
+                # 2. Deduplication via sliding window matching
+                incremental_text = get_new_text(self.full_transcript, raw_text)
+                
+                if incremental_text and incremental_text.strip() != "":
                     self.full_transcript += " " + incremental_text
                     self.last_speech_time = time.time()
                     self.turn_pending = True

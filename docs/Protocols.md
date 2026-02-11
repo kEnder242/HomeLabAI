@@ -3,6 +3,9 @@
 ## BKM-001: The Cold-Start Protocol (Hardware & Service)
 **Objective**: Restore the Lab environment from a powered-off or crashed state.
 
+0.  **Orientation (Bootstrap)**:
+    *   Refer to the top-level **[README.md](../../README.md)** for the primary navigational hub and global project context.
+
 1.  **Hardware/Driver Audit**:
     *   Execute `nvidia-smi`.
     *   **Success**: Driver version (e.g., 570+) and CUDA (e.g., 12.8) reported.
