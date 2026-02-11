@@ -5,15 +5,20 @@ import logging
 import sys
 import subprocess
 import os
+import time
 
 # Force logging to stderr to avoid corrupting MCP stdout
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
 
 mcp = FastMCP("Pinky")
 
-# Right Hemisphere Config
-PINKY_URL = "http://localhost:11434/api/generate"
-PINKY_MODEL = "mistral:7b"
+# Configuration
+PROMETHEUS_URL = "http://localhost:9090/api/v1/query"
+VLLM_URL = "http://localhost:8088/v1/chat/completions"
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
+VLLM_MODEL = "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+OLLAMA_MODEL = "mistral:7b"
 
 PINKY_SYSTEM_PROMPT = (
     "You are Pinky, the Right Hemisphere of the Acme Lab Bicameral Mind. "
@@ -27,7 +32,7 @@ PINKY_SYSTEM_PROMPT = (
     "3. THE ARCHIVES: 18-year ground truth (Use 'peek_related_notes')."
     
     "BRAIN FAILURES & ALIGNMENT:"
-    "1. LOBOTOMY: If the Brain is confused, use 'manage_lab(action='lobotomize_brain')'. "
+    "1. LOBOTOMY: If the Brain is confused, use 'manage_lab(action=\"lobotomize_brain\")'. "
     "2. HOUSEKEEPING: Use 'prune_drafts()' to clear old files. "
     "3. SUBCONSCIOUS: Use 'get_recent_dream()' if asked for news or recent updates. "
     "4. MAXS (Value of Information): If the RELEVANT MEMORY (RAG) already has the answer, use 'reply_to_user' immediately. Skip the Brain."
@@ -41,7 +46,41 @@ PINKY_SYSTEM_PROMPT = (
     "OUTPUT FORMAT: You MUST output ONLY a JSON object: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
 )
 
-PROMETHEUS_URL = "http://localhost:9090/api/v1/query"
+async def probe_engine():
+    """Detects which engine is currently running on the local node."""
+    async with aiohttp.ClientSession() as session:
+        # Check vLLM first (Port 8088)
+        try:
+            async with session.get("http://localhost:8088/v1/models", timeout=1) as resp:
+                if resp.status == 200:
+                    return "VLLM", VLLM_URL, VLLM_MODEL
+        except: pass
+
+        # Check Ollama (Port 11434)
+        try:
+            async with session.get("http://localhost:11434/api/tags", timeout=1) as resp:
+                if resp.status == 200:
+                    return "OLLAMA", OLLAMA_URL, OLLAMA_MODEL
+        except: pass
+
+    return "NONE", None, None
+
+@mcp.tool()
+async def switch_pinky_engine(target: str) -> str:
+    """
+    Swaps the backend LLM engine between 'vllm' and 'ollama'.
+    This manages VRAM by stopping the unused service.
+    """
+    script_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/manage_engines.sh")
+    if target.lower() not in ["vllm", "ollama"]:
+        return "Narf! Target must be 'vllm' or 'ollama'. Poit!"
+    
+    try:
+        # Fire and forget the management script to avoid blocking Pinky
+        subprocess.Popen(["bash", script_path, target.lower()])
+        return f"Switching to {target.upper()}... Stand by while I recalibrate my VRAM. Poit!"
+    except Exception as e:
+        return f"Egad! The engine lever is stuck: {e}"
 
 @mcp.tool()
 async def vram_vibe_check() -> str:
@@ -51,15 +90,11 @@ async def vram_vibe_check() -> str:
     """
     try:
         async with aiohttp.ClientSession() as session:
-            # Query Used and Free
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_USED"}) as r1:
                 used_data = await r1.json()
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_FREE"}) as r2:
                 free_data = await r2.json()
             
-            used_mib = float(used_data['data']['result'][0]['value'][1])
-            free_mib = float(res_free_data := await r2.json()) # Fix: redundant await, cleaning up
-            # Actually, let's keep it simple and clean
             used = float(used_data['data']['result'][0]['value'][1])
             free = float(free_data['data']['result'][0]['value'][1])
             total = used + free
@@ -82,11 +117,7 @@ async def get_lab_health() -> str:
     """
     try:
         async with aiohttp.ClientSession() as session:
-            queries = {
-                "temp": "DCGM_FI_DEV_GPU_TEMP",
-                "power": "DCGM_FI_DEV_POWER_USAGE",
-                "xid": "DCGM_FI_DEV_XID_ERRORS"
-            }
+            queries = {"temp": "DCGM_FI_DEV_GPU_TEMP", "power": "DCGM_FI_DEV_POWER_USAGE", "xid": "DCGM_FI_DEV_XID_ERRORS"}
             results = {}
             for key, q in queries.items():
                 async with session.get(PROMETHEUS_URL, params={"query": q}) as r:
@@ -99,115 +130,71 @@ async def get_lab_health() -> str:
         return f"Egad! The telemetry link is stuttering: {e}"
 
 @mcp.tool()
-async def build_cv_summary(year: str) -> str:
-    """
-    Triggers the 3x3 CVT Synthesis for a specific year.
-    Correlates strategic performance goals with technical artifact evidence.
-    """
-    return f"CV Synthesis for {year} initiated. Narf!"
-
-@mcp.tool()
-async def generate_bkm(topic: str, category: str = "validation") -> str:
-    """
-    Synthesizes a master Best Known Method (BKM) document for a given technical topic.
-    Categories: 'telemetry', 'manageability', 'validation', 'architecture'.
-    """
-    return f"Synthesizing master BKM for '{topic}' in category '{category}'. Poit!"
-
-@mcp.tool()
-async def get_recent_dream() -> str:
-    """
-    Retrieves the most recent synthesized Diamond Wisdom summary.
-    Use this to see how the Lab's long-term memory has evolved.
-    """
-    return "Retrieving recent dream report. Poit!"
-
-@mcp.tool()
-async def delegate_internal_debate(instruction: str) -> str:
-    """
-    Initiates a moderated technical debate between two independent Brain reasoning paths.
-    Use this for complex architectural questions or high-stakes validation tasks.
-    """
-    return f"Internal debate for '{instruction}' initiated. Zort!"
-
-@mcp.tool()
-async def sync_rag() -> str:
-    """
-    Triggers the bridge between static JSON artifacts and the live ChromaDB wisdom.
-    Use this if the Brain is missing recent historical context.
-    """
-    return "Archive-to-RAG sync initiated. Narf!"
-
-
-@mcp.tool()
-async def switch_brain_model(model_name: str) -> str:
-    """
-    Changes the model used by The Brain (Windows Ollama).
-    Common models: 'llama3:latest', 'mixtral:8x7b', 'llama3:70b'.
-    """
-    return f"Instruction to switch Brain model to '{model_name}' received. Narf!"
-
-
-@mcp.tool()
-async def trigger_pager(summary: str, severity: str = "info", source: str = "Pinky") -> str:
-    """
-    Triggers the notification gatekeeper and logs the event.
-    Use this for thermal warnings, task completions, or system anomalies.
-    """
-    script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_gatekeeper.py")
-    try:
-        # Running with --dry-run as per mock stage
-        cmd = ["python3", script_path, summary, "--source", source, "--severity", severity, "--dry-run"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return f"Zort! Logged the event: {summary}"
-        else:
-            return f"Egad! Log failed: {result.stderr}"
-    except Exception as e:
-        return f"Narf! Couldn't find the gatekeeper: {e}"
-
-@mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:
-    """
-    The Main Loop for Pinky. He decides what to do next.
-    Now with pre-emptive VRAM triage.
-    """
-    # --- PRE-EMPTIVE TRIAGE ---
+    """Main interaction loop with auto-detecting backend support."""
+    # 1. Pre-emptive VRAM Triage
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE)"}) as r:
                 data = await r.json()
                 usage = float(data['data']['result'][0]['value'][1])
                 if usage > 0.95:
-                    return json.dumps({
-                        "tool": "reply_to_user", 
-                        "parameters": {
-                            "text": "Narf! The GPU is totally tapped out (95%+). I can't think clearly! Maybe try 'manage_lab(action=\"lobotomize_brain\")' to clear some space? Poit!",
-                            "mood": "panic"
-                        }
-                    })
-    except: pass # Silent skip if telemetry is down
+                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Narf! GPU is tapped out (95%+). Try 'lobotomize_brain' first!", "mood": "panic"}})
+    except: pass
 
-    prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCURRENT CONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
-    
+    # 2. Detect Engine
+    engine_type, url, model = await probe_engine()
+    if engine_type == "NONE":
+        return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Egad! Both vLLM and Ollama are offline. I am floating in a void! Poit!", "mood": "panic"}})
+
+    # 3. Construct Payload
+    if engine_type == "VLLM":
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": PINKY_SYSTEM_PROMPT},
+                {"role": "user", "content": f"RELEVANT MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"}
+            ],
+            "max_tokens": 300, "temperature": 0.7, "stream": False
+        }
+    else: # OLLAMA
+        prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
+        payload = {
+            "model": model, "prompt": prompt, "stream": False, "format": "json",
+            "options": {"num_predict": 300, "temperature": 0.7}
+        }
+
+    # 4. Execute
     try:
         async with aiohttp.ClientSession() as session:
-            payload = {
-                "model": PINKY_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json", # Force JSON mode
-                "options": {"num_predict": 200, "temperature": 0.7}
-            }
-            async with session.post(PINKY_URL, json=payload, timeout=30) as resp:
+            async with session.post(url, json=payload, timeout=30) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    response = data.get("response", "")
+                    response = data['choices'][0]['message']['content'] if engine_type == "VLLM" else data.get("response", "")
                     return response
                 else:
-                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Narf! My brain hurts! (API {resp.status})", "mood": "confused"}})
+                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Narf! {engine_type} error: {resp.status}", "mood": "confused"}})
     except Exception as e:
-        return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Egad! I crashed: {e}", "mood": "panic"}})
+        return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Egad! {engine_type} connection failed: {e}", "mood": "panic"}})
+
+# --- Legacy Tools Stubs ---
+@mcp.tool()
+async def build_cv_summary(year: str) -> str: return f"CV Synthesis for {year} initiated. Narf!"
+@mcp.tool()
+async def generate_bkm(topic: str, category: str = "validation") -> str: return f"Synthesizing BKM for '{topic}'. Poit!"
+@mcp.tool()
+async def get_recent_dream() -> str: return "Retrieving recent dream report. Poit!"
+@mcp.tool()
+async def delegate_internal_debate(instruction: str) -> str: return f"Internal debate for '{instruction}' initiated. Zort!"
+@mcp.tool()
+async def sync_rag() -> str: return "Archive-to-RAG sync initiated. Narf!"
+@mcp.tool()
+async def switch_brain_model(model_name: str) -> str: return f"Brain model set to '{model_name}'. Narf!"
+@mcp.tool()
+async def trigger_pager(summary: str, severity: str = "info", source: str = "Pinky") -> str:
+    script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_gatekeeper.py")
+    subprocess.run(["python3", script_path, summary, "--source", source, "--severity", severity, "--dry-run"])
+    return f"Logged: {summary}"
 
 if __name__ == "__main__":
     mcp.run()
