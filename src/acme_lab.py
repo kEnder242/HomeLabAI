@@ -202,12 +202,6 @@ class AcmeLab:
         status_msg = {"type": "status", "version": VERSION, "state": "ready", "message": "Lab is Open."}
         await ws.send_str(json.dumps(status_msg))
 
-        # Initial file list sync
-        try:
-            files_res = await self.residents['archive'].call_tool("list_cabinet")
-            await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
-        except: pass
-
         audio_buffer = np.zeros(0, dtype=np.int16)
         try:
             async for message in ws:
@@ -217,6 +211,10 @@ class AcmeLab:
                         data = json.loads(message.data)
                         if data.get("type") == "handshake":
                             logging.info(f"[HANDSHAKE] Client verified (v{data.get('version')}).")
+                            try:
+                                files_res = await self.residents['archive'].call_tool("list_cabinet")
+                                await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
+                            except: pass
                         elif data.get("type") == "text_input":
                             query = data.get("content", "")
                             logging.info(f"[TEXT] Rx: {query}")
