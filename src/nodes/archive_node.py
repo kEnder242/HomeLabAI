@@ -1,28 +1,37 @@
+import asyncio
+import json
+import logging
+import os
+import sys
+import datetime
+import numpy as np
+import glob
+from tqdm import tqdm
+
+# Muzzle chatty loggers immediately
+logging.getLogger("chromadb").setLevel(logging.CRITICAL)
+logging.getLogger("sentence_transformers").setLevel(logging.CRITICAL)
+logging.getLogger("nemo").setLevel(logging.CRITICAL) # Just in case it's here
+logging.getLogger("onnxruntime").setLevel(logging.CRITICAL)
+
+# Basic config, now that the other loggers are muzzled
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [ARCHIVE] %(levelname)s - %(message)s', stream=sys.stderr)
+
+os.environ["TQDM_DISABLE"] = "1" 
+
 from mcp.server.fastmcp import FastMCP
 import chromadb
 from chromadb.utils import embedding_functions
-import os
-import sys
-import logging
-import datetime
-import numpy as np
-import json
-from tqdm import tqdm
-import glob
+from sentence_transformers import SentenceTransformer
 
-# Force logging to stderr
-logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-os.environ["TQDM_DISABLE"] = "1" 
-
-# Configuration
+# Configuration (Assuming this is already defined elsewhere or should be here)
+# For the purpose of getting the file to compile, let's define them here if not imported
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
 WORKSPACE_DIR = os.path.expanduser("~/AcmeLab/workspace")
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 SEARCH_INDEX = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json")
 
-# Ensure dirs exist
-for d in [DRAFTS_DIR, WORKSPACE_DIR]: os.makedirs(d, exist_ok=True)
 
 mcp = FastMCP("The Archives")
 

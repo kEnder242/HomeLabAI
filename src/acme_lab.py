@@ -16,7 +16,7 @@ import os
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.4.16" # Slow & Steady Baseline
+VERSION = "3.4.17" # Montana Protocol Baseline, Sequential MCP Init
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../server.log")
 
 # --- THE MONTANA PROTOCOL: Aggressive Logger Authority ---
