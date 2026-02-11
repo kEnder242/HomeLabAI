@@ -15,7 +15,7 @@ pkill ollama 2>/dev/null || echo "Ollama not running."
 # 2. Start the vLLM server in the background
 echo "Launching vLLM-Liger server..."
 nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
-    --model "TheBloke/Mistral-7B-Instruct-v0.2-AWQ" \
+    --model "hugging-quants/Llama-3.1-8B-Instruct-AWQ-INT4" \
     --quantization "awq" \
     --host "0.0.0.0" \
     --port 8088 \

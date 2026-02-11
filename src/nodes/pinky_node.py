@@ -13,12 +13,12 @@ logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
 mcp = FastMCP("Pinky")
 
 # Configuration
-PROMETHEUS_URL = "http://localhost:9090/api/v1/query"
-VLLM_URL = "http://localhost:8088/v1/chat/completions"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+PROMETHEUS_URL = "http://127.0.0.1:9090/api/v1/query"
+VLLM_URL = "http://127.0.0.1:8088/v1/chat/completions"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
-VLLM_MODEL = "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
-OLLAMA_MODEL = "mistral:7b"
+VLLM_MODEL = "hugging-quants/Llama-3.1-8B-Instruct-AWQ-INT4" # Future target
+OLLAMA_MODEL = "llama3.1:8b"
 
 PINKY_SYSTEM_PROMPT = (
     "You are Pinky, the Right Hemisphere of the Acme Lab Bicameral Mind. "
@@ -49,19 +49,22 @@ PINKY_SYSTEM_PROMPT = (
 async def probe_engine():
     """Detects which engine is currently running on the local node."""
     async with aiohttp.ClientSession() as session:
-        # Check vLLM first (Port 8088)
-        try:
-            async with session.get("http://localhost:8088/v1/models", timeout=1) as resp:
-                if resp.status == 200:
-                    return "VLLM", VLLM_URL, VLLM_MODEL
-        except: pass
+        # 1. Check vLLM (Port 8088)
+        # Try both common local addresses
+        for host in ["127.0.0.1", "localhost"]:
+            try:
+                async with session.get(f"http://{host}:8088/v1/models", timeout=2) as resp:
+                    if resp.status == 200:
+                        return "VLLM", f"http://{host}:8088/v1/chat/completions", VLLM_MODEL
+            except: pass
 
-        # Check Ollama (Port 11434)
-        try:
-            async with session.get("http://localhost:11434/api/tags", timeout=1) as resp:
-                if resp.status == 200:
-                    return "OLLAMA", OLLAMA_URL, OLLAMA_MODEL
-        except: pass
+        # 2. Check Ollama (Port 11434)
+        for host in ["127.0.0.1", "localhost"]:
+            try:
+                async with session.get(f"http://{host}:11434/api/tags", timeout=2) as resp:
+                    if resp.status == 200:
+                        return "OLLAMA", f"http://{host}:11434/api/generate", OLLAMA_MODEL
+            except: pass
 
     return "NONE", None, None
 
@@ -179,17 +182,69 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
 
 # --- Legacy Tools Stubs ---
 @mcp.tool()
-async def build_cv_summary(year: str) -> str: return f"CV Synthesis for {year} initiated. Narf!"
+async def build_cv_summary(year: str) -> str:
+    """
+    Triggers the 3x3 CVT Synthesis for a specific year.
+    Correlates strategic performance goals with technical artifact evidence.
+    """
+    return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
+
 @mcp.tool()
-async def generate_bkm(topic: str, category: str = "validation") -> str: return f"Synthesizing BKM for '{topic}'. Poit!"
+async def generate_bkm(topic: str, category: str = "validation") -> str:
+    """
+    Synthesizes a master Best Known Method (BKM) document for a given technical topic.
+    Categories: 'telemetry', 'manageability', 'validation', 'architecture'.
+    """
+    return json.dumps({"tool": "generate_bkm", "parameters": {"topic": topic, "category": category}})
+
 @mcp.tool()
-async def get_recent_dream() -> str: return "Retrieving recent dream report. Poit!"
+async def get_lab_status() -> str:
+    """
+    Retrieves a high-fidelity summary of recent interactions and system state.
+    Use this to ground yourself in recent technical decisions.
+    """
+    return json.dumps({"tool": "get_lab_status", "parameters": {}})
+
 @mcp.tool()
-async def delegate_internal_debate(instruction: str) -> str: return f"Internal debate for '{instruction}' initiated. Zort!"
+async def manage_lab(action: str, message: str = "Request processed.") -> str:
+    """
+    Administrative controls for the Acme Lab environment.
+    Actions: 'lobotomize_brain' (clears context), 'shutdown' (debug modes only).
+    """
+    return json.dumps({"tool": "manage_lab", "parameters": {"action": action, "message": message}})
+
 @mcp.tool()
-async def sync_rag() -> str: return "Archive-to-RAG sync initiated. Narf!"
+async def get_recent_dream() -> str:
+    """
+    Retrieves the most recent synthesized Diamond Wisdom summary.
+    Use this to see how the Lab's long-term memory has evolved.
+    """
+    return json.dumps({"tool": "get_recent_dream", "parameters": {}})
+
 @mcp.tool()
-async def switch_brain_model(model_name: str) -> str: return f"Brain model set to '{model_name}'. Narf!"
+async def delegate_internal_debate(instruction: str) -> str:
+    """
+    Initiates a moderated technical debate between two independent Brain reasoning paths.
+    Use this for complex architectural questions or high-stakes validation tasks.
+    """
+    return json.dumps({"tool": "delegate_internal_debate", "parameters": {"instruction": instruction}})
+
+@mcp.tool()
+async def sync_rag() -> str:
+    """
+    Triggers the bridge between static JSON artifacts and the live ChromaDB wisdom.
+    Use this if the Brain is missing recent historical context.
+    """
+    return json.dumps({"tool": "sync_rag", "parameters": {}})
+
+@mcp.tool()
+async def switch_brain_model(model_name: str) -> str:
+    """
+    Changes the model used by The Brain (Windows Ollama).
+    Common models: 'llama3:latest', 'mixtral:8x7b', 'llama3:70b'.
+    """
+    return json.dumps({"tool": "switch_brain_model", "parameters": {"model_name": model_name}})
+
 @mcp.tool()
 async def trigger_pager(summary: str, severity: str = "info", source: str = "Pinky") -> str:
     script_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/notify_gatekeeper.py")
