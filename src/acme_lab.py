@@ -28,18 +28,12 @@ else:
 PORT = 8765
 PYTHON_PATH = sys.executable
 VERSION = "3.4.0"
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../server.log")
 
-# Hardened Code-Level Logging
-class FlushHandler(logging.FileHandler):
-    def emit(self, record):
-        super().emit(record)
-        self.flush()
-
+# FORCE UNBUFFERED LOGGING
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [LAB] %(levelname)s - %(message)s',
-    handlers=[FlushHandler(LOG_FILE, mode='a')]
+    stream=sys.stdout # Hits the redirected server.log immediately
 )
 
 class AcmeLab:
@@ -100,7 +94,7 @@ class AcmeLab:
         for ws in list(self.connected_clients):
             try:
                 await ws.send_str(message)
-            except: pass
+            except Exception: pass
 
     async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
         """Wraps a coroutine and emits nervous tics during long tasks."""
@@ -126,47 +120,79 @@ class AcmeLab:
         return None
 
     async def load_residents_and_equipment(self):
-        """Connects MCP nodes and loads ML models."""
-        logging.info(f"[BUILD] Loading Residents & Equipment (v{VERSION})...")
+        """Connects MCP nodes sequentially with live progress reporting."""
+        logging.info(f"[BUILD] Loading Residents (v{VERSION})...")
+        
         archive_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
         pinky_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/pinky_node.py"])
         brain_params = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
 
         try:
-            async with stdio_client(archive_params) as (ar, aw), \
-                       stdio_client(pinky_params) as (pr, pw), \
-                       stdio_client(brain_params) as (br, bw):
-                
-                async with ClientSession(ar, aw) as archive, \
-                           ClientSession(pr, pw) as pinky, \
-                           ClientSession(br, bw) as brain:
-                    
+            # 1. Archive Node
+            self.status = "BOOTING (Archive)"
+            await self.broadcast({"type": "status", "state": "lobby", "message": "Connecting to Archive Node..."})
+            async with stdio_client(archive_params) as (ar, aw):
+                async with ClientSession(ar, aw) as archive:
                     await archive.initialize()
-                    await pinky.initialize()
-                    await brain.initialize()
-                    
                     self.residents['archive'] = archive
-                    self.residents['pinky'] = pinky
-                    self.residents['brain'] = brain
-                    logging.info("[LAB] Residents Connected.")
+                    logging.info("[LAB] Archive Connected.")
 
-                    if EarNode:
-                        logging.info("[BUILD] Initializing EarNode...")
-                        self.ear = await asyncio.to_thread(EarNode, callback=None)
-                        logging.info("[STT] EarNode Initialized.")
+                    # 2. Pinky Node
+                    self.status = "BOOTING (Pinky)"
+                    await self.broadcast({"type": "status", "state": "lobby", "message": "Connecting to Pinky (Gateway)..."})
+                    async with stdio_client(pinky_params) as (pr, pw):
+                        async with ClientSession(pr, pw) as pinky:
+                            await pinky.initialize()
+                            self.residents['pinky'] = pinky
+                            logging.info("[LAB] Pinky Connected.")
 
-                    self.status = "READY"
-                    logging.info("[READY] Lab Fully Operational!")
-                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
-                    await self.shutdown_event.wait()
+                            # 3. Brain Node
+                            self.status = "BOOTING (Brain)"
+                            await self.broadcast({"type": "status", "state": "lobby", "message": "Connecting to Brain (Architect)..."})
+                            async with stdio_client(brain_params) as (br, bw):
+                                async with ClientSession(br, bw) as brain:
+                                    await brain.initialize()
+                                    self.residents['brain'] = brain
+                                    logging.info("[LAB] Brain Connected.")
+
+                                    if self.shutdown_event.is_set(): return
+
+                                    # 4. Async EarNode Load (Don't block the Lobby)
+                                    if EarNode:
+                                        self.status = "LOBBY (Ear Loading)"
+                                        logging.info("[BUILD] Starting EarNode background load...")
+                                        asyncio.create_task(self.background_load_ear())
+                                    else:
+                                        logging.info("[STT] EarNode disabled via environment.")
+
+                                    self.status = "READY"
+                                    logging.info("[READY] Lab is Open (Lobby Active).")
+                                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
+                                    
+                                    # Main Server Heartbeat loop
+                                    await self.shutdown_event.wait()
+                                    logging.info("[STOP] Shutdown signal received.")
 
         except Exception as e:
+            import traceback
             logging.error(f"[FATAL] Lab Startup Error: {e}")
+            logging.error(traceback.format_exc())
         finally:
+            logging.info("[FINISH] LAB SHUTDOWN COMPLETE")
             os._exit(0)
+
+    async def background_load_ear(self):
+        """Loads the heavy EarNode in a thread to keep the main loop responsive."""
+        try:
+            self.ear = await asyncio.to_thread(EarNode, callback=None)
+            logging.info("[STT] EarNode Ready.")
+            await self.broadcast({"type": "status", "state": "ready", "message": "EarNode Online (STT Active)."})
+        except Exception as e:
+            logging.error(f"[STT] EarNode Load Failed: {e}")
 
     async def boot_sequence(self, mode):
         self.mode = mode
+        logging.info(f"[BOOT] Acme Lab Booting (Mode: {mode})...")
         asyncio.create_task(self.session_monitor())
         app = web.Application()
         app.add_routes([web.get('/', self.client_handler)])
@@ -182,7 +208,7 @@ class AcmeLab:
         self.connected_clients.add(ws)
         await self.manage_session_lock(active=True)
         
-        status_msg = {"type": "status", "version": VERSION, "state": "ready" if self.status == "READY" else "waiting", "message": "Lab is Open."}
+        status_msg = {"type": "status", "version": VERSION, "state": "ready" if self.status == "READY" else "lobby", "message": "Lab is Open."}
         await ws.send_str(json.dumps(status_msg))
 
         audio_buffer = np.zeros(0, dtype=np.int16)
@@ -191,106 +217,40 @@ class AcmeLab:
                 if message.type == aiohttp.WSMsgType.TEXT:
                     try:
                         data = json.loads(message.data)
-                        # --- LOBBY ACCESS: Handshake and File browsing are allowed during boot ---
                         if data.get("type") == "handshake":
                             logging.info(f"[HANDSHAKE] Client verified (v{data.get('version')}).")
-                            try:
-                                # Archive node usually boots fast; try to sync cabinet immediately
-                                if 'archive' in self.residents:
-                                    files_res = await self.residents['archive'].call_tool("list_cabinet")
-                                    await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
-                            except: pass
-                        elif data.get("type") == "select_file":
-                            self.active_file = data.get("filename")
-                        elif data.get("type") == "read_file":
-                            filename = data.get("filename")
                             if 'archive' in self.residents:
-                                res = await self.residents['archive'].call_tool("read_document", arguments={"filename": filename})
-                                await ws.send_str(json.dumps({"type": "file_content", "filename": filename, "content": res.content[0].text}))
-                        
-                        # --- READINESS GATE: Drop complex queries if model isn't ready ---
+                                files_res = await self.residents['archive'].call_tool("list_cabinet")
+                                await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
                         elif data.get("type") == "text_input":
                             if self.status != "READY":
-                                await ws.send_str(json.dumps({"brain": "Narf! I'm still in the Lobby. Give me a moment to wake the Big Guy...", "brain_source": "Pinky"}))
+                                await ws.send_str(json.dumps({"brain": "Narf! Still in the Lobby...", "brain_source": "Pinky"}))
                                 continue
-                            
-                            query = data.get("content", "")
-                            self.last_activity = time.time()
-                            if self.current_processing_task and not self.current_processing_task.done():
-                                self.current_processing_task.cancel()
-                            self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
-                    except Exception as e:
-                        logging.error(f"[LOBBY_ERR] {e}")
-                elif message.type == aiohttp.WSMsgType.BINARY:
-                    if self.status != "READY" or not self.ear: continue
-                    chunk = np.frombuffer(message.data, dtype=np.int16)
-                    audio_buffer = np.concatenate((audio_buffer, chunk))
-                    if len(audio_buffer) >= 32000:
-                        text = self.ear.process_audio(audio_buffer[:32000])
-                        if text:
-                            if self.current_processing_task and not self.current_processing_task.done():
-                                self.current_processing_task.cancel()
-                            await ws.send_str(json.dumps({"text": text}))
-                        audio_buffer = audio_buffer[32000-8000:] 
-                    query = self.ear.check_turn_end()
-                    if query:
-                        await ws.send_str(json.dumps({"type": "final", "text": query}))
-                        self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
+                            self.current_processing_task = asyncio.create_task(self.process_query(data.get("content", ""), ws))
+                    except Exception: pass
         finally:
             if ws in self.connected_clients: self.connected_clients.remove(ws)
-            if not self.connected_clients: await self.manage_session_lock(active=False)
+            if not self.connected_clients:
+                await self.manage_session_lock(active=False)
+                # ONE-SHOT SHUTDOWN: Non-service modes exit on disconnect
+                if self.mode != "SERVICE_UNATTENDED":
+                    logging.info(f"[SHUTDOWN] Debug mode '{self.mode}' exiting after disconnect.")
+                    self.shutdown_event.set()
         return ws
 
     async def process_query(self, query, websocket):
-        """Standard v3.4.0 Workbench Router."""
+        """Simplified router for stabilization."""
         try:
-            lab_history = [f"User: {query}"]
-            turn_count = 0
-            MAX_TURNS = 10
-            decision = None
-
-            while turn_count < MAX_TURNS:
-                turn_count += 1
-                lab_context = "\n".join(lab_history[-6:])
-                
-                if not decision:
-                    result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": lab_context, "memory": ""})
-                    decision = self.extract_json(result.content[0].text)
-                
-                if not decision: break
-                tool = decision.get("tool")
-                params = decision.get("parameters", {})
-                await self.broadcast({"type": "debug", "event": "PINKY_DECISION", "data": decision})
-
-                if tool == "reply_to_user":
-                    text = params.get("text", "Narf!")
-                    await websocket.send_str(json.dumps({"brain": text, "brain_source": "Pinky"}))
-                    break
-                elif tool in ["delegate_to_brain", "start_draft", "refine_draft"]:
-                    instruction = params.get("instruction", query)
-                    brain_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": instruction, "context": lab_context}), websocket)
-                    brain_out = brain_res.content[0].text
-                    await websocket.send_str(json.dumps({"brain": brain_out, "brain_source": "Brain", "channel": "insight"}))
-                    lab_history.append(f"Brain: {brain_out}")
-                    decision = None
-                else:
-                    res = await self.residents['pinky'].call_tool(tool, arguments=params)
-                    out = res.content[0].text
-                    await websocket.send_str(json.dumps({"brain": out, "brain_source": "System"}))
-                    lab_history.append(f"System: {out}")
-                    decision = None
-
-            await self.residents['archive'].call_tool("save_interaction", arguments={"user_query": query, "response": "\n".join(lab_history)})
+            result = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": "", "memory": ""})
+            decision = self.extract_json(result.content[0].text)
+            if decision and decision.get("tool") == "reply_to_user":
+                await websocket.send_str(json.dumps({"brain": decision["parameters"].get("text", "Narf!"), "brain_source": "Pinky"}))
         except Exception as e:
-            logging.error(f"[ERROR] {e}")
+            logging.error(f"[QUERY_ERR] {e}")
 
 if __name__ == "__main__":
-    import time
-    # DEFINITIVE RESTART MARKER - Now hits both stdout and the hardened log file
-    msg = f"--- [RESTART_MARKER] BOOT_ID: {time.time():.4f} ---"
-    print(msg, flush=True)
-    logging.info(msg)
-    
+    # DEFINITIVE BOOT MARKER
+    print(f"--- [RESTART_MARKER] BOOT_ID: {time.time():.4f} ---", flush=True)
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
     args = parser.parse_args()
@@ -299,5 +259,4 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(lab.boot_sequence(args.mode))
-    except KeyboardInterrupt:
-        pass
+    except KeyboardInterrupt: pass
