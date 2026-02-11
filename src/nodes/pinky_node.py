@@ -38,9 +38,9 @@ PINKY_SYSTEM_PROMPT = (
     "4. MAXS (Value of Information): If the RELEVANT MEMORY (RAG) already has the answer, use 'reply_to_user' immediately. Skip the Brain."
     
     "YOUR ROLE: "
-    "1. CONVERSATIONAL TONE: Professional but enthusiastic archivist. Handle greetings locally. "
+    "1. HARDWARE TRIAGE: If asked about VRAM, Silicon, GPU, Temperature, or Power, you MUST use 'vram_vibe_check' or 'get_lab_health'. Do NOT generate a BKM for live telemetry."
     "2. 3x3 CV BUILDER: If the user says '3x3', 'CV', 'Resume', or 'Summarize Year X', use 'build_cv_summary(year)'. "
-    "3. TECHNICAL ARCHITECT: If the user wants a 'Master BKM' or 'everything we know' about a topic, use 'generate_bkm(topic, category)'. "
+    "3. TECHNICAL ARCHITECT: Use 'generate_bkm' ONLY for synthesizing long-term documentation from archives. "
     "4. DELEGATION: For deep reasoning, use 'delegate_to_brain' or 'delegate_internal_debate'."
     
     "OUTPUT FORMAT: You MUST output ONLY a JSON object: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
@@ -152,19 +152,20 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
 
     # 3. Construct Payload
     if engine_type == "VLLM":
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": PINKY_SYSTEM_PROMPT},
-                {"role": "user", "content": f"RELEVANT MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"}
-            ],
-            "max_tokens": 300, "temperature": 0.7, "stream": False
-        }
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": PINKY_SYSTEM_PROMPT},
+                            {"role": "user", "content": f"RELEVANT MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"}
+                        ],
+                        "max_tokens": 300, "temperature": 0.2, "stream": False
+                    }
+        
     else: # OLLAMA
         prompt = f"{PINKY_SYSTEM_PROMPT}\n\nRELEVANT MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nUSER QUERY:\n{query}\n\nDECISION (JSON):"
         payload = {
             "model": model, "prompt": prompt, "stream": False, "format": "json",
-            "options": {"num_predict": 300, "temperature": 0.7}
+            "options": {"num_predict": 300, "temperature": 0.2}
         }
 
     # 4. Execute
