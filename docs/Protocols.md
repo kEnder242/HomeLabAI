@@ -139,6 +139,10 @@ This document defines the standard operating procedures for the HomeLabAI develo
     *   **BKM:** Ensure the `tool` name in the JSON return exactly matches the `@mcp.tool()` function name.
 *   **The "Uplink Blindness" Scar:** Updating `intercom_v2.js` logic without a site build causes the browser to run cached, incompatible code.
     *   **BKM:** ALWAYS run `python3 field_notes/build_site.py` after modifying frontend JS to force a cache-bust.
+*   **The "Nohup Blindness" Scar:** Standard `nohup` fails to capture `anyio.ClosedResourceError` cascades, leading to silent background deaths.
+    *   **BKM:** Use a persistent `tmux` session (e.g., `lab-server`) for production background tasks to ensure buffer capture and process isolation.
+*   **The "CUDA Graph Trap":** NeMo (EarNode) on CUDA 12.8 hosts can crash the main event loop if CUDA graphs are attempted during startup.
+    *   **BKM:** Proactively trigger the recursive `_sledgehammer_disable_graphs()` during `__init__` to force Eager Mode immediately.
 
 ---
 
