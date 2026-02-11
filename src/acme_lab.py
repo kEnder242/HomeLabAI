@@ -122,12 +122,19 @@ class AcmeLab:
         return task.result()
 
     def extract_json(self, text):
-        """Robustly extracts JSON from LLM responses."""
+        """Robustly extracts and normalizes JSON from LLM responses."""
         import re
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0))
+                data = json.loads(match.group(0))
+                # --- SCHEMA NORMALIZER ---
+                if "tool" not in data:
+                    # If model returned a direct answer in JSON, wrap it
+                    text_content = data.get("answer") or data.get("text") or data.get("result") or str(data)
+                    if isinstance(text_content, dict): text_content = json.dumps(text_content)
+                    return {"tool": "reply_to_user", "parameters": {"text": text_content}}
+                return data
             except: pass
         return None
 

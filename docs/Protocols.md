@@ -132,6 +132,14 @@ This document defines the standard operating procedures for the HomeLabAI develo
 *   **Strategic Document RAG:** Standard log artifacts lack high-level context. 
     *   **BKM:** The RAG bridge (`bridge_burn_to_rag.py`) must explicitly ingest Strategy Docs (like `RESEARCH_SYNTHESIS.md`) to anchor the Brain's reasoning in the project's long-term vision.
 
+### 8.4 Feb 10, 2026 (Workbench Sync & Schema Hardening)
+*   **The "Stubborn Model" Scar (Schema Hallucination):** Mistral-7B may ignore strict JSON instructions and return direct answers (e.g., `{"answer": "..."}`) instead of tool calls.
+    *   **BKM:** Implement a "Schema Normalizer" in the Orchestrator (`acme_lab.py`) to automatically wrap direct JSON answers into `reply_to_user` tool calls.
+*   **The "Ghost Tool" Scar (Namespace Disconnect):** Renaming a tool in the MCP server without updating its internal JSON proposal string causes a runtime failure when the Orchestrator attempts to execute the "Ghost" tool.
+    *   **BKM:** Ensure the `tool` name in the JSON return exactly matches the `@mcp.tool()` function name.
+*   **The "Uplink Blindness" Scar:** Updating `intercom_v2.js` logic without a site build causes the browser to run cached, incompatible code.
+    *   **BKM:** ALWAYS run `python3 field_notes/build_site.py` after modifying frontend JS to force a cache-bust.
+
 ---
 
 ## 9. The Cold Start Protocol (Session Orientation)
