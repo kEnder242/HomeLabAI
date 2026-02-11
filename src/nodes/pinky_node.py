@@ -29,8 +29,13 @@ PINKY_SYSTEM_PROMPT = (
     "YOUR MEMORY SYSTEMS:"
     "1. THE CLIPBOARD: Semantic Cache of recent Brain thoughts."
     "2. THE LIBRARY: RAG Memory containing user documents."
-    "3. THE ARCHIVES: 18-year ground truth (Use 'peek_related_notes')."
+    "3. PERSONAL HISTORY: 18-year ground truth (Use 'access_personal_history')."
     
+    "TEMPORAL MOAT RULE: "
+    "1. You MUST NOT use 'access_personal_history' for queries about 'today', 'now', or current system state."
+    "2. Use 'access_personal_history' ONLY if the user provides a TEMPORAL KEY (e.g., 'In 2019...', 'Last year...', 'Check my history...')."
+    "3. For current state queries, use 'vram_vibe_check' or 'get_lab_health'."
+
     "BRAIN FAILURES & ALIGNMENT:"
     "1. LOBOTOMY: If the Brain is confused, use 'manage_lab(action=\"lobotomize_brain\")'. "
     "2. HOUSEKEEPING: Use 'prune_drafts()' to clear old files. "
@@ -38,10 +43,11 @@ PINKY_SYSTEM_PROMPT = (
     "4. MAXS (Value of Information): If the RELEVANT MEMORY (RAG) already has the answer, use 'reply_to_user' immediately. Skip the Brain."
     
     "YOUR ROLE: "
-    "1. HARDWARE TRIAGE: If asked about VRAM, Silicon, GPU, Temperature, or Power, you MUST use 'vram_vibe_check' or 'get_lab_health'. Do NOT generate a BKM for live telemetry."
+    "1. HARDWARE TRIAGE: If asked about VRAM, Silicon, GPU, Temperature, or Power, you MUST use 'vram_vibe_check' or 'get_lab_health'. Do NOT start a draft for live telemetry."
     "2. 3x3 CV BUILDER: If the user says '3x3', 'CV', 'Resume', or 'Summarize Year X', use 'build_cv_summary(year)'. "
-    "3. TECHNICAL ARCHITECT: Use 'generate_bkm' ONLY for synthesizing long-term documentation from archives. "
-    "4. DELEGATION: For deep reasoning, use 'delegate_to_brain' or 'delegate_internal_debate'."
+    "3. WORKSPACE DRAFTING: Use 'start_draft' to begin a new synthesis on the Whiteboard. Use 'refine_draft' to iterate."
+    "4. ARCHIVE MAINTENANCE: Use 'commit_to_archive' ONLY when a document is finalized. Reminder: 'archive/' is READ-ONLY for you; use tools to save finalized work."
+    "5. DELEGATION: For deep reasoning, use 'delegate_to_brain' or 'delegate_internal_debate'."
     
     "OUTPUT FORMAT: You MUST output ONLY a JSON object: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }"
 )
@@ -191,12 +197,28 @@ async def build_cv_summary(year: str) -> str:
     return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
 
 @mcp.tool()
-async def generate_bkm(topic: str, category: str = "validation") -> str:
+async def start_draft(topic: str, category: str = "validation") -> str:
     """
-    Synthesizes a master Best Known Method (BKM) document for a given technical topic.
-    Categories: 'telemetry', 'manageability', 'validation', 'architecture'.
+    Begins a new technical synthesis on the shared Whiteboard.
+    Use this for initial research or architectural plans.
     """
     return json.dumps({"tool": "generate_bkm", "parameters": {"topic": topic, "category": category}})
+
+@mcp.tool()
+async def refine_draft(instruction: str) -> str:
+    """
+    Iterates on the current Whiteboard content based on feedback.
+    Use this to polish summaries or add specific artifact citations.
+    """
+    return json.dumps({"tool": "delegate_to_brain", "parameters": {"instruction": f"Refine the current whiteboard: {instruction}"}})
+
+@mcp.tool()
+async def commit_to_archive(filename: str) -> str:
+    """
+    Permanently saves the finalized whiteboard content to the Filing Cabinet.
+    Use this ONLY when the user is satisfied with the results.
+    """
+    return json.dumps({"tool": "write_draft", "parameters": {"filename": filename, "overwrite": True}})
 
 @mcp.tool()
 async def get_lab_status() -> str:
@@ -205,6 +227,14 @@ async def get_lab_status() -> str:
     Use this to ground yourself in recent technical decisions.
     """
     return json.dumps({"tool": "get_lab_status", "parameters": {}})
+
+@mcp.tool()
+async def access_personal_history(keyword: str) -> str:
+    """
+    Bridges the Temporal Moat to retrieve ground truth from the 18-year archive.
+    Use this ONLY for historical context queries (e.g. 'In 2019', 'history').
+    """
+    return json.dumps({"tool": "peek_related_notes", "parameters": {"keyword": keyword}})
 
 @mcp.tool()
 async def manage_lab(action: str, message: str = "Request processed.") -> str:
