@@ -28,12 +28,18 @@ else:
 PORT = 8765
 PYTHON_PATH = sys.executable
 VERSION = "3.4.0"
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../server.log")
 
-# Logging
+# Hardened Code-Level Logging
+class FlushHandler(logging.FileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [LAB] %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    handlers=[FlushHandler(LOG_FILE, mode='a')]
 )
 
 class AcmeLab:
@@ -91,7 +97,7 @@ class AcmeLab:
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
         message = json.dumps(message_dict)
-        for ws in self.connected_clients:
+        for ws in list(self.connected_clients):
             try:
                 await ws.send_str(message)
             except: pass
@@ -145,6 +151,7 @@ class AcmeLab:
                     logging.info("[LAB] Residents Connected.")
 
                     if EarNode:
+                        logging.info("[BUILD] Initializing EarNode...")
                         self.ear = await asyncio.to_thread(EarNode, callback=None)
                         logging.info("[STT] EarNode Initialized.")
 
@@ -154,7 +161,7 @@ class AcmeLab:
                     await self.shutdown_event.wait()
 
         except Exception as e:
-            logging.error(f"[ERROR] Lab Explosion: {e}")
+            logging.error(f"[FATAL] Lab Startup Error: {e}")
         finally:
             os._exit(0)
 
@@ -182,26 +189,38 @@ class AcmeLab:
         try:
             async for message in ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
-                    if self.status != "READY": continue
                     try:
                         data = json.loads(message.data)
+                        # --- LOBBY ACCESS: Handshake and File browsing are allowed during boot ---
                         if data.get("type") == "handshake":
                             logging.info(f"[HANDSHAKE] Client verified (v{data.get('version')}).")
-                            files_res = await self.residents['archive'].call_tool("list_cabinet")
-                            await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
+                            try:
+                                # Archive node usually boots fast; try to sync cabinet immediately
+                                if 'archive' in self.residents:
+                                    files_res = await self.residents['archive'].call_tool("list_cabinet")
+                                    await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(files_res.content[0].text)}))
+                            except: pass
+                        elif data.get("type") == "select_file":
+                            self.active_file = data.get("filename")
+                        elif data.get("type") == "read_file":
+                            filename = data.get("filename")
+                            if 'archive' in self.residents:
+                                res = await self.residents['archive'].call_tool("read_document", arguments={"filename": filename})
+                                await ws.send_str(json.dumps({"type": "file_content", "filename": filename, "content": res.content[0].text}))
+                        
+                        # --- READINESS GATE: Drop complex queries if model isn't ready ---
                         elif data.get("type") == "text_input":
+                            if self.status != "READY":
+                                await ws.send_str(json.dumps({"brain": "Narf! I'm still in the Lobby. Give me a moment to wake the Big Guy...", "brain_source": "Pinky"}))
+                                continue
+                            
                             query = data.get("content", "")
                             self.last_activity = time.time()
                             if self.current_processing_task and not self.current_processing_task.done():
                                 self.current_processing_task.cancel()
                             self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
-                        elif data.get("type") == "select_file":
-                            self.active_file = data.get("filename")
-                        elif data.get("type") == "read_file":
-                            filename = data.get("filename")
-                            res = await self.residents['archive'].call_tool("read_document", arguments={"filename": filename})
-                            await ws.send_str(json.dumps({"type": "file_content", "filename": filename, "content": res.content[0].text}))
-                    except: pass
+                    except Exception as e:
+                        logging.error(f"[LOBBY_ERR] {e}")
                 elif message.type == aiohttp.WSMsgType.BINARY:
                     if self.status != "READY" or not self.ear: continue
                     chunk = np.frombuffer(message.data, dtype=np.int16)
@@ -267,8 +286,10 @@ class AcmeLab:
 
 if __name__ == "__main__":
     import time
-    # DEFINITIVE RESTART MARKER
-    print(f"--- [RESTART_MARKER] BOOT_ID: {time.time():.4f} ---", flush=True)
+    # DEFINITIVE RESTART MARKER - Now hits both stdout and the hardened log file
+    msg = f"--- [RESTART_MARKER] BOOT_ID: {time.time():.4f} ---"
+    print(msg, flush=True)
+    logging.info(msg)
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
