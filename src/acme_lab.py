@@ -206,14 +206,42 @@ class AcmeLab:
 
     async def process_query(self, query, websocket): # FULL PROCESS_QUERY
         try:
+            # 1. Ask Pinky to triage/facilitate
             res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": "", "memory": ""})
+            
+            # Extract JSON from Pinky's response
             import re
             m = re.search(r'\{.*\}', res.content[0].text, re.DOTALL)
             if m:
                 dec = json.loads(m.group(0))
-                if dec.get("tool") == "reply_to_user":
-                    await websocket.send_str(json.dumps({"brain": dec["parameters"].get("text", "Poit!"), "brain_source": "Pinky"}))
-        except Exception as e: logging.error(f"[ERR] {e}")
+                tool = dec.get("tool")
+                params = dec.get("parameters", {})
+                
+                # 2. Handle Pinky's Decision
+                if tool == "reply_to_user":
+                    text = params.get("text", "Poit!")
+                    await self.broadcast({"brain": text, "brain_source": "Pinky"})
+                
+                elif tool in ["ask_brain", "query_brain"]:
+                    summary = params.get("summary") or params.get("question") or query
+                    await self.broadcast({"brain": f"ASK_BRAIN: {summary}", "brain_source": "Pinky"})
+                    
+                    # 3. Call The Brain
+                    await self.broadcast({"type": "debug", "event": "BRAIN_INVOKED", "data": summary})
+                    brain_res = await self.residents['brain'].call_tool("deep_think", arguments={"query": summary})
+                    
+                    # Broadcast Brain's response
+                    await self.broadcast({"brain": brain_res.content[0].text, "brain_source": "The Brain"})
+                
+                else:
+                    # Generic tool fallback
+                    await self.broadcast({"type": "debug", "event": "PINKY_DECISION", "data": dec})
+                    if "text" in params:
+                        await self.broadcast({"brain": params["text"], "brain_source": "Pinky"})
+
+        except Exception as e: 
+            logging.error(f"[ERR] process_query failed: {e}")
+            await self.broadcast({"brain": f"Narf! Something went wrong in my head: {e}", "brain_source": "Pinky"})
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
