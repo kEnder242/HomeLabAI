@@ -17,12 +17,15 @@ class EarNode:
         logging.info(f"👂 EarNode: Loading {MODEL_NAME}...")
         self.model = nemo_asr.models.ASRModel.from_pretrained(MODEL_NAME)
         self.model.eval()
+        
+        # FIX: Force FP16 and clear cache to restore ~1.5GB footprint
+        self.model = self.model.half() 
         self.model = self.model.to("cuda")
+        torch.cuda.empty_cache()
         
         # Proactively trigger sledgehammer to prevent startup crashes on CUDA 12.8
         self._sledgehammer_disable_graphs()
-        
-        self.full_transcript = ""
+        torch.cuda.empty_cache()
         self.last_speech_time = time.time()
         self.turn_pending = False
         self.wake_signal_sent = False
