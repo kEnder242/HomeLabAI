@@ -24,7 +24,7 @@ except ImportError:
     pass # Fallback to raw ANSI if colorama is missing
 
 # --- CONFIGURATION ---
-VERSION = "3.1.9"
+VERSION = "3.4.0"
 HOST = "z87-Linux.local" 
 PORT = 8765
 CHUNK = 2048
@@ -119,7 +119,7 @@ async def receive_messages(websocket):
                 elif event == "PINKY_DECISION":
                     decision = data.get("data", {})
                     tool = decision.get("tool")
-                    if tool != "facilitate": # Only show 'active' tools
+                    if tool and tool != "facilitate" and tool != "None":
                         if IS_HEARING: print(""); IS_HEARING = False
                         print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
 

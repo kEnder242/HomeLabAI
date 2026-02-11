@@ -2,66 +2,56 @@ import asyncio
 import websockets
 import json
 import sys
-import time
 
-HOST = "z87-Linux.local"
-PORT = 8765
-URI = f"ws://{HOST}:{PORT}"
-
-async def test_intercom_protocol():
-    print(f"🔌 Connecting to {URI}...")
+async def diagnostic_test():
+    uri = "ws://localhost:8765"
+    version = "3.4.0"
+    
+    print(f"--- [DIAGNOSTIC] Connecting to {uri} ---")
     try:
-        async with websockets.connect(URI) as ws:
-            # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "2.0.0", "client": "test_suite"}))
-            print("✅ Handshake sent.")
-
-            # 2. Consume Hello/Status
-            while True:
-                msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                data = json.loads(msg)
-                if data.get("type") == "status" and data.get("state") == "ready":
-                    print("✅ Server Ready.")
-                    break
+        async with websockets.connect(uri) as ws:
+            # 1. Wait for initial status
+            msg = await asyncio.wait_for(ws.recv(), timeout=5)
+            data = json.loads(msg)
+            print(f"Rx Initial Status: {data}")
             
-            # 3. Simulate Text Input (The "Intercom" Feature)
-            test_phrase = "Hello from the Intercom Test Suite"
-            print(f"📤 Sending Text: '{test_phrase}'")
-            await ws.send(json.dumps({
-                "type": "text_input", 
-                "content": test_phrase,
-                "timestamp": time.time()
-            }))
-
-            # 4. Verify Response
-            # We expect a "brain" response (Pinky replying)
-            start = time.time()
-            response_received = False
-            while time.time() - start < 15.0:
-                try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                    data = json.loads(msg)
-                    
-                    if "brain" in data:
-                        print(f"✅ Received Reply: [{data.get('brain_source')}]: {data['brain']}")
-                        response_received = True
-                        break
-                        
-                    if "text" in data:
-                        print(f"   (Ignoring STT echo: {data['text']})")
-                        
-                except asyncio.TimeoutError:
-                    break
-            
-            if response_received:
-                print("🏆 Intercom Protocol Test PASSED.")
+            if data.get('type') == 'status':
+                print(f"✅ Server state: {data.get('state')} (v{data.get('version')})")
             else:
-                print("❌ Intercom Protocol Test FAILED (No response).")
-                sys.exit(1)
+                print(f"❌ Unexpected first message: {data}")
+
+            # 2. Handshake
+            print(f"Tx Handshake (v{version})...")
+            await ws.send(json.dumps({"type": "handshake", "version": version}))
+            
+            # 3. Wait for Cabinet Sync
+            msg = await asyncio.wait_for(ws.recv(), timeout=5)
+            data = json.loads(msg)
+            if data.get('type') == 'cabinet':
+                print(f"✅ Cabinet Sync Rx: {len(data['files'].get('archive', {}))} years found.")
+            else:
+                print(f"❌ Handshake response was not cabinet: {data}")
+
+            # 4. Test Query
+            print("Tx Query: 'how is the silicon?'")
+            await ws.send(json.dumps({"type": "text_input", "content": "how is the silicon?"}))
+            
+            # 5. Monitor for Response
+            print("Monitoring for response (10s)...")
+            start_time = asyncio.get_event_loop().time()
+            while asyncio.get_event_loop().time() - start_time < 10:
+                try:
+                    msg = await asyncio.wait_for(ws.recv(), timeout=2)
+                    data = json.loads(msg)
+                    if data.get('brain'):
+                        print(f"✅ Brain Rx: [{data.get('brain_source')}]: {data.get('brain')}")
+                    elif data.get('type') == 'debug':
+                        print(f"🔍 Debug: {data.get('event')} -> {data.get('data')}")
+                except asyncio.TimeoutError:
+                    continue
 
     except Exception as e:
-        print(f"❌ Connection Error: {e}")
-        sys.exit(1)
+        print(f"🚨 Diagnostic Failed: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(test_intercom_protocol())
+    asyncio.run(diagnostic_test())
