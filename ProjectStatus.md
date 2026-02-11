@@ -1,52 +1,31 @@
-# Project Status: HomeLabAI
+# Home Lab AI: Project Status (Feb 11, 2026)
 
-**Date:** February 9, 2026
-**Current Phase:** Phase 9: High-Fidelity Synthesis & System Grounding
-**Global Status:** [../Portfolio_Dev/00_FEDERATED_STATUS.md](../Portfolio_Dev/00_FEDERATED_STATUS.md)
+## Current Core Architecture: v3.4.x "Integrated Workbench"
+*   **Orchestration**: Transitioned from manual `nohup` to **`lab-attendant.service` (systemd)**.
+    *   Attendant manages `acme_lab.py` lifecycle via HTTP API (`9999`).
+    *   Automated log archiving and `stderr` redirection.
+*   **Inference Server (`acme_lab.py`)**:
+    *   **Stable Baseline**: Sequential resident initialization verified.
+    *   **Logging**: Montana Protocol active (stderr authority).
+    *   **Lobby**: Multi-stage INIT reporting (Archive Ready -> Pinky Ready -> etc).
 
-> [!IMPORTANT]
-> **THE TRUTH ANCHOR:** For high-level project milestones and "What is Shipped," always defer to [00_FEDERATED_STATUS.md](../Portfolio_Dev/00_FEDERATED_STATUS.md). This file tracks internal backlog and technical implementation details only.
+## Key Components & Status
+| Component | Status | Notes |
+| :--- | :--- | :--- |
+| **NVIDIA Driver** | ✅ ONLINE | Version 570.211.01 (CUDA 12.8) |
+| **Archive Node** | ✅ STABLE | Sequential init verified. |
+| **Pinky/Brain Nodes**| ✅ STABLE | MCP handshakes functional. |
+| **EarNode (STT)** | ⚠️ CRASHING | `list index out of range` during `from_pretrained`. |
+| **Web Console** | ✅ STABLE | Handshake v3.4.0 verified. |
 
-## 🗺️ Documentation Map
-*   **Vision & Architecture:** [Architecture_Refinement_2026.md](docs/plans/Architecture_Refinement_2026.md)
-*   **AI Master Plan:** [AI_MASTER_PLAN.md](docs/plans/AI_MASTER_PLAN.md)
-*   **Research Synthesis:** [RESEARCH_SYNTHESIS.md](docs/plans/RESEARCH_SYNTHESIS.md) (FS-Researcher, RLM, TTCS)
+## Active Sprint: EarNode Stability (NeMo v2.6.1)
+*   **The Problem**: NeMo fails during model load on CUDA 12.8.
+*   **The Plan**: 
+    1.  Verify `EAR_NODE_STUB_MODEL=1` passes through Attendant.
+    2.  Identify why `torch.backends.cudnn.enabled = False` isn't bypassing the `from_pretrained` crash.
+    3.  Evaluate NeMo v2.6.1 compatibility with the new 570 driver stack.
 
-## 🗣️ Glossary & Shortcuts
-*   **"Co-Pilot Mode"**: Trigger `Interactive Demo Protocol` (uses `DEBUG_BRAIN` for auto-return).
-*   **"The Curator"**: Pinky's new role managing Brain's performance and hallucinations.
-*   **"Recursive Peek"**: `peek_related_notes` tool for following technical breadcrumbs.
-
-## ⚠️ Known Traps
-*   **Agent Hang:** Avoid using blocking tools (like `tail`) in `SERVICE_UNATTENDED` (formerly `HOSTING`) mode.
-*   **ChromaDB Conflicts:** System now catches and self-heals if embedding function configurations drift.
-*   **Newline Confusion:** Resolved in `intercom.py` via Terminal Awareness.
-
-## Completed Milestones (Session Feb 9)
-1.  **Grounding & Accuracy (v3.1.0): [DONE]**
-    *   Implemented **Recursive Discovery** (`peek_related_notes`).
-    *   Synced 868 refined technical artifacts from "Slow Burn" into RAG.
-    *   Verified Brain recalling 2019 "Force Me Recovery" events correctly.
-2.  **Communication Fluidity: [DONE]**
-    *   Implemented **Newline State Machine** in `intercom.py` for async interjections.
-    *   Added **LOCAL/SERVER** debug tags to resolve Web Intercom duplication.
-3.  **The Curator Role: [DONE]**
-    *   Implemented **`lobotomize_brain`** to clear hallucination loops.
-    *   Implemented **`vram_vibe_check`** for real-time GPU health reporting.
-4.  **Security & Observability: [DONE]**
-    *   Enabled **Anonymous Grafana Viewer** for live telemetry dashboard.
-    *   Implemented **Cloudflare Retro-Scanner** for Access login tracking.
-    *   Implemented **Notification Gatekeeper**: Triage system for ntfy.sh (Critical) and local logging.
-5.  **Infrastructure & Reasoning (v3.1.9): [DONE]**
-    *   **Liger-Kernel:** Bench-tested 80% VRAM reduction.
-    *   **Subconscious Dreaming:** Multi-host batch processing active (`dream_cycle.py`).
-    *   **MAXS Lookahead:** Meta-Adaptive Exploration hooks active in `acme_lab.py`.
-6.  **Telemetry & Orchestration (v3.1.15): [DONE]**
-    *   **NVIDIA DCGM:** Enterprise-grade GPU metrics integrated into the Docker stack.
-    *   **vLLM Stabilization:** 0.4 VRAM cap verified alongside EarNode.
-    *   **Session Locking:** Yield-on-demand active for background scans.
-    *   **IPMI SEL Alerting:** Stateful Down/Up transitions implemented in Gatekeeper.
-
-## Master Backlog & Roadmap
-*   **[TODO] Fallback Dreaming:** Port Pinky fallback to memory consolidation.
-*   **[TODO] TTT-Discover:** RL-based autonomous validation discovery loops.
+## Recent Blockers Resolved
+*   **NVIDIA Driver Catastrophe**: Solved via purge/reinstall and initramfs update.
+*   **Logger Hijacking**: Solved via Montana Protocol.
+*   **Process Ghosting**: Solved via Lab Attendant Service.

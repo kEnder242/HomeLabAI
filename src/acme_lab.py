@@ -17,7 +17,7 @@ import os
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.4.18" # Granular Init States
+VERSION = "3.4.19" # EarNode Enabled Attempt
 # LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../server.log") # REMOVED FOR STDOUT CAPTURE
 
 # --- THE MONTANA PROTOCOL: Aggressive Logger Authority (Modified for Stderr Capture) ---
@@ -39,12 +39,19 @@ def reclaim_logger():
 EarNode = None
 def load_equipment():
     global EarNode
-    if os.environ.get("DISABLE_EAR") != "1":
-        try:
-            from equipment.ear_node import EarNode
-            logging.info("[EQUIP] EarNode module imported.")
-        except Exception as e:
-            logging.error(f"[EQUIP] EarNode import failed: {e}")
+    # --- Temporarily disable CuDNN for EarNode import debugging ---
+    try:
+        import torch
+        torch.backends.cudnn.enabled = False
+        logging.info("[EQUIP] torch.backends.cudnn.enabled = False (Temporary Debug)")
+    except Exception as e:
+        logging.warning(f"[EQUIP] Failed to set torch.backends.cudnn.enabled: {e}")
+
+    try:
+        from equipment.ear_node import EarNode
+        logging.info("[EQUIP] EarNode module imported.")
+    except Exception as e:
+        logging.error(f"[EQUIP] EarNode import failed: {e}")
     reclaim_logger() # Re-reclaim after potential hijacks
 
 class AcmeLab:
@@ -89,7 +96,6 @@ class AcmeLab:
         try:
             # 1. Archive Node
             self.status = "LOBBY (Archive Connecting)"
-            logging.info("[LOBBY] Connecting Archive...")
             await self.broadcast({"type": "status", "state": "lobby", "message": "Opening Filing Cabinet..."})
             async with stdio_client(a_p) as (ar, aw):
                 async with ClientSession(ar, aw) as archive:
@@ -130,11 +136,13 @@ class AcmeLab:
                                     if self.shutdown_event.is_set(): return
 
                                     # 4. Async EarNode
+                                    # --- EarNode is now enabled ---
                                     if EarNode:
+                                        self.status = "LOBBY (Ear Loading)"
                                         logging.info("[BUILD] Starting EarNode background load...")
                                         asyncio.create_task(self.background_load_ear())
                                     else:
-                                        logging.info("[STT] EarNode disabled via environment.")
+                                        logging.info("[STT] EarNode not available (import failed or disabled by env).")
 
                                     self.status = "READY"
                                     logging.info("[READY] Lab is Open (Lobby Active).")
@@ -159,27 +167,53 @@ class AcmeLab:
         self.mode = mode
         app = web.Application()
         # For now, client_handler is pass, will uncomment later
-        app.add_routes([web.get('/', self.client_handler_placeholder)]) 
+        app.add_routes([web.get('/', self.client_handler)]) 
         runner = web.AppRunner(app)
         await runner.setup()
         await web.TCPSite(runner, '0.0.0.0', PORT).start()
         logging.info(f"[BOOT] Mode: {mode} | Door: {PORT} (SERVER STARTED)")
         await self.load_residents_and_equipment()
 
-    async def client_handler_placeholder(self, request):
-        # Placeholder for client_handler to allow web server to start
+    async def client_handler(self, request): # FULL CLIENT HANDLER
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        await ws.send_str(json.dumps({"type": "status", "version": VERSION, "state": "lobby", "message": "Placeholder handler."}))
-        await ws.close()
+        self.connected_clients.add(ws)
+        await self.manage_session_lock(active=True)
+        
+        try:
+            await ws.send_str(json.dumps({"type": "status", "version": VERSION, "state": "ready" if self.status == "READY" else "lobby", "message": "Lab foyer is open."}))
+            async for message in ws:
+                if message.type == aiohttp.WSMsgType.TEXT:
+                    try:
+                        data = json.loads(message.data)
+                        if data.get("type") == "handshake":
+                            if 'archive' in self.residents:
+                                res = await self.residents['archive'].call_tool("list_cabinet")
+                                await ws.send_str(json.dumps({"type": "cabinet", "files": json.loads(res.content[0].text)}))
+                        elif data.get("type") == "text_input":
+                            if self.status != "READY":
+                                await ws.send_str(json.dumps({"brain": "Narf! Still warming up...", "brain_source": "Pinky"}))
+                                continue
+                            query = data.get("content", "")
+                            self.current_processing_task = asyncio.create_task(self.process_query(query, ws))
+                    except Exception: pass
+        finally:
+            if ws in self.connected_clients: self.connected_clients.remove(ws)
+            if not self.connected_clients:
+                await self.manage_session_lock(active=False)
+                if self.mode != "SERVICE_UNATTENDED": self.shutdown_event.set()
         return ws
 
-
-    # async def client_handler(self, request): # STILL COMMENTED OUT
-    #     pass # STILL COMMENTED OUT FOR TEST
-    
-    # async def process_query(self, query, websocket): # STILL COMMENTED OUT
-    #     pass # STILL COMMENTED OUT FOR TEST
+    async def process_query(self, query, websocket): # FULL PROCESS_QUERY
+        try:
+            res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": "", "memory": ""})
+            import re
+            m = re.search(r'\{.*\}', res.content[0].text, re.DOTALL)
+            if m:
+                dec = json.loads(m.group(0))
+                if dec.get("tool") == "reply_to_user":
+                    await websocket.send_str(json.dumps({"brain": dec["parameters"].get("text", "Poit!"), "brain_source": "Pinky"}))
+        except Exception as e: logging.error(f"[ERR] {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
