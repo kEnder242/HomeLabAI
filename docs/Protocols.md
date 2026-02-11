@@ -1,171 +1,37 @@
-# Operational Protocols
+# Operational Protocols: Acme Lab
 
-This document defines the standard operating procedures for the HomeLabAI development cycle.
+## BKM-001: The Cold-Start Protocol (Hardware & Service)
+**Objective**: Restore the Lab environment from a powered-off or crashed state.
 
-## 0. Critical Concept: Decoupling Command & Observation
-**Theory:** In a distributed system, **Command** (launching a process) and **Observation** (watching it) must be separate actions. Traps occur when we treat the remote system as a local synchronous function.
-*   **Command:** Launch and disconnect immediately (Fire & Forget) to retain agency.
-*   **Observation:** Poll sockets or tail logs *separately*.
-*   **Propagation:** Explicitly push code to the edges.
+1.  **Hardware/Driver Audit**:
+    *   Execute `nvidia-smi`.
+    *   **Success**: Driver version (e.g., 570+) and CUDA (e.g., 12.8) reported.
+    *   **Failure**: If "could not communicate with driver," run `sudo apt install --reinstall nvidia-driver-570 nvidia-dkms-570` and `sudo update-initramfs -u`, then reboot.
 
-### The Traps (Examples of Failure)
-**🛑 The "SSH Hang" Trap (Coupled Command/Observation)**
-*   **Trigger:** Using a blocking `tail` command (like in `start_server.sh`) for **SERVICE_UNATTENDED** mode.
-*   **Result:** The server runs forever, so `tail` never exits. The Agent hangs indefinitely.
-*   **Fix:** For **SERVICE_UNATTENDED** (Service) mode, ALWAYS use `run_remote.sh` (Fire-and-forget). Only use `start_server.sh` for `DEBUG` modes that auto-shutdown.
+2.  **Orchestrator Liveliness**:
+    *   Execute `sudo systemctl status lab-attendant.service`.
+    *   **Action**: If not running, `sudo systemctl restart lab-attendant.service`.
+    *   **Verification**: `curl http://localhost:9999/status` should return JSON.
 
-**🛑 The "Startup Blindness" Trap (Passive Observation)**
-*   **Trigger:** Assuming the server is dead because logs are silent for 30s.
-*   **Reality:** Heavy ML models (Ear/Brain) take **~45 seconds** to load. This is normal.
-*   **Fix:** Do not cancel early. Poll the port/socket if unsure, but do not rely on log grepping (buffering delays).
+3.  **Lab Server Ignition**:
+    *   **Stable Path (No Mic)**:
+        `curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"mode": "SERVICE_UNATTENDED", "disable_ear": true}'`
+    *   **Experimental Path (With Mic)**:
+        `curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"mode": "SERVICE_UNATTENDED", "disable_ear": false}'`
 
-**🛑 The "Windows Deployment" Trap (Passive Propagation)**
-*   **Trigger:** Modifying `mic_test.py` locally and expecting the Windows client to update.
-*   **Result:** Windows runs old code against a new server. Chaos ensues.
-*   **Fix:** You MUST run `./sync_to_windows.sh` to push client changes to the Google Drive bridge.
+4.  **Uplink Verification**:
+    *   `tail -f HomeLabAI/server.log` (Watch for `[READY] Lab is Open`).
+    *   Handshake via `intercom.py`.
 
----
+## BKM-002: The Montana Protocol (Logger Authority)
+**Objective**: Prevent third-party ML libraries from hijacking the diagnostic stream.
 
-## 1. The Design Studio Protocol (Brainstorming)
-**Trigger:** "Let's brainstorm..." or "Enter Design Mode."
-**Goal:** Alignment on Naming, Architecture, and Persona *before* code.
+*   All `acme_lab.py` logging must go to `sys.stderr`.
+*   Call `reclaim_logger()` immediately after heavy imports (NeMo, ChromaDB).
+*   `lab_attendant.py` is the authority for file redirection (`stderr -> server.log`).
 
-1.  **The Pitch:** Agent summarizes the goal in one sentence.
-2.  **The Options:** Agent presents 2-3 implementation paths (e.g., Simple, Robust, Narrative).
-3.  **The Naming Ceremony:** Explicit agreement on **Nouns** (Folders, DB Collections) and **Verbs** (Tool Names).
-4.  **The Storyboard:** A pseudo-script of the interaction (User -> Pinky -> Brain -> Tool) to verify "Vibe".
-5.  **The Contract:** A bulleted implementation spec. User gives "Greenlight".
+## BKM-003: Resident Sequencing
+**Objective**: Prevent MCP initialization deadlocks.
 
----
-
-## 2. The Interactive Demo Protocol ("Co-Pilot Mode")
-**Goal:** Tight, blocking debug loop where Agent and User collaborate synchronously.
-
-### The Rules
-1.  **Align:** Agent presents the Test Plan (What to test, expected outcome).
-2.  **Versioning:** Agent MUST bump the system `VERSION` (e.g. to 2.2.0) if any client/server logic changed. This forces the user to sync and prevents "Old Code" traps.
-3.  **Local Execution:** Server runs locally (via `copilot.sh`) to avoid SSH password prompts and reduce latency.
-4.  **Execute (Blocking):** Agent runs `src/copilot.sh` and **waits**.
-    *   *Timeout:* The tool call automatically times out after 300s (5 mins) to prevent Agent lockup.
-5.  **User Action:**
-    *   **Verify Version:** Run `python src/intercom.py`. Confirm it says `Connected to vX.X.X`. 
-    *   **Sync:** If a version mismatch occurs, run `./sync_to_windows.sh` and wait for GDrive.
-    *   **Test:** Execute Test Plan.
-    *   **Verbal Feedback:** Tell Pinky: *"Pinky, note that [bug description]"*.
-    *   **Disconnect (Ctrl+C)** to signal completion.
-6.  **Analysis (Post-Mortem):** Agent mines logs for **Verbal Feedback** and findings.
-
----
-
-## 3. The Builder Protocol ("Heads Down")
-**Goal:** Deep work on complex features without full system restarts.
-
-1.  **State Check:** Verify `ProjectStatus.md` is current.
-2.  **Branching (Optional):** If risk is high, create a git branch.
-3.  **Test-Driven:** Write the `test_*.py` script *before* the feature code.
-4.  **Local Validation:** Run tests locally (`DEBUG_PINKY` mode) first.
-5.  **Commit:** Frequent commits after each logical step.
-
----
-
-## 4. The Debug Protocol ("Fast Loop")
-**Goal:** Isolate specific bugs in the Pinky/Orchestrator layer.
-
-1.  **Mode:** Use `DEBUG_PINKY` (No Brain/STT loading time).
-2.  **Tool:** Use `src/run_tests.sh` for regression testing.
-3.  **Focus:** Logic errors, JSON parsing, Tool selection.
-
----
-
-## 5. The Checkpoint Protocol (Save State)
-**Trigger:** "Checkpoint", "Save", "Close up shop", or end of a feature.
-**Goal:** Ensure 100% state persistence so the next Agent can resume immediately.
-
-1.  **Status Update:** Update `ProjectStatus.md`.
-    *   Mark completed items `[DONE]`.
-    *   Define the **Next Action** clearly.
-2.  **Memory:** Save key architectural decisions or user preferences to Long-Term Memory.
-3.  **Code:** `git add .` and `git commit` with a semantic message.
-4.  **Handover:** Provide a 1-sentence summary of "Where we are" and "What to do next."
-
----
-
-## 6. The BKM Protocol (Point-of-Failure Reporting)
-**Trigger:** "BKM Style", "BKM Report", or end of a deployment/fix.
-**Goal:** Deliver high-density, action-oriented documentation modeled after SRE Playbooks and Validation Engineering BKMs.
-
-### The Rules
-1.  **Preparation (The "Soil"):** Provide 1-liner installation or environment setup commands (e.g., `pip`, `echo`, `chmod`).
-2.  **The Critical Logic (The "Core"):** Distill the code down to the absolute essential lines that make the feature work. No filler.
-3.  **Trigger Points (The "Action"):** Provide the exact CLI command or tool call used to execute/validate the work.
-4.  **Retrospective (The "Scars"):** Explicitly list mis-steps, bugs found during the process, and the specific fixes applied. This is for learning from the struggle.
-
-### Characteristics
-*   **Monospace Preferred:** Use code blocks for all commands and logic.
-*   **No Chitchat:** Keep the summaries technical and direct.
-*   **Atomic:** Each section should be independent and usable as a reference during a "Point of Failure."
-
-## 7. The BKM-Pointer Summary (Referential Documentation)
-**Trigger:** "Update generic document", "Add pointer", or when documenting a specific implementation within a broader architectural file.
-**Goal:** Avoid duplication by creating lightweight "signposts" that guide future engineers to a solution pattern without copy-pasting the full playbook.
-
-### The Structure
-1.  **GOAL:** A 1-sentence statement of what the feature achieves.
-2.  **KEYWORD:** The specific search term, API flag, or variable name that is critical to the solution (e.g., `decision: "access_request"`).
-3.  **SCOPE:** Where this applies (Application ID, Account Level, File Path).
-4.  **LOGIC:** A condensed summary of the "How".
-5.  **PAYLOAD/CONFIG:** The specific JSON snippet, configuration block, or command arguments required.
-6.  **AUTH/CONTEXT:** Required permissions or environment state.
-
----
-
-## 8. Session Scars & Lessons Learned
-*This section documents hard-won knowledge from specific development sessions.*
-
-### 8.3 Feb 9, 2026 (System Grounding & Curator Stability)
-*   **The "Trippy" Tool Loop (Bicameral Hallucination):** If the Brain hallucinates a tool name (e.g., `answer`, `reply_to_user`) and the Orchestrator doesn't handle it, Pinky may re-delegate the error message back to the Brain, creating an infinite "trippy" loop.
-    *   **BKM:** The Orchestrator MUST catch unknown tools and inject an explicit `System: Error - Unknown tool 'X'. Valid tools are: [...]` message into the `lab_context`. This breaks the loop by providing the agents with the ground-truth "Schema" for self-correction.
-*   **The AFK Watcher Safety:** In Co-Pilot sessions, if the Agent loses connection or forgets to shut down the server, it consumes VRAM and electricity.
-    *   **BKM:** Use the `--afk-timeout <seconds>` flag in `acme_lab.py`. This ensures the server shuts down automatically if no client connects within the specified window (e.g., 60s).
-*   **Direct Model Access (DMA) vs. Ollama:** Local reasoning (Liger-Kernel) is faster but consumes VRAM that the Brain needs.
-    *   **BKM:** Use `get_engine_v2(mode="HYBRID")` for Pinky. This offloads heavy reasoning to the Windows Brain (Ollama) while keeping Pinky's local context small and fast.
-*   **Strategic Document RAG:** Standard log artifacts lack high-level context. 
-    *   **BKM:** The RAG bridge (`bridge_burn_to_rag.py`) must explicitly ingest Strategy Docs (like `RESEARCH_SYNTHESIS.md`) to anchor the Brain's reasoning in the project's long-term vision.
-
-### 8.4 Feb 10, 2026 (Workbench Sync & Schema Hardening)
-*   **The "Stubborn Model" Scar (Schema Hallucination):** Mistral-7B may ignore strict JSON instructions and return direct answers (e.g., `{"answer": "..."}`) instead of tool calls.
-    *   **BKM:** Implement a "Schema Normalizer" in the Orchestrator (`acme_lab.py`) to automatically wrap direct JSON answers into `reply_to_user` tool calls.
-*   **The "Ghost Tool" Scar (Namespace Disconnect):** Renaming a tool in the MCP server without updating its internal JSON proposal string causes a runtime failure when the Orchestrator attempts to execute the "Ghost" tool.
-    *   **BKM:** Ensure the `tool` name in the JSON return exactly matches the `@mcp.tool()` function name.
-*   **The "Uplink Blindness" Scar:** Updating `intercom_v2.js` logic without a site build causes the browser to run cached, incompatible code.
-    *   **BKM:** ALWAYS run `python3 field_notes/build_site.py` after modifying frontend JS to force a cache-bust.
-*   **The "Nohup Blindness" Scar:** Standard `nohup` fails to capture `anyio.ClosedResourceError` cascades, leading to silent background deaths.
-    *   **BKM:** Use a persistent `tmux` session (e.g., `lab-server`) for production background tasks to ensure buffer capture and process isolation.
-*   **The "CUDA Graph Trap":** NeMo (EarNode) on CUDA 12.8 hosts can crash the main event loop if CUDA graphs are attempted during startup.
-    *   **BKM:** Proactively trigger the recursive `_sledgehammer_disable_graphs()` during `__init__` to force Eager Mode immediately.
-
----
-
-## 9. The Cold Start Protocol (Session Orientation)
-**Trigger:** Start of a new session, new agent, or "Welcome Idea."
-**Goal:** Rapidly synchronize the agent's mental model with the current lab state, protocols, and guardrails.
-
-1.  **The Bootloader:** Read the root `README.md`.
-2.  **The Now:** Read `Portfolio_Dev/00_FEDERATED_STATUS.md` and `HomeLabAI/ProjectStatus.md`.
-3.  **The Rules:** Read `Portfolio_Dev/DEV_LAB_STRATEGY.md` and `HomeLabAI/docs/Protocols.md`.
-4.  **The Context Check:**
-    *   **Git Guardrail:** Confirm `git push` is restricted.
-    *   **Environments:** Locate and acknowledge the two isolated venvs.
-    *   **LLMs:** Verify status of Pinky (Linux) and The Brain (Windows).
-    *   **Archives:** Identify deprecated plans and archived logs to distinguish "Old" vs "New".
-5.  **Grounding Report:** Present a concise summary of findings to the Lead Engineer and wait for alignment.
-
----
-
-## 10. Communication Guardrails (The "Jason Rules")
-1.  **"Discuss with me":** This is a mandatory instruction to HALT all implementation. The Agent must present thoughts, architectural options, and risks, and WAIT for explicit approval before touching code.
-2.  **"Heads Down" Conclusion:** Every heads-down cycle must end with a **"Heads Up"** report.
-    *   **Verbosity:** The report must be detailed and verbose (reversing any minimalist CLI compression).
-    *   **Frequency:** Only **one** Heads Up report is allowed per Heads Down cycle. The Agent must not communicate until the entire requested sprint is complete or a critical blocker is hit.
-    *   **Implications:** Explicitly state the impact of changes on performance, security, and the "Path Backwards."
-    *   **State Check:** Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
+*   Residents must be loaded **sequentially** with a minimum 2-second sleep between `archive` -> `pinky` -> `brain`.
+*   Avoid `asyncio.gather` for initial MCP handshakes on resource-constrained hosts.

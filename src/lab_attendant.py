@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 # --- Global State ---
 lab_process: subprocess.Popen = None
 current_lab_mode: str = "OFFLINE"
+last_logged_lab_pid: int = None
+last_logged_lab_ready_state: bool = False
+last_logged_lab_status_message: str = ""
 
 class LabAttendant:
     def __init__(self):
@@ -43,25 +46,56 @@ class LabAttendant:
 
     async def handle_status(self, request):
         status = await self._get_lab_status()
+        
+        # Enhanced logging to Attendant's journal
+        global last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
+        
+        if status["lab_pid"] != last_logged_lab_pid:
+            if status["lab_pid"]:
+                logger.info(f"acme_lab.py PID changed: {last_logged_lab_pid} -> {status['lab_pid']}")
+            else:
+                logger.info(f"acme_lab.py PID {last_logged_lab_pid} terminated.")
+            last_logged_lab_pid = status["lab_pid"]
+
+        if status["full_lab_ready"] != last_logged_lab_ready_state:
+            logger.info(f"acme_lab.py READY state changed: {last_logged_lab_ready_state} -> {status['full_lab_ready']}")
+            last_logged_lab_ready_state = status["full_lab_ready"]
+        
+        if status["lab_server_running"] and status["last_log_lines"]:
+            latest_lab_status_line = next((line for line in reversed(status["last_log_lines"]) if "[LAB] INFO -" in line), None)
+            if latest_lab_status_line and latest_lab_status_line != last_logged_lab_status_message:
+                logger.info(f"acme_lab.py latest status: {latest_lab_status_line.split(' - ', 2)[-1]}")
+                last_logged_lab_status_message = latest_lab_status_line
+
         return web.json_response(status)
 
     async def handle_start(self, request):
-        global lab_process, current_lab_mode
+        global lab_process, current_lab_mode, last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
         if lab_process and lab_process.poll() is None:
             return web.json_response({"status": "error", "message": "Lab server already running."}, status=409)
 
         data = await request.json()
         mode = data.get("mode", "SERVICE_UNATTENDED")
-        disable_ear = data.get("disable_ear", True) # Default to disabled for stability
+        
+        # Merge provided env vars with existing ones
+        process_env = os.environ.copy() # CORRECTED: Use process_env instead of env
+        process_env.update(data.get("env", {})) # Pass additional env vars
 
-        logger.info(f"Starting Lab server in mode: {mode}, disable_ear: {disable_ear}")
-        env = os.environ.copy()
-        env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
-        env["PYTHONUNBUFFERED"] = "1"
-        if disable_ear:
-            env["DISABLE_EAR"] = "1"
+        
+
+        process_env["PYTHONPATH"] = f"{process_env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
+
+        process_env["PYTHONUNBUFFERED"] = "1"
+
+        process_env["CUDA_LAUNCH_BLOCKING"] = "1" # ADDED: Force Eager Mode for PyTorch/Nemo
+
+        # Handle DISABLE_EAR specifically, as it's a common control
+        if data.get("disable_ear", True): # Default to disabled if not specified
+            process_env["DISABLE_EAR"] = "1"
         else:
-            env.pop("DISABLE_EAR", None) # Ensure it's not set if not disabling
+            process_env.pop("DISABLE_EAR", None) # Ensure it's not set if enabling
+        
+        logger.info(f"Starting Lab server in mode: {mode}, env: {process_env.get('DISABLE_EAR', 'N/A')}")
 
         # Ensure SERVER_LOG exists and is empty for a clean run
         with open(SERVER_LOG, 'w') as f: f.write('')
@@ -71,11 +105,14 @@ class LabAttendant:
             lab_process = subprocess.Popen(
                 [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", mode],
                 cwd=LAB_DIR, 
-                env=env,
+                env=process_env, # CORRECTED: Use process_env here
                 stdout=subprocess.DEVNULL, # acme_lab.py only logs to stderr now
                 stderr=open(SERVER_LOG, 'a', buffering=1) # Redirect stderr to SERVER_LOG, line-buffered
             )
             current_lab_mode = mode
+            last_logged_lab_pid = lab_process.pid
+            last_logged_lab_ready_state = False # Reset on new start
+            last_logged_lab_status_message = "" # Reset on new start
             logger.info(f"Lab server launched with PID: {lab_process.pid}")
             return web.json_response({"status": "success", "message": "Lab server started.", "pid": lab_process.pid})
         except Exception as e:
@@ -83,7 +120,7 @@ class LabAttendant:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_stop(self, request):
-        global lab_process, current_lab_mode
+        global lab_process, current_lab_mode, last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
         if lab_process and lab_process.poll() is None:
             logger.info(f"Stopping Lab server with PID: {lab_process.pid}")
             try:
@@ -103,12 +140,18 @@ class LabAttendant:
                 
                 lab_process = None
                 current_lab_mode = "OFFLINE"
+                last_logged_lab_pid = None # Reset
+                last_logged_lab_ready_state = False # Reset
+                last_logged_lab_status_message = "" # Reset
                 logger.info("Lab server stopped.")
                 return web.json_response({"status": "success", "message": "Lab server stopped."})
             except psutil.NoSuchProcess:
                 logger.warning("Lab process not found, likely already terminated.")
                 lab_process = None
                 current_lab_mode = "OFFLINE"
+                last_logged_lab_pid = None # Reset
+                last_logged_lab_ready_state = False # Reset
+                last_logged_lab_status_message = "" # Reset
                 return web.json_response({"status": "success", "message": "Lab process not found, assumed stopped."})
             except Exception as e:
                 logger.error(f"Error stopping Lab server: {e}")
