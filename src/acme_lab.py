@@ -195,6 +195,11 @@ class AcmeLab:
         logging.info("[LOBBY] Client entered. Poking Brain...")
         asyncio.create_task(self.prime_brain())
         
+        # Audio Windowing Setup
+        audio_buffer = np.zeros(0, dtype=np.int16)
+        BUFFER_SAMPLES = 24000 # 1.5s @ 16kHz
+        OVERLAP_SAMPLES = 8000 # 0.5s @ 16kHz
+
         try:
             await ws.send_str(json.dumps({"type": "status", "version": VERSION, "state": "ready" if self.status == "READY" else "lobby", "message": "Lab foyer is open."}))
             
@@ -233,12 +238,18 @@ class AcmeLab:
                 elif message.type == aiohttp.WSMsgType.BINARY:
                     if self.ear:
                         # Process audio chunk
-                        logging.debug(f"[MIC] Binary Packet Received ({len(message.data)} bytes)")
-                        audio_data = np.frombuffer(message.data, dtype=np.int16)
-                        text = self.ear.process_audio(audio_data)
-                        if text:
-                            # Broadcast incremental transcription
-                            await self.broadcast({"text": text})
+                        chunk = np.frombuffer(message.data, dtype=np.int16)
+                        audio_buffer = np.concatenate((audio_buffer, chunk))
+                        
+                        if len(audio_buffer) >= BUFFER_SAMPLES:
+                            window = audio_buffer[:BUFFER_SAMPLES]
+                            text = self.ear.process_audio(window)
+                            if text:
+                                # Broadcast incremental transcription (deduped by EarNode)
+                                await self.broadcast({"text": text})
+                            
+                            # Shift buffer: Keep overlap
+                            audio_buffer = audio_buffer[BUFFER_SAMPLES - OVERLAP_SAMPLES:]
 
         finally:
             if 'poller_task' in locals(): poller_task.cancel()

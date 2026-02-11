@@ -16,16 +16,15 @@ async def test_lab_attendant_full_cycle():
         await session.post(f"{ATTENDANT_URL}/cleanup")
         
         # 2. Start with EarNode enabled
-        print("
-🚀 Starting Lab Server with EarNode...")
-        async with session.post(f"{ATTENDANT_URL}/start", json={"disable_ear": false}) as resp:
+        print("\n🚀 Starting Lab Server with EarNode...")
+        async with session.post(f"{ATTENDANT_URL}/start", json={"disable_ear": False}) as resp:
             assert resp.status == 200
             data = await resp.json()
             assert data["status"] == "success"
             pid = data["pid"]
 
         # 3. Poll for READY status
-        print("⏳ Waiting for Lab to reach READY state (this can take 30-60s)...")
+        print("⏳ Waiting for Lab to reach READY state...")
         ready = False
         for _ in range(60): # 60 seconds timeout
             async with session.get(f"{ATTENDANT_URL}/status") as resp:
@@ -38,11 +37,19 @@ async def test_lab_attendant_full_cycle():
         
         assert ready, "Lab failed to reach READY state within timeout."
 
-        # 4. Verify EarNode is Online in logs
-        async with session.get(f"{ATTENDANT_URL}/logs") as resp:
-            logs = await resp.text()
-            assert "[STT] EarNode Ready." in logs
-            print("✅ EarNode Online verified in logs.")
+        # 4. Wait for EarNode specifically
+        print("⏳ Waiting for EarNode to initialize (background thread)...")
+        ear_ready = False
+        for _ in range(30): # Extra 30s for EarNode
+            async with session.get(f"{ATTENDANT_URL}/logs") as resp:
+                logs = await resp.text()
+                if "[STT] EarNode Ready." in logs:
+                    ear_ready = True
+                    print("✅ EarNode Online verified in logs.")
+                    break
+            await asyncio.sleep(2)
+        
+        assert ear_ready, "EarNode failed to initialize within timeout."
 
         # 5. Stop and Cleanup
         print("🛑 Stopping Lab Server...")
