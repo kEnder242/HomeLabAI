@@ -129,6 +129,22 @@ async def switch_model(model_name: str) -> str:
     return f"Brain active model switched to '{model_name}'. Ready for reasoning."
 
 @mcp.tool()
+async def update_whiteboard(content: str) -> str:
+    """
+    Updates the shared Whiteboard (whiteboard.md) with active research, 
+    plans, or summaries. This is the persistent workspace for the Lab.
+    """
+    workspace_dir = os.path.expanduser("~/AcmeLab/workspace")
+    os.makedirs(workspace_dir, exist_ok=True)
+    file_path = os.path.join(workspace_dir, "whiteboard.md")
+    try:
+        with open(file_path, "w") as f:
+            f.write(content)
+        return "[WHITEBOARD] Workspace updated successfully."
+    except Exception as e:
+        return f"Error updating whiteboard: {e}"
+
+@mcp.tool()
 async def deep_think(query: str, context: str = "") -> str:
     """
     Perform complex reasoning, coding, or planning.
