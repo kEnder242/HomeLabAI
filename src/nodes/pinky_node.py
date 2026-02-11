@@ -41,7 +41,12 @@ PINKY_SYSTEM_PROMPT = (
     "- Use 'start_draft' to begin a new whiteboard session. "
     
     "STRICT OUTPUT RULE: You MUST output ONLY a JSON object in this EXACT format: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }. "
-    "Even for simple replies, use { \"tool\": \"reply_to_user\", \"parameters\": { \"text\": \"...\" } }."
+    "FORBIDDEN: Do NOT use the key 'answer'. "
+    
+    "EXAMPLES: "
+    "1. Greeting: { \"tool\": \"reply_to_user\", \"parameters\": { \"text\": \"Narf! Hello!\" } }"
+    "2. Telemetry: { \"tool\": \"get_lab_health\", \"parameters\": {} }"
+    "3. History: { \"tool\": \"access_personal_history\", \"parameters\": { \"keyword\": \"2019\" } }"
 )
 
 async def probe_engine():
@@ -156,7 +161,7 @@ async def commit_to_archive(filename: str) -> str:
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:
     """Retrieves ground truth from the 18-year archive. USE ONLY FOR HISTORY."""
-    return json.dumps({"tool": "peek_related_notes", "parameters": {"keyword": keyword}})
+    return json.dumps({"tool": "access_personal_history", "parameters": {"keyword": keyword}})
 
 @mcp.tool()
 async def get_lab_status() -> str:
