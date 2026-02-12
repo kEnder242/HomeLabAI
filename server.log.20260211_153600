@@ -1,0 +1,38 @@
+WARNING:megatron.core.utils:fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+WARNING:nv_one_logger.api.config:OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+WARNING:nv_one_logger.training_telemetry.api.training_telemetry_provider:No exporters were provided. This means that no telemetry data will be collected.
+2026-02-11 15:31:40,503 - [LAB] INFO - [LOGGER] Reclaim_logger activated (stderr only).
+2026-02-11 15:31:40,504 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-11 15:31:40,504 - [LAB] INFO - [BUILD] Loading Residents (v3.4.19)...
+2026-02-11 15:31:44,605 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-11 15:31:49,162 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-11 15:31:51,162 - [LAB] INFO - [LOBBY] Connecting Pinky...
+2026-02-11 15:31:51,874 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-11 15:31:53,876 - [LAB] INFO - [LOBBY] Connecting Brain...
+2026-02-11 15:31:54,591 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-11 15:31:54,591 - [LAB] INFO - [BUILD] Starting EarNode background load...
+2026-02-11 15:31:54,592 - [LAB] INFO - [READY] Lab is Open (Lobby Active).
+2026-02-11 15:31:54,592 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-11 15:32:18,851 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-11 15:32:18,851 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-11 15:32:18,886 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-11 15:32:18,886 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-11 15:32:18,958 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-11 15:32:18,958 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-11 15:33:49,593 - [LAB] INFO - [LOCK] Intercom Active (PID 158558).
+2026-02-11 15:33:49,593 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 15:33:49,595 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:33:49,664 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:33:49,672 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-11 15:33:55,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:33:59,197 - [LAB] INFO - [USER] Intercom Input: how many digits in pi?
+2026-02-11 15:33:59,197 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:33:59,200 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:34:04,217 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:34:14,830 - [LAB] INFO - [DEBUG] Pinky Raw Response: { 
+  "tool": "ask_brain", 
+  "parameters": {
+    "question": "How many digits in pi?"
+  }
+}...
+2026-02-11 15:34:31,427 - [ARCHIVE] INFO - Processing request of type CallToolRequest

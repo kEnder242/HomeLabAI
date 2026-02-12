@@ -37,4 +37,11 @@ for file in "${TEST_FILES[@]}"; do
 done
 
 echo "✅ Version bumped to $NEW_VER."
+
+# --- NEW: Deploy to Google Drive for Windows ---
+GDRIVE_DEST="~/knowledge_base/HomeLabAIProject/src/intercom.py"
+echo "🚀 Deploying intercom.py to Google Drive..."
+cp src/intercom.py $(eval echo $GDRIVE_DEST)
+echo "✅ Deployment complete."
+
 echo "👉 Now run: git commit -am \"chore: Release v$NEW_VER\""

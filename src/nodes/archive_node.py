@@ -119,6 +119,108 @@ def save_interaction(user_query: str, response: str) -> str:
     return "Interaction saved."
 
 @mcp.tool()
+def get_cv_context(year: str) -> str:
+    """
+    Retrieves both strategic (Focal) and technical (Artifact) context for a specific year.
+    Used to build high-density 3x3 CVT resume summaries.
+    """
+    context = []
+    
+    # 1. Get Strategic 'Focal' Insights from Wisdom
+    try:
+        res_strat = wisdom.query(query_texts=[f"{year} performance review focal insights"], n_results=3)
+        context.append("STRATEGIC PILLARS (Review Data):")
+        context.extend(res_strat.get('documents', [[]])[0])
+    except: pass
+
+    # 2. Get Technical Artifacts for that year
+    file_path = os.path.join(FIELD_NOTES_DATA, f"{year}.json")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                data.sort(key=lambda x: x.get('rank', 2), reverse=True)
+                context.append(f"\nTECHNICAL ARTIFACTS ({year}):")
+                for event in data[:10]:
+                    context.append(f"- [{event.get('date')}] {event.get('summary')}: {event.get('technical_gem', '')}")
+        except: pass
+    
+    return "\n".join(context)
+
+@mcp.tool()
+def prune_drafts() -> str:
+    """Clears all files in the drafts/ directory."""
+    files = glob.glob(os.path.join(DRAFTS_DIR, "*"))
+    count = 0
+    for f in files:
+        try:
+            os.remove(f)
+            count += 1
+        except: pass
+    return f"Housekeeping complete. Pruned {count} drafts. Narf!"
+
+@mcp.tool()
+def consult_clipboard(query: str, threshold: float = 0.35) -> str:
+    """Check Semantic Cache for past Brain responses. Returns response text or 'None'."""
+    try:
+        results = cache.query(query_texts=[query], n_results=1)
+        if not results['documents'][0]: return "None"
+        distance = results['distances'][0][0]
+        metadata = results['metadatas'][0][0]
+        if distance < threshold:
+            return metadata['response']
+        return "None"
+    except: return "None"
+
+@mcp.tool()
+def scribble_note(query: str, response: str) -> str:
+    """Cache a response in the semantic clipboard."""
+    try:
+        ts = datetime.datetime.now().isoformat()
+        cache.add(documents=[query], metadatas=[{"response": response, "timestamp": ts}], ids=[f"cache_{ts}"])
+        return "Note scribbled."
+    except Exception as e: return f"Error: {e}"
+
+@mcp.tool()
+def dream(summary: str, sources: list[str]) -> str:
+    """Consolidates synthesized interaction logs into long-term wisdom."""
+    try:
+        ts = datetime.datetime.now().isoformat()
+        wisdom.add(
+            documents=[summary],
+            metadatas=[{"timestamp": ts, "type": "dream_summary", "source_count": len(sources)}],
+            ids=[f"dream_{ts}"]
+        )
+        if sources: stream.delete(ids=sources)
+        return f"Dreaming complete. Consolidated {len(sources)} memories."
+    except Exception as e: return f"Dream failed: {e}"
+
+@mcp.tool()
+def get_recent_dream() -> str:
+    """Retrieves the most recent synthesized dream summary."""
+    try:
+        res = wisdom.get(where={"type": "dream_summary"})
+        if not res['documents']: return "No recent dreams found."
+        
+        items = []
+        for i in range(len(res['documents'])):
+            items.append({"doc": res['documents'][i], "meta": res['metadatas'][i]})
+        items.sort(key=lambda x: x['meta'].get('timestamp', ''), reverse=True)
+        latest = items[0]
+        return f"[DREAM FROM {latest['meta']['timestamp']}]:\n{latest['doc']}"
+    except Exception as e: return f"Error: {e}"
+
+@mcp.tool()
+def generate_bkm(topic: str, category: str = "validation") -> str:
+    """Gathers context for synthesizing a master BKM document."""
+    try:
+        res = wisdom.query(query_texts=[f"Technical details and scars related to {topic}"], n_results=10)
+        docs = res.get('documents', [[]])[0]
+        context = "\n---\n".join(docs)
+    except: context = "No historical data found."
+    return json.dumps({"topic": topic, "category": category, "context": context})
+
+@mcp.tool()
 def get_lab_status() -> str:
     import requests, subprocess
     out = []
