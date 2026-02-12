@@ -1,0 +1,4 @@
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 345
+    if self.should_cache_query(summary):
+                                        ^
+IndentationError: unindent does not match any outer indentation level

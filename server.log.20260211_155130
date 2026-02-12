@@ -1,0 +1,48 @@
+WARNING:megatron.core.utils:fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+WARNING:nv_one_logger.api.config:OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+WARNING:nv_one_logger.training_telemetry.api.training_telemetry_provider:No exporters were provided. This means that no telemetry data will be collected.
+2026-02-11 15:46:11,503 - [LAB] INFO - [LOGGER] Reclaim_logger activated (stderr only).
+2026-02-11 15:46:11,504 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-11 15:46:11,504 - [LAB] INFO - [BUILD] Loading Residents (v3.4.19)...
+2026-02-11 15:46:15,139 - [LAB] INFO - [LOCK] Intercom Active (PID 163063).
+2026-02-11 15:46:15,139 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 15:46:15,565 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-11 15:46:21,474 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-11 15:46:23,475 - [LAB] INFO - [LOBBY] Connecting Pinky...
+2026-02-11 15:46:24,167 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-11 15:46:26,168 - [LAB] INFO - [LOBBY] Connecting Brain...
+2026-02-11 15:46:26,858 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-11 15:46:26,858 - [LAB] INFO - [BUILD] Starting EarNode background load...
+2026-02-11 15:46:26,858 - [LAB] INFO - [READY] Lab is Open (Lobby Active).
+2026-02-11 15:46:26,858 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-11 15:46:43,651 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-11 15:46:43,651 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-11 15:46:43,684 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-11 15:46:43,684 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-11 15:46:43,756 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-11 15:46:43,756 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-11 15:46:46,359 - [LAB] INFO - [USER] Intercom Input: what is pi to 20 digits?
+2026-02-11 15:46:46,360 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:46:46,364 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:46:46,509 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-11 15:46:47,115 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:47:23,312 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 15:47:23,313 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:15:46:15 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-11 15:47:23,712 - [LAB] INFO - [LOCK] Intercom Active (PID 163063).
+2026-02-11 15:47:23,712 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 15:47:23,712 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:47:23,731 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:47:24,524 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:49:14,740 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 15:49:14,740 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:15:47:23 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-11 15:50:00,297 - [LAB] INFO - [LOCK] Intercom Active (PID 163063).
+2026-02-11 15:50:00,297 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 15:50:00,297 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:50:00,298 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:50:00,301 - [LAB] INFO - [USER] Intercom Input: What is the value of pi to 20 digits?
+2026-02-11 15:50:00,302 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:50:00,303 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:50:01,124 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:50:01,735 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:51:00,315 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 15:51:00,315 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:15:50:00 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"

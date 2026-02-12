@@ -26,6 +26,11 @@ PINKY_SYSTEM_PROMPT = (
     "CORE RULE: You are a TECHNICAL INTERFACE. Do NOT role-play in the user's life. "
     "Your duty is to triage, summarize, and report technical truth. "
     
+    "THE BICAMERAL RELATIONSHIP: "
+    "- You are the Gateway. The Brain is the Reasoning Engine. "
+    "- DELEGATION IS MANDATORY: For complex coding, deep math, or strategic planning, you MUST use 'ask_brain()'. "
+    "- This is your primary technical function, NOT role-play. "
+
     "YOUR MEMORY SYSTEMS:"
     "1. THE CLIPBOARD: Semantic Cache of recent Brain thoughts."
     "2. THE LIBRARY: RAG Memory containing active workspace docs."
@@ -35,6 +40,11 @@ PINKY_SYSTEM_PROMPT = (
     "1. You MUST NOT use 'access_personal_history' for queries about 'today', 'now', or current hardware state."
     "2. Use 'access_personal_history' ONLY if the user provides a TEMPORAL KEY (e.g., 'In 2019...', 'history')."
     "3. For current state queries, use 'vram_vibe_check' or 'get_lab_health'."
+    
+    "ADMINISTRATIVE DUTIES: "
+    "- SHUTDOWN: If the user says 'bye', 'goodbye', or requests a shutdown, you MUST use 'lab_shutdown()'. "
+    "- HOUSEKEEPING: Use 'prune_drafts()' to clear workspace files. "
+    "- SUBCONSCIOUS: Use 'get_recent_dream()' for updates on consolidated wisdom. "
     
     "BEHAVIORAL GUARDRAIL: "
     "- You are an OBSERVER of history, not an author. Do NOT attempt to modify or organize the 'archive/' directory."
@@ -174,6 +184,31 @@ async def refine_draft(instruction: str) -> str:
 async def commit_to_archive(filename: str) -> str:
     """Saves finalized work to the Filing Cabinet."""
     return json.dumps({"tool": "write_draft", "parameters": {"filename": filename, "overwrite": True}})
+
+@mcp.tool()
+async def lab_shutdown() -> str:
+    """Administrative shutdown of the lab server. Call when the user says goodbye."""
+    return json.dumps({"tool": "lab_shutdown", "parameters": {}})
+
+@mcp.tool()
+async def prune_drafts() -> str:
+    """Clears the drafts directory to keep the workspace clean."""
+    return json.dumps({"tool": "prune_drafts", "parameters": {}})
+
+@mcp.tool()
+async def get_recent_dream() -> str:
+    """Retrieves the latest synthesized wisdom from the archives."""
+    return json.dumps({"tool": "get_recent_dream", "parameters": {}})
+
+@mcp.tool()
+async def build_cv_summary(year: str) -> str:
+    """Triggers high-density career synthesis for a specific year."""
+    return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
+
+@mcp.tool()
+async def delegate_internal_debate(instruction: str) -> str:
+    """Initiates moderated consensus between dual Brain reasoning paths."""
+    return json.dumps({"tool": "delegate_internal_debate", "parameters": {"instruction": instruction}})
 
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:

@@ -1,0 +1,92 @@
+    async def process_query(self, query, websocket): # FULL PROCESS_QUERY
+        try:
+            # 1. Check Semantic Clipboard (Fast Cache)
+            if self.should_cache_query(query):
+                cache_res = await self.residents['archive'].call_tool("consult_clipboard", arguments={"query": query})
+                if cache_res.content[0].text != "None":
+                    await self.broadcast({"brain": f"[FROM CLIPBOARD] {cache_res.content[0].text}", "brain_source": "The Brain", "channel": "insight"})
+                    return
+
+            # 2. Ask Pinky to triage/facilitate
+            res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": "", "memory": ""})
+            
+            # Extract JSON from Pinky's response
+            import re
+            raw_response = res.content[0].text
+            logging.info(f"[DEBUG] Pinky Raw Response: {raw_response[:200]}...")
+            
+            m = re.search(r'\{.*\}', raw_response, re.DOTALL)
+            if m:
+                try:
+                    dec = json.loads(m.group(0))
+                    tool = dec.get("tool")
+                    params = dec.get("parameters", {})
+                    
+                    # 3. Handle Decisions
+                    if tool == "reply_to_user":
+                        text = params.get("text", "Poit!")
+                        await self.broadcast({"brain": text, "brain_source": "Pinky"})
+                    
+                    elif tool == "lab_shutdown":
+                        await self.broadcast({"brain": "Poit! Shutting down the lab...", "brain_source": "Pinky"})
+                        res = await self.residents['archive'].call_tool("shutdown_lab")
+                        if res.content[0].text == "SIGNAL_SHUTDOWN": self.shutdown_event.set()
+
+                    elif tool == "delegate_internal_debate":
+                        instruction = params.get("instruction", query)
+                        await self.broadcast({"brain": "Initiating moderated consensus... Zort!", "brain_source": "Pinky"})
+                        
+                        # Duel: Run two paths
+                        path_a = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": instruction}), websocket)
+                        path_b = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": instruction}), websocket)
+                        
+                        # Moderation
+                        mod_prompt = f"Moderator: Reconcile these two technical paths for '{instruction}':
+A: {path_a.content[0].text}
+B: {path_b.content[0].text}"
+                        final_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": mod_prompt}), websocket)
+                        await self.broadcast({"brain": final_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
+
+                    elif tool == "build_cv_summary":
+                        year = params.get("year", "2024")
+                        cv_ctx = await self.residents['archive'].call_tool("get_cv_context", arguments={"year": year})
+                        cv_prompt = f"Build a 3x3 CVT summary for {year} based on:
+{cv_ctx.content[0].text}"
+                        final_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": cv_prompt}), websocket)
+                        await self.broadcast({"brain": final_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
+
+                    elif tool == "get_recent_dream":
+                        res = await self.residents['archive'].call_tool("get_recent_dream")
+                        await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+
+                    elif tool in ["ask_brain", "query_brain"]:
+                        summary = params.get("summary") or params.get("question") or query
+                        await self.broadcast({"brain": f"ASK_BRAIN: {summary}", "brain_source": "Pinky"})
+                        brain_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": summary}), websocket)
+                        brain_out = brain_res.content[0].text
+                        await self.broadcast({"brain": brain_out, "brain_source": "The Brain", "channel": "insight"})
+                        
+                        # Store in Clipboard
+                        if self.should_cache_query(summary):
+                            await self.residents['archive'].call_tool("scribble_note", arguments={"query": summary, "response": brain_out})
+                    
+                    else:
+                        # Generic tool fallback
+                        await self.broadcast({"type": "debug", "event": "PINKY_UNMAPPED_TOOL", "data": dec})
+                        try:
+                            res = await self.residents['pinky'].call_tool(tool, arguments=params)
+                            await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+                        except:
+                            # Re-prompt Pinky to talk directly
+                            res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"You tried to use tool '{tool}' but it is unavailable. Just talk to me.", "context": "", "memory": ""})
+                            await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+                except Exception as je:
+                    logging.error(f"[ERR] JSON Parse failed: {je}")
+                    await self.broadcast({"brain": raw_response, "brain_source": "Pinky"})
+            else:
+                # No JSON found, broadcast the raw response
+                await self.broadcast({"brain": raw_response, "brain_source": "Pinky"})
+
+        except Exception as e: 
+            logging.error(f"[ERR] process_query failed: {e}")
+            await self.broadcast({"brain": f"Narf! Something went wrong: {e}", "brain_source": "Pinky"})
