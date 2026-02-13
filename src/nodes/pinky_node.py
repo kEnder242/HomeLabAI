@@ -16,7 +16,7 @@ PROMETHEUS_URL = "http://127.0.0.1:9090/api/v1/query"
 VLLM_URL = "http://127.0.0.1:8088/v1/chat/completions"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
-VLLM_MODEL = "hugging-quants/Llama-3.1-8B-Instruct-AWQ-INT4"
+VLLM_MODEL = "/home/jallred/AcmeLab/models/mistral-7b-awq"
 OLLAMA_MODEL = "llama3.1:8b"
 
 # Paths

@@ -1,0 +1,14 @@
+--- acme_lab.py
++++ acme_lab.py
+@@ -312,6 +313,11 @@
+         """Strategic Vibe Check: Performs logic/code validation on save."""
+         logging.info(f"[WORKSPACE] User saved {filename}.")
+         
++        # Loop Prevention: 10s cooldown
++        if time.time() - self.last_save_event < 10.0:
++            return
++        self.last_save_event = time.time()
++
+         await websocket.send_str(json.dumps({
+             "type": "file_content", "filename": filename, "content": content
+         }))
