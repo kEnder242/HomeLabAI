@@ -1,109 +1,54 @@
-# HomeLabAI: A Distributed Voice-Native Ecosystem
+# HomeLabAI: A Distributed Voice-Native Ecosystem (v3.5)
 
 **HomeLabAI** is a proactive, voice-first AI ecosystem designed for the modern home lab. It functions as a distributed agentic partner—integrating Linux servers, Windows workstations, and personal knowledge bases—to act as a highly specialized, context-aware "Jarvis."
-
-By leveraging a hybrid compute model, HomeLabAI achieves low-latency voice interaction without sacrificing the deep reasoning capabilities of large-scale language models.
-
----
-
-## 🔭 The High-Level Vision
-The project is built on the philosophy that a personal AI should be a synthesis of two distinct cognitive styles, modeled after the **Bicameral Mind**:
-
-*   **The Right Hemisphere (Pinky):** Intuitive, Aware, and Presence-focused. This layer manages the "Vibe," sensory input/output, and immediate user interaction.
-*   **The Left Hemisphere (The Brain):** Logical, Abstract, and Strategic. This layer manages the "Truth," complex planning, and deep reasoning.
-
-### The "Talk & Read" Philosophy
-*   **Voice Input:** Optimized for speed and natural brainstorming.
-*   **Text Output:** Designed for rapid scanning and information density.
-*   **The Loop:** A tight, low-latency feedback loop that facilitates seamless collaboration between human and machine.
 
 ---
 
 ## 🏗️ The Acme Lab Model: Architecture
-HomeLabAI employs the **Acme Lab** pattern—an event-driven conversational state machine that distributes cognitive load across specialized nodes.
+HomeLabAI employs the **Bicameral Mind** pattern—an asynchronous dispatch model that distributes cognitive load across specialized nodes.
 
-### 1. The Lab (Corpus Callosum)
-*   **Role:** The **Translator**. It serves as the central orchestrator, converting sensory "Vibes" from the Experience layer into structured "Parameters" for the Reasoning layer, and vice-versa.
-*   **Host:** Linux Coordinator Node (GPU accelerated).
-*   **Core Logic:** `src/acme_lab.py`.
+### 1. The Lab Attendant (Immutable Bootloader)
+*   **Role:** Lifecycle management and hardware monitoring.
+*   **VRAM Guard:** Dynamically selects reasoning engines (vLLM, Ollama, or Stub) based on real-time GPU headroom via DCGM/Prometheus.
+*   **Service:** Managed via `lab-attendant.service` (Systemd).
 
-### 2. The Hemispheres (Nodes)
-*   **🐹 Pinky (The Experience Node):**
-    *   **Model:** Lightweight local LLM (e.g., Mistral/Llama-8B).
-    *   **Focus:** Sensory IO, emotion detection, and real-time response.
-*   **🧠 The Brain (The Reasoning Node):**
-    *   **Model:** Large-scale inference engine (e.g., Llama-70B via Ollama).
-    *   **Focus:** Logic, strategic planning, and long-term memory consolidation (**Dreaming**).
+### 2. The Communication Hub (`acme_lab.py`)
+*   **Role:** The **Corpus Callosum**. An asynchronous orchestrator that manages multiple interjective streams:
+    *   **Reflex Loop:** Background character tics and environmental alerts.
+    *   **Sentinel Mode:** Proactive Brain interjections based on silicon-level keywords.
+    *   **Banter System:** Hemispheric interaction with weighted TTL decay.
 
-### 3. The Archives (Memory)
-*   **Technology:** Vector database (ChromaDB) and local filesystem RAG.
-*   **Role:** Managing the "Pile" (Episodic Memory) and the "Library" (Semantic Knowledge).
-*   **Feature:** **Adaptive Semantic Caching** (based on [Reddy/VentureBeat](docs/plans/Semantic_Caching_Strategy.md)) to bypass inference for repeated queries.
+### 3. The Strategic Workbench
+*   **Collaborative Workspace:** Unified Diff-based editing via the `patch_file` tool.
+*   **Human Priority:** Typing collision awareness suppresses agent tics during active work.
+*   **Manual Save:** The `💾 SAVE` event triggers a hemispheric "vibe check" on user edits.
 
-### 4. The Interfaces (Nerves)
-How the user interacts with the Lab. All external signals are serialized through Pinky (The Secretary).
-
-*   **🎤 The Intercom (Desktop Client):**
-    *   **Role:** The primary "Hotline." A lightweight console app for high-fidelity voice and text.
-    *   **Features:** Spacebar toggle for "Mute & Focus" (Type/Talk hybrid).
-*   **📟 The Pager (Mobile - Planned):**
-    *   **Role:** Outbound notifications ("Task Complete") sent to your phone.
-*   **📝 The Fridge Note (Web - Planned):**
-    *   **Role:** Passive, secure web UI for dropping links or files without waking the Brain.
+### 4. The Archives (Memory)
+*   **Observational Memory:** Transitioning from RAG lookup to a state-based "World Model" summarized in `compressed_history.json`.
+*   **Adaptive Caching:** Semantic cache for high-frequency reasoning results.
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Environment Topology
-*   **Development:** WSL / Local Environment.
-*   **Orchestration Node:** Remote Linux host managing STT and Pinky logic.
-*   **Inference Node:** High-power GPU host (Windows/Linux) running Ollama.
+*   **Orchestration Node (Z87-Linux):** Manages STT (NeMo), Pinky, and the Lab Attendant.
+*   **Inference Node (Windows 4090):** High-power reasoning host running Ollama/vLLM.
 
-### 2. Deployment & Execution
+### 2. Execution
+The system is managed by the Lab Attendant. Use the HTTP API or the copilot shell:
 ```bash
-./run_remote.sh [MODE]
+# Start the mind
+curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"engine": "OLLAMA"}'
 ```
-**Operation Modes:**
-*   `HOSTING`: Standard production-ready operation (Persistent).
-*   `MOCK_BRAIN`: Rapid testing mode that simulates the Reasoning Node.
-*   `DEBUG_BRAIN`: Interactive Demo. Loads Full Stack but shuts down on disconnect.
-*   **`DEBUG_PINKY`**: Local-only validation of the Experience Node logic.
 
 ### 3. Client Access
-The Lab is headless. To interact, run the Intercom client on your local machine:
-```bash
-python src/intercom.py
-```
-> **⚠️ Note:** The Client version must strictly match the Server version. Mismatches will be rejected.
+Access the **Web Intercom** via the Portfolio dashboard (port 9001). 
+Features multi-panel routing: **Pinky Console** (Gateway) and **Brain Insight** (Strategic).
 
 ---
 
-## 📚 Research & Inspiration
-HomeLabAI is influenced by emerging research in agentic workflows and local model deployment:
-
-### Voice & Mind (Hearing & Logic)
-*   **[NVIDIA Nemotron-Speech-Streaming](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b):** Powering our low-latency "Hearing" layer.
-*   **[Apple CLaRa](https://huggingface.co/apple/CLaRa-7B-Instruct):** Planned for the **Dreaming** phase; a RAG model designed for high-fidelity semantic compression.
-
-### Knowledge & RAG (Memory)
-*   **[sentence-transformers (MiniLM)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2):** Our primary embedding model for local RAG.
-*   **[OpenNotebook](https://github.com/lfnovo/open-notebook):** A local, private alternative to NotebookLM for research management.
-*   **[Semantic Caching (VentureBeat)](https://venturebeat.com/orchestration/why-your-llm-bill-is-exploding-and-how-semantic-caching-can-cut-it-by-73):** Primary source for our caching architecture (Thresholds & TTL).
-
----
-
-## 🗺️ Internal Blueprint
-Refer to internal documentation for technical deep-dives:
-
-*   **[Architecture Refinement](docs/plans/Architecture_Refinement_2026.md):** The technical theory behind the Bicameral Mind.
-*   **[Future Concepts (The Freezer)](docs/plans/Future_Concepts.md):** Roadmap for hardware intercoms and desktop integration.
-*   **[RAG Integration Plan](docs/plans/RAG_Integration_Plan.md):** Strategy for tiered memory and long-term knowledge retention.
-*   **[Agent Protocols](docs/Protocols.md):** Operational rules for development, testing, and deployment.
-
----
-
-## 📜 Project History
+## 📜 Project State
+*   **v3.5.x:** Implemented Asynchronous Dispatch, VRAM Guard, and Patch-based editing.
+*   **v3.4.x:** Stabilized EarNode (NeMo) and resident initialization.
 *   **Jan 2026:** Rebranded as HomeLabAI; refined the "Bicameral Mind" (Acme Lab) architecture.
-*   **Dec 2025:** Initial "Voice Gateway" prototype (Pinky & The Brain 1.0).
-*   **Origins:** Originally developed as a hybrid extension for the `DeepAgent` framework.
