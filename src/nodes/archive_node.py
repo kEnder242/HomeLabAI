@@ -231,6 +231,36 @@ def get_lab_status() -> str:
     return " | ".join(out)
 
 @mcp.tool()
+def patch_file(filename: str, diff: str) -> str:
+    """
+    Applies a Unified Diff to a file in the workspace/.
+    This allows for granular updates without overwriting the whole file.
+    diff: The diff content in standard unified format.
+    """
+    path = os.path.join(WORKSPACE_DIR, filename)
+    if not os.path.exists(path):
+        return f"Error: Workspace file '{filename}' not found. Create it first with 'write_document'."
+    
+    # Write diff to a temporary file
+    temp_diff = os.path.join(WORKSPACE_DIR, f"{filename}.patch")
+    with open(temp_diff, 'w') as f:
+        f.write(diff)
+    
+    try:
+        # Use system patch utility
+        import subprocess
+        res = subprocess.run(["patch", path, temp_diff], capture_output=True, text=True)
+        if res.returncode == 0:
+            os.remove(temp_diff)
+            return f"Patch applied successfully to {filename}."
+        else:
+            return f"Patch failed for {filename}:\n{res.stderr}"
+    except Exception as e:
+        return f"Error applying patch: {e}"
+    finally:
+        if os.path.exists(temp_diff): os.remove(temp_diff)
+
+@mcp.tool()
 def shutdown_lab() -> str:
     """Signals the main lab server to shut down."""
     # We return a specific string that acme_lab.py will recognize
