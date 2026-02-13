@@ -45,7 +45,10 @@ class LabAttendant:
         self.app.router.add_post("/stop", self.handle_stop)
         self.app.router.add_post("/cleanup", self.handle_cleanup)
         self.app.router.add_post("/hard_reset", self.handle_hard_reset)
+        self.app.router.add_get("/wait_ready", self.handle_wait_ready)
         self.app.router.add_get("/logs", self.handle_logs)
+        self.ready_event = asyncio.Event()
+        self.monitor_task = None
 
     async def _get_vram_info(self):
         try:
@@ -59,9 +62,42 @@ class LabAttendant:
         except Exception:
             return 0, 0
 
+    async def log_monitor_loop(self):
+        """Tails the log and triggers ready_event on [READY]."""
+        logger.info("[MONITOR] Starting log monitor...")
+        self.ready_event.clear()
+        
+        while True:
+            if os.path.exists(SERVER_LOG):
+                try:
+                    with open(SERVER_LOG, 'r') as f:
+                        # Seek to end
+                        f.seek(0, 2)
+                        while True:
+                            line = f.readline()
+                            if not line:
+                                await asyncio.sleep(0.5)
+                                if not lab_process or lab_process.poll() is not None:
+                                    break
+                                continue
+                            
+                            if "[READY] Lab is Open" in line:
+                                logger.info("[MONITOR] Signal Detected: READY")
+                                self.ready_event.set()
+                                return
+                            if "[FATAL]" in line:
+                                logger.error("[MONITOR] Signal Detected: FATAL")
+                                return
+                except Exception as e:
+                    logger.error(f"[MONITOR] Error: {e}")
+            await asyncio.sleep(1)
+
     async def cleanup_silicon(self):
         """Sweep all related processes and zero out VRAM."""
         logger.warning("[SWEEP] Purging all Lab-related processes...")
+        if self.monitor_task:
+            self.monitor_task.cancel()
+        
         targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
@@ -89,7 +125,7 @@ class LabAttendant:
             "vllm_running": False,
             "lab_mode": current_lab_mode,
             "round_table_lock_exists": lock_active,
-            "full_lab_ready": False,
+            "full_lab_ready": self.ready_event.is_set(),
             "last_error": None
         }
 
@@ -106,21 +142,26 @@ class LabAttendant:
         global lab_process
         if lab_process and lab_process.poll() is None:
             status["lab_server_running"] = True
-            if os.path.exists(SERVER_LOG):
-                try:
-                    with open(SERVER_LOG, 'r') as f:
-                        content = f.read()
-                        if "[READY] Lab is Open" in content:
-                            status["full_lab_ready"] = True
-                        if "[FATAL]" in content:
-                            status["last_error"] = (
-                                content.split("[FATAL]")[-1]
-                                .strip().split("\n")[0]
-                            )
-                except Exception:
-                    pass
+            if not status["full_lab_ready"]:
+                # Backup check in case monitor missed it
+                if os.path.exists(SERVER_LOG):
+                    try:
+                        with open(SERVER_LOG, 'r') as f:
+                            content = f.read()
+                            if "[READY] Lab is Open" in content:
+                                status["full_lab_ready"] = True
+                                self.ready_event.set()
+                            if "[FATAL]" in content:
+                                status["last_error"] = (
+                                    content.split("[FATAL]")[-1]
+                                    .strip().split("\n")[0]
+                                )
+                    except Exception:
+                        pass
+        elif lab_process and lab_process.poll() is not None:
+            status["last_error"] = f"Process died: {lab_process.poll()}"
 
-        # --- FIX: Update status.json for status.html ---
+        # --- Update status.json for status.html ---
         try:
             v_used, v_total = await self._get_vram_info()
             v_pct = (v_used / v_total * 100) if v_total > 0 else 0
@@ -145,11 +186,9 @@ class LabAttendant:
                     "vram": f"{v_pct:.1f}%"
                 }
             }
-            # Path to the shared status.json - FORCE ABSOLUTE
             s_json = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
             with open(s_json, "w") as f:
                 json.dump(live_data, f)
-            logger.info(f"[STATUS] Updated {s_json}")
         except Exception as e:
             logger.error(f"[STATUS] Failed to update status.json: {e}")
 
@@ -160,16 +199,14 @@ class LabAttendant:
         data = await request.json()
         preferred_engine = data.get("engine", "OLLAMA")
 
-        # 1. Kill old Hub
-        if lab_process and lab_process.poll() is None:
-            lab_process.kill()
+        # 1. Automatic Cleanup if already running
+        await self.cleanup_silicon()
 
         # 2. Handle vLLM specifically
         if preferred_engine == "vLLM":
             logger.info("[VRAM] Ensuring vLLM is active...")
-            # We use the shell script but track it
             subprocess.run(["bash", VLLM_START_PATH])
-            await asyncio.sleep(10) # Initial weight burst
+            await asyncio.sleep(10)
 
         # 3. Launch Hub
         env = os.environ.copy()
@@ -190,9 +227,20 @@ class LabAttendant:
                 cwd=LAB_DIR, env=env,
                 stderr=open(SERVER_LOG, 'a', buffering=1)
             )
+            current_lab_mode = data.get("mode", "SERVICE_UNATTENDED")
+            self.monitor_task = asyncio.create_task(self.log_monitor_loop())
             return web.json_response({"status": "success", "pid": lab_process.pid})
         except Exception as e:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_wait_ready(self, request):
+        """Blocks until the Lab is READY or timeout reached."""
+        timeout = int(request.query.get("timeout", 60))
+        try:
+            await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
+            return web.json_response({"status": "ready", "message": "Lab is fully resident."})
+        except asyncio.TimeoutError:
+            return web.json_response({"status": "timeout", "message": "Wait exceeded."}, status=408)
 
     async def handle_stop(self, request):
         await self.cleanup_silicon()
