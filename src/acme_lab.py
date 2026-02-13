@@ -185,7 +185,10 @@ class AcmeLab:
 
     async def sentinel_check(self, query):
         """Brain interjects if it hears critical keywords in the background."""
-        critical_keywords = ["error", "failure", "crash", "timeout", "pcie", "thermal", "msr"]
+        critical_keywords = [
+            "error", "failure", "crash", "timeout", "pcie", "thermal", "msr", 
+            "rapl", "power limit", "throttling", "irq", "segfault", "kernel panic"
+        ]
         if any(k in query.lower() for k in critical_keywords) and self.brain_online:
             logging.info(f"[SENTINEL] Brain noticed keyword in: {query}")
             res = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"[SENTINEL INTERJECTION] I overheard mention of '{query}'. Scan archives for related silicon scars or validation BKMs."})

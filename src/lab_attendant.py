@@ -45,14 +45,27 @@ class LabAttendant:
         self.app.router.add_get("/logs", self.handle_logs)
 
     async def _get_vram_info(self):
-        """Queries nvidia-smi for memory stats."""
+        """Queries Prometheus (DCGM) for memory stats with nvidia-smi fallback."""
         try:
-            cmd = ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"]
-            output = subprocess.check_output(cmd).decode().strip()
-            used, total = map(int, output.split(','))
-            return used, total
-        except:
-            return 0, 0
+            # Try Prometheus first (Port 9090)
+            prom_url = "http://localhost:9090/api/v1/query"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(prom_url, params={"query": "DCGM_FI_DEV_FB_USED"}, timeout=1) as r1:
+                    async with session.get(prom_url, params={"query": "DCGM_FI_DEV_FB_FREE"}, timeout=1) as r2:
+                        d1 = await r1.json()
+                        d2 = await r2.json()
+                        used = float(d1['data']['result'][0]['value'][1])
+                        free = float(d2['data']['result'][0]['value'][1])
+                        return int(used), int(used + free)
+        except Exception as e:
+            # Fallback to nvidia-smi
+            try:
+                cmd = ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"]
+                output = subprocess.check_output(cmd).decode().strip()
+                used, total = map(int, output.split(','))
+                return used, total
+            except:
+                return 0, 0
 
     async def select_optimal_engine(self, preferred="OLLAMA"):
         """Determines best engine based on VRAM budget."""
