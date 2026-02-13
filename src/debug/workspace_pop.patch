@@ -1,0 +1,13 @@
+--- HomeLabAI/src/acme_lab.py
++++ HomeLabAI/src/acme_lab.py
+@@ -231,6 +231,10 @@
+             # We don't have a direct workspace write tool in archive node yet, using scribble as placeholder
+             await self.residents['archive'].call_tool("scribble_note", arguments={"query": f"SAVE_EVENT: {filename}", "response": content})
+         except: pass
++        
++        # 1.5 Sync Client: Force the file to 'pop' into view
++        # This ensures the client UI stays in sync with the agent's view
++        await websocket.send_str(json.dumps({"type": "file_content", "filename": filename, "content": content}))
+ 
+         # 2. Pinky's Reflexive Reaction
+         if not self.is_user_typing():

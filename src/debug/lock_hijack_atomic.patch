@@ -1,0 +1,20 @@
+--- HomeLabAI/src/acme_lab.py
++++ HomeLabAI/src/acme_lab.py
+@@ -65,9 +65,17 @@
+     async def manage_session_lock(self, active=True):
+         try:
+             if active:
++                old_pid = None
++                if os.path.exists(self.lock_path):
++                    try:
++                        with open(self.lock_path, "r") as f:
++                            old_pid = f.read().strip()
++                    except: pass
+                 os.makedirs(os.path.dirname(self.lock_path), exist_ok=True)
+                 with open(self.lock_path, "w") as f: f.write(str(os.getpid()))
+                 self.last_activity = time.time()
++                if old_pid and old_pid != str(os.getpid()):
++                    logging.info(f"[LOCK] Hijacking stale session from PID {old_pid}.")
+             else:
+                 if os.path.exists(self.lock_path): os.remove(self.lock_path)
+         except: pass

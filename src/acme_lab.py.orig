@@ -18,9 +18,8 @@ import recruiter # Class 1 Import
 
 # Configuration
 PORT = 8765
-ATTENDANT_PORT = 9999
 PYTHON_PATH = sys.executable
-VERSION = "3.5.7" # Watchdog & Pop Fix
+VERSION = "3.5.6" # Concurrency Fix
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_HEARTBEAT_URL = "http://192.168.1.26:11434/api/tags"
 
@@ -130,18 +129,6 @@ class AcmeLab:
 
             await asyncio.sleep(10)
 
-    async def watchdog_loop(self):
-        """Monitors the Lab Attendant bootloader."""
-        while not self.shutdown_event.is_set():
-            await asyncio.sleep(60)
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://localhost:{ATTENDANT_PORT}/status", timeout=2) as resp:
-                        if resp.status != 200:
-                            logging.error("[WATCHDOG] Attendant unresponsive!")
-            except:
-                logging.error("[WATCHDOG] Could not connect to Attendant!")
-
     async def monitor_task_with_tics(self, coro, websocket, delay=2.5):
         task = asyncio.create_task(coro)
         tics = ["Thinking...", "Consulting the Architect...", "Processing...", "Just a moment..."]
@@ -194,11 +181,10 @@ class AcmeLab:
                                             logging.info("[LAB] Architect Connected.")
 
                                             # 5. Final Prep
-                                            await self.check_brain_health()
+                                            await self.check_brain_health() # IMMEDIATE CHECK
                                             if EarNode: asyncio.create_task(self.background_load_ear())
                                             asyncio.create_task(self.reflex_loop())
                                             asyncio.create_task(self.scheduled_tasks_loop())
-                                            asyncio.create_task(self.watchdog_loop())
                                             
                                             self.status = "READY"
                                             logging.info("[READY] Lab is Open.")
@@ -303,15 +289,11 @@ class AcmeLab:
     async def handle_workspace_save(self, filename, content, websocket):
         """Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[WORKSPACE] User saved {filename}.")
-        
-        # Sync Client UI immediately (Pop fix)
-        await websocket.send_str(json.dumps({"type": "file_content", "filename": filename, "content": content}))
-
         if self.is_user_typing(): return
 
         await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me take a look...", "brain_source": "Pinky"})
         
-        if await self.check_brain_health(): 
+        if await self.check_brain_health(): # FORCE RE-CHECK ON SAVE
             prompt = f"[STRATEGIC VIBE CHECK] User saved '{filename}'. Content: '{content[:500]}'. Provide a high-fidelity strategic vibe check. Validate the technical logic and offer one architectural improvement."
             b_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": prompt}), websocket)
             await self.broadcast({"brain": b_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
