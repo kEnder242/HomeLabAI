@@ -107,10 +107,12 @@ async def deep_think_vllm(prompt: str) -> str:
                 "max_tokens": 2048
             }
             async with session.post(VLLM_URL, json=payload, timeout=60) as resp:
+                data = await resp.json()
                 if resp.status == 200:
-                    data = await resp.json()
-                    return data['choices'][0]['message']['content']
-                return f"vLLM Error: {resp.status}"
+                    if "choices" in data:
+                        return data['choices'][0]['message']['content']
+                    return f"SYSTEM_ERROR: vLLM returned success but no choices. Data: {data}"
+                return f"SYSTEM_ERROR: vLLM error {resp.status}. Data: {data}"
     except Exception as e:
         return f"vLLM Connection Failed: {e}"
 
