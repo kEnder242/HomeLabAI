@@ -1,0 +1,6 @@
+{
+  "target_roles": ["Senior Platform Telemetry Engineer", "Silicon Validation Engineer", "AI Infrastructure Engineer", "System Architect"],
+  "target_companies": ["NVIDIA", "Microsoft", "Anthropic", "OpenAI", "AMD", "Intel"],
+  "keywords": ["telemetry", "silicon", "validation", "python", "agentic", "rapl", "msr"],
+  "brief_retention_days": 7
+}

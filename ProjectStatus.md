@@ -1,32 +1,31 @@
-# Home Lab AI: Project Status (Feb 11, 2026)
+# Home Lab AI: Project Status (Feb 12, 2026)
 
-## Current Core Architecture: v3.4.x "Integrated Workbench"
-*   **Orchestration**: Transitioned from manual `nohup` to **`lab-attendant.service` (systemd)**.
-    *   Attendant manages `acme_lab.py` lifecycle via HTTP API (`9999`).
-    *   Automated log archiving and `stderr` redirection.
-*   **Inference Server (`acme_lab.py`)**:
-    *   **Stable Baseline**: Sequential resident initialization verified.
-    *   **Logging**: Montana Protocol active (stderr authority).
-    *   **Lobby**: Multi-stage INIT reporting (Archive Ready -> Pinky Ready -> etc).
+## Current Core Architecture: v3.5.x "Bicameral Dispatch"
+*   **Orchestration**: Managed via **`lab-attendant.service` (systemd)**.
+    *   **VRAM Guard**: Active. Pivoted to DCGM/Prometheus metrics for precise budget allocation.
+    *   **Alpha Backend**: Toggleable vLLM support in Brain Node.
+*   **The Communication Hub (Corpus Callosum)**:
+    *   **Reflex Loop**: Characterful tics and thermal alerts verified non-blocking.
+    *   **Strategic Sentinel**: Active. Brain listening for silicon-level logic.
+    *   **Banter System**: Weighted TTL decay active.
 
 ## Key Components & Status
 | Component | Status | Notes |
 | :--- | :--- | :--- |
 | **NVIDIA Driver** | ✅ ONLINE | Version 570.211.01 (CUDA 12.8) |
-| **Archive Node** | ✅ STABLE | Sequential init verified. |
-| **Pinky/Brain Nodes**| ✅ STABLE | MCP handshakes and synthesis loop verified. |
-| **EarNode (STT)** | ✅ STABLE | Sledgehammer graph-disabling verified stable. *Note: Investigating graph re-compilation to restore lost performance.* |
-| **Web Console** | ✅ STABLE | Multi-panel Insight/Console routing verified. |
+| **Archive Node** | ✅ STABLE | `patch_file` (Unified Diff) tool implemented. |
+| **Pinky/Brain Nodes**| ✅ STABLE | Bicameral awareness prompts active. |
+| **EarNode (STT)** | ✅ STABLE | Sledgehammer graph-disabling verified stable. |
+| **VRAM Guard**   | ✅ STABLE | DCGM metrics and Stub fallback verified. |
+| **Web Console** | ✅ STABLE | Workspace Auto-Save and multi-panel routing active. |
 
-## Active Sprint: "Bicameral Dispatch" & Dynamic Persona
-*   **Restoration of Soul**: Transition from sequential triage to asynchronous interjections.
+## Active Sprint: "The Nightly Recruiter" (v3.6)
 *   **Tasks**:
-    1.  [TODO] **Reflex Loop**: Implement a non-blocking background task in `acme_lab.py` for characterful tics and environment-aware comments. *Reasoning: Restore the "Narf!" energy without blocking main processing.*
-    2.  [TODO] **Brain Sentinel Mode**: Enable Brain to interject during audio streaming if confidence hits threshold. *Reasoning: Brain should notice PCIe errors or math errors before Pinky triages.*
-    3.  [TODO] **Brain Robustness Testing**: Create integration tests for "Brain Sleeping" scenarios using `DEBUG_PINKY` stubs. *Reasoning: Verify stability when the 4090 host is unreachable.*
-    4.  [TODO] **Dynamic Synthesis**: Move beyond canned "The Brain says..." summaries to context-aware Pinky takes. *Reasoning: Enhance the personality contrast between the hemispheres.*
+    1.  [TODO] **Job Search Engine**: Implement scheduled "Alarm Clock" task to search for jobs and match against archive history. *Reasoning: High-value proactive agent application.*
+    2.  [TODO] **Sleeping Weights**: Implement vLLM resident weight-sharing (Shared Model). *Reasoning: Minimize load-lurch and enable instant Hub response.*
+    3.  [TODO] **Sentinel v2.0**: Implement "Strategic Uncertainty" interjection logic. *Reasoning: Move beyond keywords to logical pattern matching.*
 
 ## Recent Blockers Resolved
-*   **NVIDIA Driver Catastrophe**: Solved via purge/reinstall and initramfs update.
-*   **Logger Hijacking**: Solved via Montana Protocol.
-*   **Process Ghosting**: Solved via Lab Attendant Service.
+*   **VRAM Thrash**: Solved via Attendant-level engine selection (Ollama/vLLM/Stub).
+*   **Chopstick Coding**: Solved via Strategic Patching (`patch_file`).
+*   **Hub Latency**: Solved via Asynchronous Dispatch Hub.
