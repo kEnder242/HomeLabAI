@@ -44,7 +44,7 @@ async def test_draft_agency():
                 print("   ❌ Failed: File not created.")
 
             # 2. Test Collision
-            print(f"\n2. Testing Collision (overwrite=False)")
+            print("\n2. Testing Collision (overwrite=False)")
             res_2 = await session.call_tool("write_draft", arguments={
                 "filename": filename,
                 "content": "New content"
@@ -56,7 +56,7 @@ async def test_draft_agency():
                 print("   ❌ Failed: Overwrote without permission.")
 
             # 3. Test Overwrite
-            print(f"\n3. Testing Overwrite (overwrite=True)")
+            print("\n3. Testing Overwrite (overwrite=True)")
             res_3 = await session.call_tool("write_draft", arguments={
                 "filename": filename,
                 "content": "Revised content",

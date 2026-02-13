@@ -23,6 +23,7 @@ PYTHON_PATH = sys.executable
 VERSION = "3.5.9"  # Linter Clean & Pinky Loop Fix
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_HEARTBEAT_URL = "http://192.168.1.26:11434/api/tags"
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # --- THE MONTANA PROTOCOL ---

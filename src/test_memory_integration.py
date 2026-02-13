@@ -40,7 +40,7 @@ async def test_memory():
                 except asyncio.TimeoutError: break
 
             # 3. Retrieve the Memory
-            print(f"🕵️ Step 2: Retrieving Memory...")
+            print("🕵️ Step 2: Retrieving Memory...")
             await ws.send(json.dumps({
                 "type": "text_input",
                 "content": "What is the secret code I just told you?"

@@ -258,7 +258,7 @@ async def get_my_tools() -> str:
     tools = [
         "reply_to_user", "vram_vibe_check", "get_lab_health", "facilitate",
         "start_draft", "refine_draft", "commit_to_archive", "lab_shutdown",
-        "prune_drafts", "get_recent_dream", "build_cv_summary", 
+        "prune_drafts", "get_recent_dream", "build_cv_summary",
         "delegate_internal_debate", "access_personal_history", "get_lab_status",
         "manage_lab", "get_my_tools"
     ]

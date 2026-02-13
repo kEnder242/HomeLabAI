@@ -34,10 +34,10 @@ class RegexJudge(Judge):
 
 class InteractiveJudge(Judge):
     def evaluate(self, prompt: str, response: str) -> TestResult:
-        print(f"\n--- INTERACTIVE JUDGE ---")
+        print("\n--- INTERACTIVE JUDGE ---")
         print(f"Prompt:   {prompt}")
         print(f"Response: {response}")
-        print(f"-------------------------")
+        print("-------------------------")
         choice = input("Pass? (y/n/c for comment): ").strip().lower()
         if choice == 'y':
             return TestResult(True, "User approved", 1.0)
