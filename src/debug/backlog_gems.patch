@@ -1,0 +1,11 @@
+--- Portfolio_Dev/00_FEDERATED_STATUS.md
++++ Portfolio_Dev/00_FEDERATED_STATUS.md
+@@ -12,6 +12,10 @@
+ *   **[ACTIVE] Sprint v3.6 "The Nightly Recruiter"**:
+     *   **[TODO] Job Search Engine**: Implement scheduled "Alarm Clock" task to search for jobs.
+     *   **[TODO] Phase 3.5: The Conscious Attendant**: Implement **Pre-Cache** (SIGTERM robustness) and **Ollama Persona Swap** (Parity).
++    *   **[TODO] Gem: The Pre-warm Lobby**: Implement predictive Brain loading during Pinky triage.
++    *   **[TODO] Gem: Amygdala v2.1**: Refine Sentinel logic into a true "Uncertainty Gate."
++    *   **[TODO] Gem: Alluring Instrumentation**: Deep-dive tool description enticing for agentic use.
+     *   **[TODO] Phase 4: The Hierarchical Mind**: Create **The Architect** node and tiered **Semantic Map**.
+     *   **[TODO] Phase 5: Refined Persona**: Implement **The Amygdala** (Strategic Uncertainty Sentinel) and **Juicy Tooling**.
