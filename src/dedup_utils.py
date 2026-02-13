@@ -1,4 +1,4 @@
-def get_new_text(old_text, new_window_text):
+def get_new_text(old_text, new_window_text, lookback=10):
     if not old_text: return new_window_text
     
     old_words = old_text.strip().lower().split()
@@ -10,6 +10,13 @@ def get_new_text(old_text, new_window_text):
     window_len = len(new_words)
     if old_words[-window_len:] == new_words:
         return ""
+
+    # 1.5. Sub-phrase duplication (Improved Echo check)
+    # If the new window is short and contained anywhere in the recent history, ignore.
+    if window_len <= 3:
+        recent_history = " ".join(old_words[-lookback:])
+        if " ".join(new_words) in recent_history:
+            return ""
 
     # 2. Sliding Window Overlap (The "Stitch" check)
     # Increase max overlap significantly to handle longer phrases

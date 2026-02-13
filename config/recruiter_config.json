@@ -1,6 +1,7 @@
 {
-  "target_roles": ["Senior Platform Telemetry Engineer", "Silicon Validation Engineer", "AI Infrastructure Engineer", "System Architect"],
-  "target_companies": ["NVIDIA", "Microsoft", "Anthropic", "OpenAI", "AMD", "Intel"],
-  "keywords": ["telemetry", "silicon", "validation", "python", "agentic", "rapl", "msr"],
+  "target_roles": ["Senior Platform Telemetry Engineer", "Silicon Validation Engineer", "AI Infrastructure Engineer", "System Architect", "OpenBMC Firmware Engineer"],
+  "target_companies": ["NVIDIA", "Microsoft", "Anthropic", "OpenAI", "AMD", "Intel", "Supermicro"],
+  "keywords": ["telemetry", "silicon", "validation", "python", "agentic", "rapl", "msr", "peci", "redfish", "openbmc"],
+  "search_sites": ["hiring.cafe", "linkedin", "nvidai.wd1.myworkdayjobs.com"],
   "brief_retention_days": 7
 }
