@@ -1,0 +1,88 @@
+2026-02-13 14:25:00,238 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 14:25:01,240 [RECRUITER] The multistorageclient package is available.
+2026-02-13 14:25:02,800 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 14:25:02,802 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 14:25:02,843 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 14:25:06,695 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 14:25:06,743 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 14:25:06,743 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 14:25:10,010 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 14:25:10,011 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 14:25:10,011 - [LAB] INFO - [BUILD] Loading Residents (v3.5.9)...
+2026-02-13 14:25:14,303 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 14:25:18,327 - [LAB] INFO - [LAB] Archive Connected.
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/nodes/pinky_node.py", line 6, in <module>
+    from .loader import BicameralNode
+ImportError: attempted relative import with no known parent package
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 601, in <module>
+  |     loop.run_until_complete(lab.boot_sequence(args.mode))
+  |   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+  |     return future.result()
+  |            ^^^^^^^^^^^^^^^
+  |   File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 286, in boot_sequence
+  |     await self.load_residents_and_equipment()
+  |   File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 237, in load_residents_and_equipment
+  |     async with AsyncExitStack() as stack:
+  |   File "/usr/lib/python3.12/contextlib.py", line 754, in __aexit__
+  |     raise exc_details[1]
+  |   File "/usr/lib/python3.12/contextlib.py", line 737, in __aexit__
+  |     cb_suppress = await cb(*exc_details)
+  |                   ^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/usr/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 182, in stdio_client
+  |     async with (
+  |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 772, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 189, in stdio_client
+    |     yield read_stream, write_stream
+    |   File "/usr/lib/python3.12/contextlib.py", line 737, in __aexit__
+    |     cb_suppress = await cb(*exc_details)
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/shared/session.py", line 238, in __aexit__
+    |     return await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 772, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Exception Group Traceback (most recent call last):
+      |   File "/usr/lib/python3.12/contextlib.py", line 737, in __aexit__
+      |     cb_suppress = await cb(*exc_details)
+      |                   ^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.12/contextlib.py", line 231, in __aexit__
+      |     await self.gen.athrow(value)
+      |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 182, in stdio_client
+      |     async with (
+      |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 772, in __aexit__
+      |     raise BaseExceptionGroup(
+      | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+      +-+---------------- 1 ----------------
+        | Exception Group Traceback (most recent call last):
+        |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 189, in stdio_client
+        |     yield read_stream, write_stream
+        |   File "/usr/lib/python3.12/contextlib.py", line 737, in __aexit__
+        |     cb_suppress = await cb(*exc_details)
+        |                   ^^^^^^^^^^^^^^^^^^^^^^
+        |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/shared/session.py", line 238, in __aexit__
+        |     return await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+        |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 772, in __aexit__
+        |     raise BaseExceptionGroup(
+        | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+        +-+---------------- 1 ----------------
+          | Traceback (most recent call last):
+          |   File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 245, in load_residents_and_equipment
+          |     await session.initialize()
+          |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/client/session.py", line 171, in initialize
+          |     result = await self.send_request(
+          |              ^^^^^^^^^^^^^^^^^^^^^^^^
+          |   File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/mcp/shared/session.py", line 306, in send_request
+          |     raise McpError(response_or_error.error)
+          | mcp.shared.exceptions.McpError: Connection closed
+          +------------------------------------

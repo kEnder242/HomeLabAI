@@ -1,28 +1,26 @@
-import os
-import asyncio
 import pytest
-from unittest.mock import patch
-from nodes.brain_node import deep_think
+import os
+import sys
+from unittest.mock import AsyncMock, patch
+
+# Add src to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from nodes.brain_node import node
 
 @pytest.mark.asyncio
 async def test_vllm_routing_logic():
-    """Verifies that brain_node routes to the correct internal method based on ENV."""
+    """Verifies that BicameralNode correctly probes the engine."""
+    
+    # 1. Test Environment Override
+    os.environ["BRAIN_ENGINE"] = "VLLM"
+    engine, url, model = await node.probe_engine()
+    assert engine == "VLLM"
+    assert "8088" in url
+    
+    os.environ["BRAIN_ENGINE"] = "OLLAMA"
+    engine, url, model = await node.probe_engine()
+    assert engine == "OLLAMA"
+    assert "11434" in url
 
-    # 1. Test Ollama Routing (Default)
-    os.environ["USE_BRAIN_VLLM"] = "0"
-    with patch("nodes.brain_node.deep_think_ollama", return_value="Ollama Success") as mock_ollama:
-        res = await deep_think("test")
-        assert res == "Ollama Success"
-        mock_ollama.assert_called_once()
-
-    # 2. Test vLLM Routing
-    os.environ["USE_BRAIN_VLLM"] = "1"
-    with patch("nodes.brain_node.deep_think_vllm", return_value="vLLM Success") as mock_vllm:
-        res = await deep_think("test")
-        assert res == "vLLM Success"
-        mock_vllm.assert_called_once()
-
-    print("[PASS] Routing logic verified via mocks.")
-
-if __name__ == "__main__":
-    asyncio.run(test_vllm_routing_logic())
+    # Cleanup
+    del os.environ["BRAIN_ENGINE"]
