@@ -185,6 +185,19 @@ def scribble_note(query: str, response: str) -> str:
 
 
 @mcp.tool()
+def create_event_for_learning(topic: str, lesson: str) -> str:
+    """The Pedagogue's Ledger: Log a teaching moment or a corrected failure
+    to the 18-year archive. Essential for evolving Pinky's tactical awareness."""
+    try:
+        ts = datetime.datetime.now().isoformat()
+        # Scribble it to the cache for immediate logic retrieval
+        scribble_note(f"Learning Event: {topic} at {ts}", lesson)
+        return f"Event logged: {topic}. I'm learning! Narf!"
+    except Exception as e:
+        return f"Error logging event: {e}"
+
+
+@mcp.tool()
 def get_current_time() -> str:
     """Precision Temporal Sync: Returns current system time and date."""
     now = datetime.datetime.now()
