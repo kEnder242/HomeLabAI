@@ -44,6 +44,32 @@ class LabAttendant:
         self.app.router.add_post("/cleanup", self.handle_cleanup)
         self.app.router.add_get("/logs", self.handle_logs)
 
+    async def _get_vram_info(self):
+        """Queries nvidia-smi for memory stats."""
+        try:
+            cmd = ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"]
+            output = subprocess.check_output(cmd).decode().strip()
+            used, total = map(int, output.split(','))
+            return used, total
+        except:
+            return 0, 0
+
+    async def select_optimal_engine(self, preferred="OLLAMA"):
+        """Determines best engine based on VRAM budget."""
+        used, total = await self._get_vram_info()
+        available = total - used
+        
+        # Thresholds (MiB)
+        VLLM_MIN_HEADROOM = 6000 # vLLM needs a big chunk
+        OLLAMA_MIN_HEADROOM = 2000
+        
+        if preferred == "vLLM" and available > VLLM_MIN_HEADROOM:
+            return "vLLM", available
+        elif available > OLLAMA_MIN_HEADROOM:
+            return "OLLAMA", available
+        else:
+            return "STUB", available
+
     async def handle_status(self, request):
         status = await self._get_lab_status()
         
@@ -95,11 +121,19 @@ class LabAttendant:
         else:
             process_env.pop("DISABLE_EAR", None) # Ensure it's not set if enabling
         
-        # Explicit Engine Selection
+        # VRAM Guard: Select engine
+        preferred_engine = data.get("engine", "OLLAMA")
+        engine, avail = await self.select_optimal_engine(preferred_engine)
+        logger.info(f"[VRAM GUARD] Available: {avail}MiB | Selected: {engine} (Preferred: {preferred_engine})")
+        
+        process_env["USE_BRAIN_VLLM"] = "1" if engine == "vLLM" else "0"
+        process_env["USE_BRAIN_STUB"] = "1" if engine == "STUB" else "0"
+        
+        # Explicit Engine Selection (Override if manually set)
         if "PINKY_ENGINE" in os.environ:
             process_env["PINKY_ENGINE"] = os.environ["PINKY_ENGINE"]
         
-        logger.info(f"Starting Lab server in mode: {mode}, ear: {not data.get('disable_ear', True)}, engine: {process_env.get('PINKY_ENGINE', 'AUTO')}")
+        logger.info(f"Starting Lab server in mode: {mode}, ear: {not data.get('disable_ear', True)}, engine: {engine}")
 
         # Ensure SERVER_LOG exists and is empty for a clean run
         with open(SERVER_LOG, 'w') as f: f.write('')

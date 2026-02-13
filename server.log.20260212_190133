@@ -1,0 +1,25 @@
+fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+No exporters were provided. This means that no telemetry data will be collected.
+2026-02-12 17:29:17,126 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765
+2026-02-12 17:29:17,126 - [LAB] INFO - [BUILD] Loading Residents (v3.5.0)...
+2026-02-12 17:29:21,366 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-12 17:29:25,770 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-12 17:29:26,468 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-12 17:29:27,139 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-12 17:29:27,139 - [LAB] INFO - [READY] Lab is Open.
+2026-02-12 17:29:27,140 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-12 17:29:53,466 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-12 17:29:53,466 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-12 17:29:53,500 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-12 17:29:53,500 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-12 17:29:53,568 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-12 17:29:53,569 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-12 17:29:55,230 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 17:29:55,237 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-12 17:29:55,240 - [LAB] INFO - [WORKSPACE] User saved test_save.md.
+2026-02-12 17:29:55,240 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 17:30:14,281 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:17:29:55 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-12 17:30:14,286 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 17:30:14,291 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 17:30:14,320 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:17:30:14 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
