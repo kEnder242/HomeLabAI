@@ -1,0 +1,85 @@
+from mcp.server.fastmcp import FastMCP
+import logging
+import sys
+import os
+import json
+import glob
+from typing import Dict, List
+
+# Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [ARCHITECT] %(levelname)s - %(message)s', stream=sys.stderr)
+
+mcp = FastMCP("The Architect")
+
+# Paths
+FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
+SEMANTIC_MAP_FILE = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
+
+@mcp.tool()
+async def build_semantic_map() -> str:
+    """
+    Scans all tactical artifacts and refactors them into a 3-layer strategic hierarchy.
+    Layer 1: Strategic (Resume/CVT)
+    Layer 2: Technical (Focal Themes)
+    Layer 3: Tactical (Raw Notes)
+    """
+    logging.info("Architect is refactoring hierarchy...")
+    
+    # 1. Gather all artifacts
+    artifacts = glob.glob(os.path.join(FIELD_NOTES_DATA, "20*.json"))
+    
+    # 2. Build Hierarchy
+    hierarchy = {
+        "strategic": [], # Extracted from Rank 4 items
+        "technical_themes": {}, # Grouped by common keywords
+        "tactical_count": 0
+    }
+    
+    theme_keywords = ["telemetry", "silicon", "validation", "automation", "agentic"]
+    
+    for art_path in artifacts:
+        year = os.path.basename(art_path).replace(".json", "")
+        try:
+            with open(art_path, 'r') as f:
+                data = json.load(f)
+                if not isinstance(data, list): continue
+                
+                hierarchy["tactical_count"] += len(data)
+                
+                for item in data:
+                    rank = item.get('rank', 2)
+                    summary = item.get('summary', '')
+                    
+                    # Layer 1: Strategic (Top tier gems)
+                    if rank >= 4:
+                        hierarchy["strategic"].append({
+                            "year": year,
+                            "summary": summary,
+                            "gem": item.get('technical_gem', '')
+                        })
+                    
+                    # Layer 2: Technical (Theme grouping)
+                    for kw in theme_keywords:
+                        if kw in summary.lower():
+                            if kw not in hierarchy["technical_themes"]:
+                                hierarchy["technical_themes"][kw] = []
+                            hierarchy["technical_themes"][kw].append({
+                                "year": year,
+                                "summary": summary
+                            })
+        except: pass
+
+    # 3. Limit themes to top 10 items
+    for kw in hierarchy["technical_themes"]:
+        hierarchy["technical_themes"][kw] = hierarchy["technical_themes"][kw][:10]
+
+    # 4. Save the map
+    temp_map = SEMANTIC_MAP_FILE + ".tmp"
+    with open(temp_map, 'w') as f:
+        json.dump(hierarchy, f, indent=2)
+    os.replace(temp_map, SEMANTIC_MAP_FILE)
+    
+    return f"Hierarchy refactored. {len(hierarchy['strategic'])} strategic anchors identified across {hierarchy['tactical_count']} tactical notes."
+
+if __name__ == "__main__":
+    mcp.run()

@@ -1,0 +1,18 @@
+2026-02-13 00:29:22,170 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:29:23,110 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:29:24,592 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:29:24,593 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:29:24,651 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:29:27,159 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:29:27,198 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:29:27,198 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:29:30,138 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:29:30,139 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765
+2026-02-13 00:29:30,139 - [LAB] INFO - [BUILD] Loading Residents (v3.5.0)...
+2026-02-13 00:29:34,074 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:29:38,375 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:29:39,046 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:29:39,711 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:29:40,267 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:29:40,267 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:29:40,268 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
