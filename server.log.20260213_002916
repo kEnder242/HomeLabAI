@@ -1,0 +1,23 @@
+2026-02-13 00:25:24,015 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:25:25,121 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:25:26,655 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:25:26,656 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:25:26,710 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:25:29,071 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:25:29,110 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:25:29,111 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:25:32,133 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:25:32,135 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765
+2026-02-13 00:25:32,135 - [LAB] INFO - [BUILD] Loading Residents (v3.5.0)...
+2026-02-13 00:25:35,988 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:25:40,028 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:25:40,686 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:25:41,338 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:25:41,338 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:25:41,339 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:25:53,191 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:25:53,191 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:25:53,224 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:25:53,224 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:25:53,296 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:25:53,296 - [LAB] INFO - [STT] EarNode Ready.

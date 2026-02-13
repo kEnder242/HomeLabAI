@@ -116,6 +116,14 @@ class AcmeLab:
                 brief = await recruiter.run_recruiter_task()
                 await self.broadcast({"brain": f"Recruitment Drive Complete. Brief: {os.path.basename(brief)}", "brain_source": "The Nightly Recruiter", "channel": "insight"})
                 await asyncio.sleep(61) # Prevent double-trigger
+            
+            # Trigger Hierarchy Refactor at 03:00 AM
+            if now.hour == 3 and now.minute == 0:
+                logging.info("[ALARM] Triggering Hierarchy Refactor...")
+                if 'architect' in self.residents:
+                    await self.residents['architect'].call_tool("build_semantic_map")
+                await asyncio.sleep(61)
+
             await asyncio.sleep(10)
 
     async def monitor_task_with_tics(self, coro, websocket, delay=2.5):
@@ -139,6 +147,7 @@ class AcmeLab:
         a_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/archive_node.py"])
         p_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/pinky_node.py"])
         b_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
+        arc_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/architect_node.py"])
 
         try:
             # 1. Archive Node
@@ -162,15 +171,22 @@ class AcmeLab:
                                     self.residents['brain'] = brain
                                     logging.info("[LAB] Brain Connected.")
 
-                                    # 4. Final Prep
-                                    if EarNode: asyncio.create_task(self.background_load_ear())
-                                    asyncio.create_task(self.reflex_loop())
-                                    asyncio.create_task(self.scheduled_tasks_loop())
-                                    
-                                    self.status = "READY"
-                                    logging.info("[READY] Lab is Open.")
-                                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
-                                    await self.shutdown_event.wait()
+                                    # 4. Architect Node
+                                    async with stdio_client(arc_p) as (arcr, arcw):
+                                        async with ClientSession(arcr, arcw) as architect:
+                                            await architect.initialize()
+                                            self.residents['architect'] = architect
+                                            logging.info("[LAB] Architect Connected.")
+
+                                            # 5. Final Prep
+                                            if EarNode: asyncio.create_task(self.background_load_ear())
+                                            asyncio.create_task(self.reflex_loop())
+                                            asyncio.create_task(self.scheduled_tasks_loop())
+                                            
+                                            self.status = "READY"
+                                            logging.info("[READY] Lab is Open.")
+                                            await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
+                                            await self.shutdown_event.wait()
 
         except Exception as e:
             logging.error(f"[FATAL] Startup Failure: {e}")
