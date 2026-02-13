@@ -73,6 +73,16 @@ class AcmeLab:
         self.recent_interactions = []  # For Contextual Handover
         self.last_typing_event = 0.0
         self.last_save_event = 0.0
+        self.ledger_path = os.path.join(LAB_DIR, "conversations.log")
+
+    async def log_to_ledger(self, source, text):
+        """Append a clean record of the conversation to a text file."""
+        try:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(self.ledger_path, "a") as f:
+                f.write(f"[{ts}] [{source.upper()}] {text}\n")
+        except Exception:
+            pass
 
     async def manage_session_lock(self, active=True):
         try:
@@ -101,6 +111,16 @@ class AcmeLab:
     async def broadcast(self, message_dict):
         if not self.connected_clients:
             return
+
+        # Log to Ledger if it's conversation content
+        if message_dict.get("type") == "final":
+            await self.log_to_ledger("ME", message_dict.get("text"))
+        if message_dict.get("brain"):
+            await self.log_to_ledger(
+                message_dict.get("brain_source", "PINKY"),
+                message_dict.get("brain")
+            )
+
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
         message = json.dumps(message_dict)
