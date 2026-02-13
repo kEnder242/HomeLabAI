@@ -1,0 +1,48 @@
+2026-02-13 00:52:16,954 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:52:18,040 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:52:19,490 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:52:19,492 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:52:19,548 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:52:21,822 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:52:21,861 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:52:21,861 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:52:24,737 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:52:24,738 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 00:52:24,738 - [LAB] INFO - [BUILD] Loading Residents (v3.5.6)...
+2026-02-13 00:52:28,614 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:52:32,755 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:52:33,415 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:52:34,062 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:52:34,599 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:52:34,666 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:52:34,666 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:52:35,815 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:52:35,823 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-13 00:52:35,826 - [LAB] INFO - [WORKSPACE] User saved marathon_test.md.
+2026-02-13 00:52:38,717 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:52:38,717 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 00:52:46,143 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:52:46,143 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:52:46,177 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:52:46,177 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:52:46,248 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:52:46,248 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-13 00:53:38,710 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:00:52:35 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-13 01:17:48,976 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:17:52,376 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:17:52,376 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 01:18:23,921 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:18:23,922 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 01:18:43,130 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:18:43,131 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 01:18:51,072 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:18:51,072 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 01:19:01,940 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 01:19:01,940 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 01:19:11,093 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:01:17:48 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-13 02:00:07,701 - [LAB] INFO - Waking up for Nightly Recruitment drive...
+2026-02-13 02:00:07,702 - [LAB] INFO - Recruitment Drive Complete. Brief saved to: /home/jallred/AcmeLab/drafts/job_brief_2026-02-13.md
+2026-02-13 03:00:01,523 - [LAB] INFO - [ALARM] Triggering Hierarchy Refactor...
+2026-02-13 03:00:01,525 - [ARCHITECT] INFO - Processing request of type CallToolRequest
+2026-02-13 03:00:01,525 - [ARCHITECT] INFO - Architect is refactoring hierarchy...
+2026-02-13 03:00:01,560 - [ARCHITECT] INFO - Processing request of type ListToolsRequest
