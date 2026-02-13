@@ -59,6 +59,7 @@ class AcmeLab:
         self.banter_ttl = 0
         self.brain_online = False
         self.recent_interactions = [] # For Contextual Handover
+        self.last_typing_event = 0.0
 
     async def manage_session_lock(self, active=True):
         try:
@@ -94,8 +95,8 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             await asyncio.sleep(random.randint(45, 120))
             if self.connected_clients and self.status == "READY":
-                # Only tic if idle for a bit
-                if time.time() - self.last_activity > 30:
+                # Only tic if idle and NOT typing
+                if (time.time() - self.last_activity > 30) and not self.is_user_typing():
                     tic = random.choice(tics)
                     await self.broadcast({"brain": tic, "brain_source": "Pinky (Reflex)"})
             
@@ -225,6 +226,10 @@ class AcmeLab:
                         query = data.get("content", "")
                         self.last_activity = time.time()
                         asyncio.create_task(self.process_query(query, ws))
+                    elif data.get("type") == "user_typing":
+                        self.last_typing_event = time.time()
+                    elif data.get("type") == "workspace_save":
+                        asyncio.create_task(self.handle_workspace_save(data.get("filename"), data.get("content"), ws))
                 
                 elif message.type == aiohttp.WSMsgType.BINARY and self.ear:
                     chunk = np.frombuffer(message.data, dtype=np.int16)
@@ -239,6 +244,28 @@ class AcmeLab:
             self.connected_clients.remove(ws)
             if not self.connected_clients: await self.manage_session_lock(active=False)
         return ws
+
+    def is_user_typing(self):
+        """Returns True if the user has typed recently (2s window)."""
+        return (time.time() - self.last_typing_event) < 2.0
+
+    async def handle_workspace_save(self, filename, content, websocket):
+        """Notifies agents of a manual save and triggers reactions."""
+        logging.info(f"[WORKSPACE] User saved {filename}.")
+        # 1. Update file on disk (via scribble or workspace tool if we had one, for now scribble)
+        try:
+            # We don't have a direct workspace write tool in archive node yet, using scribble as placeholder
+            await self.residents['archive'].call_tool("scribble_note", arguments={"query": f"SAVE_EVENT: {filename}", "response": content})
+        except: pass
+
+        # 2. Pinky's Reflexive Reaction
+        if not self.is_user_typing():
+            await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me take a look...", "brain_source": "Pinky"})
+            
+            # 3. Brain's Strategic Vibe Check
+            if self.brain_online:
+                b_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": f"The user just saved '{filename}'. Content starts with: '{content[:200]}'. Provide a 1-sentence validation or architectural insight."}), websocket)
+                await self.broadcast({"brain": b_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
 
     async def process_query(self, query, websocket):
         try:

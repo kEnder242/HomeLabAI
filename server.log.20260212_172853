@@ -1,0 +1,299 @@
+WARNING:megatron.core.utils:fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+WARNING:nv_one_logger.api.config:OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+WARNING:nv_one_logger.training_telemetry.api.training_telemetry_provider:No exporters were provided. This means that no telemetry data will be collected.
+2026-02-11 15:55:27,813 - [LAB] INFO - [LOGGER] Reclaim_logger activated (stderr only).
+2026-02-11 15:55:27,814 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-11 15:55:27,814 - [LAB] INFO - [BUILD] Loading Residents (v3.4.19)...
+2026-02-11 15:55:31,862 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-11 15:55:35,971 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-11 15:55:37,974 - [LAB] INFO - [LOBBY] Connecting Pinky...
+2026-02-11 15:55:38,663 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-11 15:55:40,665 - [LAB] INFO - [LOBBY] Connecting Brain...
+2026-02-11 15:55:41,353 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-11 15:55:41,353 - [LAB] INFO - [BUILD] Starting EarNode background load...
+2026-02-11 15:55:41,353 - [LAB] INFO - [READY] Lab is Open (Lobby Active).
+2026-02-11 15:55:41,354 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-11 15:55:48,336 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 15:55:48,336 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 15:55:48,336 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:55:48,338 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:55:48,344 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-11 15:55:48,348 - [LAB] INFO - [USER] Intercom Input: What is the value of pi to exactly 21 digits?
+2026-02-11 15:55:48,348 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 15:55:48,349 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 15:55:48,384 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 15:55:48,385 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:15:55:48 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-11 15:55:49,174 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:55:49,784 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 15:55:53,572 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-11 15:55:53,572 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-11 15:55:53,606 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-11 15:55:53,606 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-11 15:55:53,675 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-11 15:55:53,675 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-11 19:56:06,918 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 19:56:06,918 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 19:56:06,919 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:56:06,961 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:56:07,862 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:56:31,404 - [LAB] INFO - [USER] Intercom Input: hi
+2026-02-11 19:56:31,404 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:56:31,406 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:56:32,216 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:56:46,969 - [LAB] INFO - [DEBUG] Pinky Raw Response: { "tool": "reply_to_user", "parameters": { "text": "Poit! Hello!" } }...
+2026-02-11 19:56:55,292 - [LAB] INFO - [USER] Intercom Input: tell me a story
+2026-02-11 19:56:55,292 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:56:55,293 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:56:55,969 - [LAB] INFO - [DEBUG] Pinky Raw Response: { 
+  "tool": "story_generator", 
+  "parameters": {
+    "prompt": "a tale of adventure and discovery"
+  }
+}...
+2026-02-11 19:56:56,036 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:57:17,775 - [LAB] INFO - [USER] Intercom Input: nah, don't use a tool, just tell me a story
+2026-02-11 19:57:17,775 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:57:17,777 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:57:18,589 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:57:19,064 - [LAB] INFO - [DEBUG] Pinky Raw Response: { "tool": "reply_to_user", "parameters": { "text": "Poit! Sorry, but as the Right Hemisphere of the Acme Lab Bicameral Mind, I'm programmed to provide technical information and assistance. I don't hav...
+2026-02-11 19:57:43,273 - [LAB] INFO - [USER] Intercom Input: then should you ask the left?
+2026-02-11 19:57:43,273 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:57:43,275 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:57:43,924 - [LAB] INFO - [DEBUG] Pinky Raw Response: { 
+  "tool": "ask_brain",
+  "parameters": {
+    "query": "should I ask the left?"
+  }
+}...
+2026-02-11 19:57:44,000 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:58:00,320 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:58:22,621 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 19:58:22,621 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:19:56:06 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-11 19:59:03,480 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 19:59:03,480 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 19:59:03,481 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:59:03,481 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 19:59:03,481 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 19:59:03,482 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:59:03,576 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:19:59:03 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-11 19:59:03,576 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:59:07,791 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 19:59:07,791 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:19:59:03 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-11 19:59:09,216 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:59:09,217 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:59:13,052 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 19:59:13,052 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 19:59:13,052 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:59:13,109 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 19:59:18,215 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 19:59:58,318 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 19:59:58,318 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 19:59:58,319 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 19:59:58,405 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 20:00:04,217 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 20:00:18,252 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:19:59:58 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-11 20:01:18,190 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 20:01:18,190 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:19:59:13 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-11 20:07:02,410 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-11 20:07:02,410 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-11 20:07:02,411 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-11 20:07:02,529 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-11 20:07:08,217 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-11 20:09:07,571 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-11 20:09:07,571 - [LAB] INFO - 127.0.0.1 [11/Feb/2026:20:07:02 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Android 16; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0"
+2026-02-12 15:10:31,264 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:10:31,279 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:10:31,299 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:10:31,543 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:10:37,285 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:10:44,989 - [LAB] INFO - [USER] Intercom Input: Can you ask brain to tell me a story about photons?
+2026-02-12 15:10:44,990 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:10:44,996 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:10:50,248 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:11:02,650 - [LAB] INFO - [DEBUG] Pinky Raw Response: { 
+  "tool": "ask_brain",
+  "parameters": {
+    "story_request": "photons"
+  }
+}...
+2026-02-12 15:11:19,917 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:13:25,014 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:13:25,018 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:10:31 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:13:30,031 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:13:30,031 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:13:30,032 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:13:30,088 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:13:35,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:15:35,153 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:15:35,153 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:13:30 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:15:40,186 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:15:40,187 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:15:40,188 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:15:40,202 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:15:45,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:17:45,240 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:17:45,240 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:15:40 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:17:50,686 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:17:50,686 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:17:50,688 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:17:50,706 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:17:56,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:19:55,753 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:19:55,753 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:17:50 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:20:00,853 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:20:00,853 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:20:00,854 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:20:00,872 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:20:06,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:22:05,918 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:22:05,919 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:20:00 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:22:11,144 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:22:11,144 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:22:11,145 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:22:11,156 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:22:16,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:24:16,253 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:24:16,254 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:22:11 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:24:22,154 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:24:22,154 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:24:22,157 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:24:22,168 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:24:27,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:26:27,192 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:26:27,192 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:24:22 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:26:32,288 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:26:32,289 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:26:32,289 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:26:32,309 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:26:38,215 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:28:37,358 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:28:37,359 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:26:32 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:28:42,404 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:28:42,404 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:28:42,404 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:28:42,420 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:28:48,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:30:47,446 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:30:47,446 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:28:42 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:30:52,601 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:30:52,602 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:30:52,603 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:30:52,666 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:30:58,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:32:57,773 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:32:57,774 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:30:52 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:33:03,564 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:33:03,564 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:33:03,565 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:33:03,578 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:33:09,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:33:55,979 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:33:55,980 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:33:55,980 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:33:55,999 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:33:59,276 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:33:55 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:34:01,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:35:08,651 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:35:08,651 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:33:03 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:35:13,671 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:35:13,672 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:35:13,672 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:35:13,691 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:35:19,215 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:37:18,735 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:37:18,736 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:35:13 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:37:23,803 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:37:23,804 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:37:23,805 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:37:23,859 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:37:29,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:39:28,920 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:39:28,921 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:37:23 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:39:33,984 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:39:33,984 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:39:33,985 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:39:34,040 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:39:39,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:41:39,222 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:41:39,222 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:39:33 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:41:44,183 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:41:44,183 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:41:44,183 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:41:44,241 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:41:49,216 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:43:49,270 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:43:49,270 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:41:44 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:43:54,358 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:43:54,359 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:43:54,359 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:43:54,383 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:44:00,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:45:59,425 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:45:59,426 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:43:54 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:46:04,476 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:46:04,476 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:46:04,477 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:46:04,541 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:46:10,215 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:48:09,609 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:48:09,609 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:46:04 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:48:14,743 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:48:14,743 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:48:14,744 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:48:14,761 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:48:20,217 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:50:19,799 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:50:19,799 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:48:14 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:50:24,863 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:50:24,864 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:50:24,864 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:50:24,918 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:50:30,214 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:52:29,995 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:52:29,996 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:50:24 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:52:35,019 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:52:35,019 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:52:35,020 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:52:35,038 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:52:40,211 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:54:40,065 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:54:40,065 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:52:35 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:54:45,131 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:54:45,131 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:54:45,132 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:54:45,186 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:54:50,211 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:56:50,211 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:56:50,211 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:54:45 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:56:55,297 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:56:55,298 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:56:55,298 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:56:55,330 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:57:01,213 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 15:59:00,406 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 15:59:00,406 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:56:55 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 15:59:05,443 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 15:59:05,443 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 15:59:05,443 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 15:59:05,460 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 15:59:11,215 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 16:01:10,479 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 16:01:10,480 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:15:59:05 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 16:01:15,571 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 16:01:15,571 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 16:01:15,572 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 16:01:15,589 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 16:01:21,218 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 16:01:29,860 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 16:01:29,860 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:16:01:15 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+2026-02-12 16:38:45,397 - [LAB] INFO - [LOCK] Intercom Active (PID 166701).
+2026-02-12 16:38:45,397 - [LAB] INFO - [LOBBY] Client entered. Poking Brain...
+2026-02-12 16:38:45,398 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 16:38:45,400 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 16:38:45,405 - [LAB] INFO - [USER] Intercom Input: What is the value of pi to exactly 21 digits?
+2026-02-12 16:38:45,405 - [LAB] INFO - [BRAIN] Priming Brain (wake_up)...
+2026-02-12 16:38:45,407 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-12 16:38:45,473 - [LAB] INFO - [LOCK] Intercom Idle.
+2026-02-12 16:38:45,474 - [LAB] INFO - 127.0.0.1 [12/Feb/2026:16:38:45 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-12 16:38:51,221 - [LAB] INFO - [BRAIN] Brain Primed.
+2026-02-12 16:38:51,223 - [LAB] INFO - [BRAIN] Brain Primed.
