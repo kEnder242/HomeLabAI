@@ -1,0 +1,171 @@
+2026-02-13 11:04:24,312 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 11:04:25,735 [RECRUITER] The multistorageclient package is available.
+2026-02-13 11:04:27,416 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 11:04:27,418 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 11:04:27,500 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 11:04:30,942 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 11:04:30,980 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 11:04:30,980 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 11:04:35,411 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 11:04:35,413 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 11:04:35,413 - [LAB] INFO - [BUILD] Loading Residents (v3.5.9)...
+2026-02-13 11:04:39,617 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 11:04:43,798 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 11:04:44,489 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 11:04:45,176 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 11:04:45,740 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 11:04:46,301 - [LAB] INFO - [LAB] Thinking Connected.
+2026-02-13 11:04:46,948 - [LAB] INFO - [LAB] Browser Connected.
+2026-02-13 11:04:47,038 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 11:04:47,039 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+[NeMo E 2026-02-13 11:05:02 nemo_logging:417] Failed to load checkpoint with weights_only=True: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 903.50 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+2026-02-13 11:05:02,528 - [LAB] ERROR - [EAR_NODE] FATAL: Error during NeMo model loading or CUDA setup: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 903.50 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/equipment/ear_node.py", line 52, in __init__
+    self.model = EncDecRNNTBPEModel.from_pretrained(model_name=MODEL_NAME)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/common.py", line 885, in from_pretrained
+    instance = class_.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/modelPT.py", line 501, in restore_from
+    instance = cls._save_restore_connector.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 269, in restore_from
+    loaded_params = self.load_config_and_state_dict(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 195, in load_config_and_state_dict
+    state_dict = self._load_state_dict_from_disk(model_weights, map_location=map_location)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 775, in _load_state_dict_from_disk
+    raise e
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 772, in _load_state_dict_from_disk
+    return torch.load(model_weights, map_location=map_location, weights_only=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1521, in load
+    return _load(
+           ^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2122, in _load
+    result = unpickler.load()
+             ^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/_weights_only_unpickler.py", line 535, in load
+    self.append(self.persistent_load(pid))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2086, in persistent_load
+    typed_storage = load_tensor(
+                    ^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2052, in load_tensor
+    wrap_storage = restore_location(storage, location)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1864, in restore_location
+    return default_restore_location(storage, str(map_location))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 698, in default_restore_location
+    result = fn(storage, location)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 637, in _deserialize
+    return obj.to(device=device)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/storage.py", line 291, in to
+    return _to(self, device, non_blocking)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/_utils.py", line 101, in _to
+    untyped_storage = torch.UntypedStorage(self.size(), device=device)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 903.50 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+2026-02-13 11:05:02,544 - [LAB] WARNING - [EAR_NODE] Attempting fallback: Re-initializing with CUDA graphs explicitly disabled.
+2026-02-13 11:05:22,179 - [LAB] ERROR - [EAR_NODE] FATAL: Fallback failed: CUDA out of memory. Tried to allocate 18.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 773.00 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/equipment/ear_node.py", line 52, in __init__
+    self.model = EncDecRNNTBPEModel.from_pretrained(model_name=MODEL_NAME)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/common.py", line 885, in from_pretrained
+    instance = class_.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/modelPT.py", line 501, in restore_from
+    instance = cls._save_restore_connector.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 269, in restore_from
+    loaded_params = self.load_config_and_state_dict(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 195, in load_config_and_state_dict
+    state_dict = self._load_state_dict_from_disk(model_weights, map_location=map_location)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 775, in _load_state_dict_from_disk
+    raise e
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 772, in _load_state_dict_from_disk
+    return torch.load(model_weights, map_location=map_location, weights_only=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1521, in load
+    return _load(
+           ^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2122, in _load
+    result = unpickler.load()
+             ^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/_weights_only_unpickler.py", line 535, in load
+    self.append(self.persistent_load(pid))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2086, in persistent_load
+    typed_storage = load_tensor(
+                    ^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 2052, in load_tensor
+    wrap_storage = restore_location(storage, location)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1864, in restore_location
+    return default_restore_location(storage, str(map_location))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 698, in default_restore_location
+    result = fn(storage, location)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/serialization.py", line 637, in _deserialize
+    return obj.to(device=device)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/storage.py", line 291, in to
+    return _to(self, device, non_blocking)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/_utils.py", line 101, in _to
+    untyped_storage = torch.UntypedStorage(self.size(), device=device)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 903.50 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/equipment/ear_node.py", line 76, in __init__
+    self.model = EncDecRNNTBPEModel.from_pretrained(model_name=MODEL_NAME)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/common.py", line 885, in from_pretrained
+    instance = class_.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/classes/modelPT.py", line 501, in restore_from
+    instance = cls._save_restore_connector.restore_from(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 269, in restore_from
+    loaded_params = self.load_config_and_state_dict(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nemo/core/connectors/save_restore_connector.py", line 191, in load_config_and_state_dict
+    instance = instance.to(map_location)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/lightning/fabric/utilities/device_dtype_mixin.py", line 55, in to
+    return super().to(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1371, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    module._apply(fn)
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    module._apply(fn)
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    module._apply(fn)
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 957, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1357, in convert
+    return t.to(
+           ^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 18.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 773.00 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+2026-02-13 11:05:22,185 - [LAB] ERROR - [STT] Load Failed: EarNode failed to load even with fallback: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 903.50 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables) / CUDA out of memory. Tried to allocate 18.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 21.81 MiB is free. Process 2842 has 196.55 MiB memory in use. Process 3187 has 159.00 MiB memory in use. Process 4512 has 8.21 MiB memory in use. Process 359119 has 5.89 GiB memory in use. Including non-PyTorch memory, this process has 4.17 GiB memory in use. Of the allocated memory 4.00 GiB is allocated by PyTorch, and 773.00 KiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+2026-02-13 11:05:54,412 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 11:05:54,419 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-13 11:05:58,899 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 11:07:01,436 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:11:05:54 -0800] "GET / HTTP/1.1" 101 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"

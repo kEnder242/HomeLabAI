@@ -167,10 +167,15 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
         return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Egad! No engines! Poit!", "mood": "panic"}})
 
     if engine_type == "VLLM":
+        unified_content = (
+            f"[SYSTEM]: {prompt}\n\n"
+            f"MEMORY:\n{memory}\n\n"
+            f"QUERY:\n{query}\n\n"
+            "DECISION (JSON):"
+        )
         payload = {
             "model": model,
-            "messages": [{"role": "system", "content": prompt},
-                         {"role": "user", "content": f"MEMORY:\n{memory}\n\nQUERY:\n{query}\n\nDECISION (JSON):"}],
+            "messages": [{"role": "user", "content": unified_content}],
             "max_tokens": 300, "temperature": 0.2
         }
     else:
