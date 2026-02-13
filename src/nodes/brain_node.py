@@ -73,7 +73,13 @@ async def deep_think(query: str, context: str = "") -> str:
     else:
         return await deep_think_ollama(full_prompt)
 
+last_persona = None
+
 async def deep_think_ollama(prompt: str) -> str:
+    global last_persona
+    # --- PERSONA SWAP LOGIC ---
+    # We detect if the system prompt has changed (or if this is first run)
+    # Since prompt already includes BRAIN_SYSTEM_PROMPT, we just use it.
     try:
         async with aiohttp.ClientSession() as session:
             payload = {
@@ -82,6 +88,10 @@ async def deep_think_ollama(prompt: str) -> str:
                 "stream": False,
                 "options": {"temperature": 0.1, "num_ctx": 4096}
             }
+            # Ollama treats every request as a potential swap. 
+            # To mimic vLLM's 'Sleeping weights', we ensure keep_alive is long.
+            payload["keep_alive"] = "60m" 
+            
             async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
                 if resp.status == 200:
                     data = await resp.json()
