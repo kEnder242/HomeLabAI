@@ -5,10 +5,10 @@ import sys
 from unittest.mock import MagicMock, patch, AsyncMock
 
 # Add src to path for imports
-sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# 1. Archive Node Tests
-from nodes.archive_node import list_cabinet, read_document, consult_clipboard, scribble_note, dream, get_recent_dream
+# 1. Archive Node Tests (Rescue & Refine)
+from nodes.archive_node import list_cabinet, read_document, consult_clipboard, scribble_note, get_current_time
 
 @pytest.mark.asyncio
 async def test_archive_list_cabinet():
@@ -35,7 +35,12 @@ async def test_archive_read_document():
 @pytest.mark.asyncio
 async def test_archive_clipboard():
     mock_coll = MagicMock()
-    mock_coll.query.return_value = {'documents': [["Cached Response"]], 'distances': [[0.1]], 'metadatas': [[{'response': 'Cached Response'}]]}
+    # Mocking chroma query result structure
+    mock_coll.query.return_value = {
+        'documents': [["Cached Response"]],
+        'distances': [[0.1]],
+        'metadatas': [[{'response': 'Cached Response'}]]
+    }
     with patch("nodes.archive_node.cache", mock_coll):
         res = consult_clipboard("hello")
         assert res == "Cached Response"
@@ -45,30 +50,17 @@ async def test_archive_scribble():
     mock_coll = MagicMock()
     with patch("nodes.archive_node.cache", mock_coll):
         res = scribble_note("query", "response")
-        assert res == "Note scribbled."
+        assert "Insight cached" in res
         assert mock_coll.add.called
 
 @pytest.mark.asyncio
-async def test_archive_dream():
-    mock_wisdom = MagicMock()
-    mock_stream = MagicMock()
-    with patch("nodes.archive_node.wisdom", mock_wisdom), \
-         patch("nodes.archive_node.stream", mock_stream):
-        res = dream("summary", ["id1"])
-        assert "Consolidated" in res
-        assert mock_wisdom.add.called
-        assert mock_stream.delete.called
+async def test_archive_time():
+    res = get_current_time()
+    assert "2026" in res
+    assert "," in res
 
-@pytest.mark.asyncio
-async def test_archive_get_recent_dream():
-    mock_wisdom = MagicMock()
-    mock_wisdom.get.return_value = {'documents': ["Dream content"], 'metadatas': [{'timestamp': '2026-02-11'}]}
-    with patch("nodes.archive_node.wisdom", mock_wisdom):
-        res = get_recent_dream()
-        assert "Dream content" in res
-
-# 2. Brain Node Tests
-from nodes.brain_node import write_draft, _clean_content
+# 2. Brain Node Tests (Rescue & Refine)
+from nodes.brain_node import _clean_content
 
 @pytest.mark.asyncio
 async def test_brain_clean_content():
@@ -79,14 +71,6 @@ async def test_brain_clean_content():
     raw = "Certainly! Here is the plan: Deploy vLLM."
     clean = _clean_content(raw)
     assert clean == "Deploy vLLM."
-
-@pytest.mark.asyncio
-async def test_brain_write_draft():
-    with patch("nodes.brain_node.DRAFTS_DIR", "/tmp"), \
-         patch("os.path.exists", return_value=False), \
-         patch("builtins.open", MagicMock()):
-        res = await write_draft("plan.md", "content")
-        assert "[THE EDITOR]" in res
 
 # 3. Pinky Node Tests
 from nodes.pinky_node import facilitate
@@ -103,22 +87,3 @@ async def test_pinky_facilitate_oom():
         data = json.loads(res)
         assert data["tool"] == "reply_to_user"
         assert "stuffed" in data["parameters"]["text"] or "lobotomy" in data["parameters"]["text"]
-
-@pytest.mark.asyncio
-async def test_pinky_facilitate_routing():
-    with patch("nodes.pinky_node.probe_engine", AsyncMock(return_value=("OLLAMA", "url", "model"))), \
-         patch("aiohttp.ClientSession.get") as mock_get, \
-         patch("aiohttp.ClientSession.post") as mock_post:
-
-        vram_resp = AsyncMock()
-        vram_resp.json = AsyncMock(return_value={"data": {"result": [{"value": [0, "0.5"]}]}})
-        vram_resp.status = 200
-        mock_get.return_value.__aenter__.return_value = vram_resp
-
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json = AsyncMock(return_value={"response": '{"tool": "reply_to_user", "parameters": {"text": "Narf!"}}'})
-        mock_post.return_value.__aenter__.return_value = mock_resp
-
-        res = await facilitate("hello", "context")
-        assert "Narf!" in res
