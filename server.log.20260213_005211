@@ -1,0 +1,30 @@
+2026-02-13 00:48:40,002 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:48:41,362 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:48:43,035 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:48:43,037 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:48:43,108 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:48:46,125 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:48:46,164 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:48:46,164 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:48:50,158 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:48:50,159 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 00:48:50,159 - [LAB] INFO - [BUILD] Loading Residents (v3.5.6)...
+2026-02-13 00:48:54,276 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:48:58,534 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:48:59,249 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:48:59,907 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:49:00,463 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:49:00,482 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:49:00,483 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:49:00,961 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:49:00,968 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-13 00:49:00,972 - [LAB] INFO - [WORKSPACE] User saved marathon_test.md.
+2026-02-13 00:49:12,343 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:49:12,343 - [ARCHIVE] WARNING - Tool 'consult_clipboard' not listed, no validation will be performed
+2026-02-13 00:49:21,378 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:49:21,378 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:49:21,411 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:49:21,411 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:49:21,482 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:49:21,483 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-13 00:50:12,355 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:00:49:00 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"

@@ -1,0 +1,14 @@
+2026-02-13 00:32:25,918 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:32:27,475 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:32:29,230 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:32:29,232 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:32:29,307 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:32:32,646 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:32:32,688 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:32:32,689 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:32:36,577 [RECRUITER] [EQUIP] EarNode module imported.
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 357, in <module>
+    loop.run_until_complete(lab.boot_sequence(args.mode))
+                            ^^^^^^^^^^^^^^^^^
+AttributeError: 'AcmeLab' object has no attribute 'boot_sequence'

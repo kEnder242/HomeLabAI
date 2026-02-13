@@ -1,0 +1,24 @@
+2026-02-13 00:34:50,029 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:34:51,116 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:34:52,611 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:34:52,612 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:34:52,666 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:34:55,078 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:34:55,117 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:34:55,117 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:34:58,039 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:34:58,040 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 00:34:58,040 - [LAB] INFO - [BUILD] Loading Residents (v3.5.5)...
+2026-02-13 00:35:02,142 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:35:06,186 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:35:06,891 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:35:07,538 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:35:08,090 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:35:08,091 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:35:08,091 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:35:24,417 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:35:24,417 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:35:24,451 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:35:24,451 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:35:24,522 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:35:24,522 - [LAB] INFO - [STT] EarNode Ready.
