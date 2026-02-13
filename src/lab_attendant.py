@@ -15,9 +15,11 @@ from aiohttp import web
 LAB_PORT = 8765
 ATTENDANT_PORT = 9999
 LAB_SERVER_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/acme_lab.py")
+VLLM_START_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/start_vllm.sh")
 LAB_DIR = os.path.dirname(os.path.dirname(LAB_SERVER_PATH))
 LAB_VENV_PYTHON = os.path.join(LAB_DIR, ".venv", "bin", "python3")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
+VLLM_LOG = os.path.join(LAB_DIR, "vllm_server.log")
 ROUND_TABLE_LOCK = os.path.expanduser(
     "~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table.lock"
 )
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 # --- Global State ---
 lab_process: subprocess.Popen = None
+vllm_process: subprocess.Popen = None
 current_lab_mode: str = "OFFLINE"
 
 
@@ -46,7 +49,6 @@ class LabAttendant:
         self.app.router.add_get("/logs", self.handle_logs)
 
     async def _get_vram_info(self):
-        """Queries nvidia-smi for current VRAM usage."""
         try:
             cmd = [
                 "nvidia-smi", "--query-gpu=memory.used,memory.total",
@@ -59,7 +61,7 @@ class LabAttendant:
             return 0, 0
 
     async def cleanup_silicon(self):
-        """Sweep all related processes and zero out VRAM as much as possible."""
+        """Sweep all related processes and zero out VRAM."""
         logger.warning("[SWEEP] Purging all Lab-related processes...")
         targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -71,95 +73,79 @@ class LabAttendant:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         
+        global lab_process, vllm_process
+        lab_process = None
+        vllm_process = None
+        
         if os.path.exists(ROUND_TABLE_LOCK):
             os.remove(ROUND_TABLE_LOCK)
         
-        await asyncio.sleep(2) # Let VRAM settle
-
-    async def select_optimal_engine(self, preferred="OLLAMA"):
-        """Determines best engine based on VRAM budget."""
-        used, total = await self._get_vram_info()
-        available = total - used
-        # We need ~1.5GB for EarNode + Overheads
-        VLLM_MIN_HEADROOM = 7000 
-        OLLAMA_MIN_HEADROOM = 3000
-
-        if preferred == "vLLM" and available > VLLM_MIN_HEADROOM:
-            return "vLLM", available
-        elif available > OLLAMA_MIN_HEADROOM:
-            return "OLLAMA", available
-        else:
-            return "STUB", available
+        await asyncio.sleep(2)
 
     async def handle_status(self, request):
         lock_active = os.path.exists(ROUND_TABLE_LOCK)
         status = {
             "attendant_pid": os.getpid(),
             "lab_server_running": False,
-            "lab_pid": None,
+            "vllm_running": False,
             "lab_mode": current_lab_mode,
             "round_table_lock_exists": lock_active,
             "full_lab_ready": False,
             "last_error": None
         }
 
-        global lab_process
-        if lab_process:
-            poll = lab_process.poll()
-            if poll is None:
-                status["lab_server_running"] = True
-                status["lab_pid"] = lab_process.pid
-                # Check log for READY or FATAL
-                if os.path.exists(SERVER_LOG):
-                    try:
-                        with open(SERVER_LOG, 'r') as f:
-                            content = f.read()
-                            if "[READY] Lab is Open" in content:
-                                status["full_lab_ready"] = True
-                            if "[FATAL]" in content:
-                                # Extract fatal error
-                                lines = content.split("\n")
-                                for line in reversed(lines):
-                                    if "[FATAL]" in line:
-                                        status["last_error"] = line
-                                        break
-                    except Exception: pass
-            else:
-                status["last_error"] = f"Process terminated with exit code {poll}"
-                lab_process = None
+        # Check vLLM Port
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:8088/v1/models", timeout=0.5) as r:
+                    if r.status == 200: status["vllm_running"] = True
+        except: pass
 
+        global lab_process
+        if lab_process and lab_process.poll() is None:
+            status["lab_server_running"] = True
+            if os.path.exists(SERVER_LOG):
+                try:
+                    with open(SERVER_LOG, 'r') as f:
+                        content = f.read()
+                        if "[READY] Lab is Open" in content:
+                            status["full_lab_ready"] = True
+                        if "[FATAL]" in content:
+                            status["last_error"] = content.split("[FATAL]")[-1].strip().split("\n")[0]
+                except: pass
+        
         return web.json_response(status)
 
     async def handle_start(self, request):
-        global lab_process, current_lab_mode
+        global lab_process, vllm_process, current_lab_mode
         data = await request.json()
-        mode = data.get("mode", "SERVICE_UNATTENDED")
         preferred_engine = data.get("engine", "OLLAMA")
 
-        # 1. Automatic Cleanup if already running
+        # 1. Kill old Hub
         if lab_process and lab_process.poll() is None:
-            await self.cleanup_silicon()
+            lab_process.kill()
 
-        # 2. VRAM Check
-        engine, avail = await self.select_optimal_engine(preferred_engine)
-        logger.info(f"[VRAM] Available: {avail}MiB | Selected: {engine}")
+        # 2. Handle vLLM specifically
+        if preferred_engine == "vLLM":
+            logger.info("[VRAM] Ensuring vLLM is active...")
+            # We use the shell script but track it
+            subprocess.run(["bash", VLLM_START_PATH])
+            await asyncio.sleep(10) # Initial weight burst
 
-        # 3. Launch
+        # 3. Launch Hub
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
-        env["USE_BRAIN_VLLM"] = "1" if engine == "vLLM" else "0"
-        env["USE_BRAIN_STUB"] = "1" if engine == "STUB" else "0"
+        env["USE_BRAIN_VLLM"] = "1" if preferred_engine == "vLLM" else "0"
         if data.get("disable_ear", True): env["DISABLE_EAR"] = "1"
 
         with open(SERVER_LOG, 'w') as f: f.write('')
 
         try:
             lab_process = subprocess.Popen(
-                [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", mode],
+                [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", data.get("mode", "SERVICE_UNATTENDED")],
                 cwd=LAB_DIR, env=env,
                 stderr=open(SERVER_LOG, 'a', buffering=1)
             )
-            current_lab_mode = mode
             return web.json_response({"status": "success", "pid": lab_process.pid})
         except Exception as e:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
@@ -168,21 +154,14 @@ class LabAttendant:
         await self.cleanup_silicon()
         return web.json_response({"status": "success"})
 
-    async def handle_cleanup(self, request):
-        if os.path.exists(SERVER_LOG):
-            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            os.rename(SERVER_LOG, f"{SERVER_LOG}.{ts}")
-        return web.json_response({"status": "success"})
-
     async def handle_hard_reset(self, request):
-        """Total scorched earth reset."""
         await self.cleanup_silicon()
-        return web.json_response({"status": "success", "message": "Silicon zeroed."})
+        return web.json_response({"status": "success"})
 
     async def handle_logs(self, request):
         if os.path.exists(SERVER_LOG):
             with open(SERVER_LOG, 'r') as f:
-                return web.Response(text=f.read()[-10000:], content_type='text/plain')
+                return web.Response(text=f.read()[-5000:], content_type='text/plain')
         return web.json_response({"status": "not_found"}, status=404)
 
     async def run(self):
