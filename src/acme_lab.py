@@ -72,6 +72,7 @@ class AcmeLab:
         self.brain_online = False
         self.recent_interactions = []  # For Contextual Handover
         self.last_typing_event = 0.0
+        self.last_save_event = 0.0
 
     async def manage_session_lock(self, active=True):
         try:
@@ -376,6 +377,12 @@ class AcmeLab:
     async def handle_workspace_save(self, filename, content, websocket):
         """Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[WORKSPACE] User saved {filename}.")
+
+        # Loop Prevention: 10s cooldown
+        if (time.time() - self.last_save_event) < 10.0:
+            return
+        self.last_save_event = time.time()
+
         await websocket.send_str(json.dumps({
             "type": "file_content", "filename": filename, "content": content
         }))
