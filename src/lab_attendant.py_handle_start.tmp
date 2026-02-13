@@ -1,0 +1,63 @@
+    async def handle_start(self, request):
+        global lab_process, current_lab_mode, last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
+        
+        data = await request.json()
+        mode = data.get("mode", "SERVICE_UNATTENDED")
+        preferred_engine = data.get("engine", "OLLAMA")
+
+        # 1. VRAM Guard: Select engine and invalidate if needed
+        engine, avail = await self.select_optimal_engine(preferred_engine)
+        
+        if engine != preferred_engine and preferred_engine != "STUB":
+            logger.info(f"[VRAM GUARD] Preferred engine {preferred_engine} needs more VRAM. Invalidating...")
+            await self.invalidate_resident_models()
+            engine, avail = await self.select_optimal_engine(preferred_engine)
+        
+        if preferred_engine == "STUB" and lab_process:
+             logger.info("[VRAM GUARD] Forcing STUB mode. Invalidating existing process...")
+             await self.invalidate_resident_models()
+             engine = "STUB"
+
+        logger.info(f"[VRAM GUARD] Final Selection: {engine} (Avail: {avail}MiB)")
+
+        # 2. Check if already running
+        if lab_process and lab_process.poll() is None:
+            return web.json_response({"status": "error", "message": f"Lab server already running (PID {lab_process.pid})."}, status=409)
+
+        # 3. Merge provided env vars with existing ones
+        process_env = os.environ.copy()
+        process_env.update(data.get("env", {}))
+        process_env["PYTHONPATH"] = f"{process_env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
+        process_env["PYTHONUNBUFFERED"] = "1"
+        process_env["CUDA_LAUNCH_BLOCKING"] = "1"
+
+        # Engine Flags
+        process_env["USE_BRAIN_VLLM"] = "1" if engine == "vLLM" else "0"
+        process_env["USE_BRAIN_STUB"] = "1" if engine == "STUB" else "0"
+
+        # Handle DISABLE_EAR
+        if data.get("disable_ear", True):
+            process_env["DISABLE_EAR"] = "1"
+        else:
+            process_env.pop("DISABLE_EAR", None)
+        
+        logger.info(f"Starting Lab server: Mode={mode}, Engine={engine}, Ear={not data.get('disable_ear', True)}")
+
+        with open(SERVER_LOG, 'w') as f: f.write('')
+
+        try:
+            lab_process = subprocess.Popen(
+                [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", mode],
+                cwd=LAB_DIR, 
+                env=process_env,
+                stdout=subprocess.DEVNULL,
+                stderr=open(SERVER_LOG, 'a', buffering=1)
+            )
+            current_lab_mode = mode
+            last_logged_lab_pid = lab_process.pid
+            last_logged_lab_ready_state = False
+            last_logged_lab_status_message = ""
+            return web.json_response({"status": "success", "message": "Lab server started.", "pid": lab_process.pid})
+        except Exception as e:
+            logger.error(f"Failed to start Lab server: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
