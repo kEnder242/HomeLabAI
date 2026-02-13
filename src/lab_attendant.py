@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 import logging
 import os
 import subprocess
@@ -109,8 +110,45 @@ class LabAttendant:
                         if "[READY] Lab is Open" in content:
                             status["full_lab_ready"] = True
                         if "[FATAL]" in content:
-                            status["last_error"] = content.split("[FATAL]")[-1].strip().split("\n")[0]
-                except: pass
+                            status["last_error"] = (
+                                content.split("[FATAL]")[-1]
+                                .strip().split("\n")[0]
+                            )
+                except:
+                    pass
+
+        # --- FIX: Update status.json for status.html ---
+        try:
+            v_used, v_total = await self._get_vram_info()
+            v_pct = (v_used / v_total * 100) if v_total > 0 else 0
+            live_data = {
+                "status": (
+                    "ONLINE" if status["lab_server_running"] else "OFFLINE"
+                ),
+                "message": (
+                    "Attendant active. Mind is " +
+                    ("READY" if status["full_lab_ready"] else "OFFLINE")
+                ),
+                "timestamp": datetime.datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+                "vitals": {
+                    "brain": (
+                        "ONLINE" if status["lab_server_running"] else "OFFLINE"
+                    ),
+                    "intercom": (
+                        "ONLINE" if status["lab_server_running"] else "OFFLINE"
+                    ),
+                    "vram": f"{v_pct:.1f}%"
+                }
+            }
+            # Path to the shared status.json - FORCE ABSOLUTE
+            s_json = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
+            with open(s_json, "w") as f:
+                json.dump(live_data, f)
+            logger.info(f"[STATUS] Updated {s_json}")
+        except Exception as e:
+            logger.error(f"[STATUS] Failed to update status.json: {e}")
 
         return web.json_response(status)
 
