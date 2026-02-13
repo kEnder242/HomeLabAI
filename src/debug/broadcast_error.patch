@@ -1,0 +1,12 @@
+--- HomeLabAI/src/acme_lab.py
++++ HomeLabAI/src/acme_lab.py
+@@ -465,6 +465,10 @@
+ 
+                 if tool == "reply_to_user":
+-                    await self.broadcast({"brain": params.get("text", "Poit!"), "brain_source": "Pinky"})
++                    msg = {"brain": params.get("text", "Poit!"), "brain_source": "Pinky"}
++                    if params.get("mood") == "panic":
++                        msg["tag"] = "SYSTEM_ERROR"
++                    await self.broadcast(msg)
+ 
+                 elif tool in ["ask_brain", "query_brain"]:
