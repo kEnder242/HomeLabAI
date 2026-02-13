@@ -502,8 +502,19 @@ class AcmeLab:
                                 "memory": "Banter Mode"
                             }
                         )
+                        # --- FIX: Ensure synthesis is parsed for tools too ---
+                        syn_text = syn_res.content[0].text
+                        sm = re.search(r'\{.*\}', syn_text, re.DOTALL)
+                        if sm:
+                            try:
+                                sd = json.loads(sm.group(0))
+                                if sd.get("tool") == "reply_to_user":
+                                    syn_text = sd["parameters"].get("text", "Poit!")
+                            except Exception:
+                                pass
+
                         await self.broadcast({
-                            "brain": syn_res.content[0].text,
+                            "brain": syn_text,
                             "brain_source": "Pinky"
                         })
                         banter_ttl -= random.uniform(1.0, 1.5)
@@ -526,8 +537,19 @@ class AcmeLab:
                         exec_res = await self.residents['pinky'].call_tool(
                             tool, arguments=params
                         )
+                        # --- FIX: Recursively handle if Pinky returns more JSON ---
+                        final_out = exec_res.content[0].text
+                        rm = re.search(r'\{.*\}', final_out, re.DOTALL)
+                        if rm:
+                            try:
+                                rd = json.loads(rm.group(0))
+                                if rd.get("tool") == "reply_to_user":
+                                    final_out = rd["parameters"].get("text", "Poit!")
+                            except Exception:
+                                pass
+
                         await self.broadcast({
-                            "brain": exec_res.content[0].text,
+                            "brain": final_out,
                             "brain_source": "Pinky"
                         })
                     except Exception:
