@@ -208,18 +208,25 @@ class AcmeLab:
     async def load_residents_and_equipment(self):
         logging.info(f"[BUILD] Loading Residents (v{VERSION})...")
         nodes = {
-            'archive': ["src/nodes/archive_node.py"],
-            'pinky': ["src/nodes/pinky_node.py"],
-            'brain': ["src/nodes/brain_node.py"],
-            'architect': ["src/nodes/architect_node.py"],
-            'thinking': ["src/nodes/thinking_node.py"],
-            'browser': ["src/nodes/browser_node.py"]
+            'archive': ["-m", "nodes.archive_node"],
+            'pinky': ["-m", "nodes.pinky_node"],
+            'brain': ["-m", "nodes.brain_node"],
+            'architect': ["-m", "nodes.architect_node"],
+            'thinking': ["-m", "nodes.thinking_node"],
+            'browser': ["-m", "nodes.browser_node"]
         }
 
         async with AsyncExitStack() as stack:
             sessions = {}
             for name, args in nodes.items():
-                p = StdioServerParameters(command=PYTHON_PATH, args=args)
+                p = StdioServerParameters(
+                    command=PYTHON_PATH, args=args, env=os.environ.copy()
+                )
+                # Ensure the nodes can see their parent src directory
+                p.env["PYTHONPATH"] = (
+                    f"{p.env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
+                )
+
                 transport = await stack.enter_async_context(stdio_client(p))
                 session = await stack.enter_async_context(
                     ClientSession(transport[0], transport[1])
