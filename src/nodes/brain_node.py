@@ -13,7 +13,7 @@ mcp = FastMCP("The Brain")
 
 # --- ENGINE CONFIGURATION ---
 BRAIN_URL = "http://192.168.1.26:11434/api/generate" # Ollama Default
-VLLM_URL = "http://localhost:8000/v1/chat/completions" # vLLM Default
+VLLM_URL = "http://127.0.0.1:8088/v1/chat/completions" # vLLM Default
 BRAIN_MODEL = "llama3.1:8b"
 DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
 

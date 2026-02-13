@@ -154,6 +154,15 @@ class LabAttendant:
         await self.cleanup_silicon()
         return web.json_response({"status": "success"})
 
+    async def handle_cleanup(self, request):
+        """Archives server logs and clears stale locks."""
+        if os.path.exists(SERVER_LOG):
+            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            os.rename(SERVER_LOG, f"{SERVER_LOG}.{ts}")
+        if os.path.exists(ROUND_TABLE_LOCK):
+            os.remove(ROUND_TABLE_LOCK)
+        return web.json_response({"status": "success", "message": "Cleanup complete."})
+
     async def handle_hard_reset(self, request):
         await self.cleanup_silicon()
         return web.json_response({"status": "success"})
