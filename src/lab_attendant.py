@@ -202,16 +202,18 @@ class LabAttendant:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def _get_lab_status(self):
+        lock_active = os.path.exists(ROUND_TABLE_LOCK)
         status = {
             "attendant_pid": os.getpid(),
             "lab_server_running": False,
             "lab_pid": None,
             "lab_mode": current_lab_mode,
             "lab_port_listening": False,
-            "round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK),
+            "round_table_lock_exists": lock_active,
+            "state_label": "THINKING" if lock_active else "IDLE",
             "last_log_lines": [],
             "vram_usage": "UNKNOWN",
-            "full_lab_ready": False # Based on log parsing
+            "full_lab_ready": False 
         }
 
         if lab_process and lab_process.poll() is None: # Check if acme_lab process is alive

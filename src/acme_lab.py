@@ -182,6 +182,14 @@ class AcmeLab:
         logging.info(f"[BOOT] Mode: {mode} | Door: {PORT}")
         await self.load_residents_and_equipment()
 
+    async def sentinel_check(self, query):
+        """Brain interjects if it hears critical keywords in the background."""
+        critical_keywords = ["error", "failure", "crash", "timeout", "pcie", "thermal", "msr"]
+        if any(k in query.lower() for k in critical_keywords) and self.brain_online:
+            logging.info(f"[SENTINEL] Brain noticed keyword in: {query}")
+            res = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"[SENTINEL INTERJECTION] I overheard mention of '{query}'. Scan archives for related silicon scars or validation BKMs."})
+            await self.broadcast({"brain": res.content[0].text, "brain_source": "The Brain", "channel": "insight", "tag": "SENTINEL"})
+
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
@@ -200,6 +208,8 @@ class AcmeLab:
                         if query:
                             await self.broadcast({"type": "final", "text": query})
                             asyncio.create_task(self.process_query(query, ws))
+                            # --- SENTINEL HOOK ---
+                            asyncio.create_task(self.sentinel_check(query))
                     await asyncio.sleep(0.1)
             
             poller_task = asyncio.create_task(ear_poller())
@@ -273,10 +283,22 @@ class AcmeLab:
                     brain_out = brain_res.content[0].text
                     await self.broadcast({"brain": brain_out, "brain_source": "The Brain", "channel": "insight"})
                     
-                    # Synthesis with Banter
-                    syn_query = f"The Brain said: '{brain_out[:300]}'. Give me your take, Pinky! (Banter enabled)"
-                    syn_res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": syn_query, "context": brain_out, "memory": "Banter Mode"})
-                    await self.broadcast({"brain": syn_res.content[0].text, "brain_source": "Pinky"})
+                    # Synthesis with Weighted Banter
+                    self.banter_ttl = 3.0 # Reset TTL for new thread
+                    while self.banter_ttl > 0:
+                        syn_query = f"The Brain said: '{brain_out[:300]}'. Give me your take, Pinky! (Banter TTL: {self.banter_ttl:.1f})"
+                        syn_res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": syn_query, "context": brain_out, "memory": "Banter Mode"})
+                        await self.broadcast({"brain": syn_res.content[0].text, "brain_source": "Pinky"})
+                        
+                        # Weighted Decay: Taper off naturally
+                        self.banter_ttl -= random.uniform(1.0, 1.5)
+                        if self.banter_ttl <= 0: break
+                        
+                        # Optional: One more condescending Brain remark if TTL allows
+                        if self.banter_ttl > 0.5:
+                            b_rem = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"Pinky just said '{syn_res.content[0].text[:100]}'. Provide a brief, condescending technical correction."})
+                            await self.broadcast({"brain": b_rem.content[0].text, "brain_source": "The Brain", "channel": "insight"})
+                            self.banter_ttl -= 1.0
 
                 else: # Other tools (shutdown, cv, etc)
                     try:
