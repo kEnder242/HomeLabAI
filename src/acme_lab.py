@@ -451,10 +451,13 @@ class AcmeLab:
                     return
 
                 if tool == "reply_to_user":
-                    await self.broadcast({
+                    msg = {
                         "brain": params.get("text", "Poit!"),
                         "brain_source": "Pinky"
-                    })
+                    }
+                    if params.get("mood") == "panic":
+                        msg["tag"] = "SYSTEM_ERROR"
+                    await self.broadcast(msg)
 
                 elif tool in ["ask_brain", "query_brain"]:
                     if not await self.check_brain_health():

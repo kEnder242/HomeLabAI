@@ -183,11 +183,7 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, timeout=30) as resp:
                 data = await resp.json()
-                if engine_type == "VLLM":
-                    if "choices" in data:
-                        return data["choices"][0]["message"]["content"]
-                    return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"SYSTEM_ERROR: vLLM returned error {resp.status}. Data: {data}", "mood": "panic"}})
-                return data.get("response", "")
+                return data['choices'][0]['message']['content'] if engine_type == "VLLM" else data.get("response", "")
     except Exception as e:
         return json.dumps({"tool": "reply_to_user", "parameters": {"text": f"Egad! Connection failed: {e}", "mood": "panic"}})
 
