@@ -15,7 +15,7 @@ async def liveliness_check():
     uri = "ws://localhost:8765"
     version = "3.4.0"
 
-    print(f"--- [LIVELINESS v1.5] STARTING VERIFICATION ---")
+    print("--- [LIVELINESS v1.5] STARTING VERIFICATION ---")
 
     # 1. IMMEDIATE PID CHECK
     pid = get_pid()

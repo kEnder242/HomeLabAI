@@ -11,7 +11,7 @@ from vllm.entrypoints.utils import cli_env_setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [vLLM-Liger] %(levelname)s - %(message)s')
 
 def run():
-    logging.info(f"Applying Liger-Kernel patches to Mistral architecture...")
+    logging.info("Applying Liger-Kernel patches to Mistral architecture...")
     try:
         apply_liger_kernel_to_mistral()
         logging.info("✅ Liger-Kernel patches applied.")
@@ -27,7 +27,7 @@ def run():
     args = parser.parse_args()
     validate_parsed_serve_args(args)
 
-    logging.info(f"Starting vLLM server with Liger optimization...")
+    logging.info("Starting vLLM server with Liger optimization...")
     uvloop.run(run_server(args))
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
-import argparse
 import asyncio
 import datetime
-import json
 import logging
 import os
 import subprocess
@@ -72,14 +70,14 @@ class LabAttendant:
                     proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-        
+
         global lab_process, vllm_process
         lab_process = None
         vllm_process = None
-        
+
         if os.path.exists(ROUND_TABLE_LOCK):
             os.remove(ROUND_TABLE_LOCK)
-        
+
         await asyncio.sleep(2)
 
     async def handle_status(self, request):
@@ -113,7 +111,7 @@ class LabAttendant:
                         if "[FATAL]" in content:
                             status["last_error"] = content.split("[FATAL]")[-1].strip().split("\n")[0]
                 except: pass
-        
+
         return web.json_response(status)
 
     async def handle_start(self, request):
