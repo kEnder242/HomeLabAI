@@ -96,9 +96,12 @@ class LabAttendant:
         # Check vLLM Port
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8088/v1/models", timeout=0.5) as r:
-                    if r.status == 200: status["vllm_running"] = True
-        except: pass
+                url = "http://localhost:8088/v1/models"
+                async with session.get(url, timeout=0.5) as r:
+                    if r.status == 200:
+                        status["vllm_running"] = True
+        except Exception:
+            pass
 
         global lab_process
         if lab_process and lab_process.poll() is None:
@@ -114,7 +117,7 @@ class LabAttendant:
                                 content.split("[FATAL]")[-1]
                                 .strip().split("\n")[0]
                             )
-                except:
+                except Exception:
                     pass
 
         # --- FIX: Update status.json for status.html ---
@@ -172,13 +175,18 @@ class LabAttendant:
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
         env["USE_BRAIN_VLLM"] = "1" if preferred_engine == "vLLM" else "0"
-        if data.get("disable_ear", True): env["DISABLE_EAR"] = "1"
+        if data.get("disable_ear", True):
+            env["DISABLE_EAR"] = "1"
 
-        with open(SERVER_LOG, 'w') as f: f.write('')
+        with open(SERVER_LOG, 'w') as f:
+            f.write('')
 
         try:
             lab_process = subprocess.Popen(
-                [LAB_VENV_PYTHON, LAB_SERVER_PATH, "--mode", data.get("mode", "SERVICE_UNATTENDED")],
+                [
+                    LAB_VENV_PYTHON, LAB_SERVER_PATH,
+                    "--mode", data.get("mode", "SERVICE_UNATTENDED")
+                ],
                 cwd=LAB_DIR, env=env,
                 stderr=open(SERVER_LOG, 'a', buffering=1)
             )
