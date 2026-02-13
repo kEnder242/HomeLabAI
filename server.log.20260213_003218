@@ -1,0 +1,32 @@
+2026-02-13 00:29:48,629 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:29:49,706 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:29:51,179 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:29:51,180 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:29:51,234 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:29:53,624 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:29:53,662 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:29:53,663 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:29:56,576 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:29:56,577 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765
+2026-02-13 00:29:56,577 - [LAB] INFO - [BUILD] Loading Residents (v3.5.0)...
+2026-02-13 00:30:00,495 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:30:04,637 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:30:05,345 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:30:06,001 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:30:06,559 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:30:06,559 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:30:06,559 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:30:21,822 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:30:21,822 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:30:21,860 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:30:21,860 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:30:21,931 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:30:21,932 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-13 00:32:00,187 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:32:00,192 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-13 00:32:00,196 - [LAB] INFO - [WORKSPACE] User saved test_save.md.
+2026-02-13 00:32:00,196 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:32:18,100 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:00:32:00 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-13 00:32:18,106 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:32:18,111 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:32:18,141 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:00:32:18 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"

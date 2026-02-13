@@ -59,7 +59,11 @@ def get_engine():
 
 @mcp.tool()
 async def deep_think(query: str, context: str = "") -> str:
-    """Perform complex reasoning using the active engine (Ollama or vLLM)."""
+    """
+    The Strategic Engine: Perform complex architectural reasoning, 
+    multi-step logic, or technical synthesis. Use this when the 
+    territory is mapped but the path is logically obscured.
+    """
     engine = get_engine()
     logging.info(f"🧠 Brain Thinking ({engine}): {query[:50]}...")
     
@@ -73,25 +77,16 @@ async def deep_think(query: str, context: str = "") -> str:
     else:
         return await deep_think_ollama(full_prompt)
 
-last_persona = None
-
 async def deep_think_ollama(prompt: str) -> str:
-    global last_persona
-    # --- PERSONA SWAP LOGIC ---
-    # We detect if the system prompt has changed (or if this is first run)
-    # Since prompt already includes BRAIN_SYSTEM_PROMPT, we just use it.
     try:
         async with aiohttp.ClientSession() as session:
             payload = {
                 "model": BRAIN_MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 4096}
+                "options": {"temperature": 0.1, "num_ctx": 4096},
+                "keep_alive": "60m"
             }
-            # Ollama treats every request as a potential swap. 
-            # To mimic vLLM's 'Sleeping weights', we ensure keep_alive is long.
-            payload["keep_alive"] = "60m" 
-            
             async with session.post(BRAIN_URL, json=payload, timeout=60) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -120,7 +115,7 @@ async def deep_think_vllm(prompt: str) -> str:
 
 @mcp.tool()
 async def wake_up() -> str:
-    """Keep-alive for Ollama."""
+    """Resonates the weights: Keep-alive for the reasoning engine."""
     if get_engine() == "vLLM": return "vLLM is always ready."
     try:
         async with aiohttp.ClientSession() as session:
@@ -131,6 +126,11 @@ async def wake_up() -> str:
 
 @mcp.tool()
 async def update_whiteboard(content: str) -> str:
+    """
+    The Shared Blueprint: Publish architectural task-lists, code blueprints, 
+    or mathematical derivations to the persistent workspace. 
+    Essential for visualizing complex mental models for the user.
+    """
     workspace_dir = os.path.expanduser("~/AcmeLab/workspace")
     os.makedirs(workspace_dir, exist_ok=True)
     file_path = os.path.join(workspace_dir, "whiteboard.md")

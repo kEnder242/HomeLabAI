@@ -1,0 +1,28 @@
+2026-02-13 00:39:38,858 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 00:39:39,968 [RECRUITER] The multistorageclient package is available.
+2026-02-13 00:39:41,493 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:39:41,494 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 00:39:41,553 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 00:39:44,184 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 00:39:44,222 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 00:39:44,223 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 00:39:47,221 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 00:39:47,222 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 00:39:47,222 - [LAB] INFO - [BUILD] Loading Residents (v3.5.5)...
+2026-02-13 00:39:51,224 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-13 00:39:55,476 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-13 00:39:56,154 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-13 00:39:56,822 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-13 00:39:57,390 - [LAB] INFO - [LAB] Architect Connected.
+2026-02-13 00:39:57,391 - [LAB] INFO - [READY] Lab is Open.
+2026-02-13 00:39:57,391 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-13 00:39:57,452 - [ARCHIVE] INFO - Processing request of type CallToolRequest
+2026-02-13 00:39:57,457 - [ARCHIVE] INFO - Processing request of type ListToolsRequest
+2026-02-13 00:39:57,460 - [LAB] INFO - [WORKSPACE] User saved marathon_test.md.
+2026-02-13 00:40:09,459 - [LAB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-13 00:40:09,460 - [LAB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-13 00:40:09,495 - [LAB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-13 00:40:09,495 - [LAB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-13 00:40:09,567 - [LAB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-13 00:40:09,567 - [LAB] INFO - [STT] EarNode Ready.
+2026-02-13 00:40:57,454 - [LAB] INFO - 127.0.0.1 [13/Feb/2026:00:39:57 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"

@@ -19,7 +19,7 @@ import recruiter # Class 1 Import
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.5.0" # Bicameral Dispatch Alpha
+VERSION = "3.5.6" # Concurrency Fix
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_HEARTBEAT_URL = "http://192.168.1.26:11434/api/tags"
 
@@ -58,7 +58,6 @@ class AcmeLab:
         self.shutdown_event = asyncio.Event()
         self.lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../Portfolio_Dev/field_notes/data/round_table.lock")
         self.last_activity = 0.0
-        self.banter_ttl = 0
         self.brain_online = False
         self.recent_interactions = [] # For Contextual Handover
         self.last_typing_event = 0.0
@@ -97,30 +96,26 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             await asyncio.sleep(random.randint(45, 120))
             if self.connected_clients and self.status == "READY":
-                # Only tic if idle and NOT typing
                 if (time.time() - self.last_activity > 30) and not self.is_user_typing():
                     tic = random.choice(tics)
                     await self.broadcast({"brain": tic, "brain_source": "Pinky (Reflex)"})
-            
-            # Periodically check Brain health
             await self.check_brain_health()
 
     async def scheduled_tasks_loop(self):
         """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
-            # Trigger at 02:00 AM local time
+            # 02:00 AM: Nightly Recruiter
             if now.hour == 2 and now.minute == 0:
-                logging.info("[ALARM] Triggering Nightly Recruiter...")
                 await self.broadcast({"brain": "⏰ Alarm Clock: Starting Nightly Recruitment Drive...", "brain_source": "System"})
                 brief = await recruiter.run_recruiter_task()
                 await self.broadcast({"brain": f"Recruitment Drive Complete. Brief: {os.path.basename(brief)}", "brain_source": "The Nightly Recruiter", "channel": "insight"})
-                await asyncio.sleep(61) # Prevent double-trigger
+                await asyncio.sleep(61)
             
-            # Trigger Hierarchy Refactor at 03:00 AM
+            # 03:00 AM: Hierarchy Refactor (The Architect)
             if now.hour == 3 and now.minute == 0:
-                logging.info("[ALARM] Triggering Hierarchy Refactor...")
                 if 'architect' in self.residents:
+                    logging.info("[ALARM] Triggering Hierarchy Refactor...")
                     await self.residents['architect'].call_tool("build_semantic_map")
                 await asyncio.sleep(61)
 
@@ -139,8 +134,7 @@ class AcmeLab:
 
     def should_cache_query(self, query: str) -> bool:
         forbidden = ["time", "date", "status", "now", "latest", "news", "update"]
-        q_lower = query.lower()
-        return not any(word in q_lower for word in forbidden)
+        return not any(word in query.lower() for word in forbidden)
 
     async def load_residents_and_equipment(self):
         logging.info(f"[BUILD] Loading Residents (v{VERSION})...")
@@ -179,6 +173,7 @@ class AcmeLab:
                                             logging.info("[LAB] Architect Connected.")
 
                                             # 5. Final Prep
+                                            await self.check_brain_health() # IMMEDIATE CHECK
                                             if EarNode: asyncio.create_task(self.background_load_ear())
                                             asyncio.create_task(self.reflex_loop())
                                             asyncio.create_task(self.scheduled_tasks_loop())
@@ -212,18 +207,18 @@ class AcmeLab:
         runner = web.AppRunner(app)
         await runner.setup()
         await web.TCPSite(runner, '0.0.0.0', PORT).start()
-        logging.info(f"[BOOT] Mode: {mode} | Door: {PORT}")
+        logging.info(f"[BOOT] Mode: {mode} | Door: {PORT} (SERVER STARTED)")
         await self.load_residents_and_equipment()
 
-    async def sentinel_check(self, query):
-        """Brain interjects if it hears critical keywords in the background."""
-        critical_keywords = [
-            "error", "failure", "crash", "timeout", "pcie", "thermal", "msr", 
-            "rapl", "power limit", "throttling", "irq", "segfault", "kernel panic"
-        ]
-        if any(k in query.lower() for k in critical_keywords) and self.brain_online:
-            logging.info(f"[SENTINEL] Brain noticed keyword in: {query}")
-            res = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"[SENTINEL INTERJECTION] I overheard mention of '{query}'. Scan archives for related silicon scars or validation BKMs."})
+    async def amygdala_sentinel_v2(self, query):
+        """The Amygdala: Decides if background signals require strategic intervention."""
+        if not self.brain_online: return
+        triggers = ["how do i", "scaling", "architecture", "validation", "failure", "scars", "bottleneck"]
+        q_low = query.lower()
+        if any(t in q_low for t in triggers) or len(query.split()) > 15:
+            logging.info(f"[AMYGDALA] Signal detected: {query[:50]}...")
+            prompt = f"[AMYGDALA INTERJECTION] I overheard: '{query}'. Provide a high-fidelity strategic insight based on our architectural archives. Be precise and slightly condescending."
+            res = await self.residents['brain'].call_tool("deep_think", arguments={"query": prompt})
             await self.broadcast({"brain": res.content[0].text, "brain_source": "The Brain", "channel": "insight", "tag": "SENTINEL"})
 
     async def client_handler(self, request):
@@ -244,8 +239,7 @@ class AcmeLab:
                         if query:
                             await self.broadcast({"type": "final", "text": query})
                             asyncio.create_task(self.process_query(query, ws))
-                            # --- SENTINEL HOOK ---
-                            asyncio.create_task(self.sentinel_check(query))
+                            asyncio.create_task(self.amygdala_sentinel_v2(query))
                     await asyncio.sleep(0.1)
             
             poller_task = asyncio.create_task(ear_poller())
@@ -285,33 +279,25 @@ class AcmeLab:
         return (time.time() - self.last_typing_event) < 2.0
 
     async def handle_workspace_save(self, filename, content, websocket):
-        """Notifies agents of a manual save and triggers reactions."""
+        """Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[WORKSPACE] User saved {filename}.")
-        # 1. Update file on disk (via scribble or workspace tool if we had one, for now scribble)
-        try:
-            # We don't have a direct workspace write tool in archive node yet, using scribble as placeholder
-            await self.residents['archive'].call_tool("scribble_note", arguments={"query": f"SAVE_EVENT: {filename}", "response": content})
-        except: pass
+        if self.is_user_typing(): return
 
-        # 2. Pinky's Reflexive Reaction
-        if not self.is_user_typing():
-            await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me take a look...", "brain_source": "Pinky"})
-            
-            # 3. Brain's Strategic Vibe Check
-            if self.brain_online:
-                b_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": f"The user just saved '{filename}'. Content starts with: '{content[:200]}'. Provide a 1-sentence validation or architectural insight."}), websocket)
-                await self.broadcast({"brain": b_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
+        await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me take a look...", "brain_source": "Pinky"})
+        
+        if await self.check_brain_health(): # FORCE RE-CHECK ON SAVE
+            prompt = f"[STRATEGIC VIBE CHECK] User saved '{filename}'. Content: '{content[:500]}'. Provide a high-fidelity strategic vibe check. Validate the technical logic and offer one architectural improvement."
+            b_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": prompt}), websocket)
+            await self.broadcast({"brain": b_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
 
     async def process_query(self, query, websocket):
         try:
-            # 1. Clipboard Cache
             if self.should_cache_query(query):
                 cache_res = await self.residents['archive'].call_tool("consult_clipboard", arguments={"query": query})
                 if cache_res.content[0].text != "None":
                     await self.broadcast({"brain": f"[BRAIN_INSIGHT] [FROM CLIPBOARD] {cache_res.content[0].text}", "brain_source": "The Brain", "channel": "insight"})
                     return
 
-            # 2. Pinky Triage
             res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": query, "context": str(self.recent_interactions[-3:]), "memory": ""})
             import re
             raw_response = res.content[0].text
@@ -325,63 +311,36 @@ class AcmeLab:
                 # --- VRAM GUARD FORCE STUB ---
                 if os.environ.get("USE_BRAIN_STUB") == "1" and (tool in ["ask_brain", "query_brain"]):
                     await self.broadcast({"brain": "Narf! VRAM is too tight for the big guy. I'll handle this!", "brain_source": "Pinky"})
-                    # In DEBUG_PINKY, we just return a stub text
-                    if self.mode == "DEBUG_PINKY":
-                        await self.broadcast({"brain": "[STUB] Quantum physics is the study of matter and energy at the most fundamental level.", "brain_source": "Pinky"})
-                        return
-                    await self.broadcast({"type": "debug", "event": "PINKY_THOUGHT", "data": dec})
+                    return
 
                 if tool == "reply_to_user":
                     await self.broadcast({"brain": params.get("text", "Poit!"), "brain_source": "Pinky"})
                 
                 elif tool in ["ask_brain", "query_brain"]:
-                    # --- VRAM GUARD FALLBACK (STUB) ---
-                    use_stub = os.environ.get("USE_BRAIN_STUB") == "1"
-                    # Test-only override for integration verification
-                    if "FORCE_STUB_TEST" in query: use_stub = True
-                    
-                    logging.info(f"[BRAIN] ask_brain triage. USE_BRAIN_STUB: {use_stub}")
-                    
-                    if use_stub:
-                        await self.broadcast({"brain": "Narf! VRAM is too tight for the big guy. I'll handle this!", "brain_source": "Pinky"})
-                        res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"The brain is offline. Please answer this yourself: {query}", "context": "", "memory": ""})
-                        await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
-                        return
-
-                    # --- BICAMERAL FALLBACK (OFFLINE) ---
                     if not await self.check_brain_health():
-                        await self.broadcast({"brain": "Narf! The big guy is napping right now. I'll handle this!", "brain_source": "Pinky"})
-                        res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"The brain is offline. Please answer this yourself: {query}", "context": "", "memory": ""})
-                        await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+                        await self.broadcast({"brain": "Narf! The big guy is napping. I'll handle this!", "brain_source": "Pinky"})
                         return
 
                     summary = params.get("summary") or query
                     await self.broadcast({"brain": f"ASK_BRAIN: {summary}", "brain_source": "Pinky"})
                     
-                    # Contextual Handover
                     handover = f"Context: Pinky just said '{raw_response[:200]}'. Task: {summary}"
                     brain_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": handover}), websocket)
                     brain_out = brain_res.content[0].text
                     await self.broadcast({"brain": brain_out, "brain_source": "The Brain", "channel": "insight"})
                     
-                    # Synthesis with Weighted Banter
-                    self.banter_ttl = 3.0 # Reset TTL for new thread
-                    while self.banter_ttl > 0:
-                        syn_query = f"The Brain said: '{brain_out[:300]}'. Give me your take, Pinky! (Banter TTL: {self.banter_ttl:.1f})"
+                    # Local Banter TTL to avoid race conditions
+                    banter_ttl = 3.0
+                    while banter_ttl > 0:
+                        syn_query = f"The Brain said: '{brain_out[:300]}'. Give me your take, Pinky! (Banter TTL: {banter_ttl:.1f})"
                         syn_res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": syn_query, "context": brain_out, "memory": "Banter Mode"})
                         await self.broadcast({"brain": syn_res.content[0].text, "brain_source": "Pinky"})
-                        
-                        # Weighted Decay: Taper off naturally
-                        self.banter_ttl -= random.uniform(1.0, 1.5)
-                        if self.banter_ttl <= 0: break
-                        
-                        # Optional: One more condescending Brain remark if TTL allows
-                        if self.banter_ttl > 0.5:
-                            b_rem = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"Pinky just said '{syn_res.content[0].text[:100]}'. Provide a brief, condescending technical correction."})
+                        banter_ttl -= random.uniform(1.0, 1.5)
+                        if banter_ttl > 0.5:
+                            b_rem = await self.residents['brain'].call_tool("deep_think", arguments={"query": f"Pinky just said '{syn_res.content[0].text[:100]}'. Brief technical correction?"})
                             await self.broadcast({"brain": b_rem.content[0].text, "brain_source": "The Brain", "channel": "insight"})
-                            self.banter_ttl -= 1.0
-
-                else: # Other tools (shutdown, cv, etc)
+                            banter_ttl -= 1.0
+                else:
                     try:
                         exec_res = await self.residents['pinky'].call_tool(tool, arguments=params)
                         await self.broadcast({"brain": exec_res.content[0].text, "brain_source": "Pinky"})
