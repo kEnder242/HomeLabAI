@@ -8,7 +8,6 @@ import sys
 import numpy as np
 import random
 import time
-import datetime
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
@@ -105,19 +104,6 @@ class AcmeLab:
             # Periodically check Brain health
             await self.check_brain_health()
 
-    async def scheduled_tasks_loop(self):
-        """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
-        while not self.shutdown_event.is_set():
-            now = datetime.datetime.now()
-            # Trigger at 02:00 AM local time
-            if now.hour == 2 and now.minute == 0:
-                logging.info("[ALARM] Triggering Nightly Recruiter...")
-                await self.broadcast({"brain": "⏰ Alarm Clock: Starting Nightly Recruitment Drive...", "brain_source": "System"})
-                brief = await recruiter.run_recruiter_task()
-                await self.broadcast({"brain": f"Recruitment Drive Complete. Brief: {os.path.basename(brief)}", "brain_source": "The Nightly Recruiter", "channel": "insight"})
-                await asyncio.sleep(61) # Prevent double-trigger
-            await asyncio.sleep(10)
-
     async def monitor_task_with_tics(self, coro, websocket, delay=2.5):
         task = asyncio.create_task(coro)
         tics = ["Thinking...", "Consulting the Architect...", "Processing...", "Just a moment..."]
@@ -165,7 +151,6 @@ class AcmeLab:
                                     # 4. Final Prep
                                     if EarNode: asyncio.create_task(self.background_load_ear())
                                     asyncio.create_task(self.reflex_loop())
-                                    asyncio.create_task(self.scheduled_tasks_loop())
                                     
                                     self.status = "READY"
                                     logging.info("[READY] Lab is Open.")
