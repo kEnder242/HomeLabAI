@@ -116,10 +116,17 @@ class AcmeLab:
         if message_dict.get("type") == "final":
             await self.log_to_ledger("ME", message_dict.get("text"))
         if message_dict.get("brain"):
+            # --- FIX: Filter out Brain's logic headers for clean UI ---
+            content = message_dict.get("brain")
+            from nodes.brain_node import _clean_content
+            content = _clean_content(content)
+
             await self.log_to_ledger(
                 message_dict.get("brain_source", "PINKY"),
-                message_dict.get("brain")
+                content
             )
+            # Update the message before broadcast
+            message_dict["brain"] = content
 
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
