@@ -20,7 +20,7 @@ import recruiter # Class 1 Import
 PORT = 8765
 ATTENDANT_PORT = 9999
 PYTHON_PATH = sys.executable
-VERSION = "3.5.7" # Watchdog & Pop Fix
+VERSION = "3.5.8" # Full Stack Scout & Logic
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_HEARTBEAT_URL = "http://192.168.1.26:11434/api/tags"
 
@@ -163,47 +163,47 @@ class AcmeLab:
         p_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/pinky_node.py"])
         b_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/brain_node.py"])
         arc_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/architect_node.py"])
+        th_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/thinking_node.py"])
+        br_p = StdioServerParameters(command=PYTHON_PATH, args=["src/nodes/browser_node.py"])
 
         try:
-            # 1. Archive Node
-            async with stdio_client(a_p) as (ar, aw):
-                async with ClientSession(ar, aw) as archive:
-                    await archive.initialize()
-                    self.residents['archive'] = archive
-                    logging.info("[LAB] Archive Connected.")
+            # Multi-resident sequential init
+            async with stdio_client(a_p) as (ar, aw), \
+                       stdio_client(p_p) as (pr, pw), \
+                       stdio_client(b_p) as (br, bw), \
+                       stdio_client(arc_p) as (arcr, arcw), \
+                       stdio_client(th_p) as (thr, thw), \
+                       stdio_client(br_p) as (brr, brw):
+                
+                async with ClientSession(ar, aw) as archive, \
+                           ClientSession(pr, pw) as pinky, \
+                           ClientSession(br, bw) as brain, \
+                           ClientSession(arcr, arcw) as architect, \
+                           ClientSession(thr, thw) as thinking, \
+                           ClientSession(brr, brw) as browser:
+                    
+                    await asyncio.gather(
+                        archive.initialize(), pinky.initialize(), brain.initialize(),
+                        architect.initialize(), thinking.initialize(), browser.initialize()
+                    )
+                    
+                    self.residents = {
+                        'archive': archive, 'pinky': pinky, 'brain': brain,
+                        'architect': architect, 'thinking': thinking, 'browser': browser
+                    }
+                    logging.info("[LAB] All Residents Connected.")
 
-                    # 2. Pinky Node
-                    async with stdio_client(p_p) as (pr, pw):
-                        async with ClientSession(pr, pw) as pinky:
-                            await pinky.initialize()
-                            self.residents['pinky'] = pinky
-                            logging.info("[LAB] Pinky Connected.")
-
-                            # 3. Brain Node
-                            async with stdio_client(b_p) as (br, bw):
-                                async with ClientSession(br, bw) as brain:
-                                    await brain.initialize()
-                                    self.residents['brain'] = brain
-                                    logging.info("[LAB] Brain Connected.")
-
-                                    # 4. Architect Node
-                                    async with stdio_client(arc_p) as (arcr, arcw):
-                                        async with ClientSession(arcr, arcw) as architect:
-                                            await architect.initialize()
-                                            self.residents['architect'] = architect
-                                            logging.info("[LAB] Architect Connected.")
-
-                                            # 5. Final Prep
-                                            await self.check_brain_health()
-                                            if EarNode: asyncio.create_task(self.background_load_ear())
-                                            asyncio.create_task(self.reflex_loop())
-                                            asyncio.create_task(self.scheduled_tasks_loop())
-                                            asyncio.create_task(self.watchdog_loop())
-                                            
-                                            self.status = "READY"
-                                            logging.info("[READY] Lab is Open.")
-                                            await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
-                                            await self.shutdown_event.wait()
+                    # Final Prep
+                    await self.check_brain_health()
+                    if EarNode: asyncio.create_task(self.background_load_ear())
+                    asyncio.create_task(self.reflex_loop())
+                    asyncio.create_task(self.scheduled_tasks_loop())
+                    asyncio.create_task(self.watchdog_loop())
+                    
+                    self.status = "READY"
+                    logging.info("[READY] Lab is Open.")
+                    await self.broadcast({"type": "status", "state": "ready", "message": "Lab is Open."})
+                    await self.shutdown_event.wait()
 
         except Exception as e:
             logging.error(f"[FATAL] Startup Failure: {e}")
@@ -277,6 +277,13 @@ class AcmeLab:
                         query = data.get("content", "")
                         self.last_activity = time.time()
                         asyncio.create_task(self.process_query(query, ws))
+                    elif data.get("type") == "read_file":
+                        filename = data.get("filename")
+                        if 'archive' in self.residents:
+                            res = await self.residents['archive'].call_tool("read_document", arguments={"filename": filename})
+                            await ws.send_str(json.dumps({"type": "file_content", "filename": filename, "content": res.content[0].text}))
+                    elif data.get("type") == "select_file":
+                        self.last_activity = time.time()
                     elif data.get("type") == "user_typing":
                         self.last_typing_event = time.time()
                     elif data.get("type") == "workspace_save":
@@ -303,16 +310,11 @@ class AcmeLab:
     async def handle_workspace_save(self, filename, content, websocket):
         """Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[WORKSPACE] User saved {filename}.")
-        
-        # Sync Client UI immediately (Pop fix)
         await websocket.send_str(json.dumps({"type": "file_content", "filename": filename, "content": content}))
-
         if self.is_user_typing(): return
-
         await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me take a look...", "brain_source": "Pinky"})
-        
         if await self.check_brain_health(): 
-            prompt = f"[STRATEGIC VIBE CHECK] User saved '{filename}'. Content: '{content[:500]}'. Provide a high-fidelity strategic vibe check. Validate the technical logic and offer one architectural improvement."
+            prompt = f"[STRATEGIC VIBE CHECK] User saved '{filename}'. Content starts with: '{content[:500]}'. Validate the technical logic and provide one strategic architectural insight."
             b_res = await self.monitor_task_with_tics(self.residents['brain'].call_tool("deep_think", arguments={"query": prompt}), websocket)
             await self.broadcast({"brain": b_res.content[0].text, "brain_source": "The Brain", "channel": "insight"})
 
@@ -334,7 +336,6 @@ class AcmeLab:
                 tool = dec.get("tool")
                 params = dec.get("parameters", {})
                 
-                # --- VRAM GUARD FORCE STUB ---
                 if os.environ.get("USE_BRAIN_STUB") == "1" and (tool in ["ask_brain", "query_brain"]):
                     await self.broadcast({"brain": "Narf! VRAM is too tight for the big guy. I'll handle this!", "brain_source": "Pinky"})
                     return
@@ -355,7 +356,6 @@ class AcmeLab:
                     brain_out = brain_res.content[0].text
                     await self.broadcast({"brain": brain_out, "brain_source": "The Brain", "channel": "insight"})
                     
-                    # Local Banter TTL to avoid race conditions
                     banter_ttl = 3.0
                     while banter_ttl > 0:
                         syn_query = f"The Brain said: '{brain_out[:300]}'. Give me your take, Pinky! (Banter TTL: {banter_ttl:.1f})"

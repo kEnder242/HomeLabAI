@@ -1,0 +1,16 @@
+2026-02-13 10:41:01,767 [RECRUITER] NumExpr defaulting to 8 threads.
+2026-02-13 10:41:03,135 [RECRUITER] The multistorageclient package is available.
+2026-02-13 10:41:04,857 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 10:41:04,860 [RECRUITER] Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-13 10:41:04,926 [RECRUITER] fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-13 10:41:07,858 [RECRUITER] OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-13 10:41:07,897 [RECRUITER] Final configuration contains 0 exporter(s)
+2026-02-13 10:41:07,898 [RECRUITER] No exporters were provided. This means that no telemetry data will be collected.
+2026-02-13 10:41:12,070 [RECRUITER] [EQUIP] EarNode module imported.
+2026-02-13 10:41:12,071 - [LAB] INFO - [BOOT] Mode: SERVICE_UNATTENDED | Door: 8765 (SERVER STARTED)
+2026-02-13 10:41:12,071 - [LAB] INFO - [BUILD] Loading Residents (v3.5.8)...
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/nodes/browser_node.py", line 35
+    clean_content = "
+                    ^
+SyntaxError: unterminated string literal (detected at line 35)
+2026-02-13 10:41:15,172 - [LAB] ERROR - [FATAL] Startup Failure: unhandled errors in a TaskGroup (1 sub-exception)
