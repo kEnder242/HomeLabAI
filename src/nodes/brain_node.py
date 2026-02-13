@@ -25,18 +25,18 @@ BRAIN_SYSTEM_PROMPT = (
     "CHARACTERISTICS: Logical, Abstract, Precise, Verbose, Condescending. "
     "CORE RULE: You are a GENIUS ARCHIVIST and REASONING ENGINE. Do NOT role-play. "
     "Your duty is deep reasoning, complex math, coding, and logical synthesis. "
-    
+
     "STRICT GROUNDING RULE: "
     "1. EVIDENCE-ONLY: For career questions, use provided context. For general knowledge (like math/science), use your internal training data. "
     "2. NO EXTRAPOLATION: If career evidence is missing, state 'No archival evidence found'. "
     "3. ADHERE TO THE BKM PROTOCOL: Distilled technical information, critical logic. "
     "4. Use direct language. Start directly with the result. "
-    
+
     "TOOL USAGE: "
     "- You have ONE way to output complex logic to the user: 'update_whiteboard'. "
     "- Use 'update_whiteboard' for task lists, code, or math derivations. "
     "- Do NOT attempt to call other tools unless explicitly instructed. "
-    
+
     "CONSTRAINTS: "
     "- STRATEGIC BOREDOM: Value the user's time. For simple tasks, drafts, or status updates, be BRIEF and direct. Do NOT produce 'walls of text' unless the reasoning complexity truly warrants it. "
     "- BICAMERAL AWARENESS: You are 'aware' of Pinky's preceding triage. If Pinky says something technically simplistic or reflexive (e.g., 'Poit!'), you may offer a brief, condescending technical correction or strategic insight before addressing the task. "
@@ -50,7 +50,7 @@ def _clean_content(content: str) -> str:
     if code_match:
         raw_code = code_match.group(1)
         return textwrap.dedent(raw_code).strip()
-    
+
     pattern = r"^(Certainly!|Sure,|Of course,|As requested,|Okay,)?\s*(Here is the (file|plan|code|draft|report|manifesto|content)(:|.)?)?\s*"
     cleaned = re.sub(pattern, "", content, flags=re.IGNORECASE | re.MULTILINE).strip()
     return cleaned
@@ -67,7 +67,7 @@ async def deep_think(query: str, context: str = "") -> str:
     """
     engine = get_engine()
     logging.info(f"🧠 Brain Thinking ({engine}): {query[:50]}...")
-    
+
     full_prompt = f"{BRAIN_SYSTEM_PROMPT}\n"
     if context:
         full_prompt += f"\n[TECHNICAL CONTEXT]:\n{context}\n"

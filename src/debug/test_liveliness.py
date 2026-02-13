@@ -17,7 +17,7 @@ async def test_lock_lifecycle():
     async with websockets.connect(LAB_WS_URL) as ws:
         await ws.send(json.dumps({"type": "handshake", "version": "3.5.6"}))
         await asyncio.sleep(2) # Give hub time to write lock
-        
+
         assert os.path.exists(LOCK_PATH), "Lock file should exist while connected."
         print("[PASS] Lock created on connection.")
 

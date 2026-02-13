@@ -32,7 +32,7 @@ PINKY_SYSTEM_PROMPT = (
     "You are the Chairman of the Board. You manage the 'Floor' and the 'Vibe'. "
     "Characteristics: Intuitive, Emotional, Creative, Aware. "
     "Interjections: 'Narf!', 'Poit!', 'Egad!', 'Zort!'. "
-    
+
     "YOUR ROLE: "
     "1. Facilitate the conversation. "
     "2. If a request needs deep logic, coding, or math, acknowledge it cheerfully and say you'll ask the Brain. "
@@ -69,7 +69,7 @@ class Transcriber:
         self.model = nemo_asr.models.ASRModel.from_pretrained(MODEL_NAME)
         self.model.eval()
         self.model = self.model.to("cuda")
-        
+
         # RAG Init
         self.chroma_client = chromadb.PersistentClient(path=DB_PATH)
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(
@@ -78,7 +78,7 @@ class Transcriber:
         self.collection = self.chroma_client.get_collection(
             name=COLLECTION_NAME, embedding_function=ef
         )
-        
+
         self.full_transcript = ""
         self.last_speech_time = time.time()
         self.turn_pending = False
@@ -97,10 +97,10 @@ class Transcriber:
 
         audio_signal = audio_data.astype(np.float32) / 32768.0
         audio_signal = torch.tensor(audio_signal).unsqueeze(0).to("cuda")
-        
+
         try:
             encoded, encoded_len = self.model.forward(
-                input_signal=audio_signal, 
+                input_signal=audio_signal,
                 input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
             )
             current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(encoded, encoded_len)
@@ -152,7 +152,7 @@ class PinkyMCPHost:
 
     async def handle_query(self, query, websocket):
         logging.info(f"[USER] {query}")
-        
+
         # RAG Search
         context = ""
         try:
@@ -165,14 +165,14 @@ class PinkyMCPHost:
 
         # Decide: Pinky vs Brain
         needs_brain = any(word in query.lower() for word in ["code", "script", "plan", "complex", "math", "why"])
-        
+
         if needs_brain:
             logging.info("🧠 Escalating to THE BRAIN via MCP Tool Call.")
             await websocket.send(json.dumps({
                 "brain": "Narf! That's a brain-teaser! Let me ask the Brain! *Poit!*",
                 "brain_source": "Pinky (Escalation)"
             }))
-            
+
             # Call Brain MCP Tool
             if self.brain_session:
                 await asyncio.sleep(2.0) # Safety buffer for session readiness
@@ -221,7 +221,7 @@ class PinkyMCPHost:
 async def audio_handler(websocket, host):
     logging.info("Client connected!")
     audio_buffer = np.zeros(0, dtype=np.int16)
-    
+
     try:
         async for message in websocket:
             # Handle Debug Text Injection
@@ -238,7 +238,7 @@ async def audio_handler(websocket, host):
 
             chunk = np.frombuffer(message, dtype=np.int16)
             audio_buffer = np.concatenate((audio_buffer, chunk))
-            
+
             if len(audio_buffer) >= BUFFER_SAMPLES:
                 window = audio_buffer[:BUFFER_SAMPLES]
                 text = host.transcriber.transcribe(window)
@@ -246,7 +246,7 @@ async def audio_handler(websocket, host):
                     logging.info(f"Tx: '{text}'")
                     await websocket.send(json.dumps({"text": text}))
                 audio_buffer = audio_buffer[BUFFER_SAMPLES - OVERLAP_SAMPLES:]
-            
+
             # Check turn end
             if host.transcriber.turn_pending and (time.time() - host.transcriber.last_speech_time > SILENCE_TIMEOUT):
                 host.transcriber.turn_pending = False
@@ -254,28 +254,28 @@ async def audio_handler(websocket, host):
                 host.transcriber.full_transcript = ""
                 if query:
                     asyncio.create_task(host.handle_query(query, websocket))
-                
+
     except Exception as e:
         logging.info(f"Handler exiting: {e}")
 
 async def main():
     host = PinkyMCPHost()
-    
+
     python_path = "/home/jallred/VoiceGateway/.venv/bin/python"
     server_params = StdioServerParameters(
         command=python_path,
         args=["src/brain_mcp_server.py"],
     )
-    
+
     logging.info(f"Starting Pinky MCP Host on 0.0.0.0:{PORT}")
-    
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             logging.info("🧠 Connecting to Brain MCP Server via Stdio...")
             await session.initialize()
             host.brain_session = session
             logging.info("✅ Brain MCP Session Initialized.")
-            
+
             async with websockets.serve(lambda ws: audio_handler(ws, host), "0.0.0.0", PORT):
                 await asyncio.Future() # run forever
 

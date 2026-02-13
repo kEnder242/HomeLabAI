@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-import json
 import numpy as np
 import threading
 import torch
@@ -25,7 +24,7 @@ class EarNode:
     def __init__(self, callback=None):
         if EncDecRNNTBPEModel is None:
             raise ImportError("NeMo EncDecRNNTBPEModel is not available. EarNode cannot be initialized.")
-        
+
         self.callback = callback
         self.transcribing = False
         self.stop_event = threading.Event()
@@ -52,13 +51,13 @@ class EarNode:
             # Try to load model
             self.model = EncDecRNNTBPEModel.from_pretrained(model_name=MODEL_NAME)
             self.model.eval()
-            
+
             # FIX: Force FP16 and clear cache to restore ~1.5GB footprint
-            self.model = self.model.half() 
+            self.model = self.model.half()
             self.model = self.model.to("cuda")
             torch.cuda.empty_cache()
             logging.info("👂 EarNode: Model loaded and moved to CUDA (FP16).")
-            
+
             # Proactively trigger sledgehammer to prevent startup crashes on CUDA 12.8
             self._sledgehammer_disable_graphs()
             torch.cuda.empty_cache()
@@ -98,7 +97,7 @@ class EarNode:
         """Recursively disables CUDA graphs on all loopers in the model."""
         logging.info("[EAR_NODE] Activating _sledgehammer_disable_graphs...")
         self.cuda_graph_failed = True
-        
+
         # NeMo 2.6.1 change_decoding_strategy requires a config object
         try:
             from omegaconf import OmegaConf
@@ -111,7 +110,7 @@ class EarNode:
             logging.info("[EAR_NODE] Model decoding strategy changed via OmegaConf.")
         except Exception as e:
             logging.warning(f"[EAR_NODE] Failed to change decoding strategy via OmegaConf: {e}")
-        
+
         # Specific to RNNTBPEModel, access the internal greedy_decoder and its looper
         # We need to be very aggressive here to find all looper objects
         found_looper = False
@@ -126,7 +125,7 @@ class EarNode:
                     found_looper = True
                 except Exception as e:
                     logging.warning(f"[EAR_NODE] Failed to disable CUDA graphs on decoding_loop: {e}")
-            
+
             # Check for computer loopers
             if hasattr(decoding_inner, 'decoding_computer'):
                 computer = decoding_inner.decoding_computer
@@ -168,21 +167,21 @@ class EarNode:
             # NeMo transcribe expects a list of numpy arrays or paths
             with torch.no_grad():
                 hypotheses = self.model.transcribe(audio=[audio_float], verbose=False)
-                
+
             if hypotheses and len(hypotheses) > 0 and hypotheses[0]:
                 hyp = hypotheses[0]
                 # Handle cases where it returns a list of lists or Hypothesis objects
                 if isinstance(hyp, list) and len(hyp) > 0:
                     hyp = hyp[0]
-                
+
                 if hasattr(hyp, 'text'):
                     raw_text = hyp.text
                 else:
                     raw_text = str(hyp)
-                
+
                 # 2. Deduplication via sliding window matching
                 incremental_text = get_new_text(self.full_transcript, raw_text)
-                
+
                 if incremental_text and incremental_text.strip() != "":
                     self.full_transcript += " " + incremental_text
                     self.last_speech_time = time.time()

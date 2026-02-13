@@ -22,7 +22,7 @@ async def connect_with_retry(max_retries=10, delay=0.5):
 async def test_interrupt():
     start_time = time.time()
     logging.info("🚀 Starting Round Table Interrupt Test...")
-    
+
     ws = None
     try:
         # 1. Smart Connect
@@ -35,7 +35,7 @@ async def test_interrupt():
             if msg.get("type") == "status" and msg.get("state") == "ready":
                 logging.info("✅ Lab is Ready.")
                 break
-        
+
         # 3. Send Complex Query
         test_query = "Ask the Brain to write a long poem about cheese."
         logging.info(f"📤 Sending Query: '{test_query}'")

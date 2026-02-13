@@ -18,11 +18,11 @@ async def test_pi_to_20_digits_flow():
     async with websockets.connect(url) as ws:
         # 1. Handshake
         await ws.send(json.dumps({"type": "handshake", "version": VERSION}))
-        
+
         # 2. Send Query
         query = "What is the value of pi to exactly 21 digits?"
         await ws.send(json.dumps({"type": "text_input", "content": query}))
-        
+
         # 3. Monitor for Flow Events
         events = []
         try:
@@ -31,12 +31,12 @@ async def test_pi_to_20_digits_flow():
                 while len(events) < 4:
                     msg = await ws.recv()
                     data = json.loads(msg)
-                    
+
                     if "brain" in data:
                         text = data["brain"]
                         source = data.get("brain_source", "Unknown")
                         print(f"[{source}]: {text[:50]}...")
-                        
+
                         # 1. Handle Cached Flow (Clipboard)
                         if "[BRAIN_INSIGHT]" in text or "[FROM CLIPBOARD]" in text:
                             events.append("BRAIN_ANSWER")

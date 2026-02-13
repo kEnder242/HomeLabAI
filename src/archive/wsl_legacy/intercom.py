@@ -4,7 +4,6 @@ import pyaudio
 import sys
 import os
 import json
-import logging
 from enum import Enum, auto
 
 # --- PLATFORM HANDLING ---
@@ -25,7 +24,7 @@ except ImportError:
 
 # --- CONFIGURATION ---
 VERSION = "2.1.0"
-HOST = "z87-Linux.local" 
+HOST = "z87-Linux.local"
 PORT = 8765
 CHUNK = 2048
 FORMAT = pyaudio.paInt16
@@ -68,7 +67,7 @@ async def check_keyboard_trigger():
     global PENDING_CHAR
     if not IS_WINDOWS:
         return False
-    
+
     if msvcrt.kbhit():
         char_bytes = msvcrt.getch()
         try:
@@ -76,7 +75,7 @@ async def check_keyboard_trigger():
             PENDING_CHAR = char_bytes.decode('utf-8')
         except:
             PENDING_CHAR = "" # Ignore non-decodable keys
-            
+
         while msvcrt.kbhit():
             msvcrt.getch() # Clear the rest of the buffer (arrows, etc)
         return True
@@ -88,7 +87,7 @@ async def receive_messages(websocket):
     try:
         async for message in websocket:
             data = json.loads(message)
-            
+
             # 1. Status Events
             if data.get("type") == "status":
                 s = data.get("state")
@@ -106,7 +105,7 @@ async def receive_messages(websocket):
             elif "text" in data and STATE == ClientState.LISTENING:
                 sys.stdout.write(f"\rHearing: {data['text']}   ")
                 sys.stdout.flush()
-            
+
             elif data.get("type") == "final":
                  print(f"\n{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
 
@@ -144,11 +143,11 @@ async def audio_and_input_loop(websocket):
         print(f"{COLOR_BLUE}[CLIENT] Connecting to Intercom...{COLOR_RESET}")
 
         while not SHUTDOWN_EVENT.is_set():
-            
+
             # --- STATE: LISTENING (Mic On) ---
             if STATE == ClientState.LISTENING:
-                if stream.is_stopped(): stream.start_stream() 
-                
+                if stream.is_stopped(): stream.start_stream()
+
                 # 1. Read Mic
                 try:
                     data = stream.read(CHUNK, exception_on_overflow=False)
@@ -162,14 +161,14 @@ async def audio_and_input_loop(websocket):
                     print(f"{COLOR_BLUE}[TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}")
                     sys.stdout.write(">> ")
                     sys.stdout.flush()
-                
+
                 await asyncio.sleep(0.01) # Yield to event loop
 
             # --- STATE: TYPING (Mic Off) ---
             elif STATE == ClientState.TYPING:
                 # 1. Get Input (Blocking, off-thread)
                 user_text = (await get_user_input()).strip()
-                
+
                 # 2. Process
                 if user_text:
                     # Check for local commands
@@ -177,7 +176,7 @@ async def audio_and_input_loop(websocket):
                         STATE = ClientState.SHUTDOWN
                         SHUTDOWN_EVENT.set()
                         break
-                    
+
                     # Send as JSON Event
                     payload = {
                         "type": "text_input",
@@ -186,7 +185,7 @@ async def audio_and_input_loop(websocket):
                     }
                     await websocket.send(json.dumps(payload))
                     print(f"{COLOR_YELLOW}📝 [YOU]: {user_text}{COLOR_RESET}")
-                
+
                 # 3. Return to Listening
                 print(f"{COLOR_GREEN}[CLIENT] Mic Resumed.{COLOR_RESET}")
                 STATE = ClientState.LISTENING
@@ -220,11 +219,11 @@ async def main():
         async with ws as websocket:
             # Handshake
             await websocket.send(json.dumps({"type": "handshake", "version": VERSION, "client": "intercom"}))
-            
+
             # Tasks
             io_task = asyncio.create_task(audio_and_input_loop(websocket))
             rx_task = asyncio.create_task(receive_messages(websocket))
-            
+
             await SHUTDOWN_EVENT.wait()
             io_task.cancel()
             rx_task.cancel()

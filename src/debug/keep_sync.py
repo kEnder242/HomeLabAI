@@ -11,7 +11,7 @@ AUTH_FILE = os.path.expanduser('~/.config/gkeep/auth.json')
 
 def login():
     keep = gkeepapi.Keep()
-    
+
     # Try to load existing token
     if os.path.exists(AUTH_FILE):
         try:
@@ -41,7 +41,7 @@ def login():
                 return keep
             except Exception as e:
                 print(f"Login failed for {email} with pwd {pwd[:4]}...: {e}")
-    
+
     return None
 
 def extract_urls(text):
@@ -66,9 +66,9 @@ def main():
         return
 
     notes = keep.find(archived=False, labels=[label_ai])
-    
+
     extracted_data = []
-    
+
     print("\n--- Processing AI Notes ---")
     for n in notes:
         urls = extract_urls(n.text)
@@ -85,7 +85,7 @@ def main():
 
     with open('HomeLabAI/docs/KEEP_SYNC_STATE.json', 'w') as f:
         json.dump(extracted_data, f, indent=2)
-    
+
     print(f"\nExtracted {len(extracted_data)} notes with URLs to HomeLabAI/docs/KEEP_SYNC_STATE.json")
 
 if __name__ == "__main__":

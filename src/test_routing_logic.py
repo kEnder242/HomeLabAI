@@ -11,17 +11,17 @@ from src.nodes.archive_node import ef, brain_vectors, pinky_vectors, cosine_simi
 
 def test_classify(query):
     query_vector = np.array(ef([query])[0])
-    
+
     brain_sim = max([cosine_similarity(query_vector, bv) for bv in brain_vectors])
     pinky_sim = max([cosine_similarity(query_vector, pv) for pv in pinky_vectors])
-    
-    threshold = 0.4 
+
+    threshold = 0.4
     target = "PINKY"
     if brain_sim > pinky_sim and brain_sim > threshold:
         target = "BRAIN"
-    elif brain_sim > 0.6: 
+    elif brain_sim > 0.6:
         target = "BRAIN"
-        
+
     print(f"Query: '{query}'")
     print(f"  Target: {target}")
     print(f"  Brain Sim: {brain_sim:.4f}")

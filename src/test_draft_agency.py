@@ -11,14 +11,14 @@ DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
 
 async def test_draft_agency():
     print("🧪 Starting Draft Agency Integration Test...")
-    
+
     server_params = StdioServerParameters(command=PYTHON_PATH, args=[BRAIN_SCRIPT])
-    
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             print("✅ Brain Node Connected.")
-            
+
             # 1. Test Clean Write (with chatter)
             filename = "test_plan.md"
             chatter_content = "Certainly! Here is the plan:\n\n# The Plan\n1. Step one\n2. Step two"
@@ -27,9 +27,9 @@ async def test_draft_agency():
                 "filename": filename,
                 "content": chatter_content
             })
-            
+
             print(f"   Result: {res_1.content[0].text}")
-            
+
             # Verify file exists and is clean
             file_path = os.path.join(DRAFTS_DIR, filename)
             if os.path.exists(file_path):

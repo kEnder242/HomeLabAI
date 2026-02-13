@@ -17,7 +17,7 @@ async def test_archive_list_cabinet():
          patch("nodes.archive_node.WORKSPACE_DIR", "/tmp/workspace"), \
          patch("os.path.exists", return_value=True), \
          patch("builtins.open", MagicMock(side_effect=[MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: '{"2019": ["file1"]}')])):
-        
+
         with patch("glob.glob", return_value=["/tmp/drafts/test.md"]):
             res = list_cabinet()
             data = json.loads(res)
@@ -75,7 +75,7 @@ async def test_brain_clean_content():
     raw = "Here is your code:\n```python\nprint('hello')\n```\nHope that helps!"
     clean = _clean_content(raw)
     assert clean == "print('hello')"
-    
+
     raw = "Certainly! Here is the plan: Deploy vLLM."
     clean = _clean_content(raw)
     assert clean == "Deploy vLLM."
@@ -96,7 +96,7 @@ async def test_pinky_facilitate_oom():
     mock_resp = AsyncMock()
     mock_resp.json = AsyncMock(return_value={"data": {"result": [{"value": [0, "0.99"]}]}})
     mock_resp.status = 200
-    
+
     with patch("nodes.pinky_node.probe_engine", AsyncMock(return_value=("OLLAMA", "url", "model"))), \
          patch("aiohttp.ClientSession.get", return_value=mock_resp):
         res = await facilitate("hello", "context")
@@ -109,7 +109,7 @@ async def test_pinky_facilitate_routing():
     with patch("nodes.pinky_node.probe_engine", AsyncMock(return_value=("OLLAMA", "url", "model"))), \
          patch("aiohttp.ClientSession.get") as mock_get, \
          patch("aiohttp.ClientSession.post") as mock_post:
-        
+
         vram_resp = AsyncMock()
         vram_resp.json = AsyncMock(return_value={"data": {"result": [{"value": [0, "0.5"]}]}})
         vram_resp.status = 200
@@ -119,6 +119,6 @@ async def test_pinky_facilitate_routing():
         mock_resp.status = 200
         mock_resp.json = AsyncMock(return_value={"response": '{"tool": "reply_to_user", "parameters": {"text": "Narf!"}}'})
         mock_post.return_value.__aenter__.return_value = mock_resp
-        
+
         res = await facilitate("hello", "context")
         assert "Narf!" in res

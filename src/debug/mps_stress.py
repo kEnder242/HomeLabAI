@@ -11,12 +11,12 @@ def mps_test(duration=30):
     device = torch.device("cuda")
     print(f"🚀 Starting MPS test on {torch.cuda.get_device_name(0)}")
     print(f"📁 Pipe Directory: {os.environ.get('CUDA_MPS_PIPE_DIRECTORY', 'NOT SET')}")
-    
+
     # Large matrices to saturate Turing cores
     size = 4096
     a = torch.randn(size, size, device=device)
     b = torch.randn(size, size, device=device)
-    
+
     start_time = time.time()
     count = 0
     while time.time() - start_time < duration:
@@ -25,7 +25,7 @@ def mps_test(duration=30):
         count += 1
         if count % 100 == 0:
             print(f"Iter {count}...")
-            
+
     print(f"✅ Finished {count} iterations in {duration}s.")
 
 if __name__ == "__main__":

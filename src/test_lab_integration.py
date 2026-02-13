@@ -1,8 +1,6 @@
 import pytest
 import aiohttp
 import asyncio
-import os
-import time
 
 # --- Configuration ---
 ATTENDANT_URL = "http://localhost:9999"
@@ -14,7 +12,7 @@ async def test_lab_attendant_full_cycle():
         # 1. Ensure it's stopped/cleaned
         await session.post(f"{ATTENDANT_URL}/stop")
         await session.post(f"{ATTENDANT_URL}/cleanup")
-        
+
         # 2. Start with EarNode enabled
         print("\n🚀 Starting Lab Server with EarNode...")
         async with session.post(f"{ATTENDANT_URL}/start", json={"disable_ear": False}) as resp:
@@ -34,7 +32,7 @@ async def test_lab_attendant_full_cycle():
                     print(f"✅ Lab is READY! (VRAM: {status['vram_usage']})")
                     break
             await asyncio.sleep(2)
-        
+
         assert ready, "Lab failed to reach READY state within timeout."
 
         # 4. Wait for EarNode specifically
@@ -48,14 +46,14 @@ async def test_lab_attendant_full_cycle():
                     print("✅ EarNode Online verified in logs.")
                     break
             await asyncio.sleep(2)
-        
+
         assert ear_ready, "EarNode failed to initialize within timeout."
 
         # 5. Stop and Cleanup
         print("🛑 Stopping Lab Server...")
         await session.post(f"{ATTENDANT_URL}/stop")
         await session.post(f"{ATTENDANT_URL}/cleanup")
-        
+
         async with session.get(f"{ATTENDANT_URL}/status") as resp:
             status = await resp.json()
             assert not status["lab_server_running"]

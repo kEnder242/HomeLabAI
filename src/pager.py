@@ -20,7 +20,7 @@ st.subheader("📝 Quick Note / Command")
 with st.form("message_form", clear_on_submit=True):
     user_input = st.text_input("Message for Pinky/Self:")
     submitted = st.form_submit_button("Send")
-    
+
     if submitted and user_input:
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         entry = f"[{timestamp}] USER: {user_input}\n"
@@ -55,17 +55,17 @@ if auto_refresh:
         with log_placeholder.container():
             lines = read_tail(SERVER_LOG)
             st.code("".join(lines), language="log")
-            
+
         with notes_placeholder.container():
             lines = read_tail(USER_NOTES)
             st.code("".join(lines), language="text")
-            
+
         time.sleep(refresh_rate)
 else:
     with log_placeholder.container():
         lines = read_tail(SERVER_LOG)
         st.code("".join(lines), language="log")
-        
+
     with notes_placeholder.container():
         lines = read_tail(USER_NOTES)
         st.code("".join(lines), language="text")

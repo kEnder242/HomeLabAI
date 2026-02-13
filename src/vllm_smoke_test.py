@@ -1,6 +1,5 @@
 import requests
 import time
-import sys
 
 URL = "http://localhost:8088/v1/completions"
 
@@ -12,7 +11,7 @@ def smoke_test():
         "max_tokens": 50,
         "temperature": 0.1
     }
-    
+
     start_time = time.time()
     try:
         print(f"Sending request to {URL}...")

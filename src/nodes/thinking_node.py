@@ -1,18 +1,22 @@
-from mcp.server.fastmcp import FastMCP
+import json
 import logging
 import sys
-import os
-import json
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
+from mcp.server.fastmcp import FastMCP
 
 # Logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [THINKING] %(levelname)s - %(message)s', stream=sys.stderr)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - [THINKING] %(levelname)s - %(message)s',
+    stream=sys.stderr
+)
 
 mcp = FastMCP("Sequential Thinking")
 
 # In-memory state for active thinking sessions
-# In a real Lab, this could be persisted to AcmeLab/workspace/thoughts.json
 thought_history: List[Dict] = []
+
 
 @mcp.tool()
 def sequential_thinking(
@@ -38,22 +42,23 @@ def sequential_thinking(
         "is_revision": is_revision,
         "revises": revises_thought_number
     }
-    
+
     thought_history.append(entry)
-    
+
     status = f"Thought {thought_number}/{total_thoughts}"
     if is_revision:
         status += f" (Revision of {revises_thought_number})"
-    
+
     logging.info(f"[LOGIC] {status}: {thought[:50]}...")
-    
+
     response = {
         "status": status,
         "next_needed": next_thought_needed,
         "history_count": len(thought_history)
     }
-    
+
     return json.dumps(response)
+
 
 @mcp.tool()
 def clear_thoughts() -> str:
@@ -62,6 +67,7 @@ def clear_thoughts() -> str:
     count = len(thought_history)
     thought_history = []
     return f"Thinking history cleared. Purged {count} thoughts."
+
 
 if __name__ == "__main__":
     mcp.run()

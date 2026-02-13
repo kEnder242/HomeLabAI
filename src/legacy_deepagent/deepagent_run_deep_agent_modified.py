@@ -5,21 +5,17 @@ import time
 import re
 from tqdm import tqdm
 import numpy as np
-import torch
-import string
-from typing import Optional, Tuple, List, Dict, Set
+from typing import Tuple, List, Dict
 import argparse
 import random
 import asyncio
-import aiohttp
 import yaml
 from transformers import AutoTokenizer
 from openai import AsyncOpenAI
 import sys
 sys.path.append('./src')
 from evaluate.evaluate_base import (
-    run_evaluation, 
-    extract_answer_fn,
+    run_evaluation,
     evaluate_predictions_toolhop
 )
 from prompts.prompts_deepagent import (
@@ -36,11 +32,9 @@ from prompts.prompts_deepagent import (
     tool_response_analysis_prompt,
     get_tool_search_intent_instruction,
     get_tool_call_intent_instruction,
-    get_folded_thought_instruction,
     get_episode_memory_instruction,
     get_working_memory_instruction,
     get_tool_memory_instruction,
-    get_gpt_oss_system_prompt,
 )
 from prompts.prompts_deepagent import (
     main_reasoning_prompt_openset_general_qa,
@@ -51,7 +45,6 @@ from prompts.prompts_deepagent import (
     tool_response_analysis_prompt,
     get_tool_search_intent_instruction,
     get_tool_call_intent_instruction,
-    get_folded_thought_instruction,
     get_episode_memory_instruction,
     get_working_memory_instruction,
     get_tool_memory_instruction,
@@ -61,7 +54,6 @@ from prompts.task_specific_prompts import (
 )
 from utils.utils import (
     extract_between,
-    format_search_results,
 )
 from tools.tool_manager import ToolManager
 
@@ -285,7 +277,7 @@ async def run_tool_response_analysis(
         top_k=args.top_k_sampling,
         model_name=args.aux_model_name,
     )
-    
+
     return response
 
 
@@ -395,17 +387,17 @@ async def generate_main_reasoning_sequence(
     tool_manager: ToolManager,
 ) -> Dict:
     """Process a single sequence through its entire reasoning chain with MAX_TOKENS limit"""
-    
+
     # 初始化 token 计数器，初始值设为 prompt 的 token 数（简单用 split() 作为近似）
     MAX_TOKENS = 40000
     total_tokens = len(seq['prompt'].split())
     total_folds = 0
     seq['interactions'] = []
-    
+
     # First response uses chat completion
     formatted_prompt, response = await generate_response(
         client=client,
-        tokenizer=tokenizer, 
+        tokenizer=tokenizer,
         think_mode=True,
         generate_mode="chat",
         model_name=args.model_name,
@@ -418,28 +410,28 @@ async def generate_main_reasoning_sequence(
         top_k=args.top_k_sampling,
         stop=[END_TOOL_SEARCH, END_TOOL_CALL, FOLD_THOUGHT],
     )
-    
+
     # Update token count and sequence fields
     tokens_this_response = len(response.split())
     total_tokens += tokens_this_response
-    
+
     seq['output'] += response.replace('</think>\n', '')
     seq['original_prompt'] = formatted_prompt
     seq['prompt'] = formatted_prompt + response.replace('</think>\n', '')
-    
+
     while not seq['finished']:
         # Check if sequence is finished
         if not seq['output'].rstrip().endswith(END_TOOL_SEARCH) and not seq['output'].rstrip().endswith(END_TOOL_CALL) and not seq['output'].rstrip().endswith(FOLD_THOUGHT):
             seq['finished'] = True
             break
-        
+
         tool_search_query = extract_between(response, BEGIN_TOOL_SEARCH, END_TOOL_SEARCH)
         tool_call_query = extract_between(response, BEGIN_TOOL_CALL, END_TOOL_CALL)
         if tool_search_query: tool_search_query = tool_search_query.replace("\n", "").strip()
         if tool_call_query: tool_call_query = tool_call_query.replace("\n", "").strip()
-        
+
         seq['action_count'] += 1
-        
+
         if seq['action_count'] < args.max_action_limit and total_tokens < MAX_TOKENS:
 
             if tool_search_query and len(tool_search_query) > 5 and seq['output'].rstrip().endswith(END_TOOL_SEARCH):
@@ -472,7 +464,7 @@ async def generate_main_reasoning_sequence(
                             current_output=seq['output'],
                             tool_search_result=initial_retrieved_tools,
                         )
-                    
+
                     # Store web explorer input/output with all interactions
                     seq['interactions'].append({
                         "type": "tool_search",
@@ -497,7 +489,7 @@ async def generate_main_reasoning_sequence(
                     total_tokens += len(append_text.split())
                     try:
                         tool_call_dict = json.loads(tool_call_query)
-                        
+
                         # Adapt the model output to the format expected by the callers
                         adapted_tool_call = {
                             "function": {
@@ -506,7 +498,7 @@ async def generate_main_reasoning_sequence(
                             }
                         }
                         tool_response = await tool_manager.call_tool(adapted_tool_call, seq)
-                        
+
                         if type(tool_response) in [dict, list]:
                             tool_response = json.dumps(tool_response)
 
@@ -521,7 +513,7 @@ async def generate_main_reasoning_sequence(
                                 current_output=seq['output'],
                                 tool_response=tool_response,
                             )
-                        
+
                         seq['interactions'].append({
                             "type": "tool_call",
                             "tool_call_query": tool_call_query,
@@ -529,7 +521,7 @@ async def generate_main_reasoning_sequence(
                         })
                         print(tool_call_query)
                         print(tool_response)
-                        
+
                         append_text = f"\n\n{BEGIN_TOOL_RESPONSE}{tool_response}{END_TOOL_RESPONSE}\n\n"
                         # if seq['action_count'] >= 30 and total_folds < args.max_fold_limit:
                         #     append_text += "<system_message>You have made 30 actions. You can consider folding your thoughts and start a new round of reasoning.</system_message>\n\n"
@@ -550,9 +542,9 @@ async def generate_main_reasoning_sequence(
                         seq['prompt'] += append_text
                         seq['output'] += append_text
                         total_tokens += len(append_text.split())
-                
+
                     seq['executed_tool_calls'].add(tool_call_query)
-            
+
             elif seq['output'].rstrip().endswith(FOLD_THOUGHT):
                 if total_folds >= args.max_fold_limit:
                     append_text = (
@@ -584,7 +576,7 @@ async def generate_main_reasoning_sequence(
                     print(seq['interactions'][-1])
                     total_tokens += len(seq['prompt'].split())
                     total_folds += 1
-                    
+
             # Subsequent responses use completion mode
             _, response = await generate_response(
                 client=client,
@@ -600,11 +592,11 @@ async def generate_main_reasoning_sequence(
                 stop=[END_TOOL_SEARCH, END_TOOL_CALL, FOLD_THOUGHT],
                 generate_mode="completion"
             )
-            
+
             # Update token count and sequence fields
             tokens_this_response = len(response.split())
             total_tokens += tokens_this_response
-            
+
             seq['output'] += response.replace('</think>\n', '')
             seq['prompt'] += response.replace('</think>\n', '')
 
@@ -619,7 +611,7 @@ async def generate_main_reasoning_sequence(
             )
             seq['prompt'] += append_text
             seq['output'] += append_text
-            
+
             _, final_response = await generate_response(
                 client=client,
                 tokenizer=tokenizer,
@@ -633,10 +625,10 @@ async def generate_main_reasoning_sequence(
                 top_k=args.top_k_sampling,
                 generate_mode="completion",
             )
-            
+
             seq['output'] += final_response
             seq['finished'] = True  # Sequence marked as finished
-    
+
     return seq
 
 
@@ -741,7 +733,7 @@ async def main_async():
             # Load API-Bank data
             from tools.api_bank import APIBankDataLoader
             data_loader = APIBankDataLoader(args.api_bank_data_path)
-            
+
             if not args.enable_tool_search:
                 data_list = data_loader.load_level1_data()
             else:
@@ -770,11 +762,11 @@ async def main_async():
                     # Add 'tool_name' if it's missing from a level, assuming it exists
                     if 'tool_name' not in raw_api_json and 'name' in raw_api_json:
                          raw_api_json['tool_name'] = raw_api_json['name'] # Fallback
-                    
+
                     standard_tool_name = standardize(raw_api_json.get('tool_name', ''))
                     openai_function, _, _ = api_json_to_openai_json(raw_api_json, standard_tool_name)
                     tool_list.append(openai_function)
-        
+
         elif args.dataset_name == 'toolhop':
             question = item.get('question', '')
             if not args.enable_tool_search:
@@ -806,7 +798,7 @@ async def main_async():
             # RestBench datasets
             question = item.get('query', '')
             item['Question'] = question
-            
+
             # Import and get RestBench tools
             from tools.restbench_api import get_restbench_tools
             tool_list = get_restbench_tools(args.dataset_name, args)
@@ -822,7 +814,7 @@ async def main_async():
                 tool_list = get_gaia_tool_docs(task_type='mm')
             else:
                 tool_list = get_gaia_tool_docs(task_type='text')
-        
+
         elif args.dataset_name == 'hle':
             # HLE dataset
             from tools.tool_manager import get_hle_tool_docs
@@ -849,7 +841,7 @@ async def main_async():
             if 'Question' in item: question = item['Question']
             elif 'question' in item: question = item['question']
             elif 'query' in item: question = item['query']
-        
+
         item['Question'] = question # Standardize question key
 
         if args.enable_tool_search:
@@ -894,9 +886,9 @@ async def main_async():
             seq_item['available_tools'] = []
         else:
             seq_item['available_tools'] = tool_list
-        
+
         active_sequences.append(seq_item)
-    
+
     # ---------------------- Process all sequences ----------------------
     start_time = time.time()
     tasks = [
@@ -912,14 +904,14 @@ async def main_async():
         )
         for seq in active_sequences
     ]
-    
+
     # ---------------------- Run all sequences concurrently ----------------------
     with tqdm(total=len(tasks)) as pbar:
         async def track_progress(task):
             result = await task
             pbar.update(1)
             return result
-        
+
         tracked_tasks = [track_progress(task) for task in tasks]
         completed_sequences = await asyncio.gather(*tracked_tasks)
     print(f"Total generation time: {time.time() - start_time} seconds")
@@ -930,7 +922,7 @@ async def main_async():
         result_json_name = f'run.open.{t.tm_year}{t.tm_mon:02d}{t.tm_mday:02d}.{t.tm_hour:02d}{t.tm_min:02d}{t.tm_sec:02d}.json'
     else:
         result_json_name = f'run.close.{t.tm_year}{t.tm_mon:02d}{t.tm_mday:02d}.{t.tm_hour:02d}{t.tm_min:02d}{t.tm_sec:02d}.json'
-    
+
     # Convert sets to lists before saving to avoid TypeError
     for seq in completed_sequences:
         if 'executed_search_queries' in seq:
@@ -1028,7 +1020,7 @@ async def main_async():
                 semaphore=semaphore,
                 model_name=args.aux_model_name,
             )
-    
+
     # Save results if not evaluating
     if not args.eval:
         with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:

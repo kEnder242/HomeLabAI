@@ -1,9 +1,7 @@
-import torch
 import numpy as np
 import sys
 import os
 import logging
-import time
 
 # Set up logging to stdout
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -36,14 +34,14 @@ def run_verification():
     try:
         # Inspect the model sub-objects
         print(f"DEBUG: model.decoding.decoding.cuda_graphs = {getattr(ear.model.decoding.decoding, 'cuda_graphs', 'N/A')}")
-        
+
         # Check the loopers
         if hasattr(ear.model.decoding.decoding, 'decoding_computer'):
             computer = ear.model.decoding.decoding.decoding_computer
             print(f"DEBUG: decoding_computer type: {type(computer).__name__}")
             if hasattr(computer, 'cuda_graphs'):
                 print(f"DEBUG: computer.cuda_graphs = {computer.cuda_graphs}")
-        
+
         result = ear.process_audio(audio_data)
         print(f"Result: {result}")
     except Exception as e:
