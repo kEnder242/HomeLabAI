@@ -104,6 +104,23 @@ def peek_related_notes(keyword: str) -> str:
     return "ARCHIVE DATA:\n" + "\n---\n".join(results)
 
 @mcp.tool()
+def consult_clipboard(query: str, threshold: float = 0.35) -> str:
+    """
+    Epiphany Search: Check the Semantic Cache for identical or logically similar 
+    results from past Brain sessions. Returns the cached insight if hit, or 'None'.
+    Essential for bypassing redundant deep-thinking cycles.
+    """
+    try:
+        results = cache.query(query_texts=[query], n_results=1)
+        if not results['documents'][0]: return "None"
+        distance = results['distances'][0][0]
+        metadata = results['metadatas'][0][0]
+        if distance < threshold:
+            return metadata['response']
+        return "None"
+    except: return "None"
+
+@mcp.tool()
 def scribble_note(query: str, response: str) -> str:
     """Semantic Clipboard: Cache a reasoning result for instant future retrieval."""
     try:
