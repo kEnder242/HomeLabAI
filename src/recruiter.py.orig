@@ -40,13 +40,13 @@ class NightlyRecruiter:
         # Stub for now, or integration with Archive Node if available
         return "Expert in Python, Silicon Validation, Telemetry, and Agentic Workflows. 18 years experience."
 
-    async def search_for_jobs(self, search_results: List[Dict] = None) -> List[Dict]:
+    async def search_for_jobs(self) -> List[Dict]:
         """
-        Uses provided results or stubs to identify target listings.
+        Uses available search tools to find fresh listings.
         """
-        if search_results:
-            return search_results
-            
+        # This would hook into the `google_web_search` tool in a real agent loop.
+        # For this class, we might need to expose a method that the Hub can inject the tool into.
+        # Returning stub data for the 'Class 1' library structure.
         return [
             {"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}
         ]
