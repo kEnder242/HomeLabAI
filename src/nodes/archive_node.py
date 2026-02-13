@@ -111,6 +111,16 @@ def read_document(filename: str) -> str:
 
 
 @mcp.tool()
+def get_stream_dump() -> str:
+    """Retrieve full raw short-term memory stream."""
+    try:
+        data = stream.get()
+        return json.dumps(data)
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
 def get_history(limit: int = 10) -> str:
     """Retrieve recent interaction history."""
     try:

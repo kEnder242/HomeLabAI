@@ -14,7 +14,7 @@ nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --quantization "awq" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.5 \
+    --gpu-memory-utilization 0.4 \
     --max-model-len 2048 \
     --enforce-eager \
     > $LOG_FILE 2>&1 &

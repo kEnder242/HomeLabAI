@@ -251,5 +251,19 @@ async def manage_lab(action: str, message: str = "Ok.") -> str:
     """Architectural Controls: Perform low-level mental management actions."""
     return json.dumps({"tool": "manage_lab", "parameters": {"action": action, "message": message}})
 
+@mcp.tool()
+async def get_my_tools() -> str:
+    """The Map of the Mind: List all high-fidelity tools currently available to Pinky. 
+    Use this to avoid hallucinating tool names."""
+    tools = [
+        "reply_to_user", "vram_vibe_check", "get_lab_health", "facilitate",
+        "start_draft", "refine_draft", "commit_to_archive", "lab_shutdown",
+        "prune_drafts", "get_recent_dream", "build_cv_summary", 
+        "delegate_internal_debate", "access_personal_history", "get_lab_status",
+        "manage_lab", "get_my_tools"
+    ]
+    return f"My current toolset: {', '.join(tools)}. Poit!"
+
+
 if __name__ == "__main__":
     mcp.run()
