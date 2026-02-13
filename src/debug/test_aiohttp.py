@@ -9,14 +9,14 @@ async def test_connection():
             print("Connected!")
             # Send handshake
             await websocket.send(json.dumps({"type": "handshake", "version": "2.1.0"}))
-            
+
             # Wait for response
             response = await websocket.recv()
             print(f"Received: {response}")
-            
+
             # Send test query
             await websocket.send(json.dumps({"type": "text_input", "content": "ping"}))
-            
+
             # Receive response
             async for message in websocket:
                 data = json.loads(message)

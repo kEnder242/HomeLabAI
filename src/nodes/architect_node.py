@@ -4,7 +4,6 @@ import sys
 import os
 import json
 import glob
-from typing import Dict, List
 
 # Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [ARCHITECT] %(levelname)s - %(message)s', stream=sys.stderr)
@@ -24,32 +23,32 @@ async def build_semantic_map() -> str:
     Layer 3: Tactical (Raw Notes)
     """
     logging.info("Architect is refactoring hierarchy...")
-    
+
     # 1. Gather all artifacts
     artifacts = glob.glob(os.path.join(FIELD_NOTES_DATA, "20*.json"))
-    
+
     # 2. Build Hierarchy
     hierarchy = {
         "strategic": [], # Extracted from Rank 4 items
         "technical_themes": {}, # Grouped by common keywords
         "tactical_count": 0
     }
-    
+
     theme_keywords = ["telemetry", "silicon", "validation", "automation", "agentic"]
-    
+
     for art_path in artifacts:
         year = os.path.basename(art_path).replace(".json", "")
         try:
             with open(art_path, 'r') as f:
                 data = json.load(f)
                 if not isinstance(data, list): continue
-                
+
                 hierarchy["tactical_count"] += len(data)
-                
+
                 for item in data:
                     rank = item.get('rank', 2)
                     summary = item.get('summary', '')
-                    
+
                     # Layer 1: Strategic (Top tier gems)
                     if rank >= 4:
                         hierarchy["strategic"].append({
@@ -57,7 +56,7 @@ async def build_semantic_map() -> str:
                             "summary": summary,
                             "gem": item.get('technical_gem', '')
                         })
-                    
+
                     # Layer 2: Technical (Theme grouping)
                     for kw in theme_keywords:
                         if kw in summary.lower():
@@ -78,7 +77,7 @@ async def build_semantic_map() -> str:
     with open(temp_map, 'w') as f:
         json.dump(hierarchy, f, indent=2)
     os.replace(temp_map, SEMANTIC_MAP_FILE)
-    
+
     return f"Hierarchy refactored. {len(hierarchy['strategic'])} strategic anchors identified across {hierarchy['tactical_count']} tactical notes."
 
 if __name__ == "__main__":

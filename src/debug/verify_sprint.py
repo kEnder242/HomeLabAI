@@ -1,17 +1,16 @@
 import os
 import subprocess
-import json
 
 def test_patch_tool():
     print("--- Testing patch_file Tool ---")
     ws_dir = os.path.expanduser("~/AcmeLab/workspace")
     os.makedirs(ws_dir, exist_ok=True)
     test_file = os.path.join(ws_dir, "test_patch.txt")
-    
+
     # 1. Initial State
     with open(test_file, "w") as f:
         f.write("Line 1\nLine 2\nLine 3\n")
-    
+
     # 2. Unified Diff
     diff = """--- test_patch.txt
 +++ test_patch.txt
@@ -21,11 +20,11 @@ def test_patch_tool():
 +Line 2: Patched!
  Line 3
 """
-    
+
     patch_file_path = os.path.join(ws_dir, "test.patch")
     with open(patch_file_path, "w") as f:
         f.write(diff)
-    
+
     # 3. Apply
     res = subprocess.run(["patch", test_file, patch_file_path], capture_output=True, text=True)
     if res.returncode == 0:
@@ -37,7 +36,7 @@ def test_patch_tool():
                 print("[FAIL] Patch applied but content wrong.")
     else:
         print(f"[FAIL] Patch command failed: {res.stderr}")
-    
+
     if os.path.exists(patch_file_path): os.remove(patch_file_path)
 
 def test_progress_logic():

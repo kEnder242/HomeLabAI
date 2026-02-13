@@ -22,7 +22,7 @@ async def connect_with_retry(max_retries=10, delay=0.5):
 async def test_all_flows():
     start_time = time.time()
     logging.info("🚀 Starting Round Table Flow Validation (Fast-Track)...")
-    
+
     ws = None
     try:
         # 1. Smart Connect
@@ -35,7 +35,7 @@ async def test_all_flows():
             if msg.get("type") == "status" and msg.get("state") == "ready":
                 logging.info("✅ Lab is Ready.")
                 break
-        
+
         # TEST 1: Baseline Greeting (Direct Reply)
         test_query_1 = "Hi Pinky!"
         logging.info(f"📤 Sending Baseline: '{test_query_1}'")
@@ -62,7 +62,7 @@ async def test_all_flows():
                 captured_tools.append(tool)
                 if tool == "reply_to_user":
                     break
-        
+
         assert "delegate_to_brain" in captured_tools
         logging.info("✅ Delegation Flow Validated.")
 

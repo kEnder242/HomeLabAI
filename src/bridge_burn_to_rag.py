@@ -16,13 +16,13 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     print("--- Bridging 'Slow Burn' Artifacts & Strategic Stories to RAG ---")
-    
+
     # 1. Init Chroma
     chroma_client = chromadb.PersistentClient(path=DB_PATH)
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
-    
+
     # Handle collection creation with conflict safety
     try:
         wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
@@ -32,30 +32,30 @@ def main():
     # 2. Sync Technical Artifacts (Logs)
     json_files = glob.glob(os.path.join(FIELD_NOTES_DATA, "*.json"))
     ignore_files = ["themes.json", "status.json", "queue.json", "state.json", "search_index.json", "pager_activity.json", "file_manifest.json"]
-    
+
     total_added = 0
     for fpath in json_files:
         fname = os.path.basename(fpath)
         if fname in ignore_files: continue
-        
+
         try:
             with open(fpath, 'r') as f:
                 data = json.load(f)
             if not isinstance(data, list): continue
-            
+
             for event in data:
                 summary = event.get('summary', '')
                 gem = event.get('technical_gem', '')
                 evidence = event.get('evidence', '')
                 date = event.get('date', 'Unknown')
-                
+
                 # High-density content block for RAG
                 content = f"[{date}] {summary}"
                 if gem: content += f"\nTECHNICAL GEM: {gem}"
                 if evidence: content += f"\nEVIDENCE: {evidence}"
-                
+
                 event_id = f"artifact_{hashlib.md5(content.encode()).hexdigest()}"
-                
+
                 if not wisdom.get(ids=[event_id])['ids']:
                     wisdom.add(
                         documents=[content],

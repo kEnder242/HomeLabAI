@@ -1,14 +1,11 @@
 import asyncio
 import aiohttp
 from aiohttp import web
-import json
 import logging
 import os
 import subprocess
-import signal
 import psutil # For graceful process management
-import sys 
-import argparse
+import sys
 import datetime
 
 # --- Configuration ---
@@ -71,7 +68,7 @@ class LabAttendant:
         available = total - used
         VLLM_MIN_HEADROOM = 6000
         OLLAMA_MIN_HEADROOM = 2000
-        
+
         if preferred == "vLLM" and available > VLLM_MIN_HEADROOM:
             return "vLLM", available
         elif available > OLLAMA_MIN_HEADROOM:
@@ -94,7 +91,7 @@ class LabAttendant:
                 for p in alive: p.kill()
             except Exception as e:
                 logger.error(f"Invalidation failed for {pid}: {e}")
-            
+
             lab_process = None
             return True
         return False
@@ -102,17 +99,17 @@ class LabAttendant:
     async def handle_status(self, request):
         status = await self._get_lab_status()
         global last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
-        
+
         if status["lab_pid"] != last_logged_lab_pid:
             last_logged_lab_pid = status["lab_pid"]
         if status["full_lab_ready"] != last_logged_lab_ready_state:
             last_logged_lab_ready_state = status["full_lab_ready"]
-        
+
         return web.json_response(status)
 
     async def handle_start(self, request):
         global lab_process, current_lab_mode, last_logged_lab_pid, last_logged_lab_ready_state, last_logged_lab_status_message
-        
+
         data = await request.json()
         mode = data.get("mode", "SERVICE_UNATTENDED")
         preferred_engine = data.get("engine", "OLLAMA")
@@ -136,7 +133,7 @@ class LabAttendant:
 
         if data.get("disable_ear", True): process_env["DISABLE_EAR"] = "1"
         else: process_env.pop("DISABLE_EAR", None)
-        
+
         logger.info(f"Starting Lab server: Mode={mode}, Engine={engine}")
 
         with open(SERVER_LOG, 'w') as f: f.write('')
@@ -189,7 +186,7 @@ class LabAttendant:
             "state_label": "THINKING" if lock_active else "IDLE",
             "last_log_lines": [],
             "vram_usage": "UNKNOWN",
-            "full_lab_ready": False 
+            "full_lab_ready": False
         }
         if lab_process and lab_process.poll() is None:
             status["lab_server_running"] = True

@@ -2,7 +2,6 @@ import asyncio
 import json
 import pytest
 import websockets
-import time
 
 VERSION = "3.5.0"
 
@@ -18,16 +17,16 @@ async def test_workspace_save_reaction():
     async with websockets.connect(url) as ws:
         # 1. Handshake
         await ws.send(json.dumps({"type": "handshake", "version": VERSION}))
-        
+
         # 2. Simulate Save
         filename = "test_save.md"
         content = "## PCIe Error Burst Analysis\\nObserved 50 correctable errors in 10ms."
         await ws.send(json.dumps({
-            "type": "workspace_save", 
-            "filename": filename, 
-            "content": content 
+            "type": "workspace_save",
+            "filename": filename,
+            "content": content
         }))
-        
+
         # 3. Monitor for Reactions
         reactions = []
         try:
@@ -35,12 +34,12 @@ async def test_workspace_save_reaction():
                 while len(reactions) < 2:
                     msg = await ws.recv()
                     data = json.loads(msg)
-                    
+
                     if "brain" in data:
                         text = data["brain"]
                         source = data.get("brain_source", "Unknown")
                         print(f"[{source}]: {text[:50]}...")
-                        
+
                         if "noticed you saved" in text and source == "Pinky":
                             reactions.append("PINKY_NOTICE")
                         elif source == "The Brain":

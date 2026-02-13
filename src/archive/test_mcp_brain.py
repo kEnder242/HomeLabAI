@@ -8,7 +8,7 @@ async def test_brain():
         command=python_path,
         args=["src/brain_mcp_server.py"],
     )
-    
+
     print("Connecting to Brain MCP...")
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:

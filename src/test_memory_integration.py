@@ -11,13 +11,13 @@ URI = f"ws://{HOST}:{PORT}"
 
 async def test_memory():
     secret_code = f"BANANA-{random.randint(1000,9999)}"
-    
+
     print(f"🔌 Connecting to {URI}...")
     try:
         async with websockets.connect(URI) as ws:
             # 1. Handshake
             await ws.send(json.dumps({"type": "handshake", "version": "2.0.0", "client": "test_suite"}))
-            
+
             # Wait for Ready
             while True:
                 msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
@@ -27,10 +27,10 @@ async def test_memory():
             # 2. Plant the Memory
             print(f"🧠 Step 1: Planting Memory ('The secret code is {secret_code}')...")
             await ws.send(json.dumps({
-                "type": "text_input", 
+                "type": "text_input",
                 "content": f"Please remember that the secret code is {secret_code}."
             }))
-            
+
             # Wait for ACK
             await asyncio.sleep(5.0) # Give it time to process and ideally reply
             # Flush queue
@@ -42,7 +42,7 @@ async def test_memory():
             # 3. Retrieve the Memory
             print(f"🕵️ Step 2: Retrieving Memory...")
             await ws.send(json.dumps({
-                "type": "text_input", 
+                "type": "text_input",
                 "content": "What is the secret code I just told you?"
             }))
 
@@ -53,7 +53,7 @@ async def test_memory():
                 try:
                     msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
                     data = json.loads(msg)
-                    
+
                     if "brain" in data:
                         content = data['brain']
                         print(f"   Reply: {content}")
@@ -61,9 +61,9 @@ async def test_memory():
                             print("✅ Memory Retrieved Successfully!")
                             found = True
                             break
-                        
+
                 except asyncio.TimeoutError: break
-            
+
             if found:
                 print("🏆 Memory Test PASSED.")
             else:

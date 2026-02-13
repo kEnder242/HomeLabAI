@@ -1,8 +1,6 @@
 import requests
 import time
-import json
 import sys
-import os
 
 # Configuration
 ATTENDANT_URL = 'http://localhost:9999'
@@ -34,7 +32,7 @@ def main():
     # --- Phase 1: Initial Status Check ---
     print("\n[Monitor] Phase 1: Checking current Lab status...")
     current_status = call_attendant_api('GET', STATUS_URL)
-    
+
     if current_status.get('status') == 'error':
         print(f"[Monitor] FATAL: Could not connect to Lab Attendant. Is the service running? {current_status.get('message')}")
         sys.exit(1)
@@ -88,23 +86,23 @@ def main():
         mode = current_status.get('lab_mode', 'UNKNOWN')
         lab_pid = current_status.get('lab_pid', 'N/A')
         last_logs = current_status.get('last_log_lines', [])
-        
+
         print(f'\n[Monitor] Lab Status (Mode: {mode}, PID: {lab_pid}) - Running: {running}, Ready: {ready}')
         if last_logs:
             for line in last_logs:
                 print(f'\t[LAB LOG] {line}')
-        
+
         if not running and not ready and (time.time() - poll_start_time > 10): # Grace period for boot
             print('[Monitor] FATAL: Lab server died prematurely during polling. Aborting.')
             print('         Check lab_attendant.log or `sudo journalctl -u lab-attendant.service` for details.')
             sys.exit(1)
-        
+
         if ready:
             print('\n[Monitor] ✅ Lab is fully READY!')
             sys.exit(0)
-        
+
         time.sleep(POLL_INTERVAL_SEC)
-    
+
     print('\n[Monitor] ❌ Timeout: Lab did not become ready within allocated time.')
     sys.exit(1)
 

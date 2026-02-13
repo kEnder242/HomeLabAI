@@ -3,7 +3,7 @@ import json
 
 def check_prep_status():
     print("--- ✈️ Acme Lab: Pre-Flight Check (Prep for Tomorrow) ---")
-    
+
     # 1. Models
     model_path = os.path.expanduser("~/AcmeLab/models/llama-3.1-8b-awq")
     if os.path.exists(model_path) and len(os.listdir(model_path)) > 0:

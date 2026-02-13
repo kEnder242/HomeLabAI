@@ -1,5 +1,4 @@
 import time
-import re
 import os
 
 LOG_FILE = "logs/pinky.log"
@@ -16,7 +15,7 @@ def tail_f(filename):
     file = open(filename, 'r')
     # Go to the end of file
     file.seek(0, os.SEEK_END)
-    
+
     while True:
         line = file.readline()
         if not line:
@@ -49,13 +48,13 @@ if __name__ == "__main__":
 
     print(f"Watching {LOG_FILE} for conversation...")
     print("----------------------------------------")
-    
-    # Process existing lines first? 
+
+    # Process existing lines first?
     # For now, let's just dump the whole file then tail
     with open(LOG_FILE, 'r') as f:
         for line in f:
             process_line(line)
-            
+
     # Then tail
     for line in tail_f(LOG_FILE):
         process_line(line)

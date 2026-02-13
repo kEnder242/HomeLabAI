@@ -12,7 +12,7 @@ async def test_dream():
     async with stdio_client(archive_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            
+
             # 1. Seed the stream with dummy data
             print("🌱 Seeding Stream...")
             await session.call_tool("save_interaction", arguments={
@@ -23,13 +23,13 @@ async def test_dream():
                 "user_query": "The Brain fixed the pygame import issue.",
                 "response": "Egad! The Brain is so smart!"
             })
-            
+
             print("💤 Triggering Dream Cycle...")
             import subprocess
             res = subprocess.run([python_path, "src/dream_cycle.py"], capture_output=True, text=True)
             print(res.stdout)
             print(res.stderr)
-            
+
             # 2. Verify Stream is purged
             print("🧐 Verifying Stream Cleanup...")
             dump = await session.call_tool("get_stream_dump", arguments={})

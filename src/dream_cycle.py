@@ -16,7 +16,7 @@ PINKY_URL = "http://localhost:11434/api/generate"
 async def remote_brain_think(prompt, context):
     """Fallback for remote synthesis if Brain node is not local. Now with Pinky-Fallback."""
     import aiohttp
-    
+
     # Check Brain Health first (Windows 4090)
     use_pinky = False
     try:
@@ -29,7 +29,7 @@ async def remote_brain_think(prompt, context):
 
     target_url = PINKY_URL if use_pinky else BRAIN_URL
     model = "mistral:7b" if use_pinky else "llama3:latest"
-    
+
     if use_pinky:
         logging.warning("⚠️ Brain (4090) is offline. Falling back to Pinky (2080 Ti) for Dreaming.")
 
@@ -53,12 +53,12 @@ async def run_dream_cycle():
     logging.info("🌙 Starting the Diamond Dream Cycle...")
 
     archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE])
-    
+
     try:
         async with stdio_client(archive_params) as (ar, aw):
             async with ClientSession(ar, aw) as archive:
                 await archive.initialize()
-                
+
                 # 1. Recall
                 logging.info("📥 Recalling chaotic memories from the stream...")
                 result = await archive.call_tool("get_stream_dump", arguments={})
@@ -80,7 +80,7 @@ async def run_dream_cycle():
                     "Ignore greetings, character filler, and nervous tics. "
                     "Provide a report suitable for long-term strategic grounding."
                 )
-                
+
                 summary = await remote_brain_think(prompt, narrative_input)
                 logging.info("✨ Synthesis complete.")
 

@@ -2,7 +2,6 @@ import asyncio
 import json
 import pytest
 import aiohttp
-import os
 import websockets
 
 ATTENDANT_URL = "http://localhost:9999"
@@ -17,10 +16,10 @@ async def test_vram_guard_stub_fallback():
     async with aiohttp.ClientSession() as session:
         await session.post(f"{ATTENDANT_URL}/stop")
         await session.post(f"{ATTENDANT_URL}/cleanup")
-        
+
         # 2. Start lab with forced STUB engine
         payload = {
-            "mode": "DEBUG_PINKY", 
+            "mode": "DEBUG_PINKY",
             "engine": "STUB",
             "disable_ear": True
         }
@@ -49,7 +48,7 @@ async def test_vram_guard_stub_fallback():
     async with websockets.connect(LAB_WS_URL) as ws:
         await ws.send(json.dumps({"type": "handshake", "version": "3.5.0"}))
         await ws.send(json.dumps({"type": "text_input", "content": "FORCE_STUB_TEST: Ask the brain about quantum physics."}))
-        
+
         # 5. Verify Stub Response
         found_stub = False
         captured = []

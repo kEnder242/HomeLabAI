@@ -1,8 +1,5 @@
 import asyncio
 import json
-import pytest
-import aiohttp
-import os
 import websockets
 
 ATTENDANT_URL = "http://localhost:9999"
@@ -12,15 +9,15 @@ async def test_vllm_marathon_flows():
     print("Connecting to vLLM Lab...")
     async with websockets.connect(LAB_WS_URL) as ws:
         await ws.send(json.dumps({"type": "handshake", "version": "3.5.7"}))
-        
+
         # 1. Test Save Reaction
         print("Testing Strategic Vibe Check (vLLM)...")
         await ws.send(json.dumps({
-            "type": "workspace_save", 
-            "filename": "vllm_test.py", 
-            "content": "import time\\ndef race_condition():\\n    global counter\\n    counter += 1" 
+            "type": "workspace_save",
+            "filename": "vllm_test.py",
+            "content": "import time\\ndef race_condition():\\n    global counter\\n    counter += 1"
         }))
-        
+
         found_pinky = False
         found_brain = False
         async with asyncio.timeout(60):
@@ -40,7 +37,7 @@ async def test_vllm_marathon_flows():
         # 2. Test Complex Reasoning
         print("\nTesting vLLM Reasoning Stability...")
         await ws.send(json.dumps({"type": "text_input", "content": "Explain PagedAttention in 2 sentences."}))
-        
+
         found_ans = False
         async with asyncio.timeout(60):
             while not found_ans:
@@ -51,7 +48,7 @@ async def test_vllm_marathon_flows():
                     if len(text) > 20:
                         print(f"Captured Answer: {text[:100]}...")
                         found_ans = True
-        
+
     print("\n[PASS] vLLM Marathon flows verified nominal.")
 
 if __name__ == "__main__":

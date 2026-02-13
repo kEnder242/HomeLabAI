@@ -24,7 +24,7 @@ class TestTheEditor(unittest.TestCase):
 
         valid, msg = _validate_filename("script.sh")
         self.assertFalse(valid)
-        
+
         valid, msg = _validate_filename("no_extension")
         self.assertFalse(valid)
 
@@ -37,11 +37,11 @@ class TestTheEditor(unittest.TestCase):
         raw = "Sure, I can do that.\nData: 123"
         clean = _clean_content(raw)
         self.assertEqual(clean, "I can do that.\nData: 123") # "Sure," is removed, rest remains
-        
+
         # Note: My regex was ^(Sure,)\s*. If "I can do that" follows immediately, it stays.
-        # Let's verify exact behavior. 
+        # Let's verify exact behavior.
         # "Sure," matches. "I can do that." is the rest.
-        
+
         raw = "Here is the file:\n{json: true}"
         clean = _clean_content(raw)
         self.assertEqual(clean, "{json: true}")

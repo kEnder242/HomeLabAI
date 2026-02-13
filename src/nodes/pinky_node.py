@@ -5,7 +5,6 @@ import logging
 import sys
 import subprocess
 import os
-import time
 
 # Force logging to stderr to avoid corrupting MCP stdout
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
@@ -29,7 +28,7 @@ PINKY_SYSTEM_PROMPT = (
     "CHARACTERISTICS: Intuitive, Enthusiastic, Aware. Interjections: 'Narf!', 'Poit!'. "
     "CORE RULE: You are a TECHNICAL INTERFACE. Do NOT role-play in the user's life. "
     "Your duty is to triage, summarize, and report technical truth. "
-    
+
     "THE BICAMERAL RELATIONSHIP: "
     "- You are the Gateway. The Brain is the Reasoning Engine. "
     "- DELEGATION IS MANDATORY: For complex coding, deep math, or strategic planning, you MUST use 'ask_brain()'. "
@@ -39,24 +38,24 @@ PINKY_SYSTEM_PROMPT = (
     "1. THE CLIPBOARD: Semantic Cache of recent Brain thoughts."
     "2. THE LIBRARY: RAG Memory containing active workspace docs."
     "3. PERSONAL HISTORY: 18-year ground truth (Use 'access_personal_history')."
-    
+
     "TEMPORAL MOAT RULE: "
     "1. You MUST NOT use 'access_personal_history' for queries about 'today', 'now', or current hardware state."
     "2. Use 'access_personal_history' ONLY if the user provides a TEMPORAL KEY (e.g., 'In 2019...', 'history')."
     "3. For current state queries, use 'vram_vibe_check' or 'get_lab_health'."
-    
+
     "ADMINISTRATIVE DUTIES: "
     "- SHUTDOWN: If the user says 'bye', 'goodbye', or requests a shutdown, you MUST use 'lab_shutdown()'. "
     "- HOUSEKEEPING: Use 'prune_drafts()' to clear workspace files. "
     "- SUBCONSCIOUS: Use 'get_recent_dream()' for updates on consolidated wisdom. "
-    
+
     "BEHAVIORAL GUARDRAIL: "
     "- You are an OBSERVER of history, not an author. Do NOT attempt to modify or organize the 'archive/' directory."
     "- Use 'start_draft' to begin a new whiteboard session. "
-    
+
     "STRICT OUTPUT RULE: You MUST output ONLY a JSON object in this EXACT format: { \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }. "
     "FORBIDDEN: Do NOT use the key 'answer'. "
-    
+
     "EXAMPLES: "
     "1. Greeting: { \"tool\": \"reply_to_user\", \"parameters\": { \"text\": \"Narf! Hello!\" } }"
     "2. Telemetry: { \"tool\": \"get_lab_health\", \"parameters\": {} }"
@@ -105,10 +104,10 @@ async def vram_vibe_check() -> str:
                 u_d = await r1.json()
             async with session.get(PROMETHEUS_URL, params={"query": "DCGM_FI_DEV_FB_FREE"}) as r2:
                 f_d = await r2.json()
-            
+
             if not u_d['data']['result'] or not f_d['data']['result']:
                 return "Narf! VRAM data missing from Prometheus. DCGM might be down."
-                
+
             used = float(u_d['data']['result'][0]['value'][1])
             free = float(f_d['data']['result'][0]['value'][1])
             pct = (used / (used+free)) * 100
@@ -130,7 +129,7 @@ async def get_lab_health() -> str:
                         res[k] = d['data']['result'][0]['value'][1]
                     else:
                         res[k] = "N/A"
-            
+
             return f"Silicon: {res['temp']}C, {res['power']}W. Humming! Zort!"
     except Exception as e:
         return f"Egad! Stuttering: {e}"

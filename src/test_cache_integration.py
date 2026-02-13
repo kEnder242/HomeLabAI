@@ -1,5 +1,4 @@
 import pytest
-import asyncio # Not explicitly needed in test file, but good for context
 import os
 
 # Configuration
@@ -11,14 +10,14 @@ async def test_clipboard_logic(archive_client):
     Tests the semantic clipboard (cache) functionality of the archive node.
     """
     session = archive_client # Use the client provided by the fixture
-    
+
     print("\n🧪 Starting Semantic Clipboard Integration Test...")
-    
+
     # 1. Test Miss
     query_1 = "What is the airspeed velocity of an unladen swallow?"
     print(f"\n1. Testing Clipboard Empty for: '{query_1}'")
     res_1 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
-    
+
     if not res_1.content:
          print("   ✅ Correct: Clipboard Empty (No Note).")
     elif res_1.content[0].text == "None":
@@ -43,7 +42,7 @@ async def test_clipboard_logic(archive_client):
     # 4. Test Semantic Hit
     print(f"\n4. Consulting Clipboard (Semantic Match) for: '{query_semantic}'")
     # Note: Using lax threshold 0.4 for test safety, though 0.35 is default for consult_clipboard
-    res_4 = await session.call_tool("consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4}) 
+    res_4 = await session.call_tool("consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4})
     content_4 = res_4.content[0].text
     print(f"   Result: {content_4}")
     assert content_4 == response_1, f"Expected '{response_1}', got '{content_4}'"

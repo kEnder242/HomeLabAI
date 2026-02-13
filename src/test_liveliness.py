@@ -3,7 +3,6 @@ import websockets
 import json
 import sys
 import time
-import os
 import subprocess
 
 def get_pid():
@@ -15,9 +14,9 @@ def get_pid():
 async def liveliness_check():
     uri = "ws://localhost:8765"
     version = "3.4.0"
-    
+
     print(f"--- [LIVELINESS v1.5] STARTING VERIFICATION ---")
-    
+
     # 1. IMMEDIATE PID CHECK
     pid = get_pid()
     if not pid:
@@ -27,22 +26,22 @@ async def liveliness_check():
 
     start_time = time.time()
     retry_count = 0
-    
+
     while time.time() - start_time < 90:
         retry_count += 1
         print(f"Attempt {retry_count}: Probing {uri}...")
-        
+
         try:
             async with websockets.connect(uri) as ws:
                 print("  🤝 Socket Connected. Waiting for Status...")
                 msg = await asyncio.wait_for(ws.recv(), timeout=10)
                 data = json.loads(msg)
                 print(f"  📥 RX: {data}")
-                
+
                 if data.get('type') == 'status':
                     state = data.get('state', 'unknown').upper()
                     print(f"  ✅ Server is in {state} mode.")
-                    
+
                     if state == 'READY':
                         print("\n⭐⭐⭐ SYSTEM NOMINAL ⭐⭐⭐")
                         return True
@@ -54,7 +53,7 @@ async def liveliness_check():
                             if data.get('state') == 'ready':
                                 print("\n⭐⭐⭐ SYSTEM NOMINAL ⭐⭐⭐")
                                 return True
-                
+
         except Exception as e:
             print(f"  ❌ {type(e).__name__}: {e}")
             # Fast-fail if process disappeared mid-test
@@ -62,7 +61,7 @@ async def liveliness_check():
                 print("  🛑 Server process died during probe.")
                 return False
             await asyncio.sleep(5)
-            
+
     print("\n❌ Liveliness check timed out.")
     return False
 

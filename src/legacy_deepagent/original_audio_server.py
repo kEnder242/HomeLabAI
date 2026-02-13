@@ -23,7 +23,7 @@ PINKY_URL = "http://localhost:11434/api/generate"
 PINKY_MODEL = "llama3.1:8b"  # Local 2080 Ti
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_MODEL = "llama3:latest" # Windows 4090 Ti
-SILENCE_TIMEOUT = 1.2 
+SILENCE_TIMEOUT = 1.2
 
 # System Prompts
 PINKY_SYSTEM_PROMPT = (
@@ -50,11 +50,11 @@ DB_PATH = os.path.expanduser("~/VoiceGateway/chroma_db")
 COLLECTION_NAME = "personal_knowledge"
 
 # Rolling Window Config
-BUFFER_DURATION = 1.5   
-OVERLAP_DURATION = 0.5  
-SILENCE_THRESHOLD = 100 
+BUFFER_DURATION = 1.5
+OVERLAP_DURATION = 0.5
+SILENCE_THRESHOLD = 100
 
-BUFFER_SAMPLES = int(SAMPLE_RATE * BUFFER_DURATION) 
+BUFFER_SAMPLES = int(SAMPLE_RATE * BUFFER_DURATION)
 OVERLAP_SAMPLES = int(SAMPLE_RATE * OVERLAP_DURATION)
 
 # Logging Setup
@@ -88,7 +88,7 @@ class Transcriber:
         self.model.eval()
         self.model = self.model.to("cuda")
         logging.info("Model loaded on GPU.")
-        
+
         # RAG Init
         logging.info(f"Connecting to Knowledge Base at {DB_PATH}...")
         self.chroma_client = chromadb.PersistentClient(path=DB_PATH)
@@ -104,13 +104,13 @@ class Transcriber:
         self.last_speech_time = time.time()
         self.turn_pending = False
         self.wake_signal_sent = False
-        
+
     @torch.no_grad()
     def transcribe(self, audio_data):
         # 1. Silence Check
         rms = np.sqrt(np.mean(audio_data.astype(np.float32)**2))
         if rms < SILENCE_THRESHOLD:
-            return None 
+            return None
 
         # 2. Wake Signal (Fire Once)
         if not self.wake_signal_sent:
@@ -120,32 +120,32 @@ class Transcriber:
         # 3. Prepare Tensor
         audio_signal = audio_data.astype(np.float32) / 32768.0
         audio_signal = torch.tensor(audio_signal).unsqueeze(0).to("cuda")
-        
+
         try:
             # 4. Inference
             encoded, encoded_len = self.model.forward(
-                input_signal=audio_signal, 
+                input_signal=audio_signal,
                 input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
             )
-            
+
             current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(
                 encoded, encoded_len
             )
-            
+
             if current_hypotheses and len(current_hypotheses) > 0:
                 raw_text = current_hypotheses[0].text
                 if not raw_text:
                     return None
-                
+
                 incremental_text = get_new_text(self.full_transcript, raw_text)
-                
+
                 if incremental_text:
                     self.full_transcript += " " + incremental_text
-                    self.last_speech_time = time.time() 
+                    self.last_speech_time = time.time()
                     self.turn_pending = True
                     return incremental_text.strip()
             return None
-            
+
         except Exception as e:
             logging.error(f"Inference error: {e}")
             return None
@@ -187,13 +187,13 @@ class Transcriber:
         if self.turn_pending and (time.time() - self.last_speech_time > SILENCE_TIMEOUT):
             # Turn End
             self.turn_pending = False
-            self.wake_signal_sent = False 
+            self.wake_signal_sent = False
             user_query = self.full_transcript.strip()
-            self.full_transcript = "" 
-            
+            self.full_transcript = ""
+
             if user_query:
                 logging.info(f"[USER] {user_query}")
-                
+
                 # RAG Step
                 context = await self.search_knowledge_base(user_query)
                 rag_snippet = ""
@@ -201,7 +201,7 @@ class Transcriber:
                     logging.info(f"📚 Found Context ({len(context)} chars)")
                     context = context[:8000]
                     rag_snippet = f"\n\nContext from User Notes:\n{context}\n"
-                
+
                 # Step 1: Consult Pinky (Local)
                 pinky_prompt = f"{PINKY_SYSTEM_PROMPT}\n{rag_snippet}\nUser: {user_query}"
                 pinky_options = {
@@ -209,7 +209,7 @@ class Transcriber:
                     "stop": ["User:", "The Brain:", "[USER]", "[BRAIN]"]
                 }
                 pinky_response, _ = await self.generate_response(PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky", pinky_options)
-                
+
                 if pinky_response:
                      logging.info(f"[PINKY] {pinky_response}")
 
@@ -220,7 +220,7 @@ class Transcriber:
                 if pinky_response and "ASK_BRAIN:" in pinky_response:
                     logging.info("🧠 Pinky requested THE BRAIN!")
                     handoff_query = pinky_response.split("ASK_BRAIN:", 1)[1].strip()
-                    
+
                     # Notify Client of Handoff (Optional, sends a quick 'Hold on' message)
                     await websocket.send(json.dumps({
                         "brain": "Narf! I'm asking the Brain! *Poit!*",
@@ -228,7 +228,7 @@ class Transcriber:
                     }))
 
                     brain_prompt = f"{BRAIN_SYSTEM_PROMPT}\n{rag_snippet}\nPinky says: The user needs help with '{handoff_query}'.\nOriginal User Query: {user_query}"
-                    
+
                     # Brain gets more room to breathe
                     brain_options = {"num_predict": 2048}
                     brain_response, _ = await self.generate_response(BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain", brain_options)
@@ -238,7 +238,7 @@ class Transcriber:
                         source_identity = "The Brain (4090 Ti)"
                     else:
                         final_response = "The Brain is ignoring me! Narf!"
-                
+
                 if final_response:
                     await websocket.send(json.dumps({
                         "brain": final_response,
@@ -258,12 +258,12 @@ class Transcriber:
                     "options": options or {}
                 }
                 timeout = aiohttp.ClientTimeout(total=60, connect=2)
-                
+
                 async with session.post(url, json=payload, timeout=timeout) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         response_text = data.get("response", "")
-                        logging.info(f"💡 {name}: {response_text[:100]}...") 
+                        logging.info(f"💡 {name}: {response_text[:100]}...")
                         return response_text, name
                     else:
                         logging.warning(f"⚠️ {name} Error: {resp.status}")
@@ -278,7 +278,7 @@ shutdown_event = asyncio.Event()
 async def audio_handler(websocket):
     logging.info("Client connected!")
     audio_buffer = np.zeros(0, dtype=np.int16)
-    
+
     try:
         async for message in websocket:
             # DEBUG: Text Injection
@@ -298,7 +298,7 @@ async def audio_handler(websocket):
 
             chunk = np.frombuffer(message, dtype=np.int16)
             audio_buffer = np.concatenate((audio_buffer, chunk))
-            
+
             if len(audio_buffer) >= BUFFER_SAMPLES:
                 window = audio_buffer[:BUFFER_SAMPLES]
                 start_time = time.time()
@@ -308,10 +308,10 @@ async def audio_handler(websocket):
                     logging.info(f"Tx: '{text}' ({duration:.3f}s)")
                     await websocket.send(json.dumps({"text": text}))
                 processed_count = BUFFER_SAMPLES - OVERLAP_SAMPLES
-                audio_buffer = audio_buffer[processed_count:] 
-                
+                audio_buffer = audio_buffer[processed_count:]
+
             await transcriber.check_turn_end(websocket)
-                
+
     except Exception as e:
         logging.info(f"Handler exiting: {e}")
     finally:
@@ -320,7 +320,7 @@ async def audio_handler(websocket):
 
 async def main():
     global transcriber
-    transcriber = Transcriber() 
+    transcriber = Transcriber()
     logging.info(f"Starting WebSocket Server on 0.0.0.0:{PORT}")
     try:
         async with websockets.serve(audio_handler, "0.0.0.0", PORT):

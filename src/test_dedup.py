@@ -2,7 +2,7 @@ from dedup_utils import get_new_text
 
 def test_deduplication():
     print("Running Deduplication Tests...")
-    
+
     # Case 1: Simple overlap
     t1 = "Hello my name is"
     t2 = "my name is Jason"
@@ -24,7 +24,7 @@ def test_deduplication():
     res3 = get_new_text(t1, t2)
     print(f"Test 3: '{t1}' + '{t2}' -> '{res3}' (Expected: 'sleeping')")
     assert res3.lower() == "sleeping"
-    
+
     # Case 4: Long phrase (Greater than 5 words)
     t1 = "I am sitting in the office coding"
     t2 = "sitting in the office coding a new feature"

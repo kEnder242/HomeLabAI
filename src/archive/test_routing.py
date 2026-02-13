@@ -14,7 +14,7 @@ async def run_test(query):
             print(f"sending debug text: '{query}'")
             # The host supports injecting text for debugging
             await websocket.send(json.dumps({"debug_text": query}))
-            
+
             # Listen for responses
             while True:
                 try:

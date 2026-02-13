@@ -22,7 +22,7 @@ async def archive_client():
     """
     server_script = os.path.join(os.path.dirname(__file__), "nodes", "archive_node.py")
     server_params = StdioServerParameters(command=PYTHON_PATH, args=[server_script])
-    
+
     # Correctly use stdio_client context manager to get read/write pipes
     async with stdio_client(server_params) as (read_pipe, write_pipe):
         async with ClientSession(read_pipe, write_pipe) as session:
@@ -37,7 +37,7 @@ async def brain_client():
     """
     server_script = os.path.join(os.path.dirname(__file__), "nodes", "brain_node.py")
     server_params = StdioServerParameters(command=PYTHON_PATH, args=[server_script])
-    
+
     async with stdio_client(server_params) as (read_pipe, write_pipe):
         async with ClientSession(read_pipe, write_pipe) as session:
             # Apply a timeout using asyncio.wait_for for initialization
@@ -51,7 +51,7 @@ async def brain_client():
     """
     server_script = os.path.join(os.path.dirname(__file__), "nodes", "brain_node.py")
     server_params = StdioServerParameters(command=PYTHON_PATH, args=[server_script])
-    
+
     async with stdio_client(server_params) as (read_pipe, write_pipe):
         async with ClientSession(read_pipe, write_pipe) as session:
             await session.initialize()
