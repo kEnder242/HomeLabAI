@@ -20,6 +20,10 @@ OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 VLLM_MODEL = "hugging-quants/Llama-3.1-8B-Instruct-AWQ-INT4"
 OLLAMA_MODEL = "llama3.1:8b"
 
+# Paths
+FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
+SEMANTIC_MAP = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
+
 PINKY_SYSTEM_PROMPT = (
     "You are Pinky, the Right Hemisphere of the Acme Lab Bicameral Mind. "
     "CHARACTERISTICS: Intuitive, Enthusiastic, Aware. Interjections: 'Narf!', 'Poit!'. "
@@ -61,7 +65,6 @@ PINKY_SYSTEM_PROMPT = (
 
 async def probe_engine():
     """Detects which engine to use based on PINKY_ENGINE env var or probing."""
-    # 1. Respect Explicit Environment Variable
     env_engine = os.environ.get("PINKY_ENGINE")
     if env_engine:
         if env_engine.upper() == "VLLM":
@@ -69,7 +72,6 @@ async def probe_engine():
         elif env_engine.upper() == "OLLAMA":
             return "OLLAMA", OLLAMA_URL, OLLAMA_MODEL
 
-    # 2. Fallback to Probe (Legacy/Automatic mode)
     async with aiohttp.ClientSession() as session:
         for host in ["127.0.0.1", "localhost"]:
             try:
@@ -135,7 +137,11 @@ async def get_lab_health() -> str:
 
 @mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:
-    """Main loop with Temporal Moat enforcement."""
+    """
+    The Intuitive Gateway: Triage sensory input through the lens of character 
+    and immediate context. Decide whether to whisper a characterful response, 
+    reach into the Archives, or sound the 'Phone Ring' for the Brain's logic.
+    """
     # Pre-emptive VRAM Check
     try:
         async with aiohttp.ClientSession() as session:
@@ -145,6 +151,18 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
                     return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Narf! GPU is truly stuffed (98%+). I need a lobotomy!", "mood": "panic"}})
     except: pass
 
+    prompt = PINKY_SYSTEM_PROMPT
+    if context:
+        prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
+
+    # --- LAYERED MEMORY ACCESS (SEMANTIC MAP) ---
+    if os.path.exists(SEMANTIC_MAP):
+        try:
+            with open(SEMANTIC_MAP, 'r') as f:
+                s_map = json.load(f)
+                prompt += f"\n[WORKING MEMORY (SEMANTIC MAP)]: {json.dumps(s_map['strategic'][:3])}\n"
+        except: pass
+
     engine_type, url, model = await probe_engine()
     if engine_type == "NONE":
         return json.dumps({"tool": "reply_to_user", "parameters": {"text": "Egad! No engines! Poit!", "mood": "panic"}})
@@ -152,13 +170,13 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
     if engine_type == "VLLM":
         payload = {
             "model": model,
-            "messages": [{"role": "system", "content": PINKY_SYSTEM_PROMPT},
-                         {"role": "user", "content": f"MEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nQUERY:\n{query}\n\nDECISION (JSON):"}],
+            "messages": [{"role": "system", "content": prompt},
+                         {"role": "user", "content": f"MEMORY:\n{memory}\n\nQUERY:\n{query}\n\nDECISION (JSON):"}],
             "max_tokens": 300, "temperature": 0.2
         }
     else:
         payload = {
-            "model": model, "prompt": f"{PINKY_SYSTEM_PROMPT}\n\nMEMORY:\n{memory}\n\nCONTEXT:\n{context}\n\nQUERY:\n{query}\n\nDECISION (JSON):",
+            "model": model, "prompt": f"{prompt}\n\nMEMORY:\n{memory}\n\nQUERY:\n{query}\n\nDECISION (JSON):",
             "stream": False, "format": "json", "options": {"num_predict": 300, "temperature": 0.2}
         }
 
@@ -172,57 +190,57 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
 
 @mcp.tool()
 async def start_draft(topic: str, category: str = "validation") -> str:
-    """Begins a technical synthesis on the Whiteboard."""
+    """The Blueprint Initiation: Begins a high-fidelity technical synthesis on the Whiteboard."""
     return json.dumps({"tool": "generate_bkm", "parameters": {"topic": topic, "category": category}})
 
 @mcp.tool()
 async def refine_draft(instruction: str) -> str:
-    """Iterates on the Whiteboard based on feedback."""
+    """Iterative Refinement: Polish the active Whiteboard based on strategic feedback."""
     return json.dumps({"tool": "delegate_to_brain", "parameters": {"instruction": f"Refine the whiteboard: {instruction}"}})
 
 @mcp.tool()
 async def commit_to_archive(filename: str) -> str:
-    """Saves finalized work to the Filing Cabinet."""
+    """The Final Seal: Save finalized architectural work to the strategic Filing Cabinet."""
     return json.dumps({"tool": "write_draft", "parameters": {"filename": filename, "overwrite": True}})
 
 @mcp.tool()
 async def lab_shutdown() -> str:
-    """Administrative shutdown of the lab server. Call when the user says goodbye."""
+    """The Curfew: Gracefully terminates the Lab's active mind loop. Call when the user says goodbye."""
     return json.dumps({"tool": "lab_shutdown", "parameters": {}})
 
 @mcp.tool()
 async def prune_drafts() -> str:
-    """Clears the drafts directory to keep the workspace clean."""
+    """The Janitor's Duty: Clear the drafts directory to maintain technical hygiene."""
     return json.dumps({"tool": "prune_drafts", "parameters": {}})
 
 @mcp.tool()
 async def get_recent_dream() -> str:
-    """Retrieves the latest synthesized wisdom from the archives."""
+    """Subconscious Retrieval: Access the latest synthesized wisdom from consolidated memories."""
     return json.dumps({"tool": "get_recent_dream", "parameters": {}})
 
 @mcp.tool()
 async def build_cv_summary(year: str) -> str:
-    """Triggers high-density career synthesis for a specific year."""
+    """The High-Fidelity Distiller: Trigger strategic synthesis for a specific career epoch."""
     return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
 
 @mcp.tool()
 async def delegate_internal_debate(instruction: str) -> str:
-    """Initiates moderated consensus between dual Brain reasoning paths."""
+    """The Moderated Duel: Initiate strategic consensus between competing reasoning paths."""
     return json.dumps({"tool": "delegate_internal_debate", "parameters": {"instruction": instruction}})
 
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:
-    """Retrieves ground truth from the 18-year archive. USE ONLY FOR HISTORY."""
+    """Deep Grounding: Access 18 years of technical truth. Use sparingly for strategic context."""
     return json.dumps({"tool": "access_personal_history", "parameters": {"keyword": keyword}})
 
 @mcp.tool()
 async def get_lab_status() -> str:
-    """Retrieves session state and recent interaction history."""
+    """The Sensory Check: Retrieve active session state and recent interaction history."""
     return json.dumps({"tool": "get_lab_status", "parameters": {}})
 
 @mcp.tool()
 async def manage_lab(action: str, message: str = "Ok.") -> str:
-    """Admin controls: 'lobotomize_brain'."""
+    """Architectural Controls: Perform low-level mental management actions."""
     return json.dumps({"tool": "manage_lab", "parameters": {"action": action, "message": message}})
 
 if __name__ == "__main__":

@@ -1,0 +1,38 @@
+--- HomeLabAI/src/nodes/pinky_node.py
++++ HomeLabAI/src/nodes/pinky_node.py
+@@ -11,6 +11,7 @@
+ 
+ # Paths
+ FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
++SEMANTIC_MAP = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
+ 
+ mcp = FastMCP("Pinky")
+ 
+@@ -18,10 +19,10 @@
+ @mcp.tool()
+ async def facilitate(query: str, context: str = "", memory: str = "") -> str:
+     """
+-    The Experience Gateway: Triages user input and decides whether to 
+-    respond directly, consult the Archives, or wake the Brain. 
+-    Essential for maintaining the 'Vibe' and character of the Lab.
++    The Intuitive Gateway: Triage sensory input through the lens of character 
++    and immediate context. Decide whether to whisper a characterful response, 
++    reach into the Archives, or sound the 'Phone Ring' for the Brain's logic.
+     """
+     logging.info(f"🐹 Pinky Facilitating: {query[:50]}...")
+     
+@@ -33,6 +34,13 @@
+     if context:
+         prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
+ 
++    # --- LAYERED MEMORY ACCESS ---
++    if os.path.exists(SEMANTIC_MAP):
++        try:
++            with open(SEMANTIC_MAP, 'r') as f:
++                s_map = json.load(f)
++                prompt += f"\n[WORKING MEMORY (SEMANTIC MAP)]: {json.dumps(s_map['strategic'][:3])}\n"
++        except: pass
++
+     try:
+         async with aiohttp.ClientSession() as session:
+             payload = {
