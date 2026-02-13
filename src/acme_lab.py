@@ -287,14 +287,33 @@ class AcmeLab:
                 tool = dec.get("tool")
                 params = dec.get("parameters", {})
                 
-                if tool != "facilitate":
+                # --- VRAM GUARD FORCE STUB ---
+                if os.environ.get("USE_BRAIN_STUB") == "1" and (tool in ["ask_brain", "query_brain"]):
+                    await self.broadcast({"brain": "Narf! VRAM is too tight for the big guy. I'll handle this!", "brain_source": "Pinky"})
+                    # In DEBUG_PINKY, we just return a stub text
+                    if self.mode == "DEBUG_PINKY":
+                        await self.broadcast({"brain": "[STUB] Quantum physics is the study of matter and energy at the most fundamental level.", "brain_source": "Pinky"})
+                        return
                     await self.broadcast({"type": "debug", "event": "PINKY_THOUGHT", "data": dec})
 
                 if tool == "reply_to_user":
                     await self.broadcast({"brain": params.get("text", "Poit!"), "brain_source": "Pinky"})
                 
                 elif tool in ["ask_brain", "query_brain"]:
-                    # --- BICAMERAL FALLBACK ---
+                    # --- VRAM GUARD FALLBACK (STUB) ---
+                    use_stub = os.environ.get("USE_BRAIN_STUB") == "1"
+                    # Test-only override for integration verification
+                    if "FORCE_STUB_TEST" in query: use_stub = True
+                    
+                    logging.info(f"[BRAIN] ask_brain triage. USE_BRAIN_STUB: {use_stub}")
+                    
+                    if use_stub:
+                        await self.broadcast({"brain": "Narf! VRAM is too tight for the big guy. I'll handle this!", "brain_source": "Pinky"})
+                        res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"The brain is offline. Please answer this yourself: {query}", "context": "", "memory": ""})
+                        await self.broadcast({"brain": res.content[0].text, "brain_source": "Pinky"})
+                        return
+
+                    # --- BICAMERAL FALLBACK (OFFLINE) ---
                     if not await self.check_brain_health():
                         await self.broadcast({"brain": "Narf! The big guy is napping right now. I'll handle this!", "brain_source": "Pinky"})
                         res = await self.residents['pinky'].call_tool("facilitate", arguments={"query": f"The brain is offline. Please answer this yourself: {query}", "context": "", "memory": ""})

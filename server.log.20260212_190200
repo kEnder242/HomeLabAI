@@ -1,0 +1,11 @@
+fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+No exporters were provided. This means that no telemetry data will be collected.
+2026-02-12 19:01:49,873 - [LAB] INFO - [BOOT] Mode: DEBUG_PINKY | Door: 8765
+2026-02-12 19:01:49,873 - [LAB] INFO - [BUILD] Loading Residents (v3.5.0)...
+2026-02-12 19:01:53,898 - [ARCHIVE] INFO - NumExpr defaulting to 8 threads.
+2026-02-12 19:01:58,321 - [LAB] INFO - [LAB] Archive Connected.
+2026-02-12 19:01:59,013 - [LAB] INFO - [LAB] Pinky Connected.
+2026-02-12 19:01:59,690 - [LAB] INFO - [LAB] Brain Connected.
+2026-02-12 19:01:59,690 - [LAB] INFO - [READY] Lab is Open.
+2026-02-12 19:01:59,690 - [LAB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
