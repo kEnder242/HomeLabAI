@@ -364,6 +364,8 @@ class AcmeLab:
                                 "type": "file_content", "filename": filename,
                                 "content": res.content[0].text
                             }))
+                    elif msg_type == "debug_warp":
+                        await self.sim_time_warp(data.get("seconds", 300))
                     elif msg_type == "workspace_save":
                         asyncio.create_task(self.handle_workspace_save(
                             data.get("filename"), data.get("content"), ws
@@ -384,6 +386,10 @@ class AcmeLab:
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
         return ws
+
+    async def sim_time_warp(self, s):
+        self.last_activity -= s
+        logging.info(f'[DEBUG] Warped -{s}s')
 
     def is_user_typing(self):
         return (time.time() - self.last_typing_event) < 2.0
