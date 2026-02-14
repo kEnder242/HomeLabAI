@@ -39,16 +39,17 @@
 *   Residents must be loaded **sequentially** with a minimum 2-second sleep between `archive` -> `pinky` -> `brain`.
 *   Avoid `asyncio.gather` for initial MCP handshakes on resource-constrained hosts.
 
-## BKM-004: The "Discuss with me" Protocol (Halt on Silicon Error)
+## BKM-004: The "Discuss with me" Protocol (QQ / Quick Question)
 **Objective**: Prevent state drift and hardware locks when automated recovery fails.
 
-1.  **Halt Conditions**:
+1.  **Shorthand (QQ)**: If the user says "QQ: [Question]", the Agent must provide a concise, direct answer without implementation details, debug logs, or deep implementation dives.
+2.  **Halt Conditions**:
     *   Encountering a "Zombie" process (orphaned PID) that ignores `pkill -9`.
     *   Encountering a `torch.OutOfMemoryError` during a "Heads Down" sprint.
     *   NVIDIA driver reporting "Communication Error" or `nvidia-smi` hanging.
-2.  **Action**: HALT all implementation.
-3.  **Reporting**: Present the hardware state (PID, VRAM usage, driver logs) to the Lead Engineer.
-4.  **Resolution**: WAIT for explicit approval before attempting `sudo` level interventions or system reboots.
+3.  **Action**: HALT all implementation.
+4.  **Reporting**: Present the hardware state (PID, VRAM usage, driver logs) to the Lead Engineer.
+5.  **Resolution**: WAIT for explicit approval before attempting `sudo` level interventions or system reboots.
 
 ## BKM-005: The Design Studio (Greenlight before Silicon Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
@@ -61,7 +62,7 @@
 ## BKM-006: Heads Down / AFK Continuity (Safety Valve Logic)
 **Objective**: Enable autonomous agent sprints while protecting hardware resources.
 
-1.  **Trigger**: User gives a "Heads Down" mandate or says "Going AFK."
+1.  **Trigger**: User gives a "Heads Down" mandate or says "Going AFK" (or just "AFK").
 2.  **Continuity**: The Agent works sequentially through `ProjectStatus.md`, skipping blocked tasks.
 3.  **Safety Valve**: The Lab server MUST have `--afk-timeout 60` active. This ensures that if the Agent/User connection drops, the GPU is not left idling.
 4.  **Silence**: No incremental status updates; the Agent only "pops up" for BKM-004 Halt Conditions.
