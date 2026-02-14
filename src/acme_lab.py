@@ -547,8 +547,20 @@ class AcmeLab:
                         await self.broadcast({
                             "brain": final_out, "brain_source": "Pinky"
                         })
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # --- FIX: Handle Tool Hallucination ---
+                        err_msg = f"Narf! I don't know how to '{tool}'. Poit!"
+                        if "Unknown tool" in str(e):
+                            await self.broadcast({
+                                "brain": err_msg,
+                                "brain_source": "Pinky",
+                                "tag": "HALLUCINATION_TRAP"
+                            })
+                        else:
+                            await self.broadcast({
+                                "brain": f"Tool Error: {e}",
+                                "brain_source": "Pinky"
+                            })
             else:
                 await self.broadcast({
                     "brain": raw_response, "brain_source": "Pinky"
