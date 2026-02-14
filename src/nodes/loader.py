@@ -58,12 +58,18 @@ class BicameralNode:
 
     def unify_prompt(self, query, context="", memory=""):
         """Implements the Unified User Pattern for vLLM compatibility."""
+        # Get list of physical tools from the MCP instance
+        tools = [t.name for t in self.mcp._tool_manager.list_tools()]
+        tool_list = ", ".join(tools)
+
         prompt = self.system_prompt
         if context:
             prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
 
         unified = (
             f"[SYSTEM]: {prompt}\n\n"
+            f"AVAILABLE TOOLS: {tool_list}, ask_brain, reply_to_user\n"
+            "RULE: You MUST ONLY use one of the tools listed above.\n\n"
             f"MEMORY:\n{memory}\n\n"
             f"QUERY:\n{query}\n\n"
             "DECISION (JSON):"
