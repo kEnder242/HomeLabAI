@@ -40,12 +40,14 @@ current_lab_mode: str = "OFFLINE"
 class LabAttendant:
     def __init__(self):
         self.app = web.Application()
-        self.app.router.add_get("/status", self.handle_status)
+        # --- ENFORCED EVENT ARCHITECTURE ---
+        # /status removed. Use /wait_ready for boot sync or /heartbeat for soaks.
         self.app.router.add_post("/start", self.handle_start)
         self.app.router.add_post("/stop", self.handle_stop)
         self.app.router.add_post("/cleanup", self.handle_cleanup)
         self.app.router.add_post("/hard_reset", self.handle_hard_reset)
         self.app.router.add_get("/wait_ready", self.handle_wait_ready)
+        self.app.router.add_get("/heartbeat", self.handle_heartbeat)
         self.app.router.add_get("/logs", self.handle_logs)
         self.ready_event = asyncio.Event()
         self.monitor_task = None
@@ -62,64 +64,10 @@ class LabAttendant:
         except Exception:
             return 0, 0
 
-    async def log_monitor_loop(self):
-        """Tails the log and triggers ready_event on [READY]."""
-        logger.info("[MONITOR] Starting log monitor...")
-        self.ready_event.clear()
-        
-        while True:
-            if os.path.exists(SERVER_LOG):
-                try:
-                    with open(SERVER_LOG, 'r') as f:
-                        # Seek to end
-                        f.seek(0, 2)
-                        while True:
-                            line = f.readline()
-                            if not line:
-                                await asyncio.sleep(0.5)
-                                if not lab_process or lab_process.poll() is not None:
-                                    break
-                                continue
-                            
-                            if "[READY] Lab is Open" in line:
-                                logger.info("[MONITOR] Signal Detected: READY")
-                                self.ready_event.set()
-                                return
-                            if "[FATAL]" in line:
-                                logger.error("[MONITOR] Signal Detected: FATAL")
-                                return
-                except Exception as e:
-                    logger.error(f"[MONITOR] Error: {e}")
-            await asyncio.sleep(1)
-
-    async def cleanup_silicon(self):
-        """Sweep all related processes and zero out VRAM."""
-        logger.warning("[SWEEP] Purging all Lab-related processes...")
-        if self.monitor_task:
-            self.monitor_task.cancel()
-        
-        targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                line = " ".join(proc.info['cmdline'] or [])
-                if any(t in line for t in targets):
-                    logger.info(f"[KILL] Terminating {proc.info['pid']} ({line[:50]})")
-                    proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        global lab_process, vllm_process
-        lab_process = None
-        vllm_process = None
-
-        if os.path.exists(ROUND_TABLE_LOCK):
-            os.remove(ROUND_TABLE_LOCK)
-
-        await asyncio.sleep(2)
-
-    async def handle_status(self, request):
+    async def _get_current_vitals(self):
+        """Internal helper to aggregate Lab state."""
         lock_active = os.path.exists(ROUND_TABLE_LOCK)
-        status = {
+        vitals = {
             "attendant_pid": os.getpid(),
             "lab_server_running": False,
             "vllm_running": False,
@@ -135,80 +83,117 @@ class LabAttendant:
                 url = "http://localhost:8088/v1/models"
                 async with session.get(url, timeout=0.5) as r:
                     if r.status == 200:
-                        status["vllm_running"] = True
+                        vitals["vllm_running"] = True
         except Exception:
             pass
 
         global lab_process
         if lab_process and lab_process.poll() is None:
-            status["lab_server_running"] = True
-            if not status["full_lab_ready"]:
-                # Backup check in case monitor missed it
+            vitals["lab_server_running"] = True
+            # Final check for readiness if not already set
+            if not vitals["full_lab_ready"]:
                 if os.path.exists(SERVER_LOG):
-                    try:
-                        with open(SERVER_LOG, 'r') as f:
-                            content = f.read()
-                            if "[READY] Lab is Open" in content:
-                                status["full_lab_ready"] = True
-                                self.ready_event.set()
-                            if "[FATAL]" in content:
-                                status["last_error"] = (
-                                    content.split("[FATAL]")[-1]
-                                    .strip().split("\n")[0]
-                                )
-                    except Exception:
-                        pass
+                    with open(SERVER_LOG, 'r') as f:
+                        if "[READY] Lab is Open" in f.read():
+                            vitals["full_lab_ready"] = True
+                            self.ready_event.set()
         elif lab_process and lab_process.poll() is not None:
-            status["last_error"] = f"Process died: {lab_process.poll()}"
+            vitals["last_error"] = f"Process died: {lab_process.poll()}"
 
-        # --- Update status.json for status.html ---
+        return vitals
+
+    async def cleanup_silicon(self):
+        """Sweep all related processes and zero out VRAM."""
+        logger.warning("[SWEEP] Purging all Lab-related processes...")
+        if self.monitor_task:
+            self.monitor_task.cancel()
+
+        targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                line = " ".join(proc.info['cmdline'] or [])
+                if any(t in line for t in targets):
+                    logger.info(
+                        f"[KILL] Terminating {proc.info['pid']} ({line[:50]})"
+                    )
+                    proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        global lab_process, vllm_process
+        lab_process = None
+        vllm_process = None
+
+        if os.path.exists(ROUND_TABLE_LOCK):
+            os.remove(ROUND_TABLE_LOCK)
+
+        await asyncio.sleep(2)
+
+    async def log_monitor_loop(self):
+        """Tails the log and triggers ready_event on [READY]."""
+        logger.info("[MONITOR] Starting log monitor...")
+        self.ready_event.clear()
+        
+        while True:
+            if os.path.exists(SERVER_LOG):
+                try:
+                    with open(SERVER_LOG, 'r') as f:
+                        f.seek(0, 2)
+                        while True:
+                            line = f.readline()
+                            if not line:
+                                await asyncio.sleep(0.5)
+                                if not lab_process or lab_process.poll() is not None:
+                                    break
+                                continue
+                            
+                            if "[READY] Lab is Open" in line:
+                                logger.info("[MONITOR] Signal Detected: READY")
+                                self.ready_event.set()
+                                # Update public status.json once READY
+                                await self.update_status_json()
+                                return
+                            if "[FATAL]" in line:
+                                logger.error("[MONITOR] Signal Detected: FATAL")
+                                return
+                except Exception as e:
+                    logger.error(f"[MONITOR] Error: {e}")
+            await asyncio.sleep(1)
+
+    async def update_status_json(self):
+        """Updates the shared status.json for the dashboard."""
+        vitals = await self._get_current_vitals()
         try:
             v_used, v_total = await self._get_vram_info()
             v_pct = (v_used / v_total * 100) if v_total > 0 else 0
             live_data = {
-                "status": (
-                    "ONLINE" if status["lab_server_running"] else "OFFLINE"
-                ),
-                "message": (
-                    "Attendant active. Mind is " +
-                    ("READY" if status["full_lab_ready"] else "OFFLINE")
-                ),
-                "timestamp": datetime.datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
+                "status": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
+                "message": "Mind is " + ("READY" if vitals["full_lab_ready"] else "BOOTING"),
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "vitals": {
-                    "brain": (
-                        "ONLINE" if status["lab_server_running"] else "OFFLINE"
-                    ),
-                    "intercom": (
-                        "ONLINE" if status["lab_server_running"] else "OFFLINE"
-                    ),
+                    "brain": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
+                    "intercom": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
                     "vram": f"{v_pct:.1f}%"
                 }
             }
             s_json = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
             with open(s_json, "w") as f:
                 json.dump(live_data, f)
-        except Exception as e:
-            logger.error(f"[STATUS] Failed to update status.json: {e}")
-
-        return web.json_response(status)
+        except Exception:
+            pass
 
     async def handle_start(self, request):
         global lab_process, vllm_process, current_lab_mode
         data = await request.json()
         preferred_engine = data.get("engine", "OLLAMA")
 
-        # 1. Automatic Cleanup if already running
         await self.cleanup_silicon()
 
-        # 2. Handle vLLM specifically
         if preferred_engine == "vLLM":
             logger.info("[VRAM] Ensuring vLLM is active...")
             subprocess.run(["bash", VLLM_START_PATH])
             await asyncio.sleep(10)
 
-        # 3. Launch Hub
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
         env["USE_BRAIN_VLLM"] = "1" if preferred_engine == "vLLM" else "0"
@@ -234,29 +219,37 @@ class LabAttendant:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_wait_ready(self, request):
-        """Blocks until the Lab is READY or timeout reached."""
+        """Blocks until the Lab is READY. Returns full vitals on success."""
         timeout = int(request.query.get("timeout", 60))
         try:
             await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
-            return web.json_response({"status": "ready", "message": "Lab is fully resident."})
+            vitals = await self._get_current_vitals()
+            return web.json_response({"status": "ready", "vitals": vitals})
         except asyncio.TimeoutError:
-            return web.json_response({"status": "timeout", "message": "Wait exceeded."}, status=408)
+            vitals = await self._get_current_vitals()
+            return web.json_response({"status": "timeout", "vitals": vitals}, status=408)
+
+    async def handle_heartbeat(self, request):
+        """Fast liveliness check for soak phases."""
+        vitals = await self._get_current_vitals()
+        # Periodically update status.json during soaks
+        await self.update_status_json()
+        return web.json_response(vitals)
 
     async def handle_stop(self, request):
         await self.cleanup_silicon()
+        await self.update_status_json()
         return web.json_response({"status": "success"})
 
     async def handle_cleanup(self, request):
-        """Archives server logs and clears stale locks."""
         if os.path.exists(SERVER_LOG):
             ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             os.rename(SERVER_LOG, f"{SERVER_LOG}.{ts}")
-        if os.path.exists(ROUND_TABLE_LOCK):
-            os.remove(ROUND_TABLE_LOCK)
-        return web.json_response({"status": "success", "message": "Cleanup complete."})
+        return web.json_response({"status": "success"})
 
     async def handle_hard_reset(self, request):
         await self.cleanup_silicon()
+        await self.update_status_json()
         return web.json_response({"status": "success"})
 
     async def handle_logs(self, request):
