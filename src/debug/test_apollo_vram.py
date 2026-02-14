@@ -3,9 +3,13 @@ import subprocess
 import aiohttp
 import time
 import os
+import json
 
 # Configuration from Environment or Defaults
 ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:9999")
+VLLM_URL = "http://localhost:8088/v1/chat/completions"
+MODEL_PATH = "/home/jallred/AcmeLab/models/mistral-7b-awq"
+
 
 def get_gpu_info():
     """Returns (used, total) MiB."""
@@ -20,8 +24,27 @@ def get_gpu_info():
     except Exception:
         return 0, 0
 
+
+async def token_burn(session):
+    """Fires a request to vLLM to allocate KV cache."""
+    print("\n[APOLLO] Initiating Token Burn (KV Cache Allocation)...")
+    payload = {
+        "model": MODEL_PATH,
+        "messages": [
+            {"role": "user", "content": "Explain the concept of VRAM headroom in one paragraph."}
+        ],
+        "max_tokens": 100
+    }
+    try:
+        async with session.post(VLLM_URL, json=payload) as resp:
+            await resp.json()
+            print("[APOLLO] Token Burn Complete.")
+    except Exception as e:
+        print(f"[APOLLO] Token Burn Failed: {e}")
+
+
 async def run_apollo_live():
-    print("--- 🚀 Apollo 11: Real-Time Silicon Measurement (Generic) ---")
+    print("--- 🚀 Apollo 11: Real-Time Active Profiling (Mistral-7B) ---")
 
     # 1. Hardware Detection
     used_base, total_cap = get_gpu_info()
@@ -35,7 +58,6 @@ async def run_apollo_live():
     # 2. Trigger Start via Attendant
     async with aiohttp.ClientSession() as session:
         print("[APOLLO] Launching Full Stack (vLLM + Ears)...")
-        # Note: Attendant v3.6.2 manages vLLM internally
         try:
             await session.post(
                 f"{ATTENDANT_URL}/start",
@@ -47,19 +69,26 @@ async def run_apollo_live():
 
         start_time = time.time()
         max_vram = used_base
+        burn_triggered = False
 
-        # 120s timeout for load
-        while time.time() - start_time < 120:
+        # 180s timeout for load + burn
+        while time.time() - start_time < 180:
             current, _ = get_gpu_info()
             if current > max_vram:
                 max_vram = current
 
             try:
-                resp = await session.get(f"{ATTENDANT_URL}/status")
+                resp = await session.get(f"{ATTENDANT_URL}/status?timeout=1")
                 status = await resp.json()
 
-                if status.get("full_lab_ready"):
-                    print("\n[APOLLO] Lab is READY.")
+                if status.get("full_lab_ready") and not burn_triggered:
+                    print("\n[APOLLO] Lab is READY. Starting stress phase.")
+                    # Run burn in background to keep monitoring peak
+                    asyncio.create_task(token_burn(session))
+                    burn_triggered = True
+
+                if burn_triggered and time.time() - start_time > 150:
+                    # Give it time to finish generation
                     break
 
                 if status.get("last_error"):
@@ -72,16 +101,15 @@ async def run_apollo_live():
                 f"\r[APOLLO] Current VRAM: {current:>5} MiB | Peak: {max_vram:>5} MiB",
                 end="", flush=True
             )
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
-        print(f"\n[APOLLO] Final Peak: {max_vram} MiB")
+        print(f"\n[APOLLO] Final Peak (Active): {max_vram} MiB")
         print(f"[APOLLO] Budget: {max_vram} / {total_cap} MiB ({(max_vram/total_cap)*100:.1f}%)")
 
-        # 95% threshold for generic safety
         if max_vram > total_cap * 0.95:
-            print("[CRITICAL] REDLINE. Ears or context will likely OOM.")
+            print("[CRITICAL] REDLINE. Active inference is dangerously close to OOM.")
         else:
-            print("[NOMINAL] Silicon headroom verified.")
+            print("[NOMINAL] Active silicon headroom verified.")
 
 if __name__ == "__main__":
     asyncio.run(run_apollo_live())
