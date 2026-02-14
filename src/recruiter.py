@@ -8,8 +8,8 @@ from typing import List, Dict
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
-ARCHIVE_DB = os.path.expanduser("~/AcmeLab/chroma_db")
 CONFIG_FILE = os.path.join(BASE_DIR, "../config/recruiter_config.json")
+
 
 def load_config():
     default = {
@@ -21,24 +21,35 @@ def load_config():
         try:
             with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
-        except: pass
+        except Exception:
+            pass
     return default
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [RECRUITER] %(message)s')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [RECRUITER] %(message)s'
+)
 config = load_config()
 
+
 class NightlyRecruiter:
-    def __init__(self, archive_client=None):
-        self.archive = archive_client # Injected dependency for Archive Node
+    def __init__(self, archive_client=None, brain_client=None):
+        self.archive = archive_client  # Injected dependency for Archive Node
+        self.brain = brain_client      # Injected dependency for Brain Node
         self.config = config
 
     async def fetch_career_context(self):
-        """
-        Retrieves the 3x3 CVT summary to ground the search.
-        In a real run, this calls the Archive Node.
-        """
-        # Stub for now, or integration with Archive Node if available
-        return "Expert in Python, Silicon Validation, Telemetry, and Agentic Workflows. 18 years experience."
+        """Retrieves the 3x3 CVT summary from the Archive Node."""
+        if not self.archive:
+            return "Expert in Silicon Validation and Telemetry. 18 years experience."
+        try:
+            # Call the real CVT builder tool in Archive Node
+            res = await self.archive.call_tool("build_cv_summary", arguments={})
+            return res.content[0].text
+        except Exception as e:
+            logging.error(f"[RECRUITER] CVT Fetch Failed: {e}")
+            return "Expert in Silicon Validation and Telemetry. 18 years experience."
 
     async def search_for_jobs(self, search_results: List[Dict] = None) -> List[Dict]:
         """
@@ -48,7 +59,11 @@ class NightlyRecruiter:
             return search_results
 
         return [
-            {"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}
+            {
+                "title": "Senior Telemetry Architect",
+                "company": "NVIDIA",
+                "url": "https://nvidia.wd1.myworkdayjobs.com/..."
+            }
         ]
 
     async def generate_brief(self, jobs: List[Dict], context: str) -> str:
@@ -76,19 +91,41 @@ class NightlyRecruiter:
 
         return path
 
-async def run_recruiter_task(archive_interface=None):
+
+async def run_recruiter_task(archive_interface=None, brain_interface=None):
     """
     The entry point for the 'Alarm Clock'.
     """
-    recruiter = NightlyRecruiter(archive_interface)
+    recruiter = NightlyRecruiter(archive_interface, brain_interface)
     logging.info("Waking up for Nightly Recruitment drive...")
 
     ctx = await recruiter.fetch_career_context()
     jobs = await recruiter.search_for_jobs()
     brief_path = await recruiter.generate_brief(jobs, ctx)
 
+    # Notify the Pager
+    try:
+        rel_path = "../../Portfolio_Dev/field_notes/data/pager_activity.json"
+        pager_path = os.path.join(BASE_DIR, rel_path)
+        if os.path.exists(pager_path):
+            with open(pager_path, "r") as f:
+                pager = json.load(f)
+
+            pager.append({
+                "timestamp": datetime.datetime.now().isoformat(),
+                "source": "Recruiter",
+                "severity": "INFO",
+                "message": f"Nightly Brief Ready: {os.path.basename(brief_path)}"
+            })
+
+            with open(pager_path, "w") as f:
+                json.dump(pager[-20:], f, indent=2)
+    except Exception as e:
+        logging.error(f"[RECRUITER] Pager Notification Failed: {e}")
+
     logging.info(f"Recruitment Drive Complete. Brief saved to: {brief_path}")
     return brief_path
+
 
 if __name__ == "__main__":
     asyncio.run(run_recruiter_task())

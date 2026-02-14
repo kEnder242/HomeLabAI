@@ -21,7 +21,7 @@ from mcp.client.stdio import stdio_client
 PORT = 8765
 ATTENDANT_PORT = 9999
 PYTHON_PATH = sys.executable
-VERSION = "3.6.4"  # Conflict Resolution & Full Prompt Restoration
+VERSION = "3.6.4"
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_HEARTBEAT_URL = "http://192.168.1.26:11434/api/tags"
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,6 +59,17 @@ def load_equipment():
 
 
 class AcmeLab:
+    BOOT_TICS = [
+        "Initializing Federated Bus...",
+        "Powering on Liger-Kernels...",
+        "Allocating 4.5GB VRAM Baseline...",
+        "Synchronizing Bicameral Handshake...",
+        "Priming EarNode Decoder...",
+        "Verifying Resident Liveliness...",
+        "Calibrating Neural Uplink...",
+        "Awaiting EngineCore Readiness..."
+    ]
+
     def __init__(self, afk_timeout=None):
         self.residents = {}
         self.ear = None
@@ -112,20 +123,16 @@ class AcmeLab:
         if not self.connected_clients:
             return
 
-        # Log to Ledger if it's conversation content
         if message_dict.get("type") == "final":
             await self.log_to_ledger("ME", message_dict.get("text"))
         if message_dict.get("brain"):
-            # --- FIX: Filter out Brain's logic headers for clean UI ---
             content = message_dict.get("brain")
             from nodes.brain_node import _clean_content
             content = _clean_content(content)
-
             await self.log_to_ledger(
                 message_dict.get("brain_source", "PINKY"),
                 content
             )
-            # Update the message before broadcast
             message_dict["brain"] = content
 
         if message_dict.get("type") == "status":
@@ -138,7 +145,6 @@ class AcmeLab:
                 pass
 
     async def check_brain_health(self):
-        """Heartbeat check for the 4090 host."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(BRAIN_HEARTBEAT_URL, timeout=2) as resp:
@@ -148,7 +154,6 @@ class AcmeLab:
         return self.brain_online
 
     async def reflex_loop(self):
-        """Non-blocking characterful reflexes and alerts."""
         tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
             await asyncio.sleep(random.randint(45, 120))
@@ -162,27 +167,26 @@ class AcmeLab:
             await self.check_brain_health()
 
     async def scheduled_tasks_loop(self):
-        """The Alarm Clock: Runs scheduled jobs."""
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
-            # 02:00 AM: Nightly Recruiter
             if now.hour == 2 and now.minute == 0:
                 await self.broadcast({
                     "brain": "⏰ Alarm Clock: Nightly Recruitment...",
                     "brain_source": "System"
                 })
-                brief = await recruiter.run_recruiter_task()
+                brief = await recruiter.run_recruiter_task(
+                    archive_interface=self.residents.get("archive"),
+                    brain_interface=self.residents.get("brain")
+                )
                 await self.broadcast({
                     "brain": f"Recruitment Drive: {os.path.basename(brief)}",
                     "brain_source": "The Nightly Recruiter",
                     "channel": "insight"
                 })
                 await asyncio.sleep(61)
-
             await asyncio.sleep(10)
 
     async def watchdog_loop(self):
-        """Monitors the Lab Attendant bootloader."""
         while not self.shutdown_event.is_set():
             await asyncio.sleep(60)
             try:
@@ -194,23 +198,46 @@ class AcmeLab:
             except Exception:
                 logging.error("[WATCHDOG] Could not connect to Attendant!")
 
-    async def monitor_task_with_tics(self, coro, websocket, delay=2.5):
+    async def monitor_task_with_tics(self, coro, websocket, delay=2.0):
         task = asyncio.create_task(coro)
-        tics = ["Thinking...", "Processing...", "Consulting Brain..."]
+        tics = [
+            "[SYSTEM] Deep Thinking active...",
+            "[SYSTEM] Mistral-7B generating...",
+            "[SYSTEM] Processing context..."
+        ]
         while not task.done():
             done, pending = await asyncio.wait([task], timeout=delay)
             if task in done:
                 return task.result()
             if self.connected_clients:
-                await self.broadcast(
-                    {"brain": random.choice(tics), "brain_source": "Pinky (Reflex)"}
-                )
+                await self.broadcast({
+                    "brain": random.choice(tics),
+                    "brain_source": "System"
+                })
             delay = min(delay * 1.5, 6.0)
         return task.result()
 
     def should_cache_query(self, query: str) -> bool:
         forbidden = ["time", "date", "status", "now", "latest", "news"]
         return not any(word in query.lower() for word in forbidden)
+
+    async def loading_monologue(self):
+        while self.status == "BOOTING" and not self.shutdown_event.is_set():
+            if self.connected_clients:
+                tic = random.choice(self.BOOT_TICS)
+                await self.broadcast({"brain": tic, "brain_source": "System"})
+            await asyncio.sleep(random.uniform(3.0, 4.5))
+
+    async def boot_sequence(self, mode):
+        self.mode = mode
+        app = web.Application()
+        app.add_routes([web.get('/', self.client_handler)])
+        runner = web.AppRunner(app)
+        await runner.setup()
+        await web.TCPSite(runner, '0.0.0.0', PORT).start()
+        logging.info(f"[BOOT] Mode: {mode} | Door: {PORT}")
+        asyncio.create_task(self.loading_monologue())
+        await self.load_residents_and_equipment()
 
     async def load_residents_and_equipment(self):
         logging.info(f"[BUILD] Loading Residents (v{VERSION})...")
@@ -229,11 +256,9 @@ class AcmeLab:
                 p = StdioServerParameters(
                     command=PYTHON_PATH, args=args, env=os.environ.copy()
                 )
-                # Ensure the nodes can see their parent src directory
                 p.env["PYTHONPATH"] = (
                     f"{p.env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
                 )
-
                 transport = await stack.enter_async_context(stdio_client(p))
                 session = await stack.enter_async_context(
                     ClientSession(transport[0], transport[1])
@@ -271,23 +296,11 @@ class AcmeLab:
             except Exception:
                 pass
 
-    async def boot_sequence(self, mode):
-        self.mode = mode
-        app = web.Application()
-        app.add_routes([web.get('/', self.client_handler)])
-        runner = web.AppRunner(app)
-        await runner.setup()
-        await web.TCPSite(runner, '0.0.0.0', PORT).start()
-        logging.info(f"[BOOT] Mode: {mode} | Door: {PORT}")
-        await self.load_residents_and_equipment()
-
     async def amygdala_sentinel_v2(self, query):
-        """Decides if background signals require intervention."""
         if not self.brain_online:
             return
         triggers = ["how do i", "scaling", "architecture", "failure", "bottleneck"]
-        q_low = query.lower()
-        if any(t in q_low for t in triggers) or len(query.split()) > 15:
+        if any(t in query.lower() for t in triggers) or len(query.split()) > 15:
             logging.info(f"[AMYGDALA] Signal detected: {query[:50]}...")
             prompt = (
                 f"[AMYGDALA INTERJECTION] I overheard: '{query}'. "
@@ -324,7 +337,6 @@ class AcmeLab:
                         query = self.ear.check_turn_end()
                         if query:
                             await self.broadcast({"type": "final", "text": query})
-                            # --- FIX: Avoid double-speak ---
                             delegated = await self.process_query(query, ws)
                             if not delegated:
                                 asyncio.create_task(
@@ -350,7 +362,6 @@ class AcmeLab:
                     elif msg_type == "text_input":
                         query = data.get("content", "")
                         self.last_activity = time.time()
-                        # --- FIX: Avoid double-speak ---
                         delegated = await self.process_query(query, ws)
                         if not delegated:
                             asyncio.create_task(self.amygdala_sentinel_v2(query))
@@ -364,8 +375,6 @@ class AcmeLab:
                                 "type": "file_content", "filename": filename,
                                 "content": res.content[0].text
                             }))
-                    elif msg_type == "debug_warp":
-                        await self.sim_time_warp(data.get("seconds", 300))
                     elif msg_type == "workspace_save":
                         asyncio.create_task(self.handle_workspace_save(
                             data.get("filename"), data.get("content"), ws
@@ -387,15 +396,7 @@ class AcmeLab:
                 await self.manage_session_lock(active=False)
         return ws
 
-    async def sim_time_warp(self, s):
-        self.last_activity -= s
-        logging.info(f'[DEBUG] Warped -{s}s')
-
-    def is_user_typing(self):
-        return (time.time() - self.last_typing_event) < 2.0
-
     async def handle_workspace_save(self, filename, content, websocket):
-        """Strategic Vibe Check: Performs validation on save."""
         logging.info(f"[WORKSPACE] User saved {filename}.")
         await websocket.send_str(json.dumps({
             "type": "file_content", "filename": filename, "content": content
@@ -405,8 +406,8 @@ class AcmeLab:
         self.last_save_event = time.time()
 
         await self.broadcast({
-            "brain": f"Poit! I noticed you saved {filename}. Let me look...",
-            "brain_source": "Pinky"
+            "brain": f"[SYSTEM] Validating save: {filename}",
+            "brain_source": "System"
         })
 
         if await self.check_brain_health():
@@ -427,6 +428,10 @@ class AcmeLab:
             })
 
     async def process_query(self, query, websocket):
+        await self.broadcast({
+            "brain": "[SYSTEM] Engaging Experience Node...",
+            "brain_source": "System"
+        })
         delegated = False
         try:
             if self.should_cache_query(query):
@@ -441,12 +446,15 @@ class AcmeLab:
                     })
                     return True
 
-            res = await self.residents['pinky'].call_tool(
-                "facilitate", arguments={
-                    "query": query,
-                    "context": str(self.recent_interactions[-3:]),
-                    "memory": ""
-                }
+            res = await self.monitor_task_with_tics(
+                self.residents['pinky'].call_tool(
+                    "facilitate", arguments={
+                        "query": query,
+                        "context": str(self.recent_interactions[-3:]),
+                        "memory": ""
+                    }
+                ),
+                websocket
             )
             raw_response = res.content[0].text
             m = re.search(r'\{.*\}', raw_response, re.DOTALL)
@@ -457,13 +465,10 @@ class AcmeLab:
                 params = dec.get("parameters", {})
 
                 if tool == "reply_to_user":
-                    msg = {
+                    await self.broadcast({
                         "brain": params.get("text", "Poit!"),
                         "brain_source": "Pinky"
-                    }
-                    if params.get("mood") == "panic":
-                        msg["tag"] = "SYSTEM_ERROR"
-                    await self.broadcast(msg)
+                    })
 
                 elif tool in ["ask_brain", "query_brain"]:
                     delegated = True
@@ -489,53 +494,11 @@ class AcmeLab:
                         ),
                         websocket
                     )
-                    brain_out = brain_res.content[0].text
                     await self.broadcast({
-                        "brain": brain_out,
+                        "brain": brain_res.content[0].text,
                         "brain_source": "The Brain",
                         "channel": "insight"
                     })
-
-                    # Banter loop
-                    banter_ttl = 3.0
-                    while banter_ttl > 0:
-                        syn_query = (
-                            f"The Brain said: '{brain_out[:300]}'. "
-                            f"Take, Pinky! (Banter TTL: {banter_ttl:.1f})"
-                        )
-                        syn_res = await self.residents['pinky'].call_tool(
-                            "facilitate", arguments={
-                                "query": syn_query, "context": brain_out,
-                                "memory": "Banter Mode"
-                            }
-                        )
-                        syn_text = syn_res.content[0].text
-                        sm = re.search(r'\{.*\}', syn_text, re.DOTALL)
-                        if sm:
-                            try:
-                                sd = json.loads(sm.group(0))
-                                if sd.get("tool") == "reply_to_user":
-                                    syn_text = sd["parameters"].get("text", "Poit!")
-                            except Exception:
-                                pass
-
-                        await self.broadcast({
-                            "brain": syn_text, "brain_source": "Pinky"
-                        })
-                        banter_ttl -= random.uniform(1.0, 1.5)
-                        if banter_ttl > 0.5:
-                            query_text = (
-                                f"Pinky said '{syn_text[:50]}'. Correction?"
-                            )
-                            b_rem = await self.residents['brain'].call_tool(
-                                "deep_think", arguments={"query": query_text}
-                            )
-                            await self.broadcast({
-                                "brain": b_rem.content[0].text,
-                                "brain_source": "The Brain",
-                                "channel": "insight"
-                            })
-                            banter_ttl -= 1.0
                 else:
                     try:
                         exec_res = await self.residents['pinky'].call_tool(
@@ -547,26 +510,16 @@ class AcmeLab:
                             try:
                                 rd = json.loads(rm.group(0))
                                 if rd.get("tool") == "reply_to_user":
-                                    final_out = rd["parameters"].get("text", "Poit!")
+                                    final_out = rd["parameters"].get("text")
                             except Exception:
                                 pass
                         await self.broadcast({
                             "brain": final_out, "brain_source": "Pinky"
                         })
                     except Exception as e:
-                        # --- FIX: Handle Tool Hallucination ---
-                        err_msg = f"Narf! I don't know how to '{tool}'. Poit!"
-                        if "Unknown tool" in str(e):
-                            await self.broadcast({
-                                "brain": err_msg,
-                                "brain_source": "Pinky",
-                                "tag": "HALLUCINATION_TRAP"
-                            })
-                        else:
-                            await self.broadcast({
-                                "brain": f"Tool Error: {e}",
-                                "brain_source": "Pinky"
-                            })
+                        await self.broadcast({
+                            "brain": f"Tool Error: {e}", "brain_source": "Pinky"
+                        })
             else:
                 await self.broadcast({
                     "brain": raw_response, "brain_source": "Pinky"
