@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 import aiohttp
 import psutil
@@ -40,8 +41,7 @@ current_lab_mode: str = "OFFLINE"
 class LabAttendant:
     def __init__(self):
         self.app = web.Application()
-        # --- ENFORCED EVENT ARCHITECTURE ---
-        # /status removed. Use /wait_ready for boot sync or /heartbeat for soaks.
+        self.app.router.add_get("/status", self.handle_blocking_status)
         self.app.router.add_post("/start", self.handle_start)
         self.app.router.add_post("/stop", self.handle_stop)
         self.app.router.add_post("/cleanup", self.handle_cleanup)
@@ -181,6 +181,39 @@ class LabAttendant:
                 json.dump(live_data, f)
         except Exception:
             pass
+
+    async def handle_blocking_status(self, request):
+        """
+        Reactive Status: Blocks until timeout OR process death.
+        Mandatory: ?timeout=N (seconds)
+        """
+        timeout_str = request.query.get("timeout")
+        if timeout_str is None:
+            return web.json_response(
+                {"error": "Mandatory 'timeout' parameter missing."},
+                status=400
+            )
+
+        timeout = int(timeout_str)
+        start_t = time.time()
+
+        while time.time() - start_t < timeout:
+            vitals = await self._get_current_vitals()
+
+            # --- REACTIVE LOGIC: Return if we have a definitive state ---
+            # 1. If DEAD or CRASHED -> Return Fail-Fast
+            if not vitals["lab_server_running"] or vitals["last_error"]:
+                return web.json_response(vitals)
+
+            # 2. If READY -> Return Success-Fast
+            if vitals["full_lab_ready"]:
+                return web.json_response(vitals)
+
+            await asyncio.sleep(1)  # Block while BOOTING
+
+        # If we reached here, the mind was healthy for the full duration
+        vitals = await self._get_current_vitals()
+        return web.json_response(vitals)
 
     async def handle_start(self, request):
         global lab_process, vllm_process, current_lab_mode
