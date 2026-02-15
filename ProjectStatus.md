@@ -1,31 +1,40 @@
-# Home Lab AI: Project Status (Feb 12, 2026)
+# Home Lab AI: Project Status (Feb 14, 2026)
 
-## Current Core Architecture: v3.5.x "Bicameral Dispatch"
+## Current Core Architecture: v4.1 "Abstracted Silicon"
 *   **Orchestration**: Managed via **`lab-attendant.service` (systemd)**.
-    *   **VRAM Guard**: Active. Pivoted to DCGM/Prometheus metrics for precise budget allocation.
-    *   **Alpha Backend**: Toggleable vLLM support in Brain Node.
+    *   **Telemetry**: Native **NVML** (pynvml) for millisecond hardware watchdog.
+    *   **Resilience Ladder**: 4-Tier hierarchy (vLLM -> Ollama -> Downshift -> Suspend).
+    *   **Abstract Tiers**: Model-agnostic S/M/L mapping via `vram_characterization.json`.
 *   **The Communication Hub (Corpus Callosum)**:
-    *   **Reflex Loop**: Characterful tics and thermal alerts verified non-blocking.
-    *   **Strategic Sentinel**: Active. Brain listening for silicon-level logic.
-    *   **Banter System**: Weighted TTL decay active.
+    *   **Unified Base**: Standardized on **Gemma 2 2B** (MEDIUM) for 2080 Ti efficiency.
+    *   **Amygdala v3**: (In Progress) Intelligent interjection based on Dissonance Detection.
 
 ## Key Components & Status
 | Component | Status | Notes |
 | :--- | :--- | :--- |
 | **NVIDIA Driver** | ✅ ONLINE | Version 570.211.01 (CUDA 12.8) |
-| **Archive Node** | ✅ STABLE | `patch_file` (Unified Diff) tool implemented. |
-| **Pinky/Brain Nodes**| ✅ STABLE | Bicameral awareness prompts active. |
-| **EarNode (STT)** | ✅ STABLE | Sledgehammer graph-disabling verified stable. |
-| **VRAM Guard**   | ✅ STABLE | DCGM metrics and Stub fallback verified. |
-| **Web Console** | ✅ STABLE | Workspace Auto-Save and multi-panel routing active. |
+| **Lab Attendant** | ✅ STABLE | Watchdog @ 2s; Abstract tiering verified. |
+| **Resilience**    | ✅ VERIFIED | Engine Swap and Tier 3 Downshift tests passing. |
+| **Archive Node** | ✅ STABLE | Librarian/Evidence Retrieval logic hardened. |
+| **EarNode (STT)** | ✅ STABLE | NeMo 0.6B resident at ~1GB VRAM. |
+| **Web Console** | ✅ STABLE | Handshake and [BICAMERAL HANDOVER] context verified. |
 
-## Active Sprint: "The Nightly Recruiter" (v3.6)
-*   **Tasks**:
-    1.  [TODO] **Job Search Engine**: Implement scheduled "Alarm Clock" task to search for jobs and match against archive history. *Reasoning: High-value proactive agent application.*
-    2.  [TODO] **Sleeping Weights**: Implement vLLM resident weight-sharing (Shared Model). *Reasoning: Minimize load-lurch and enable instant Hub response.*
-    3.  [TODO] **Sentinel v2.0**: Implement "Strategic Uncertainty" interjection logic. *Reasoning: Move beyond keywords to logical pattern matching.*
+## Active Sprint: Project "Resurrection" (Feb 14, 2026)
+**Objective: Generalize the Mind and Harden for Multi-Tenancy.**
+
+*   **Priority Refinements**:
+    1.  [DONE] **Gemma 2 2B Deployment**: Configured as the baseline MEDIUM tier.
+    2.  [TODO] **Liger Generalization**: Implement model-aware optimization in `vllm_liger_server.py`.
+    3.  [DONE] **Transition Cooldown**: KV Cache purge implemented via `handle_refresh` (Silicon Hygiene).
+    4.  [DONE] **Downshift tiering**: S/M/L mapping active in Attendant and Nodes.
+
+*   **Core Tasks**:
+    1.  [DONE] **Liger Restoration**: Re-enabled Liger-Kernels for AWQ acceleration.
+    2.  [DONE] **NVML Migration**: Replaced `nvidia-smi` with direct NVML bindings.
+    3.  [IN PROGRESS] **Amygdala v3 Implementation**: Coding "Contextual Double-Take" and Dissonance logic.
+    4.  [TODO] **Multi-user stress test**: Run Jellyfin/Steam during active Intercom session.
 
 ## Recent Blockers Resolved
-*   **VRAM Thrash**: Solved via Attendant-level engine selection (Ollama/vLLM/Stub).
-*   **Chopstick Coding**: Solved via Strategic Patching (`patch_file`).
-*   **Hub Latency**: Solved via Asynchronous Dispatch Hub.
+*   **Silence Trap**: Eliminated subprocess hangs via NVML and unbuffered output.
+*   **State Thrash**: Resolved via backgrounded hot-swaps and explicit transition modes.
+*   **Logic Leak**: Replaced all hardcoded model names with S/M/L abstract tiers.

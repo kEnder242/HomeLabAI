@@ -4,9 +4,9 @@ SERVER_SCRIPT="/home/jallred/Dev_Lab/HomeLabAI/src/vllm_liger_server.py"
 LOG_FILE="/home/jallred/Dev_Lab/HomeLabAI/vllm_server.log"
 PID_FILE="/home/jallred/Dev_Lab/HomeLabAI/server_vllm.pid"
 
-MODEL_PATH="/home/jallred/AcmeLab/models/mistral-7b-awq"
+MODEL_PATH="${1:-/home/jallred/AcmeLab/models/mistral-7b-awq}"
 
-echo "--- vLLM Alpha Startup: Mistral-7B-AWQ ---"
+echo "--- vLLM Alpha Startup: $MODEL_PATH ---"
 
 # Explicitly disable V1 and use transformers backend for Liger compatibility
 export VLLM_USE_V1=0

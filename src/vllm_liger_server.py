@@ -5,7 +5,7 @@ import logging
 os.environ["VLLM_USE_V1"] = "0"
 
 import uvloop
-from liger_kernel.transformers import apply_liger_kernel_to_mistral
+from liger_kernel.transformers import apply_liger_kernel_to_gemma2
 
 from vllm.entrypoints.openai.api_server import (
     run_server, make_arg_parser, validate_parsed_serve_args
@@ -17,10 +17,10 @@ from vllm.entrypoints.utils import cli_env_setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [vLLM-Liger] %(levelname)s - %(message)s')
 
 def run():
-    logging.info("Applying Liger-Kernel patches to Mistral architecture...")
+    logging.info("Applying Liger-Kernel patches to Gemma 2 architecture...")
     try:
-        apply_liger_kernel_to_mistral()
-        logging.info("✅ Liger-Kernel applied to Mistral architecture.")
+        apply_liger_kernel_to_gemma2()
+        logging.info("✅ Liger-Kernel applied to Gemma 2 architecture.")
     except Exception as e:
         logging.error(f"❌ Failed to apply Liger-Kernel: {e}")
 
@@ -33,7 +33,7 @@ def run():
     args = parser.parse_args()
     validate_parsed_serve_args(args)
 
-    logging.info("Starting vLLM server with Liger optimization...")
+    logging.info(f"Starting vLLM server with Liger optimization. Model: {args.model}")
     uvloop.run(run_server(args))
 
 if __name__ == "__main__":

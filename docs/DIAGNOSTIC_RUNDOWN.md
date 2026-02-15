@@ -10,6 +10,7 @@ These tools verify that the Lab's weights fit within the 11GB VRAM budget and th
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Engine Swap** | `src/debug/test_engine_swap.py` | Verifies the hot-swap from vLLM to Ollama fallback during moderate VRAM pressure. |
 | **Apollo 11** | `src/debug/test_apollo_vram.py` | **CRITICAL.** Profiles active inference peak. Runs "Token Burn" to allocate KV cache and verify headroom. |
 | **VRAM Guard** | `src/test_vram_guard.py` | Validates the "Stub" fallback logic when VRAM is >95% or engines fail to load. |
 | **SIGTERM Protocol** | `src/debug/test_sigterm_protocol.py` | Verifies dynamic pre-emption and the flexible SIGTERM sequence for non-AI task priority. |
@@ -94,6 +95,15 @@ Scripts wrapping `atomic_patcher.py` for lint-verified, high-fidelity core chang
 | **Scalpel Warp** | `src/debug/run_scalpel_warp.py` | Fast-track path hardening for absolute utility resolution. |
 | **Scalpel Core** | `src/debug/run_scalpel.py` | General-purpose atomic patching wrapper. |
 | **Verify Sprint** | `src/debug/verify_sprint.py` | Aggregate script that runs a subset of tests to verify sprint goals. |
+
+## 🧱 8. Resilience Ladder (Stability States)
+These instruments verify the system's ability to degrade gracefully under hardware pressure.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Engine Swap** | `src/debug/test_engine_swap.py` | Verifies the hot-swap from vLLM to Ollama fallback. |
+| **Downshift** | `src/debug/test_downshift_protocol.py`| Verifies transition from Gemma 2 2B to Llama-3.2-1B during multi-use peaks. |
+| **VRAM Guard** | `src/test_vram_guard.py` | Validates the SIGTERM "Deep Sleep" suspension. |
 
 ---
 **Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py` and `src/debug/verify_sprint.py` to ensure the core is still standing.

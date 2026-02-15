@@ -25,8 +25,9 @@ HomeLabAI employs the **Bicameral Mind** pattern—an asynchronous dispatch mode
 
 ### 2. The Communication Hub (Corpus Callosum)
 *   **Role:** The **Hub**. An asynchronous bridge managing multiple interjective streams:
-    *   **The "Sleeping" Mind:** vLLM-powered state where weights remain resident (Shared Model) but low-priority.
-    *   **Sentinel Mode:** Proactive Brain interjections based on "Strategic Uncertainty" rather than brittle keywords.
+    *   **The "Unified" Mind:** vLLM-powered state where all reasoning nodes share the **Gemma 2 2B** base model.
+    *   **Sentinel Mode:** Proactive Brain interjections based on **Contextual Worthiness** (Amygdala v3) rather than brittle keywords.
+    *   **Resilience:** Native NVML telemetry enforcing the **Resilience Ladder** (vLLM -> Ollama -> Downshift -> Suspend).
     *   **The Nightly Recruiter:** Scheduled "Alarm Clock" task matching job openings against the 18-year archive and 3x3 CVT.
 
 ### 3. The Strategic Workbench
@@ -67,6 +68,7 @@ Features multi-panel routing: **Pinky Console** (Gateway) and **Brain Insight** 
 ---
 
 ## 📜 Project State
+*   **v4.0 (ACTIVE):** Transitioned to **Unified Base (Gemma 2 2B)** for all 2080 Ti nodes. Implemented the **Resilience Ladder** (Engine Swap & Downshift) for hardware multi-tenancy.
 *   **v3.5.x:** Implemented Asynchronous Dispatch, VRAM Guard, and Patch-based editing.
 *   **v3.4.x:** Stabilized EarNode (NeMo) and resident initialization.
 *   **Jan 2026:** Rebranded as HomeLabAI; refined the "Bicameral Mind" (Acme Lab) architecture.
