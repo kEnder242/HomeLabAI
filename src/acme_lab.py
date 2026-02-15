@@ -17,7 +17,7 @@ from contextlib import AsyncExitStack
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.7.14"  # Amygdala v3: Direct Addressing logic
+VERSION = "3.7.15"  # Amygdala v3: Hemispheric Concurrency
 BRAIN_HEARTBEAT_URL = "http://localhost:11434/api/tags"
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,12 +34,10 @@ def reclaim_logger():
         root.removeHandler(h)
     fmt = logging.Formatter('%(asctime)s - [LAB] %(levelname)s - %(message)s')
 
-    # 1. Stream Handler (STDERR)
     sh = logging.StreamHandler(sys.stderr)
     sh.setFormatter(fmt)
     root.addHandler(sh)
 
-    # 2. File Handler (Robust Logging)
     fh = logging.FileHandler(SERVER_LOG, mode='a', delay=False)
     fh.setFormatter(fmt)
     root.addHandler(fh)
@@ -250,21 +248,14 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
 
-        addressed_directly = False
-        if query and "brain" in query.lower():
-            addressed_directly = True
-            await self.broadcast({
-                "brain": "Narf! I'll wake up the Left Hemisphere! He loves being "
-                         "addressed directly!",
-                "brain_source": "Pinky"
-            })
-        elif query and len(query.split()) > 10:
-            await self.broadcast({
-                "brain": "Poit! That sounds like a technical heavy-lift. "
-                         "Engaging The Brain...",
-                "brain_source": "Pinky"
-            })
-
+        # 1. Strategic Sentinel Logic
+        strategic_keywords = [
+            "regression", "validation", "scars", "root cause", 
+            "race condition", "unstable", "silicon", "optimize"
+        ]
+        is_strategic = any(k in query.lower() for k in strategic_keywords)
+        addressed_brain = "brain" in query.lower()
+        
         async def execute_dispatch(raw_text, source, context_flags=None):
             """Hardened Priority Dispatcher."""
             try:
@@ -289,6 +280,11 @@ class AcmeLab:
                     reply = params.get("text") or data.get("reply_to_user") or raw_text
                     if isinstance(reply, dict):
                         reply = reply.get("text", str(reply))
+                    
+                    # Fix: Prune ['bye'] wrapping
+                    if isinstance(reply, list) and len(reply) == 1:
+                        reply = reply[0]
+                        
                     await self.broadcast({"brain": str(reply), "brain_source": source})
                     return True
 
@@ -307,7 +303,6 @@ class AcmeLab:
                 # 5. Routing logic
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
-                    # Inject Context Flag for Direct Addressing
                     if context_flags and context_flags.get("direct"):
                         task = f"[DIRECT ADDRESS] {task}"
 
@@ -331,16 +326,13 @@ class AcmeLab:
                     )
                     return await execute_dispatch(res.content[0].text, source)
 
-                # 6. Extraction Fallback (Lowest Priority)
+                # 6. Extraction Fallback
                 def extract_val(obj):
-                    if isinstance(obj, str):
-                        return [obj]
-                    if isinstance(obj, dict):
-                        return [str(v) for v in obj.values()]
+                    if isinstance(obj, str): return [obj]
+                    if isinstance(obj, dict): return [str(v) for v in obj.values()]
                     if isinstance(obj, list):
                         res = []
-                        for v in obj:
-                            res.extend(extract_val(v))
+                        for v in obj: res.extend(extract_val(v))
                         return res
                     return [str(obj)]
 
@@ -353,29 +345,48 @@ class AcmeLab:
                 await self.broadcast({"brain": raw_text, "brain_source": source})
                 return False
 
+        # 2. Parallel Dispatch: Send to Pinky and Brain simultaneously
+        tasks = []
         if 'pinky' in self.residents:
-            try:
-                res = await asyncio.wait_for(
-                    self.residents['pinky'].call_tool(
-                        name="facilitate", arguments={"query": query, "context": ""}
-                    ),
-                    timeout=60
+            tasks.append(asyncio.create_task(
+                self.residents['pinky'].call_tool(
+                    name="facilitate", arguments={"query": query, "context": ""}
                 )
-                return await execute_dispatch(
-                    res.content[0].text, "Pinky", {"direct": addressed_directly}
-                )
-            except asyncio.TimeoutError:
-                logging.error("[TRIAGE] Pinky timed out.")
+            ))
+            
+        # Brain monitors if strategic or addressed directly
+        if 'brain' in self.residents and (is_strategic or addressed_brain):
+            brain_task = query
+            if addressed_brain:
+                brain_task = f"[DIRECT ADDRESS] {query}"
                 await self.broadcast({
-                    "brain": "Pinky is daydreaming... please retry.",
-                    "brain_source": "System"
+                    "brain": "Narf! I'll wake up the Left Hemisphere! He loves being "
+                             "addressed directly!",
+                    "brain_source": "Pinky"
                 })
-            except Exception as e:
-                logging.error(f"[TRIAGE] Pinky failed: {e}")
+            else:
+                logging.info("[SENTINEL] Strategic keyword detected. Engaging Brain.")
+            
+            tasks.append(asyncio.create_task(
+                self.residents['brain'].call_tool(
+                    name="deep_think", arguments={"task": brain_task}
+                )
+            ))
 
-        await self.broadcast({
-            "brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"
-        })
+        # 3. Collect and Dispatch
+        if tasks:
+            done, _ = await asyncio.wait(tasks, timeout=60)
+            for t in done:
+                try:
+                    res = t.result()
+                    source = "Pinky" if "facilitate" in str(t) else "Brain"
+                    await execute_dispatch(res.content[0].text, source, {"direct": addressed_brain})
+                except Exception as e:
+                    logging.error(f"[TRIAGE] Node failed: {e}")
+        else:
+            await self.broadcast({
+                "brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"
+            })
         return False
 
     async def boot_residents(self, stack: AsyncExitStack):
