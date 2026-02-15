@@ -1,52 +1,52 @@
-# 🏃 Sprint Plan: Project "Native Handshake" (Feb 15, 2026) [v4.0]
-**"The Bicameral Synthesis: Awakening & Concurrency"**
+# 🏃 Sprint Plan: Project Awakening [v4.5]
+**"The Gemma 2 / Multi-LoRA Restoration"**
 
 ## 🎯 Objective
-To transition the Federated Lab to **Native LLM Tool Calling** while restoring **Multi-LoRA** residency and implementing **Hemispheric Concurrency**. This allows "The Brain" to autonomously monitor the vLLM stream, interject when strategic or direct addressing is detected, and leverage the Windows 4090 (KENDER) as a high-fidelity failover.
+To finalize the transition to **Native LLM Tool Calling** using **Gemma 2 2B** as the primary base for **Multi-LoRA Paged Attention**. This plan restores the "Lost Gems" of autonomous interjection and conversational physics while hardening the Federated Lab against regressions.
 
 ---
 
 ## 🏛️ Architectural Pivot: Hemispheric Concurrency
-| Feature | Status | Target (v4.0) |
+| Feature | Status | Target (v4.5) |
 | :--- | :--- | :--- |
-| **Control Flow** | Sequential (Pinky first) | **Parallel Dispatch**: Hub pings all nodes. |
-| **Brain Awareness** | Reactive (ask_brain tool) | **Autonomous Sentinel**: Brain watches for keywords. |
-| **Failover** | Local vLLM only | **Federated Hub**: vLLM (Linux) <-> 4090 (Windows). |
-| **Tooling** | Brittle Regex | Native OpenAI-compatible `tools[]` API. |
+| **Primary Engine** | Sequential | **vLLM (Primary)** / Ollama (Backup). |
+| **Model Mandate** | TBD | **Gemma 2 2B (Unified Base)**. Mistral is Forbidden. |
+| **Control Flow** | Seq | **Parallel Dispatch**: Hub pings all nodes simultaneously. |
+| **Brain Autonomy**| Reactive | **Strategic Sentinel**: Brain interjects on keywords. |
+| **Tooling** | Regex | **Native OpenAI tools[]**: Unwrapped in Dispatcher. |
 
 ---
 
-## 🏗️ The Diamond Gate (Stability Verification)
+## 🏗️ The Diamond Gate (Verification Gauntlet)
 1.  **Gate 1: UNITARY_SHUTDOWN.** `AsyncExitStack` managed in unitary task (Verified).
 2.  **Gate 2: FEDERATED_FAILOVER.** KENDER @ `.26` with local fallback (Verified).
 3.  **Gate 4: STRATEGIC_SENTINEL.** Brain engages on keywords (regression, silicon) (Verified).
 4.  **Gate 5: MULTI_LORA_PROBE.** Concurrent LoRA residency on 11GB VRAM.
 5.  **Gate 6: BARGE_IN.** "Wait, stop" kills current generation.
+6.  **Gate 7: APOLLO_VRAM.** Confirmed KV cache stability via `test_apollo_vram.py`.
 
 ---
 
 ## 🏎️ Phase 1: Silicon Multi-Tenancy (Infrastructure)
-*   [DONE] **Task 1.4: LoRA Base**. Update `start_vllm.sh` with `--enable-lora`.
-*   [DONE] **Task 1.5: Node Identity**. Add `lora_name` to `BicameralNode` constructor.
-*   [DONE] **Task 1.6: KENDER IP Update**. Codify dynamic resolution for KENDER at `192.168.1.26`.
-*   [TODO] **Task 1.7: Multi-LoRA Server**. Verify concurrent adapter switching on Linux.
+*   [TODO] **Task 1.0: Weight Recovery**. Locate the directory containing Gemma 2 `config.json` and LoRA adapters.
+*   [TODO] **Task 1.1: Multi-LoRA Initialization**. Update `start_vllm.sh` with the verified local path.
+*   [TODO] **Task 1.2: resolve_ip() Implementation**. Refactor `loader.py` for dynamic KENDER resolution.
+*   **Verification:** `test_federated_failover.py` (Rerun).
 
-## 🎭 Phase 2: Hemispheric Concurrency (The Soul)
-*   [DONE] **Task 2.5: Amygdala Sentinel Port**. Port the strategic keyword list (`regression`, `validation`, `scars`) into `acme_lab.py`.
-*   [DONE] **Task 2.6: Unitary Parallel Dispatch**. Refactor `process_query` for concurrent node awareness.
-*   [TODO] **Task 2.7: Barge-In Watchdog**. Restore interrupt signal handling in the Hub.
+## 🎭 Phase 2: Hemispheric Awakening (The Soul)
+*   [TODO] **Task 2.1: Parallel Dispatch v2**. Refactor `process_query` for concurrent Pinky/Brain awareness.
+*   [TODO] **Task 2.2: Barge-In Watchdog**. Implement interrupt signal handling in Hub.
+*   [TODO] **Task 2.3: Brain Addressing**. Verify "Brain" mention triggers handover + persona response.
+*   **Verification:** `test_strategic_interjection.py` (Incorporate into CI).
 
-## 🔪 Phase 3: Hub Logic Hardening
-*   [TODO] **Task 3.4: List Extraction Fix**. Prevent `['bye']` wrapping in dispatcher.
-*   [TODO] **Task 3.5: Close Lab Exit**. Use native tool path for smoke-test termination.
-
-## 🛡️ Phase 4: Validation Gauntlet
-*   **Task 4.1: Silicon Stability.** `test_apollo_vram.py` (KV Cache + Multi-LoRA check).
-*   **Final:** Full-Stack Co-Pilot Session with KENDER Online.
+## 🛡️ Phase 3: Validation & Vetting
+*   [TODO] **Task 3.1: The Gauntlet**. Run all 7 Diamond Gate tests.
+*   **Final:** Full-Stack verification with KENDER online.
 
 ---
 
 ## 📜 Active Protocols
 - **Safe-Scalpel (BKM-011):** Mandatory for all logic changes.
-- **Unitary Task:** `AsyncExitStack` must be entered/exited in the same task.
+- **Unitary Task:** `AsyncExitStack` must be managed in a single task.
+- **Silicon Law:** Mistral is Forbidden (11GB budget). vLLM is Primary.
 - **KENDER Awareness:** 4090 is live at `192.168.1.26`.
