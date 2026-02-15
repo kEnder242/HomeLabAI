@@ -21,6 +21,8 @@ nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --gpu-memory-utilization 0.5 \
     --max-model-len 2048 \
     --enforce-eager \
+    --enable-lora \
+    --max-loras 4 \
     > $LOG_FILE 2>&1 &
 
 echo $! > $PID_FILE

@@ -162,6 +162,8 @@ class AcmeLab:
         self.connected_clients.add(ws)
         await self.manage_session_lock(active=True)
         audio_buffer = np.zeros(0, dtype=np.int16)
+        current_processing_task = None
+
         try:
             await ws.send_str(json.dumps({
                 "type": "status", "version": VERSION,
@@ -170,13 +172,26 @@ class AcmeLab:
             }))
 
             async def ear_poller():
+                nonlocal current_processing_task
                 while not ws.closed:
                     if self.ear:
                         query = self.ear.check_turn_end()
                         if query:
-                            await self.broadcast({"type": "final", "text": query})
-                            await self.process_query(query, ws)
+                            # BARGE-IN LOGIC
+                            interrupt_keywords = ["wait", "stop", "hold on", "shut up"]
+                            if current_processing_task and any(k in query.lower() for k in interrupt_keywords):
+                                logging.info(f"[BARGE-IN] Interrupt detected: '{query}'. Cancelling current task.")
+                                current_processing_task.cancel()
+                                await self.broadcast({
+                                    "brain": "Stopping... Narf!", "brain_source": "Pinky"
+                                })
+                                current_processing_task = None
+                            
+                            if not current_processing_task or current_processing_task.done():
+                                await self.broadcast({"type": "final", "text": query})
+                                current_processing_task = asyncio.create_task(self.process_query(query, ws))
                     await asyncio.sleep(0.1)
+            
             asyncio.create_task(ear_poller())
             async for message in ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
@@ -198,7 +213,9 @@ class AcmeLab:
                     elif m_type == "text_input":
                         query = data.get("content", "")
                         self.last_activity = time.time()
-                        await self.process_query(query, ws)
+                        if current_processing_task and not current_processing_task.done():
+                            current_processing_task.cancel()
+                        current_processing_task = asyncio.create_task(self.process_query(query, ws))
                     elif m_type == "workspace_save":
                         asyncio.create_task(self.handle_workspace_save(
                             data.get("filename"), data.get("content"), ws
@@ -328,15 +345,19 @@ class AcmeLab:
 
                 # 6. Extraction Fallback
                 def extract_val(obj):
-                    if isinstance(obj, str): return [obj]
-                    if isinstance(obj, dict): return [str(v) for v in obj.values()]
+                    if isinstance(obj, str):
+                        return [obj]
+                    if isinstance(obj, dict):
+                        return [str(v) for v in obj.values()]
                     if isinstance(obj, list):
                         res = []
-                        for v in obj: res.extend(extract_val(v))
+                        for v in obj:
+                            res.extend(extract_val(v))
                         return res
                     return [str(obj)]
 
-                reply = " ".join(extract_val(data))
+                vals = extract_val(data)
+                reply = vals[0] if len(vals) == 1 else " ".join(vals)
                 await self.broadcast({"brain": reply, "brain_source": source})
                 return True
 
