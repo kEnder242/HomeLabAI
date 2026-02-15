@@ -13,10 +13,11 @@ export VLLM_USE_V1=0
 
 # Start the vLLM server in the background
 # Using --load-format gguf for native Ollama blob support
+# Pointing --tokenizer to the weights file to read metadata directly
 nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --model "$MODEL_PATH" \
     --load-format "gguf" \
-    --tokenizer "google/gemma-2-2b-it" \
+    --tokenizer "$MODEL_PATH" \
     --host "0.0.0.0" \
     --port 8088 \
     --gpu-memory-utilization 0.4 \

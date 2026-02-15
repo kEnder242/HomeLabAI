@@ -16,6 +16,7 @@ SERVER_LOG = f"{LAB_DIR}/server.log"
 SERVER_PID_FILE = f"{LAB_DIR}/server.pid"
 STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
+INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
 ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
@@ -50,6 +51,7 @@ class LabAttendant:
         self.ready_event = asyncio.Event()
         self.monitor_task = None
         self.vram_config = {}
+        self.model_manifest = {}
         self.refresh_vram_config()
 
     def refresh_vram_config(self):
@@ -61,6 +63,15 @@ class LabAttendant:
                 logger.info("[VRAM] Config refreshed from disk.")
             except Exception as e:
                 logger.error(f"[VRAM] Failed to load config: {e}")
+        
+        if os.path.exists(INFRASTRUCTURE_FILE):
+            try:
+                with open(INFRASTRUCTURE_FILE, 'r') as f:
+                    infra = json.load(f)
+                    self.model_manifest = infra.get("model_manifest", {})
+                logger.info("[INFRA] Model manifest refreshed.")
+            except Exception as e:
+                logger.error(f"[INFRA] Failed to load infrastructure: {e}")
 
     async def vram_watchdog_loop(self):
         """SIGTERM & Engine Tiering: Hardware pressure monitor."""
@@ -197,9 +208,14 @@ class LabAttendant:
         current_model = res_mod if res_mod else (
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
+        
+        # Resolve absolute path if available in manifest
+        actual_model_path = self.model_manifest.get(current_model, current_model)
+        logger.info(f"[START] Resolved model '{current_model}' to path: {actual_model_path}")
+        
         await self.cleanup_silicon()
         if pref_eng == "vLLM":
-            subprocess.run(["bash", VLLM_START_PATH, current_model])
+            subprocess.run(["bash", VLLM_START_PATH, actual_model_path])
             await asyncio.sleep(10)
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"

@@ -8,6 +8,7 @@ This document tracks the high-level architectural decisions and "Invariant Laws"
 *   **VRAM Budget**: Mistral-7B is **FORBIDDEN** on the 2080 Ti due to the 11GB limit.
 *   **Model Baseline**: All 2080 Ti nodes MUST standardize on **Gemma 2 2B (MEDIUM)**.
 *   **The Invariant Heart**: The **EarNode (NeMo STT)** is the invariant sensory core. It must remain resident and functional regardless of the reasoning engine state.
+*   **GGUF Tokenizer Law**: When loading GGUF models in vLLM, do NOT point the `--tokenizer` flag to a HuggingFace repo. Point both `--model` and `--tokenizer` to the local GGUF blob to ensure 100% offline operation and bypass gated-model authentication.
 
 ## 🧠 Cognitive Architecture
 *   **Hemispheric Concurrency**: Parallel Dispatch model where queries are fired to Pinky and Brain simultaneously. See **[RoundTable_Architecture.md](./archive/RoundTable_Architecture.md)**.
