@@ -67,7 +67,8 @@ class AcmeLab:
 
     def load_ear(self):
         try:
-            sys.path.append(os.path.join(os.getcwd(), "src/equipment"))
+            s_dir = os.path.dirname(os.path.abspath(__file__))
+            sys.path.append(os.path.join(s_dir, "equipment"))
             from ear_node import EarNode
             self.ear = EarNode()
             logging.info("[BOOT] EarNode initialized (NeMo).")
@@ -78,17 +79,15 @@ class AcmeLab:
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
         
-        # Consolidation: Log everything sent to the client for Agent visibility
-        label = message_dict.get("brain_source") or message_dict.get("type") or "System"
-        text = message_dict.get("brain") or message_dict.get("text") or message_dict.get("message") or ""
-        logging.info(f"[TO_CLIENT] {label}: {text}")
+        l_source = message_dict.get("brain_source") or message_dict.get("type") or "System"
+        l_text = message_dict.get("brain") or message_dict.get("text") or message_dict.get("message") or ""
+        logging.info(f"[TO_CLIENT] {l_source}: {l_text}")
 
         message = json.dumps(message_dict)
         for ws in list(self.connected_clients):
             try:
                 await ws.send_str(message)
-            except Exception:
-                pass
+            except Exception: pass
 
     async def check_brain_health(self):
         try:
@@ -138,8 +137,7 @@ class AcmeLab:
             else:
                 if os.path.exists(ROUND_TABLE_LOCK):
                     os.remove(ROUND_TABLE_LOCK)
-        except Exception:
-            pass
+        except Exception: pass
 
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
@@ -231,9 +229,14 @@ class AcmeLab:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
-                # 2. Parse the verified JSON
+                # 2. Parse verified JSON
                 try:
                     data = json.loads(triage_res)
+                    # If valid JSON but NO tool key and NO reply_to_user, extract values as text
+                    if not data.get("tool") and "reply_to_user" not in data and "status" not in data:
+                        clean_text = " ".join([str(v) for v in data.values()])
+                        await self.broadcast({"brain": clean_text, "brain_source": source})
+                        return True
                 except json.JSONDecodeError:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
@@ -243,9 +246,15 @@ class AcmeLab:
                 if isinstance(params, str): params = {"text": params}
 
                 # specialized cases
-                if tool == "reply_to_user" or "reply_to_user" in data:
-                    reply = params.get("text") or data.get("reply_to_user") or raw_text
+                if tool == "reply_to_user":
+                    reply = params.get("text") or raw_text
                     await self.broadcast({"brain": reply, "brain_source": source})
+                    return True
+                
+                if "reply_to_user" in data:
+                    reply = data.get("reply_to_user")
+                    if isinstance(reply, dict): reply = reply.get("text", raw_text)
+                    await self.broadcast({"brain": str(reply), "brain_source": source})
                     return True
 
                 if tool == "close_lab" or data.get("status") == "shutdown":
@@ -289,20 +298,22 @@ class AcmeLab:
         return False
 
     async def boot_residents(self):
+        s_dir = os.path.dirname(os.path.abspath(__file__))
+        n_dir = os.path.join(s_dir, "nodes")
         nodes = [
-            ("archive", "src/nodes/archive_node.py"),
-            ("brain", "src/nodes/brain_node.py"),
-            ("pinky", "src/nodes/pinky_node.py"),
-            ("architect", "src/nodes/architect_node.py")
+            ("archive", os.path.join(n_dir, "archive_node.py")),
+            ("brain", os.path.join(n_dir, "brain_node.py")),
+            ("pinky", os.path.join(n_dir, "pinky_node.py")),
+            ("architect", os.path.join(n_dir, "architect_node.py"))
         ]
         if self.mode == "DEBUG_SMOKE":
             logging.info("[SMOKE] Fast-Boot enabled.")
-            nodes = [("archive", "src/nodes/archive_node.py")]
+            nodes = [("archive", os.path.join(n_dir, "archive_node.py"))]
 
         for name, path in nodes:
             try:
                 env = os.environ.copy()
-                env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{os.getcwd()}/src"
+                env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
                 params = StdioServerParameters(command=PYTHON_PATH, args=[path], env=env)
                 cl_stack = await self.exit_stack.enter_async_context(stdio_client(params))
                 session = await self.exit_stack.enter_async_context(ClientSession(cl_stack[0], cl_stack[1]))
