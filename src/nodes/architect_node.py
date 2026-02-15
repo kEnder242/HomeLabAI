@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import glob
+import re
 
 # Logging
 logging.basicConfig(
@@ -86,7 +87,7 @@ async def build_semantic_map() -> str:
     with open(SEMANTIC_MAP_FILE, 'w') as f:
         json.dump(hierarchy, f, indent=2)
 
-    return f"Hierarchy refactored. {len(hierarchy['strategic'])} anchors identified."
+    return f"Hierarchy refactored. {len(hierarchy['strategic'])} strategic anchors identified."
 
 
 @mcp.tool()
@@ -96,6 +97,45 @@ async def close_lab() -> str:
         "status": "shutdown",
         "message": "Acme Lab is closing. Goodnight."
     })
+
+
+@mcp.tool()
+async def triage_response(raw_text: str) -> str:
+    """
+    The Cognitive Dispatcher: Aggressive Extraction Filter.
+    Strips conversational prefixes and malformed tool names.
+    Returns: A clean JSON Tool Call block or 'TEXT'.
+    """
+    valid_tools = ["ask_brain", "deep_think", "list_cabinet", "read_document", "close_lab", "generate_bkm", "access_personal_history"]
+    
+    # 1. Strip common model prefixes
+    clean_text = re.sub(r'^(pinky|brain|system|narf|poit|tool)[:!\s]*', '', raw_text, flags=re.IGNORECASE).strip()
+    
+    # 2. Extract all JSON-like blocks
+    matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
+    
+    for m in matches:
+        try:
+            data = json.loads(m)
+            tool = data.get("tool")
+            
+            # 3. Correct malformed tool names (strip parentheses)
+            if tool:
+                tool = tool.replace('()', '').replace('[]', '').strip()
+                data["tool"] = tool
+            
+            # If it's a known tool, return ONLY the clean JSON
+            if tool in valid_tools:
+                return json.dumps(data)
+            
+            # Handle reply_to_user special case
+            if not tool and "reply_to_user" in data:
+                return json.dumps(data)
+                
+        except json.JSONDecodeError:
+            continue
+            
+    return "TEXT"
 
 
 if __name__ == "__main__":

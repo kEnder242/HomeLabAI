@@ -119,7 +119,7 @@ class BicameralNode:
                     payload = {
                         "model": model, "prompt": unified,
                         "stream": False, "format": "json",
-                        "options": {"num_predict": 512, "temperature": 0.2}
+                        "options": {"num_predict": 512, "temperature": 0.1}
                     }
                     async with session.post(url, json=payload, timeout=30) as r:
                         data = await r.json()
