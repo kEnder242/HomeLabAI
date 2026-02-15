@@ -20,5 +20,8 @@
             "vllm_port": 8088,
             "ollama_port": 11434
         }
+    },
+    "model_manifest": {
+        "gemma2:2b": "/usr/share/ollama/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b"
     }
 }
