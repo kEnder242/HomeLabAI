@@ -2,6 +2,7 @@ import aiohttp
 import json
 import os
 import re
+import logging
 from mcp.server.fastmcp import FastMCP
 
 # Global Paths
@@ -71,20 +72,65 @@ class BicameralNode:
                 pass
         return "NONE", None, None
 
+    def get_tool_schemas(self):
+        """Generates OpenAI-compatible tool schemas from FastMCP registry."""
+        tools = []
+        for tool_obj in self.mcp._tool_manager.list_tools():
+            schema = tool_obj.parameters
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool_obj.name,
+                    "description": tool_obj.description or "",
+                    "parameters": schema
+                }
+            })
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "ask_brain",
+                "description": "Delegate reasoning to the Left Hemisphere.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": "The specific reasoning task."
+                        }
+                    },
+                    "required": ["task"]
+                }
+            }
+        })
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "reply_to_user",
+                "description": "Provide natural language response.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "The response content."
+                        }
+                    },
+                    "required": ["text"]
+                }
+            }
+        })
+        return tools
+
     def unify_prompt(self, query, context="", memory=""):
         """Unified User Pattern for vLLM compatibility."""
-        tools = [t.name for t in self.mcp._tool_manager.list_tools()]
-        tool_list = ", ".join(tools)
         prompt = self.system_prompt
         if context:
             prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
         return (
             f"[SYSTEM]: {prompt}\n\n"
-            f"AVAILABLE TOOLS: {tool_list}, ask_brain, reply_to_user\n"
-            "RULE: You MUST ONLY use one of the tools listed above.\n\n"
             f"MEMORY:\n{memory}\n\n"
-            f"QUERY:\n{query}\n\n"
-            "DECISION (JSON):"
+            f"QUERY:\n{query}"
         )
 
     async def generate_response(self, query, context="", memory=""):
@@ -98,6 +144,7 @@ class BicameralNode:
                 "tool": "reply_to_user",
                 "parameters": {"text": err, "mood": "panic"}
             })
+
         unified = self.unify_prompt(query, context, memory)
         try:
             async with aiohttp.ClientSession() as session:
@@ -105,12 +152,21 @@ class BicameralNode:
                     payload = {
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
+                        "tools": self.get_tool_schemas(),
+                        "tool_choice": "auto",
                         "max_tokens": 512, "temperature": 0.2
                     }
                     async with session.post(url, json=payload, timeout=30) as r:
                         data = await r.json()
                         if "choices" in data:
-                            return data["choices"][0]["message"]["content"]
+                            msg = data["choices"][0]["message"]
+                            if msg.get("tool_calls"):
+                                tc = msg["tool_calls"][0]["function"]
+                                return json.dumps({
+                                    "tool": tc["name"],
+                                    "parameters": json.loads(tc["arguments"])
+                                })
+                            return msg["content"]
                         return json.dumps({
                             "tool": "reply_to_user",
                             "parameters": {"text": "vLLM Error", "mood": "panic"}
