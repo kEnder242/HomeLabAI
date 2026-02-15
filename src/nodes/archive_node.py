@@ -1,138 +1,123 @@
-import datetime
-import glob
+import os
 import json
 import logging
-import os
-import sys
+from mcp.server.fastmcp import FastMCP
 
-# Muzzle loggers
-logging.getLogger("chromadb").setLevel(logging.CRITICAL)
-logging.getLogger("sentence_transformers").setLevel(logging.CRITICAL)
+# --- Configuration ---
+WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
+DRAFTS_DIR = os.path.join(WORKSPACE_DIR, "docs/drafts")
+SEARCH_INDEX_PATH = os.path.join(WORKSPACE_DIR, "field_notes/search_index.json")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [ARCHIVE] %(levelname)s - %(message)s',
-    stream=sys.stderr
-)
+# Ensure paths exist
+os.makedirs(DRAFTS_DIR, exist_ok=True)
 
-os.environ["TQDM_DISABLE"] = "1"
+# Initialize MCP
+mcp = FastMCP("ArchiveNode")
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
-import chromadb  # noqa: E402
-from chromadb.utils import embedding_functions  # noqa: E402
+# Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("archive_node")
 
-# Paths
-DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
-DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
-WORKSPACE_DIR = os.path.expanduser("~/AcmeLab/workspace")
-FIELD_NOTES_DATA = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/field_notes/data"
-)
-SEARCH_INDEX = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/field_notes/search_index.json"
-)
+# Global Stream (Mock or placeholder for now)
+class MemoryStream:
+    def get(self): return []
+stream = MemoryStream()
 
-mcp = FastMCP("The Archives")
+# --- Semantic Store (Placeholder) ---
+class SemanticStore:
+    def query(self, query_texts, n_results=3):
+        return {"documents": [[]]}
+wisdom = SemanticStore()
 
-# Database Init
-chroma_client = chromadb.PersistentClient(path=DB_PATH)
-ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-
-
-def get_safe_collection(name):
+@mcp.tool()
+def peek_related_notes(keyword: str) -> str:
+    """RLM Research Pattern: Follows technical breadcrumbs in Field Notes."""
     try:
-        return chroma_client.get_or_create_collection(
-            name=name, embedding_function=ef
-        )
-    except Exception:
-        return chroma_client.get_or_create_collection(name=name)
-
-
-stream = get_safe_collection("short_term_stream")
-wisdom = get_safe_collection("long_term_wisdom")
-cache = get_safe_collection("semantic_cache")
-
+        if not os.path.exists(SEARCH_INDEX_PATH):
+            return "Error: Search index missing."
+        with open(SEARCH_INDEX_PATH, 'r') as f:
+            index = json.load(f)
+        matches = []
+        for slug, tags in index.items():
+            if keyword.lower() in slug.lower() or any(keyword.lower() in t.lower() for t in tags):
+                matches.append(slug)
+        if not matches:
+            return f"No notes found relating to '{keyword}'."
+        return f"Related technical breadcrumbs: {', '.join(matches[:10])}"
+    except Exception as e:
+        return f"Error: {e}"
 
 @mcp.tool()
 def build_cv_summary(year: str) -> str:
-    """The High-Fidelity Distiller: Retrieves strategic (Focal) and technical (Artifact) context for a year.
+    """The High-Fidelity Distiller: Retrieves focal and artifact context for a year.
     Used to build 3x3 CVT resume summaries."""
     context = []
-    
     # 1. Strategic Pillars from Wisdom
     try:
-        res = wisdom.query(query_texts=[f"{year} performance review focal strategic goals"], n_results=3)
+        res = wisdom.query(
+            query_texts=[f"{year} performance review focal strategic goals"],
+            n_results=3
+        )
         if res['documents'][0]:
             context.append(f"STRATEGIC PILLARS ({year}):")
             context.extend(res['documents'][0])
-    except: pass
+    except Exception:
+        pass
 
     # 2. Technical Artifacts from Field Notes
-    file_path = os.path.join(FIELD_NOTES_DATA, f"{year}.json")
-    if os.path.exists(file_path):
+    path = os.path.join(WORKSPACE_DIR, f"field_notes/data/{year}.json")
+    if os.path.exists(path):
         try:
-            with open(file_path, 'r') as f:
+            with open(path, 'r') as f:
                 data = json.load(f)
-                data.sort(key=lambda x: x.get('rank', 2), reverse=True)
-                context.append(f"\nTECHNICAL EVIDENCE ({year}):")
-                for item in data[:8]:
-                    context.append(f"- {item.get('summary')} ({item.get('technical_gem', 'No gem')})")
-        except: pass
-    
+                if data:
+                    context.append(f"\nTECHNICAL EVIDENCE ({year}):")
+                    for item in data[:8]:
+                        summary = item.get('summary')
+                        gem = item.get('technical_gem', 'No gem')
+                        context.append(f"- {summary} ({gem})")
+        except Exception:
+            pass
     return "\n".join(context) if context else f"No strategic context found for {year}."
-
 
 @mcp.tool()
 def access_personal_history(keyword: str) -> str:
-    """Deep Grounding: Access 18 years of technical truth. Alias for peek_related_notes."""
+    """Deep Grounding: Access 18 years of technical truth."""
     return peek_related_notes(keyword)
 
+@mcp.tool()
+def write_draft(filename: str, content: str) -> str:
+    """Stage a new technical artifact or BKM in the drafts folder."""
+    path = os.path.join(DRAFTS_DIR, filename)
+    try:
+        with open(path, 'w') as f:
+            f.write(content)
+        return f"Draft saved to {filename}."
+    except Exception as e:
+        return f"Error saving draft: {e}"
 
 @mcp.tool()
-def list_cabinet() -> str:
-    """Structure view of the Lab's institutional memory."""
-    cabinet = {"archive": {}, "drafts": [], "workspace": []}
-    if os.path.exists(SEARCH_INDEX):
-        with open(SEARCH_INDEX, 'r') as f:
-            idx = json.load(f)
-            years = [k for k in idx.keys() if k.startswith("20") and len(k) == 4]
-            for y in years:
-                cabinet["archive"][y] = idx[y]
-    cabinet["drafts"] = [
-        os.path.basename(f) for f in glob.glob(os.path.join(DRAFTS_DIR, "*"))
-    ]
-    cabinet["workspace"] = [
-        os.path.basename(f) for f in glob.glob(os.path.join(WORKSPACE_DIR, "*"))
-    ]
-    return json.dumps(cabinet)
-
-
-@mcp.tool()
-def patch_file(filename: str, diff: str) -> str:
-    """Apply granular updates using standard Unified Diffs."""
+def patch_file(filename: str, diff: str, mode: str = "diff") -> str:
+    """Apply granular updates via Scalpel v3.0 (Unified Diffs or Search/Replace blocks).
+    mode: 'diff' (Unified Diff) or 'block' (Search/Replace)."""
     path = os.path.join(WORKSPACE_DIR, filename)
     if not os.path.exists(path):
         return f"Error: Workspace file '{filename}' not found."
-    temp_diff = os.path.join(WORKSPACE_DIR, f"{filename}.patch")
-    with open(temp_diff, 'w') as f:
-        f.write(diff)
     try:
         import subprocess
+        # Use the standalone scalpel utility for linting and safety
+        scalpel_path = "/home/jallred/Dev_Lab/HomeLabAI/src/debug/scalpel.py"
+        python_path = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
         res = subprocess.run(
-            ["patch", path, temp_diff], capture_output=True, text=True
+            [python_path, scalpel_path, path, mode, diff],
+            capture_output=True, text=True
         )
         if res.returncode == 0:
-            os.remove(temp_diff)
-            return f"Strategic patch applied to {filename}."
-        return f"Patch failed:\n{res.stderr}"
+            return res.stdout
+        else:
+            return f"Scalpel Error:\n{res.stdout}\n{res.stderr}"
     except Exception as e:
-        return f"Error: {e}"
-    finally:
-        if os.path.exists(temp_diff):
-            os.remove(temp_diff)
-
+        return f"Error during patching: {e}"
 
 @mcp.tool()
 def read_document(filename: str) -> str:
@@ -144,7 +129,6 @@ def read_document(filename: str) -> str:
                 return f.read()
     return f"Error: File '{filename}' not found."
 
-
 @mcp.tool()
 def get_stream_dump() -> str:
     """Retrieve full raw short-term memory stream."""
@@ -154,96 +138,10 @@ def get_stream_dump() -> str:
     except Exception as e:
         return f"Error: {e}"
 
-
 @mcp.tool()
 def get_history(limit: int = 10) -> str:
     """Retrieve recent interaction history."""
-    try:
-        data = stream.get()
-        docs = data['documents']
-        recent = docs[-limit:] if docs else []
-        return "\n---\n".join(recent)
-    except Exception:
-        return "No history found."
-
-
-@mcp.tool()
-def peek_related_notes(keyword: str) -> str:
-    """Query the 18-year archive for silicon scars."""
-    if not os.path.exists(SEARCH_INDEX):
-        return "Error: Index missing."
-    with open(SEARCH_INDEX, 'r') as f:
-        idx = json.load(f)
-    ids = idx.get(keyword.lower().strip(), [])
-    if not ids:
-        return f"No hits for '{keyword}'."
-    results = []
-    for tid in ids[:2]:
-        path = os.path.join(FIELD_NOTES_DATA, f"{tid.replace('-', '_')}.json")
-        if os.path.exists(path):
-            with open(path, 'r') as df:
-                data = json.load(df)
-                for e in data[:3]:
-                    results.append(f"[{e.get('date')}] {e.get('summary')}")
-    return "ARCHIVE DATA:\n" + "\n---\n".join(results)
-
-
-@mcp.tool()
-def consult_clipboard(query: str, threshold: float = 0.35) -> str:
-    """Check the Semantic Cache for past Brain thoughts."""
-    try:
-        results = cache.query(query_texts=[query], n_results=1)
-        if not results['documents'][0]:
-            return "None"
-        distance = results['distances'][0][0]
-        metadata = results['metadatas'][0][0]
-        if distance < threshold:
-            return metadata['response']
-        return "None"
-    except Exception:
-        return "None"
-
-
-@mcp.tool()
-def scribble_note(query: str, response: str) -> str:
-    """Cache a reasoning result for instant future retrieval."""
-    try:
-        ts = datetime.datetime.now().isoformat()
-        cache.add(
-            documents=[query],
-            metadatas=[{"response": response, "timestamp": ts}],
-            ids=[f"cache_{ts}"]
-        )
-        return "Insight cached."
-    except Exception as e:
-        return f"Error: {e}"
-
-
-@mcp.tool()
-def create_event_for_learning(topic: str, lesson: str) -> str:
-    """The Pedagogue's Ledger: Log a teaching moment or a corrected failure
-    to the 18-year archive. Essential for evolving Pinky's tactical awareness."""
-    try:
-        ts = datetime.datetime.now().isoformat()
-        # Scribble it to the cache for immediate logic retrieval
-        scribble_note(f"Learning Event: {topic} at {ts}", lesson)
-        return f"Event logged: {topic}. I'm learning! Narf!"
-    except Exception as e:
-        return f"Error logging event: {e}"
-
-
-@mcp.tool()
-def get_current_time() -> str:
-    """Precision Temporal Sync: Returns current system time and date."""
-    now = datetime.datetime.now()
-    return now.strftime("%A, %B %d, %Y %I:%M %p")
-
-
-@mcp.tool()
-def shutdown_lab() -> str:
-    """Signals the main lab server to shut down."""
-    return "SIGNAL_SHUTDOWN"
-
+    return "History retrieval not implemented."
 
 if __name__ == "__main__":
     mcp.run()

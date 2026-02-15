@@ -70,4 +70,18 @@ def apply_batch_refinement(target_file, edits):
     return True
 
 if __name__ == "__main__":
-    print("Safe-Scalpel Batch Library Ready.")
+    if len(sys.argv) < 2:
+        print("Usage: atomic_patcher.py <target_file> <desc> <old_text> <new_text>")
+        sys.exit(1)
+    
+    target_file = sys.argv[1]
+    
+    # Simple CLI mode for single edits
+    if len(sys.argv) == 5:
+        desc = sys.argv[2]
+        old_text = sys.argv[3]
+        new_text = sys.argv[4]
+        edits = [{"old": old_text, "new": new_text, "desc": desc}]
+        apply_batch_refinement(target_file, edits)
+    else:
+        print("Safe-Scalpel Batch Library Ready.")
