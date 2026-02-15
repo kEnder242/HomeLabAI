@@ -69,6 +69,24 @@ async def get_my_tools() -> str:
 
 
 @mcp.tool()
+async def start_draft(topic: str, category: str = "validation") -> str:
+    """The Blueprint Initiation: Begins a high-fidelity technical synthesis on the Whiteboard."""
+    return json.dumps({"tool": "generate_bkm", "parameters": {"topic": topic, "category": category}})
+
+
+@mcp.tool()
+async def access_personal_history(keyword: str) -> str:
+    """Deep Grounding: Access 18 years of technical truth. Use sparingly for strategic context."""
+    return json.dumps({"tool": "access_personal_history", "parameters": {"keyword": keyword}})
+
+
+@mcp.tool()
+async def build_cv_summary(year: str) -> str:
+    """The High-Fidelity Distiller: Trigger strategic synthesis for a specific career epoch."""
+    return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
+
+
+@mcp.tool()
 async def lab_shutdown() -> str:
     """Gracefully terminates the Lab's active mind loop."""
     return json.dumps({"tool": "lab_shutdown", "parameters": {}})

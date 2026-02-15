@@ -18,7 +18,7 @@ async def pinky_handshake(ws, label="HANDSHAKE"):
     # THE PRE-FILL POKE
     print(f"[TEST] Sending {label} (Targeted Poke)...")
     # Using a literal command to reduce LLM reasoning
-    cmd = {"type": "chat", "text": "Just say 'Poit!', nothing else."}
+    cmd = {"type": "text_input", "content": "Just say 'Poit!', nothing else."}
     await ws.send(json.dumps(cmd))
 
     start_t = time.time()

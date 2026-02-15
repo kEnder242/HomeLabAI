@@ -8,13 +8,17 @@ MODEL_PATH="/home/jallred/AcmeLab/models/mistral-7b-awq"
 
 echo "--- vLLM Alpha Startup: Mistral-7B-AWQ ---"
 
+# Explicitly disable V1 and use transformers backend for Liger compatibility
+export VLLM_USE_V1=0
+
 # Start the vLLM server in the background
 nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --model "$MODEL_PATH" \
     --quantization "awq" \
+    --model-impl "transformers" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.45 \
+    --gpu-memory-utilization 0.5 \
     --max-model-len 2048 \
     --enforce-eager \
     > $LOG_FILE 2>&1 &

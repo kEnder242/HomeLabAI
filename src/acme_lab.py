@@ -87,6 +87,8 @@ class AcmeLab:
         self.last_typing_event = 0.0
         self.last_save_event = 0.0
         self.ledger_path = os.path.join(LAB_DIR, "conversations.log")
+        self.reflex_ttl = 1.0  # Banter health (1.0 = Quiet, 0.0 = Trigger)
+        self.banter_backoff = 0  # Sequential banter penalty
 
     async def log_to_ledger(self, source, text):
         """Append a clean record of the conversation to a text file."""
@@ -154,16 +156,30 @@ class AcmeLab:
         return self.brain_online
 
     async def reflex_loop(self):
+        """Weighted TTL Decay: Gradually increase banter probability during silence."""
         tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
-            await asyncio.sleep(random.randint(45, 120))
+            await asyncio.sleep(30)  # Check every 30s
+            
             if self.connected_clients and self.status == "READY":
-                silent_long = (time.time() - self.last_activity > 30)
-                if silent_long and not self.is_user_typing():
-                    tic = random.choice(tics)
-                    await self.broadcast(
-                        {"brain": tic, "brain_source": "Pinky (Reflex)"}
-                    )
+                # Decay TTL if silent
+                if (time.time() - self.last_activity > 60):
+                    self.reflex_ttl -= 0.5
+                else:
+                    self.reflex_ttl = 1.0  # Reset on activity
+                    self.banter_backoff = max(0, self.banter_backoff - 1)
+
+                # Trigger banter if TTL depleted
+                if self.reflex_ttl <= 0:
+                    if not self.is_user_typing():
+                        tic = random.choice(tics)
+                        await self.broadcast({
+                            "brain": tic, 
+                            "brain_source": "Pinky (Reflex)"
+                        })
+                        self.banter_backoff += 1
+                        self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5) # Dynamic backoff
+            
             await self.check_brain_health()
 
     async def scheduled_tasks_loop(self):
@@ -299,12 +315,18 @@ class AcmeLab:
     async def amygdala_sentinel_v2(self, query):
         if not self.brain_online:
             return
-        triggers = ["how do i", "scaling", "architecture", "failure", "bottleneck"]
-        if any(t in query.lower() for t in triggers) or len(query.split()) > 15:
-            logging.info(f"[AMYGDALA] Signal detected: {query[:50]}...")
+        
+        # Complexity Matching: Length + Technical Verbs
+        tech_verbs = ["scale", "optimize", "deploy", "refactor", "validate", "synthesize"]
+        word_count = len(query.split())
+        has_tech = any(v in query.lower() for v in tech_verbs)
+        
+        if word_count > 15 and has_tech:
+            logging.info(f"[AMYGDALA] Complexity trigger: {query[:50]}...")
             prompt = (
                 f"[AMYGDALA INTERJECTION] I overheard: '{query}'. "
-                "Provide a brief high-fidelity strategic insight."
+                "The conversation has reached technical depth. "
+                "Provide a single, high-fidelity strategic insight (one sentence)."
             )
             res = await self.residents['brain'].call_tool(
                 "deep_think", arguments={"query": prompt}
@@ -485,12 +507,17 @@ class AcmeLab:
                     })
 
                     handover = (
-                        f"Context: Pinky just said '{raw_response[:200]}'. "
-                        f"Task: {summary}"
+                        f"[BICAMERAL HANDOVER]\n"
+                        f"PINKY ASSESSMENT: '{raw_response[:300]}'\n"
+                        f"USER QUERY: {query}\n"
+                        f"TASK: {summary}"
                     )
                     brain_res = await self.monitor_task_with_tics(
                         self.residents['brain'].call_tool(
-                            "deep_think", arguments={"query": handover}
+                            "deep_think", arguments={
+                                "query": handover,
+                                "context": str(self.recent_interactions[-5:])
+                            }
                         ),
                         websocket
                     )
@@ -501,18 +528,31 @@ class AcmeLab:
                     })
                 else:
                     try:
+                        # 1. Execute tool on Pinky
                         exec_res = await self.residents['pinky'].call_tool(
                             tool, arguments=params
                         )
                         final_out = exec_res.content[0].text
+                        
+                        # 2. Check for Delegated Tool Call (JSON output)
                         rm = re.search(r'\{.*\}', final_out, re.DOTALL)
                         if rm:
                             try:
                                 rd = json.loads(rm.group(0))
-                                if rd.get("tool") == "reply_to_user":
-                                    final_out = rd["parameters"].get("text")
-                            except Exception:
-                                pass
+                                sub_tool = rd.get("tool")
+                                sub_params = rd.get("parameters", {})
+                                
+                                if sub_tool == "reply_to_user":
+                                    final_out = sub_params.get("text", "Poit!")
+                                elif sub_tool in ["generate_bkm"]:
+                                    res = await self.residents['architect'].call_tool(sub_tool, arguments=sub_params)
+                                    final_out = res.content[0].text
+                                elif sub_tool in ["access_personal_history", "build_cv_summary"]:
+                                    res = await self.residents['archive'].call_tool(sub_tool, arguments=sub_params)
+                                    final_out = res.content[0].text
+                            except Exception as e:
+                                logging.error(f"[HUB] Delegation failed: {e}")
+
                         await self.broadcast({
                             "brain": final_out, "brain_source": "Pinky"
                         })

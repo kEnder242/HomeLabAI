@@ -1,6 +1,12 @@
+import os
 import logging
+
+# Hard-set VLLM_USE_V1=0 to avoid experimental engine crashes
+os.environ["VLLM_USE_V1"] = "0"
+
 import uvloop
 from liger_kernel.transformers import apply_liger_kernel_to_mistral
+
 from vllm.entrypoints.openai.api_server import (
     run_server, make_arg_parser, validate_parsed_serve_args
 )
@@ -14,7 +20,7 @@ def run():
     logging.info("Applying Liger-Kernel patches to Mistral architecture...")
     try:
         apply_liger_kernel_to_mistral()
-        logging.info("✅ Liger-Kernel patches applied.")
+        logging.info("✅ Liger-Kernel applied to Mistral architecture.")
     except Exception as e:
         logging.error(f"❌ Failed to apply Liger-Kernel: {e}")
 
