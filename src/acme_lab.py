@@ -25,6 +25,7 @@ WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
 ROUND_TABLE_LOCK = os.path.expanduser("~/Dev_Lab/HomeLabAI/round_table.lock")
 
+
 # --- THE MONTANA PROTOCOL ---
 def reclaim_logger():
     root = logging.getLogger()
@@ -39,14 +40,18 @@ def reclaim_logger():
     logging.getLogger("chromadb").setLevel(logging.ERROR)
     logging.getLogger("onelogger").setLevel(logging.ERROR)
 
+
 class EarNode:
     """Stub for sensory input. NeMo imported via equipment/ear_node.py."""
     def __init__(self):
         self.is_listening = True
+
     def check_turn_end(self):
         return None
+
     def process_audio(self, chunk):
         return None
+
 
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300):
@@ -78,16 +83,21 @@ class AcmeLab:
     async def broadcast(self, message_dict):
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
-        
-        l_source = message_dict.get("brain_source") or message_dict.get("type") or "System"
-        l_text = message_dict.get("brain") or message_dict.get("text") or message_dict.get("message") or ""
-        logging.info(f"[TO_CLIENT] {l_source}: {l_text}")
+
+        l_src = message_dict.get("brain_source") or message_dict.get("type") or "System"
+        l_txt = (
+            message_dict.get("brain") or
+            message_dict.get("text") or
+            message_dict.get("message") or ""
+        )
+        logging.info(f"[TO_CLIENT] {l_src}: {l_txt}")
 
         message = json.dumps(message_dict)
         for ws in list(self.connected_clients):
             try:
                 await ws.send_str(message)
-            except Exception: pass
+            except Exception:
+                pass
 
     async def check_brain_health(self):
         try:
@@ -137,7 +147,8 @@ class AcmeLab:
             else:
                 if os.path.exists(ROUND_TABLE_LOCK):
                     os.remove(ROUND_TABLE_LOCK)
-        except Exception: pass
+        except Exception:
+            pass
 
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
@@ -151,6 +162,7 @@ class AcmeLab:
                 "state": "ready" if self.status == "READY" else "lobby",
                 "message": "Lab foyer is open."
             }))
+
             async def ear_poller():
                 while not ws.closed:
                     if self.ear:
@@ -167,10 +179,14 @@ class AcmeLab:
                     if m_type == "handshake":
                         if 'archive' in self.residents:
                             try:
-                                res = await self.residents['archive'].call_tool(name="list_cabinet")
+                                res = await self.residents['archive'].call_tool(
+                                    name="list_cabinet"
+                                )
                                 if res.content and hasattr(res.content[0], 'text'):
                                     files = json.loads(res.content[0].text)
-                                    await ws.send_str(json.dumps({"type": "cabinet", "files": files}))
+                                    await ws.send_str(json.dumps({
+                                        "type": "cabinet", "files": files
+                                    }))
                             except Exception as e:
                                 logging.error(f"[HANDSHAKE] Failed: {e}")
                     elif m_type == "text_input":
@@ -184,7 +200,9 @@ class AcmeLab:
                     elif m_type == "read_file":
                         fn = data.get("filename")
                         if 'archive' in self.residents:
-                            res = await self.residents['archive'].call_tool(name="read_document", arguments={"filename": fn})
+                            res = await self.residents['archive'].call_tool(
+                                name="read_document", arguments={"filename": fn}
+                            )
                             await ws.send_str(json.dumps({
                                 "type": "file_content", "filename": fn,
                                 "content": res.content[0].text
@@ -195,7 +213,9 @@ class AcmeLab:
                     if len(audio_buffer) >= 24000:
                         text = self.ear.process_audio(audio_buffer[:24000])
                         if text:
-                            await self.broadcast({"text": text, "type": "transcription"})
+                            await self.broadcast({
+                                "text": text, "type": "transcription"
+                            })
                         audio_buffer = audio_buffer[16000:]
         finally:
             self.connected_clients.remove(ws)
@@ -211,7 +231,10 @@ class AcmeLab:
             "type": "file_content", "filename": filename, "content": content
         }))
         if 'archive' in self.residents:
-            await self.residents['archive'].call_tool(name="write_draft", arguments={"filename": filename, "content": content})
+            await self.residents['archive'].call_tool(
+                name="write_draft",
+                arguments={"filename": filename, "content": content}
+            )
 
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
@@ -220,22 +243,27 @@ class AcmeLab:
             """Hardened Dispatcher (v7): Cognitive verification."""
             try:
                 # 1. Ask Architect to verify tool call
-                triage_res = "TEXT"
+                t_res = "TEXT"
                 if 'architect' in self.residents:
-                    res = await self.residents['architect'].call_tool(name="triage_response", arguments={"raw_text": raw_text})
-                    triage_res = res.content[0].text
+                    res = await self.residents['architect'].call_tool(
+                        name="triage_response", arguments={"raw_text": raw_text}
+                    )
+                    t_res = res.content[0].text
 
-                if triage_res == "TEXT":
+                if t_res == "TEXT":
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
                 # 2. Parse verified JSON
                 try:
-                    data = json.loads(triage_res)
-                    # If valid JSON but NO tool key and NO reply_to_user, extract values as text
-                    if not data.get("tool") and "reply_to_user" not in data and "status" not in data:
+                    data = json.loads(t_res)
+                    # extraction fallback
+                    if (not data.get("tool") and "reply_to_user" not in data and
+                            "status" not in data):
                         clean_text = " ".join([str(v) for v in data.values()])
-                        await self.broadcast({"brain": clean_text, "brain_source": source})
+                        await self.broadcast({
+                            "brain": clean_text, "brain_source": source
+                        })
                         return True
                 except json.JSONDecodeError:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
@@ -243,40 +271,54 @@ class AcmeLab:
 
                 tool = data.get("tool")
                 params = data.get("parameters") or {}
-                if isinstance(params, str): params = {"text": params}
+                if isinstance(params, str):
+                    params = {"text": params}
 
                 # specialized cases
                 if tool == "reply_to_user":
                     reply = params.get("text") or raw_text
                     await self.broadcast({"brain": reply, "brain_source": source})
                     return True
-                
+
                 if "reply_to_user" in data:
                     reply = data.get("reply_to_user")
-                    if isinstance(reply, dict): reply = reply.get("text", raw_text)
-                    await self.broadcast({"brain": str(reply), "brain_source": source})
+                    if isinstance(reply, dict):
+                        reply = reply.get("text", raw_text)
+                    await self.broadcast({
+                        "brain": str(reply), "brain_source": source
+                    })
                     return True
 
                 if tool == "close_lab" or data.get("status") == "shutdown":
-                    await self.broadcast({"brain": "Goodnight. Closing Lab.", "brain_source": "System"})
+                    await self.broadcast({
+                        "brain": "Goodnight. Closing Lab.", "brain_source": "System"
+                    })
                     self.shutdown_event.set()
                     return True
 
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
                     if 'brain' in self.residents and self.brain_online:
-                        res = await self.residents['brain'].call_tool(name="deep_think", arguments={"task": task})
+                        res = await self.residents['brain'].call_tool(
+                            name="deep_think", arguments={"task": task}
+                        )
                         return await execute_dispatch(res.content[0].text, "Brain")
 
                 t_node = "pinky"
-                if tool in ["list_cabinet", "read_document", "peek_related_notes", "write_draft"]:
+                a_tools = [
+                    "list_cabinet", "read_document",
+                    "peek_related_notes", "write_draft"
+                ]
+                if tool in a_tools:
                     t_node = "archive"
                 elif tool in ["generate_bkm", "build_semantic_map"]:
                     t_node = "architect"
 
                 if t_node in self.residents:
                     logging.info(f"[DISPATCH] {t_node}.{tool}")
-                    res = await self.residents[t_node].call_tool(name=tool, arguments=params)
+                    res = await self.residents[t_node].call_tool(
+                        name=tool, arguments=params
+                    )
                     return await execute_dispatch(res.content[0].text, source)
 
                 await self.broadcast({"brain": raw_text, "brain_source": source})
@@ -289,12 +331,16 @@ class AcmeLab:
 
         if 'pinky' in self.residents:
             try:
-                res = await self.residents['pinky'].call_tool(name="facilitate", arguments={"query": query, "context": ""})
+                res = await self.residents['pinky'].call_tool(
+                    name="facilitate", arguments={"query": query, "context": ""}
+                )
                 return await execute_dispatch(res.content[0].text, "Pinky")
             except Exception as e:
                 logging.error(f"[TRIAGE] Pinky failed: {e}")
 
-        await self.broadcast({"brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"})
+        await self.broadcast({
+            "brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"
+        })
         return False
 
     async def boot_residents(self):
@@ -306,23 +352,26 @@ class AcmeLab:
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("architect", os.path.join(n_dir, "architect_node.py"))
         ]
-        if self.mode == "DEBUG_SMOKE":
-            logging.info("[SMOKE] Fast-Boot enabled.")
-            nodes = [("archive", os.path.join(n_dir, "archive_node.py"))]
 
         for name, path in nodes:
             try:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
-                params = StdioServerParameters(command=PYTHON_PATH, args=[path], env=env)
-                cl_stack = await self.exit_stack.enter_async_context(stdio_client(params))
-                session = await self.exit_stack.enter_async_context(ClientSession(cl_stack[0], cl_stack[1]))
+                params = StdioServerParameters(
+                    command=PYTHON_PATH, args=[path], env=env
+                )
+                cl_stack = await self.exit_stack.enter_async_context(
+                    stdio_client(params)
+                )
+                session = await self.exit_stack.enter_async_context(
+                    ClientSession(cl_stack[0], cl_stack[1])
+                )
                 await session.initialize()
                 self.residents[name] = session
                 logging.info(f"[BOOT] {name.upper()} online.")
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
-        
+
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
         if self.mode == "DEBUG_SMOKE":
@@ -347,8 +396,10 @@ class AcmeLab:
             logging.info("[SHUTDOWN] Closing residents...")
             try:
                 await self.exit_stack.aclose()
-            except Exception: pass
+            except Exception:
+                pass
             await runner.cleanup()
+
 
 if __name__ == "__main__":
     import argparse
