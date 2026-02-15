@@ -8,13 +8,18 @@
 
 0.  **Orientation (Bootstrap)**:
     *   Refer to the top-level **[README.md](../../README.md)** for the primary navigational hub and global project context.
+    *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active silicon mandates and invariant laws.
 
 1.  **Hardware/Driver Audit**:
     *   Execute `nvidia-smi`.
     *   **Success**: Driver version (e.g., 570+) and CUDA (e.g., 12.8) reported.
     *   **Failure**: If "could not communicate with driver," run `sudo apt install --reinstall nvidia-driver-570 nvidia-dkms-570` and `sudo update-initramfs -u`, then reboot.
 
-2.  **Orchestrator Liveliness**:
+2.  **The Heart-Check (Invariant Sensory Core)**:
+    *   **Action**: Verify `EarNode` (NeMo) is responsive before cognitive engines.
+    *   **Logic**: Sensing must never fail even if reasoning is "downshifted." The Heart is the invariant constant of the Lab.
+
+3.  **Orchestrator Liveliness**:
     *   Execute `sudo systemctl status lab-attendant.service`.
     *   **Action**: If not running, `sudo systemctl restart lab-attendant.service`.
     *   **Verification**: `curl http://localhost:9999/status` should return JSON.

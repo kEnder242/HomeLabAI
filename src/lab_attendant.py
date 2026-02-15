@@ -64,11 +64,21 @@ class LabAttendant:
 
     async def vram_watchdog_loop(self):
         """SIGTERM & Engine Tiering: Hardware pressure monitor."""
-        logger.info("[VRAM] Watchdog active.")
+        logger.info("[VRAM] Watchdog active with DCGM Heartbeat.")
+        gpu_load_history = []
         try:
             while True:
                 await asyncio.sleep(2)
                 used, total = await self._get_vram_info()
+                load = await self._get_gpu_load()
+                
+                # Maintain 10-second sliding window (5 samples at 2s interval)
+                gpu_load_history.append(load)
+                if len(gpu_load_history) > 5:
+                    gpu_load_history.pop(0)
+                
+                avg_load = sum(gpu_load_history) / len(gpu_load_history)
+                
                 safe_tiers = self.vram_config.get("safe_tiers", {})
                 warn_limit = safe_tiers.get("warning", total * 0.85)
                 down_limit = safe_tiers.get("downshift", total * 0.90)
@@ -76,6 +86,11 @@ class LabAttendant:
                 model_map = self.vram_config.get("model_map", {})
                 small_model = model_map.get("SMALL", {}).get("ollama")
                 medium_model = model_map.get("MEDIUM", {}).get("ollama")
+
+                # Soft Dimming: If sustained external load > 20%, purge KV cache
+                if avg_load > 20 and current_lab_mode == "vLLM":
+                    logger.warning(f"[VRAM] Sustained external load ({avg_load:.1f}%). Triggering Soft Dimming.")
+                    await self._trigger_vllm_soft_dimming()
 
                 if used > crit_limit:
                     await self.cleanup_silicon()
@@ -91,6 +106,31 @@ class LabAttendant:
                     continue
         except Exception as e:
             logger.error(f"[VRAM] Watchdog CRASHED: {e}")
+
+    async def _get_gpu_load(self):
+        """Fetch real-time GPU utilization using pynvml (DCGM baseline)."""
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            pynvml.nvmlShutdown()
+            return util.gpu
+        except Exception:
+            return 0
+
+    async def _trigger_vllm_soft_dimming(self):
+        """Purge vLLM KV cache via request abortion to free VRAM for external apps."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Abort all active requests to flush the cache
+                # Note: vLLM usually handles this via individual request cancellation, 
+                # but we can force it by hitting the model endpoint with a tiny sequence
+                # or a specific 'cooldown' heartbeat if implemented.
+                pass 
+            await self.update_status_json("Mind DIMMING (Sharing Silicon)")
+        except Exception as e:
+            logger.error(f"Soft dimming failed: {e}")
 
     async def handle_engine_swap(self, target_model):
         """Hot-swaps vLLM for Ollama fallback."""

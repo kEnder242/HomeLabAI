@@ -19,19 +19,21 @@
 | **EarNode (STT)** | ✅ STABLE | NeMo 0.6B resident at ~1GB VRAM. |
 | **Web Console** | ✅ STABLE | Handshake and [BICAMERAL HANDOVER] context verified. |
 
-## Active Sprint: Project "Awakening" [v4.8] (Feb 15, 2026)
-**Objective: Hemispheric Concurrency & Conversational Physics.**
+## Active Sprint: Project "Resurrection" [v4.9] (Feb 15, 2026)
+**Objective: Restore the High-Fidelity "Soul" and "Silicon Heart" from the 12MB Black Box.**
+**Master Plan:** **[Sprint Plan: Resurrection](docs/plans/SPRINT_RESURRECTION_FEB_15.md)**
 
-*   **Accomplishments (Logic Verified)**:
-    1.  [DONE] **Unitary Shutdown**: Resolved `aclose` task-mismatch hangs.
-    2.  [DONE] **Hemispheric Concurrency**: Parallel Dispatch fires Pinky and Brain simultaneously.
-    3.  [DONE] **Strategic Sentinel**: Brain interjects autonomously on technical keywords.
-    4.  [DONE] **Barge-In Watchdog**: "Wait, stop" speech successfully cancels active generation.
-    5.  [DONE] **Federated Failover**: Dynamic KENDER resolution with local fallback verified.
+*   **Phase 1: Silicon Base (Heart & Pulse)**
+    1.  [TODO] **GGUF Harvester**: Point vLLM directly to `/usr/share/ollama` blobs (No HF token needed).
+    2.  [TODO] **VRAM Heartbeat**: Restore sliding-window GPU throttling (Gem I).
 
-*   **Pending Verification (Gate 5)**:
-    1.  [TODO] **Weight Recovery**: Locate/relink local Gemma 2 2B weights for vLLM.
-    2.  [TODO] **Multi-LoRA Silicon Gate**: Verify concurrent adapter residency on 11GB.
-    3.  [TODO] **Apollo 11**: Profile full-stack KV cache allocation.
+*   **Phase 2: The Soul (High Fidelity Logic)**
+    3.  [TODO] **Memory Bridge**: Restore 3-turn context echo for Brain handovers (Gem A).
+    4.  [TODO] **Gemma Banter**: Inject native `<start_of_turn>model` pre-cognitive filler (Gem F).
+    5.  [TODO] **Hallucination Shunt**: Re-route invalid tool calls to Pinky (Gem D).
+
+*   **Phase 3: Nervous System (Experimental)**
+    6.  [TODO] **Silicon Halt**: Verify mid-sentence `vllm.engine.abort()` (Gem B).
+    7.  [TODO] **Shadow Dispatch**: Prototype background generation during user typing (Gem J).
 
 ## Key Components & Status
