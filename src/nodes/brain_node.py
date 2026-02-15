@@ -3,7 +3,7 @@ import sys
 import logging
 import re
 import textwrap
-from .loader import BicameralNode
+from nodes.loader import BicameralNode
 
 # Logging
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
@@ -52,9 +52,9 @@ def _clean_content(content: str) -> str:
 
 
 @mcp.tool()
-async def deep_think(query: str, context: str = "") -> str:
+async def deep_think(task: str, context: str = "") -> str:
     """The Strategic Engine: Perform complex architectural reasoning."""
-    return await node.generate_response(query, context)
+    return await node.generate_response(task, context)
 
 
 @mcp.tool()
