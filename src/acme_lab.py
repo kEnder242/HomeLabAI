@@ -18,7 +18,7 @@ from contextlib import AsyncExitStack
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.7.2"  # Amygdala v3: Personality & Commentary
+VERSION = "3.7.7"  # Phase 3: Robust Shutdown Detection
 BRAIN_HEARTBEAT_URL = "http://localhost:11434/api/tags"
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -252,8 +252,6 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
 
-        # Task 2.1: Personality Peeking (Right Hemisphere Pass)
-        # Brain interjection: If addressed, Pinky enthusiasticly hands over
         if "brain" in query.lower():
             await self.broadcast({
                 "brain": "Narf! I'll wake up the Left Hemisphere! He loves being "
@@ -268,62 +266,56 @@ class AcmeLab:
             })
 
         async def execute_dispatch(raw_text, source):
-            """Hardened Dispatcher (v7): Cognitive verification."""
+            """Phase 3: Native Native Dispatcher."""
             try:
-                # 1. Ask Architect to verify tool call
-                t_res = "TEXT"
-                if 'architect' in self.residents:
-                    res = await self.residents['architect'].call_tool(
-                        name="triage_response", arguments={"raw_text": raw_text}
-                    )
-                    t_res = res.content[0].text
-
-                if t_res == "TEXT":
-                    await self.broadcast({"brain": raw_text, "brain_source": source})
-                    return True
-
-                # 2. Parse verified JSON
+                # 1. Parse JSON block (Native or Triage)
                 try:
-                    data = json.loads(t_res)
-                    # extraction fallback
-                    if (not data.get("tool") and "reply_to_user" not in data and
-                            "status" not in data):
-                        clean_text = " ".join([str(v) for v in data.values()])
-                        await self.broadcast({
-                            "brain": clean_text, "brain_source": source
-                        })
-                        return True
+                    data = json.loads(raw_text)
                 except json.JSONDecodeError:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
-                tool = data.get("tool")
-                params = data.get("parameters") or {}
-                if isinstance(params, str):
-                    params = {"text": params}
-
-                # specialized cases
-                if tool == "reply_to_user":
-                    reply = params.get("text") or raw_text
+                # 2. Extract Tool & Parameters (Safety for non-dict JSON)
+                if not isinstance(data, dict):
+                    # Extraction fallback for lists or other types
+                    def extract_val(obj):
+                        if isinstance(obj, str): return [obj]
+                        if isinstance(obj, dict):
+                            return [str(v) for v in obj.values()]
+                        if isinstance(obj, list):
+                            res = []
+                            for v in obj: res.extend(extract_val(v))
+                            return res
+                        return [str(obj)]
+                    reply = " ".join(extract_val(data))
                     await self.broadcast({"brain": reply, "brain_source": source})
                     return True
 
-                if "reply_to_user" in data:
-                    reply = data.get("reply_to_user")
+                tool = data.get("tool")
+                params = data.get("parameters") or {}
+                if isinstance(params, str): params = {"text": params}
+
+                # 3. Handle explicit tool priority
+                if tool == "reply_to_user" or "reply_to_user" in data:
+                    reply = params.get("text") or data.get("reply_to_user") or raw_text
                     if isinstance(reply, dict):
-                        reply = reply.get("text", raw_text)
-                    await self.broadcast({
-                        "brain": str(reply), "brain_source": source
-                    })
+                        reply = reply.get("text", str(reply))
+                    await self.broadcast({"brain": str(reply), "brain_source": source})
                     return True
 
-                if tool == "close_lab" or data.get("status") == "shutdown":
+                # Robust Shutdown Check (Task 3.1)
+                is_shutdown = (tool == "close_lab" or 
+                               data.get("status") == "shutdown" or
+                               "closing" in str(data).lower() or
+                               "goodnight" in str(data).lower())
+                if is_shutdown:
                     await self.broadcast({
                         "brain": "Goodnight. Closing Lab.", "brain_source": "System"
                     })
                     self.shutdown_event.set()
                     return True
 
+                # 4. Routing logic
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
                     if 'brain' in self.residents and self.brain_online:
@@ -333,23 +325,26 @@ class AcmeLab:
                         return await execute_dispatch(res.content[0].text, "Brain")
 
                 t_node = "pinky"
-                a_tools = [
-                    "list_cabinet", "read_document",
-                    "peek_related_notes", "write_draft"
-                ]
+                a_tools = ["list_cabinet", "read_document", "peek_related_notes", "write_draft"]
                 if tool in a_tools:
                     t_node = "archive"
                 elif tool in ["generate_bkm", "build_semantic_map"]:
                     t_node = "architect"
 
-                if t_node in self.residents:
+                if tool and t_node in self.residents:
                     logging.info(f"[DISPATCH] {t_node}.{tool}")
                     res = await self.residents[t_node].call_tool(
                         name=tool, arguments=params
                     )
                     return await execute_dispatch(res.content[0].text, source)
 
-                await self.broadcast({"brain": raw_text, "brain_source": source})
+                # 5. Extraction fallback: treat remaining dict values as text
+                vals = []
+                for v in data.values():
+                    if isinstance(v, (str, int, float)): vals.append(str(v))
+                    elif isinstance(v, list): vals.extend([str(i) for i in v])
+                reply = " ".join(vals)
+                await self.broadcast({"brain": reply, "brain_source": source})
                 return True
 
             except Exception as e:
@@ -394,15 +389,9 @@ class AcmeLab:
             try:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
-                params = StdioServerParameters(
-                    command=PYTHON_PATH, args=[path], env=env
-                )
-                cl_stack = await self.exit_stack.enter_async_context(
-                    stdio_client(params)
-                )
-                session = await self.exit_stack.enter_async_context(
-                    ClientSession(cl_stack[0], cl_stack[1])
-                )
+                params = StdioServerParameters(command=PYTHON_PATH, args=[path], env=env)
+                cl_stack = await self.exit_stack.enter_async_context(stdio_client(params))
+                session = await self.exit_stack.enter_async_context(ClientSession(cl_stack[0], cl_stack[1]))
                 await session.initialize()
                 self.residents[name] = session
                 logging.info(f"[BOOT] {name.upper()} online.")
@@ -433,8 +422,7 @@ class AcmeLab:
             logging.info("[SHUTDOWN] Closing residents...")
             try:
                 await self.exit_stack.aclose()
-            except Exception:
-                pass
+            except Exception: pass
             await runner.cleanup()
 
 

@@ -77,7 +77,7 @@ async def get_lab_health() -> str:
 
 
 @mcp.tool()
-async def lab_shutdown() -> str:
+async def close_lab() -> str:
     """Gracefully terminates the Lab session."""
     return json.dumps({"tool": "close_lab", "parameters": {}})
 
