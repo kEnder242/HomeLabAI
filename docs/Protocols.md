@@ -89,6 +89,15 @@
 5.  **Handover**: Provide a 1-sentence summary of "Where we are" and "What to do next."
 
 
+## BKM-011: The Safe-Scalpel (Atomic Patcher)
+**Objective**: Ensure lint-verified, regression-free code edits.
+**Tool**: `HomeLabAI/src/debug/atomic_patcher.py`
+
+1.  **Usage**: Mandatory for ALL code edits in the `HomeLabAI` and `Portfolio_Dev` repositories.
+2.  **CLI Mode**: `python3 atomic_patcher.py <file> <desc> <old_text> <new_text>`
+3.  **Library Mode**: Import `apply_batch_refinement` for complex, multi-edit tasks.
+4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
+
 ## BKM-010: Silicon Co-Pilot (Interactive Mode)
 **Objective**: Maintain diagnostic fidelity during live user/agent collaboration.
 **Trigger**: "Interactive Demo", "Co-Pilot Mode", or live debugging requests.
@@ -99,6 +108,17 @@
     *   *Timeout*: Tool calls must automatically time out after 300s to prevent Agent lockup.
 4.  **Verbal Feedback**: Actively mine logs for user notes (e.g., "Pinky, note that X is broken") received during the session.
 5.  **Post-Mortem**: Immediately update `ProjectStatus.md` with findings from both logs and user feedback.
+
+
+## BKM-012: The Ultimate Patcher (Archive Node)
+**Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
+**Tool**: `patch_file(filename, diff)` via the Archive Node.
+
+1.  **Format**: Accepts standard **Unified Diffs**.
+2.  **Fuzzy Matching**: Indentation-immune and handles line offsets gracefully.
+3.  **Safety (Rollback)**: Automatically saves original file state before applying the patch.
+4.  **Lint-Gate**: Runs `ruff` check on the patched file. If lint fails, it restores the original content and reports the errors.
+5.  **Usage**: Prefer this for any complex, multi-line logic changes where string matching is brittle.
 
 ## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
 **Objective**: Restore technical context after a deep work cycle.

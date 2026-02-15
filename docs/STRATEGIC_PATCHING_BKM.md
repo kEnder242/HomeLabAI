@@ -3,11 +3,13 @@
 ## 🎯 Objective
 To modify codebase files with high precision, avoiding the brittleness of literal string replacement.
 
-## 🛠️ Execution Protocol
-1. **Context Discovery**: Use `read_file` to identify the target lines and surrounding context.
-2. **Draft Patch**: Create a Unified Diff (`.patch`) file using the standard `diff -u` format.
-3. **Apply**: Execute via shell: `patch <target_file> <patch_file>`.
-4. **Validation**: Run the relevant integration test or `verify_sprint.py`.
+## 🛠️ Execution Protocol (Safe Scalpel v3.0)
+1. **Context Discovery**: Use `read_file` to identify the target code block.
+2. **Choose Mode**:
+    - **Block Mode (Preferred)**: Use the Search/Replace block format for high readability.
+    - **Diff Mode**: Use standard Unified Diffs for large, granular changes.
+3. **Apply**: Execute via CLI: `python3 scalpel.py <file> <mode> <content>`.
+4. **Safety**: The tool provides a **Live Diff Preview** and runs a **Mandatory Lint-Gate** (Python/JS) before committing.
 
 ## 💎 Why it is a "Gem"
 - **Indentation Immune**: Handles tabs/spaces gracefully.
