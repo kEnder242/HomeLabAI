@@ -77,6 +77,12 @@ class AcmeLab:
     async def broadcast(self, message_dict):
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
+        
+        # Consolidation: Log everything sent to the client for Agent visibility
+        label = message_dict.get("brain_source") or message_dict.get("type") or "System"
+        text = message_dict.get("brain") or message_dict.get("text") or message_dict.get("message") or ""
+        logging.info(f"[TO_CLIENT] {label}: {text}")
+
         message = json.dumps(message_dict)
         for ws in list(self.connected_clients):
             try:
@@ -197,7 +203,7 @@ class AcmeLab:
             self.connected_clients.remove(ws)
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
-                if "DEBUG" in self.mode:
+                if "DEBUG" in self.mode and self.mode != "DEBUG_SMOKE":
                     self.shutdown_event.set()
         return ws
 
@@ -213,33 +219,25 @@ class AcmeLab:
         logging.info(f"[QUERY] Processing: {query}")
 
         async def execute_dispatch(raw_text, source):
-            """Hardened Recursive Dispatcher: Multi-layer JSON extraction."""
+            """Hardened Dispatcher (v7): Cognitive verification."""
             try:
-                # Layer 1: Greedy Search
-                match = re.search(r'(\{.*\})', raw_text, re.DOTALL | re.MULTILINE)
-                if not match:
-                    await websocket.send_str(json.dumps({"brain": raw_text, "brain_source": source}))
+                # 1. Ask Architect to verify tool call
+                triage_res = "TEXT"
+                if 'architect' in self.residents:
+                    res = await self.residents['architect'].call_tool(name="triage_response", arguments={"raw_text": raw_text})
+                    triage_res = res.content[0].text
+
+                if triage_res == "TEXT":
+                    await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
-                json_str = match.group(1)
+                # 2. Parse the verified JSON
                 try:
-                    data = json.loads(json_str)
+                    data = json.loads(triage_res)
                 except json.JSONDecodeError:
-                    # Layer 2: Non-Greedy Fallback
-                    matches = re.findall(r'(\{.*?\})', raw_text, re.DOTALL)
-                    data = None
-                    for m in matches:
-                        try:
-                            d = json.loads(m)
-                            if d.get("tool"):
-                                data = d
-                                break
-                        except: continue
-                    if not data:
-                        await websocket.send_str(json.dumps({"brain": raw_text, "brain_source": source}))
-                        return True
+                    await self.broadcast({"brain": raw_text, "brain_source": source})
+                    return True
 
-                # Tool Resolution
                 tool = data.get("tool")
                 params = data.get("parameters") or {}
                 if isinstance(params, str): params = {"text": params}
@@ -247,11 +245,11 @@ class AcmeLab:
                 # specialized cases
                 if tool == "reply_to_user" or "reply_to_user" in data:
                     reply = params.get("text") or data.get("reply_to_user") or raw_text
-                    await websocket.send_str(json.dumps({"brain": reply, "brain_source": source}))
+                    await self.broadcast({"brain": reply, "brain_source": source})
                     return True
 
                 if tool == "close_lab" or data.get("status") == "shutdown":
-                    await websocket.send_str(json.dumps({"brain": "Goodnight. Closing Lab.", "brain_source": "System"}))
+                    await self.broadcast({"brain": "Goodnight. Closing Lab.", "brain_source": "System"})
                     self.shutdown_event.set()
                     return True
 
@@ -272,12 +270,12 @@ class AcmeLab:
                     res = await self.residents[t_node].call_tool(name=tool, arguments=params)
                     return await execute_dispatch(res.content[0].text, source)
 
-                await websocket.send_str(json.dumps({"brain": raw_text, "brain_source": source}))
+                await self.broadcast({"brain": raw_text, "brain_source": source})
                 return True
 
             except Exception as e:
                 logging.error(f"[DISPATCH] Error: {e}")
-                await websocket.send_str(json.dumps({"brain": raw_text, "brain_source": source}))
+                await self.broadcast({"brain": raw_text, "brain_source": source})
                 return False
 
         if 'pinky' in self.residents:
@@ -287,7 +285,7 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[TRIAGE] Pinky failed: {e}")
 
-        await websocket.send_str(json.dumps({"brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"}))
+        await self.broadcast({"brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"})
         return False
 
     async def boot_residents(self):
@@ -297,6 +295,10 @@ class AcmeLab:
             ("pinky", "src/nodes/pinky_node.py"),
             ("architect", "src/nodes/architect_node.py")
         ]
+        if self.mode == "DEBUG_SMOKE":
+            logging.info("[SMOKE] Fast-Boot enabled.")
+            nodes = [("archive", "src/nodes/archive_node.py")]
+
         for name, path in nodes:
             try:
                 env = os.environ.copy()
@@ -309,8 +311,12 @@ class AcmeLab:
                 logging.info(f"[BOOT] {name.upper()} online.")
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
+        
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
+        if self.mode == "DEBUG_SMOKE":
+            logging.info("[SMOKE] Successful load. Self-terminating.")
+            self.shutdown_event.set()
 
     async def run(self, disable_ear=True):
         if not disable_ear:
