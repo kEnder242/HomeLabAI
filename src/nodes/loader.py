@@ -24,34 +24,48 @@ class BicameralNode:
         self.mcp = FastMCP(name)
         self.engine_mode = "AUTO"
         self.lobotomy_active = False
+        self.vram_config = self._load_vram_config()
 
-        # Default Models
-        self.vllm_model = "/home/jallred/AcmeLab/models/mistral-7b-awq"
-        self.ollama_model = "llama3.1:8b"
-        self.fallback_model = "tinyllama"
+    def _load_vram_config(self):
+        if os.path.exists(CHARACTERIZATION_FILE):
+            try:
+                with open(CHARACTERIZATION_FILE, 'r') as f:
+                    return json.load(f)
+            except Exception: pass
+        return {}
 
     async def probe_engine(self):
-        """Standardized engine selection logic."""
+        """Standardized engine selection logic with Tier awareness."""
         env_engine = os.environ.get(f"{self.name.upper()}_ENGINE")
+        env_tier_or_model = os.environ.get(f"{self.name.upper()}_MODEL")
+        
+        # Resolve Tier if applicable
+        model_map = self.vram_config.get("model_map", {})
+        
+        def resolve(engine_type):
+            if env_tier_or_model in model_map:
+                return model_map[env_tier_or_model].get(engine_type.lower())
+            return env_tier_or_model if env_tier_or_model else model_map.get("MEDIUM", {}).get(engine_type.lower())
+
         if env_engine:
             if env_engine.upper() == "VLLM":
-                return "VLLM", self.vllm_url, self.vllm_model
+                return "VLLM", self.vllm_url, resolve("VLLM")
             elif env_engine.upper() == "OLLAMA":
-                return "OLLAMA", self.ollama_url, self.ollama_model
+                return "OLLAMA", self.ollama_url, resolve("OLLAMA")
 
         async with aiohttp.ClientSession() as session:
             try:
                 v_url = "http://127.0.0.1:8088/v1/models"
                 async with session.get(v_url, timeout=1) as resp:
                     if resp.status == 200:
-                        return "VLLM", self.vllm_url, self.vllm_model
+                        return "VLLM", self.vllm_url, resolve("VLLM")
             except Exception:
                 pass
             try:
                 o_url = "http://127.0.0.1:11434/api/tags"
                 async with session.get(o_url, timeout=1) as resp:
                     if resp.status == 200:
-                        return "OLLAMA", self.ollama_url, self.ollama_model
+                        return "OLLAMA", self.ollama_url, resolve("OLLAMA")
             except Exception:
                 pass
         return "NONE", None, None

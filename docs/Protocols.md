@@ -1,5 +1,8 @@
 # Operational Protocols: Acme Lab
 
+> [!IMPORTANT]
+> **IMMUTABILITY RULE:** Protocols in this document can ONLY be added. They must NEVER be refactored, slimmed down, or removed unless explicitly requested by the Lead Engineer.
+
 ## BKM-001: The Cold-Start Protocol (Hardware & Service)
 **Objective**: Restore the Lab environment from a powered-off or crashed state.
 
@@ -67,7 +70,35 @@
 2.  **Continuity**: The Agent works sequentially through `ProjectStatus.md`, skipping blocked tasks.
 3.  **Safety Valve**: The Lab server MUST have `--afk-timeout 60` active. This ensures that if the Agent/User connection drops, the GPU is not left idling.
 4.  **Silence**: No incremental status updates; the Agent only "pops up" for BKM-004 Halt Conditions.
-5.  **Priority Overrides**: If the trigger is paired with a specific task (e.g., "AFK: fix the vLLM crash", "Heads down on the search bug"), the Agent MUST prioritize that task over the general `ProjectStatus.md` queue and work autonomously until completion or a BKM-004 Halt Condition is met.
+## BKM-008: The Resilience Ladder (Multi-Tenancy)
+**Objective**: Maintain Lab availability without impacting the Lead Engineer's primary tasks (Gaming/Transcoding).
+
+1.  **Tier 1 (High Fidelity)**: Native vLLM using **Gemma 2 2B** Unified Base. Priority: Maximum tool-calling precision.
+2.  **Tier 2 (Engine Swap)**: Transition to Ollama. Triggered by vLLM instability or initialization failure.
+3.  **Tier 3 (Downshift)**: Transition to **Llama-3.2-1B** or **TinyLlama**. Triggered by moderate GPU pressure from non-AI apps (e.g., Jellyfin).
+4.  **Tier 4 (Hibernation)**: Full SIGTERM of AI engines. Triggered by Critical GPU pressure (e.g., 4K Gaming). Context is preserved in the Hub's `recent_interactions` list but inference is paused.
+
+## BKM-009: The Checkpoint Protocol (Save State)
+**Objective**: Ensure 100% state persistence for session continuity.
+**Trigger**: "Checkpoint", "Save", "Close up shop", or end of a feature sprint.
+
+1.  **State Snapshot**: Wrap the current environment state in a <state_snapshot> XML block (Goal, Constraints, Knowledge, Trail, FS State, Recent Actions, Tasks).
+2.  **Status Sync**: Update `ProjectStatus.md` and `Portfolio_Dev/00_FEDERATED_STATUS.md`.
+3.  **Memory**: Save key architectural decisions to Long-Term Memory.
+4.  **Persistence**: `git add .` and `git commit` with a semantic message. (NEVER push).
+5.  **Handover**: Provide a 1-sentence summary of "Where we are" and "What to do next."
+
+
+## BKM-010: Silicon Co-Pilot (Interactive Mode)
+**Objective**: Maintain diagnostic fidelity during live user/agent collaboration.
+**Trigger**: "Interactive Demo", "Co-Pilot Mode", or live debugging requests.
+
+1.  **The Test Plan**: Present a clear plan (What to test, expected outcome) before launching.
+2.  **Versioning**: Agent MUST bump the system VERSION (in acme_lab.py) if any client/server logic changed to prevent "Old Code" traps.
+3.  **Execute (Blocking)**: Agent runs the co-pilot script and WAITS. 
+    *   *Timeout*: Tool calls must automatically time out after 300s to prevent Agent lockup.
+4.  **Verbal Feedback**: Actively mine logs for user notes (e.g., "Pinky, note that X is broken") received during the session.
+5.  **Post-Mortem**: Immediately update `ProjectStatus.md` with findings from both logs and user feedback.
 
 ## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
 **Objective**: Restore technical context after a deep work cycle.

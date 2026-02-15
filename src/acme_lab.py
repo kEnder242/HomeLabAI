@@ -82,6 +82,7 @@ class AcmeLab:
             "../../Portfolio_Dev/field_notes/data/round_table.lock"
         )
         self.last_activity = 0.0
+        self.afk_timeout = afk_timeout
         self.brain_online = False
         self.recent_interactions = []
         self.last_typing_event = 0.0
@@ -89,6 +90,17 @@ class AcmeLab:
         self.ledger_path = os.path.join(LAB_DIR, "conversations.log")
         self.reflex_ttl = 1.0  # Banter health (1.0 = Quiet, 0.0 = Trigger)
         self.banter_backoff = 0  # Sequential banter penalty
+
+    async def trigger_cooldown(self):
+        """Notifies the Attendant to perform Silicon Hygiene (KV Purge/Reload)."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "http://localhost:9999/refresh"
+                async with session.post(url, timeout=5) as r:
+                    if r.status == 200:
+                        logging.info("[AFK] Cooldown acknowledge by Attendant.")
+        except Exception as e:
+            logging.error(f"[AFK] Cooldown signal failed: {e}")
 
     async def log_to_ledger(self, source, text):
         """Append a clean record of the conversation to a text file."""
@@ -161,6 +173,14 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             await asyncio.sleep(30)  # Check every 30s
             
+            # --- ACTIVITY TIMEOUT (COOLDOWN) ---
+            if self.afk_timeout and self.last_activity > 0:
+                idle_time = time.time() - self.last_activity
+                if idle_time > self.afk_timeout:
+                    logging.info(f"[AFK] Idle for {idle_time:.1f}s. Triggering Silicon Cooldown.")
+                    await self.trigger_cooldown()
+                    self.last_activity = 0.0 # Reset to prevent repeat trigger
+
             if self.connected_clients and self.status == "READY":
                 # Decay TTL if silent
                 if (time.time() - self.last_activity > 60):
@@ -579,9 +599,10 @@ class AcmeLab:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
+    parser.add_argument("--afk-timeout", type=int, default=300)
     args = parser.parse_args()
     load_equipment()
-    lab = AcmeLab()
+    lab = AcmeLab(afk_timeout=args.afk_timeout)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(lab.boot_sequence(args.mode))
