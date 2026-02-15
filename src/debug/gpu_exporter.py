@@ -17,9 +17,16 @@ class GPUExporter(BaseHTTPRequestHandler):
 
     def get_nvidia_metrics(self):
         try:
-            cmd = ["nvidia-smi", "--query-gpu=memory.used,memory.total,utilization.gpu", "--format=csv,noheader,nounits"]
-            output = subprocess.check_output(cmd).decode().strip()
-            used, total, util = map(float, output.split(','))
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            util_info = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            
+            used = info.used // 1024 // 1024
+            total = info.total // 1024 // 1024
+            util = util_info.gpu
+            pynvml.nvmlShutdown()
             
             res = [
                 "# HELP gpu_memory_used_bytes GPU memory used in MiB",

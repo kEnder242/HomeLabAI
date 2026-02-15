@@ -11,7 +11,7 @@ STATUS_JSON_PATH = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.
 async def test_attendant_heartbeat():
     """Verifies Attendant is alive and responding."""
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"{ATTENDANT_URL}/status") as resp:
+        async with session.get(f"{ATTENDANT_URL}/status?timeout=1") as resp:
             assert resp.status == 200
             data = await resp.json()
             assert "attendant_pid" in data
@@ -23,9 +23,9 @@ async def test_status_json_update():
     # 1. Capture current mtime
     initial_mtime = os.path.getmtime(STATUS_JSON_PATH) if os.path.exists(STATUS_JSON_PATH) else 0
     
-    # 2. Trigger status check
+    # 2. Trigger status check via heartbeat
     async with aiohttp.ClientSession() as session:
-        await session.get(f"{ATTENDANT_URL}/status")
+        await session.get(f"{ATTENDANT_URL}/heartbeat")
     
     # 3. Verify mtime increased
     await asyncio.sleep(1) # Wait for disk write
