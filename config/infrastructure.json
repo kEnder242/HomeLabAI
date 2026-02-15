@@ -1,0 +1,24 @@
+{
+    "nodes": {
+        "brain": {
+            "primary": "KENDER",
+            "fallback": "localhost",
+            "lora_name": "brain_v1"
+        },
+        "pinky": {
+            "primary": "localhost",
+            "lora_name": "pinky_v1"
+        }
+    },
+    "hosts": {
+        "KENDER": {
+            "ip_hint": "192.168.1.26",
+            "ollama_port": 11434
+        },
+        "localhost": {
+            "ip_hint": "127.0.0.1",
+            "vllm_port": 8088,
+            "ollama_port": 11434
+        }
+    }
+}
