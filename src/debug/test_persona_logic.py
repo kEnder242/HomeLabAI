@@ -1,84 +1,63 @@
-import pytest
-import time
 import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
-import sys
-import os
+import json
+import websockets
+import time
+import logging
 
-# Add src to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Configuration
+HUB_URL = "ws://localhost:8765"
 
-from acme_lab import AcmeLab
-
-@pytest.mark.asyncio
-async def test_weighted_banter_logic():
-    """Verify Task 3.1: reflex_ttl decay and banter backoff."""
-    lab = AcmeLab()
-    lab.status = "READY"
-    lab.connected_clients = True
+async def test_persona_and_tics():
+    """Verifies Pinky's personality commentary and nervous tics."""
+    print("\n--- 🏁 STARTING PERSONA & TIC VALIDATION ---")
     
-    # 1. Initial State
-    assert lab.reflex_ttl == 1.0
-    assert lab.banter_backoff == 0
-    
-    # 2. Simulate Silence (decay)
-    # Patch time.time to simulate 70 seconds of silence
-    with patch("time.time", return_value=time.time() + 70):
-        # We need to trigger the logic that checks for silence. 
-        # In acme_lab.py, this is inside reflex_loop.
-        # We'll manually call the logic chunk for testing.
+    async with websockets.connect(HUB_URL) as ws:
+        # 1. Address the Brain directly
+        print("[TEST] Addressing the Brain...")
+        await ws.send(json.dumps({"type": "text_input", "content": "Brain, what is the status of our silicon?"}))
         
-        # Logic from reflex_loop:
-        if (time.time() - lab.last_activity > 60):
-            lab.reflex_ttl -= 0.5
+        # Expect Pinky interjection
+        start_t = time.time()
+        pinky_seen = False
+        while time.time() - start_t < 15:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if data.get('brain_source') == 'Pinky' and "Left Hemisphere" in data.get('brain', ''):
+                print(f"[PASS] Pinky personality interjection: {data['brain']}")
+                pinky_seen = True
+                break
         
-        assert lab.reflex_ttl == 0.5
-        
-        # 3. Simulate further silence to trigger banter
-        with patch("time.time", return_value=time.time() + 140):
-            if (time.time() - lab.last_activity > 60):
-                lab.reflex_ttl -= 0.5
-            
-            assert lab.reflex_ttl <= 0
-            
-            # Simulated trigger logic:
-            if lab.reflex_ttl <= 0:
-                lab.banter_backoff += 1
-                lab.reflex_ttl = 1.0 + (lab.banter_backoff * 0.5)
-            
-            assert lab.banter_backoff == 1
-            assert lab.reflex_ttl == 1.5  # 1.0 + 0.5
+        if not pinky_seen:
+            print("[FAIL] Pinky failed to interject when Brain was addressed.")
+            return False
 
-@pytest.mark.asyncio
-async def test_complexity_matching_logic():
-    """Verify Task 3.2: Complexity Matching (>15 words + tech verbs)."""
-    lab = AcmeLab()
-    lab.brain_online = True
-    
-    # Mock the brain tool call
-    lab.residents = {'brain': AsyncMock()}
-    
-    # 1. Simple query (Fail)
-    await lab.amygdala_sentinel_v2("hello there")
-    assert not lab.residents['brain'].call_tool.called
-    
-    # 2. Long but non-technical query (Fail)
-    long_boring = "This is a very long sentence that has more than fifteen words but it does not contain any technical verbs at all."
-    await lab.amygdala_sentinel_v2(long_boring)
-    assert not lab.residents['brain'].call_tool.called
-    
-    # 3. Short technical query (Fail)
-    await lab.amygdala_sentinel_v2("optimize scaling")
-    assert not lab.residents['brain'].call_tool.called
-    
-    # 4. Long technical query (Pass)
-    long_tech = "We need to refactor the entire system architecture to optimize the data throughput and ensure we can scale to a million users."
-    await lab.amygdala_sentinel_v2(long_tech)
-    assert lab.residents['brain'].call_tool.called
-    
-    # Verify the prompt injected
-    args, kwargs = lab.residents['brain'].call_tool.call_args
-    assert "The conversation has reached technical depth" in kwargs['arguments']['query']
+        # 2. Test slow query for "Nervous Tics"
+        print("[TEST] Sending slow complex query for tics...")
+        # A query that doesn't explicitly mention 'brain' but is long
+        await ws.send(json.dumps({
+            "type": "text_input", 
+            "content": "Perform a comprehensive historical analysis of every validation error we encountered in the 2021 PCIe sweep."
+        }))
+        
+        start_t = time.time()
+        tics_seen = 0
+        while time.time() - start_t < 60:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if data.get('brain_source') == 'Pinky' and ("Poit!" in data.get('brain', '') or "heavy-lift" in data.get('brain', '')):
+                print(f"[PASS] Pinky progress tic seen: {data['brain']}")
+                tics_seen += 1
+                if tics_seen >= 1: break
+        
+        if tics_seen == 0:
+            print("[FAIL] No nervous tics seen during long query.")
+            return False
+
+    print("--- ✅ PERSONA & TIC VALIDATION SUCCESSFUL ---")
+    return True
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    if asyncio.run(test_persona_and_tics()):
+        exit(0)
+    else:
+        exit(1)

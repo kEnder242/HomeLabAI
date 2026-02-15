@@ -18,12 +18,14 @@ from contextlib import AsyncExitStack
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.6.4"
+VERSION = "3.7.2"  # Amygdala v3: Personality & Commentary
 BRAIN_HEARTBEAT_URL = "http://localhost:11434/api/tags"
 ATTENDANT_PORT = 9999
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
-ROUND_TABLE_LOCK = os.path.expanduser("~/Dev_Lab/HomeLabAI/round_table.lock")
+ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
+SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 
 
 # --- THE MONTANA PROTOCOL ---
@@ -32,9 +34,17 @@ def reclaim_logger():
     for h in root.handlers[:]:
         root.removeHandler(h)
     fmt = logging.Formatter('%(asctime)s - [LAB] %(levelname)s - %(message)s')
+
+    # 1. Stream Handler (STDERR)
     sh = logging.StreamHandler(sys.stderr)
     sh.setFormatter(fmt)
     root.addHandler(sh)
+
+    # 2. File Handler (Robust Logging)
+    fh = logging.FileHandler(SERVER_LOG, mode='a', delay=False)
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+
     root.setLevel(logging.INFO)
     logging.getLogger("nemo").setLevel(logging.ERROR)
     logging.getLogger("chromadb").setLevel(logging.ERROR)
@@ -217,11 +227,14 @@ class AcmeLab:
                                 "text": text, "type": "transcription"
                             })
                         audio_buffer = audio_buffer[16000:]
+        except asyncio.CancelledError:
+            logging.warning("[CONN] Client handler cancelled.")
         finally:
             self.connected_clients.remove(ws)
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
                 if "DEBUG" in self.mode and self.mode != "DEBUG_SMOKE":
+                    logging.info("[DEBUG] Client disconnected. Triggering Curfew.")
                     self.shutdown_event.set()
         return ws
 
@@ -238,6 +251,21 @@ class AcmeLab:
 
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
+
+        # Task 2.1: Personality Peeking (Right Hemisphere Pass)
+        # Brain interjection: If addressed, Pinky enthusiasticly hands over
+        if "brain" in query.lower():
+            await self.broadcast({
+                "brain": "Narf! I'll wake up the Left Hemisphere! He loves being "
+                         "addressed directly!",
+                "brain_source": "Pinky"
+            })
+        elif len(query.split()) > 10:
+            await self.broadcast({
+                "brain": "Poit! That sounds like a technical heavy-lift. "
+                         "Engaging The Brain...",
+                "brain_source": "Pinky"
+            })
 
         async def execute_dispatch(raw_text, source):
             """Hardened Dispatcher (v7): Cognitive verification."""
@@ -331,10 +359,19 @@ class AcmeLab:
 
         if 'pinky' in self.residents:
             try:
-                res = await self.residents['pinky'].call_tool(
-                    name="facilitate", arguments={"query": query, "context": ""}
+                res = await asyncio.wait_for(
+                    self.residents['pinky'].call_tool(
+                        name="facilitate", arguments={"query": query, "context": ""}
+                    ),
+                    timeout=60
                 )
                 return await execute_dispatch(res.content[0].text, "Pinky")
+            except asyncio.TimeoutError:
+                logging.error("[TRIAGE] Pinky timed out.")
+                await self.broadcast({
+                    "brain": "Pinky is daydreaming... please retry.",
+                    "brain_source": "System"
+                })
             except Exception as e:
                 logging.error(f"[TRIAGE] Pinky failed: {e}")
 
