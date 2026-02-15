@@ -26,7 +26,6 @@ STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 
-
 # --- THE MONTANA PROTOCOL ---
 def reclaim_logger():
     root = logging.getLogger()
@@ -67,6 +66,7 @@ class AcmeLab:
         self.status = "INIT"
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
+        self.exit_stack = AsyncExitStack()
         self.shutdown_event = asyncio.Event()
         self.last_activity = time.time()
         self.last_save_event = 0.0
@@ -77,6 +77,7 @@ class AcmeLab:
         reclaim_logger()
 
     def load_ear(self):
+        """Lazy load real EarNode logic."""
         try:
             s_dir = os.path.dirname(os.path.abspath(__file__))
             sys.path.append(os.path.join(s_dir, "equipment"))
@@ -176,7 +177,6 @@ class AcmeLab:
                 "state": "ready" if self.status == "READY" else "lobby",
                 "message": "Lab foyer is open."
             }))
-
             async def ear_poller():
                 nonlocal current_processing_task
                 while not ws.closed:
@@ -239,6 +239,8 @@ class AcmeLab:
                 elif message.type == aiohttp.WSMsgType.BINARY and self.ear:
                     chunk = np.frombuffer(message.data, dtype=np.int16)
                     audio_buffer = np.concatenate((audio_buffer, chunk))
+                    if np.abs(chunk).max() > 500 and random.random() < 0.05:
+                        logging.info("[AUDIO] Signal detected.")
                     if len(audio_buffer) >= 24000:
                         text = self.ear.process_audio(audio_buffer[:24000])
                         if text:
@@ -520,7 +522,6 @@ class AcmeLab:
                 logging.info("[SHUTDOWN] Final closing of residents...")
                 await runner.cleanup()
                 logging.info("[SHUTDOWN] Control returned to system.")
-
 
 if __name__ == "__main__":
     import argparse

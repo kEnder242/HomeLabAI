@@ -36,13 +36,11 @@ PINKY_SYSTEM_PROMPT = (
 node = BicameralNode("Pinky", PINKY_SYSTEM_PROMPT)
 mcp = node.mcp
 
-
 @mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:
     """The Intuitive Gateway: Triage sensory input. Decide whether to respond,
     research, or ask Brain."""
     return await node.generate_response(query, context, memory)
-
 
 @mcp.tool()
 async def ask_brain(task: str) -> str:
@@ -85,6 +83,29 @@ async def close_lab() -> str:
     """Gracefully terminates the Lab session."""
     return json.dumps({"tool": "close_lab", "parameters": {}})
 
+@mcp.tool()
+async def start_draft(topic: str, category: str = "validation") -> str:
+    """The Blueprint Initiation: Begins a high-fidelity synthesis."""
+    return json.dumps({
+        "tool": "generate_bkm",
+        "parameters": {"topic": topic, "category": category}
+    })
+
+@mcp.tool()
+async def access_personal_history(keyword: str) -> str:
+    """Deep Grounding: Access 18 years of technical truth."""
+    return json.dumps({
+        "tool": "access_personal_history",
+        "parameters": {"keyword": keyword}
+    })
+
+@mcp.tool()
+async def build_cv_summary(year: str) -> str:
+    """The High-Fidelity Distiller: Trigger strategic synthesis."""
+    return json.dumps({
+        "tool": "build_cv_summary",
+        "parameters": {"year": year}
+    })
 
 if __name__ == "__main__":
     node.mcp.run()
