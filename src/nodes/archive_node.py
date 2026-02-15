@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import datetime
 from mcp.server.fastmcp import FastMCP
 
 # --- Configuration ---
@@ -20,13 +21,16 @@ logger = logging.getLogger("archive_node")
 
 # Global Stream (Mock or placeholder for now)
 class MemoryStream:
-    def get(self): return []
+    def get(self):
+        return []
+
 stream = MemoryStream()
 
 # --- Semantic Store (Placeholder) ---
 class SemanticStore:
     def query(self, query_texts, n_results=3):
         return {"documents": [[]]}
+
 wisdom = SemanticStore()
 
 @mcp.tool()
@@ -39,7 +43,9 @@ def peek_related_notes(keyword: str) -> str:
             index = json.load(f)
         matches = []
         for slug, tags in index.items():
-            if keyword.lower() in slug.lower() or any(keyword.lower() in t.lower() for t in tags):
+            if keyword.lower() in slug.lower() or any(
+                keyword.lower() in t.lower() for t in tags
+            ):
                 matches.append(slug)
         if not matches:
             return f"No notes found relating to '{keyword}'."
@@ -98,26 +104,39 @@ def write_draft(filename: str, content: str) -> str:
 
 @mcp.tool()
 def patch_file(filename: str, diff: str, mode: str = "diff") -> str:
-    """Apply granular updates via Scalpel v3.0 (Unified Diffs or Search/Replace blocks).
+    """Apply granular updates via Scalpel v3.0.
     mode: 'diff' (Unified Diff) or 'block' (Search/Replace)."""
     path = os.path.join(WORKSPACE_DIR, filename)
     if not os.path.exists(path):
         return f"Error: Workspace file '{filename}' not found."
     try:
         import subprocess
-        # Use the standalone scalpel utility for linting and safety
         scalpel_path = "/home/jallred/Dev_Lab/HomeLabAI/src/debug/scalpel.py"
         python_path = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
         res = subprocess.run(
             [python_path, scalpel_path, path, mode, diff],
             capture_output=True, text=True
         )
-        if res.returncode == 0:
-            return res.stdout
-        else:
-            return f"Scalpel Error:\n{res.stdout}\n{res.stderr}"
+        return res.stdout if res.returncode == 0 else f"Scalpel Error:\n{res.stdout}"
     except Exception as e:
         return f"Error during patching: {e}"
+
+@mcp.tool()
+def create_event_for_learning(topic: str, context: str, successful: bool) -> str:
+    """The Pedagogue's Ledger: Logs teaching moments or failures."""
+    try:
+        event = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "topic": topic,
+            "context": context,
+            "successful": successful
+        }
+        l_path = os.path.join(WORKSPACE_DIR, "field_notes/data/learning_ledger.jsonl")
+        with open(l_path, 'a') as f:
+            f.write(json.dumps(event) + "\n")
+        return f"Event logged to Ledger: {topic} (Success: {successful})"
+    except Exception as e:
+        return f"Error logging event: {e}"
 
 @mcp.tool()
 def read_document(filename: str) -> str:
