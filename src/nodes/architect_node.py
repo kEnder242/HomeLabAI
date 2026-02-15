@@ -87,7 +87,7 @@ async def build_semantic_map() -> str:
     with open(SEMANTIC_MAP_FILE, 'w') as f:
         json.dump(hierarchy, f, indent=2)
 
-    return f"Hierarchy refactored. {len(hierarchy['strategic'])} strategic anchors identified."
+    return f"Hierarchy refactored. {len(hierarchy['strategic'])} anchors identified."
 
 
 @mcp.tool()
@@ -106,10 +106,17 @@ async def triage_response(raw_text: str) -> str:
     Strips conversational prefixes and malformed tool names.
     Returns: A clean JSON Tool Call block or 'TEXT'.
     """
-    valid_tools = ["ask_brain", "deep_think", "list_cabinet", "read_document", "close_lab", "generate_bkm", "access_personal_history"]
+    valid_tools = [
+        "ask_brain", "deep_think", "list_cabinet", 
+        "read_document", "close_lab", "generate_bkm", 
+        "access_personal_history"
+    ]
     
     # 1. Strip common model prefixes
-    clean_text = re.sub(r'^(pinky|brain|system|narf|poit|tool)[:!\s]*', '', raw_text, flags=re.IGNORECASE).strip()
+    clean_text = re.sub(
+        r'^(pinky|brain|system|narf|poit|tool)[:!\s]*', 
+        '', raw_text, flags=re.IGNORECASE
+    ).strip()
     
     # 2. Extract all JSON-like blocks
     matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
@@ -123,6 +130,13 @@ async def triage_response(raw_text: str) -> str:
             if tool:
                 tool = tool.replace('()', '').replace('[]', '').strip()
                 data["tool"] = tool
+            else:
+                # 4. Deep Search: Check values for tool names
+                for val in data.values():
+                    if isinstance(val, str):
+                        for vt in valid_tools:
+                            if vt in val.lower():
+                                return json.dumps({"tool": vt, "parameters": {}})
             
             # If it's a known tool, return ONLY the clean JSON
             if tool in valid_tools:
