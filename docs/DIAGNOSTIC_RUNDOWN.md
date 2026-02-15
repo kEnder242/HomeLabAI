@@ -1,7 +1,7 @@
-# 🩺 Acme Lab: Diagnostic & Test Rundown [v3.9]
+# 🩺 Acme Lab: Diagnostic & Test Rundown [v4.0]
 **"The Physician's Ledger"**
 
-This document serves as the primary map for all diagnostic instruments and test suites within the Federated Lab. Use this during a **Cold-Start** to verify hardware stability and persona grounding.
+This document is the **Master Inventory** of all diagnostic instruments, test suites, and verification scripts within the Federated Lab. It is the primary map for maintaining Silicon Stability and Persona Grounding.
 
 ---
 
@@ -12,63 +12,88 @@ These tools verify that the Lab's weights fit within the 11GB VRAM budget and th
 | :--- | :--- | :--- |
 | **Apollo 11** | `src/debug/test_apollo_vram.py` | **CRITICAL.** Profiles active inference peak. Runs "Token Burn" to allocate KV cache and verify headroom. |
 | **VRAM Guard** | `src/test_vram_guard.py` | Validates the "Stub" fallback logic when VRAM is >95% or engines fail to load. |
+| **SIGTERM Protocol** | `src/debug/test_sigterm_protocol.py` | Verifies dynamic pre-emption and the flexible SIGTERM sequence for non-AI task priority. |
 | **Liger Test** | `src/test_liger.py` | Specifically verifies that Liger-Kernels are accelerating the vLLM engine without crashing. |
+| **VLLM Alpha** | `src/debug/test_vllm_alpha.py` | Low-level connectivity check for the vLLM OpenAI-compatible endpoint. |
+| **MPS Stress** | `src/debug/mps_stress.py` | Legacy stress test for MPS (Metal) performance; maintained for cross-platform baseline. |
 
 ---
 
 ## 🏗️ 2. Lifecycle & Orchestration (The Attendant)
-These tools verify the `systemd` managed infrastructure and the Hub's resilience to network friction.
+These tools verify the `systemd` managed infrastructure and the Hub's resilience to state transitions.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Gauntlet** | `src/debug/test_lifecycle_gauntlet.py` | Stress tests the Hub with rapid connect/disconnect cycles. Essential for verifying `aiohttp` resilience. |
 | **Attendant Sanity** | `src/debug/test_attendant_sanity.py` | Verifies the Lab Attendant's HTTP API (Start/Stop/Status/Wait_Ready). |
 | **Liveliness** | `src/test_liveliness.py` | Standard heartbeat check. Verifies the WebSocket port is open and the `READY` state is achievable. |
+| **Shutdown Flow** | `src/test_shutdown.py` | Validates clean exit sequences and PID cleanup for all lab processes. |
+| **Interrupt Test** | `src/test_interrupt.py` | Tests handling of SIGINT/KeyboardInterrupt across the multi-process stack. |
 
 ---
 
 ## 🎭 3. Persona & Banter (The "Soul")
-These tools ensure the Lab maintains its Bicameral character without falling into "Chatter Traps" or repetitive loops.
+Ensures the Lab maintains its Bicameral character without falling into "Chatter Traps" or repetitive loops.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
-| **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends "Thinking" tics during long Brain reasoning cycles to provide user feedback. |
-| **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures "Certainly!" filler is stripped from draft writes. |
-| **Reflex Check** | `src/test_echo.py` | Verifies the "Talk & Read" loop and basic text/binary processing. |
+| **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends "Thinking" tics during long Brain reasoning cycles. |
+| **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures "Certainly!" filler is stripped. |
+| **Echo Check** | `src/test_echo.py` | Verifies basic text/binary processing in the "Talk & Read" loop. |
+| **Intercom Flow** | `src/test_intercom_flow.py` | End-to-end test of the CLI `intercom.py` client communication. |
 
 ---
 
 ## 🧠 4. Bicameral Logic (Hemispheric Crosstalk)
-These tools validate the "Thought Partner" capabilities, including delegation and directness.
+Validates "Thought Partner" capabilities, including delegation, tool access, and directness.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
-| **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the "Direct Answer First" rule. (e.g., Numeric Pi result vs. verbose script description). |
-| **Round Table** | `src/test_round_table.py` | Validates the Pinky -> Brain handover logic and ensuring shared context persists. |
-| **Tool Registry** | `src/debug/test_tool_registry.py` | **CRITICAL.** Confirms that all physical MCP tools (Archive, Browser, etc.) are visible to the agentic layer. |
-| **Draft Agency** | `src/test_draft_agency.py` | Specifically tests the `write_draft` tool and the "Editor Cleaning" pattern. |
+| **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the "Direct Answer First" rule. |
+| **Round Table** | `src/test_round_table.py` | Validates the Pinky -> Brain handover logic and shared context persistence. |
+| **Tool Registry** | `src/debug/test_tool_registry.py` | **CRITICAL.** Confirms all physical MCP tools are visible to the agentic layer. |
+| **Resurrection Tools**| `src/debug/test_resurrection_tools.py`| Verifies high-value restored tools: CV Builder, BKM Generator, and History Access. |
+| **Architect Flow** | `src/debug/test_architect_flow.py` | Validates the Architect Node's BKM synthesis logic. |
+| **Draft Agency** | `src/test_draft_agency.py` | Tests the `write_draft` tool and the "Editor Cleaning" pattern. |
+| **MCP Integration** | `src/test_mcp_integration.py` | Verifies low-level MCP server handshakes and tool discovery. |
 
 ---
 
 ## 💾 5. Data & Memory (The Archives)
-These tools verify the transition from raw logs to synthesized "Diamond" wisdom.
+Verifies the transition from raw logs to synthesized "Diamond" wisdom.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Dream Test** | `src/test_dream.py` | Validates the memory consolidation pipeline (`dream_cycle.py`). |
-| **Clipboard Check** | `src/test_cache_integration.py` | Verifies semantic cache lookups in ChromaDB ("Consult Clipboard"). |
-| **Save Flow** | `src/test_save_flow.py` | Validates the "Strategic Vibe Check" triggered by manual file saves in the Workbench. |
+| **Memory Sync** | `src/test_memory_integration.py` | Verifies the end-to-end RAG path (ChromaDB + Embedding Server). |
+| **Cache Check** | `src/test_cache_integration.py` | Verifies semantic cache lookups ("Consult Clipboard"). |
+| **Dedup Check** | `src/test_dedup.py` | Validates semantic de-duplication of archived notes. |
+| **Save Flow** | `src/test_save_flow.py` | Validates the "Strategic Vibe Check" triggered by manual file saves. |
+| **Recruiter Match** | `src/test_recruiter.py` | Verifies the nightly job-matching logic against the CV summary. |
 
 ---
 
-## 🔪 6. The Scalpels (Atomic Patching)
-These scripts wrap the `atomic_patcher.py` to perform lint-verified, high-fidelity changes to the core.
+## 🎙️ 6. Audio & Streaming (The Sensory Node)
+Verifies the NeMo-based EarNode and real-time STT capabilities.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Audio Pipeline** | `src/test_audio_pipeline.py` | Tests the Float32 -> Int16 conversion and STT streaming path. |
+| **EarNode Isolated** | `src/test_earnode_isolated.py` | Verifies EarNode initialization and CUDA Graph behavior in isolation. |
+| **Web Binary** | `src/debug/test_web_binary.py` | Tests the integrity of audio chunks sent via WebSocket binary frames. |
+
+---
+
+## 🔪 7. The Scalpels (Atomic Patching)
+Scripts wrapping `atomic_patcher.py` for lint-verified, high-fidelity core changes.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Scalpel Persona** | `src/debug/run_scalpel_persona.py` | Batch refines system prompts for Pinky and Brain. |
 | **Scalpel Lifecycle**| `src/debug/run_scalpel_lifecycle.py`| Fixes state machine bugs in `acme_lab.py`. |
 | **Scalpel Warp** | `src/debug/run_scalpel_warp.py` | Fast-track path hardening for absolute utility resolution. |
+| **Scalpel Core** | `src/debug/run_scalpel.py` | General-purpose atomic patching wrapper. |
+| **Verify Sprint** | `src/debug/verify_sprint.py` | Aggregate script that runs a subset of tests to verify sprint goals. |
 
 ---
-**Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py` to ensure the core is still standing.
+**Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py` and `src/debug/verify_sprint.py` to ensure the core is still standing.

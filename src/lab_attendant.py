@@ -24,6 +24,10 @@ ROUND_TABLE_LOCK = os.path.expanduser(
     "~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table.lock"
 )
 
+CHARACTERIZATION_FILE = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/vram_characterization.json"
+)
+
 # --- Logger Setup ---
 logging.basicConfig(
     level=logging.INFO,
@@ -46,11 +50,49 @@ class LabAttendant:
         self.app.router.add_post("/stop", self.handle_stop)
         self.app.router.add_post("/cleanup", self.handle_cleanup)
         self.app.router.add_post("/hard_reset", self.handle_hard_reset)
+        self.app.router.add_post("/refresh", self.handle_refresh)
         self.app.router.add_get("/wait_ready", self.handle_wait_ready)
         self.app.router.add_get("/heartbeat", self.handle_heartbeat)
         self.app.router.add_get("/logs", self.handle_logs)
         self.ready_event = asyncio.Event()
         self.monitor_task = None
+        self.vram_config = {}
+        self.refresh_vram_config()
+
+    def refresh_vram_config(self):
+        """Loads dynamic thresholds from characterization file."""
+        if os.path.exists(CHARACTERIZATION_FILE):
+            try:
+                with open(CHARACTERIZATION_FILE, 'r') as f:
+                    self.vram_config = json.load(f)
+                logger.info("[VRAM] Config refreshed from disk.")
+            except Exception as e:
+                logger.error(f"[VRAM] Failed to load config: {e}")
+
+    async def vram_watchdog_loop(self):
+        """SIGTERM Protocol: Pre-emptively stop engines if VRAM is needed elsewhere."""
+        logger.info("[VRAM] Watchdog active.")
+        while True:
+            await asyncio.sleep(10)
+            used, total = await self._get_vram_info()
+            
+            # Consult dynamic thresholds
+            limit = self.vram_config.get("safe_tiers", {}).get("critical", total * 0.95)
+            
+            if used > limit:
+                logger.warning(f"[VRAM] Pressure detected: {used}/{total} MiB. Triggering SIGTERM Protocol.")
+                # We don't hard-reset, we just stop the engine gracefully
+                await self.handle_stop(None)
+                
+                # Update status.json to reflect pre-emption
+                s_json = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
+                try:
+                    with open(s_json, "r") as f:
+                        data = json.load(f)
+                    data["message"] = "Mind SUSPENDED (VRAM Pre-emption)"
+                    with open(s_json, "w") as f:
+                        json.dump(data, f)
+                except: pass
 
     async def _get_vram_info(self):
         try:
@@ -269,6 +311,10 @@ class LabAttendant:
         await self.update_status_json()
         return web.json_response(vitals)
 
+    async def handle_refresh(self, request):
+        self.refresh_vram_config()
+        return web.json_response({"status": "success", "config": self.vram_config})
+
     async def handle_stop(self, request):
         await self.cleanup_silicon()
         await self.update_status_json()
@@ -296,6 +342,8 @@ class LabAttendant:
         await runner.setup()
         await web.TCPSite(runner, '0.0.0.0', ATTENDANT_PORT).start()
         logger.info(f"[BOOT] Attendant online on {ATTENDANT_PORT}")
+        # Start background tasks
+        asyncio.create_task(self.vram_watchdog_loop())
         await asyncio.Event().wait()
 
 if __name__ == "__main__":

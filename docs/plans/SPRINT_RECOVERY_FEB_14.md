@@ -14,7 +14,7 @@ Before executing any verification tasks, refer to the **[Diagnostic Rundown Ledg
 ## 🏎️ Phase 1: Silicon Baseline (Liger + Apollo)
 **Goal:** Achieve high-throughput inference with < 10.5GB VRAM peak.
 
-*   **Task 1.1: Liger Restoration.** Modify `src/vllm_liger_server.py` to re-enable Liger-Kernels for AWQ model acceleration.
+*   **Task 1.1: Liger Restoration [COMPLETED].** Modify `src/vllm_liger_server.py` to re-enable Liger-Kernels for AWQ model acceleration.
 *   **Task 1.2: Apollo Profiling.** Run `src/debug/test_apollo_vram.py` to perform a "Token Burn" (KV cache allocation).
 *   **Task 1.3: Characterization.** Generate `vram_characterization.json` to define "Safe Tiers" for the Attendant.
 *   **Verification:** `src/test_liger.py` must pass with zero silicon errors.
@@ -22,16 +22,16 @@ Before executing any verification tasks, refer to the **[Diagnostic Rundown Ledg
 ## 🔪 Phase 2: Strategic Tool Restoration (The Scalpel Pass)
 **Goal:** Restore the agent's ability to interact with the 18-year archive and personal history.
 
-*   **Task 2.1: Port CV Builder.** Integrate `build_cv_summary` into `BicameralNode`.
-*   **Task 2.2: Port BKM Generator.** Integrate `generate_bkm` for automated technical documentation.
-*   **Task 2.3: Port Archive Access.** Restore `access_personal_history` and `start_draft` tools.
+*   **Task 2.1: Port CV Builder [COMPLETED].** Integrate `build_cv_summary` into `BicameralNode`.
+*   **Task 2.2: Port BKM Generator [COMPLETED].** Integrate `generate_bkm` for automated technical documentation.
+*   **Task 2.3: Port Archive Access [COMPLETED].** Restore `access_personal_history` and `start_draft` tools.
 *   **Verification:** `src/debug/test_tool_registry.py` must confirm all 4 tools are visible and callable.
 
 ## 🎭 Phase 3: Persona Hardening (TTL + Amygdala)
 **Goal:** Fix the "Narf Loop" and improve interjection quality.
 
-*   **Task 3.1: Weighted Banter.** Re-implement **Weighted TTL Decay** in `acme_lab.py` reflex loop.
-*   **Task 3.2: Complexity Triggers.** Upgrade Amygdala from keyword-matching to **Complexity Matching** (>15 words + technical verbs).
+*   **Task 3.1: Weighted Banter [COMPLETED].** Re-implement **Weighted TTL Decay** in `acme_lab.py` reflex loop.
+*   **Task 3.2: Complexity Triggers [COMPLETED].** Upgrade Amygdala from keyword-matching to **Complexity Matching** (>15 words + technical verbs).
 *   **Task 3.3: Verification Gauntlet.** Run `src/debug/test_lifecycle_gauntlet.py` to verify Hub resilience under interjective load.
 
 ## 🛡️ Phase 4: Flexible VRAM Guard (SIGTERM Protocol)

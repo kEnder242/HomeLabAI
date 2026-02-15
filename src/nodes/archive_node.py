@@ -56,6 +56,41 @@ cache = get_safe_collection("semantic_cache")
 
 
 @mcp.tool()
+def build_cv_summary(year: str) -> str:
+    """The High-Fidelity Distiller: Retrieves strategic (Focal) and technical (Artifact) context for a year.
+    Used to build 3x3 CVT resume summaries."""
+    context = []
+    
+    # 1. Strategic Pillars from Wisdom
+    try:
+        res = wisdom.query(query_texts=[f"{year} performance review focal strategic goals"], n_results=3)
+        if res['documents'][0]:
+            context.append(f"STRATEGIC PILLARS ({year}):")
+            context.extend(res['documents'][0])
+    except: pass
+
+    # 2. Technical Artifacts from Field Notes
+    file_path = os.path.join(FIELD_NOTES_DATA, f"{year}.json")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                data.sort(key=lambda x: x.get('rank', 2), reverse=True)
+                context.append(f"\nTECHNICAL EVIDENCE ({year}):")
+                for item in data[:8]:
+                    context.append(f"- {item.get('summary')} ({item.get('technical_gem', 'No gem')})")
+        except: pass
+    
+    return "\n".join(context) if context else f"No strategic context found for {year}."
+
+
+@mcp.tool()
+def access_personal_history(keyword: str) -> str:
+    """Deep Grounding: Access 18 years of technical truth. Alias for peek_related_notes."""
+    return peek_related_notes(keyword)
+
+
+@mcp.tool()
 def list_cabinet() -> str:
     """Structure view of the Lab's institutional memory."""
     cabinet = {"archive": {}, "drafts": [], "workspace": []}
