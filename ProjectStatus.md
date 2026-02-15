@@ -19,22 +19,19 @@
 | **EarNode (STT)** | ✅ STABLE | NeMo 0.6B resident at ~1GB VRAM. |
 | **Web Console** | ✅ STABLE | Handshake and [BICAMERAL HANDOVER] context verified. |
 
-## Active Sprint: Project "Resurrection" (Feb 14, 2026)
-**Objective: Generalize the Mind and Harden for Multi-Tenancy.**
+## Active Sprint: Project "Awakening" [v4.8] (Feb 15, 2026)
+**Objective: Hemispheric Concurrency & Conversational Physics.**
 
-*   **Priority Refinements**:
-    1.  [DONE] **Gemma 2 2B Deployment**: Configured as the baseline MEDIUM tier.
-    2.  [TODO] **Liger Generalization**: Implement model-aware optimization in `vllm_liger_server.py`.
-    3.  [DONE] **Transition Cooldown**: KV Cache purge implemented via `handle_refresh` (Silicon Hygiene).
-    4.  [DONE] **Downshift tiering**: S/M/L mapping active in Attendant and Nodes.
+*   **Accomplishments (Logic Verified)**:
+    1.  [DONE] **Unitary Shutdown**: Resolved `aclose` task-mismatch hangs.
+    2.  [DONE] **Hemispheric Concurrency**: Parallel Dispatch fires Pinky and Brain simultaneously.
+    3.  [DONE] **Strategic Sentinel**: Brain interjects autonomously on technical keywords.
+    4.  [DONE] **Barge-In Watchdog**: "Wait, stop" speech successfully cancels active generation.
+    5.  [DONE] **Federated Failover**: Dynamic KENDER resolution with local fallback verified.
 
-*   **Core Tasks**:
-    1.  [DONE] **Liger Restoration**: Re-enabled Liger-Kernels for AWQ acceleration.
-    2.  [DONE] **NVML Migration**: Replaced `nvidia-smi` with direct NVML bindings.
-    3.  [IN PROGRESS] **Amygdala v3 Implementation**: Coding "Contextual Double-Take" and Dissonance logic.
-    4.  [TODO] **Multi-user stress test**: Run Jellyfin/Steam during active Intercom session.
+*   **Pending Verification (Gate 5)**:
+    1.  [TODO] **Weight Recovery**: Locate/relink local Gemma 2 2B weights for vLLM.
+    2.  [TODO] **Multi-LoRA Silicon Gate**: Verify concurrent adapter residency on 11GB.
+    3.  [TODO] **Apollo 11**: Profile full-stack KV cache allocation.
 
-## Recent Blockers Resolved
-*   **Silence Trap**: Eliminated subprocess hangs via NVML and unbuffered output.
-*   **State Thrash**: Resolved via backgrounded hot-swaps and explicit transition modes.
-*   **Logic Leak**: Replaced all hardcoded model names with S/M/L abstract tiers.
+## Key Components & Status
