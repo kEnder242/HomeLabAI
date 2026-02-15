@@ -1,6 +1,7 @@
 import json
 import sys
 import logging
+import pynvml
 from nodes.loader import BicameralNode
 
 # Logging
@@ -46,30 +47,39 @@ async def ask_brain(task: str) -> str:
 
 
 @mcp.tool()
-async def start_draft(topic: str, category: str = "validation") -> str:
-    """The Blueprint Initiation: Begins a high-fidelity synthesis."""
-    return json.dumps({
-        "tool": "generate_bkm",
-        "parameters": {"topic": topic, "category": category}
-    })
+async def vram_vibe_check() -> str:
+    """High-fidelity VRAM telemetry via direct NVML bindings."""
+    try:
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        used = info.used // 1024 // 1024
+        total = info.total // 1024 // 1024
+        pct = (used / total) * 100
+        pynvml.nvmlShutdown()
+        return f"VRAM Status: {used}MiB / {total}MiB ({pct:.1f}% used)."
+    except Exception as e:
+        return f"VRAM Vibe Check Failed: {e}"
 
 
 @mcp.tool()
-async def access_personal_history(keyword: str) -> str:
-    """Deep Grounding: Access 18 years of technical truth."""
-    return json.dumps({
-        "tool": "access_personal_history",
-        "parameters": {"keyword": keyword}
-    })
+async def get_lab_health() -> str:
+    """Reports system thermals and power draw."""
+    try:
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+        pwr = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0  # mW to W
+        pynvml.nvmlShutdown()
+        return f"Lab Health: Temp: {temp}C, Power: {pwr:.1f}W."
+    except Exception as e:
+        return f"Lab Health Check Failed: {e}"
 
 
 @mcp.tool()
-async def build_cv_summary(year: str) -> str:
-    """The High-Fidelity Distiller: Trigger strategic synthesis."""
-    return json.dumps({
-        "tool": "build_cv_summary",
-        "parameters": {"year": year}
-    })
+async def lab_shutdown() -> str:
+    """Gracefully terminates the Lab session."""
+    return json.dumps({"tool": "close_lab", "parameters": {}})
 
 
 if __name__ == "__main__":
