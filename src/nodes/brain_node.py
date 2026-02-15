@@ -3,7 +3,7 @@ import sys
 import logging
 import re
 import textwrap
-from .loader import BicameralNode
+from nodes.loader import BicameralNode
 
 # Logging
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
@@ -19,42 +19,19 @@ BRAIN_SYSTEM_PROMPT = (
     "2. NO PREAMBLE: Do not say 'Certainly' or 'Based on the context'. "
     "3. REASONING SECOND: Provide technical derivation ONLY after the direct answer. "
 
-    "STRICT GROUNDING: "
-    "1. EVIDENCE-ONLY: For career questions, use provided context. "
-    "2. NO EXTRAPOLATION: If evidence is missing, state 'No evidence found'. "
-
-    "CONSTRAINTS: "
-    "- BICAMERAL AWARENESS: You are 'aware' of Pinky's preceding triage. "
-    "If Pinky says something technically simplistic, you may offer a brief "
-    "technical correction before addressing the task. "
+    "STYLE: Use technical density. Reference ArXiv anchors when possible. "
+    "NO META: Do not mention tools (like 'deep_think') in your text. "
+    "Keep replies within 100 words unless complex synthesis is required."
 )
 
-# Initialize Consolidated Node
 node = BicameralNode("Brain", BRAIN_SYSTEM_PROMPT)
 mcp = node.mcp
 
 
-def _clean_content(content: str) -> str:
-    """Extract from code blocks or strip filler."""
-    code_match = re.search(r"```(?:\w+)?\s*\n(.*?)\n\s*```", content, re.DOTALL)
-    if code_match:
-        raw_code = code_match.group(1)
-        return textwrap.dedent(raw_code).strip()
-
-    pattern = (
-        r"^(Certainly!|Sure,|Of course,|As requested,|Okay,)?\s*"
-        r"(Here is the (file|plan|code|draft|report|manifesto|content)(:|.)?)?\s*"
-    )
-    cleaned = re.sub(
-        pattern, "", content, flags=re.IGNORECASE | re.MULTILINE
-    ).strip()
-    return cleaned
-
-
 @mcp.tool()
-async def deep_think(query: str, context: str = "") -> str:
+async def deep_think(task: str, context: str = "") -> str:
     """The Strategic Engine: Perform complex architectural reasoning."""
-    return await node.generate_response(query, context)
+    return await node.generate_response(task, context)
 
 
 @mcp.tool()
@@ -74,8 +51,8 @@ async def update_whiteboard(content: str) -> str:
             f.write(content)
         return "[WHITEBOARD] Updated."
     except Exception as e:
-        return f"Error: {e}"
+        return f"Failed to update whiteboard: {e}"
 
 
 if __name__ == "__main__":
-    node.run()
+    node.mcp.run()
