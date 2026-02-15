@@ -5,6 +5,7 @@
 ## 🔭 The High-Level Vision
 The project is built on the philosophy that a personal AI should be a synthesis of two distinct cognitive styles, modeled after the **Bicameral Mind**:
 
+*   **The Heart (EarNode):** The invariant sensory core. Powered by **NVIDIA NeMo (STT)**, it provides always-on listening and "Barge-In" awareness regardless of which brain is active.
 *   **The Right Hemisphere (Pinky):** Intuitive, Aware, and Presence-focused. This layer manages the "Vibe," sensory input/output, and immediate user interaction.
 *   **The Left Hemisphere (The Brain):** Logical, Abstract, and Strategic. This layer manages the "Truth," complex planning, and deep reasoning.
 
@@ -36,7 +37,8 @@ HomeLabAI employs the **Bicameral Mind** pattern—an asynchronous dispatch mode
 ## 📜 Research & Ledger
 Refer to internal documentation for technical deep-dives:
 *   **[Bicameral Dispatch](../Portfolio_Dev/docs/BICAMERAL_DISPATCH.md):** The "Soul" and Persona Architecture.
-*   **[vLLM Integration](docs/VLLM_INTEGRATION_PLAN.md):** The iterative path to high-throughput reasoning.
+*   **[vLLM Integration](docs/plans/VLLM_INTEGRATION_PLAN.md):** The iterative path to high-throughput reasoning.
+*   **[Resurrection Retrospective](docs/RETROSPECTIVE_AWAKENING_v4.9.md):** The "Lost Gems" recovery log and restoration plan.
 *   **[Observational Memory](../Portfolio_Dev/docs/RESEARCH_NOTES.md):** Transitioning from RAG to a state-based world model.
 *   **Collaborative Workspace:** Unified Diff-based editing via the `patch_file` tool.
 *   **Human Priority:** Typing collision awareness suppresses agent tics during active work.

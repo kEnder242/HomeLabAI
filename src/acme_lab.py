@@ -270,7 +270,11 @@ class AcmeLab:
 
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
-
+        
+        # Maintain local history for Memory Bridge (last 3 turns)
+        if not hasattr(self, 'recent_interactions'):
+            self.recent_interactions = []
+        
         # 0. HEURISTIC SENTINEL: Pre-dispatch emergency intercepts
         shutdown_keys = ["close the lab", "goodnight", "shutdown", "exit lab"]
         if any(k in query.lower() for k in shutdown_keys):
@@ -292,7 +296,7 @@ class AcmeLab:
         addressed_brain = "brain" in query.lower()
         
         async def execute_dispatch(raw_text, source, context_flags=None):
-            """Hardened Priority Dispatcher."""
+            """Hardened Priority Dispatcher with Hallucination Shunt."""
             try:
                 # 1. Parse JSON
                 try:
@@ -301,7 +305,7 @@ class AcmeLab:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
-                # 2. Identify Tool
+                # 2. Identify Tool & Validate (Hallucination Shunt)
                 tool = None
                 params = {}
                 if isinstance(data, dict):
@@ -309,6 +313,21 @@ class AcmeLab:
                     params = data.get("parameters") or {}
                     if isinstance(params, str):
                         params = {"text": params}
+
+                # Validation: If tool is present but unknown, shunt to Pinky
+                known_tools = [
+                    "reply_to_user", "ask_brain", "deep_think", 
+                    "list_cabinet", "read_document", "peek_related_notes", 
+                    "write_draft", "generate_bkm", "build_semantic_map"
+                ]
+                if tool and tool not in known_tools:
+                    logging.warning(f"[SHUNT] Hallucinated tool '{tool}'. Re-triaging to Pinky.")
+                    if 'pinky' in self.residents:
+                        res = await self.residents['pinky'].call_tool(
+                            name="facilitate", 
+                            arguments={"query": f"I tried to use '{tool}' but it failed. Please re-interpret.", "context": ""}
+                        )
+                        return await execute_dispatch(res.content[0].text, "Pinky (Shunt)")
 
                 # 3. HIGH PRIORITY: Explicit tool identification
                 if tool == "reply_to_user" or (isinstance(data, dict) and "reply_to_user" in data):
@@ -342,8 +361,10 @@ class AcmeLab:
                         task = f"[DIRECT ADDRESS] {task}"
 
                     if 'brain' in self.residents and self.brain_online:
+                        # Memory Bridge: Pass recent context to Brain
+                        context = "\n".join(self.recent_interactions[-3:])
                         res = await self.residents['brain'].call_tool(
-                            name="deep_think", arguments={"task": task}
+                            name="deep_think", arguments={"task": task, "context": context}
                         )
                         return await execute_dispatch(res.content[0].text, "Brain")
 
@@ -406,15 +427,22 @@ class AcmeLab:
             else:
                 logging.info("[SENTINEL] Strategic keyword detected. Engaging Brain.")
             
+            # Memory Bridge: Inject context into the direct dispatch task
+            context = "\n".join(self.recent_interactions[-3:])
             tasks.append(asyncio.create_task(
                 self.residents['brain'].call_tool(
-                    name="deep_think", arguments={"task": brain_task}
+                    name="deep_think", arguments={"task": brain_task, "context": context}
                 )
             ))
 
         # 3. Collect and Dispatch
         if tasks:
             done, pending = await asyncio.wait(tasks, timeout=60)
+            # Update history for Memory Bridge
+            self.recent_interactions.append(f"User: {query}")
+            if len(self.recent_interactions) > 10:
+                self.recent_interactions.pop(0)
+
             # CANCEL PENDING ON SHUTDOWN
             for t in done:
                 try:
