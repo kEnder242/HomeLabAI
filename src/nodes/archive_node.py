@@ -98,6 +98,16 @@ async def create_event_for_learning(topic: str, context: str, successful: bool) 
     except Exception as e:
         return f"Error: {e}"
 
+@mcp.tool()
+async def write_draft(filename: str, content: str) -> str:
+    """Stage a new technical artifact or BKM."""
+    path = os.path.join(DRAFTS_DIR, filename)
+    try:
+        with open(path, 'w') as f:
+            f.write(content)
+        return f"Draft saved to {filename}."
+    except Exception as e:
+        return f"Error saving draft: {e}"
 
 if __name__ == "__main__":
     node.run()

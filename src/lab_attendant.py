@@ -365,6 +365,7 @@ class LabAttendant:
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "vitals": {
                     "brain": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
+                    "intercom": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
                     "vram": f"{v_pct:.1f}%",
                     "model": current_model,
                     "mode": current_lab_mode
