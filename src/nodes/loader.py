@@ -11,6 +11,9 @@ CHARACTERIZATION_FILE = os.path.join(
     FIELD_NOTES_DATA, "vram_characterization.json"
 )
 
+# 4090 Awareness: Define remote Windows endpoint
+WINDOWS_OLLAMA_URL = "http://192.168.1.15:11434/api/generate"
+WINDOWS_TAGS_URL = "http://192.168.1.15:11434/api/tags"
 
 class BicameralNode:
     def __init__(self, name, system_prompt,
@@ -35,7 +38,7 @@ class BicameralNode:
         return {}
 
     async def probe_engine(self):
-        """Standardized engine selection logic."""
+        """Standardized engine selection logic including 4090 Awareness."""
         env_engine = os.environ.get(f"{self.name.upper()}_ENGINE")
         env_tier_or_mod = os.environ.get(f"{self.name.upper()}_MODEL")
         model_map = self.vram_config.get("model_map", {})
@@ -52,19 +55,31 @@ class BicameralNode:
                 return "VLLM", self.vllm_url, resolve("VLLM")
             elif env_engine.upper() == "OLLAMA":
                 return "OLLAMA", self.ollama_url, resolve("OLLAMA")
+            elif env_engine.upper() == "4090":
+                return "4090", WINDOWS_OLLAMA_URL, resolve("OLLAMA")
 
         async with aiohttp.ClientSession() as session:
+            # 1. Check vLLM (Linux 2080Ti)
             try:
                 async with session.get(
-                    "http://127.0.0.1:8088/v1/models", timeout=1
+                    "http://127.0.0.1:8088/v1/models", timeout=0.5
                 ) as resp:
                     if resp.status == 200:
                         return "VLLM", self.vllm_url, resolve("VLLM")
             except Exception:
                 pass
+            # 2. Check 4090 (Windows Remote)
+            try:
+                async with session.get(WINDOWS_TAGS_URL, timeout=0.5) as resp:
+                    if resp.status == 200:
+                        logging.info(f"[{self.name}] 4090 Detected. Routing to Windows.")
+                        return "4090", WINDOWS_OLLAMA_URL, resolve("OLLAMA")
+            except Exception:
+                pass
+            # 3. Check Local Ollama (Linux Fallback)
             try:
                 async with session.get(
-                    "http://127.0.0.1:11434/api/tags", timeout=1
+                    "http://127.0.0.1:11434/api/tags", timeout=0.5
                 ) as resp:
                     if resp.status == 200:
                         return "OLLAMA", self.ollama_url, resolve("OLLAMA")
@@ -172,6 +187,7 @@ class BicameralNode:
                             "parameters": {"text": "vLLM Error", "mood": "panic"}
                         })
                 else:
+                    # Ollama (format: json)
                     payload = {
                         "model": model, "prompt": unified,
                         "stream": False, "format": "json",
@@ -180,10 +196,14 @@ class BicameralNode:
                     async with session.post(url, json=payload, timeout=30) as r:
                         data = await r.json()
                         raw_out = data.get("response", "")
-                        clean_out = re.sub(
-                            r'\{.*\}', '', raw_out, flags=re.DOTALL
-                        ).strip()
-                        return clean_out if clean_out else raw_out
+                        # Fallback parsing for Ollama non-native tool calling
+                        try:
+                            # Try to see if it's already JSON
+                            json.loads(raw_out)
+                            return raw_out
+                        except Exception:
+                            # If not, it might be raw text, let dispatcher handle it
+                            return raw_out
         except Exception as e:
             return json.dumps({
                 "tool": "reply_to_user",

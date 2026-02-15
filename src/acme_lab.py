@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import random
-import re
 import sys
 import time
 from typing import Dict, Set
@@ -18,7 +17,7 @@ from contextlib import AsyncExitStack
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.7.7"  # Phase 3: Robust Shutdown Detection
+VERSION = "3.7.14"  # Amygdala v3: Direct Addressing logic
 BRAIN_HEARTBEAT_URL = "http://localhost:11434/api/tags"
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,7 +69,6 @@ class AcmeLab:
         self.status = "INIT"
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
-        self.exit_stack = AsyncExitStack()
         self.shutdown_event = asyncio.Event()
         self.last_activity = time.time()
         self.last_save_event = 0.0
@@ -252,72 +250,67 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
 
-        if "brain" in query.lower():
+        addressed_directly = False
+        if query and "brain" in query.lower():
+            addressed_directly = True
             await self.broadcast({
                 "brain": "Narf! I'll wake up the Left Hemisphere! He loves being "
                          "addressed directly!",
                 "brain_source": "Pinky"
             })
-        elif len(query.split()) > 10:
+        elif query and len(query.split()) > 10:
             await self.broadcast({
                 "brain": "Poit! That sounds like a technical heavy-lift. "
                          "Engaging The Brain...",
                 "brain_source": "Pinky"
             })
 
-        async def execute_dispatch(raw_text, source):
-            """Phase 3: Native Native Dispatcher."""
+        async def execute_dispatch(raw_text, source, context_flags=None):
+            """Hardened Priority Dispatcher."""
             try:
-                # 1. Parse JSON block (Native or Triage)
+                # 1. Parse JSON
                 try:
                     data = json.loads(raw_text)
                 except json.JSONDecodeError:
                     await self.broadcast({"brain": raw_text, "brain_source": source})
                     return True
 
-                # 2. Extract Tool & Parameters (Safety for non-dict JSON)
-                if not isinstance(data, dict):
-                    # Extraction fallback for lists or other types
-                    def extract_val(obj):
-                        if isinstance(obj, str): return [obj]
-                        if isinstance(obj, dict):
-                            return [str(v) for v in obj.values()]
-                        if isinstance(obj, list):
-                            res = []
-                            for v in obj: res.extend(extract_val(v))
-                            return res
-                        return [str(obj)]
-                    reply = " ".join(extract_val(data))
-                    await self.broadcast({"brain": reply, "brain_source": source})
-                    return True
+                # 2. Identify Tool
+                tool = None
+                params = {}
+                if isinstance(data, dict):
+                    tool = data.get("tool")
+                    params = data.get("parameters") or {}
+                    if isinstance(params, str):
+                        params = {"text": params}
 
-                tool = data.get("tool")
-                params = data.get("parameters") or {}
-                if isinstance(params, str): params = {"text": params}
-
-                # 3. Handle explicit tool priority
-                if tool == "reply_to_user" or "reply_to_user" in data:
+                # 3. HIGH PRIORITY: Explicit tool identification
+                if tool == "reply_to_user" or (isinstance(data, dict) and "reply_to_user" in data):
                     reply = params.get("text") or data.get("reply_to_user") or raw_text
                     if isinstance(reply, dict):
                         reply = reply.get("text", str(reply))
                     await self.broadcast({"brain": str(reply), "brain_source": source})
                     return True
 
-                # Robust Shutdown Check (Task 3.1)
-                is_shutdown = (tool == "close_lab" or 
-                               data.get("status") == "shutdown" or
-                               "closing" in str(data).lower() or
-                               "goodnight" in str(data).lower())
+                # 4. CRITICAL PRIORITY: Shutdown check
+                shutdown_triggers = ["close_lab", "shutdown", "closing", "goodnight"]
+                is_shutdown = (tool in shutdown_triggers or
+                               any(t in str(data).lower() for t in shutdown_triggers))
                 if is_shutdown:
                     await self.broadcast({
                         "brain": "Goodnight. Closing Lab.", "brain_source": "System"
                     })
+                    logging.info("[SHUTDOWN] Tool Triggered. Signaling Shutdown Event.")
                     self.shutdown_event.set()
                     return True
 
-                # 4. Routing logic
+                # 5. Routing logic
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
+                    # Inject Context Flag for Direct Addressing
+                    if context_flags and context_flags.get("direct"):
+                        task = f"[DIRECT ADDRESS] {task}"
+
                     if 'brain' in self.residents and self.brain_online:
                         res = await self.residents['brain'].call_tool(
                             name="deep_think", arguments={"task": task}
@@ -338,12 +331,20 @@ class AcmeLab:
                     )
                     return await execute_dispatch(res.content[0].text, source)
 
-                # 5. Extraction fallback: treat remaining dict values as text
-                vals = []
-                for v in data.values():
-                    if isinstance(v, (str, int, float)): vals.append(str(v))
-                    elif isinstance(v, list): vals.extend([str(i) for i in v])
-                reply = " ".join(vals)
+                # 6. Extraction Fallback (Lowest Priority)
+                def extract_val(obj):
+                    if isinstance(obj, str):
+                        return [obj]
+                    if isinstance(obj, dict):
+                        return [str(v) for v in obj.values()]
+                    if isinstance(obj, list):
+                        res = []
+                        for v in obj:
+                            res.extend(extract_val(v))
+                        return res
+                    return [str(obj)]
+
+                reply = " ".join(extract_val(data))
                 await self.broadcast({"brain": reply, "brain_source": source})
                 return True
 
@@ -360,7 +361,9 @@ class AcmeLab:
                     ),
                     timeout=60
                 )
-                return await execute_dispatch(res.content[0].text, "Pinky")
+                return await execute_dispatch(
+                    res.content[0].text, "Pinky", {"direct": addressed_directly}
+                )
             except asyncio.TimeoutError:
                 logging.error("[TRIAGE] Pinky timed out.")
                 await self.broadcast({
@@ -375,7 +378,8 @@ class AcmeLab:
         })
         return False
 
-    async def boot_residents(self):
+    async def boot_residents(self, stack: AsyncExitStack):
+        """Internal boot sequence: Must remain in unitary task."""
         s_dir = os.path.dirname(os.path.abspath(__file__))
         n_dir = os.path.join(s_dir, "nodes")
         nodes = [
@@ -390,8 +394,10 @@ class AcmeLab:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
                 params = StdioServerParameters(command=PYTHON_PATH, args=[path], env=env)
-                cl_stack = await self.exit_stack.enter_async_context(stdio_client(params))
-                session = await self.exit_stack.enter_async_context(ClientSession(cl_stack[0], cl_stack[1]))
+                cl_stack = await stack.enter_async_context(stdio_client(params))
+                session = await stack.enter_async_context(
+                    ClientSession(cl_stack[0], cl_stack[1])
+                )
                 await session.initialize()
                 self.residents[name] = session
                 logging.info(f"[BOOT] {name.upper()} online.")
@@ -400,11 +406,12 @@ class AcmeLab:
 
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
-        if self.mode == "DEBUG_SMOKE":
-            logging.info("[SMOKE] Successful load. Self-terminating.")
-            self.shutdown_event.set()
 
-    async def run(self, disable_ear=True):
+        if self.mode == "DEBUG_SMOKE":
+            logging.info("[SMOKE] Initialized. Triggering Native Shutdown Tool.")
+            await self.process_query("Please close the lab.", None)
+
+    async def run(self, disable_ear=False):
         if not disable_ear:
             self.load_ear()
         app = web.Application()
@@ -412,18 +419,20 @@ class AcmeLab:
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', PORT)
-        try:
-            await site.start()
-            logging.info(f"[BOOT] Server on {PORT}")
-            asyncio.create_task(self.boot_residents())
-            asyncio.create_task(self.reflex_loop())
-            await self.shutdown_event.wait()
-        finally:
-            logging.info("[SHUTDOWN] Closing residents...")
+
+        # Unitary Task lifecycle
+        async with AsyncExitStack() as stack:
             try:
-                await self.exit_stack.aclose()
-            except Exception: pass
-            await runner.cleanup()
+                await site.start()
+                logging.info(f"[BOOT] Server on {PORT}")
+                await self.boot_residents(stack)
+                asyncio.create_task(self.reflex_loop())
+                await self.shutdown_event.wait()
+                logging.info("[SHUTDOWN] Event received. Cleaning up.")
+            finally:
+                logging.info("[SHUTDOWN] Final closing of residents...")
+                await runner.cleanup()
+                logging.info("[SHUTDOWN] Control returned to system.")
 
 
 if __name__ == "__main__":
