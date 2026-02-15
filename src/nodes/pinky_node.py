@@ -1,8 +1,7 @@
 import json
-import subprocess
 import sys
 import logging
-from .loader import BicameralNode
+from nodes.loader import BicameralNode
 
 # Logging
 logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
@@ -18,80 +17,60 @@ PINKY_SYSTEM_PROMPT = (
     "- You are the Gateway. The Brain is the Reasoning Engine. "
     "- DELEGATION: For complex coding, deep math, strategic planning, or if the "
     "user explicitly asks for 'Brain', you MUST use 'ask_brain()'. "
+    "- TRUTH ANCHOR: You have a sense of technical 'vibe'. If a user query "
+    "feels high-stakes, delegate. "
 
-    "ADMINISTRATIVE DUTIES: "
-    "- SHUTDOWN: If the user says 'bye' or requests a shutdown, "
-    "use 'lab_shutdown()'. "
-    "- HOUSEKEEPING: Use 'prune_drafts()' to clear workspace files. "
-    "- LEARNING: Use 'create_event_for_learning()' to log failures. "
-
-    "TEMPORAL MOAT RULE: "
-    "1. You MUST NOT use 'access_personal_history' for queries about 'today' "
-    "or current hardware state. "
-    "2. For hardware telemetry, use 'vram_vibe_check' or 'get_lab_health'. "
-
-    "STRICT OUTPUT RULE: You MUST output ONLY a JSON object: "
-    "{ \"tool\": \"TOOL_NAME\", \"parameters\": { ... } }. "
+    "THE DIRECTNESS RULE: "
+    "1. DIRECT ANSWER FIRST: Report the status or direct hearing immediately. "
+    "2. NO FILLER: No 'Narf! Certainly!'. Just 'Narf! [Answer]'. "
+    "3. NATURAL LANGUAGE ONLY: Do NOT output JSON blocks. "
+    "4. FAREWELLS: If user says 'bye', use 'close_lab()'. "
+    "5. DELEGATION: Only 'ask_brain()' for code, math, or strategy."
 )
 
-# Initialize Consolidated Node
 node = BicameralNode("Pinky", PINKY_SYSTEM_PROMPT)
 mcp = node.mcp
 
 
 @mcp.tool()
 async def facilitate(query: str, context: str, memory: str = "") -> str:
-    """The Intuitive Gateway: Triage sensory input. Decide whether to respond, 
+    """The Intuitive Gateway: Triage sensory input. Decide whether to respond,
     research, or ask Brain."""
     return await node.generate_response(query, context, memory)
 
 
 @mcp.tool()
-async def vram_vibe_check() -> str:
-    """High-fidelity GPU memory check using NVML library."""
-    try:
-        import pynvml
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        used = info.used // 1024 // 1024
-        total = info.total // 1024 // 1024
-        pynvml.nvmlShutdown()
-        return f"VRAM at {(used/total)*100:.1f}%. {total-used}MiB free. Poit!"
-    except Exception:
-        return "Narf! Pulse lost."
-
-
-@mcp.tool()
-async def get_my_tools() -> str:
-    """List all high-fidelity tools currently available to Pinky."""
-    tools = [t.name for t in mcp._tool_manager.list_tools()]
-    return f"My current toolset: {', '.join(tools)}. Poit!"
+async def ask_brain(task: str) -> str:
+    """The Left Hemisphere Uplink: Delegate complex reasoning, math, or code."""
+    return json.dumps({"tool": "deep_think", "parameters": {"task": task}})
 
 
 @mcp.tool()
 async def start_draft(topic: str, category: str = "validation") -> str:
-    """The Blueprint Initiation: Begins a high-fidelity technical synthesis on the Whiteboard."""
-    return json.dumps({"tool": "generate_bkm", "parameters": {"topic": topic, "category": category}})
+    """The Blueprint Initiation: Begins a high-fidelity synthesis."""
+    return json.dumps({
+        "tool": "generate_bkm",
+        "parameters": {"topic": topic, "category": category}
+    })
 
 
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:
-    """Deep Grounding: Access 18 years of technical truth. Use sparingly for strategic context."""
-    return json.dumps({"tool": "access_personal_history", "parameters": {"keyword": keyword}})
+    """Deep Grounding: Access 18 years of technical truth."""
+    return json.dumps({
+        "tool": "access_personal_history",
+        "parameters": {"keyword": keyword}
+    })
 
 
 @mcp.tool()
 async def build_cv_summary(year: str) -> str:
-    """The High-Fidelity Distiller: Trigger strategic synthesis for a specific career epoch."""
-    return json.dumps({"tool": "build_cv_summary", "parameters": {"year": year}})
-
-
-@mcp.tool()
-async def lab_shutdown() -> str:
-    """Gracefully terminates the Lab's active mind loop."""
-    return json.dumps({"tool": "lab_shutdown", "parameters": {}})
+    """The High-Fidelity Distiller: Trigger strategic synthesis."""
+    return json.dumps({
+        "tool": "build_cv_summary",
+        "parameters": {"year": year}
+    })
 
 
 if __name__ == "__main__":
-    node.run()
+    node.mcp.run()

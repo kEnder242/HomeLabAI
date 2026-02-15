@@ -1,9 +1,7 @@
-import asyncio
 import aiohttp
 import json
-import logging
 import os
-import sys
+import re
 from mcp.server.fastmcp import FastMCP
 
 # Global Paths
@@ -31,21 +29,22 @@ class BicameralNode:
             try:
                 with open(CHARACTERIZATION_FILE, 'r') as f:
                     return json.load(f)
-            except Exception: pass
+            except Exception:
+                pass
         return {}
 
     async def probe_engine(self):
-        """Standardized engine selection logic with Tier awareness."""
+        """Standardized engine selection logic."""
         env_engine = os.environ.get(f"{self.name.upper()}_ENGINE")
-        env_tier_or_model = os.environ.get(f"{self.name.upper()}_MODEL")
-        
-        # Resolve Tier if applicable
+        env_tier_or_mod = os.environ.get(f"{self.name.upper()}_MODEL")
         model_map = self.vram_config.get("model_map", {})
-        
+
         def resolve(engine_type):
-            if env_tier_or_model in model_map:
-                return model_map[env_tier_or_model].get(engine_type.lower())
-            return env_tier_or_model if env_tier_or_model else model_map.get("MEDIUM", {}).get(engine_type.lower())
+            if env_tier_or_mod in model_map:
+                return model_map[env_tier_or_mod].get(engine_type.lower())
+            return env_tier_or_mod if env_tier_or_mod else model_map.get(
+                "MEDIUM", {}
+            ).get(engine_type.lower())
 
         if env_engine:
             if env_engine.upper() == "VLLM":
@@ -55,15 +54,17 @@ class BicameralNode:
 
         async with aiohttp.ClientSession() as session:
             try:
-                v_url = "http://127.0.0.1:8088/v1/models"
-                async with session.get(v_url, timeout=1) as resp:
+                async with session.get(
+                    "http://127.0.0.1:8088/v1/models", timeout=1
+                ) as resp:
                     if resp.status == 200:
                         return "VLLM", self.vllm_url, resolve("VLLM")
             except Exception:
                 pass
             try:
-                o_url = "http://127.0.0.1:11434/api/tags"
-                async with session.get(o_url, timeout=1) as resp:
+                async with session.get(
+                    "http://127.0.0.1:11434/api/tags", timeout=1
+                ) as resp:
                     if resp.status == 200:
                         return "OLLAMA", self.ollama_url, resolve("OLLAMA")
             except Exception:
@@ -71,16 +72,13 @@ class BicameralNode:
         return "NONE", None, None
 
     def unify_prompt(self, query, context="", memory=""):
-        """Implements the Unified User Pattern for vLLM compatibility."""
-        # Get list of physical tools from the MCP instance
+        """Unified User Pattern for vLLM compatibility."""
         tools = [t.name for t in self.mcp._tool_manager.list_tools()]
         tool_list = ", ".join(tools)
-
         prompt = self.system_prompt
         if context:
             prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
-
-        unified = (
+        return (
             f"[SYSTEM]: {prompt}\n\n"
             f"AVAILABLE TOOLS: {tool_list}, ask_brain, reply_to_user\n"
             "RULE: You MUST ONLY use one of the tools listed above.\n\n"
@@ -88,26 +86,19 @@ class BicameralNode:
             f"QUERY:\n{query}\n\n"
             "DECISION (JSON):"
         )
-        return unified
 
     async def generate_response(self, query, context="", memory=""):
-        """Standardized reasoning entry point with lobotomy awareness."""
+        """Standardized reasoning entry point."""
         engine, url, model = await self.probe_engine()
-
         if self.lobotomy_active:
-            model = self.fallback_model
-            engine = "OLLAMA"
-            url = self.ollama_url
-
+            engine, url = "OLLAMA", self.ollama_url
         if engine == "NONE":
             err = "Egad! I am disconnected from my weights!"
             return json.dumps({
                 "tool": "reply_to_user",
                 "parameters": {"text": err, "mood": "panic"}
             })
-
         unified = self.unify_prompt(query, context, memory)
-
         try:
             async with aiohttp.ClientSession() as session:
                 if engine == "VLLM":
@@ -116,14 +107,13 @@ class BicameralNode:
                         "messages": [{"role": "user", "content": unified}],
                         "max_tokens": 512, "temperature": 0.2
                     }
-                    async with session.post(url, json=payload, timeout=30) as resp:
-                        data = await resp.json()
+                    async with session.post(url, json=payload, timeout=30) as r:
+                        data = await r.json()
                         if "choices" in data:
                             return data["choices"][0]["message"]["content"]
-                        err_msg = f"SYSTEM_ERROR: vLLM error {resp.status}"
                         return json.dumps({
                             "tool": "reply_to_user",
-                            "parameters": {"text": err_msg, "mood": "panic"}
+                            "parameters": {"text": "vLLM Error", "mood": "panic"}
                         })
                 else:
                     payload = {
@@ -131,13 +121,17 @@ class BicameralNode:
                         "stream": False, "format": "json",
                         "options": {"num_predict": 512, "temperature": 0.2}
                     }
-                    async with session.post(url, json=payload, timeout=30) as resp:
-                        data = await resp.json()
-                        return data.get("response", "")
+                    async with session.post(url, json=payload, timeout=30) as r:
+                        data = await r.json()
+                        raw_out = data.get("response", "")
+                        clean_out = re.sub(
+                            r'\{.*\}', '', raw_out, flags=re.DOTALL
+                        ).strip()
+                        return clean_out if clean_out else raw_out
         except Exception as e:
             return json.dumps({
                 "tool": "reply_to_user",
-                "parameters": {"text": f"Connection Failed: {e}", "mood": "panic"}
+                "parameters": {"text": f"Error: {e}", "mood": "panic"}
             })
 
     def run(self):
