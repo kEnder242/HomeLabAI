@@ -50,6 +50,7 @@
 3.  **Action**: HALT all implementation.
 4.  **Reporting**: Present the hardware state (PID, VRAM usage, driver logs) to the Lead Engineer.
 5.  **Resolution**: WAIT for explicit approval before attempting `sudo` level interventions or system reboots.
+6.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
 
 ## BKM-005: The Design Studio (Greenlight before Silicon Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
@@ -66,6 +67,7 @@
 2.  **Continuity**: The Agent works sequentially through `ProjectStatus.md`, skipping blocked tasks.
 3.  **Safety Valve**: The Lab server MUST have `--afk-timeout 60` active. This ensures that if the Agent/User connection drops, the GPU is not left idling.
 4.  **Silence**: No incremental status updates; the Agent only "pops up" for BKM-004 Halt Conditions.
+5.  **Priority Overrides**: If the trigger is paired with a specific task (e.g., "AFK: fix the vLLM crash", "Heads down on the search bug"), the Agent MUST prioritize that task over the general `ProjectStatus.md` queue and work autonomously until completion or a BKM-004 Halt Condition is met.
 
 ## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
 **Objective**: Restore technical context after a deep work cycle.

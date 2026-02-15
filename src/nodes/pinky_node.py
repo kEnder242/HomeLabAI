@@ -48,14 +48,15 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
 
 @mcp.tool()
 async def vram_vibe_check() -> str:
-    """High-fidelity GPU memory check using nvidia-smi."""
+    """High-fidelity GPU memory check using NVML library."""
     try:
-        cmd = [
-            "nvidia-smi", "--query-gpu=memory.used,memory.total",
-            "--format=csv,noheader,nounits"
-        ]
-        output = subprocess.check_output(cmd).decode().strip()
-        used, total = map(int, output.split(','))
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        used = info.used // 1024 // 1024
+        total = info.total // 1024 // 1024
+        pynvml.nvmlShutdown()
         return f"VRAM at {(used/total)*100:.1f}%. {total-used}MiB free. Poit!"
     except Exception:
         return "Narf! Pulse lost."

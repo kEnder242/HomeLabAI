@@ -96,14 +96,16 @@ class LabAttendant:
 
     async def _get_vram_info(self):
         try:
-            cmd = [
-                "nvidia-smi", "--query-gpu=memory.used,memory.total",
-                "--format=csv,nounits,noheader"
-            ]
-            output = subprocess.check_output(cmd).decode().strip()
-            used, total = map(int, output.split(','))
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            used = info.used // 1024 // 1024
+            total = info.total // 1024 // 1024
+            pynvml.nvmlShutdown()
             return used, total
-        except Exception:
+        except Exception as e:
+            logger.error(f"[VRAM] NVML Error: {e}")
             return 0, 0
 
     async def _get_current_vitals(self):

@@ -14,12 +14,13 @@ MODEL_PATH = "/home/jallred/AcmeLab/models/mistral-7b-awq"
 def get_gpu_info():
     """Returns (used, total) MiB."""
     try:
-        cmd = [
-            "nvidia-smi", "--query-gpu=memory.used,memory.total",
-            "--format=csv,noheader,nounits"
-        ]
-        output = subprocess.check_output(cmd).decode().strip()
-        used, total = map(int, output.split(','))
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        used = info.used // 1024 // 1024
+        total = info.total // 1024 // 1024
+        pynvml.nvmlShutdown()
         return used, total
     except Exception:
         return 0, 0
