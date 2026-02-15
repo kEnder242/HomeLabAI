@@ -87,6 +87,9 @@ class AcmeLab:
             logging.error(f"[BOOT] Failed to load EarNode: {e}")
 
     async def broadcast(self, message_dict):
+        if self.shutdown_event.is_set():
+            return
+
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
 
@@ -96,6 +99,9 @@ class AcmeLab:
             message_dict.get("text") or
             message_dict.get("message") or ""
         )
+        if not l_txt and message_dict.get("type") != "status":
+            return
+
         logging.info(f"[TO_CLIENT] {l_src}: {l_txt}")
 
         message = json.dumps(message_dict)
@@ -265,6 +271,18 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         logging.info(f"[QUERY] Processing: {query}")
 
+        # 0. HEURISTIC SENTINEL: Pre-dispatch emergency intercepts
+        shutdown_keys = ["close the lab", "goodnight", "shutdown", "exit lab"]
+        if any(k in query.lower() for k in shutdown_keys):
+            logging.info("[SHUTDOWN] Heuristic Triggered.")
+            await self.broadcast({
+                "brain": "Goodnight. Closing Lab.", 
+                "brain_source": "System",
+                "type": "shutdown"
+            })
+            self.shutdown_event.set()
+            return True
+
         # 1. Strategic Sentinel Logic
         strategic_keywords = [
             "regression", "validation", "scars", "root cause", 
@@ -396,12 +414,21 @@ class AcmeLab:
 
         # 3. Collect and Dispatch
         if tasks:
-            done, _ = await asyncio.wait(tasks, timeout=60)
+            done, pending = await asyncio.wait(tasks, timeout=60)
+            # CANCEL PENDING ON SHUTDOWN
             for t in done:
                 try:
                     res = t.result()
+                    raw_out = res.content[0].text
                     source = "Pinky" if "facilitate" in str(t) else "Brain"
-                    await execute_dispatch(res.content[0].text, source, {"direct": addressed_brain})
+                    
+                    # PRE-EMPTIVE SHUTDOWN CHECK
+                    if "close_lab" in raw_out or "goodnight" in raw_out:
+                        for p in pending: p.cancel()
+                        await execute_dispatch(raw_out, source, {"direct": addressed_brain})
+                        return True
+                        
+                    await execute_dispatch(raw_out, source, {"direct": addressed_brain})
                 except Exception as e:
                     logging.error(f"[TRIAGE] Node failed: {e}")
         else:
