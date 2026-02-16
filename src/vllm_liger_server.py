@@ -26,10 +26,8 @@ def apply_dynamic_liger(model_name: str):
     elif "mistral" in model_lower:
         logging.info("Applying Liger-Kernel to Mistral architecture...")
         lt.apply_liger_kernel_to_mistral()
-    elif "llama-3.1" in model_lower or "llama3.1" in model_lower:
-        logging.info("Applying Liger-Kernel to Llama 3.1 architecture...")
-        lt.apply_liger_kernel_to_llama3_1()
     elif "llama" in model_lower:
+        # Llama 2, 3, 3.1, and 3.2 share the same base architecture in Liger
         logging.info("Applying Liger-Kernel to Llama architecture...")
         lt.apply_liger_kernel_to_llama()
     else:

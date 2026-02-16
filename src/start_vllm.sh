@@ -4,7 +4,7 @@ SERVER_SCRIPT="/home/jallred/Dev_Lab/HomeLabAI/src/vllm_liger_server.py"
 LOG_FILE="/home/jallred/Dev_Lab/HomeLabAI/vllm_server.log"
 PID_FILE="/home/jallred/Dev_Lab/HomeLabAI/server_vllm.pid"
 
-MODEL_PATH="${1:-/usr/share/ollama/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b}"
+MODEL_PATH="${1:-/home/jallred/.cache/huggingface/hub/models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/272b3bde867b606760447deb9a4d2719fbdfd3ae}"
 
 echo "--- vLLM Alpha Startup: $MODEL_PATH ---"
 
@@ -12,15 +12,13 @@ echo "--- vLLM Alpha Startup: $MODEL_PATH ---"
 export VLLM_USE_V1=0
 
 # Start the vLLM server in the background
-# Using --load-format gguf for native Ollama blob support
-# Pointing --tokenizer to the weights file to read metadata directly
+# Using --load-format auto for safetensors support
 nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --model "$MODEL_PATH" \
-    --load-format "gguf" \
-    --tokenizer "$MODEL_PATH" \
+    --load-format "auto" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.1 \
+    --gpu-memory-utilization 0.4 --served-model-name unified-base \
     --max-model-len 4096 \
     --enforce-eager \
     --enable-lora \

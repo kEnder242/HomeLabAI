@@ -1,14 +1,17 @@
 import asyncio
-import subprocess
 import aiohttp
 import time
 import os
-import json
 
 # Configuration from Environment or Defaults
 ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:9999")
 VLLM_URL = "http://localhost:8088/v1/chat/completions"
-MODEL_PATH = "/home/jallred/AcmeLab/models/mistral-7b-awq"
+MODEL_PATH = (
+    "/home/jallred/.cache/huggingface/hub/"
+    "models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/"
+    "272b3bde867b606760447deb9a4d2719fbdfd3ae"
+)
+MODEL_NAME = "llama-3.2-3b-awq"
 
 
 def get_gpu_info():
@@ -30,9 +33,12 @@ async def token_burn(session):
     """Fires a request to vLLM to allocate KV cache."""
     print("\n[APOLLO] Initiating Token Burn (KV Cache Allocation)...")
     payload = {
-        "model": MODEL_PATH,
+        "model": MODEL_NAME,
         "messages": [
-            {"role": "user", "content": "Explain the concept of VRAM headroom in one paragraph."}
+            {
+                "role": "user",
+                "content": "Explain the concept of VRAM headroom in one paragraph."
+            }
         ],
         "max_tokens": 100
     }
@@ -45,7 +51,7 @@ async def token_burn(session):
 
 
 async def run_apollo_live():
-    print("--- 🚀 Apollo 11: Real-Time Active Profiling (Mistral-7B) ---")
+    print(f"--- 🚀 Apollo 11: Real-Time Active Profiling ({MODEL_NAME}) ---")
 
     # 1. Hardware Detection
     used_base, total_cap = get_gpu_info()
@@ -62,7 +68,7 @@ async def run_apollo_live():
         try:
             await session.post(
                 f"{ATTENDANT_URL}/start",
-                json={"engine": "vLLM", "disable_ear": False}
+                json={"engine": "vLLM", "model": MODEL_NAME, "disable_ear": False}
             )
         except Exception as e:
             print(f"[ERROR] Could not connect to Attendant: {e}")
@@ -79,8 +85,9 @@ async def run_apollo_live():
                 max_vram = current
 
             try:
-                resp = await session.get(f"{ATTENDANT_URL}/status?timeout=1")
-                status = await resp.json()
+                # Use /heartbeat for status
+                async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
+                    status = await resp.json()
 
                 if status.get("full_lab_ready") and not burn_triggered:
                     print("\n[APOLLO] Lab is READY. Starting stress phase.")
@@ -105,7 +112,8 @@ async def run_apollo_live():
             await asyncio.sleep(1)
 
         print(f"\n[APOLLO] Final Peak (Active): {max_vram} MiB")
-        print(f"[APOLLO] Budget: {max_vram} / {total_cap} MiB ({(max_vram/total_cap)*100:.1f}%)")
+        pct = (max_vram / total_cap) * 100
+        print(f"[APOLLO] Budget: {max_vram} / {total_cap} MiB ({pct:.1f}%)")
 
         if max_vram > total_cap * 0.95:
             print("[CRITICAL] REDLINE. Active inference is dangerously close to OOM.")

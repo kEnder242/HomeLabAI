@@ -32,9 +32,10 @@ current_model = None
 # --- Logger ---
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - [ATTENDANT] %(levelname)s - %(message)s'
+    format="%(asctime)s - [ATTENDANT] %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("lab_attendant")
+
 
 class LabAttendant:
     def __init__(self):
@@ -58,15 +59,15 @@ class LabAttendant:
         """Loads dynamic thresholds and model mappings."""
         if os.path.exists(CHARACTERIZATION_FILE):
             try:
-                with open(CHARACTERIZATION_FILE, 'r') as f:
+                with open(CHARACTERIZATION_FILE, "r") as f:
                     self.vram_config = json.load(f)
                 logger.info("[VRAM] Config refreshed from disk.")
             except Exception as e:
                 logger.error(f"[VRAM] Failed to load config: {e}")
-        
+
         if os.path.exists(INFRASTRUCTURE_FILE):
             try:
-                with open(INFRASTRUCTURE_FILE, 'r') as f:
+                with open(INFRASTRUCTURE_FILE, "r") as f:
                     infra = json.load(f)
                     self.model_manifest = infra.get("model_manifest", {})
                 logger.info("[INFRA] Model manifest refreshed.")
@@ -82,14 +83,14 @@ class LabAttendant:
                 await asyncio.sleep(2)
                 used, total = await self._get_vram_info()
                 load = await self._get_gpu_load()
-                
+
                 # Maintain 10-second sliding window (5 samples at 2s interval)
                 gpu_load_history.append(load)
                 if len(gpu_load_history) > 5:
                     gpu_load_history.pop(0)
-                
+
                 avg_load = sum(gpu_load_history) / len(gpu_load_history)
-                
+
                 safe_tiers = self.vram_config.get("safe_tiers", {})
                 warn_limit = safe_tiers.get("warning", total * 0.85)
                 down_limit = safe_tiers.get("downshift", total * 0.90)
@@ -100,15 +101,19 @@ class LabAttendant:
 
                 # Soft Dimming: If sustained external load > 20%, purge KV cache
                 if avg_load > 20 and current_lab_mode == "vLLM":
-                    logger.warning(f"[VRAM] Sustained external load ({avg_load:.1f}%). Triggering Soft Dimming.")
+                    logger.warning(
+                        f"[VRAM] Sustained load ({avg_load:.1f}%). Soft Dimming."
+                    )
                     await self._trigger_vllm_soft_dimming()
 
                 if used > crit_limit:
                     await self.cleanup_silicon()
                     await self.update_status_json("Mind SUSPENDED (Critical VRAM)")
                     continue
-                if used > down_limit and current_lab_mode == "OLLAMA" and (
-                    current_model != small_model
+                if (
+                    used > down_limit
+                    and current_lab_mode == "OLLAMA"
+                    and (current_model != small_model)
                 ):
                     asyncio.create_task(self.handle_downshift(small_model))
                     continue
@@ -122,6 +127,7 @@ class LabAttendant:
         """Fetch real-time GPU utilization using pynvml (DCGM baseline)."""
         try:
             import pynvml
+
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
@@ -131,14 +137,11 @@ class LabAttendant:
             return 0
 
     async def _trigger_vllm_soft_dimming(self):
-        """Purge vLLM KV cache via request abortion to free VRAM for external apps."""
+        """Purge vLLM KV cache to free VRAM for external apps."""
         try:
-            async with aiohttp.ClientSession() as session:
-                # Abort all active requests to flush the cache
-                # Note: vLLM usually handles this via individual request cancellation, 
-                # but we can force it by hitting the model endpoint with a tiny sequence
-                # or a specific 'cooldown' heartbeat if implemented.
-                pass 
+            # Note: vLLM handles this via individual request cancellation.
+            # We can force it by hitting the model endpoint with a tiny sequence.
+            pass
             await self.update_status_json("Mind DIMMING (Sharing Silicon)")
         except Exception as e:
             logger.error(f"Soft dimming failed: {e}")
@@ -149,11 +152,16 @@ class LabAttendant:
         current_lab_mode = "SWAPPING"
         await self.cleanup_silicon()
         payload = {
-            "engine": "OLLAMA", "model": target_model,
-            "mode": "SERVICE_UNATTENDED", "disable_ear": True
+            "engine": "OLLAMA",
+            "model": target_model,
+            "mode": "SERVICE_UNATTENDED",
+            "disable_ear": True,
         }
+
         class MockReq:
-            async def json(self): return payload
+            async def json(self):
+                return payload
+
         await self.handle_start(MockReq())
         await self.update_status_json("Mind SWAPPED (VRAM Warning)")
 
@@ -163,11 +171,16 @@ class LabAttendant:
         current_lab_mode = "DOWNSHIFTING"
         await self.cleanup_silicon()
         payload = {
-            "engine": "OLLAMA", "model": target_model,
-            "mode": "SERVICE_UNATTENDED", "disable_ear": True
+            "engine": "OLLAMA",
+            "model": target_model,
+            "mode": "SERVICE_UNATTENDED",
+            "disable_ear": True,
         }
+
         class MockReq:
-            async def json(self): return payload
+            async def json(self):
+                return payload
+
         await self.handle_start(MockReq())
         current_model = target_model
         await self.update_status_json("Mind DOWNSHIFTED (Tier 3)")
@@ -178,7 +191,7 @@ class LabAttendant:
         while True:
             if os.path.exists(SERVER_LOG):
                 try:
-                    with open(SERVER_LOG, 'r') as f:
+                    with open(SERVER_LOG, "r") as f:
                         while True:
                             line = f.readline()
                             if not line:
@@ -208,15 +221,16 @@ class LabAttendant:
         current_model = res_mod if res_mod else (
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
-        
+
         # Resolve absolute path if available in manifest
         actual_model_path = self.model_manifest.get(current_model, current_model)
-        logger.info(f"[START] Resolved model '{current_model}' to path: {actual_model_path}")
-        
+        logger.info(f"[START] Resolved '{current_model}' to: {actual_model_path}")
+
         await self.cleanup_silicon()
         if pref_eng == "vLLM":
-            subprocess.run(["bash", VLLM_START_PATH, actual_model_path])
-            await asyncio.sleep(10)
+            # Non-blocking start for vLLM
+            subprocess.Popen(["bash", VLLM_START_PATH, actual_model_path])
+            await asyncio.sleep(35)
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
         env["USE_BRAIN_VLLM"] = "1" if pref_eng == "vLLM" else "0"
@@ -224,14 +238,25 @@ class LabAttendant:
         env["PINKY_MODEL"] = current_model
         if data.get("disable_ear", True):
             env["DISABLE_EAR"] = "1"
-        with open(SERVER_LOG, 'w') as f:
-            f.write('')
+        with open(SERVER_LOG, "w") as f:
+            f.write("")
         try:
+            cmd = [
+                LAB_VENV_PYTHON,
+                LAB_SERVER_PATH,
+                "--mode",
+                data.get("mode", "SERVICE_UNATTENDED"),
+                "--afk-timeout",
+                str(data.get("afk_timeout", 300)),
+            ]
+            if data.get("disable_ear", True):
+                cmd.append("--disable-ear")
+
             lab_process = subprocess.Popen(
-                [LAB_VENV_PYTHON, LAB_SERVER_PATH,
-                 "--mode", data.get("mode", "SERVICE_UNATTENDED"),
-                 "--afk-timeout", str(data.get("afk_timeout", 300))],
-                cwd=LAB_DIR, env=env, stderr=open(SERVER_LOG, 'a', buffering=1)
+                cmd,
+                cwd=LAB_DIR,
+                env=env,
+                stderr=open(SERVER_LOG, "a", buffering=1),
             )
             self.monitor_task = asyncio.create_task(self.log_monitor_loop())
             return web.json_response({"status": "success", "pid": lab_process.pid})
@@ -245,7 +270,7 @@ class LabAttendant:
 
     async def handle_cleanup(self, request):
         if os.path.exists(SERVER_LOG):
-            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             os.rename(SERVER_LOG, f"{SERVER_LOG}.{ts}")
         return web.json_response({"status": "success"})
 
@@ -258,18 +283,25 @@ class LabAttendant:
         """Silicon Hygiene: Reloads config and purges memory (KV Purge)."""
         self.refresh_vram_config()
         if current_lab_mode != "OFFLINE":
+
             async def background_cooldown():
                 old_mode, old_model = current_lab_mode, current_model
                 await self.cleanup_silicon()
                 await self.update_status_json("Mind COOLDOWN (Hygiene)")
                 await asyncio.sleep(5)
                 payload = {
-                    "engine": old_mode, "model": old_model,
-                    "mode": "SERVICE_UNATTENDED", "disable_ear": True
+                    "engine": old_mode,
+                    "model": old_model,
+                    "mode": "SERVICE_UNATTENDED",
+                    "disable_ear": True,
                 }
+
                 class MockReq:
-                    async def json(self): return payload
+                    async def json(self):
+                        return payload
+
                 await self.handle_start(MockReq())
+
             asyncio.create_task(background_cooldown())
         return web.json_response({"status": "success", "message": "Hygiene scheduled."})
 
@@ -292,8 +324,8 @@ class LabAttendant:
 
     async def handle_logs(self, request):
         if os.path.exists(SERVER_LOG):
-            with open(SERVER_LOG, 'r') as f:
-                return web.Response(text=f.read()[-5000:], content_type='text/plain')
+            with open(SERVER_LOG, "r") as f:
+                return web.Response(text=f.read()[-5000:], content_type="text/plain")
         return web.json_response({"status": "not_found"}, status=404)
 
     async def handle_blocking_status(self, request):
@@ -306,8 +338,10 @@ class LabAttendant:
         start_t = time.time()
         while time.time() - start_t < timeout:
             vitals = await self._get_current_vitals()
-            if not vitals["lab_server_running"] or vitals["last_error"] or (
-                vitals["full_lab_ready"]
+            if (
+                not vitals["lab_server_running"]
+                or vitals["last_error"]
+                or (vitals["full_lab_ready"])
             ):
                 return web.json_response(vitals)
             await asyncio.sleep(1)
@@ -316,6 +350,7 @@ class LabAttendant:
     async def _get_vram_info(self):
         try:
             import pynvml
+
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -334,7 +369,7 @@ class LabAttendant:
             "lab_mode": current_lab_mode,
             "model": current_model,
             "full_lab_ready": self.ready_event.is_set(),
-            "last_error": None
+            "last_error": None,
         }
         try:
             async with aiohttp.ClientSession() as session:
@@ -368,8 +403,8 @@ class LabAttendant:
                     "intercom": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
                     "vram": f"{v_pct:.1f}%",
                     "model": current_model,
-                    "mode": current_lab_mode
-                }
+                    "mode": current_lab_mode,
+                },
             }
             with open(STATUS_JSON, "w") as f:
                 json.dump(live_data, f)
@@ -378,9 +413,9 @@ class LabAttendant:
 
     async def cleanup_silicon(self):
         targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                line = " ".join(proc.info['cmdline'] or [])
+                line = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in line for t in targets):
                     proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -389,10 +424,11 @@ class LabAttendant:
     async def run(self):
         runner = web.AppRunner(self.app)
         await runner.setup()
-        await web.TCPSite(runner, '0.0.0.0', ATTENDANT_PORT).start()
+        await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
         logger.info(f"[BOOT] Attendant online on {ATTENDANT_PORT}")
         asyncio.create_task(self.vram_watchdog_loop())
         await asyncio.Event().wait()
+
 
 if __name__ == "__main__":
     asyncio.run(LabAttendant().run())
