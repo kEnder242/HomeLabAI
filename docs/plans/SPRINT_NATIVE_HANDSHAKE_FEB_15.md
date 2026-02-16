@@ -1,19 +1,8 @@
-# 🏃 Sprint Plan: Project Awakening [v4.5]
-**"The Gemma 2 / Multi-LoRA Restoration"**
+# 🏃 Sprint Plan: Project Awakening [v4.5/v4.9 Hybrid]
+**"The Unified Base / Multi-LoRA Restoration"**
 
 ## 🎯 Objective
-To finalize the transition to **Native LLM Tool Calling** using **Gemma 2 2B** as the primary base for **Multi-LoRA Paged Attention**. This plan restores the "Lost Gems" of autonomous interjection and conversational physics while hardening the Federated Lab against regressions.
-
----
-
-## 🏛️ Architectural Pivot: Hemispheric Concurrency
-| Feature | Status | Target (v4.5) |
-| :--- | :--- | :--- |
-| **Primary Engine** | Sequential | **vLLM (Primary)** / Ollama (Backup). |
-| **Model Mandate** | TBD | **Gemma 2 2B (Unified Base)**. Mistral is Forbidden. |
-| **Control Flow** | Seq | **Parallel Dispatch**: Hub pings all nodes simultaneously. |
-| **Brain Autonomy**| Reactive | **Strategic Sentinel**: Brain interjects on keywords. |
-| **Tooling** | Regex | **Native OpenAI tools[]**: Unwrapped in Dispatcher. |
+To stabilize **Multi-LoRA Paged Attention** using an efficient unified base (e.g., Llama-3.2-3B via local GGUF blob) to restore the "Unity" pattern where all concurrent Lab nodes share a single VRAM footprint, freeing up space for the NeMo EarNode.
 
 ---
 
@@ -21,23 +10,24 @@ To finalize the transition to **Native LLM Tool Calling** using **Gemma 2 2B** a
 1.  **Gate 1: UNITARY_SHUTDOWN.** `AsyncExitStack` managed in unitary task (Verified).
 2.  **Gate 2: FEDERATED_FAILOVER.** KENDER @ `.26` with local fallback (Verified).
 3.  **Gate 4: STRATEGIC_SENTINEL.** Brain engages on keywords (regression, silicon) (Verified).
-4.  **Gate 5: MULTI_LORA_PROBE.** Concurrent LoRA residency on 11GB VRAM.
-5.  **Gate 6: BARGE_IN.** "Wait, stop" kills current generation.
-6.  **Gate 7: APOLLO_VRAM.** Confirmed KV cache stability via `test_apollo_vram.py`.
+4.  **Gate 5: MULTI_LORA_PROBE.** [IN PROGRESS] Concurrent LoRA residency on 11GB VRAM.
+5.  **Gate 6: BARGE_IN.** "Wait, stop" kills current generation (Verified).
+6.  **Gate 7: APOLLO_VRAM.** Confirmed KV cache stability via `test_apollo_vram.py` (Pending Stability).
 
 ---
 
 ## 🏎️ Phase 1: Silicon Multi-Tenancy (Infrastructure)
-*   [TODO] **Task 1.0: Weight Recovery**. Locate the directory containing Gemma 2 `config.json` and LoRA adapters.
-*   [TODO] **Task 1.1: Multi-LoRA Initialization**. Update `start_vllm.sh` with the verified local path.
+*   [DONE] **Task 1.0: Weight Recovery**. Identified Ollama blob `sha256-74627347...` as a viable Llama 3.2 3B GGUF candidate.
+*   [TODO] **Task 1.1: Multi-LoRA Initialization**. Re-point `start_vllm.sh` to the verified local blob with `--load-format gguf`.
 *   [TODO] **Task 1.2: resolve_ip() Implementation**. Refactor `loader.py` for dynamic KENDER resolution.
 *   **Verification:** `test_federated_failover.py` (Rerun).
 
 ## 🎭 Phase 2: Hemispheric Awakening (The Soul)
-*   [TODO] **Task 2.1: Parallel Dispatch v2**. Refactor `process_query` for concurrent Pinky/Brain awareness.
-*   [TODO] **Task 2.2: Barge-In Watchdog**. Implement interrupt signal handling in Hub.
-*   [TODO] **Task 2.3: Brain Addressing**. Verify "Brain" mention triggers handover + persona response.
-*   **Verification:** `test_strategic_interjection.py` (Incorporate into CI).
+*   [DONE] **Task 2.1: Parallel Dispatch v2**. Refactor `process_query` for concurrent Pinky/Brain awareness.
+*   [DONE] **Task 2.2: Barge-In Watchdog**. Implement interrupt signal handling in Hub.
+*   [DONE] **Task 2.3: Brain Addressing**. Verify "Brain" mention triggers handover + persona response.
+*   [TODO] **Task 2.4: Semantic Map Consumption**. Connect Pinky to Architect's strategic map.
+*   **Verification:** `test_strategic_interjection.py` (Verified).
 
 ## 🛡️ Phase 3: Validation & Vetting
 *   [TODO] **Task 3.1: The Gauntlet**. Run all 7 Diamond Gate tests.
@@ -48,5 +38,5 @@ To finalize the transition to **Native LLM Tool Calling** using **Gemma 2 2B** a
 ## 📜 Active Protocols
 - **Safe-Scalpel (BKM-011):** Mandatory for all logic changes.
 - **Unitary Task:** `AsyncExitStack` must be managed in a single task.
-- **Silicon Law:** Mistral is Forbidden (11GB budget). vLLM is Primary.
-- **KENDER Awareness:** 4090 is live at `192.168.1.26`.
+- **Silicon Strategy:** vLLM is Primary for concurrent node efficiency. Model selection is a tunable knob for VRAM optimization.
+- **Unity Pattern:** All concurrent nodes MUST share the same model base.
