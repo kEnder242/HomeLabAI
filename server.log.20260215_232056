@@ -1,0 +1,62 @@
+2026-02-15 23:07:55,038 - [LAB] INFO - [BOOT] Server on 8765
+2026-02-15 23:07:55,038 - [LAB] INFO - [BOOT] Server on 8765
+2026-02-15 23:07:55,714 - [LAB] INFO - [BOOT] ARCHIVE online.
+2026-02-15 23:07:55,714 - [LAB] INFO - [BOOT] ARCHIVE online.
+2026-02-15 23:07:56,420 - [LAB] INFO - [BOOT] BRAIN online.
+2026-02-15 23:07:56,420 - [LAB] INFO - [BOOT] BRAIN online.
+2026-02-15 23:07:57,102 - [LAB] INFO - [BOOT] PINKY online.
+2026-02-15 23:07:57,102 - [LAB] INFO - [BOOT] PINKY online.
+2026-02-15 23:07:57,681 - [LAB] INFO - [BOOT] ARCHITECT online.
+2026-02-15 23:07:57,681 - [LAB] INFO - [BOOT] ARCHITECT online.
+2026-02-15 23:07:57,681 - [LAB] INFO - [READY] Lab is Open.
+2026-02-15 23:07:57,681 - [LAB] INFO - [READY] Lab is Open.
+2026-02-15 23:07:59,416 - [LAB] INFO - [QUERY] Processing: Narf! Vibe check!
+2026-02-15 23:07:59,416 - [LAB] INFO - [QUERY] Processing: Narf! Vibe check!
+INFO:mcp.server.lowlevel.server:Processing request of type CallToolRequest
+INFO:root:[pinky] vLLM detected on localhost.
+INFO:root:[pinky] Resolved to unified-base (VLLM)
+ERROR:root:[pinky] vLLM Error: {'error': {'message': '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set', 'type': 'BadRequestError', 'param': None, 'code': 400}}
+INFO:mcp.server.lowlevel.server:Processing request of type ListToolsRequest
+2026-02-15 23:07:59,431 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:07:59 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:07:59,431 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:07:59 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:35,848 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:25 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:35,848 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:25 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:35,921 - [LAB] INFO - [QUERY] Processing: ping
+2026-02-15 23:19:35,921 - [LAB] INFO - [QUERY] Processing: ping
+INFO:mcp.server.lowlevel.server:Processing request of type CallToolRequest
+INFO:root:[pinky] vLLM detected on localhost.
+INFO:root:[pinky] Resolved to unified-base (VLLM)
+ERROR:root:[pinky] vLLM Error: {'error': {'message': '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set', 'type': 'BadRequestError', 'param': None, 'code': 400}}
+2026-02-15 23:19:35,931 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:35 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:35,931 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:35 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:35,954 - [LAB] INFO - [QUERY] Processing: Tell me a long story.
+2026-02-15 23:19:37,048 - [LAB] INFO - [brain] Routing to Primary: 192.168.1.26
+2026-02-15 23:19:37,048 - [LAB] INFO - [brain] Resolved to gemma2:2b (OLLAMA)
+2026-02-15 23:19:37,076 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:37 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:19:37,076 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:19:37 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:20:08,953 - [LAB] INFO - [QUERY] Processing: ping
+2026-02-15 23:20:08,953 - [LAB] INFO - [QUERY] Processing: ping
+INFO:mcp.server.lowlevel.server:Processing request of type CallToolRequest
+INFO:root:[pinky] vLLM detected on localhost.
+INFO:root:[pinky] Resolved to unified-base (VLLM)
+ERROR:root:[pinky] vLLM Error: {'error': {'message': '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set', 'type': 'BadRequestError', 'param': None, 'code': 400}}
+2026-02-15 23:20:08,961 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:20:08 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:20:08,961 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:20:08 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:20:08,968 - [LAB] INFO - [QUERY] Processing: Brain, tell me about the architecture.
+2026-02-15 23:20:08,975 - [LAB] INFO - [QUERY] Processing: We have a major regression in the silicon drivers.
+2026-02-15 23:20:08,976 - [LAB] INFO - [SENTINEL] Strategic detected. Engaging Brain.
+2026-02-15 23:20:08,980 - [LAB] INFO - [QUERY] Processing: Tell me a long story.
+2026-02-15 23:20:09,985 - [LAB] INFO - [brain] Resolved to unified-base (VLLM)
+2026-02-15 23:20:09,985 - [LAB] INFO - [brain] Resolved to gemma2:2b (OLLAMA)
+2026-02-15 23:20:10,001 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:20:09 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:20:10,001 - [LAB] INFO - 127.0.0.1 [15/Feb/2026:23:20:09 -0800] "GET / HTTP/1.1" 101 0 "-" "Python/3.12 websockets/16.0"
+2026-02-15 23:20:18,300 - [LAB] INFO - [BOOT] Server on 8765
+2026-02-15 23:20:18,980 - [LAB] INFO - [BOOT] ARCHIVE online.
+2026-02-15 23:20:19,677 - [LAB] INFO - [BOOT] BRAIN online.
+2026-02-15 23:20:20,385 - [LAB] INFO - [BOOT] PINKY online.
+2026-02-15 23:20:20,958 - [LAB] INFO - [BOOT] ARCHITECT online.
+2026-02-15 23:20:20,958 - [LAB] INFO - [READY] Lab is Open.
+2026-02-15 23:20:20,958 - [LAB] INFO - [SMOKE] Successful load. Self-terminating.
+2026-02-15 23:20:20,959 - [LAB] INFO - [SHUTDOWN] Event received. Cleaning up.
+2026-02-15 23:20:20,959 - [LAB] INFO - [SHUTDOWN] Final closing of residents...
+2026-02-15 23:20:20,959 - [LAB] INFO - [SHUTDOWN] Control returned to system.

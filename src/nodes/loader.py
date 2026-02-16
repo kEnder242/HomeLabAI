@@ -58,6 +58,17 @@ class BicameralNode:
             logging.info(f"[{self.name}] Resolved to {m} ({engine_type})")
             return m
 
+        # 0. High-Priority Environment Override (for testing/debug)
+        env_engine = os.environ.get(f"{self.name.upper()}_ENGINE")
+        if env_engine == "VLLM":
+            l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
+            v_url = f"http://127.0.0.1:{l_host_cfg.get('vllm_port', 8088)}/v1/chat/completions"
+            return ("VLLM", v_url, resolve_model("VLLM"))
+        elif env_engine == "OLLAMA":
+            l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
+            o_url = f"http://127.0.0.1:{l_host_cfg.get('ollama_port', 11434)}/api/generate"
+            return ("OLLAMA", o_url, resolve_model("OLLAMA"))
+
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)
             p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
