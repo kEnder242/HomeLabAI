@@ -4,10 +4,16 @@
 This document tracks the high-level architectural decisions and "Invariant Laws" that govern the Federated Lab. Consult this before performing any core refactors to prevent regressions of "Lost Gems."
 
 ## 🏛️ Silicon Mandates (The Hardware Law)
+
 *   **Engine Primacy**: **vLLM is the Primary Engine** for the 2080 Ti. Ollama is the stability fallback.
-*   **VRAM Budget**: Mistral-7B is **FORBIDDEN** on the 2080 Ti due to the 11GB limit.
-*   **Model Baseline**: All 2080 Ti nodes MUST standardize on **Gemma 2 2B (MEDIUM)**.
+
+*   **VRAM Budget**: Mistral-7B remains **FORBIDDEN** for concurrent use on the 2080 Ti.
+
+*   **Model Baseline**: All 2080 Ti nodes MUST standardize on **Llama-3.2-3B-AWQ (Unity Pattern)**. This secures a ~30% VRAM headroom buffer for the EarNode.
+
 *   **The Invariant Heart**: The **EarNode (NeMo STT)** is the invariant sensory core. It must remain resident and functional regardless of the reasoning engine state.
+
+
 *   **GGUF Tokenizer Law**: When loading GGUF models in vLLM, do NOT point the `--tokenizer` flag to a HuggingFace repo. Point both `--model` and `--tokenizer` to the local GGUF blob to ensure 100% offline operation and bypass gated-model authentication.
 
 ## 🧠 Cognitive Architecture

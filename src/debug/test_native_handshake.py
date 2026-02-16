@@ -38,7 +38,7 @@ async def test_native_handshake():
         mock_post.return_value.__aenter__.return_value = mock_resp
         
         with patch("nodes.loader.BicameralNode.probe_engine", 
-                   return_value=("VLLM", "http://localhost:8088/v1/chat/completions", "mistral-7b-awq")):
+                   return_value=("VLLM", "http://localhost:8088/v1/chat/completions", "llama-3.2-3b-awq")):
             res = await pinky_facilitate("What is Pi?", "context")
             print(f"[RECV] Response: {res}")
             

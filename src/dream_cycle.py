@@ -28,7 +28,7 @@ async def remote_brain_think(prompt, context):
         use_pinky = True
 
     target_url = PINKY_URL if use_pinky else BRAIN_URL
-    model = "mistral:7b" if use_pinky else "llama3:latest"
+    model = "llama-3.2-3b-awq" if use_pinky else "llama3:latest"
 
     if use_pinky:
         logging.warning("⚠️ Brain (4090) is offline. Falling back to Pinky (2080 Ti) for Dreaming.")

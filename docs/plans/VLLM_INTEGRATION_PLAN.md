@@ -4,10 +4,10 @@
 ## 🏛️ The Unified Base Architecture
 To maximize VRAM efficiency and leverage **Paged Attention**, the Lab utilizes an **Abstracted Model Hierarchy**. This allows the mind to grow and adapt as new models emerge without hardcoding logic.
 
-*   **LARGE (High Fidelity):** Targeted for complex reasoning (e.g., Mistral 7B).
+*   **LARGE (High Fidelity):** Targeted for complex reasoning (e.g., Llama-3.2-3B).
 *   **MEDIUM (Standard):** Current baseline for concurrent nodes (e.g., Gemma 2 2B).
-*   **SMALL (Lite):** Low-footprint triage during multi-use peaks (e.g., Llama 3.2 1B).
-*   **VRAM Target:** < 3.0 GB baseline for all concurrent nodes combined using MEDIUM tier.
+*   **SMALL (Lite):** Low-footprint triage during multi-use peaks (e.g., Llama-3.2-1B).
+*   **VRAM Target:** < 2.5 GB baseline for the Large tier (AWQ), ensuring a ~30% VRAM headroom buffer for sensory nodes (EarNode).
 *   **The Strategy:** Standardize nodes on the **Abstract Tier** rather than specific weight files. The Lab Attendant manages the mapping via `vram_characterization.json`.
 
 ## 🪜 The Resilience Ladder (Degradation Order)

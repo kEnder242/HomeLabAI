@@ -24,7 +24,7 @@ To transform the Acme Lab into a high-throughput, low-latency agentic ecosystem 
     *   *Goal:* Improve accuracy on complex reasoning tasks (arXiv:2601.12538).
 
 ### Phase 3: Voice Mastery (Sonic STT/TTS)
-*   **Voxtral:** Benchmark Mistral's sonic-speed transcription against current NeMo EarNode.
+*   **Voxtral:** Benchmark Llama-3.2's sonic-speed transcription against current NeMo EarNode.
 *   **PersonaPlex:** Explore Nvidia's open model for simultaneous listen/talk voice interaction.
 
 ---

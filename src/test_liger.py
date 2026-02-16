@@ -8,14 +8,14 @@ def test_liger():
     print("--- Liger-Kernel Bench-Test ---")
     try:
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        from liger_kernel.transformers import apply_liger_kernel_to_mistral
+        from liger_kernel.transformers import apply_liger_kernel_to_llama
 
-        model_path = "mistralai/Mistral-7B-Instruct-v0.3"
+        model_path = "casperhansen/llama-3.2-3b-instruct-awq"
         print(f"Targeting: {model_path}")
 
         # 1. Apply Patch
         print("Applying Liger-Kernel patches...")
-        apply_liger_kernel_to_mistral()
+        apply_liger_kernel_to_llama()
 
         # 2. Check for Token (Requires login, skipping for now, just checking logic)
         # We will use a smaller dummy check if the library is functional

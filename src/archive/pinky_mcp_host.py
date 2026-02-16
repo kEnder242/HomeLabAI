@@ -23,7 +23,7 @@ BUILD_VERSION = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Pinky (Local) Config
 PINKY_URL = "http://localhost:11434/api/generate"
-PINKY_MODEL = "mistral:7b"
+PINKY_MODEL = "llama-3.2-3b-awq"
 SILENCE_TIMEOUT = 1.2
 
 # System Prompts
