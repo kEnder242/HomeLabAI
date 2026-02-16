@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from unittest.mock import patch, AsyncMock, MagicMock
 from acme_lab import AcmeLab

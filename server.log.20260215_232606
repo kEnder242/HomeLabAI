@@ -1,0 +1,6 @@
+2026-02-15 23:25:41,559 - [LAB] INFO - [QUERY] Processing: Brain, tell me about the architecture.
+2026-02-15 23:25:41,565 - [LAB] INFO - [QUERY] Processing: We have a major regression in the silicon drivers.
+2026-02-15 23:25:41,566 - [LAB] INFO - [SENTINEL] Strategic detected. Engaging Brain.
+2026-02-15 23:25:41,570 - [LAB] INFO - [QUERY] Processing: Tell me a long story.
+2026-02-15 23:25:42,574 - [LAB] INFO - [brain] Resolved to unified-base (VLLM)
+2026-02-15 23:25:42,575 - [LAB] INFO - [brain] Resolved to gemma2:2b (OLLAMA)

@@ -14,8 +14,9 @@ async def test_pi_to_20_digits_flow():
     3. Brain provides the insight.
     4. Pinky + Brain engage in banter/synthesis.
     """
-    url = "ws://localhost:8765"
+    url = "ws://127.0.0.1:8765"
     async with websockets.connect(url) as ws:
+    
         # 1. Handshake
         await ws.send(json.dumps({"type": "handshake", "version": VERSION}))
         # Consume handshake response
@@ -56,7 +57,7 @@ async def test_pi_to_20_digits_flow():
                             # Final synthesis or Banter
                             events.append("FINAL_WORD")
 
-        except asyncio.timeoutError:
+        except asyncio.TimeoutError:
             pytest.fail(f"Flow timed out. Events captured: {events}")
 
         # Assert full flow
