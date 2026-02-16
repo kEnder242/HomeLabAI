@@ -63,10 +63,10 @@ class BicameralNode:
             p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
             p_ip = resolve_ip(self.primary_host, p_host_cfg.get("ip_hint"))
 
-            if p_ip:
+            if p_ip and self.primary_host != "localhost":
                 p_url = f"http://{p_ip}:{p_host_cfg.get('ollama_port', 11434)}"
                 try:
-                    async with session.get(f"{p_url}/api/tags", timeout=0.5) as r:
+                    async with session.get(f"{p_url}/api/tags", timeout=1.0) as r:
                         if r.status == 200:
                             logging.info(f"[{self.name}] Routing to Primary: {p_ip}")
                             return (
@@ -74,35 +74,41 @@ class BicameralNode:
                                 f"{p_url}/api/generate",
                                 resolve_model("OLLAMA"),
                             )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"[{self.name}] Primary Host {p_ip} unreachable: {e}")
 
             # 2. Fallback to localhost (vLLM then Ollama)
             l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
+            
             # Check vLLM
             v_url = f"http://127.0.0.1:{l_host_cfg.get('vllm_port', 8088)}"
             try:
-                async with session.get(f"{v_url}/v1/models", timeout=0.5) as r:
+                async with session.get(f"{v_url}/v1/models", timeout=2.0) as r:
                     if r.status == 200:
+                        logging.info(f"[{self.name}] vLLM detected on localhost.")
                         return (
                             "VLLM",
                             f"{v_url}/v1/chat/completions",
                             resolve_model("VLLM"),
                         )
-            except Exception:
-                pass
+                    else:
+                        logging.warning(f"[{self.name}] vLLM probe returned {r.status}")
+            except Exception as e:
+                logging.debug(f"[{self.name}] vLLM probe failed: {e}")
+
             # Check Local Ollama
             o_url = f"http://127.0.0.1:{l_host_cfg.get('ollama_port', 11434)}"
             try:
-                async with session.get(f"{o_url}/api/tags", timeout=0.5) as r:
+                async with session.get(f"{o_url}/api/tags", timeout=1.0) as r:
                     if r.status == 200:
+                        logging.info(f"[{self.name}] Ollama detected on localhost.")
                         return (
                             "OLLAMA",
                             f"{o_url}/api/generate",
                             resolve_model("OLLAMA"),
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug(f"[{self.name}] Ollama probe failed: {e}")
 
         return "NONE", None, None
 
@@ -172,11 +178,14 @@ class BicameralNode:
                         "tool_choice": "auto",
                         "max_tokens": 512,
                     }
-                    async with session.post(url, json=payload, timeout=30) as r:
+                    async with session.post(url, json=payload, timeout=60) as r:
                         data = await r.json()
                         if "choices" not in data:
                             logging.error(f"[{self.name}] vLLM Error: {data}")
-                            return data.get("error", {}).get("message", str(data))
+                            return json.dumps({
+                                "tool": "reply_to_user",
+                                "parameters": {"text": f"vLLM Error: {data}"}
+                            })
                         msg = data["choices"][0]["message"]
                         if msg.get("tool_calls"):
                             tc = msg["tool_calls"][0]["function"]
@@ -187,12 +196,10 @@ class BicameralNode:
                         return msg["content"]
                 else:
                     payload = {
-                        "model": model,
-                        "prompt": unified,
-                        "stream": False,
-                        "format": "json",
+                        "model": model, "prompt": unified,
+                        "stream": False, "format": "json"
                     }
-                    async with session.post(url, json=payload, timeout=30) as r:
+                    async with session.post(url, json=payload, timeout=60) as r:
                         data = await r.json()
                         return data.get("response", "")
             except Exception as e:

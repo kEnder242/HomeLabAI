@@ -2,8 +2,8 @@
 **Date:** Feb 9, 2026
 **Status:** DRAFT (Synthesis of Keep Research & Current Session Insights)
 
-## 🔭 The Unified Vision
-To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Persistent Memory-First** architecture. We treat the local file system as an external "Long-Term Memory" and use Test-Time Reasoning to maximize the output quality of small local models (Mistral-7B).
+## Telescope The Unified Vision
+To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Persistent Memory-First** architecture. We treat the local file system as an external "Long-Term Memory" and use Test-Time Reasoning to maximize the output quality of small local models (Llama-3.2-3B).
 
 ---
 
@@ -13,7 +13,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | :--- | :--- | :--- | :--- |
 | **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **100%** |
 | **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
-| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** `CurriculumEngine` uses Synthesize-then-Solve loop for log extraction. | **100%** |
+| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns. | **100%** |
 | **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
 | **RLM** (Recursive LMs) | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
 | **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
@@ -30,11 +30,11 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | Paper | Project Impact | "Same Idea" vs. "Game Changer" | % Architectural Change |
 | :--- | :--- | :--- | :--- |
 | **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **100%** |
-| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Evolutionary.** It forced the model to think before writing, which caught the "PECI/Simics" era errors but introduced "filler" risks. | **100%** |
+| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Instruction Hardening.** It forces the model to ground its reasoning in specific technical anchors, mitigating the repetition loops seen in Llama-3.2 models. | **100%** |
 | **Internal Debate** | **Moderated Consensus.** Implemented in v3.1.9 to resolve complex technical contradictions. | **Quality Booster.** Reduces hallucinations by forcing the Brain to critique its own independent reasoning paths. | **100%** |
 | **3x3 CVT** | **Automated CV Synthesis.** Correlates 18 years of technical scars with yearly strategic goals. | **Portfolio Signature.** Physically demonstrates the value of the archive to non-technical stakeholders. | **100%** |
 | **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **100%** |
-| **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to fit 7B-14B models on 11GB. | **100%** |
+| **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to enable massive KV cache pools on 11GB silicon. | **100%** |
 
 ---
 
