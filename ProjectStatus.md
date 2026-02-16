@@ -24,9 +24,9 @@
 **Current Sprint:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
 
 **Status Summary:**
-*   **Phase 1 (Silicon Base)**: [IN PROGRESS] Re-pointing vLLM to local blobs.
-*   **Phase 2 (The Soul)**: [PENDING] Memory Bridge and English-only catalysts.
-*   **Phase 3 (Nervous System)**: [PENDING] VRAM Heartbeat and Shadow Dispatch.
+*   **Phase 1 (Silicon Base)**: [COMPLETE] Llama-3.2-3B-AWQ established as the Unified Base. vLLM stabilized at 0.4 utilization with Liger kernels.
+*   **Phase 2 (The Soul)**: [IN PROGRESS] Strategic Map integrated into Pinky via `peek_strategic_map`.
+*   **Phase 3 (Nervous System)**: [IN PROGRESS] Shadow Dispatch prototype integrated into transcription loop.
 
 *Refer to the Current Sprint above for the active verification gauntlet and sub-tasks.*
 

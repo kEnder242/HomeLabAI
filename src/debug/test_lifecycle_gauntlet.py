@@ -29,7 +29,7 @@ async def pinky_handshake(ws, label="HANDSHAKE"):
             # Hub uses brain_source or source depending on event type
             source = data.get("source") or data.get("brain_source")
             if source and "Pinky" in source.title():
-                print(f"[SUCCESS] Pinky Woke Up: {data.get('text')}")
+                print(f"[SUCCESS] Pinky Woke Up: {data.get('brain')}")
                 return True
         except asyncio.TimeoutError:
             elapsed = int(time.time() - start_t)
@@ -49,7 +49,7 @@ async def test_scenario_3_cold_start():
         payload = {"engine": "vLLM", "disable_ear": False}
         await session.post(f"{ATTENDANT_URL}/start", json=payload)
         # Wait for the blocking ready event
-        await session.get(f"{ATTENDANT_URL}/status?timeout=180")
+        await session.get(f"{ATTENDANT_URL}/blocking_status?timeout=180")
 
         async with websockets.connect(HUB_URL) as ws:
             await ws.recv()  # Welcome
