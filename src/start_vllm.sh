@@ -13,13 +13,15 @@ export VLLM_USE_V1=0
 
 # Start the vLLM server in the background
 # Using --load-format auto for safetensors support
+# Tuning: util 0.5 for 3B model (provides ~2.2GB KV cache), max-len 8192.
+# Using --enforce-eager to reclaim 1GB VRAM from CUDA Graphs for EarNode safety.
 nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --model "$MODEL_PATH" \
     --load-format "auto" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.4 --served-model-name unified-base \
-    --max-model-len 4096 \
+    --gpu-memory-utilization 0.5 --served-model-name unified-base \
+    --max-model-len 8192 \
     --enforce-eager \
     --enable-lora \
     --max-loras 4 \

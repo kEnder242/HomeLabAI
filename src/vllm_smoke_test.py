@@ -6,7 +6,7 @@ URL = "http://localhost:8088/v1/completions"
 def smoke_test():
     print("--- vLLM + Liger Smoke Test ---")
     payload = {
-        "model": "llama-3.2-3b-awq",
+        "model": "unified-base",
         "prompt": "Narf! What is the meaning of life?",
         "max_tokens": 50,
         "temperature": 0.1

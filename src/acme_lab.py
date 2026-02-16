@@ -476,6 +476,9 @@ class AcmeLab:
 
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
+        if self.mode == "DEBUG_SMOKE":
+            logging.info("[SMOKE] Successful load. Self-terminating.")
+            self.shutdown_event.set()
 
     async def run(self, disable_ear=False):
         if not disable_ear:
