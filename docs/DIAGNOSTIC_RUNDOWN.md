@@ -1,7 +1,7 @@
 # 🩺 Acme Lab: Diagnostic & Test Rundown [v4.0]
 **"The Physician's Ledger"**
 
-This document is the **Master Inventory** of all diagnostic instruments, test suites, and verification scripts within the Federated Lab. It is the primary map for maintaining Silicon Stability and Persona Grounding.
+This document is the **Master Inventory** of all diagnostic instruments, test suites, and verification scripts within the Federated Lab. For a catalog of agentic capabilities and node-specific tools, see **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)**.
 
 ---
 

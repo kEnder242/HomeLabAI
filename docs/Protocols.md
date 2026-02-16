@@ -9,6 +9,7 @@
 0.  **Orientation (Bootstrap)**:
     *   Refer to the top-level **[README.md](../../README.md)** for the primary navigational hub and global project context.
     *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active silicon mandates and invariant laws.
+    *   **Inventory Mandate**: Proactively identify existing "wheels" (tests, diagnostic scripts, and tools) in **[DIAGNOSTIC_RUNDOWN.md](./DIAGNOSTIC_RUNDOWN.md)** and **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)** before suggesting or implementing new code.
 
 1.  **Hardware/Driver Audit**:
     *   Execute `nvidia-smi`.
