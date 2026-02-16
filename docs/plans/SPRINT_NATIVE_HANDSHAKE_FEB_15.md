@@ -1,3 +1,6 @@
+> [!CAUTION]
+> **STALE DOCUMENT:** This plan has been superseded by [SPRINT_UNITY_STABILIZATION_FEB_15.md](./SPRINT_UNITY_STABILIZATION_FEB_15.md).
+
 # 🏃 Sprint Plan: Project Awakening [v4.5/v4.9 Hybrid]
 **"The Unified Base / Multi-LoRA Restoration"**
 

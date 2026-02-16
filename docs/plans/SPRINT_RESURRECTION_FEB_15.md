@@ -1,3 +1,6 @@
+> [!CAUTION]
+> **STALE DOCUMENT:** This plan has been superseded by [SPRINT_UNITY_STABILIZATION_FEB_15.md](./SPRINT_UNITY_STABILIZATION_FEB_15.md).
+
 # Sprint Plan: Project "Resurrection" (Feb 15, 2026)
 **Goal:** Restore the High-Fidelity "Soul" and "Silicon Heart" of the Federated Lab.
 
