@@ -21,19 +21,13 @@
 
 ## Active Sprint: Unity Stabilization [v4.2] (Feb 15, 2026)
 **Objective: Stabilize Multi-LoRA and Paged Attention on the 11GB RTX 2080 Ti.**
-**Master Plan:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
+**Source of Truth:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
 
-*   **Phase 1: Silicon Base (Heart & Pulse)**
-    1.  [TODO] **GGUF Harvester**: Point vLLM directly to `/usr/share/ollama` blobs (No HF token needed).
-    2.  [TODO] **VRAM Heartbeat**: Restore sliding-window GPU throttling (Gem I).
+**Status Summary:**
+*   **Phase 1 (Silicon Base)**: [IN PROGRESS] Re-pointing vLLM to local blobs.
+*   **Phase 2 (The Soul)**: [PENDING] Memory Bridge and English-only catalysts.
+*   **Phase 3 (Nervous System)**: [PENDING] VRAM Heartbeat and Shadow Dispatch.
 
-*   **Phase 2: The Soul (High Fidelity Logic)**
-    3.  [TODO] **Memory Bridge**: Restore 3-turn context echo for Brain handovers (Gem A).
-    4.  [TODO] **Gemma Banter**: Inject native `<start_of_turn>model` pre-cognitive filler (Gem F).
-    5.  [TODO] **Hallucination Shunt**: Re-route invalid tool calls to Pinky (Gem D).
-
-*   **Phase 3: Nervous System (Experimental)**
-    6.  [TODO] **Silicon Halt**: Verify mid-sentence `vllm.engine.abort()` (Gem B).
-    7.  [TODO] **Shadow Dispatch**: Prototype background generation during user typing (Gem J).
+*Refer to the Source of Truth above for the active verification gauntlet and sub-tasks.*
 
 ## Key Components & Status
