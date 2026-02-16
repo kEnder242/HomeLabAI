@@ -20,7 +20,7 @@ nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --tokenizer "$MODEL_PATH" \
     --host "0.0.0.0" \
     --port 8088 \
-    --gpu-memory-utilization 0.4 \
+    --gpu-memory-utilization 0.1 \
     --max-model-len 4096 \
     --enforce-eager \
     --enable-lora \
