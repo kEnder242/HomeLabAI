@@ -6,7 +6,7 @@
     *   **Resilience Ladder**: 4-Tier hierarchy (vLLM -> Ollama -> Downshift -> Suspend).
     *   **Abstract Tiers**: Model-agnostic S/M/L mapping via `vram_characterization.json`.
 *   **The Communication Hub (Corpus Callosum)**:
-    *   **Unified Base**: Standardized on **Gemma 2 2B** (MEDIUM) for 2080 Ti efficiency.
+    *   **Unified Base**: Targeted transition to **Llama-3.2-3B** (via local GGUF) for 2080 Ti Unity Pattern.
     *   **Amygdala v3**: (In Progress) Intelligent interjection based on Dissonance Detection.
 
 ## Key Components & Status
