@@ -21,13 +21,13 @@
 
 ## Active Sprint: Unity Stabilization [v4.2] (Feb 15, 2026)
 **Objective: Stabilize Multi-LoRA and Paged Attention on the 11GB RTX 2080 Ti.**
-**Source of Truth:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
+**Current Sprint:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
 
 **Status Summary:**
 *   **Phase 1 (Silicon Base)**: [IN PROGRESS] Re-pointing vLLM to local blobs.
 *   **Phase 2 (The Soul)**: [PENDING] Memory Bridge and English-only catalysts.
 *   **Phase 3 (Nervous System)**: [PENDING] VRAM Heartbeat and Shadow Dispatch.
 
-*Refer to the Source of Truth above for the active verification gauntlet and sub-tasks.*
+*Refer to the Current Sprint above for the active verification gauntlet and sub-tasks.*
 
 ## Key Components & Status
