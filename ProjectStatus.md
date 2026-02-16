@@ -19,9 +19,9 @@
 | **EarNode (STT)** | ✅ STABLE | NeMo 0.6B resident at ~1GB VRAM. |
 | **Web Console** | ✅ STABLE | Handshake and [BICAMERAL HANDOVER] context verified. |
 
-## Active Sprint: Project "Resurrection" [v4.9] (Feb 15, 2026)
-**Objective: Restore the High-Fidelity "Soul" and "Silicon Heart" from the 12MB Black Box.**
-**Master Plan:** **[Sprint Plan: Resurrection](docs/plans/SPRINT_RESURRECTION_FEB_15.md)**
+## Active Sprint: Unity Stabilization [v4.2] (Feb 15, 2026)
+**Objective: Stabilize Multi-LoRA and Paged Attention on the 11GB RTX 2080 Ti.**
+**Master Plan:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
 
 *   **Phase 1: Silicon Base (Heart & Pulse)**
     1.  [TODO] **GGUF Harvester**: Point vLLM directly to `/usr/share/ollama` blobs (No HF token needed).
