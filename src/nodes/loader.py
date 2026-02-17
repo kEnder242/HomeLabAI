@@ -50,24 +50,23 @@ class BicameralNode:
         model_map = self.vram_config.get("model_map", {})
 
         def resolve_model(engine_type):
-            t_or_m = os.environ.get(f"{self.name.upper()}_MODEL", "MEDIUM")
-            if t_or_m in model_map:
-                m = model_map.get(t_or_m, {}).get(engine_type.lower())
-            else:
-                m = t_or_m
-            logging.info(f"[{self.name}] Resolved to {m} ({engine_type})")
-            return m
+            # Check for direct model override first
+            env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
+            if env_mod:
+                if env_mod in model_map:
+                    m = model_map.get(env_mod, {}).get(engine_type.lower())
+                else:
+                    m = env_mod
+                return m
+            return model_map.get("MEDIUM", {}).get(engine_type.lower())
 
-        # 0. High-Priority Environment Override (for testing/debug)
-        env_engine = os.environ.get(f"{self.name.upper()}_ENGINE")
-        if env_engine == "VLLM":
+        # 0. High-Priority Invariants
+        # If USE_BRAIN_VLLM is set in environment, force it.
+        if os.environ.get("USE_BRAIN_VLLM") == "1":
             l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
             v_url = f"http://127.0.0.1:{l_host_cfg.get('vllm_port', 8088)}/v1/chat/completions"
-            return ("VLLM", v_url, resolve_model("VLLM"))
-        elif env_engine == "OLLAMA":
-            l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
-            o_url = f"http://127.0.0.1:{l_host_cfg.get('ollama_port', 11434)}/api/generate"
-            return ("OLLAMA", o_url, resolve_model("OLLAMA"))
+            # Explicitly force the model name to unified-base for VLLM
+            return ("VLLM", v_url, "unified-base")
 
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)

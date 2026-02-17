@@ -23,6 +23,11 @@ LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
 ATTENDANT_PORT = 9999
 
+MONITOR_CONTAINERS = [
+    "field_prometheus", "field_grafana", "field_node_exporter", 
+    "field_rapl_sim", "field_dcgm_exporter", "field_loki", "field_promtail"
+]
+
 # --- Global State ---
 lab_process = None
 current_lab_mode = "OFFLINE"
@@ -74,14 +79,14 @@ class LabAttendant:
                 logger.error(f"[INFRA] Failed to load infrastructure: {e}")
 
     async def vram_watchdog_loop(self):
-        """SIGTERM, Engine Tiering, and Port Recovery: Hardware & Service pressure monitor."""
-        logger.info("[WATCHDOG] Active with DCGM & Port Heartbeat.")
+        """SIGTERM, Engine Tiering, Port Recovery, and Docker Watchdog."""
+        logger.info("[WATCHDOG] Active with DCGM, Port & Docker Heartbeat.")
         gpu_load_history = []
         failure_count = 0
         
         try:
             while True:
-                await asyncio.sleep(5) # Check every 5s
+                await asyncio.sleep(10) # Check every 10s for stability
                 vitals = await self._get_current_vitals()
                 used, total = await self._get_vram_info()
                 load = await self._get_gpu_load()
@@ -100,19 +105,30 @@ class LabAttendant:
                     continue
 
                 # 2. Service Port Recovery
-                # If lab is supposed to be active but port 8765 is closed
                 if current_lab_mode != "OFFLINE" and not vitals["lab_server_running"]:
                     failure_count += 1
                     logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/3.")
-                    
                     if failure_count >= 3:
                         logger.error("[WATCHDOG] Service DEAD. Triggering Autonomous Recovery.")
                         failure_count = 0
                         await self.handle_engine_swap(current_model)
                 else:
-                    failure_count = 0 # Reset on success
+                    failure_count = 0
 
-                # 3. Dynamic Engine Tiering
+                # 3. Docker Telemetry Watchdog
+                for container in MONITOR_CONTAINERS:
+                    try:
+                        res = subprocess.run(
+                            ["docker", "inspect", "-f", "{{.State.Running}}", container],
+                            capture_output=True, text=True, timeout=2
+                        )
+                        if "true" not in res.stdout:
+                            logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
+                            subprocess.Popen(["docker", "start", container])
+                    except Exception as e:
+                        logger.error(f"[WATCHDOG] Docker check failed for {container}: {e}")
+
+                # 4. Dynamic Engine Tiering
                 warn_limit = safe_tiers.get("warning", total * 0.85)
                 model_map = self.vram_config.get("model_map", {})
                 medium_model = model_map.get("MEDIUM", {}).get("ollama")

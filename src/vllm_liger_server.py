@@ -8,8 +8,7 @@ from vllm.entrypoints.openai.api_server import (
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.entrypoints.utils import cli_env_setup
 
-# Hard-set VLLM_USE_V1=0 to avoid experimental engine crashes
-os.environ["VLLM_USE_V1"] = "0"
+# Remove VLLM_USE_V1=0 to avoid experimental engine crashes/deadlocks
 
 # Setup Logging
 logging.basicConfig(
