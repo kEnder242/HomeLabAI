@@ -23,6 +23,8 @@ nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
     --gpu-memory-utilization 0.5 --served-model-name unified-base \
     --max-model-len 8192 \
     --enforce-eager \
+    --enable-auto-tool-choice \
+    --tool-call-parser llama3_json \
     --enable-lora \
     --max-loras 4 \
     > $LOG_FILE 2>&1 &
