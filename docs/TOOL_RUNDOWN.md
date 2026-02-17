@@ -50,10 +50,13 @@ This document provides a technical overview of every high-fidelity tool availabl
 
 ---
 
-## 🛠️ Development Tools
-*Low-level utilities for Lab maintenance.*
+## 🛠️ Development & Validation Utilities
+*Low-level utilities for Lab maintenance and silicon verification.*
 
-| Tool | Function | Purpose |
+| Tool | Path | Purpose |
 | :--- | :--- | :--- |
-| `Safe-Scalpel` | `atomic_patcher.py` | Batch replacement with mandatory rollback on lint failure. |
+| `Safe-Scalpel` | `debug/atomic_patcher.py` | Batch replacement with mandatory rollback on lint failure. |
 | `Lab Attendant` | `lab_attendant.py` | Immutable bootloader for silicon and process lifecycle. |
+| `Smoke Gate` | `debug/smoke_gate.py` | Simple pass/fail full-stack initialization check. |
+| `Lab Probe` | `debug/lab_probe.py` | Python-based Attendant controller for reliable boot wait. |
+| `Pinky Ping` | `debug/pinky_ping.py` | WebSocket-based responsiveness verification for Pinky. |
