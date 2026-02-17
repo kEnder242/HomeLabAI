@@ -461,6 +461,12 @@ class AcmeLab:
             try:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
+                
+                # FORCE VLLM FOR ALL NODES (Unity Pattern Standard)
+                env["USE_BRAIN_VLLM"] = "1"
+                env["BRAIN_MODEL"] = "unified-base"
+                env["PINKY_MODEL"] = "unified-base"
+                
                 params = StdioServerParameters(
                     command=PYTHON_PATH, args=[path], env=env
                 )

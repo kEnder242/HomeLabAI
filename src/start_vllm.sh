@@ -1,33 +1,29 @@
 #!/bin/bash
-VENV_PATH="/home/jallred/Dev_Lab/HomeLabAI/.venv"
-SERVER_SCRIPT="/home/jallred/Dev_Lab/HomeLabAI/src/vllm_liger_server.py"
-LOG_FILE="/home/jallred/Dev_Lab/HomeLabAI/vllm_server.log"
-PID_FILE="/home/jallred/Dev_Lab/HomeLabAI/server_vllm.pid"
+# --- vLLM Unified Base Startup (Llama-3.2-3B-AWQ) ---
+MODEL_PATH=$1
+LAB_VENV_PYTHON="/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
 
-MODEL_PATH="${1:-/home/jallred/.cache/huggingface/hub/models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/272b3bde867b606760447deb9a4d2719fbdfd3ae}"
+if [ -z "$MODEL_PATH" ]; then
+    MODEL_PATH="/home/jallred/.cache/huggingface/hub/models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/272b3bde867b606760447deb9a4d2719fbdfd3ae"
+fi
 
 echo "--- vLLM Alpha Startup: $MODEL_PATH ---"
 
-# Explicitly disable V1 and use transformers backend for Liger compatibility
-export VLLM_USE_V1=0
+# Critical: Remove VLLM_USE_V1=0 as it's causing deadlocks on Turing.
+# Defaulting to standard v0 backend.
 
-# Start the vLLM server in the background
-# Using --load-format auto for safetensors support
-# Tuning: util 0.5 for 3B model (provides ~2.2GB KV cache), max-len 8192.
-# Using --enforce-eager to reclaim 1GB VRAM from CUDA Graphs for EarNode safety.
-nohup $VENV_PATH/bin/python3 $SERVER_SCRIPT \
+$LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
-    --load-format "auto" \
-    --host "0.0.0.0" \
+    --load-format auto \
+    --host 0.0.0.0 \
     --port 8088 \
-    --gpu-memory-utilization 0.5 --served-model-name unified-base \
+    --gpu-memory-utilization 0.5 \
+    --served-model-name unified-base \
     --max-model-len 8192 \
     --enforce-eager \
+    --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
-    --enable-lora \
-    --max-loras 4 \
-    > $LOG_FILE 2>&1 &
+    > HomeLabAI/vllm_server.log 2>&1 &
 
-echo $! > $PID_FILE
-echo "Server launched with PID: $(cat $PID_FILE)"
+echo "Server launched with PID: $!"
