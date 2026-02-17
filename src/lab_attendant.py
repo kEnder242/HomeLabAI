@@ -330,6 +330,8 @@ class LabAttendant:
             "full_lab_ready": self.ready_event.is_set(),
             "last_error": None,
         }
+        
+        # 1. Check vLLM Port (8088)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get("http://localhost:8088/v1/models", timeout=0.5) as r:
@@ -337,11 +339,22 @@ class LabAttendant:
                         vitals["vllm_running"] = True
         except Exception:
             pass
-        global lab_process
-        if lab_process and lab_process.poll() is None:
+
+        # 2. Check Lab Server Port (8765) - The definitive truth
+        try:
+            reader, writer = await asyncio.open_connection('127.0.0.1', 8765)
             vitals["lab_server_running"] = True
-        elif lab_process and lab_process.poll() is not None:
-            vitals["last_error"] = f"Process died: {lab_process.poll()}"
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            vitals["lab_server_running"] = False
+
+        global lab_process
+        if lab_process and lab_process.poll() is not None:
+            # Only report died if we expected it to be running and port check failed
+            if not vitals["lab_server_running"]:
+                vitals["last_error"] = f"Process died: {lab_process.poll()}"
+        
         return vitals
 
     async def update_status_json(self, custom_message=None):
