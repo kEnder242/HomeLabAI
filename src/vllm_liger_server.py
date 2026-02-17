@@ -20,6 +20,8 @@ logging.basicConfig(
 def apply_dynamic_liger(model_name: str):
     """Model-aware Liger kernel application."""
     model_lower = model_name.lower()
+    logging.info(f"Applying Liger logic for model: {model_name}")
+    
     if "gemma2" in model_lower or "gemma-2" in model_lower:
         logging.info("Applying Liger-Kernel to Gemma 2 architecture...")
         lt.apply_liger_kernel_to_gemma2()
@@ -31,8 +33,9 @@ def apply_dynamic_liger(model_name: str):
         logging.info("Applying Liger-Kernel to Llama architecture...")
         lt.apply_liger_kernel_to_llama()
     else:
-        logging.warning(f"No specific Liger patch for {model_name}. Defaults applied.")
-        lt.apply_liger_kernel()
+        logging.warning(f"No specific Liger patch for {model_name}. Defaulting to Llama-native kernel.")
+        # Default to Llama-native as it's our Unity standard
+        lt.apply_liger_kernel_to_llama()
 
 def run():
     # Standard vLLM setup
