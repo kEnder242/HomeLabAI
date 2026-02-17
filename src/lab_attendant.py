@@ -74,12 +74,15 @@ class LabAttendant:
                 logger.error(f"[INFRA] Failed to load infrastructure: {e}")
 
     async def vram_watchdog_loop(self):
-        """SIGTERM & Engine Tiering: Hardware pressure monitor."""
-        logger.info("[VRAM] Watchdog active with DCGM Heartbeat.")
+        """SIGTERM, Engine Tiering, and Port Recovery: Hardware & Service pressure monitor."""
+        logger.info("[WATCHDOG] Active with DCGM & Port Heartbeat.")
         gpu_load_history = []
+        failure_count = 0
+        
         try:
             while True:
-                await asyncio.sleep(2)
+                await asyncio.sleep(5) # Check every 5s
+                vitals = await self._get_current_vitals()
                 used, total = await self._get_vram_info()
                 load = await self._get_gpu_load()
 
@@ -87,23 +90,39 @@ class LabAttendant:
                 if len(gpu_load_history) > 5:
                     gpu_load_history.pop(0)
 
-                # avg_load = sum(gpu_load_history) / len(gpu_load_history)
-
+                # 1. Critical VRAM Protection
                 safe_tiers = self.vram_config.get("safe_tiers", {})
-                warn_limit = safe_tiers.get("warning", total * 0.85)
                 crit_limit = safe_tiers.get("critical", total * 0.95)
-                model_map = self.vram_config.get("model_map", {})
-                medium_model = model_map.get("MEDIUM", {}).get("ollama")
-
-                if used > crit_limit:
+                if used > crit_limit and total > 0:
+                    logger.error(f"[WATCHDOG] Critical VRAM ({used}MiB). Suspending Lab.")
                     await self.cleanup_silicon()
                     await self.update_status_json("Mind SUSPENDED (Critical VRAM)")
                     continue
-                if used > warn_limit and current_lab_mode == "vLLM":
+
+                # 2. Service Port Recovery
+                # If lab is supposed to be active but port 8765 is closed
+                if current_lab_mode != "OFFLINE" and not vitals["lab_server_running"]:
+                    failure_count += 1
+                    logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/3.")
+                    
+                    if failure_count >= 3:
+                        logger.error("[WATCHDOG] Service DEAD. Triggering Autonomous Recovery.")
+                        failure_count = 0
+                        await self.handle_engine_swap(current_model)
+                else:
+                    failure_count = 0 # Reset on success
+
+                # 3. Dynamic Engine Tiering
+                warn_limit = safe_tiers.get("warning", total * 0.85)
+                model_map = self.vram_config.get("model_map", {})
+                medium_model = model_map.get("MEDIUM", {}).get("ollama")
+                if used > warn_limit and current_lab_mode == "vLLM" and total > 0:
+                    logger.warning(f"[WATCHDOG] VRAM Warning ({used}MiB). Downshifting to Ollama.")
                     asyncio.create_task(self.handle_engine_swap(medium_model))
                     continue
+                    
         except Exception as e:
-            logger.error(f"[VRAM] Watchdog CRASHED: {e}")
+            logger.error(f"[WATCHDOG] CRASHED: {e}")
 
     async def _get_gpu_load(self):
         try:
@@ -175,7 +194,9 @@ class LabAttendant:
         actual_model_path = self.model_manifest.get(current_model, current_model)
         logger.info(f"[START] Resolved '{current_model}' to: {actual_model_path}")
 
+        # Kill existing residents BEFORE background task starts
         await self.cleanup_silicon()
+        self.ready_event.clear() # Reset readiness
 
         async def boot_sequence():
             global lab_process
@@ -238,7 +259,11 @@ class LabAttendant:
                 logger.error(f"[START] Failed to launch Lab Server: {e}")
 
         asyncio.create_task(boot_sequence())
-        return web.json_response({"status": "success", "message": "Boot sequence initiated."})
+        return web.json_response({
+            "status": "success", 
+            "message": "Boot sequence initiated.",
+            "wait_url": f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout=120"
+        })
 
     async def handle_stop(self, request):
         await self.cleanup_silicon()
@@ -277,6 +302,17 @@ class LabAttendant:
     async def handle_wait_ready(self, request):
         timeout = int(request.query.get("timeout", 60))
         try:
+            await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
+            vitals = await self._get_current_vitals()
+            return web.json_response({"status": "ready", "vitals": vitals})
+        except asyncio.TimeoutError:
+            vitals = await self._get_current_vitals()
+            return web.json_response({"status": "timeout", "vitals": vitals}, status=408)
+
+    async def handle_wait_ready(self, request):
+        timeout = int(request.query.get("timeout", 60))
+        try:
+            # wait_for returns the value of the awaitable, or raises TimeoutError
             await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
             vitals = await self._get_current_vitals()
             return web.json_response({"status": "ready", "vitals": vitals})
