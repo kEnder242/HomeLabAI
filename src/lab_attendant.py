@@ -392,13 +392,20 @@ class LabAttendant:
             pass
 
         # 2. Check Lab Server Port (8765) - The definitive truth
-        try:
-            reader, writer = await asyncio.open_connection('127.0.0.1', 8765)
-            vitals["lab_server_running"] = True
-            writer.close()
-            await writer.wait_closed()
-        except Exception:
-            vitals["lab_server_running"] = False
+        # Use retry logic to avoid false negatives during transient loopback blips
+        for _ in range(2):
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection('127.0.0.1', 8765), 
+                    timeout=1.0
+                )
+                vitals["lab_server_running"] = True
+                writer.close()
+                await writer.wait_closed()
+                break
+            except Exception:
+                vitals["lab_server_running"] = False
+                await asyncio.sleep(0.5)
 
         global lab_process
         if lab_process and lab_process.poll() is not None:
