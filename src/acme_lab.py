@@ -271,8 +271,9 @@ class AcmeLab:
         self.last_save_event = time.time()
 
     async def process_query(self, query, websocket):
-        logging.info(f"[QUERY] Processing: {query}")
-
+        # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
+        logging.info(f"[USER] Intercom Query: {query}")
+        
         # 0. HEURISTIC SENTINEL
         shutdown_keys = ["close the lab", "goodnight", "shutdown", "exit lab"]
         if any(k in query.lower() for k in shutdown_keys):
@@ -448,6 +449,9 @@ class AcmeLab:
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task."""
+        await self.broadcast({
+            "type": "status", "message": "Initializing residents...", "state": "booting"
+        })
         s_dir = os.path.dirname(os.path.abspath(__file__))
         n_dir = os.path.join(s_dir, "nodes")
         nodes = [
@@ -482,6 +486,9 @@ class AcmeLab:
 
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
+        await self.broadcast({
+            "type": "status", "message": "Mind is ONLINE. Lab is Open.", "state": "ready"
+        })
         if self.mode == "DEBUG_SMOKE":
             logging.info("[SMOKE] Successful load. Self-terminating.")
             self.shutdown_event.set()

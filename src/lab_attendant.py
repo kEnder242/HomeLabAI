@@ -253,8 +253,7 @@ class LabAttendant:
             if data.get("disable_ear", True):
                 env["DISABLE_EAR"] = "1"
 
-            with open(SERVER_LOG, "w") as f:
-                f.write("")
+            # Open in 'a' (append) mode to preserve interaction history across reboots
             try:
                 cmd = [
                     LAB_VENV_PYTHON,
