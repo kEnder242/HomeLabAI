@@ -413,7 +413,31 @@ class LabAttendant:
         try:
             v_used, v_total = await self._get_vram_info()
             v_pct = (v_used / v_total * 100) if v_total > 0 else 0
-            msg = custom_message if custom_message else ("Mind is " + ("READY" if vitals["full_lab_ready"] else "BOOTING"))
+            
+            msg = custom_message
+            if not msg:
+                # Definitive Truth check: If the port is closed, we are NOT ready.
+                if not vitals["lab_server_running"]:
+                    # Crash Tail Logic: Get last few lines of log if offline
+                    if os.path.exists(SERVER_LOG):
+                        try:
+                            with open(SERVER_LOG, 'r') as f:
+                                # Get last 50 lines to find the actual error
+                                all_lines = f.readlines()
+                                lines = [l.strip() for l in all_lines if l.strip()]
+                                if lines:
+                                    msg = "OFFLINE: " + " | ".join(lines[-2:])
+                                else:
+                                    msg = "Mind is OFFLINE"
+                        except:
+                            msg = "Mind is OFFLINE"
+                    else:
+                        msg = "Mind is OFFLINE"
+                elif vitals["full_lab_ready"]:
+                    msg = "Mind is READY"
+                else:
+                    msg = "Mind is BOOTING"
+
             live_data = {
                 "status": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
                 "message": msg,
