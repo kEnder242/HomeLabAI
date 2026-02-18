@@ -30,8 +30,10 @@ SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 # --- THE MONTANA PROTOCOL ---
 def reclaim_logger():
     root = logging.getLogger()
-    for h in root.handlers[:]:
-        root.removeHandler(h)
+    # Aggressively clear all existing handlers to prevent double-logging
+    while root.handlers:
+        root.removeHandler(root.handlers[0])
+        
     fmt = logging.Formatter("%(asctime)s - [LAB] %(levelname)s - %(message)s")
 
     sh = logging.StreamHandler(sys.stderr)
