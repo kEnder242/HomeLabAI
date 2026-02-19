@@ -209,11 +209,13 @@ class BicameralNode:
                 else:
                     payload = {
                         "model": model, "prompt": unified,
-                        "stream": False, "format": "json"
+                        "stream": False
                     }
                     async with session.post(url, json=payload, timeout=60) as r:
                         data = await r.json()
-                        return data.get("response", "")
+                        raw_resp = data.get("response", "")
+                        logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
+                        return raw_resp
             except Exception as e:
                 return json.dumps({
                     "tool": "reply_to_user",

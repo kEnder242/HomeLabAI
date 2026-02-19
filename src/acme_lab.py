@@ -336,6 +336,12 @@ class AcmeLab:
         async def execute_dispatch(raw_text, source, context_flags=None):
             """Hardened Priority Dispatcher with Hallucination Shunt."""
             logging.info(f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'")
+            
+            # [FEAT-026] Brain Voice Restoration: Force raw text for Architect
+            if source == "Brain" and "{" not in raw_text:
+                await self.broadcast({"brain": raw_text, "brain_source": "Brain"})
+                return True
+
             try:
                 # Recursive JSON extraction
                 data = json.loads(raw_text) if "{" in raw_text else raw_text
@@ -489,11 +495,18 @@ class AcmeLab:
                 )
             )
             dispatch_map[t_brain] = "Brain"
+        elif is_casual:
+            # Explicitly clear any existing noise in the insight panel for casual chat
+            await self.broadcast({
+                "brain": "Awaiting neural activity...",
+                "brain_source": "System",
+                "channel": "insight"
+            })
 
         # 3. Collect
         if dispatch_map:
             tasks = list(dispatch_map.keys())
-            done, pending = await asyncio.wait(tasks, timeout=60)
+            done, pending = await asyncio.wait(tasks, timeout=120)
             self.recent_interactions.append(f"User: {query}")
             if len(self.recent_interactions) > 10:
                 self.recent_interactions.pop(0)
