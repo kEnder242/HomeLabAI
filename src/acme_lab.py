@@ -468,10 +468,11 @@ class AcmeLab:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
                 
-                # FORCE VLLM FOR ALL NODES (Unity Pattern Standard)
-                env["USE_BRAIN_VLLM"] = "1"
-                env["BRAIN_MODEL"] = "unified-base"
-                env["PINKY_MODEL"] = "unified-base"
+                # Dynamic Routing: Use environment injected by Attendant
+                # [FIX] Removed hardcoded "1" to allow Ollama fallback
+                env["USE_BRAIN_VLLM"] = os.environ.get("USE_BRAIN_VLLM", "0")
+                env["BRAIN_MODEL"] = os.environ.get("BRAIN_MODEL", "MEDIUM")
+                env["PINKY_MODEL"] = os.environ.get("PINKY_MODEL", "MEDIUM")
                 
                 params = StdioServerParameters(
                     command=PYTHON_PATH, args=[path], env=env
