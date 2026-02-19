@@ -264,9 +264,13 @@ class AcmeLab:
                             strat_keys = [
                                 "architecture", "silicon", "regression", "validate"
                             ]
+                            # [FEAT-027] Hard Gate for Shadow Dispatch
+                            casual_keys = ["hello", "hi", "hey", "how are you", "pinky"]
+                            is_text_casual = any(k in text.lower() for k in casual_keys)
+                            
                             if any(
                                 k in text.lower() for k in strat_keys
-                            ) and not current_processing_task:
+                            ) and not current_processing_task and not is_text_casual:
                                 logging.info(f"[SHADOW] Intent detected: {text}")
                                 await self.broadcast({
                                     "brain": "Predicted strategic intent... preparing.",
@@ -291,6 +295,13 @@ class AcmeLab:
         # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
         logging.info(f"[USER] Intercom Query: {query}")
         
+        # [FEAT-027] Hardened Casual Detection
+        casual_keys = ["hello", "hi", "hey", "how are you", "pinky", "anyone home"]
+        is_casual = any(k in query.lower() for k in casual_keys)
+        
+        # [DEBUG] Persona Bleed Investigation
+        logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
+        
         # 0. HEURISTIC SENTINEL
         shutdown_keys = ["close the lab", "goodnight", "shutdown", "exit lab"]
         if any(k in query.lower() for k in shutdown_keys):
@@ -308,7 +319,6 @@ class AcmeLab:
             "regression", "validation", "scars", "root cause",
             "race condition", "unstable", "silicon", "optimize",
         ]
-        is_casual = any(k in query.lower() for k in ["hello", "hi", "hey", "how are you"])
         
         # [FEAT-025] Amygdala Logic: Use 1B model as smart filter when typing
         is_strategic = False
@@ -325,6 +335,7 @@ class AcmeLab:
 
         async def execute_dispatch(raw_text, source, context_flags=None):
             """Hardened Priority Dispatcher with Hallucination Shunt."""
+            logging.info(f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'")
             try:
                 # Recursive JSON extraction
                 data = json.loads(raw_text) if "{" in raw_text else raw_text
@@ -372,8 +383,17 @@ class AcmeLab:
 
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
-                    # Force Lead Engineer persona by clarifying delegation
-                    task = f"[DELEGATED BY PINKY]: {task}"
+                    
+                    # [FEAT-027] Iron Gate: Double-check for casualness in both original and delegated task
+                    is_task_casual = any(k in task.lower() for k in casual_keys)
+                    if is_casual or is_task_casual:
+                        logging.warning(f"[GATE] Blocking casual delegation. Task: '{task}'")
+                        # Fallback: Just let Pinky answer naturally
+                        return False
+                        
+                    # Scrub 'Pinky' from Brain's task to prevent persona bleed
+                    task = task.replace("Pinky", "the Gateway")
+                    task = f"[DELEGATED]: {task}"
                     
                     if context_flags and context_flags.get("direct"):
                         task = f"[DIRECT ADDRESS] {task}"
@@ -432,20 +452,24 @@ class AcmeLab:
                 return False
 
         # 2. Parallel Dispatch
-        tasks = []
+        # Use a dict to map tasks back to their source node reliably
+        dispatch_map = {}
+        
         if "pinky" in self.residents:
-            tasks.append(asyncio.create_task(
+            t_pinky = asyncio.create_task(
                 self.residents["pinky"].call_tool(
                     name="facilitate", arguments={"query": query, "context": ""}
                 )
-            ))
+            )
+            dispatch_map[t_pinky] = "Pinky"
 
-        if "brain" in self.residents and (is_strategic or addressed_brain):
+        # [FEAT-027] Hard Gate: Only engage Brain if NOT casual
+        if "brain" in self.residents and (is_strategic or addressed_brain) and not is_casual:
             brain_task = query
             if addressed_brain:
                 brain_task = f"[DIRECT ADDRESS] {query}"
                 await self.broadcast({
-                    "brain": "Narf! I'll wake up the Left Hemisphere!",
+                    "brain": "Narf! I'll wake up the Architect!",
                     "brain_source": "Pinky",
                 })
             else:
@@ -459,14 +483,16 @@ class AcmeLab:
             })
 
             ctx = "\n".join(self.recent_interactions[-3:])
-            tasks.append(asyncio.create_task(
+            t_brain = asyncio.create_task(
                 self.residents["brain"].call_tool(
                     name="deep_think", arguments={"task": brain_task, "context": ctx}
                 )
-            ))
+            )
+            dispatch_map[t_brain] = "Brain"
 
         # 3. Collect
-        if tasks:
+        if dispatch_map:
+            tasks = list(dispatch_map.keys())
             done, pending = await asyncio.wait(tasks, timeout=60)
             self.recent_interactions.append(f"User: {query}")
             if len(self.recent_interactions) > 10:
@@ -476,7 +502,7 @@ class AcmeLab:
                 try:
                     res = t.result()
                     raw_out = res.content[0].text
-                    source = "Pinky" if "facilitate" in str(t) else "Brain"
+                    source = dispatch_map[t]
                     if "close_lab" in raw_out or "goodnight" in raw_out:
                         for p in pending:
                             p.cancel()
