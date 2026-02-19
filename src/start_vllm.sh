@@ -1,7 +1,11 @@
 #!/bin/bash
 # --- vLLM Unified Base Startup (Llama-3.2-3B-AWQ) ---
 MODEL_PATH=$1
-LAB_VENV_PYTHON="/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
+LAB_VENV_PYTHON=$2
+
+if [ -z "$LAB_VENV_PYTHON" ]; then
+    LAB_VENV_PYTHON="/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
+fi
 
 if [ -z "$MODEL_PATH" ]; then
     MODEL_PATH="/home/jallred/.cache/huggingface/hub/models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/272b3bde867b606760447deb9a4d2719fbdfd3ae"
