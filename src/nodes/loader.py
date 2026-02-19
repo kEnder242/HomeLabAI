@@ -168,8 +168,8 @@ class BicameralNode:
         if context:
             prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
         
-        # Use more authoritative delimiters for Ollama/Gemma
-        return f"<|system|>\n{prompt}\n<|user|>\nMEMORY:\n{memory}\n\nQUERY:\n{query}\n<|assistant|>\n"
+        # Reverting to reliable bracketed tags for prompt clarity
+        return f"[SYSTEM]: {prompt}\n\nMEMORY:\n{memory}\n\nQUERY:\n{query}"
 
     async def generate_response(self, query, context="", memory=""):
         engine, url, model = await self.probe_engine()
