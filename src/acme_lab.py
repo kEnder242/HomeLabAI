@@ -157,6 +157,13 @@ class AcmeLab:
                 "state": "ready" if self.status == "READY" else "lobby",
                 "message": "Lab foyer is open.",
             }))
+            
+            # [FEAT-026] Initial Brain Status Feedback
+            await ws.send_str(json.dumps({
+                "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'OFFLINE'}",
+                "brain_source": "System",
+                "channel": "insight"
+            }))
 
             async def ear_poller():
                 nonlocal current_processing_task
@@ -377,6 +384,13 @@ class AcmeLab:
                             name="deep_think", arguments={"task": task, "context": ctx}
                         )
                         return await execute_dispatch(res.content[0].text, "Brain")
+                    else:
+                        await self.broadcast({
+                            "brain": "Analytical primary is OFFLINE.",
+                            "brain_source": "System",
+                            "channel": "insight"
+                        })
+                        return False
 
                 t_node = "pinky"
                 a_tools = [
@@ -436,6 +450,13 @@ class AcmeLab:
                 })
             else:
                 logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
+            
+            # [FEAT-026] Engagement Feedback
+            await self.broadcast({
+                "brain": "Engaging analytical nodes...",
+                "brain_source": "System",
+                "channel": "insight"
+            })
 
             ctx = "\n".join(self.recent_interactions[-3:])
             tasks.append(asyncio.create_task(
