@@ -293,7 +293,8 @@ class AcmeLab:
             "regression", "validation", "scars", "root cause",
             "race condition", "unstable", "silicon", "optimize",
         ]
-        is_strategic = any(k in query.lower() for k in strat_keys)
+        is_casual = any(k in query.lower() for k in ["hello", "hi", "hey", "how are you"])
+        is_strategic = any(k in query.lower() for k in strat_keys) and not is_casual
         addressed_brain = "brain" in query.lower()
 
         async def execute_dispatch(raw_text, source, context_flags=None):
@@ -345,6 +346,9 @@ class AcmeLab:
 
                 if tool == "ask_brain" or tool == "deep_think":
                     task = params.get("task") or params.get("query") or query
+                    # Force Lead Engineer persona by clarifying delegation
+                    task = f"[DELEGATED BY PINKY]: {task}"
+                    
                     if context_flags and context_flags.get("direct"):
                         task = f"[DIRECT ADDRESS] {task}"
 
