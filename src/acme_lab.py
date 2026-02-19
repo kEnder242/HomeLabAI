@@ -77,6 +77,7 @@ class AcmeLab:
         self.reflex_ttl = 1.0
         self.banter_backoff = 0
         self.brain_online = False
+        self.mic_active = False # [FEAT-025] Amygdala Switch State
         self.ear = None
         self.recent_interactions = []
         reclaim_logger()
@@ -206,6 +207,13 @@ class AcmeLab:
                                     }))
                             except Exception as e:
                                 logging.error(f"[HANDSHAKE] Failed: {e}")
+                    elif m_type == "mic_state":
+                        self.mic_active = data.get("active", False)
+                        logging.info(f"[MIC] State changed: {self.mic_active}")
+                        await self.broadcast({
+                            "type": "status", "message": f"Mic {'Active' if self.mic_active else 'Muted'}",
+                            "mic_active": self.mic_active
+                        })
                     elif m_type == "text_input":
                         query = data.get("content", "")
                         self.last_activity = time.time()
@@ -294,7 +302,18 @@ class AcmeLab:
             "race condition", "unstable", "silicon", "optimize",
         ]
         is_casual = any(k in query.lower() for k in ["hello", "hi", "hey", "how are you"])
-        is_strategic = any(k in query.lower() for k in strat_keys) and not is_casual
+        
+        # [FEAT-025] Amygdala Logic: Use 1B model as smart filter when typing
+        is_strategic = False
+        if self.mic_active:
+            # Voice Mode: Use keyword-based sentinel for speed
+            is_strategic = any(k in query.lower() for k in strat_keys) and not is_casual
+        else:
+            # Typing Mode: Use Amygdala (1B) to filter
+            if not is_casual:
+                logging.info("[AMYGDALA] Filtering query...")
+                is_strategic = True # Future: Call Llama-1B to decide
+        
         addressed_brain = "brain" in query.lower()
 
         async def execute_dispatch(raw_text, source, context_flags=None):
