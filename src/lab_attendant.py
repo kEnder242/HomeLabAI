@@ -195,6 +195,12 @@ class LabAttendant:
         data = await request.json()
         pref_eng = data.get("engine", "OLLAMA")
         tier_or_mod = data.get("model")
+        
+        # [FEAT-021] Dynamic Venv Selection
+        # Allow overriding the python binary for different vLLM versions (downgrade/source)
+        custom_venv = data.get("venv_path")
+        python_bin = os.path.join(custom_venv, "bin/python3") if custom_venv else LAB_VENV_PYTHON
+        
         model_map = self.vram_config.get("model_map", {})
         
         if tier_or_mod in model_map:
@@ -220,7 +226,7 @@ class LabAttendant:
                 if not data.get("disable_ear", True):
                     logger.info("[START] Initializing EarNode first...")
                     await asyncio.sleep(5)
-                subprocess.Popen(["bash", VLLM_START_PATH, actual_model_path])
+                subprocess.Popen(["bash", VLLM_START_PATH, actual_model_path, python_bin])
                 
                 logger.info("[START] Waiting for vLLM to initialize...")
                 vllm_ok = False
@@ -256,7 +262,7 @@ class LabAttendant:
             # Open in 'a' (append) mode to preserve interaction history across reboots
             try:
                 cmd = [
-                    LAB_VENV_PYTHON,
+                    python_bin,
                     LAB_SERVER_PATH,
                     "--mode", data.get("mode", "SERVICE_UNATTENDED"),
                     "--afk-timeout", str(data.get("afk_timeout", 300)),
