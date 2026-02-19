@@ -108,9 +108,25 @@ class AcmeLab:
                 self.connected_clients.remove(ws)
 
     async def check_brain_health(self):
+        """Hardened Health Check: Perform a single-token generation probe."""
         try:
             async with aiohttp.ClientSession() as session:
+                # 1. First check if endpoint is even reachable (fast)
                 async with session.get(BRAIN_HEARTBEAT_URL, timeout=1) as r:
+                    if r.status != 200:
+                        self.brain_online = False
+                        return
+
+                # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
+                # This prevents False Positives when the service is up but the model is stuck.
+                p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
+                payload = {
+                    "model": "mixtral:8x7b", 
+                    "prompt": "ping",
+                    "stream": False,
+                    "num_predict": 1
+                }
+                async with session.post(p_url, json=payload, timeout=2) as r:
                     self.brain_online = r.status == 200
         except Exception:
             self.brain_online = False
@@ -404,15 +420,21 @@ class AcmeLab:
                     if context_flags and context_flags.get("direct"):
                         task = f"[DIRECT ADDRESS] {task}"
 
-                    if "brain" in self.residents and self.brain_online:
+                    # Bicameral Failover: Reroute to local if Sovereign is offline
+                    target_node = "brain" if self.brain_online else "pinky"
+                    if not self.brain_online:
+                        logging.warning("[FAILOVER] Sovereign offline. Rerouting to Shadow Hemisphere.")
+                        task = f"[FAILOVER ARCHITECT]: {task}"
+
+                    if target_node in self.residents:
                         ctx = "\n".join(self.recent_interactions[-3:])
-                        res = await self.residents["brain"].call_tool(
-                            name="deep_think", arguments={"task": task, "context": ctx}
-                        )
-                        return await execute_dispatch(res.content[0].text, "Brain")
+                        t_name = "deep_think" if target_node == "brain" else "facilitate"
+                        t_args = {"task": task, "context": ctx} if target_node == "brain" else {"query": task, "context": ctx}
+                        res = await self.residents[target_node].call_tool(name=t_name, arguments=t_args)
+                        return await execute_dispatch(res.content[0].text, "Brain" if self.brain_online else "Brain (Shadow)")
                     else:
                         await self.broadcast({
-                            "brain": "Analytical primary is OFFLINE.",
+                            "brain": "Analytical primary is OFFLINE. No failover available.",
                             "brain_source": "System",
                             "channel": "insight"
                         })
@@ -471,30 +493,46 @@ class AcmeLab:
 
         # [FEAT-027] Hard Gate: Only engage Brain if NOT casual
         if "brain" in self.residents and (is_strategic or addressed_brain) and not is_casual:
-            brain_task = query
-            if addressed_brain:
-                brain_task = f"[DIRECT ADDRESS] {query}"
+            # Bicameral Failover: Direct Parallel Dispatch
+            if self.brain_online:
+                brain_task = query
+                if addressed_brain:
+                    brain_task = f"[DIRECT ADDRESS] {query}"
+                    await self.broadcast({
+                        "brain": "Narf! I'll wake up the Architect!",
+                        "brain_source": "Pinky",
+                    })
+                else:
+                    logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
+                
+                # [FEAT-026] Engagement Feedback
                 await self.broadcast({
-                    "brain": "Narf! I'll wake up the Architect!",
-                    "brain_source": "Pinky",
+                    "brain": "Engaging analytical nodes...",
+                    "brain_source": "System",
+                    "channel": "insight"
                 })
-            else:
-                logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
-            
-            # [FEAT-026] Engagement Feedback
-            await self.broadcast({
-                "brain": "Engaging analytical nodes...",
-                "brain_source": "System",
-                "channel": "insight"
-            })
 
-            ctx = "\n".join(self.recent_interactions[-3:])
-            t_brain = asyncio.create_task(
-                self.residents["brain"].call_tool(
-                    name="deep_think", arguments={"task": brain_task, "context": ctx}
+                ctx = "\n".join(self.recent_interactions[-3:])
+                t_brain = asyncio.create_task(
+                    self.residents["brain"].call_tool(
+                        name="deep_think", arguments={"task": brain_task, "context": ctx}
+                    )
                 )
-            )
-            dispatch_map[t_brain] = "Brain"
+                dispatch_map[t_brain] = "Brain"
+            else:
+                # [FAILOVER] Use Pinky node for parallel strategy if brain offline
+                logging.warning("[FAILOVER] Sovereign offline for parallel dispatch. Engaging Shadow.")
+                await self.broadcast({
+                    "brain": "Engaging shadow hemisphere (Local Failover)...",
+                    "brain_source": "System",
+                    "channel": "insight"
+                })
+                t_shadow = asyncio.create_task(
+                    self.residents["pinky"].call_tool(
+                        name="facilitate", arguments={"query": f"[FAILOVER ARCHITECT]: {query}", "context": ""}
+                    )
+                )
+                dispatch_map[t_shadow] = "Brain (Shadow)"
         elif is_casual:
             # Explicitly clear any existing noise in the insight panel for casual chat
             await self.broadcast({
