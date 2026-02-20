@@ -109,23 +109,38 @@ class AcmeLab:
                 self.connected_clients.remove(ws)
 
     async def monitor_task_with_tics(self, coro, delay=2.5):
-        """Sends 'Thinking' tics during long reasoning tasks."""
+        """Sends state-aware tics during long reasoning tasks."""
         task = asyncio.create_task(coro)
-        tics = [
-            "Thinking...", "Consulting the Architect...",
-            "Processing...", "Just a moment...", "Checking the circuits..."
-        ]
+        
+        # Standard character tics
+        base_tics = ["Thinking...", "Processing...", "Just a moment...", "Checking circuits..."]
+        
         current_delay = delay
+        tic_count = 0
+        
         while not task.done():
             try:
                 done, pending = await asyncio.wait([task], timeout=current_delay)
                 if task in done:
                     return task.result()
+                
                 if self.connected_clients and not self.is_user_typing():
+                    # [FEAT-053] Contextual Insight: Check Brain status during wait
+                    await self.check_brain_health()
+                    
+                    if not self.brain_online:
+                        tic_msg = "Sovereign unreachable... attempting failover."
+                    elif tic_count == 0:
+                        tic_msg = "Resonating weights... waking the Architect."
+                    else:
+                        tic_msg = random.choice(base_tics)
+                    
                     await self.broadcast({
-                        "brain": random.choice(tics),
+                        "brain": tic_msg,
                         "brain_source": "Pinky (Reflex)"
                     })
+                    tic_count += 1
+                
                 # Increase delay exponentially
                 current_delay = min(current_delay * 1.5, 8.0)
             except Exception:
@@ -730,7 +745,7 @@ class AcmeLab:
             logging.info("[SMOKE] Successful load. Self-terminating.")
             self.shutdown_event.set()
 
-    async def run(self, disable_ear=False):
+    async def run(self, disable_ear=False, trigger_task=None):
         if not disable_ear:
             self.load_ear()
         app = web.Application()
@@ -744,6 +759,22 @@ class AcmeLab:
                 await site.start()
                 logging.info(f"[BOOT] Server on {PORT}")
                 await self.boot_residents(stack)
+                
+                # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
+                if trigger_task:
+                    logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
+                    if trigger_task == "recruiter":
+                        import recruiter
+                        asyncio.create_task(recruiter.run_recruiter_task(
+                            self.residents.get("archive"), 
+                            self.residents.get("brain")
+                        ))
+                    elif trigger_task == "architect":
+                        if "architect" in self.residents:
+                            asyncio.create_task(self.residents["architect"].call_tool(
+                                name="build_semantic_map"
+                            ))
+
                 asyncio.create_task(self.reflex_loop())
                 asyncio.create_task(self.scheduled_tasks_loop()) # [FEAT-049] Alarm Clock
                 await self.shutdown_event.wait()
@@ -761,6 +792,7 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
     parser.add_argument("--afk-timeout", type=int, default=300)
     parser.add_argument("--disable-ear", action="store_true", default=False)
+    parser.add_argument("--trigger-task", choices=["recruiter", "architect"], help="Run a background task immediately on startup.")
     args = parser.parse_args()
     lab_instance = AcmeLab(mode=args.mode, afk_timeout=args.afk_timeout)
-    asyncio.run(lab_instance.run(disable_ear=args.disable_ear))
+    asyncio.run(lab_instance.run(disable_ear=args.disable_ear, trigger_task=args.trigger_task))

@@ -19,6 +19,7 @@ CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization
 INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
 ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
 PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
+GATEKEEPER_PATH = f"{PORTFOLIO_DIR}/monitor/notify_gatekeeper.py"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
@@ -297,20 +298,19 @@ class LabAttendant:
         return web.json_response({"status": "success", "message": "Hygiene scheduled."})
 
     def _trigger_pager_alert(self, severity, message):
-        """Logs a persistent alert to the Pager Activity ledger."""
+        """Logs a persistent alert and triggers the external Gatekeeper (NTFY)."""
         try:
-            event = {
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "severity": severity,
-                "source": "Lab Attendant",
-                "message": message
-            }
-            # Append to file
-            with open(PAGER_ACTIVITY_FILE, "a") as f:
-                f.write(json.dumps(event) + "\n")
-            logger.info(f"[PAGER] Alert triggered: {severity}")
+            # notify_gatekeeper handles the file appending + deduplication + NTFY
+            cmd = [
+                LAB_VENV_PYTHON, GATEKEEPER_PATH, 
+                message, 
+                "--source", "Lab Attendant", 
+                "--severity", severity.lower()
+            ]
+            subprocess.Popen(cmd)
+            logger.info(f"[PAGER] Gatekeeper triggered: {severity}")
         except Exception as e:
-            logger.error(f"[PAGER] Failed to log alert: {e}")
+            logger.error(f"[PAGER] Failed to trigger gatekeeper: {e}")
 
     async def handle_wait_ready(self, request):
         timeout = int(request.query.get("timeout", 60))
