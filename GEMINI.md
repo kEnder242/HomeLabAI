@@ -1,10 +1,15 @@
 # Home Lab AI Project Overview
 
+> [!IMPORTANT]
+> **BOOTSTRAP PROTOCOL:** For environment orientation and cold-starts, always begin with **[BOOTSTRAP_v4.3.md](../BOOTSTRAP_v4.3.md)**.
+
 ## Goals
 
 - Build a **hybrid local LLM setup** using:
   - **Linux server** for hosting models, inference services, embeddings, Docker workloads, and GPU acceleration.
   - **Windows desktop** for heavy-duty local LLM workloads (via Ollama/GPU), microphone input, and fast local desktop clients.
+- **Unified Base Model:** Standardized on **Llama-3.2-3B** (AWQ/GGUF) for 2080 Ti residency.
+- **Resilient Inference:** Tiered hierarchy (Ollama -> Downshift -> Suspend) managed via **`lab-attendant.service`**.
 - Get **DeepAgent** (open-source agent framework) running locally, with local models and/or remote Ollama backends.
 - Host supporting services:
   - Embeddings (MiniLM or better)
@@ -126,21 +131,22 @@ https://pytorch.org/blog/beyond-quantization-bringing-sparse-inference-to-pytorc
 - Google Nested Learning:  
 https://research.google/blog/introducing-nested-learning-a-new-ml-paradigm-for-continual-learning/
 
-## Voice Gateway (Pinky and the Brain)
+## Voice Gateway (The Bicameral Mind)
 
 This project implements a personality-driven voice assistant architecture across the hybrid home lab.
 
-### Persona Mapping & Hardware
-*   **Pinky (The Gateway):** 
+### Persona Mapping [v4.1]
+*   **Pinky (The Shadow):** 
     *   **Host:** `z87-Linux` (RTX 2080 Ti).
-    *   **Model:** `llama3.1:8b`.
-    *   **Role:** Always-on STT (NeMo), RAG lookup, and simple interactions. 
-    *   **Style:** Cheerful, enthusiastic, and prone to non-sequiturs ("Narf!", "Poit!").
-*   **The Brain (The Mastermind):**
-    *   **Host:** Windows 11 (RTX 4090 Ti).
-    *   **Model:** `llama3:latest` (Ollama).
+    *   **Model:** **Active Unified Base** (e.g., Llama 3.2 3B).
+    *   **Role:** Always-on STT (NeMo), RAG lookup, and [SHADOW FAILOVER] strategic support.
+*   **The Brain (The Sovereign):**
+    *   **Host:** Windows 11 (RTX 4090).
+    *   **Model:** **Strategic Sovereign Tier** (e.g., Llama 3 / Mixtral).
     *   **Role:** Complex reasoning, coding, and strategic planning.
-    *   **Style:** Arrogant, verbose, and precise.
+
+### The Strategic Ping (Failover)
+The orchestrator (`acme_lab.py`) employs a **Generation Probe** (Strategic Ping) to verify the Brain's liveness. If a deadlock is detected, queries are automatically rerouted to Pinky's local Shadow Hemisphere.
 
 ### The Handoff Logic
 Pinky acts as the triage layer. For complex requests, Pinky is instructed to use the trigger:

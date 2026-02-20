@@ -1,7 +1,10 @@
 # 🧬 Engineering Pedigree: The "Why" of Acme Lab
 **Active Architecture Laws & Design Breadcrumbs**
 
-This document tracks the high-level architectural decisions and "Invariant Laws" that govern the Federated Lab. Consult this before performing any core refactors to prevent regressions of "Lost Gems."
+## 🧭 Strategic North (The Mission)
+> Architecting a high-throughput AI systems testbed to evaluate and structure emerging AI software stacks against hardware constraints. Optimized LLM inference by integrating vLLM with Liger fused CUDA kernels and PyTorch-based model workflows to maximize memory efficiency and throughput. Engineered efficient multi-tenant LLM inference using Multi-LoRA adapters and deployed a performance-focused observability stack using Prometheus and Grafana. Developed a Recursive RAG (Retrieval-Augmented Generation) pipeline with iterative context refinement and retrieval discipline to automate the analysis of deep technical archives, bridging 15 years of silicon validation expertise with modern generative AI infrastructure.
+
+---
 
 ## 🏛️ Silicon Mandates (The Hardware Law)
 
@@ -9,7 +12,7 @@ This document tracks the high-level architectural decisions and "Invariant Laws"
 
 *   **VRAM Budget**: Mistral-7B remains **FORBIDDEN** for concurrent use on the 2080 Ti.
 
-*   **Model Baseline**: All 2080 Ti nodes MUST standardize on **Llama-3.2-3B-AWQ (Unity Pattern)**. This secures a ~30% VRAM headroom buffer for the EarNode.
+*   **Model Baseline**: All 2080 Ti nodes MUST standardize on the **Active Unified Base (Unity Pattern)** (e.g., Llama 3.2 3B). This secures the necessary VRAM headroom buffer for the EarNode while allowing for future model-fluid transitions.
 
 *   **The Invariant Heart**: The **EarNode (NeMo STT)** is the invariant sensory core. It must remain resident and functional regardless of the reasoning engine state.
 
