@@ -74,6 +74,7 @@ class AcmeLab:
         self.shutdown_event = asyncio.Event()
         self.last_activity = time.time()
         self.last_save_event = 0.0
+        self.last_typing_event = 0.0 # [FEAT-052] Typing Awareness
         self.reflex_ttl = 1.0
         self.banter_backoff = 0
         self.brain_online = False
@@ -107,6 +108,31 @@ class AcmeLab:
             except Exception:
                 self.connected_clients.remove(ws)
 
+    async def monitor_task_with_tics(self, coro, delay=2.5):
+        """Sends 'Thinking' tics during long reasoning tasks."""
+        task = asyncio.create_task(coro)
+        tics = [
+            "Thinking...", "Consulting the Architect...",
+            "Processing...", "Just a moment...", "Checking the circuits..."
+        ]
+        current_delay = delay
+        while not task.done():
+            try:
+                done, pending = await asyncio.wait([task], timeout=current_delay)
+                if task in done:
+                    return task.result()
+                if self.connected_clients and not self.is_user_typing():
+                    await self.broadcast({
+                        "brain": random.choice(tics),
+                        "brain_source": "Pinky (Reflex)"
+                    })
+                # Increase delay exponentially
+                current_delay = min(current_delay * 1.5, 8.0)
+            except Exception:
+                if task.done():
+                    return task.result()
+        return task.result()
+
     async def check_brain_health(self):
         """Hardened Health Check: Perform a single-token generation probe."""
         try:
@@ -133,6 +159,7 @@ class AcmeLab:
 
     async def reflex_loop(self):
         """Background maintenance and status updates."""
+        tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
             await asyncio.sleep(self.reflex_ttl)
             if self.connected_clients:
@@ -141,11 +168,56 @@ class AcmeLab:
                     "state": "ready" if self.status == "READY" else "booting",
                     "brain_online": self.brain_online,
                 })
-                # Banter Decay
-                if self.banter_backoff > 0:
-                    self.banter_backoff -= 1
-                    self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5)
+                # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
+                idle_time = time.time() - self.last_activity
+                if idle_time > 60:
+                    if self.banter_backoff < 10: # Cap at 6s interval (1.0 + 10*0.5)
+                        self.banter_backoff += 1
+                    
+                    # [FEAT-047] Reflex Tics: Occasionally bubble up a character tic
+                    # Only if idle for > 60s, not typing, and low probability (approx every 2 mins @ 6s interval)
+                    if not self.is_user_typing() and random.random() < 0.05:
+                        await self.broadcast({
+                            "brain": random.choice(tics),
+                            "brain_source": "Pinky (Reflex)"
+                        })
+                else:
+                    self.banter_backoff = 0
+                
+                self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5)
             await self.check_brain_health()
+
+    async def scheduled_tasks_loop(self):
+        """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
+        import recruiter
+        import datetime
+        logging.info("[ALARM] Scheduled Tasks loop active.")
+        while not self.shutdown_event.is_set():
+            now = datetime.datetime.now()
+            # 02:00 AM: Nightly Recruiter
+            if now.hour == 2 and now.minute == 0:
+                logging.info("[ALARM] Triggering Nightly Recruiter...")
+                a_node = self.residents.get("archive")
+                b_node = self.residents.get("brain")
+                try:
+                    await recruiter.run_recruiter_task(a_node, b_node)
+                except Exception as e:
+                    logging.error(f"[ALARM] Recruiter Task failed: {e}")
+                await asyncio.sleep(61)
+
+            # 03:00 AM: Hierarchy Refactor (The Architect)
+            if now.hour == 3 and now.minute == 0:
+                if 'architect' in self.residents:
+                    logging.info("[ALARM] Triggering Hierarchy Refactor...")
+                    try:
+                        await self.residents['architect'].call_tool(
+                            name="build_semantic_map"
+                        )
+                    except Exception as e:
+                        logging.error(f"[ALARM] Architect Task failed: {e}")
+                await asyncio.sleep(61)
+
+            await asyncio.sleep(30)
 
     async def manage_session_lock(self, active: bool):
         try:
@@ -157,6 +229,10 @@ class AcmeLab:
                     os.remove(ROUND_TABLE_LOCK)
         except Exception:
             pass
+
+    def is_user_typing(self):
+        """Returns True if the user has typed recently (2s window)."""
+        return (time.time() - self.last_typing_event) < 2.0
 
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
@@ -265,6 +341,9 @@ class AcmeLab:
                                 "filename": fn,
                                 "content": res.content[0].text,
                             }))
+                    elif m_type == "user_typing":
+                        self.last_typing_event = time.time()
+                        self.last_activity = time.time()
                 elif message.type == aiohttp.WSMsgType.BINARY and self.ear:
                     chunk = np.frombuffer(message.data, dtype=np.int16)
                     audio_buffer = np.concatenate((audio_buffer, chunk))
@@ -273,6 +352,7 @@ class AcmeLab:
                     if len(audio_buffer) >= 24000:
                         text = self.ear.process_audio(audio_buffer[:24000])
                         if text:
+                            self.last_activity = time.time()
                             await self.broadcast({
                                 "text": text, "type": "transcription"
                             })
@@ -300,12 +380,39 @@ class AcmeLab:
         return ws
 
     async def handle_workspace_save(self, filename, content, ws):
-        """Triggered on manual save: Performs strategic vibe check."""
+        """Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[WORKSPACE] Save Event: {filename}")
-        if "archive" in self.residents:
-            # Atomic save to disk first
-            pass
+        
+        # Don't trigger if user is still typing
+        if self.is_user_typing():
+            return
+
+        # Broadcast acknowledgment
+        await self.broadcast({
+            "brain": f"Poit! I noticed you saved {filename}. Let me look...",
+            "brain_source": "Pinky"
+        })
+
+        if self.brain_online and "brain" in self.residents:
+            prompt = (
+                f"[STRATEGIC VIBE CHECK] User saved '{filename}'. "
+                f"Content starts with: '{content[:500]}'. Validate the "
+                "technical logic and offer one architectural improvement."
+            )
+            # [FEAT-048] Monitor long-running Vibe Checks
+            b_res = await self.monitor_task_with_tics(
+                self.residents['brain'].call_tool(
+                    name="deep_think", arguments={"task": prompt}
+                )
+            )
+            await self.broadcast({
+                "brain": b_res.content[0].text,
+                "brain_source": "The Brain",
+                "channel": "insight"
+            })
+        
         self.last_save_event = time.time()
+        self.last_activity = time.time()
 
     async def process_query(self, query, websocket):
         # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
@@ -430,7 +537,11 @@ class AcmeLab:
                         ctx = "\n".join(self.recent_interactions[-3:])
                         t_name = "deep_think" if target_node == "brain" else "facilitate"
                         t_args = {"task": task, "context": ctx} if target_node == "brain" else {"query": task, "context": ctx}
-                        res = await self.residents[target_node].call_tool(name=t_name, arguments=t_args)
+                        
+                        # [FEAT-048] Monitor long-running Brain tasks
+                        res = await self.monitor_task_with_tics(
+                            self.residents[target_node].call_tool(name=t_name, arguments=t_args)
+                        )
                         return await execute_dispatch(res.content[0].text, "Brain" if self.brain_online else "Brain (Shadow)")
                     else:
                         await self.broadcast({
@@ -512,10 +623,13 @@ class AcmeLab:
                     "channel": "insight"
                 })
 
+                # [FEAT-048] Monitor long-running Brain tasks
                 ctx = "\n".join(self.recent_interactions[-3:])
                 t_brain = asyncio.create_task(
-                    self.residents["brain"].call_tool(
-                        name="deep_think", arguments={"task": brain_task, "context": ctx}
+                    self.monitor_task_with_tics(
+                        self.residents["brain"].call_tool(
+                            name="deep_think", arguments={"task": brain_task, "context": ctx}
+                        )
                     )
                 )
                 dispatch_map[t_brain] = "Brain"
@@ -631,6 +745,7 @@ class AcmeLab:
                 logging.info(f"[BOOT] Server on {PORT}")
                 await self.boot_residents(stack)
                 asyncio.create_task(self.reflex_loop())
+                asyncio.create_task(self.scheduled_tasks_loop()) # [FEAT-049] Alarm Clock
                 await self.shutdown_event.wait()
                 logging.info("[SHUTDOWN] Event received. Cleaning up.")
             finally:

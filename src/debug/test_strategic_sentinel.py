@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 
 # Ensure we can import acme_lab
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -50,7 +51,17 @@ async def test_sentinel_logic():
     print(f"[CHECK] Casual Mode Strategic: {is_strategic}")
     assert is_strategic is False
 
-    print("✅ Strategic Sentinel Logic verified.")
+    # Case 3: Typing Awareness
+    lab.last_typing_event = time.time()
+    print(f"[CHECK] Is User Typing: {lab.is_user_typing()}")
+    assert lab.is_user_typing() is True
+    
+    # Simulate reflex suppression
+    should_tic = not lab.is_user_typing()
+    print(f"[CHECK] Should Reflex Tic while typing: {should_tic}")
+    assert should_tic is False
+
+    print("✅ Strategic Sentinel & Typing Awareness verified.")
 
 if __name__ == "__main__":
     asyncio.run(test_sentinel_logic())
