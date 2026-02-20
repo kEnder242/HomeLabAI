@@ -86,7 +86,9 @@ async def receive_messages(websocket):
                         print(f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}")
                     STATE = ClientState.LISTENING
                 elif s == "shutdown":
-                    if IS_HEARING: print(""); IS_HEARING = False
+                    if IS_HEARING:
+                        print("")
+                        IS_HEARING = False
                     print(f"{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
                     STATE = ClientState.SHUTDOWN
                     SHUTDOWN_EVENT.set()
@@ -99,11 +101,15 @@ async def receive_messages(websocket):
                 sys.stdout.flush()
 
             elif data.get("type") == "final":
-                 if IS_HEARING: print(""); IS_HEARING = False
+                 if IS_HEARING:
+                     print("")
+                     IS_HEARING = False
                  print(f"{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
 
             elif "brain" in data:
-                if IS_HEARING: print(""); IS_HEARING = False
+                if IS_HEARING:
+                    print("")
+                    IS_HEARING = False
                 source = data.get("brain_source", "Unknown")
                 content = data['brain']
                 c = COLOR_PINK if "Pinky" in source else COLOR_CYAN
@@ -113,13 +119,17 @@ async def receive_messages(websocket):
             elif data.get("type") == "debug":
                 event = data.get("event")
                 if event == "BRAIN_OUTPUT":
-                    if IS_HEARING: print(""); IS_HEARING = False
+                    if IS_HEARING:
+                        print("")
+                        IS_HEARING = False
                     print(f"{COLOR_CYAN}[THE BRAIN]: {data.get('data')}{COLOR_RESET}")
                 elif event == "PINKY_DECISION":
                     decision = data.get("data", {})
                     tool = decision.get("tool")
                     if tool and tool != "facilitate" and tool != "None":
-                        if IS_HEARING: print(""); IS_HEARING = False
+                        if IS_HEARING:
+                            print("")
+                            IS_HEARING = False
                         print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
 
     except websockets.exceptions.ConnectionClosed:
@@ -143,13 +153,16 @@ async def audio_and_input_loop(websocket):
 
             # --- STATE: LISTENING (Mic On) ---
             if STATE == ClientState.LISTENING:
-                if stream.is_stopped(): stream.start_stream()
+                if stream.is_stopped():
+                    stream.start_stream()
 
                 # 1. Read Mic
                 try:
                     data = stream.read(CHUNK, exception_on_overflow=False)
                     await websocket.send(data)
-                except Exception: pass # Ignore stream errors during switch
+                except Exception:
+                    # Ignore stream errors during switch
+                    pass
 
                 # 2. Poll Keyboard (Trigger)
                 if await check_keyboard_trigger():
@@ -203,7 +216,7 @@ async def connect_with_retry(uri):
     for i in range(5):
         try:
             return await websockets.connect(uri)
-        except:
+        except Exception:
             print(f"Waiting for server... ({i+1}/5)")
             await asyncio.sleep(1)
     raise ConnectionRefusedError("Server Unreachable")
