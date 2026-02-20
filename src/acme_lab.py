@@ -23,6 +23,7 @@ ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
+NIGHTLY_DIALOGUE_FILE = os.path.join(WORKSPACE_DIR, "field_notes/data/nightly_dialogue.json")
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 
@@ -107,6 +108,30 @@ class AcmeLab:
                 await ws.send_str(json.dumps(message_dict))
             except Exception:
                 self.connected_clients.remove(ws)
+
+    async def trigger_morning_briefing(self, ws):
+        """[FEAT-072] Checks for recent nightly dialogue and briefs the user."""
+        import datetime
+        if os.path.exists(NIGHTLY_DIALOGUE_FILE):
+            try:
+                with open(NIGHTLY_DIALOGUE_FILE, "r") as f:
+                    data = json.load(f)
+                
+                # Only brief if it's from 'today'
+                diag_date = data.get("timestamp", "").split(" ")[0]
+                today = datetime.datetime.now().strftime("%Y-%m-%d")
+                
+                if diag_date == today:
+                    content = data.get("content", "")
+                    # Clean up formatting for briefing
+                    summary = content[:300].replace("\n", " ")
+                    await ws.send_str(json.dumps({
+                        "brain": f"While you were out, we discussed: {summary}...",
+                        "brain_source": "Pinky",
+                        "channel": "chat"
+                    }))
+            except Exception as e:
+                logging.error(f"[BRIEF] Failed to trigger briefing: {e}")
 
     async def monitor_task_with_tics(self, coro, delay=2.5):
         """Sends state-aware tics during long reasoning tasks."""
@@ -205,6 +230,7 @@ class AcmeLab:
     async def scheduled_tasks_loop(self):
         """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
         import recruiter
+        import internal_debate
         import datetime
         logging.info("[ALARM] Scheduled Tasks loop active.")
         while not self.shutdown_event.is_set():
@@ -232,6 +258,18 @@ class AcmeLab:
                         logging.error(f"[ALARM] Architect Task failed: {e}")
                 await asyncio.sleep(61)
 
+            # 04:00 AM: Nightly Dialogue [FEAT-071]
+            if now.hour == 4 and now.minute == 0:
+                logging.info("[ALARM] Triggering Nightly Dialogue...")
+                a_node = self.residents.get("archive")
+                p_node = self.residents.get("pinky")
+                b_node = self.residents.get("brain")
+                try:
+                    await internal_debate.run_nightly_talk(a_node, p_node, b_node)
+                except Exception as e:
+                    logging.error(f"[ALARM] Nightly Dialogue failed: {e}")
+                await asyncio.sleep(61)
+
             await asyncio.sleep(30)
 
     async def manage_session_lock(self, active: bool):
@@ -249,6 +287,21 @@ class AcmeLab:
         """Returns True if the user has typed recently (2s window)."""
         return (time.time() - self.last_typing_event) < 2.0
 
+    async def check_intent_is_casual(self, text):
+        """[VIBE] Semantic Gatekeeper: Determines if a query is casual or strategic."""
+        # Future: Call Llama-1B here for high-fidelity classification
+        casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home"]
+        strat_indicators = ["silicon", "validation", "regression", "root cause", "architect", "logic"]
+        
+        text_low = text.lower()
+        is_casual = any(k in text_low for k in casual_indicators)
+        is_strat = any(k in text_low for k in strat_indicators)
+        
+        # If it's both, treat as strategic (The 'Hey, I found a bug' rule)
+        if is_strat:
+            return False
+        return is_casual
+
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
@@ -264,6 +317,9 @@ class AcmeLab:
                 "state": "ready" if self.status == "READY" else "lobby",
                 "message": "Lab foyer is open.",
             }))
+            
+            # [FEAT-072] Morning Briefing
+            asyncio.create_task(self.trigger_morning_briefing(ws))
             
             # [FEAT-026] Initial Brain Status Feedback
             await ws.send_str(json.dumps({
@@ -376,8 +432,7 @@ class AcmeLab:
                                 "architecture", "silicon", "regression", "validate"
                             ]
                             # [FEAT-027] Hard Gate for Shadow Dispatch
-                            casual_keys = ["hello", "hi", "hey", "how are you", "pinky"]
-                            is_text_casual = any(k in text.lower() for k in casual_keys)
+                            is_text_casual = await self.check_intent_is_casual(text)
                             
                             if any(
                                 k in text.lower() for k in strat_keys
@@ -446,9 +501,7 @@ class AcmeLab:
             })
             return
 
-        # [FEAT-027] Hardened Casual Detection
-        casual_keys = ["hello", "hi", "hey", "how are you", "pinky", "anyone home"]
-        is_casual = any(k in query.lower() for k in casual_keys)
+        is_casual = await self.check_intent_is_casual(query)
         
         # [DEBUG] Persona Bleed Investigation
         logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
@@ -511,8 +564,27 @@ class AcmeLab:
                 known_tools = [
                     "reply_to_user", "ask_brain", "deep_think", "list_cabinet",
                     "read_document", "peek_related_notes", "write_draft",
-                    "generate_bkm", "build_semantic_map", "peek_strategic_map"
+                    "generate_bkm", "build_semantic_map", "peek_strategic_map",
+                    "discuss_offline"
                 ]
+
+                if tool == "discuss_offline":
+                    topic = params.get("topic") or query
+                    import internal_debate
+                    logging.info(f"[DEBATE] User requested offline discussion: {topic}")
+                    await self.broadcast({
+                        "brain": f"Narf! We'll chew on '{topic}' while you're out!",
+                        "brain_source": "Pinky"
+                    })
+                    # Run in background without blocking interaction
+                    asyncio.create_task(internal_debate.run_nightly_talk(
+                        self.residents.get("archive"),
+                        self.residents.get("pinky"),
+                        self.residents.get("brain"),
+                        topic=topic
+                    ))
+                    return True
+
                 if tool and tool not in known_tools:
                     logging.warning(f"[SHUNT] Hallucinated tool '{tool}'.")
                     if "pinky" in self.residents:
@@ -542,7 +614,7 @@ class AcmeLab:
                     task = params.get("task") or params.get("query") or query
                     
                     # [FEAT-027] Iron Gate: Double-check for casualness in both original and delegated task
-                    is_task_casual = any(k in task.lower() for k in casual_keys)
+                    is_task_casual = await self.check_intent_is_casual(task)
                     if is_casual or is_task_casual:
                         logging.warning(f"[GATE] Blocking casual delegation. Task: '{task}'")
                         # Fallback: Just let Pinky answer naturally
