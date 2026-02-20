@@ -433,6 +433,19 @@ class AcmeLab:
         # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
         logging.info(f"[USER] Intercom Query: {query}")
         
+        # [FEAT-056] MIB Memory Wipe Mechanic
+        # Allows user to manually clear the interaction context (The "Neuralyzer")
+        wipe_keys = ["look at the light", "wipe memory", "neuralyzer", "clear context"]
+        if any(k in query.lower() for k in wipe_keys):
+            self.recent_interactions = []
+            logging.info("[MEMORY] MIB Wipe triggered. Context cleared.")
+            await self.broadcast({
+                "brain": "Look at the light... *FLASH* ... Narf! What were we talking about?",
+                "brain_source": "Pinky",
+                "type": "memory_clear"
+            })
+            return
+
         # [FEAT-027] Hardened Casual Detection
         casual_keys = ["hello", "hi", "hey", "how are you", "pinky", "anyone home"]
         is_casual = any(k in query.lower() for k in casual_keys)
@@ -548,8 +561,9 @@ class AcmeLab:
                         logging.warning("[FAILOVER] Sovereign offline. Rerouting to Shadow Hemisphere.")
                         task = f"[FAILOVER ARCHITECT]: {task}"
 
+                    # [FEAT-057] Deep Context: Send full interaction history instead of sliced window
                     if target_node in self.residents:
-                        ctx = "\n".join(self.recent_interactions[-3:])
+                        ctx = "\n".join(self.recent_interactions)
                         t_name = "deep_think" if target_node == "brain" else "facilitate"
                         t_args = {"task": task, "context": ctx} if target_node == "brain" else {"query": task, "context": ctx}
                         
@@ -639,7 +653,8 @@ class AcmeLab:
                 })
 
                 # [FEAT-048] Monitor long-running Brain tasks
-                ctx = "\n".join(self.recent_interactions[-3:])
+                # [FEAT-057] Deep Context: Send full interaction history
+                ctx = "\n".join(self.recent_interactions)
                 t_brain = asyncio.create_task(
                     self.monitor_task_with_tics(
                         self.residents["brain"].call_tool(
@@ -675,7 +690,7 @@ class AcmeLab:
             tasks = list(dispatch_map.keys())
             done, pending = await asyncio.wait(tasks, timeout=120)
             self.recent_interactions.append(f"User: {query}")
-            if len(self.recent_interactions) > 10:
+            if len(self.recent_interactions) > 50:
                 self.recent_interactions.pop(0)
 
             for t in done:
