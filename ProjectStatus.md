@@ -6,7 +6,7 @@
     *   **Resilience Ladder**: 4-Tier hierarchy (vLLM -> Ollama -> Downshift -> Suspend).
     *   **Abstract Tiers**: Model-agnostic S/M/L mapping via `vram_characterization.json`.
 *   **The Communication Hub (Corpus Callosum)**:
-    *   **Unified Base**: Targeted transition to **Llama-3.2-3B** (via local GGUF) for 2080 Ti Unity Pattern.
+    *   **Unified Base**: Transitioned to the **Standard Tier (e.g., Llama 3.2 3B)** for the 2080 Ti Unity Pattern.
     *   **Amygdala v3**: (In Progress) Intelligent interjection based on Dissonance Detection.
 
 ## Key Components & Status
@@ -24,7 +24,7 @@
 **Current Sprint:** **[Sprint Plan: Unity Stabilization](docs/plans/SPRINT_UNITY_STABILIZATION_FEB_15.md)**
 
 **Status Summary:**
-*   **Phase 1 (Silicon Base)**: [COMPLETE] Llama-3.2-3B-AWQ established as the Unified Base. vLLM stabilized at 0.4 utilization with Liger kernels.
+*   **Phase 1 (Silicon Base)**: [COMPLETE] **Standard Tier (e.g., Llama 3.2 3B)** established as the Unified Base. vLLM stabilized at 0.5 utilization.
 *   **Phase 2 (The Soul)**: [IN PROGRESS] Strategic Map integrated into Pinky via `peek_strategic_map`.
 *   **Phase 3 (Nervous System)**: [IN PROGRESS] Shadow Dispatch prototype integrated into transcription loop.
 
