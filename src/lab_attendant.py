@@ -18,6 +18,7 @@ STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
 INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
 ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
+PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
@@ -108,10 +109,14 @@ class LabAttendant:
                 if current_lab_mode != "OFFLINE" and not vitals["lab_server_running"]:
                     failure_count += 1
                     logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/3.")
-                    if failure_count >= 3:
+                    if failure_count == 3:
                         logger.error("[WATCHDOG] Service DEAD. Triggering Autonomous Recovery.")
-                        failure_count = 0
                         await self.handle_engine_swap(current_model)
+                    
+                    # [FEAT-043] Dead-Man's Switch: Trigger CRITICAL alert if down for 5 minutes (30 * 10s)
+                    if failure_count == 30:
+                        logger.critical("[WATCHDOG] Service UNRECOVERABLE for 5m. Triggering Dead-Man Switch.")
+                        self._trigger_pager_alert("CRITICAL", "Lab Orchestrator Unresponsive for 5 minutes. Immediate manual intervention required.")
                 else:
                     failure_count = 0
 
@@ -290,6 +295,22 @@ class LabAttendant:
                 await self.handle_start(MockReq())
             asyncio.create_task(background_cooldown())
         return web.json_response({"status": "success", "message": "Hygiene scheduled."})
+
+    def _trigger_pager_alert(self, severity, message):
+        """Logs a persistent alert to the Pager Activity ledger."""
+        try:
+            event = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "severity": severity,
+                "source": "Lab Attendant",
+                "message": message
+            }
+            # Append to file
+            with open(PAGER_ACTIVITY_FILE, "a") as f:
+                f.write(json.dumps(event) + "\n")
+            logger.info(f"[PAGER] Alert triggered: {severity}")
+        except Exception as e:
+            logger.error(f"[PAGER] Failed to log alert: {e}")
 
     async def handle_wait_ready(self, request):
         timeout = int(request.query.get("timeout", 60))
