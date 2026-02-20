@@ -213,48 +213,19 @@ class LabAttendant:
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
 
-        actual_model_path = self.model_manifest.get(current_model, current_model)
-        logger.info(f"[START] Resolved '{current_model}' to: {actual_model_path}")
-
+        # [START] Unified inference engine boot
         # Kill existing residents BEFORE background task starts
         await self.cleanup_silicon()
         self.ready_event.clear() # Reset readiness
 
         async def boot_sequence():
             global lab_process
-            if pref_eng == "vLLM":
-                if not data.get("disable_ear", True):
-                    logger.info("[START] Initializing EarNode first...")
-                    await asyncio.sleep(5)
-                subprocess.Popen(["bash", VLLM_START_PATH, actual_model_path, python_bin])
-                
-                logger.info("[START] Waiting for vLLM to initialize...")
-                vllm_ok = False
-                for _ in range(24):
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get("http://localhost:8088/v1/models", timeout=1) as r:
-                                if r.status == 200:
-                                    vllm_ok = True
-                                    break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(5)
-                
-                if not vllm_ok:
-                    logger.error("[START] vLLM failed to initialize in time.")
-                    return
-
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
-            env["USE_BRAIN_VLLM"] = "1" if pref_eng == "vLLM" else "0"
             
-            if pref_eng == "vLLM":
-                env["BRAIN_MODEL"] = "unified-base"
-                env["PINKY_MODEL"] = "unified-base"
-            else:
-                env["BRAIN_MODEL"] = current_model
-                env["PINKY_MODEL"] = current_model
+            # [MODEL FLUIDITY] Use standard tier environment injection
+            env["BRAIN_MODEL"] = current_model
+            env["PINKY_MODEL"] = current_model
                 
             if data.get("disable_ear", True):
                 env["DISABLE_EAR"] = "1"
@@ -323,16 +294,6 @@ class LabAttendant:
     async def handle_wait_ready(self, request):
         timeout = int(request.query.get("timeout", 60))
         try:
-            await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
-            vitals = await self._get_current_vitals()
-            return web.json_response({"status": "ready", "vitals": vitals})
-        except asyncio.TimeoutError:
-            vitals = await self._get_current_vitals()
-            return web.json_response({"status": "timeout", "vitals": vitals}, status=408)
-
-    async def handle_wait_ready(self, request):
-        timeout = int(request.query.get("timeout", 60))
-        try:
             # wait_for returns the value of the awaitable, or raises TimeoutError
             await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
             vitals = await self._get_current_vitals()
@@ -381,19 +342,21 @@ class LabAttendant:
         vitals = {
             "attendant_pid": os.getpid(),
             "lab_server_running": False,
-            "vllm_running": False,
+            "engine_running": False,
             "lab_mode": current_lab_mode,
             "model": current_model,
             "full_lab_ready": self.ready_event.is_set(),
             "last_error": None,
         }
         
-        # 1. Check vLLM Port (8088)
+        # 1. Check Engine Port (Ollama/Generic)
+        # Dynamic check based on lab mode to determine if the inference engine is alive
+        engine_port = 11434 # Default Ollama
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8088/v1/models", timeout=0.5) as r:
+                async with session.get(f"http://localhost:{engine_port}/api/tags", timeout=0.5) as r:
                     if r.status == 200:
-                        vitals["vllm_running"] = True
+                        vitals["engine_running"] = True
         except Exception:
             pass
 
@@ -437,12 +400,12 @@ class LabAttendant:
                             with open(SERVER_LOG, 'r') as f:
                                 # Get last 50 lines to find the actual error
                                 all_lines = f.readlines()
-                                lines = [l.strip() for l in all_lines if l.strip()]
+                                lines = [line.strip() for line in all_lines if line.strip()]
                                 if lines:
                                     msg = "OFFLINE: " + " | ".join(lines[-2:])
                                 else:
                                     msg = "Mind is OFFLINE"
-                        except:
+                        except Exception:
                             msg = "Mind is OFFLINE"
                     else:
                         msg = "Mind is OFFLINE"

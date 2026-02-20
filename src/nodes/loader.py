@@ -61,13 +61,10 @@ class BicameralNode:
             return model_map.get("MEDIUM", {}).get(engine_type.lower())
 
         # 0. High-Priority Invariants
-        # If USE_BRAIN_VLLM is set in environment, force it.
-        if os.environ.get("USE_BRAIN_VLLM") == "1":
-            l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
-            v_url = f"http://127.0.0.1:{l_host_cfg.get('vllm_port', 8088)}/v1/chat/completions"
-            # Explicitly force the model name to unified-base for VLLM
-            return ("VLLM", v_url, "unified-base")
-
+        # [MODEL FLUIDITY] Explicit model overrides are respected via environment
+        # Checked in resolve_model() but initialized here for visibility if needed later
+        _ = os.environ.get(f"{self.name.upper()}_MODEL")
+        
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)
             p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})

@@ -493,13 +493,13 @@ class AcmeLab:
 
         # [FEAT-027] Hard Gate: Only engage Brain if NOT casual
         if "brain" in self.residents and (is_strategic or addressed_brain) and not is_casual:
-            # Bicameral Failover: Direct Parallel Dispatch
+            # Strategic Sovereign Tier Engagement
             if self.brain_online:
                 brain_task = query
                 if addressed_brain:
                     brain_task = f"[DIRECT ADDRESS] {query}"
                     await self.broadcast({
-                        "brain": "Narf! I'll wake up the Architect!",
+                        "brain": "Wake up the Architect! Narf!",
                         "brain_source": "Pinky",
                     })
                 else:
@@ -507,7 +507,7 @@ class AcmeLab:
                 
                 # [FEAT-026] Engagement Feedback
                 await self.broadcast({
-                    "brain": "Engaging analytical nodes...",
+                    "brain": "Engaging Strategic Sovereign...",
                     "brain_source": "System",
                     "channel": "insight"
                 })
@@ -523,7 +523,7 @@ class AcmeLab:
                 # [FAILOVER] Use Pinky node for parallel strategy if brain offline
                 logging.warning("[FAILOVER] Sovereign offline for parallel dispatch. Engaging Shadow.")
                 await self.broadcast({
-                    "brain": "Engaging shadow hemisphere (Local Failover)...",
+                    "brain": "Engaging Shadow Hemisphere (Failover)...",
                     "brain_source": "System",
                     "channel": "insight"
                 })
@@ -589,9 +589,8 @@ class AcmeLab:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
                 
-                # Dynamic Routing: Use environment injected by Attendant
-                # [FIX] Removed hardcoded "1" to allow Ollama fallback
-                env["USE_BRAIN_VLLM"] = os.environ.get("USE_BRAIN_VLLM", "0")
+                # [FIX] vLLM legacy removed to allow clean Ollama/Generic fallback
+                env["USE_BRAIN_VLLM"] = "0"
                 env["BRAIN_MODEL"] = os.environ.get("BRAIN_MODEL", "MEDIUM")
                 env["PINKY_MODEL"] = os.environ.get("PINKY_MODEL", "MEDIUM")
                 
