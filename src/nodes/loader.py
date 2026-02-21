@@ -50,18 +50,28 @@ class BicameralNode:
         """[FEAT-080] Dynamic selection based on host capability."""
         # 1. Check for direct model override first
         env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
+        
         if env_mod:
             # If it's a known tier, resolve it
             model_map = self.vram_config.get("model_map", {})
             if env_mod in model_map:
                 m = model_map[env_mod].get(engine_type.lower())
+                # Verify tier resolution exists on host
                 if m in available_models or not available_models:
                     return m
-            # If it's a direct model name, verify it exists on host
-            if not available_models or env_mod in available_models:
-                return env_mod
+                else:
+                    logging.warning(f"[{self.name}] Tier {env_mod} resolved to {m} but NOT FOUND on host.")
+            
+            # If it's a direct model name or resolved tier, verify it exists on host
+            # [HARDENING] If we have available_models, we MUST match one.
+            if available_models:
+                if env_mod in available_models:
+                    return env_mod
+                else:
+                    logging.warning(f"[{self.name}] Environment model {env_mod} NOT FOUND on host. Forcing fallback.")
             else:
-                logging.warning(f"[{self.name}] Environment model {env_mod} not found on host. Falling back to dynamic list.")
+                # No host tags? Trust ENV but expect failure
+                return env_mod
 
         # 2. Preferred high-fidelity list for Brain
         if self.name == "brain":
@@ -72,11 +82,12 @@ class BicameralNode:
 
         # 3. Fallback to model_map MEDIUM
         medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
-        if medium in available_models or not available_models:
+        if available_models and medium in available_models:
             return medium
             
         # 4. Ultimate Fallback: The first model the host has
         if available_models:
+            logging.info(f"[{self.name}] No preferred models found. Selecting host default: {available_models[0]}")
             return available_models[0]
             
         return "llama3:latest"
