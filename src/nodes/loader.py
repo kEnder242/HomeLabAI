@@ -51,12 +51,17 @@ class BicameralNode:
         # 1. Check for direct model override first
         env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
         if env_mod:
+            # If it's a known tier, resolve it
             model_map = self.vram_config.get("model_map", {})
             if env_mod in model_map:
                 m = model_map[env_mod].get(engine_type.lower())
                 if m in available_models or not available_models:
                     return m
-            return env_mod
+            # If it's a direct model name, verify it exists on host
+            if not available_models or env_mod in available_models:
+                return env_mod
+            else:
+                logging.warning(f"[{self.name}] Environment model {env_mod} not found on host. Falling back to dynamic list.")
 
         # 2. Preferred high-fidelity list for Brain
         if self.name == "brain":
@@ -238,6 +243,11 @@ class BicameralNode:
                             # [FEAT-078] Forensic Mirroring (Post-Recv)
                             self._mirror_forensics("recv", data)
 
+                            # [STABILITY] Explicit Error Detection
+                            if data.get("error"):
+                                logging.error(f"[{self.name}] Remote Ollama Error: {data.get('error')}")
+                                return "INTERNAL_QUALITY_FALLBACK"
+
                             raw_resp = data.get("response", "").strip()
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Remote): '{raw_resp[:50]}...'")
                             
@@ -273,6 +283,10 @@ class BicameralNode:
 
                             # [FEAT-078] Forensic Mirroring (Post-Recv)
                             self._mirror_forensics("recv", data)
+
+                            if data.get("error"):
+                                logging.error(f"[{self.name}] Local Ollama Error: {data.get('error')}")
+                                return "INTERNAL_QUALITY_FALLBACK"
 
                             raw_resp = data.get("message", {}).get("content", "")
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Local): '{raw_resp[:50]}...'")
