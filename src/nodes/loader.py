@@ -75,7 +75,8 @@ class BicameralNode:
 
         # 2. Preferred high-fidelity list for Brain
         if self.name == "brain":
-            preferred = ["mixtral:8x7b", "llama3.1:8b", "llama3:latest", "llama3:8b"]
+            # [FEAT-083] Smaller Sovereign: Prioritize 8B models for speed
+            preferred = ["llama3.1:8b", "llama3:latest", "mixtral:8x7b", "llama3:8b"]
             for p in preferred:
                 if p in available_models:
                     return p

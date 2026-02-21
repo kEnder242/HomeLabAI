@@ -241,15 +241,17 @@ class LabAttendant:
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
             
             # [FEAT-081] Hemispheric Decoupling
-            # Allow nodes to use host-appropriate models based on tiering
+            # [FEAT-083] Smaller Sovereign: Allow independent brain model override
+            brain_pref = data.get("brain_model")
+            
             if tier_or_mod in model_map:
                 # If a tier was requested (e.g., MEDIUM), Pinky uses it
                 # but Brain is allowed to upscale to LARGE if on KENDER
-                env["BRAIN_MODEL"] = "LARGE" if pref_eng == "OLLAMA" else current_model
+                env["BRAIN_MODEL"] = brain_pref if brain_pref else ("LARGE" if pref_eng == "OLLAMA" else current_model)
                 env["PINKY_MODEL"] = tier_or_mod
             else:
                 # Direct model name requested
-                env["BRAIN_MODEL"] = current_model
+                env["BRAIN_MODEL"] = brain_pref if brain_pref else current_model
                 env["PINKY_MODEL"] = current_model
                 
             if data.get("disable_ear", True):
