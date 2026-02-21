@@ -605,15 +605,25 @@ class AcmeLab:
                             res.content[0].text, "Pinky (Shunt)"
                         )
 
-                if tool == "reply_to_user" or (
+                if (tool == "reply_to_user" or (
                     isinstance(data, dict) and "reply_to_user" in data
-                ):
+                )):
                     reply = params.get("text") or data.get("reply_to_user") or raw_text
                     if isinstance(reply, dict):
                         reply = reply.get("text", str(reply))
                     if isinstance(reply, list) and len(reply) == 1:
                         reply = reply[0]
-                    await self.broadcast({"brain": str(reply), "brain_source": source})
+                    
+                    # [FEAT-058] Redundant Routing: Force insight channel for all Brain sources
+                    target_channel = context_flags.get("channel", "chat") if context_flags else "chat"
+                    if "Brain" in source:
+                        target_channel = "insight"
+
+                    await self.broadcast({
+                        "brain": str(reply), 
+                        "brain_source": source,
+                        "channel": target_channel
+                    })
                     return True
 
                 if tool == "ask_brain" or tool == "deep_think":
@@ -649,7 +659,11 @@ class AcmeLab:
                         res = await self.monitor_task_with_tics(
                             self.residents[target_node].call_tool(name=t_name, arguments=t_args)
                         )
-                        return await execute_dispatch(res.content[0].text, "Brain" if self.brain_online else "Brain (Shadow)")
+                        return await execute_dispatch(
+                            res.content[0].text, 
+                            "Brain" if self.brain_online else "Brain (Shadow)",
+                            {"direct": addressed_brain, "channel": "insight"}
+                        )
                     else:
                         await self.broadcast({
                             "brain": "Analytical primary is OFFLINE. No failover available.",
