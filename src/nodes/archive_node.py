@@ -154,5 +154,16 @@ async def prune_insights(start_date: str, end_date: str, pattern: str, field: st
     except Exception as e:
         return f"Pruning failed: {e}"
 
+@mcp.tool()
+async def select_file(filename: str) -> str:
+    """[FEAT-074] Workbench: Instructs the UI to open a specific file in the editor."""
+    return json.dumps({"type": "select_file", "filename": filename})
+
+@mcp.tool()
+async def notify_file_open(filename: str) -> str:
+    """[FEAT-074] Workbench: Notifies the mice that the user has opened a file."""
+    logging.info(f"[WORKBENCH] User opened: {filename}")
+    return f"Acknowledged. Monitoring activity on {filename}."
+
 if __name__ == "__main__":
     node.run()
