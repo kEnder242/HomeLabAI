@@ -32,8 +32,14 @@ ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 
 
+_logger_initialized = False
+
 # --- THE MONTANA PROTOCOL ---
 def reclaim_logger():
+    global _logger_initialized
+    if _logger_initialized:
+        return
+    
     root = logging.getLogger()
     # Aggressively clear all existing handlers to prevent double-logging
     while root.handlers:
@@ -53,6 +59,8 @@ def reclaim_logger():
     logging.getLogger("nemo").setLevel(logging.ERROR)
     logging.getLogger("chromadb").setLevel(logging.ERROR)
     logging.getLogger("onelogger").setLevel(logging.ERROR)
+    
+    _logger_initialized = True
 
 
 class EarNode:
@@ -274,7 +282,8 @@ class AcmeLab:
                 p_node = self.residents.get("pinky")
                 b_node = self.residents.get("brain")
                 try:
-                    await internal_debate.run_nightly_talk(a_node, p_node, b_node)
+                    from internal_debate import run_nightly_talk
+                    await run_nightly_talk(a_node, p_node, b_node)
                 except Exception as e:
                     logging.error(f"[ALARM] Nightly Dialogue failed: {e}")
                 await asyncio.sleep(61)
