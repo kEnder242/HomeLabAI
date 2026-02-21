@@ -240,9 +240,17 @@ class LabAttendant:
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
             
-            # [MODEL FLUIDITY] Use standard tier environment injection
-            env["BRAIN_MODEL"] = current_model
-            env["PINKY_MODEL"] = current_model
+            # [FEAT-081] Hemispheric Decoupling
+            # Allow nodes to use host-appropriate models based on tiering
+            if tier_or_mod in model_map:
+                # If a tier was requested (e.g., MEDIUM), Pinky uses it
+                # but Brain is allowed to upscale to LARGE if on KENDER
+                env["BRAIN_MODEL"] = "LARGE" if pref_eng == "OLLAMA" else current_model
+                env["PINKY_MODEL"] = tier_or_mod
+            else:
+                # Direct model name requested
+                env["BRAIN_MODEL"] = current_model
+                env["PINKY_MODEL"] = current_model
                 
             if data.get("disable_ear", True):
                 env["DISABLE_EAR"] = "1"
