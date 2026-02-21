@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import socket
+import time
 from mcp.server.fastmcp import FastMCP
 
 # Global Paths
@@ -45,31 +46,38 @@ class BicameralNode:
                 pass
         return {}
 
+    def _resolve_best_model(self, available_models, engine_type):
+        """[FEAT-080] Dynamic selection based on host capability."""
+        # 1. Check for direct model override first
+        env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
+        if env_mod:
+            model_map = self.vram_config.get("model_map", {})
+            if env_mod in model_map:
+                m = model_map[env_mod].get(engine_type.lower())
+                if m in available_models or not available_models:
+                    return m
+            return env_mod
+
+        # 2. Preferred high-fidelity list for Brain
+        if self.name == "brain":
+            preferred = ["mixtral:8x7b", "llama3.1:8b", "llama3:latest", "llama3:8b"]
+            for p in preferred:
+                if p in available_models:
+                    return p
+
+        # 3. Fallback to model_map MEDIUM
+        medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
+        if medium in available_models or not available_models:
+            return medium
+            
+        # 4. Ultimate Fallback: The first model the host has
+        if available_models:
+            return available_models[0]
+            
+        return "llama3:latest"
+
     async def probe_engine(self):
         """Dynamic engine selection with Federated Failover."""
-        model_map = self.vram_config.get("model_map", {})
-
-        def resolve_model(engine_type):
-            # Check for direct model override first
-            env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
-            if env_mod:
-                if env_mod in model_map:
-                    m = model_map.get(env_mod, {}).get(engine_type.lower())
-                else:
-                    m = env_mod
-                return m
-            
-            # [STABILITY] Default resolution logic
-            if self.name == "brain" and engine_type == "OLLAMA":
-                return "llama3:latest"
-            
-            return model_map.get("MEDIUM", {}).get(engine_type.lower())
-
-        # 0. High-Priority Invariants
-        # [MODEL FLUIDITY] Explicit model overrides are respected via environment
-        # Checked in resolve_model() but initialized here for visibility if needed later
-        _ = os.environ.get(f"{self.name.upper()}_MODEL")
-        
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)
             p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
@@ -80,12 +88,11 @@ class BicameralNode:
                 try:
                     async with session.get(f"{p_url}/api/tags", timeout=1.0) as r:
                         if r.status == 200:
-                            logging.info(f"[{self.name}] Routing to Primary: {p_ip}")
-                            return (
-                                "OLLAMA",
-                                f"{p_url}/api/chat",
-                                resolve_model("OLLAMA"),
-                            )
+                            data = await r.json()
+                            available = [m.get("name") for m in data.get("models", [])]
+                            model = self._resolve_best_model(available, "OLLAMA")
+                            logging.info(f"[{self.name}] Routing to Primary: {p_ip} (Model: {model})")
+                            return ("OLLAMA", f"{p_url}/api/chat", model)
                 except Exception as e:
                     logging.warning(f"[{self.name}] Primary Host {p_ip} unreachable: {e}")
 
@@ -97,30 +104,26 @@ class BicameralNode:
             try:
                 async with session.get(f"{v_url}/v1/models", timeout=2.0) as r:
                     if r.status == 200:
-                        logging.info(f"[{self.name}] vLLM detected on localhost.")
-                        return (
-                            "VLLM",
-                            f"{v_url}/v1/chat/completions",
-                            resolve_model("VLLM"),
-                        )
-                    else:
-                        logging.warning(f"[{self.name}] vLLM probe returned {r.status}")
-            except Exception as e:
-                logging.debug(f"[{self.name}] vLLM probe failed: {e}")
+                        data = await r.json()
+                        available = [m.get("id") for m in data.get("data", [])]
+                        model = self._resolve_best_model(available, "VLLM")
+                        logging.info(f"[{self.name}] vLLM detected on localhost (Model: {model}).")
+                        return ("VLLM", f"{v_url}/v1/chat/completions", model)
+            except Exception:
+                pass
 
             # Check Local Ollama
             o_url = f"http://127.0.0.1:{l_host_cfg.get('ollama_port', 11434)}"
             try:
                 async with session.get(f"{o_url}/api/tags", timeout=1.0) as r:
                     if r.status == 200:
-                        logging.info(f"[{self.name}] Ollama detected on localhost.")
-                        return (
-                            "OLLAMA",
-                            f"{o_url}/api/chat",
-                            resolve_model("OLLAMA"),
-                        )
-            except Exception as e:
-                logging.debug(f"[{self.name}] Ollama probe failed: {e}")
+                        data = await r.json()
+                        available = [m.get("name") for m in data.get("models", [])]
+                        model = self._resolve_best_model(available, "OLLAMA")
+                        logging.info(f"[{self.name}] Ollama detected on localhost (Model: {model}).")
+                        return ("OLLAMA", f"{o_url}/api/chat", model)
+            except Exception:
+                pass
 
         return "NONE", None, None
 
@@ -283,12 +286,17 @@ class BicameralNode:
     def _mirror_forensics(self, phase, data, url=None):
         """[FEAT-078] Internal helper to write black-box data to logs."""
         try:
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+            # Absolute path hardening for forensic logs
+            lab_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            log_dir = os.path.join(lab_root, "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            
             log_path = os.path.join(log_dir, f"forensic_{self.name}.json")
             
             mode = "w" if phase == "send" else "a"
             entry = {"phase": phase, "timestamp": time.time(), "data": data}
-            if url: entry["url"] = url
+            if url:
+                entry["url"] = url
             
             with open(log_path, mode) as f:
                 f.write(json.dumps(entry, indent=2) + "\n")

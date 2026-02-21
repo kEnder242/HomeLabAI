@@ -201,7 +201,7 @@ class AcmeLab:
                         return
                     
                     # [STABILITY] Prioritize high-fidelity functioning models
-                    preferred = ["llama3:latest", "llama3.1:8b", "mixtral:8x7b"]
+                    preferred = ["mixtral:8x7b", "llama3.1:8b", "llama3:latest", "llama3:8b"]
                     probe_model = models[0] # Default
                     for p in preferred:
                         if p in models:
