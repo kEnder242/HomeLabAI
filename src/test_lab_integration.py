@@ -19,17 +19,17 @@ async def test_lab_attendant_full_cycle():
             assert resp.status == 200
             data = await resp.json()
             assert data["status"] == "success"
-            pid = data["pid"]
+            # Note: pid is no longer returned directly in start
 
         # 3. Poll for READY status
         print("⏳ Waiting for Lab to reach READY state...")
         ready = False
         for _ in range(60): # 60 seconds timeout
-            async with session.get(f"{ATTENDANT_URL}/status") as resp:
+            async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 status = await resp.json()
                 if status["full_lab_ready"]:
                     ready = True
-                    print(f"✅ Lab is READY! (VRAM: {status['vram_usage']})")
+                    print(f"✅ Lab is READY!")
                     break
             await asyncio.sleep(2)
 
