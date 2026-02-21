@@ -91,6 +91,7 @@ class AcmeLab:
         self.reflex_ttl = 1.0
         self.banter_backoff = 0
         self.brain_online = False
+        self._last_brain_prime = 0 # [FEAT-085] Keep-alive tracking
         self.mic_active = False # [FEAT-025] Amygdala Switch State
         self.ear = None
         self.recent_interactions = []
@@ -209,20 +210,29 @@ class AcmeLab:
                             break
 
                 # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
-                # [FEAT-082] Priming: Use a longer timeout for the first load (Cold Start)
-                p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
-                payload = {
-                    "model": probe_model, 
-                    "prompt": "ping",
-                    "stream": False,
-                    "options": {"num_predict": 1}
-                }
-                timeout = 15 if not self.brain_online else 5
-                async with session.post(p_url, json=payload, timeout=timeout) as r:
-                    is_ok = r.status == 200
-                    if is_ok and not self.brain_online:
-                        logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model}")
-                    self.brain_online = is_ok
+                # [FEAT-085] Intelligent Keep-Alive: Only perform heavy priming if connected
+                # or if the Brain was previously offline.
+                should_prime = not self.brain_online or (time.time() - self._last_brain_prime > 120 and self.connected_clients)
+                
+                if should_prime:
+                    p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
+                    payload = {
+                        "model": probe_model, 
+                        "prompt": "ping",
+                        "stream": False,
+                        "options": {"num_predict": 1}
+                    }
+                    timeout = 15 if not self.brain_online else 5
+                    async with session.post(p_url, json=payload, timeout=timeout) as r:
+                        is_ok = r.status == 200
+                        if is_ok:
+                            if not self.brain_online:
+                                logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model}")
+                            self._last_brain_prime = time.time()
+                        self.brain_online = is_ok
+                else:
+                    # Light heartbeat only
+                    self.brain_online = True
         except Exception as e:
             logging.debug(f"[HEALTH] Brain probe failed: {e}")
             self.brain_online = False
@@ -255,7 +265,13 @@ class AcmeLab:
                     self.banter_backoff = 0
                 
                 self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5)
-            await self.check_brain_health()
+                # [FEAT-085] Check health inside reflex ONLY if clients are active
+                await self.check_brain_health()
+            else:
+                # If no clients, reset TTL and wait patiently
+                self.reflex_ttl = 10.0
+                # Still check health occasionally to keep status.json accurate
+                await self.check_brain_health()
 
     async def scheduled_tasks_loop(self):
         """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
