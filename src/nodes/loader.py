@@ -28,6 +28,11 @@ class BicameralNode:
         self.engine_mode = "AUTO"
         self.lobotomy_active = False
 
+        # [FEAT-084] Neural Persistence: Cache engine resolution to avoid per-query network hits
+        self._engine_cache = None
+        self._last_probe = 0
+        self._probe_ttl = 60 # Seconds
+
         # Load configs
         self.vram_config = self._load_json(CHARACTERIZATION_FILE)
         self.infra = self._load_json(INFRA_CONFIG)
@@ -94,8 +99,12 @@ class BicameralNode:
             
         return "llama3:latest"
 
-    async def probe_engine(self):
+    async def probe_engine(self, force=False):
         """Dynamic engine selection with Federated Failover."""
+        # [FEAT-084] Return cached engine if available and TTL not exceeded
+        if not force and self._engine_cache and (time.time() - self._last_probe < self._probe_ttl):
+            return self._engine_cache
+
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)
             p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
@@ -109,10 +118,17 @@ class BicameralNode:
                             data = await r.json()
                             available = [m.get("name") for m in data.get("models", [])]
                             model = self._resolve_best_model(available, "OLLAMA")
-                            logging.info(f"[{self.name}] Routing to Primary: {p_ip} (Model: {model})")
-                            return ("OLLAMA", f"{p_url}/api/chat", model)
+                            
+                            res = ("OLLAMA", f"{p_url}/api/chat", model)
+                            # Only log if the result changed or was empty
+                            if res != self._engine_cache:
+                                logging.info(f"[{self.name}] Resolved Primary: {p_ip} -> {model}")
+                            
+                            self._engine_cache = res
+                            self._last_probe = time.time()
+                            return res
                 except Exception as e:
-                    logging.warning(f"[{self.name}] Primary Host {p_ip} unreachable: {e}")
+                    logging.debug(f"[{self.name}] Primary Host {p_ip} unreachable: {e}")
 
             # 2. Fallback to localhost (vLLM then Ollama)
             l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
@@ -125,8 +141,14 @@ class BicameralNode:
                         data = await r.json()
                         available = [m.get("id") for m in data.get("data", [])]
                         model = self._resolve_best_model(available, "VLLM")
-                        logging.info(f"[{self.name}] vLLM detected on localhost (Model: {model}).")
-                        return ("VLLM", f"{v_url}/v1/chat/completions", model)
+                        
+                        res = ("VLLM", f"{v_url}/v1/chat/completions", model)
+                        if res != self._engine_cache:
+                            logging.info(f"[{self.name}] Resolved Local vLLM -> {model}")
+                        
+                        self._engine_cache = res
+                        self._last_probe = time.time()
+                        return res
             except Exception:
                 pass
 
@@ -138,8 +160,14 @@ class BicameralNode:
                         data = await r.json()
                         available = [m.get("name") for m in data.get("models", [])]
                         model = self._resolve_best_model(available, "OLLAMA")
-                        logging.info(f"[{self.name}] Ollama detected on localhost (Model: {model}).")
-                        return ("OLLAMA", f"{o_url}/api/chat", model)
+                        
+                        res = ("OLLAMA", f"{o_url}/api/chat", model)
+                        if res != self._engine_cache:
+                            logging.info(f"[{self.name}] Resolved Local Ollama -> {model}")
+                        
+                        self._engine_cache = res
+                        self._last_probe = time.time()
+                        return res
             except Exception:
                 pass
 
@@ -219,6 +247,7 @@ class BicameralNode:
                         data = await r.json()
                         if "choices" not in data:
                             logging.error(f"[{self.name}] vLLM Error: {data}")
+                            self._engine_cache = None # [FEAT-084] Clear cache on error
                             return json.dumps({
                                 "tool": "reply_to_user",
                                 "parameters": {"text": f"vLLM Error: {data}"}
@@ -259,6 +288,7 @@ class BicameralNode:
                             # [STABILITY] Explicit Error Detection
                             if data.get("error"):
                                 logging.error(f"[{self.name}] Remote Ollama Error: {data.get('error')}")
+                                self._engine_cache = None # [FEAT-084] Clear cache on error
                                 return "INTERNAL_QUALITY_FALLBACK"
 
                             raw_resp = data.get("response", "").strip()
@@ -299,12 +329,14 @@ class BicameralNode:
 
                             if data.get("error"):
                                 logging.error(f"[{self.name}] Local Ollama Error: {data.get('error')}")
+                                self._engine_cache = None # [FEAT-084] Clear cache on error
                                 return "INTERNAL_QUALITY_FALLBACK"
 
                             raw_resp = data.get("message", {}).get("content", "")
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Local): '{raw_resp[:50]}...'")
                             return raw_resp
             except Exception as e:
+                self._engine_cache = None # [FEAT-084] Clear cache on error
                 return json.dumps({
                     "tool": "reply_to_user",
                     "parameters": {"text": f"Error: {e}"},
