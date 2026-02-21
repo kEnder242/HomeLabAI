@@ -4,6 +4,12 @@
 
 ## 📋 Task List
 
+### 0. [FEAT-080] Dynamic Model Fluidity
+- [ ] **[TODO]** Implement `get_best_model()` in `loader.py` to dynamically query host tags.
+- [ ] **[TODO]** Harmonize `acme_lab.py` health-check model prioritization.
+- [ ] **[TODO]** Harden Forensic Mirroring with absolute pathing.
+- [ ] **[TODO]** Perform final code hygiene sweep (dots/versioning).
+
 ### 1. Orchestrator Hygiene (`acme_lab.py`)
 - [ ] **[TODO]** Remove any literal `...` placeholders or indentation artifacts from `execute_dispatch`.
 - [ ] **[TODO]** Move `internal_debate` and `recruiter` imports to top-level or protected import blocks.
