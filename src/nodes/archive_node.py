@@ -109,5 +109,50 @@ async def write_draft(filename: str, content: str) -> str:
     except Exception as e:
         return f"Error saving draft: {e}"
 
+@mcp.tool()
+async def prune_insights(start_date: str, end_date: str, pattern: str, field: str = "summary") -> str:
+    """[FEAT-073] Surgically redacts or trims data from note summaries within a date range."""
+    import re
+    try:
+        s_date = datetime.datetime.strptime(start_date, "%Y-%m")
+        e_date = datetime.datetime.strptime(end_date, "%Y-%m")
+        
+        modified_files = []
+        
+        # Iterate through months in range
+        curr = s_date
+        while curr <= e_date:
+            fname = f"{curr.year}_{curr.month:02d}.json"
+            fpath = os.path.join(DATA_DIR, fname)
+            
+            if os.path.exists(fpath):
+                with open(fpath, 'r') as f:
+                    data = json.load(f)
+                
+                changed = False
+                for entry in data:
+                    if field in entry and isinstance(entry[field], str):
+                        original = entry[field]
+                        # Trim based on regex pattern
+                        # e.g. r'\b[A-Z][a-z]+\b' for names, or specific strings
+                        entry[field] = re.sub(pattern, "[REDACTED]", original)
+                        if entry[field] != original:
+                            changed = True
+                
+                if changed:
+                    with open(fpath, 'w') as f:
+                        json.dump(data, f, indent=2)
+                    modified_files.append(fname)
+            
+            # Next month
+            if curr.month == 12:
+                curr = datetime.datetime(curr.year + 1, 1, 1)
+            else:
+                curr = datetime.datetime(curr.year, curr.month + 1, 1)
+                
+        return f"Pruning complete. Modified {len(modified_files)} files: {', '.join(modified_files)}"
+    except Exception as e:
+        return f"Pruning failed: {e}"
+
 if __name__ == "__main__":
     node.run()
