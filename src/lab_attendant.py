@@ -85,6 +85,7 @@ class LabAttendant:
         logger.info("[WATCHDOG] Active with DCGM, Port & Docker Heartbeat.")
         gpu_load_history = []
         failure_count = 0
+        boot_grace_period = 6
         
         try:
             while True:
@@ -108,11 +109,20 @@ class LabAttendant:
 
                 # 2. Service Port Recovery
                 if current_lab_mode != "OFFLINE" and not vitals["lab_server_running"]:
+                    # [FEAT-035] Graceful Boot Window: Allow time for residents to load
+                    if not self.ready_event.is_set():
+                        if boot_grace_period > 0:
+                            boot_grace_period -= 1
+                            logger.info(f"[WATCHDOG] Waiting for Lab Boot... ({boot_grace_period} cycles remaining)")
+                            continue
+                    
                     failure_count += 1
                     logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/3.")
-                    if failure_count == 3:
+                    if failure_count >= 3:
                         logger.error("[WATCHDOG] Service DEAD. Triggering Autonomous Recovery.")
                         await self.handle_engine_swap(current_model)
+                        failure_count = 0
+                        boot_grace_period = 6
                     
                     # [FEAT-043] Dead-Man's Switch: Trigger CRITICAL alert if down for 5 minutes (30 * 10s)
                     if failure_count == 30:
@@ -120,6 +130,8 @@ class LabAttendant:
                         self._trigger_pager_alert("CRITICAL", "Lab Orchestrator Unresponsive for 5 minutes. Immediate manual intervention required.")
                 else:
                     failure_count = 0
+                    if self.ready_event.is_set():
+                        boot_grace_period = 6
 
                 # 3. Docker Telemetry Watchdog
                 for container in MONITOR_CONTAINERS:
