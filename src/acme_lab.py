@@ -177,24 +177,31 @@ class AcmeLab:
         """Hardened Health Check: Perform a single-token generation probe."""
         try:
             async with aiohttp.ClientSession() as session:
-                # 1. First check if endpoint is even reachable (fast)
-                async with session.get(BRAIN_HEARTBEAT_URL, timeout=1) as r:
+                # 1. First check if endpoint is reachable and get available models
+                async with session.get(BRAIN_HEARTBEAT_URL, timeout=1.5) as r:
                     if r.status != 200:
                         self.brain_online = False
                         return
+                    data = await r.json()
+                    models = data.get("models", [])
+                    if not models:
+                        self.brain_online = False
+                        return
+                    # Use the first available model for the probe
+                    probe_model = models[0].get("name")
 
                 # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
-                # This prevents False Positives when the service is up but the model is stuck.
                 p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
                 payload = {
-                    "model": "mixtral:8x7b", 
+                    "model": probe_model, 
                     "prompt": "ping",
                     "stream": False,
-                    "num_predict": 1
+                    "options": {"num_predict": 1}
                 }
-                async with session.post(p_url, json=payload, timeout=2) as r:
+                async with session.post(p_url, json=payload, timeout=5) as r:
                     self.brain_online = r.status == 200
-        except Exception:
+        except Exception as e:
+            logging.debug(f"[HEALTH] Brain probe failed: {e}")
             self.brain_online = False
 
     async def reflex_loop(self):
