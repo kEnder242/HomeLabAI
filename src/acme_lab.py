@@ -14,6 +14,10 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
 
+# Internal Task Imports
+import recruiter
+import internal_debate
+
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
@@ -236,8 +240,6 @@ class AcmeLab:
 
     async def scheduled_tasks_loop(self):
         """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
-        import recruiter
-        import internal_debate
         import datetime
         logging.info("[ALARM] Scheduled Tasks loop active.")
         while not self.shutdown_event.is_set():
@@ -583,7 +585,6 @@ class AcmeLab:
 
                 if tool == "discuss_offline":
                     topic = params.get("topic") or query
-                    import internal_debate
                     logging.info(f"[DEBATE] User requested offline discussion: {topic}")
                     await self.broadcast({
                         "brain": f"Narf! We'll chew on '{topic}' while you're out!",

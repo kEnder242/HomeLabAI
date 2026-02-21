@@ -3,7 +3,7 @@ import json
 import pytest
 import websockets
 
-VERSION = "3.5.9"
+VERSION = "3.8.0"
 
 @pytest.mark.asyncio
 async def test_pi_to_20_digits_flow():

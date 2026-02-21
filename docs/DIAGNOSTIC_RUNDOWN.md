@@ -38,9 +38,11 @@ Ensures the Lab maintains its Bicameral character without falling into "Chatter 
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
-| **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends "Thinking" tics during long Brain reasoning cycles. |
-| **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures "Certainly!" filler is stripped. |
-| **Echo Check** | `src/test_echo.py` | Verifies basic text/binary processing in the "Talk & Read" loop. |
+| **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends \"Thinking\" tics during long Brain reasoning cycles. |
+| **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures \"Certainly!\" filler is stripped. |
+| **MIB Wipe** | `src/debug/test_mib_wipe.py` | Verifies the \"Neuralyzer\" memory clearing mechanic and context cap. |
+| **Banter Decay** | `src/debug/test_banter_decay.py`| Verifies that reflexes slow down correctly during idle states. |
+| **Echo Check** | `src/test_echo.py` | Verifies basic text/binary processing in the \"Talk & Read\" loop. |
 | **Intercom Flow** | `src/test_intercom_flow.py` | End-to-end test of the CLI `intercom.py` client communication. |
 
 ---
@@ -53,6 +55,7 @@ Validates "Thought Partner" capabilities, including delegation, tool access, and
 | **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the "Direct Answer First" rule. |
 | **Round Table** | `src/test_round_table.py` | Validates the Pinky -> Brain handover logic and shared context persistence. |
 | **Tool Registry** | `src/debug/test_tool_registry.py` | **CRITICAL.** Confirms all physical MCP tools are visible to the agentic layer. |
+| **Strategic Sentinel**| `src/debug/test_strategic_sentinel.py`| Verifies Amygdala filtering and typing-aware reflex suppression. |
 | **Resurrection Tools**| `src/debug/test_resurrection_tools.py`| Verifies high-value restored tools: CV Builder, BKM Generator, and History Access. |
 | **Architect Flow** | `src/debug/test_architect_flow.py` | Validates the Architect Node's BKM synthesis logic. |
 | **Draft Agency** | `src/test_draft_agency.py` | Tests the `write_draft` tool and the "Editor Cleaning" pattern. |
