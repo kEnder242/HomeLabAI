@@ -200,8 +200,8 @@ class AcmeLab:
                         self.brain_online = False
                         return
                     
-                    # [STABILITY] Prioritize high-fidelity functioning models
-                    preferred = ["mixtral:8x7b", "llama3.1:8b", "llama3:latest", "llama3:8b"]
+                    # [STABILITY] Prioritize high-fidelity functioning models (8B class for speed)
+                    preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
                     probe_model = models[0] # Default
                     for p in preferred:
                         if p in models:
