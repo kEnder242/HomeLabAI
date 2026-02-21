@@ -51,7 +51,7 @@
 ## BKM-004: The "Discuss with me" Protocol (QQ / Quick Question)
 **Objective**: Prevent state drift and hardware locks when automated recovery fails.
 
-1.  **Shorthand (QQ)**: If the user says "QQ: [Question]", the Agent must provide a concise, direct answer without implementation details, debug logs, or deep implementation dives.
+1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question**. Fulfillment of this request consists **exclusively** of providing a direct, concise answer. The response constitutes total completion of the task; do not proceed to diagnostics, coding, or log-scraping unless a subsequent directive is issued.
 2.  **Halt Conditions**:
     *   Encountering a "Zombie" process (orphaned PID) that ignores `pkill -9`.
     *   Encountering a `torch.OutOfMemoryError` during a "Heads Down" sprint.
