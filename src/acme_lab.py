@@ -195,12 +195,18 @@ class AcmeLab:
                         self.brain_online = False
                         return
                     data = await r.json()
-                    models = data.get("models", [])
+                    models = [m.get("name") for m in data.get("models", [])]
                     if not models:
                         self.brain_online = False
                         return
-                    # Use the first available model for the probe
-                    probe_model = models[0].get("name")
+                    
+                    # [STABILITY] Prioritize high-fidelity functioning models
+                    preferred = ["llama3:latest", "llama3.1:8b", "mixtral:8x7b"]
+                    probe_model = models[0] # Default
+                    for p in preferred:
+                        if p in models:
+                            probe_model = p
+                            break
 
                 # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
                 p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
