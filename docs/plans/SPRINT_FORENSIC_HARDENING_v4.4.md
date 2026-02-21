@@ -11,15 +11,15 @@
 - [x] **[DONE]** Perform final code hygiene sweep (dots/versioning).
 
 ### 1. Orchestrator Hygiene (`acme_lab.py`)
-- [ ] **[TODO]** Remove any literal `...` placeholders or indentation artifacts from `execute_dispatch`.
+- [x] **[DONE]** Remove any literal `...` placeholders or indentation artifacts from `execute_dispatch`.
 - [ ] **[TODO]** Move `internal_debate` and `recruiter` imports to top-level or protected import blocks.
 - [ ] **[TODO]** Verify and fix `self.banter_backoff` initialization in `__init__`.
 
 ### 2. Version Synchronization
-- [ ] **[TODO]** Synchronize all version strings to **v3.8.0**:
+- [x] **[DONE]** Synchronize all version strings to **v3.8.0**:
     - `acme_lab.py` (Server)
     - `intercom_v2.js` (Web Client)
-    - `test_pi_flow.py` (Verification script)
+- [ ] **[TODO]** Synchronize `test_pi_flow.py` (Verification script)
 
 ### 3. Ledger Alignment (`DIAGNOSTIC_RUNDOWN.md`)
 - [ ] **[TODO]** Map newly created tests to the Physician's Ledger:
