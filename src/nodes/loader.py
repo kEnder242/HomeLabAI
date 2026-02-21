@@ -78,7 +78,7 @@ class BicameralNode:
                             logging.info(f"[{self.name}] Routing to Primary: {p_ip}")
                             return (
                                 "OLLAMA",
-                                f"{p_url}/api/generate",
+                                f"{p_url}/api/chat",
                                 resolve_model("OLLAMA"),
                             )
                 except Exception as e:
@@ -111,7 +111,7 @@ class BicameralNode:
                         logging.info(f"[{self.name}] Ollama detected on localhost.")
                         return (
                             "OLLAMA",
-                            f"{o_url}/api/generate",
+                            f"{o_url}/api/chat",
                             resolve_model("OLLAMA"),
                         )
             except Exception as e:
@@ -205,7 +205,6 @@ class BicameralNode:
                         return msg["content"]
                 else:
                     # [STABILITY] Use Chat API for Ollama to leverage internal templates
-                    chat_url = url.replace("/api/generate", "/api/chat")
                     messages = [{"role": "system", "content": self.system_prompt}]
                     
                     if memory:
@@ -220,7 +219,7 @@ class BicameralNode:
                         "messages": messages,
                         "stream": False
                     }
-                    async with session.post(chat_url, json=payload, timeout=60) as r:
+                    async with session.post(url, json=payload, timeout=60) as r:
                         data = await r.json()
                         raw_resp = data.get("message", {}).get("content", "")
                         logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
