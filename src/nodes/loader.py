@@ -58,6 +58,11 @@ class BicameralNode:
                 else:
                     m = env_mod
                 return m
+            
+            # [STABILITY] Default resolution logic
+            if self.name == "brain" and engine_type == "OLLAMA":
+                return "llama3:latest"
+            
             return model_map.get("MEDIUM", {}).get(engine_type.lower())
 
         # 0. High-Priority Invariants
@@ -161,12 +166,14 @@ class BicameralNode:
         return tools
 
     def unify_prompt(self, query, context="", memory=""):
-        prompt = self.system_prompt
+        # Removing bracketed tags which may confuse some model templates on remote hosts
+        full_prompt = f"System: {self.system_prompt}"
+        if memory:
+            full_prompt += f"\n\nMemory: {memory}"
         if context:
-            prompt += f"\n[RECENT CONTEXT]:\n{context}\n"
+            full_prompt += f"\n\nRecent Context: {context}"
         
-        # Reverting to reliable bracketed tags for prompt clarity
-        return f"[SYSTEM]: {prompt}\n\nMEMORY:\n{memory}\n\nQUERY:\n{query}"
+        return f"{full_prompt}\n\nUser: {query}\n\nAssistant:"
 
     async def generate_response(self, query, context="", memory=""):
         engine, url, model = await self.probe_engine()
@@ -204,26 +211,48 @@ class BicameralNode:
                             })
                         return msg["content"]
                 else:
-                    # [STABILITY] Use Chat API for Ollama to leverage internal templates
-                    messages = [{"role": "system", "content": self.system_prompt}]
+                    # [STABILITY] Target-Aware Routing
+                    # Remote hosts (Windows) often have older/different templates.
+                    # Use raw /api/generate for remote, /api/chat for local.
+                    is_remote = "127.0.0.1" not in url and "localhost" not in url
                     
-                    if memory:
-                        messages.append({"role": "system", "content": f"MEMORY: {memory}"})
-                    if context:
-                        messages.append({"role": "system", "content": f"RECENT CONTEXT: {context}"})
-                    
-                    messages.append({"role": "user", "content": query})
-                    
-                    payload = {
-                        "model": model,
-                        "messages": messages,
-                        "stream": False
-                    }
-                    async with session.post(url, json=payload, timeout=60) as r:
-                        data = await r.json()
-                        raw_resp = data.get("message", {}).get("content", "")
-                        logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
-                        return raw_resp
+                    if is_remote:
+                        # Revert to Raw Prompt for Remote (Robustness)
+                        gen_url = url.replace("/api/chat", "/api/generate")
+                        unified = self.unify_prompt(query, context, memory)
+                        payload = {
+                            "model": model,
+                            "prompt": unified,
+                            "stream": False
+                        }
+                        async with session.post(gen_url, json=payload, timeout=60) as r:
+                            data = await r.json()
+                            raw_resp = data.get("response", "")
+                            logging.info(f"[{self.name}] RAW OLLAMA RESP (Remote): '{raw_resp[:50]}...'")
+                            return raw_resp
+                    else:
+                        # Use Chat API for Local (Alignment)
+                        chat_url = url.replace("/api/generate", "/api/chat")
+                        full_system = self.system_prompt
+                        if memory:
+                            full_system += f"\n\n[MEMORY]:\n{memory}"
+                        if context:
+                            full_system += f"\n\n[RECENT CONTEXT]:\n{context}"
+                        
+                        messages = [
+                            {"role": "system", "content": full_system},
+                            {"role": "user", "content": query}
+                        ]
+                        payload = {
+                            "model": model,
+                            "messages": messages,
+                            "stream": False
+                        }
+                        async with session.post(chat_url, json=payload, timeout=60) as r:
+                            data = await r.json()
+                            raw_resp = data.get("message", {}).get("content", "")
+                            logging.info(f"[{self.name}] RAW OLLAMA RESP (Local): '{raw_resp[:50]}...'")
+                            return raw_resp
             except Exception as e:
                 return json.dumps({
                     "tool": "reply_to_user",
