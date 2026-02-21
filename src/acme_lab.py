@@ -828,6 +828,22 @@ class AcmeLab:
                     res = t.result()
                     raw_out = res.content[0].text
                     source = dispatch_map[t]
+                    
+                    # [FEAT-077] Quality-Gate Failover (Parallel Loop)
+                    if raw_out == "INTERNAL_QUALITY_FALLBACK" and source == "Brain":
+                        logging.warning("[FAILOVER] Sovereign returned low-quality response in parallel loop. Engaging Shadow.")
+                        ctx = "\n".join(self.recent_interactions)
+                        task = f"[QUALITY FAILOVER]: {query}"
+                        res = await self.monitor_task_with_tics(
+                            self.residents["pinky"].call_tool(name="facilitate", arguments={"query": task, "context": ctx})
+                        )
+                        await execute_dispatch(
+                            res.content[0].text, 
+                            "Brain (Shadow)",
+                            {"direct": addressed_brain, "channel": "insight"}
+                        )
+                        continue
+
                     if "close_lab" in raw_out or "goodnight" in raw_out:
                         for p in pending:
                             p.cancel()
