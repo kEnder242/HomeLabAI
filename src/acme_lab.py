@@ -682,8 +682,23 @@ class AcmeLab:
                         res = await self.monitor_task_with_tics(
                             self.residents[target_node].call_tool(name=t_name, arguments=t_args)
                         )
+                        raw_out = res.content[0].text
+                        
+                        # [FEAT-077] Quality-Gate Failover: Handle empty/dotted remote responses
+                        if raw_out == "INTERNAL_QUALITY_FALLBACK" and target_node == "brain":
+                            logging.warning("[FAILOVER] Sovereign returned low-quality response. Engaging Shadow.")
+                            task = f"[QUALITY FAILOVER]: {task}"
+                            res = await self.monitor_task_with_tics(
+                                self.residents["pinky"].call_tool(name="facilitate", arguments={"query": task, "context": ctx})
+                            )
+                            return await execute_dispatch(
+                                res.content[0].text, 
+                                "Brain (Shadow)",
+                                {"direct": addressed_brain, "channel": "insight"}
+                            )
+
                         return await execute_dispatch(
-                            res.content[0].text, 
+                            raw_out, 
                             "Brain" if self.brain_online else "Brain (Shadow)",
                             {"direct": addressed_brain, "channel": "insight"}
                         )
