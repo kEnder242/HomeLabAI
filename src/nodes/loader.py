@@ -227,8 +227,13 @@ class BicameralNode:
                         }
                         async with session.post(gen_url, json=payload, timeout=60) as r:
                             data = await r.json()
-                            raw_resp = data.get("response", "")
+                            raw_resp = data.get("response", "").strip()
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Remote): '{raw_resp[:50]}...'")
+                            
+                            # [FEAT-077] Quality-Gate: If remote response is empty/dots, return sentinel for failover
+                            if not raw_resp or raw_resp == "..." or raw_resp == ".":
+                                logging.warning(f"[{self.name}] Remote host returned empty/dots. Triggering internal quality fallback.")
+                                return "INTERNAL_QUALITY_FALLBACK"
                             return raw_resp
                     else:
                         # Use Chat API for Local (Alignment)
