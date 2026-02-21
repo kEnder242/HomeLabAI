@@ -176,10 +176,10 @@ class BicameralNode:
                 "parameters": {"text": "Egad! Weights offline!"},
             })
 
-        unified = self.unify_prompt(query, context, memory)
         async with aiohttp.ClientSession() as session:
             try:
                 if engine == "VLLM":
+                    unified = self.unify_prompt(query, context, memory)
                     payload = {
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
@@ -204,13 +204,25 @@ class BicameralNode:
                             })
                         return msg["content"]
                 else:
+                    # [STABILITY] Use Chat API for Ollama to leverage internal templates
+                    chat_url = url.replace("/api/generate", "/api/chat")
+                    messages = [{"role": "system", "content": self.system_prompt}]
+                    
+                    if memory:
+                        messages.append({"role": "system", "content": f"MEMORY: {memory}"})
+                    if context:
+                        messages.append({"role": "system", "content": f"RECENT CONTEXT: {context}"})
+                    
+                    messages.append({"role": "user", "content": query})
+                    
                     payload = {
-                        "model": model, "prompt": unified,
+                        "model": model,
+                        "messages": messages,
                         "stream": False
                     }
-                    async with session.post(url, json=payload, timeout=60) as r:
+                    async with session.post(chat_url, json=payload, timeout=60) as r:
                         data = await r.json()
-                        raw_resp = data.get("response", "")
+                        raw_resp = data.get("message", {}).get("content", "")
                         logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
                         return raw_resp
             except Exception as e:

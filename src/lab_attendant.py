@@ -175,26 +175,25 @@ class LabAttendant:
         await self.handle_start(MockReq())
 
     async def log_monitor_loop(self):
-        """Persistent watch for READY signal."""
+        """Persistent watch for READY signal. Seeks to end to avoid stale signals."""
         self.ready_event.clear()
-        while True:
-            if os.path.exists(SERVER_LOG):
-                try:
-                    with open(SERVER_LOG, "r") as f:
-                        while True:
-                            line = f.readline()
-                            if not line:
-                                await asyncio.sleep(0.5)
-                                if not lab_process or lab_process.poll() is not None:
-                                    break
-                                continue
-                            if "[READY] Lab is Open" in line:
-                                self.ready_event.set()
-                                await self.update_status_json()
-                                return
-                except Exception:
-                    pass
-            await asyncio.sleep(1)
+        if os.path.exists(SERVER_LOG):
+            with open(SERVER_LOG, "r") as f:
+                # Seek to end of existing log to only catch NEW boot signals
+                f.seek(0, os.SEEK_END)
+                while True:
+                    line = f.readline()
+                    if not line:
+                        await asyncio.sleep(0.5)
+                        if not lab_process or lab_process.poll() is not None:
+                            break
+                        continue
+                    if "[READY] Lab is Open" in line:
+                        self.ready_event.set()
+                        logger.info("[WATCHDOG] Lab reported READY signal.")
+                        await self.update_status_json()
+                        return
+        await asyncio.sleep(1)
 
     async def handle_start(self, request):
         global lab_process, current_lab_mode, current_model

@@ -825,6 +825,7 @@ class AcmeLab:
 
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
+        sys.stderr.flush() # Ensure signal is written to the log file
         await self.broadcast({
             "type": "status", "message": "Mind is ONLINE. Lab is Open.", "state": "ready"
         })
