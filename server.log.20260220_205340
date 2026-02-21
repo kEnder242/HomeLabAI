@@ -1,0 +1,17 @@
+[0;93m2026-02-20 20:53:29.628396008 [W:onnxruntime:Default, device_discovery.cc:164 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:89 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+2026-02-20 20:53:31,529 - [LAB] INFO - NumExpr defaulting to 8 threads.
+2026-02-20 20:53:31,529 - [LAB] INFO - NumExpr defaulting to 8 threads.
+2026-02-20 20:53:33,005 - [LAB] INFO - The multistorageclient package is available.
+2026-02-20 20:53:33,005 - [LAB] INFO - The multistorageclient package is available.
+2026-02-20 20:53:34,740 - [LAB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-20 20:53:34,740 - [LAB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-20 20:53:34,742 - [LAB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-20 20:53:34,742 - [LAB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-20 20:53:34,795 - [LAB] WARNING - fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-20 20:53:34,795 - [LAB] WARNING - fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-20 20:53:38,376 - [LAB] WARNING - OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-20 20:53:38,376 - [LAB] WARNING - OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-20 20:53:38,403 - [LAB] INFO - Final configuration contains 0 exporter(s)
+2026-02-20 20:53:38,403 - [LAB] INFO - Final configuration contains 0 exporter(s)
+2026-02-20 20:53:38,403 - [LAB] WARNING - No exporters were provided. This means that no telemetry data will be collected.
+2026-02-20 20:53:38,403 - [LAB] WARNING - No exporters were provided. This means that no telemetry data will be collected.

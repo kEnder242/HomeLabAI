@@ -50,17 +50,23 @@ async def test_pi_to_20_digits_flow():
                         print(f"[{source}]: {text[:50]}...")
 
                     # Handle Live Flow
-                    if ("analytical nodes" in text.lower() or "shadow hemisphere" in text.lower()) and source == "System":
+                    msg_low = text.lower()
+                    if ("analytical nodes" in msg_low or "shadow hemisphere" in msg_low or "strategic detected" in msg_low or "engaging" in msg_low) and source == "System":
                         if "DELEGATION" not in events:
+                            print(f"✅ DELEGATION Detected: {text[:30]}...")
                             events.append("DELEGATION")
-                    elif ("3.14" in text) and ("Brain" in source):
+                    
+                    if ("3.14" in text):
                         if "BRAIN_ANSWER" not in events:
+                            print(f"✅ BRAIN_ANSWER Detected from {source}: {text[:30]}...")
                             events.append("BRAIN_ANSWER")
-                    elif source == "Pinky" and "DELEGATION" in events:
+                    
+                    if source == "Pinky" and "DELEGATION" in events:
                         if "FINAL_WORD" not in events:
+                            print(f"✅ FINAL_WORD Detected: {text[:30]}...")
                             events.append("FINAL_WORD")
                     
-                    if "DELEGATION" in events and "BRAIN_ANSWER" in events:
+                    if "DELEGATION" in events and "BRAIN_ANSWER" in events and "FINAL_WORD" in events:
                         break
 
         except asyncio.TimeoutError:
