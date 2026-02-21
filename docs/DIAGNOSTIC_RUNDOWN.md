@@ -27,6 +27,7 @@ These tools verify the `systemd` managed infrastructure and the Hub's resilience
 | :--- | :--- | :--- |
 | **Gauntlet** | `src/debug/test_lifecycle_gauntlet.py` | Stress tests the Hub with rapid connect/disconnect cycles. Essential for verifying `aiohttp` resilience. |
 | **Attendant Sanity** | `src/debug/test_attendant_sanity.py` | Verifies the Lab Attendant's HTTP API (Start/Stop/Status/Wait_Ready). |
+| **Shutdown Resilience**| `src/debug/test_shutdown_resilience.py`| Verifies that the Lab can shut down via native tool flow. |
 | **Liveliness** | `src/test_liveliness.py` | Standard heartbeat check. Verifies the WebSocket port is open and the `READY` state is achievable. |
 | **Shutdown Flow** | `src/test_shutdown.py` | Validates clean exit sequences and PID cleanup for all lab processes. |
 | **Interrupt Test** | `src/test_interrupt.py` | Tests handling of SIGINT/KeyboardInterrupt across the multi-process stack. |
@@ -40,6 +41,7 @@ Ensures the Lab maintains its Bicameral character without falling into "Chatter 
 | :--- | :--- | :--- |
 | **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends \"Thinking\" tics during long Brain reasoning cycles. |
 | **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures \"Certainly!\" filler is stripped. |
+| **Contextual Echo** | `src/debug/test_contextual_echo.py` | Verifies persona-aware echo behavior. |
 | **MIB Wipe** | `src/debug/test_mib_wipe.py` | Verifies the \"Neuralyzer\" memory clearing mechanic and context cap. |
 | **Banter Decay** | `src/debug/test_banter_decay.py`| Verifies that reflexes slow down correctly during idle states. |
 | **Echo Check** | `src/test_echo.py` | Verifies basic text/binary processing in the \"Talk & Read\" loop. |
@@ -52,7 +54,9 @@ Validates "Thought Partner" capabilities, including delegation, tool access, and
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
-| **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the "Direct Answer First" rule. |
+| **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the \"Direct Answer First\" rule. |
+| **Iron Gate Audit** | `src/debug/gate_triage_audit.py`| Verifies the hardened gate for casual vs. strategic triage. |
+| **Dispatch Logic** | `src/debug/test_dispatch_logic.py` | Verifies the hardened priority dispatcher and hallucination shunt. |
 | **Round Table** | `src/test_round_table.py` | Validates the Pinky -> Brain handover logic and shared context persistence. |
 | **Tool Registry** | `src/debug/test_tool_registry.py` | **CRITICAL.** Confirms all physical MCP tools are visible to the agentic layer. |
 | **Strategic Sentinel**| `src/debug/test_strategic_sentinel.py`| Verifies Amygdala filtering and typing-aware reflex suppression. |
@@ -83,6 +87,7 @@ Verifies the NeMo-based EarNode and real-time STT capabilities.
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Audio Pipeline** | `src/test_audio_pipeline.py` | Tests the Float32 -> Int16 conversion and STT streaming path. |
+| **GUI Flows** | `src/debug/test_gui_flows.py` | Verifies browser-to-server UI event handshakes. |
 | **EarNode Isolated** | `src/test_earnode_isolated.py` | Verifies EarNode initialization and CUDA Graph behavior in isolation. |
 | **Web Binary** | `src/debug/test_web_binary.py` | Tests the integrity of audio chunks sent via WebSocket binary frames. |
 
@@ -106,7 +111,17 @@ These instruments verify the system's ability to degrade gracefully under hardwa
 | :--- | :--- | :--- |
 | **Engine Swap** | `src/debug/test_engine_swap.py` | Verifies the hot-swap from vLLM to Ollama fallback. |
 | **Downshift** | `src/debug/test_downshift_protocol.py`| Verifies transition from Gemma 2 2B to Llama-3.2-1B during multi-use peaks. |
-| **VRAM Guard** | `src/test_vram_guard.py` | Validates the SIGTERM "Deep Sleep" suspension. |
+| **VRAM Guard** | `src/test_vram_guard.py` | Validates the SIGTERM \"Deep Sleep\" suspension. |
+
+---
+
+## 🏗️ 9. Core Framework Audits
+Low-level verification of underlying libraries and architectural constraints.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Forensic Logging** | `src/debug/test_forensic_logging.py`| Verifies the Montana Protocol and log rotation. |
+| **aiohttp Stability** | `src/debug/test_aiohttp.py` | Verifies WebSocket handshake resilience and async loop stability. |
 
 ---
 **Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py` and `src/debug/verify_sprint.py` to ensure the core is still standing.
