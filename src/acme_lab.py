@@ -552,10 +552,10 @@ class AcmeLab:
                 tool = data.get("tool") if isinstance(data, dict) else None
                 params = data.get("parameters", {}) if isinstance(data, dict) else {}
 
-                is_shutdown = tool == "close_lab" or "goodnight" in raw_text.lower()
+                is_shutdown = tool == "close_lab" or "close_lab()" in raw_text or "goodnight" in raw_text.lower()
                 if is_shutdown:
                     await self.broadcast({
-                        "brain": "Goodnight. Closing Lab.", "brain_source": "System"
+                        "brain": "Goodnight. Closing Lab.", "brain_source": "System", "type": "shutdown"
                     })
                     self.shutdown_event.set()
                     return True
@@ -565,8 +565,14 @@ class AcmeLab:
                     "reply_to_user", "ask_brain", "deep_think", "list_cabinet",
                     "read_document", "peek_related_notes", "write_draft",
                     "generate_bkm", "build_semantic_map", "peek_strategic_map",
-                    "discuss_offline"
+                    "discuss_offline", "select_file", "notify_file_open"
                 ]
+
+                # [FEAT-074] Workbench Routing
+                if tool == "select_file":
+                    fname = params.get("filename")
+                    await self.broadcast({"type": "file_content_request", "filename": fname})
+                    return True
 
                 if tool == "discuss_offline":
                     topic = params.get("topic") or query
