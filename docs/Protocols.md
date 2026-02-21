@@ -126,6 +126,13 @@
 4.  **Lint-Gate**: Runs `ruff` check on the patched file. If lint fails, it restores the original content and reports the errors.
 5.  **Usage**: Prefer this for any complex, multi-line logic changes where string matching is brittle.
 
+## BKM-013: Pager-Aware Shell Execution (Non-Blocking)
+**Objective**: Prevent the Gemini CLI watchdog from terminating processes that are waiting for user input.
+
+1.  **Mandatory Flags**: All `journalctl` and `systemctl` commands MUST include the `--no-pager` flag.
+2.  **Environment**: Use `PAGER=cat` for `git log` or other tools that default to a pager.
+3.  **Rationale**: In an agentic session, there is no \"User\" to press SPACE. If a command hangs in a pager, it produces no STDOUT, triggering the CLI orchestrator to kill the process as a perceived \"hang.\"
+
 ## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
 **Objective**: Restore technical context after a deep work cycle.
 

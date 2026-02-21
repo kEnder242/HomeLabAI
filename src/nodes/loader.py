@@ -225,8 +225,16 @@ class BicameralNode:
                             "prompt": unified,
                             "stream": False
                         }
+                        
+                        # [FEAT-078] Forensic Mirroring (Pre-Send)
+                        self._mirror_forensics("send", payload, gen_url)
+
                         async with session.post(gen_url, json=payload, timeout=60) as r:
                             data = await r.json()
+                            
+                            # [FEAT-078] Forensic Mirroring (Post-Recv)
+                            self._mirror_forensics("recv", data)
+
                             raw_resp = data.get("response", "").strip()
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Remote): '{raw_resp[:50]}...'")
                             
@@ -253,8 +261,16 @@ class BicameralNode:
                             "messages": messages,
                             "stream": False
                         }
+
+                        # [FEAT-078] Forensic Mirroring (Pre-Send)
+                        self._mirror_forensics("send", payload, chat_url)
+
                         async with session.post(chat_url, json=payload, timeout=60) as r:
                             data = await r.json()
+
+                            # [FEAT-078] Forensic Mirroring (Post-Recv)
+                            self._mirror_forensics("recv", data)
+
                             raw_resp = data.get("message", {}).get("content", "")
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Local): '{raw_resp[:50]}...'")
                             return raw_resp
@@ -263,6 +279,21 @@ class BicameralNode:
                     "tool": "reply_to_user",
                     "parameters": {"text": f"Error: {e}"},
                 })
+
+    def _mirror_forensics(self, phase, data, url=None):
+        """[FEAT-078] Internal helper to write black-box data to logs."""
+        try:
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+            log_path = os.path.join(log_dir, f"forensic_{self.name}.json")
+            
+            mode = "w" if phase == "send" else "a"
+            entry = {"phase": phase, "timestamp": time.time(), "data": data}
+            if url: entry["url"] = url
+            
+            with open(log_path, mode) as f:
+                f.write(json.dumps(entry, indent=2) + "\n")
+        except Exception:
+            pass
 
     def run(self):
         self.mcp.run()
