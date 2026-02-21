@@ -209,6 +209,7 @@ class AcmeLab:
                             break
 
                 # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
+                # [FEAT-082] Priming: Use a longer timeout for the first load (Cold Start)
                 p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
                 payload = {
                     "model": probe_model, 
@@ -216,8 +217,12 @@ class AcmeLab:
                     "stream": False,
                     "options": {"num_predict": 1}
                 }
-                async with session.post(p_url, json=payload, timeout=5) as r:
-                    self.brain_online = r.status == 200
+                timeout = 15 if not self.brain_online else 5
+                async with session.post(p_url, json=payload, timeout=timeout) as r:
+                    is_ok = r.status == 200
+                    if is_ok and not self.brain_online:
+                        logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model}")
+                    self.brain_online = is_ok
         except Exception as e:
             logging.debug(f"[HEALTH] Brain probe failed: {e}")
             self.brain_online = False
@@ -342,12 +347,16 @@ class AcmeLab:
                 "message": "Lab foyer is open.",
             }))
             
+            # [FEAT-082] Neural Priming: Wake up the Brain immediately on connect
+            # This forces KENDER to start loading the model into VRAM before the user even types.
+            asyncio.create_task(self.check_brain_health())
+            
             # [FEAT-072] Morning Briefing
             asyncio.create_task(self.trigger_morning_briefing(ws))
             
             # [FEAT-026] Initial Brain Status Feedback
             await ws.send_str(json.dumps({
-                "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'OFFLINE'}",
+                "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'INITIATING...'}",
                 "brain_source": "System",
                 "channel": "insight"
             }))
