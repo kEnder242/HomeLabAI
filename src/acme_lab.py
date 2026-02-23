@@ -605,11 +605,11 @@ class AcmeLab:
 
         # 1. Strategic Sentinel Logic
         strat_keys = [
-            "regression", "validation", "scars", "root cause",
-            "race condition", "unstable", "silicon", "optimize",
+            "bottleneck", "optimization", "complex", "root cause",
+            "race condition", "unstable", "design", "calculate",
         ]
         
-        # [FEAT-025] Amygdala Logic: Use 1B model as smart filter when typing
+        # [FEAT-032] Amygdala Logic: Use 1B model as smart filter when typing
         is_strategic = False
         if self.mic_active:
             # Voice Mode: Use keyword-based sentinel for speed
