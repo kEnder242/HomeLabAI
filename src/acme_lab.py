@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 import socket
 import sys
 import time
@@ -627,9 +628,19 @@ class AcmeLab:
         addressed_brain = "brain" in query.lower()
 
         async def execute_dispatch(raw_text, source, context_flags=None):
-            """Hardened Priority Dispatcher with Hallucination Shunt."""
+            """Hardened Priority Dispatcher with Hallucination Shunt and [FEAT-110] Banter Sanitizer."""
             logging.info(f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'")
             
+            # [FEAT-110] Shadow Moat: Strip Pinky-isms from Brain sources
+            if "Brain" in source:
+                # Case-insensitive removal of common interjections and roleplay banter
+                banter_pattern = r'\b(narf|poit|zort|egad|trotro)\b'
+                raw_text = re.sub(banter_pattern, '', raw_text, flags=re.IGNORECASE).strip()
+                # Strip leading commas/periods/quotes/spaces left behind by sanitization
+                raw_text = re.sub(r'^[,\.\!\?\s\"\'\d]+', '', raw_text).strip()
+                # Also strip any roleplay actions like *adjusts goggles*
+                raw_text = re.sub(r'\*[^*]+\*', '', raw_text).strip()
+
             # [FEAT-026] Brain Voice Restoration: Force raw text for Architect
             if source == "Brain" and "{" not in raw_text:
                 await self.broadcast({"brain": raw_text, "brain_source": "Brain"})
@@ -821,7 +832,7 @@ class AcmeLab:
         # [FEAT-108] Dynamic Shunt Hint
         pinky_context = ""
         if is_strategic and self.brain_online:
-            pinky_context = "[STRATEGIC_SHUNT] Task is already being analyzed by the Sovereign. Your role: Provide organic technical filler (Hmm..., Wait..., Let me check...) and तकनीकी (technical) acknowledgment ONLY. Do NOT attempt to solve the complex task yourself."
+            pinky_context = "[STRATEGIC_SHUNT] Reasoning delegated to Sovereign. Action: Provide high-fidelity coordination filler and technical acknowledgment. Do NOT attempt derivation."
 
         if "pinky" in self.residents:
             t_pinky = asyncio.create_task(
@@ -888,9 +899,16 @@ class AcmeLab:
                     "brain_source": "System",
                     "channel": "insight"
                 })
+                # [FEAT-111] Cognitive Identity Lock: Hard constraints for Shadow Brain
+                failover_prompt = (
+                    "[FAILOVER ARCHITECT]: You are acting as The Brain. "
+                    "STRICT IDENTITY: Arrogant systems architect. "
+                    "ANTI-BANTER: No 'Narf', no 'Poit', no roleplay actions (*...*). "
+                    "CORE DIRECTIVE: Be laconic, technical, and precise. Speak with the brevity of authority."
+                )
                 t_shadow = asyncio.create_task(
                     self.residents["pinky"].call_tool(
-                        name="facilitate", arguments={"query": f"[FAILOVER ARCHITECT]: {query}", "context": ""}
+                        name="facilitate", arguments={"query": f"{failover_prompt} Query: {query}", "context": ""}
                     )
                 )
                 dispatch_map[t_shadow] = "Brain (Shadow)"
