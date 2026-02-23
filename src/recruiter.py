@@ -124,6 +124,21 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None):
         logging.error(f"[RECRUITER] Pager Notification Failed: {e}")
 
     logging.info(f"Recruitment Drive Complete. Brief saved to: {brief_path}")
+
+    # [FEAT-088] Recruiter Dashboard Reporting
+    try:
+        report_path = os.path.join(BASE_DIR, "../../Portfolio_Dev/field_notes/data/recruiter_report.json")
+        report = {
+            "last_run": datetime.datetime.now().isoformat(),
+            "brief_path": os.path.basename(brief_path),
+            "jobs_found": len(jobs),
+            "top_targets": [f"{j['title']} @ {j['company']}" for j in jobs[:3]]
+        }
+        with open(report_path, "w") as f:
+            json.dump(report, f, indent=2)
+    except Exception as e:
+        logging.error(f"[RECRUITER] Report Generation Failed: {e}")
+
     return brief_path
 
 

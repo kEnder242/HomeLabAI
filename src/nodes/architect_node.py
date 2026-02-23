@@ -5,6 +5,7 @@ import os
 import json
 import glob
 import re
+import datetime
 
 # Logging
 logging.basicConfig(
@@ -45,49 +46,74 @@ async def generate_bkm(topic: str, category: str = "validation") -> str:
 
 @mcp.tool()
 async def build_semantic_map() -> str:
-    """Scans artifacts and refactors them into hierarchy."""
-    logging.info("Architect is refactoring hierarchy...")
+    """Refactors artifacts into a 3-layer hierarchy: Strategic, Analytical, Tactical."""
+    logging.info("Architect is deepening the semantic map...")
     artifacts = glob.glob(os.path.join(FIELD_NOTES_DATA, "20*.json"))
+    
     hierarchy = {
-        "strategic": [],
-        "technical_themes": {},
-        "tactical_count": 0
+        "strategic_layer": [], # Rank 4 (Diamond) anchors
+        "analytical_layer": {}, # Theme-based insight clusters
+        "tactical_layer": {
+            "total_events": 0,
+            "year_distribution": {}
+        },
+        "last_refactor": datetime.datetime.now().isoformat()
     }
-    theme_keywords = ["telemetry", "silicon", "validation", "automation"]
+    
+    theme_keywords = ["telemetry", "silicon", "validation", "automation", "agentic", "architecture"]
 
     for art_path in artifacts:
         year = os.path.basename(art_path).replace(".json", "")
+        hierarchy["tactical_layer"]["year_distribution"][year] = 0
+        
         try:
             with open(art_path, 'r') as f:
                 data = json.load(f)
                 if not isinstance(data, list):
                     continue
-                hierarchy["tactical_count"] += len(data)
+                
+                hierarchy["tactical_layer"]["total_events"] += len(data)
+                hierarchy["tactical_layer"]["year_distribution"][year] = len(data)
+                
                 for item in data:
                     rank = item.get('rank', 2)
                     summary = item.get('summary', '')
+                    technical_gem = item.get('technical_gem', '')
+                    
+                    # Layer 1: Strategic (Diamond)
                     if rank >= 4:
-                        hierarchy["strategic"].append({
-                            "year": year, "summary": summary,
-                            "gem": item.get('technical_gem', '')
+                        hierarchy["strategic_layer"].append({
+                            "year": year, 
+                            "anchor": summary[:100],
+                            "gem": technical_gem
                         })
+                    
+                    # Layer 2: Analytical (Themes)
                     for kw in theme_keywords:
-                        if kw in summary.lower():
-                            if kw not in hierarchy["technical_themes"]:
-                                hierarchy["technical_themes"][kw] = []
-                            hierarchy["technical_themes"][kw].append({
-                                "year": year, "summary": summary
-                            })
-        except Exception:
-            pass
+                        summary_low = str(summary).lower() if summary else ""
+                        gem_low = str(technical_gem).lower() if technical_gem else ""
+                        
+                        if kw in summary_low or kw in gem_low:
+                            if kw not in hierarchy["analytical_layer"]:
+                                hierarchy["analytical_layer"][kw] = []
+                            # Store unique technical gems per theme
+                            if technical_gem and str(technical_gem) not in [str(g.get('gem')) for g in hierarchy["analytical_layer"][kw]]:
+                                hierarchy["analytical_layer"][kw].append({
+                                    "year": year, 
+                                    "gem": technical_gem,
+                                    "summary": summary[:150] if summary else ""
+                                })
+        except Exception as e:
+            logging.error(f"Error processing {art_path}: {e}")
 
-    for kw in hierarchy["technical_themes"]:
-        hierarchy["technical_themes"][kw] = hierarchy["technical_themes"][kw][:10]
+    # Prune themes to top 15 high-fidelity entries
+    for kw in hierarchy["analytical_layer"]:
+        hierarchy["analytical_layer"][kw] = hierarchy["analytical_layer"][kw][:15]
 
     with open(SEMANTIC_MAP_FILE, 'w') as f:
         json.dump(hierarchy, f, indent=2)
 
-    return f"Hierarchy refactored. {len(hierarchy['strategic'])} anchors identified."
+    return f"Map Deepened. {len(hierarchy['strategic_layer'])} strategic anchors and {len(hierarchy['analytical_layer'])} analytical themes clustered."
 
 
 @mcp.tool()

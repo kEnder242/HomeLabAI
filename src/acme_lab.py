@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import socket
 import sys
 import time
 from typing import Dict, Set
@@ -21,15 +22,39 @@ import internal_debate
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.8.0"  # Unity Base & Shadow Dispatch
-BRAIN_HEARTBEAT_URL = "http://localhost:11434/api/tags"
+VERSION = "3.8.1"  # Force-priming and Witty Preamble
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
+INFRA_CONFIG = os.path.join(LAB_DIR, "config/infrastructure.json")
 NIGHTLY_DIALOGUE_FILE = os.path.join(WORKSPACE_DIR, "field_notes/data/nightly_dialogue.json")
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
+
+def resolve_brain_url():
+    """Resolves the Brain's heartbeat URL from infrastructure config."""
+    try:
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, 'r') as f:
+                infra = json.load(f)
+            primary = infra.get("nodes", {}).get("brain", {}).get("primary", "localhost")
+            host_cfg = infra.get("hosts", {}).get(primary, {})
+            ip_hint = host_cfg.get("ip_hint", "127.0.0.1")
+            port = host_cfg.get("ollama_port", 11434)
+            
+            # Dynamic resolution
+            try:
+                ip = socket.gethostbyname(primary)
+            except Exception:
+                ip = ip_hint
+                
+            return f"http://{ip}:{port}/api/tags"
+    except Exception:
+        pass
+    return "http://localhost:11434/api/tags"
+
+BRAIN_HEARTBEAT_URL = resolve_brain_url()
 
 
 _logger_initialized = False
@@ -186,7 +211,7 @@ class AcmeLab:
                     return task.result()
         return task.result()
 
-    async def check_brain_health(self):
+    async def check_brain_health(self, force=False):
         """Hardened Health Check: Perform a single-token generation probe."""
         try:
             async with aiohttp.ClientSession() as session:
@@ -211,8 +236,8 @@ class AcmeLab:
 
                 # 2. PROBE: Attempt a single-token generation to verify VRAM/Engine availability
                 # [FEAT-085] Intelligent Keep-Alive: Only perform heavy priming if connected
-                # or if the Brain was previously offline.
-                should_prime = not self.brain_online or (time.time() - self._last_brain_prime > 120 and self.connected_clients)
+                # or if the Brain was previously offline, OR IF FORCED (Handshake).
+                should_prime = force or not self.brain_online or (time.time() - self._last_brain_prime > 120 and self.connected_clients)
                 
                 if should_prime:
                     p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
@@ -222,12 +247,12 @@ class AcmeLab:
                         "stream": False,
                         "options": {"num_predict": 1}
                     }
-                    timeout = 15 if not self.brain_online else 5
+                    timeout = 15 if not self.brain_online or force else 5
                     async with session.post(p_url, json=payload, timeout=timeout) as r:
                         is_ok = r.status == 200
                         if is_ok:
-                            if not self.brain_online:
-                                logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model}")
+                            if not self.brain_online or force:
+                                logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model} (Force={force})")
                             self._last_brain_prime = time.time()
                         self.brain_online = is_ok
                 else:
@@ -410,8 +435,13 @@ class AcmeLab:
                     data = json.loads(message.data)
                     m_type = data.get("type")
                     if m_type == "handshake":
-                        # [FEAT-087] Intelligent Handshake Priming
-                        asyncio.create_task(self.check_brain_health())
+                        # [FEAT-087] Intelligent Handshake Priming: FORCE model loading
+                        await ws.send_str(json.dumps({
+                            "brain": "Priming Brain...",
+                            "brain_source": "System",
+                            "channel": "insight"
+                        }))
+                        asyncio.create_task(self.check_brain_health(force=True))
                         
                         if "archive" in self.residents:
                             try:
@@ -800,8 +830,9 @@ class AcmeLab:
                     logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
                 
                 # [FEAT-026] Engagement Feedback
+                # [FEAT-086] Tiered Brain Response: Immediate Preamble
                 await self.broadcast({
-                    "brain": "Engaging Strategic Sovereign...",
+                    "brain": "Strategic Sovereignty engaging... Let me think about that.",
                     "brain_source": "System",
                     "channel": "insight"
                 })
