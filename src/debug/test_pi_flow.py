@@ -36,11 +36,11 @@ async def test_pi_to_20_digits_flow():
         await ws.send(json.dumps({"type": "text_input", "content": query}))
 
         # 3. Monitor for Flow Events
-        events = []
+        events = set()
         try:
             # High timeout for Brain reasoning
             async with asyncio.timeout(60):
-                while len(events) < 2: # At least Delegation and Answer
+                while len(events) < 3: # Coordination, Answer, and Completion
                     msg = await ws.recv()
                     data = json.loads(msg)
                     
@@ -51,31 +51,33 @@ async def test_pi_to_20_digits_flow():
 
                     # Handle Live Flow
                     msg_low = text.lower()
-                    if ("analytical nodes" in msg_low or "shadow hemisphere" in msg_low or "strategic detected" in msg_low or "engaging" in msg_low) and source == "System":
-                        if "DELEGATION" not in events:
-                            print(f"✅ DELEGATION Detected: {text[:30]}...")
-                            events.append("DELEGATION")
                     
+                    # 1. Detection of Coordination (Signal or System)
+                    if source in ["System", "Brain (Signal)"] or ("check with" in text):
+                        if "COORDINATION" not in events:
+                            print(f"✅ COORDINATION Detected: {text[:30]}...")
+                            events.add("COORDINATION")
+                    
+                    # 2. Detection of Answer
                     if ("3.14" in text):
-                        if "BRAIN_ANSWER" not in events:
-                            print(f"✅ BRAIN_ANSWER Detected from {source}: {text[:30]}...")
-                            events.append("BRAIN_ANSWER")
+                        if "ANSWER" not in events:
+                            print(f"✅ ANSWER Detected from {source}: {text[:30]}...")
+                            events.add("ANSWER")
                     
-                    if source == "Pinky" and "DELEGATION" in events:
-                        if "FINAL_WORD" not in events:
-                            print(f"✅ FINAL_WORD Detected: {text[:30]}...")
-                            events.append("FINAL_WORD")
-                    
-                    if "DELEGATION" in events and "BRAIN_ANSWER" in events and "FINAL_WORD" in events:
-                        break
+                    # 3. Final Conclusion (Brain Deep)
+                    if "COORDINATION" in events and "ANSWER" in events:
+                        if source == "Brain" and len(text.split()) > 20:
+                            if "COMPLETION" not in events:
+                                print(f"✅ COMPLETION Detected: {text[:30]}...")
+                                events.add("COMPLETION")
 
         except asyncio.TimeoutError:
             pytest.fail(f"Flow timed out. Events captured: {events}")
 
         # Assert full flow
-        assert "DELEGATION" in events, "Pinky failed to delegate."
-        assert "BRAIN_ANSWER" in events, "Brain failed to provide the digits."
-        assert "FINAL_WORD" in events, "Mind failed to conclude the interaction."
+        assert "COORDINATION" in events, "Lab failed to coordinate agents."
+        assert "ANSWER" in events, "Lab failed to provide the digits."
+        assert "COMPLETION" in events, "Lab failed to conclude the interaction."
 
 if __name__ == "__main__":
     asyncio.run(test_pi_to_20_digits_flow())

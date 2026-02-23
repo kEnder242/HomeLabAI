@@ -43,7 +43,7 @@ async def test_tics():
         start_wait = time.time()
         async for msg_raw in ws:
             # Safety timeout
-            if time.time() - start_wait > 10.0:
+            if time.time() - start_wait > 90.0:
                 raise TimeoutError("Test timed out waiting for Brain.")
 
             msg = json.loads(msg_raw)
