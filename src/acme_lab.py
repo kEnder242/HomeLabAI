@@ -814,10 +814,15 @@ class AcmeLab:
         # Use a dict to map tasks back to their source node reliably
         dispatch_map = {}
         
+        # [FEAT-108] Dynamic Shunt Hint
+        pinky_context = ""
+        if is_strategic and self.brain_online:
+            pinky_context = "[STRATEGIC_SHUNT] Task already shunted to Brain. Provide organic filler and technical acknowledgment ONLY. Do NOT delegate."
+
         if "pinky" in self.residents:
             t_pinky = asyncio.create_task(
                 self.residents["pinky"].call_tool(
-                    name="facilitate", arguments={"query": query, "context": ""}
+                    name="facilitate", arguments={"query": query, "context": pinky_context}
                 )
             )
             dispatch_map[t_pinky] = "Pinky"
@@ -840,35 +845,41 @@ class AcmeLab:
                 else:
                     logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
                 
-                # [FEAT-026] Engagement Feedback
-                # [FEAT-086] Tiered Brain Response: Immediate Preamble
-                # [FEAT-094] Lively Room Banter: Pinky filler
+                # [FEAT-108] Inter-Agent Handover Signal: Sequential Brain Tasks
                 if is_strategic:
-                    await self.broadcast({
-                        "brain": "Hmm... let me check with the Sovereign. Narf!",
-                        "brain_source": "Pinky",
-                    })
-                    await self.broadcast({
-                        "brain": "Strategic Sovereignty engaging... Let me think about that.",
-                        "brain_source": "System",
-                        "channel": "insight"
-                    })
+                    async def brain_strategy_chain():
+                        try:
+                            # 1. Quip
+                            res_quip = await self.residents["brain"].call_tool(
+                                name="shallow_think", arguments={"task": f"[HANDOVER SIGNAL]: {query}"}
+                            )
+                            await execute_dispatch(res_quip.content[0].text, "Brain (Signal)")
+                            
+                            # 2. Deep Think
+                            ctx = "\n".join(self.recent_interactions)
+                            res_deep = await self.monitor_task_with_tics(
+                                self.residents["brain"].call_tool(
+                                    name="deep_think", arguments={"task": brain_task, "context": ctx}
+                                )
+                            )
+                            await execute_dispatch(res_deep.content[0].text, "Brain")
+                        except Exception as e:
+                            logging.error(f"[CHAIN] Brain chain failed: {e}")
+
+                    asyncio.create_task(brain_strategy_chain())
 
                 # [FEAT-048] Monitor long-running Brain tasks
                 # [FEAT-057] Deep Context: Send full interaction history
-                ctx = "\n".join(self.recent_interactions)
-                
-                # tier_think logic: deep_think for strategy, shallow_think for casual/short quips
-                think_tool = "deep_think" if is_strategic else "shallow_think"
-                
-                t_brain = asyncio.create_task(
-                    self.monitor_task_with_tics(
-                        self.residents["brain"].call_tool(
-                            name=think_tool, arguments={"task": brain_task, "context": ctx}
+                if not is_strategic:
+                    ctx = "\n".join(self.recent_interactions)
+                    t_brain = asyncio.create_task(
+                        self.monitor_task_with_tics(
+                            self.residents["brain"].call_tool(
+                                name="shallow_think", arguments={"task": brain_task, "context": ctx}
+                            )
                         )
                     )
-                )
-                dispatch_map[t_brain] = "Brain"
+                    dispatch_map[t_brain] = "Brain"
             else:
                 # [FAILOVER] Use Pinky node for parallel strategy if brain offline
                 logging.warning("[FAILOVER] Sovereign offline for parallel dispatch. Engaging Shadow.")

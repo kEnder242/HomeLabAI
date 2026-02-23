@@ -244,7 +244,7 @@ class BicameralNode:
                         "tool_choice": "auto",
                         "max_tokens": max_tokens,
                     }
-                    async with session.post(url, json=payload, timeout=60) as r:
+                    async with session.post(url, json=payload, timeout=120) as r:
                         data = await r.json()
                         if "choices" not in data:
                             logging.error(f"[{self.name}] vLLM Error: {data}")
@@ -281,7 +281,7 @@ class BicameralNode:
                         # [FEAT-078] Forensic Mirroring (Pre-Send)
                         self._mirror_forensics("send", payload, gen_url)
 
-                        async with session.post(gen_url, json=payload, timeout=60) as r:
+                        async with session.post(gen_url, json=payload, timeout=120) as r:
                             data = await r.json()
                             
                             # [FEAT-078] Forensic Mirroring (Post-Recv)
@@ -324,7 +324,7 @@ class BicameralNode:
                         # [FEAT-078] Forensic Mirroring (Pre-Send)
                         self._mirror_forensics("send", payload, chat_url)
 
-                        async with session.post(chat_url, json=payload, timeout=60) as r:
+                        async with session.post(chat_url, json=payload, timeout=120) as r:
                             data = await r.json()
 
                             # [FEAT-078] Forensic Mirroring (Post-Recv)
