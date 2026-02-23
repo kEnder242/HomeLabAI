@@ -30,6 +30,16 @@ async def deep_think(task: str, context: str = "") -> str:
 
 
 @mcp.tool()
+async def shallow_think(task: str, context: str = "") -> str:
+    """Fast Reflex: Provide a short, immediate response for greetings or simple status checks."""
+    shallow_prompt = (
+        "You are The Brain. Fast mode. Reply in < 15 words. "
+        "Acknowledge Pinky with 'Yes, Pinky...' if appropriate. No technical deep dives."
+    )
+    return await node.generate_response(task, context, system_override=shallow_prompt, max_tokens=50)
+
+
+@mcp.tool()
 async def update_whiteboard(content: str) -> str:
     """Persistent logic: Write thoughts to the shared whiteboard."""
     try:
