@@ -65,9 +65,8 @@ def reclaim_logger():
     
     root = logging.getLogger()
     # Aggressively clear all existing handlers to prevent double-logging
-    while root.handlers:
-        root.removeHandler(root.handlers[0])
-        
+    root.handlers = []
+    
     fmt = logging.Formatter("%(asctime)s - [LAB] %(levelname)s - %(message)s")
 
     sh = logging.StreamHandler(sys.stderr)
@@ -291,6 +290,10 @@ class AcmeLab:
                     self.banter_backoff = 0
                 
                 self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5)
+                # Ensure we check health at least every 5s if active
+                if self.reflex_ttl > 5.0:
+                    self.reflex_ttl = 5.0
+
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
@@ -363,8 +366,9 @@ class AcmeLab:
         # Future: Call Llama-1B here for high-fidelity classification
         casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home", "zort", "narf"]
         strat_indicators = [
-            "silicon", "validation", "regression", "root cause", "architect", 
-            "logic", "optimize", "calculate", "math", "analysis", "history", "20"
+            "architecture", "bottleneck", "optimization", "complex", "root cause",
+            "race condition", "unstable", "design", "calculate", "math", "pi",
+            "analysis", "history", "laboratory", "simulation"
         ]
         
         text_low = text.lower().strip()
@@ -817,7 +821,7 @@ class AcmeLab:
         # [FEAT-108] Dynamic Shunt Hint
         pinky_context = ""
         if is_strategic and self.brain_online:
-            pinky_context = "[STRATEGIC_SHUNT] Task already shunted to Brain. Provide organic filler and technical acknowledgment ONLY. Do NOT delegate."
+            pinky_context = "[STRATEGIC_SHUNT] Task is already being analyzed by the Sovereign. Your role: Provide organic technical filler (Hmm..., Wait..., Let me check...) and तकनीकी (technical) acknowledgment ONLY. Do NOT attempt to solve the complex task yourself."
 
         if "pinky" in self.residents:
             t_pinky = asyncio.create_task(
@@ -842,20 +846,18 @@ class AcmeLab:
                             "brain": "Wake up the Architect! Narf!",
                             "brain_source": "Pinky",
                         })
-                else:
-                    logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
                 
-                # [FEAT-108] Inter-Agent Handover Signal: Sequential Brain Tasks
+                # [FEAT-108] Agentic Reflection Sequence
                 if is_strategic:
                     async def brain_strategy_chain():
                         try:
-                            # 1. Quip
+                            # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
                             res_quip = await self.residents["brain"].call_tool(
                                 name="shallow_think", arguments={"task": f"[HANDOVER SIGNAL]: {query}"}
                             )
                             await execute_dispatch(res_quip.content[0].text, "Brain (Signal)")
                             
-                            # 2. Deep Think
+                            # Step 2: Deep Technical Derivation
                             ctx = "\n".join(self.recent_interactions)
                             res_deep = await self.monitor_task_with_tics(
                                 self.residents["brain"].call_tool(
@@ -864,13 +866,11 @@ class AcmeLab:
                             )
                             await execute_dispatch(res_deep.content[0].text, "Brain")
                         except Exception as e:
-                            logging.error(f"[CHAIN] Brain chain failed: {e}")
+                            logging.error(f"[CHAIN] Agentic Handover failed: {e}")
 
                     asyncio.create_task(brain_strategy_chain())
-
-                # [FEAT-048] Monitor long-running Brain tasks
-                # [FEAT-057] Deep Context: Send full interaction history
-                if not is_strategic:
+                else:
+                    # Non-strategic direct address: Just a shallow quip
                     ctx = "\n".join(self.recent_interactions)
                     t_brain = asyncio.create_task(
                         self.monitor_task_with_tics(
