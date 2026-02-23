@@ -24,3 +24,4 @@ data/
 # my_config.yaml is currently tracked but SCRUBBED. 
 # If you add real keys, add it here!vendor/vllm
 vendor/
+logs/forensic_*.json

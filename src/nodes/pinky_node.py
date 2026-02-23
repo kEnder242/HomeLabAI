@@ -98,7 +98,7 @@ async def start_draft(topic: str, category: str = "validation") -> str:
 
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:
-    """Deep Grounding: Access 18 years of technical truth."""
+    """Deep Grounding: Access the definitive technical history of the laboratory."""
     return json.dumps({
         "tool": "access_personal_history",
         "parameters": {"keyword": keyword},

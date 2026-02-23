@@ -133,6 +133,16 @@
 2.  **Environment**: Use `PAGER=cat` for `git log` or other tools that default to a pager.
 3.  **Rationale**: In an agentic session, there is no \"User\" to press SPACE. If a command hangs in a pager, it produces no STDOUT, triggering the CLI orchestrator to kill the process as a perceived \"hang.\"
 
+## BKM-014: The Deep-Dive (Tell me more / Teach me)
+**Objective**: Provide high-fidelity technical transfer upon user request.
+
+1.  **Trigger**: Phrases like \"tell me more\", \"teach me\", \"dive into this\", or \"explain the logic\".
+2.  **Required Content**:
+    *   **Architectural \"Why\"**: The engineering reasoning and impact on the broader Lab ecosystem.
+    *   **Structural \"How\"**: Concise code snippets highlighting the critical logic changes.
+    *   **Performance Delta**: (If applicable) Perceived or measured change in latency, VRAM, or responsiveness.
+3.  **Tone**: Professional, direct, and technical. Avoid conversational chitchat.
+
 ## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
 **Objective**: Restore technical context after a deep work cycle.
 

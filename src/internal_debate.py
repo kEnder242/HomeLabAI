@@ -82,7 +82,7 @@ class InternalDebate:
         except Exception as e:
             logging.error(f"[DEBATE] Failed to save dialogue: {e}")
 
-async def run_nightly_talk(archive, pinky, brain, topic="The future of silicon validation"):
+async def run_nightly_talk(archive, pinky, brain, topic="The future of laboratory automation"):
     debate = InternalDebate(archive, pinky, brain)
     summary = await debate.run_session(topic)
     await debate.save_to_ledger(summary)
