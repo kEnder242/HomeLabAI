@@ -344,12 +344,6 @@ class BicameralNode:
                     "tool": "reply_to_user",
                     "parameters": {"text": f"Error: {e}"},
                 })
-            except Exception as e:
-                self._engine_cache = None # [FEAT-084] Clear cache on error
-                return json.dumps({
-                    "tool": "reply_to_user",
-                    "parameters": {"text": f"Error: {e}"},
-                })
 
     def _mirror_forensics(self, phase, data, url=None):
         """[FEAT-078] Internal helper to write black-box data to logs."""
