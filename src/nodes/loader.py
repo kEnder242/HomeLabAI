@@ -214,9 +214,10 @@ class BicameralNode:
         ])
         return tools
 
-    def unify_prompt(self, query, context="", memory=""):
+    def unify_prompt(self, query, context="", memory="", system_override=None):
         # Removing bracketed tags which may confuse some model templates on remote hosts
-        full_prompt = f"System: {self.system_prompt}"
+        sys_p = system_override if system_override else self.system_prompt
+        full_prompt = f"System: {sys_p}"
         if memory:
             full_prompt += f"\n\nMemory: {memory}"
         if context:
@@ -224,7 +225,7 @@ class BicameralNode:
         
         return f"{full_prompt}\n\nUser: {query}\n\nAssistant:"
 
-    async def generate_response(self, query, context="", memory=""):
+    async def generate_response(self, query, context="", memory="", system_override=None, max_tokens=512):
         engine, url, model = await self.probe_engine()
         if engine == "NONE":
             return json.dumps({
@@ -235,13 +236,13 @@ class BicameralNode:
         async with aiohttp.ClientSession() as session:
             try:
                 if engine == "VLLM":
-                    unified = self.unify_prompt(query, context, memory)
+                    unified = self.unify_prompt(query, context, memory, system_override)
                     payload = {
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
                         "tools": self.get_tool_schemas(),
                         "tool_choice": "auto",
-                        "max_tokens": 512,
+                        "max_tokens": max_tokens,
                     }
                     async with session.post(url, json=payload, timeout=60) as r:
                         data = await r.json()
@@ -269,11 +270,12 @@ class BicameralNode:
                     if is_remote:
                         # Revert to Raw Prompt for Remote (Robustness)
                         gen_url = url.replace("/api/chat", "/api/generate")
-                        unified = self.unify_prompt(query, context, memory)
+                        unified = self.unify_prompt(query, context, memory, system_override)
                         payload = {
                             "model": model,
                             "prompt": unified,
-                            "stream": False
+                            "stream": False,
+                            "options": {"num_predict": max_tokens}
                         }
                         
                         # [FEAT-078] Forensic Mirroring (Pre-Send)
@@ -302,7 +304,7 @@ class BicameralNode:
                     else:
                         # Use Chat API for Local (Alignment)
                         chat_url = url.replace("/api/generate", "/api/chat")
-                        full_system = self.system_prompt
+                        full_system = system_override if system_override else self.system_prompt
                         if memory:
                             full_system += f"\n\n[MEMORY]:\n{memory}"
                         if context:
@@ -315,7 +317,8 @@ class BicameralNode:
                         payload = {
                             "model": model,
                             "messages": messages,
-                            "stream": False
+                            "stream": False,
+                            "options": {"num_predict": max_tokens}
                         }
 
                         # [FEAT-078] Forensic Mirroring (Pre-Send)
@@ -335,6 +338,12 @@ class BicameralNode:
                             raw_resp = data.get("message", {}).get("content", "")
                             logging.info(f"[{self.name}] RAW OLLAMA RESP (Local): '{raw_resp[:50]}...'")
                             return raw_resp
+            except Exception as e:
+                self._engine_cache = None # [FEAT-084] Clear cache on error
+                return json.dumps({
+                    "tool": "reply_to_user",
+                    "parameters": {"text": f"Error: {e}"},
+                })
             except Exception as e:
                 self._engine_cache = None # [FEAT-084] Clear cache on error
                 return json.dumps({

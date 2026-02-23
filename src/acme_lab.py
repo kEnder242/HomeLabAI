@@ -360,10 +360,15 @@ class AcmeLab:
     async def check_intent_is_casual(self, text):
         """[VIBE] Semantic Gatekeeper: Determines if a query is casual or strategic."""
         # Future: Call Llama-1B here for high-fidelity classification
-        casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home"]
-        strat_indicators = ["silicon", "validation", "regression", "root cause", "architect", "logic"]
+        casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home", "zort", "narf"]
+        strat_indicators = ["silicon", "validation", "regression", "root cause", "architect", "logic", "optimize"]
         
-        text_low = text.lower()
+        text_low = text.lower().strip()
+        
+        # If it's extremely short, it's likely casual or a status check
+        if len(text_low.split()) < 3 and not any(k in text_low for k in strat_indicators):
+            return True
+
         is_casual = any(k in text_low for k in casual_indicators)
         is_strat = any(k in text_low for k in strat_indicators)
         
@@ -815,35 +820,45 @@ class AcmeLab:
             )
             dispatch_map[t_pinky] = "Pinky"
 
-        # [FEAT-027] Hard Gate: Only engage Brain if NOT casual
-        if "brain" in self.residents and (is_strategic or addressed_brain) and not is_casual:
+        # [FEAT-086] Tiered Thinking: Engage Brain based on strategy vs. casual direct address
+        should_engage_brain = "brain" in self.residents and (is_strategic or addressed_brain)
+        
+        if should_engage_brain:
             # Strategic Sovereign Tier Engagement
             if self.brain_online:
                 brain_task = query
                 if addressed_brain:
                     brain_task = f"[DIRECT ADDRESS] {query}"
-                    await self.broadcast({
-                        "brain": "Wake up the Architect! Narf!",
-                        "brain_source": "Pinky",
-                    })
+                    if not is_strategic:
+                        # Characterful wake-up call for casual addresses
+                        await self.broadcast({
+                            "brain": "Wake up the Architect! Narf!",
+                            "brain_source": "Pinky",
+                        })
                 else:
                     logging.info("[SENTINEL] Strategic detected. Engaging Brain.")
                 
                 # [FEAT-026] Engagement Feedback
                 # [FEAT-086] Tiered Brain Response: Immediate Preamble
-                await self.broadcast({
-                    "brain": "Strategic Sovereignty engaging... Let me think about that.",
-                    "brain_source": "System",
-                    "channel": "insight"
-                })
+                # Only send preamble for deep think tasks
+                if is_strategic:
+                    await self.broadcast({
+                        "brain": "Strategic Sovereignty engaging... Let me think about that.",
+                        "brain_source": "System",
+                        "channel": "insight"
+                    })
 
                 # [FEAT-048] Monitor long-running Brain tasks
                 # [FEAT-057] Deep Context: Send full interaction history
                 ctx = "\n".join(self.recent_interactions)
+                
+                # tier_think logic: deep_think for strategy, shallow_think for casual/short quips
+                think_tool = "deep_think" if is_strategic else "shallow_think"
+                
                 t_brain = asyncio.create_task(
                     self.monitor_task_with_tics(
                         self.residents["brain"].call_tool(
-                            name="deep_think", arguments={"task": brain_task, "context": ctx}
+                            name=think_tool, arguments={"task": brain_task, "context": ctx}
                         )
                     )
                 )
@@ -870,45 +885,46 @@ class AcmeLab:
                 "channel": "insight"
             })
 
-        # 3. Collect
+        # 3. Asynchronous Results Collection
         if dispatch_map:
-            tasks = list(dispatch_map.keys())
-            done, pending = await asyncio.wait(tasks, timeout=120)
             self.recent_interactions.append(f"User: {query}")
             if len(self.recent_interactions) > 50:
                 self.recent_interactions.pop(0)
 
-            for t in done:
+            async def handle_finished_node(task, source):
                 try:
-                    res = t.result()
+                    res = await task
                     raw_out = res.content[0].text
-                    source = dispatch_map[t]
                     
-                    # [FEAT-077] Quality-Gate Failover (Parallel Loop)
+                    # [FEAT-077] Quality-Gate Failover
                     if raw_out == "INTERNAL_QUALITY_FALLBACK" and source == "Brain":
-                        logging.warning("[FAILOVER] Sovereign returned low-quality response in parallel loop. Engaging Shadow.")
+                        logging.warning("[FAILOVER] Sovereign returned low-quality response. Engaging Shadow.")
                         ctx = "\n".join(self.recent_interactions)
-                        task = f"[QUALITY FAILOVER]: {query}"
-                        res = await self.monitor_task_with_tics(
-                            self.residents["pinky"].call_tool(name="facilitate", arguments={"query": task, "context": ctx})
+                        task_fail = f"[QUALITY FAILOVER]: {query}"
+                        res_fail = await self.monitor_task_with_tics(
+                            self.residents["pinky"].call_tool(name="facilitate", arguments={"query": task_fail, "context": ctx})
                         )
                         await execute_dispatch(
-                            res.content[0].text, 
+                            res_fail.content[0].text, 
                             "Brain (Shadow)",
                             {"direct": addressed_brain, "channel": "insight"}
                         )
-                        continue
+                        return
 
-                    if "close_lab" in raw_out or "goodnight" in raw_out:
-                        for p in pending:
-                            p.cancel()
-                        await execute_dispatch(
-                            raw_out, source, {"direct": addressed_brain}
-                        )
-                        return True
                     await execute_dispatch(raw_out, source, {"direct": addressed_brain})
+                    
+                    if "close_lab" in raw_out or "goodnight" in raw_out:
+                        self.shutdown_event.set()
+
                 except Exception as e:
-                    logging.error(f"[TRIAGE] Node failed: {e}")
+                    logging.error(f"[TRIAGE] Node {source} failed: {e}")
+
+            # Launch all handlers in parallel
+            handlers = []
+            for task, source in dispatch_map.items():
+                handlers.append(handle_finished_node(task, source))
+            
+            await asyncio.gather(*handlers)
         else:
             await self.broadcast({
                 "brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"
