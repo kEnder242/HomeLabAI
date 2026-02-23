@@ -143,6 +143,7 @@ class LabAttendant:
                         if "true" not in res.stdout:
                             logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
                             subprocess.Popen(["docker", "start", container])
+                            self._trigger_pager_alert("WARNING", f"Recovered observability container: {container}")
                     except Exception as e:
                         logger.error(f"[WATCHDOG] Docker check failed for {container}: {e}")
 
