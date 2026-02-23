@@ -40,16 +40,16 @@ class NightlyRecruiter:
         self.config = config
 
     async def fetch_career_context(self):
-        """Retrieves the 3x3 CVT summary from the Archive Node."""
+        """Retrieves the high-level professional summary from the Archive Node."""
         if not self.archive:
-            return "Expert in Silicon Validation and Telemetry. 18 years experience."
+            return "Expert in System Architecture and Telemetry."
         try:
             # Call the real CVT builder tool in Archive Node
             res = await self.archive.call_tool("build_cv_summary", arguments={})
             return res.content[0].text
         except Exception as e:
-            logging.error(f"[RECRUITER] CVT Fetch Failed: {e}")
-            return "Expert in Silicon Validation and Telemetry. 18 years experience."
+            logging.error(f"[RECRUITER] Summary Fetch Failed: {e}")
+            return "Expert in System Architecture and Telemetry."
 
     async def search_for_jobs(self, search_results: List[Dict] = None) -> List[Dict]:
         """

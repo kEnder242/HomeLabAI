@@ -54,8 +54,6 @@ def resolve_brain_url():
         pass
     return "http://localhost:11434/api/tags"
 
-BRAIN_HEARTBEAT_URL = resolve_brain_url()
-
 
 _logger_initialized = False
 
@@ -214,9 +212,12 @@ class AcmeLab:
     async def check_brain_health(self, force=False):
         """Hardened Health Check: Perform a single-token generation probe."""
         try:
+            # [FEAT-087] Dynamic Resolution: Re-check URL on every health probe to handle IP drifts
+            target_url = resolve_brain_url()
+            
             async with aiohttp.ClientSession() as session:
                 # 1. First check if endpoint is reachable and get available models
-                async with session.get(BRAIN_HEARTBEAT_URL, timeout=1.5) as r:
+                async with session.get(target_url, timeout=1.5) as r:
                     if r.status != 200:
                         self.brain_online = False
                         return
@@ -240,7 +241,7 @@ class AcmeLab:
                 should_prime = force or not self.brain_online or (time.time() - self._last_brain_prime > 120 and self.connected_clients)
                 
                 if should_prime:
-                    p_url = BRAIN_HEARTBEAT_URL.replace("/api/tags", "/api/generate")
+                    p_url = target_url.replace("/api/tags", "/api/generate")
                     payload = {
                         "model": probe_model, 
                         "prompt": "ping",
@@ -361,21 +362,22 @@ class AcmeLab:
         """[VIBE] Semantic Gatekeeper: Determines if a query is casual or strategic."""
         # Future: Call Llama-1B here for high-fidelity classification
         casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home", "zort", "narf"]
-        strat_indicators = ["silicon", "validation", "regression", "root cause", "architect", "logic", "optimize"]
+        strat_indicators = [
+            "silicon", "validation", "regression", "root cause", "architect", 
+            "logic", "optimize", "calculate", "math", "analysis", "history", "20"
+        ]
         
         text_low = text.lower().strip()
         
-        # If it's extremely short, it's likely casual or a status check
-        if len(text_low.split()) < 3 and not any(k in text_low for k in strat_indicators):
+        # If it's a specific question or contains complex indicators, it's not casual
+        if "?" in text_low or any(k in text_low for k in strat_indicators):
+            return False
+
+        # Extremely short greetings are casual
+        if len(text_low.split()) < 3:
             return True
 
-        is_casual = any(k in text_low for k in casual_indicators)
-        is_strat = any(k in text_low for k in strat_indicators)
-        
-        # If it's both, treat as strategic (The 'Hey, I found a bug' rule)
-        if is_strat:
-            return False
-        return is_casual
+        return any(k in text_low for k in casual_indicators)
 
     async def client_handler(self, request):
         ws = web.WebSocketResponse()
@@ -840,8 +842,12 @@ class AcmeLab:
                 
                 # [FEAT-026] Engagement Feedback
                 # [FEAT-086] Tiered Brain Response: Immediate Preamble
-                # Only send preamble for deep think tasks
+                # [FEAT-094] Lively Room Banter: Pinky filler
                 if is_strategic:
+                    await self.broadcast({
+                        "brain": "Hmm... let me check with the Sovereign. Narf!",
+                        "brain_source": "Pinky",
+                    })
                     await self.broadcast({
                         "brain": "Strategic Sovereignty engaging... Let me think about that.",
                         "brain_source": "System",
@@ -891,13 +897,13 @@ class AcmeLab:
             if len(self.recent_interactions) > 50:
                 self.recent_interactions.pop(0)
 
-            async def handle_finished_node(task, source):
+            async def handle_finished_node(task_to_await, source_name):
                 try:
-                    res = await task
+                    res = await task_to_await
                     raw_out = res.content[0].text
                     
                     # [FEAT-077] Quality-Gate Failover
-                    if raw_out == "INTERNAL_QUALITY_FALLBACK" and source == "Brain":
+                    if raw_out == "INTERNAL_QUALITY_FALLBACK" and source_name == "Brain":
                         logging.warning("[FAILOVER] Sovereign returned low-quality response. Engaging Shadow.")
                         ctx = "\n".join(self.recent_interactions)
                         task_fail = f"[QUALITY FAILOVER]: {query}"
@@ -911,13 +917,13 @@ class AcmeLab:
                         )
                         return
 
-                    await execute_dispatch(raw_out, source, {"direct": addressed_brain})
+                    await execute_dispatch(raw_out, source_name, {"direct": addressed_brain})
                     
                     if "close_lab" in raw_out or "goodnight" in raw_out:
                         self.shutdown_event.set()
 
                 except Exception as e:
-                    logging.error(f"[TRIAGE] Node {source} failed: {e}")
+                    logging.error(f"[TRIAGE] Node {source_name} failed: {e}")
 
             # Launch all handlers in parallel
             handlers = []
