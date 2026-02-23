@@ -8,18 +8,20 @@ from nodes.loader import BicameralNode
 # --- Configuration ---
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DRAFTS_DIR = os.path.join(WORKSPACE_DIR, "docs/drafts")
+WHITEBOARD_DIR = os.path.join(WORKSPACE_DIR, "whiteboard")
 FIELD_NOTES_DIR = os.path.join(WORKSPACE_DIR, "field_notes")
 DATA_DIR = os.path.join(FIELD_NOTES_DIR, "data")
 
 # Ensure paths exist
 os.makedirs(DRAFTS_DIR, exist_ok=True)
+os.makedirs(WHITEBOARD_DIR, exist_ok=True)
 
 # Logging
 logging.basicConfig(level=logging.ERROR)
 
 ARCHIVE_SYSTEM_PROMPT = (
     "You are the Archive Node. You have access to the Filing Cabinet. "
-    "Your duty is to list and read documents accurately."
+    "Your duty is to list and read documents accurately. You also have a 'whiteboard' folder for sandbox writing."
 )
 
 node = BicameralNode("ArchiveNode", ARCHIVE_SYSTEM_PROMPT)
@@ -37,6 +39,8 @@ async def list_cabinet() -> str:
         all_items.extend([os.path.basename(f) for f in htmls])
         drafts = glob.glob(os.path.join(DRAFTS_DIR, "*"))
         all_items.extend([os.path.basename(f) for f in drafts])
+        whiteboard = glob.glob(os.path.join(WHITEBOARD_DIR, "*"))
+        all_items.extend([os.path.basename(f) for f in whiteboard])
         return json.dumps(sorted(list(set(all_items))))
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -44,9 +48,10 @@ async def list_cabinet() -> str:
 
 @mcp.tool()
 async def read_document(filename: str) -> str:
-    """Reads content from workspace, drafts, or data folders."""
+    """Reads content from workspace, drafts, whiteboard, or data folders."""
     search_paths = [
         os.path.join(DRAFTS_DIR, filename),
+        os.path.join(WHITEBOARD_DIR, filename),
         os.path.join(DATA_DIR, filename),
         os.path.join(FIELD_NOTES_DIR, filename)
     ]
@@ -108,6 +113,17 @@ async def write_draft(filename: str, content: str) -> str:
         return f"Draft saved to {filename}."
     except Exception as e:
         return f"Error saving draft: {e}"
+
+@mcp.tool()
+async def write_to_whiteboard(filename: str, content: str) -> str:
+    """Write to the sandbox whiteboard. Use this for scratchpad work or intermediate thoughts."""
+    path = os.path.join(WHITEBOARD_DIR, filename)
+    try:
+        with open(path, 'w') as f:
+            f.write(content)
+        return f"Content written to whiteboard/{filename}."
+    except Exception as e:
+        return f"Error writing to whiteboard: {e}"
 
 @mcp.tool()
 async def prune_insights(start_date: str, end_date: str, pattern: str, field: str = "summary") -> str:

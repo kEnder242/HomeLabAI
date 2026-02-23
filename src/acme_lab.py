@@ -363,10 +363,6 @@ class AcmeLab:
                 "message": "Lab foyer is open.",
             }))
             
-            # [FEAT-082] Neural Priming: Wake up the Brain immediately on connect
-            # This forces KENDER to start loading the model into VRAM before the user even types.
-            asyncio.create_task(self.check_brain_health())
-            
             # [FEAT-072] Morning Briefing
             asyncio.create_task(self.trigger_morning_briefing(ws))
             
@@ -414,6 +410,9 @@ class AcmeLab:
                     data = json.loads(message.data)
                     m_type = data.get("type")
                     if m_type == "handshake":
+                        # [FEAT-087] Intelligent Handshake Priming
+                        asyncio.create_task(self.check_brain_health())
+                        
                         if "archive" in self.residents:
                             try:
                                 res = await self.residents["archive"].call_tool(
