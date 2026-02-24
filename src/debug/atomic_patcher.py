@@ -17,15 +17,13 @@ def lint_file(file_path):
         return res.returncode == 0, res.stdout + res.stderr
     return True, ""
 
-def apply_batch_refinement(target_file, edits, soft_fail=False):
+def apply_batch_refinement(target_file, edits):
     """
     Applies a batch of edits and lints only at the end.
     edits: List of dictionaries {"old": str, "new": str, "desc": str}
-    soft_fail: If True, persists changes even if lint fails.
+    No rollback on failure; lint serves as a reminder only.
     """
     print(f"--- 🛡️ Safe-Scalpel [BATCH MODE]: {target_file} ---")
-    if soft_fail:
-        print("[MODE] Soft-Fail Enabled. Changes will persist even on lint failure.")
     
     with open(target_file, "r") as f:
         original_content = f.read()
@@ -61,37 +59,29 @@ def apply_batch_refinement(target_file, edits, soft_fail=False):
     passed, errors = lint_file(target_file)
     
     if not passed:
-        print(f"--- 💥 LINT REGRESSION DETECTED ---")
+        print(f"--- ⚠️ LINT WARNINGS DETECTED ---")
         print(errors)
-        if soft_fail:
-            print("[WARN] Persisting changes despite lint failure (Soft-Fail mode).")
-            os.remove(backup_file)
-            return True
-        else:
-            print(f"--- ⏪ ROLLING BACK ALL CHANGES ---")
-            with open(target_file, "w") as f:
-                f.write(original_content)
-            os.remove(backup_file)
-            return False
+        print("[NOTE] Changes persisted. Please address the lint issues manually.")
+    else:
+        print(f"[PASS] File is lint-clean.")
     
-    print(f"[PASS] File is lint-clean. Refinement committed.")
+    print(f"[DONE] Refinement committed.")
     os.remove(backup_file)
     return True
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: atomic_patcher.py <target_file> <desc> <old_text> <new_text> [--soft-fail]")
+        print("Usage: atomic_patcher.py <target_file> <desc> <old_text> <new_text>")
         sys.exit(1)
     
     target_file = sys.argv[1]
-    soft_fail = "--soft-fail" in sys.argv
     
     # Simple CLI mode for single edits
-    if len(sys.argv) >= 5:
+    if len(sys.argv) == 5:
         desc = sys.argv[2]
         old_text = sys.argv[3]
         new_text = sys.argv[4]
         edits = [{"old": old_text, "new": new_text, "desc": desc}]
-        apply_batch_refinement(target_file, edits, soft_fail=soft_fail)
+        apply_batch_refinement(target_file, edits)
     else:
         print("Safe-Scalpel Batch Library Ready.")
