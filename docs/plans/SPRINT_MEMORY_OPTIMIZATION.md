@@ -53,3 +53,14 @@ A non-persistent feature flag that enables a specialized inference path.
 *   **[FEAT-075] Immutability:** No automated summarization of technical stories during refinement.
 *   **[FEAT-031] Montana:** Isolate all experimental logs to `logs/experimental_paging.log`.
 *   **[BKM-011] Scalpel:** All logic changes to `acme_lab.py` or `lab_attendant.py` MUST use the Atomic Patcher.
+
+---
+
+## 📜 Retrospective: Progress Recovered (Feb 23)
+*   **Environment Scaffolding**: `.venv_experimental` fully populated with `liger-kernel`, `moe-infinity`, and `hf-transfer`.
+*   **Liger Verification**: `test_liger_memory.py` created to baseline `Qwen2.5-3B`. Verified `apply_liger_kernel_to_qwen2()` functionality.
+*   **MoE-Infinity Integration**: `test_moe_infinity.py` created. 
+    *   **Config**: Established `device_memory_ratio: 0.7` (7.7GB VRAM cap) to protect `EarNode` residency.
+    *   **Offload Path**: Standardized on `/speedy/models/moe_offload` (symlinked via `models/moe_offload`).
+*   **Model Readiness**: `Mixtral-8x7B` and `DeepSeek-Coder-V2` weights successfully migrated/downloaded to `/speedy`.
+
