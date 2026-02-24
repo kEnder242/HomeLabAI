@@ -17,6 +17,8 @@ These tools verify that the Lab's weights fit within the 11GB VRAM budget and th
 | **Liger Test** | `src/test_liger.py` | Specifically verifies that Liger-Kernels are accelerating the vLLM engine without crashing. |
 | **VLLM Alpha** | `src/debug/test_vllm_alpha.py` | Low-level connectivity check for the vLLM OpenAI-compatible endpoint. |
 | **MPS Stress** | `src/debug/mps_stress.py` | Legacy stress test for MPS (Metal) performance; maintained for cross-platform baseline. |
+| **Liger Memory** | `test_liger_memory.py` | Compares VRAM footprint of Qwen2.5 with and without Liger Fused Kernels. |
+| **MoE Load** | `test_moe_infinity.py` | Verifies the MoE-Infinity offloading engine using Mixtral-8x7B on SSD. |
 
 ---
 
