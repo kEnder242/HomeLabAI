@@ -665,6 +665,21 @@ class AcmeLab:
     async def process_query(self, query, websocket):
         # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
         logging.info(f"[USER] Intercom Query: {query}")
+        logging.info(f"[DEBUG] Processing query for year-scanner: '{query}'")
+
+        # [FEAT-088] Amygdala Year-Scanner
+        historical_context = ""
+        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        if year_match and "archive" in self.residents:
+            year = year_match.group(1)
+            logging.info(f"[AMYGDALA] detected {year}. Priming archive recall.")
+            try:
+                res_context = await self.residents["archive"].call_tool(
+                    name="get_context", arguments={"query": f"Validation events from {year}"}
+                )
+                historical_context = res_context.content[0].text
+            except Exception as e:
+                logging.error(f"[AMYGDALA] Recall failed: {e}")
 
         # [FEAT-056] MIB Memory Wipe Mechanic
         # Allows user to manually clear the interaction context (The "Neuralyzer")
@@ -682,29 +697,6 @@ class AcmeLab:
             return
 
         is_casual = await self.check_intent_is_casual(query)
-
-        # [FEAT-088] Amygdala Year-Scanner
-        historical_context = ""
-        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
-        if year_match and "archive" in self.residents:
-            year = year_match.group(1)
-            logging.info(f"[AMYGDALA] detected {year}. Priming recall.")
-            res_context = await self.residents["archive"].call_tool(
-                name="get_context", arguments={"query": f"Events from {year}"}
-            )
-            historical_context = res_context.content[0].text
-
-        # [FEAT-088] Amygdala Year-Scanner
-        # Proactively trigger semantic recall for year-based queries
-        historical_context = ""
-        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
-        if year_match and "archive" in self.residents:
-            year = year_match.group(1)
-            logging.info(f"[AMYGDALA] Year detected: {year}. Priming archive recall.")
-            res_context = await self.residents["archive"].call_tool(
-                name="get_context", arguments={"query": f"Validation events from {year}"}
-            )
-            historical_context = res_context.content[0].text
 
         # [DEBUG] Persona Bleed Investigation
         logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
@@ -750,6 +742,7 @@ class AcmeLab:
 
         async def execute_dispatch(raw_text, source, context_flags=None):
             """Hardened Priority Dispatcher with Hallucination Shunt and [FEAT-110] Banter Sanitizer."""
+            nonlocal historical_context
             logging.info(
                 f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'"
             )
@@ -906,6 +899,11 @@ class AcmeLab:
                         )
                         task = f"[FAILOVER ARCHITECT]: {task}"
 
+                    # [FEAT-088] Ground task in historical truth
+                    logging.info(f"[DEBUG] Injection path: historical_context len={len(historical_context)}")
+                    if historical_context:
+                        task = f"[HISTORICAL CONTEXT]: {historical_context}\n[TASK]: {task}"
+
                     # [FEAT-057] Deep Context: Send full interaction history instead of sliced window
                     if target_node in self.residents:
                         ctx = "\n".join(self.recent_interactions)
@@ -1046,6 +1044,7 @@ class AcmeLab:
                 if is_strategic:
 
                     async def brain_strategy_chain():
+                        nonlocal historical_context
                         try:
                             # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
                             res_quip = await self.residents["brain"].call_tool(

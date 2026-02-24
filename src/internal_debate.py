@@ -30,10 +30,14 @@ class InternalDebate:
         for i in range(turns):
             # Brain's Strategic Insight
             logging.info(f"[DEBATE] Turn {i+1}: Brain's turn.")
+            if not self.brain:
+                logging.error("[DEBATE] Brain node unavailable for turn.")
+                break
+            
             brain_prompt = (
                 f"Analyze this topic: {current_input}. "
                 "Provide a strategic, validation-oriented perspective. "
-                "Be concise and technical."
+                "Be concise and technical. STRICT: NO ROLEPLAY."
             )
             try:
                 res = await self.brain.call_tool("deep_think", arguments={"task": brain_prompt, "context": "\n".join(self.history[-2:])})
@@ -45,6 +49,10 @@ class InternalDebate:
 
             # Pinky's Grounding (Lab Pragmatist)
             logging.info(f"[DEBATE] Turn {i+1}: Pinky's turn.")
+            if not self.pinky:
+                logging.error("[DEBATE] Pinky node unavailable for turn.")
+                break
+
             pinky_prompt = (
                 f"The Brain said: '{brain_out}'. "
                 "Ground this in physical lab constraints and implementation reality. "
