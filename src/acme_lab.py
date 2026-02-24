@@ -677,7 +677,15 @@ class AcmeLab:
                 res_context = await self.residents["archive"].call_tool(
                     name="get_context", arguments={"query": f"Validation events from {year}"}
                 )
-                historical_context = res_context.content[0].text
+                raw_history = res_context.content[0].text
+                # [FEAT-088] Strict Grounding Mandate
+                historical_context = (
+                    f"STRICT GROUNDING MANDATE: Use ONLY the following verified technical truth for the year {year}. "
+                    "If the data below is sparse or does not contain specific details for the user's query, "
+                    "you MUST state that the local records for this year are incomplete. "
+                    "STRICT: DO NOT invent scenarios, drone swarms, or projects not listed below.\n"
+                    f"--- VERIFIED LOGS [{year}] ---\n{raw_history}"
+                )
             except Exception as e:
                 logging.error(f"[AMYGDALA] Recall failed: {e}")
 
