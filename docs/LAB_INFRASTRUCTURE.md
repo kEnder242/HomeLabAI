@@ -12,7 +12,7 @@
 
 ## 🛠️ Tool Availability
 *   **Migration**: `rsync`, `rclone` (configured for GDrive).
-*   **Monitoring**: `nvidia-smi` (v570+), `df -h`, `lsblk`.
+*   **Monitoring**: `nvidia-smi` (v570+), `df -h`, `lsblk`, `NVIDIA DCGM` (Continuous Telemetry).
 *   **Automation**: `systemd` (`lab-attendant.service`).
 
 ## ⚙️ Hardware Characteristics
