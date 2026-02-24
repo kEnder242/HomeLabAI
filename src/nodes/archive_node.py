@@ -370,6 +370,18 @@ async def get_context(query: str, n_results: int = 3) -> str:
 
 
 @mcp.tool()
+async def get_stream_dump() -> str:
+    """Recalls all raw chaotic memories from the short-term stream."""
+    try:
+        res = stream.get()
+        return json.dumps(
+            {"documents": res.get("documents", []), "ids": res.get("ids", [])}
+        )
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 async def internal_debate(topic: str, turns: int = 3) -> str:
     """
     Initiates a high-fidelity peer review between Pinky and the Brain.
@@ -377,17 +389,12 @@ async def internal_debate(topic: str, turns: int = 3) -> str:
     """
     from internal_debate import run_nightly_talk
     try:
-        # We need nodes from the hub, but as an MCP tool we only have self.
-        # This requires the hub to pass the other nodes, OR we use the
-        # run_nightly_talk which is designed for background use.
-        # For now, we'll use it as a trigger for the established logic.
-        from nodes.loader import BicameralNode
-        pinky = BicameralNode("Pinky", "") # Stubs for the class
-        brain = BicameralNode("Brain", "")
-        res = await run_nightly_talk(node, pinky, brain, topic=topic)
-        return f"Debate Synthesis:\n{res}"
+        # Note: In MCP context, self is 'node'. Hub must provide resident access.
+        # For now, we utilize the background-safe run_nightly_talk
+        res = await run_nightly_talk(node, None, None, topic=topic)
+        return f"✅ Internal Debate Initiated. Synthesis will appear in nightly_dialogue.json.\nPreview: {res[:200]}..."
     except Exception as e:
-        return f"Debate failed: {e}"
+        return f"❌ Debate execution failed: {e}"
 
 
 if __name__ == "__main__":
