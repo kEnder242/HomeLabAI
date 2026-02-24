@@ -69,11 +69,25 @@ def patch_model(model_id):
 
 ---
 
-## 📅 5. Tasks
-- [ ] **Task 1: Re-Plug ChromaDB.** Restore vector collections to `archive_node.py`.
-- [ ] **Task 2: Restore 'Dream' Tool.** Automated consolidation of short-term logs.
-- [ ] **Task 3: Integrate Liger.** Update `loader.py` with architecture-aware patches.
-- [ ] **Task 4: Amygdala Year-Triggers.** Enable instant recall for queries like "2019".
+## 🧪 5. Verification & Test Audit
+Every feature must be verified against the existing suite or new targeted tests.
+
+| Feature | Primary Test Script | Strategy |
+| :--- | :--- | :--- |
+| **ChromaDB / RAG** | `src/test_memory_integration.py` | Verify end-to-end vector lookup and heartbeat. |
+| **Dreaming Cycle** | `src/test_dream.py` | Validate log-to-wisdom synthesis pipeline. |
+| **Liger Kernels** | `src/test_liger.py` | Bench-test fused kernels on active resident models. |
+| **Year Triggers** | `src/debug/test_year_recall.py` | **[NEW]** Verify "2019" query triggers semantic map injection. |
+| **Intelligent Routing** | `src/debug/test_dispatch_logic.py`| Validate intent classification between nodes. |
+| **Sovereign Bridge** | `src/test_round_table.py` | Ensure context continuity between signal and deep think. |
+
+---
+
+## 📅 6. Tasks
+- [ ] **Task 1: Memory Resurrection (ChromaDB).** Re-plug existing vector store to `archive_node.py`. Unblocks [FEAT-088] and [FEAT-071].
+- [ ] **Task 2: Synthesis Resurrection (Dream Tool).** Restore automated consolidation of chaotic logs into stable wisdom.
+- [ ] **Task 3: Silicon Optimization (Liger).** Port verified bench-test logic into live `loader.py`.
+- [ ] **Task 4: Semantic Triggers (2019 Recall).** Update Pinky gateway to recognize year/theme patterns and inject vector results.
 
 ---
 *Reference: [HomeLabAI/docs/Protocols.md](../Protocols.md)*
