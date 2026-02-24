@@ -7,8 +7,8 @@ def lint_file(file_path):
     """Detects type and runs appropriate linter."""
     if file_path.endswith(".py"):
         ruff_path = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
-        # Only check for standard errors/warnings
-        res = subprocess.run([ruff_path, "check", file_path, "--select", "E,F,W"], 
+        # [SWEET SPOT] Ignore E501 (Line length) to focus on logic and imports
+        res = subprocess.run([ruff_path, "check", file_path, "--select", "E,F,W", "--ignore", "E501"], 
                              capture_output=True, text=True)
         return res.returncode == 0, res.stdout + res.stderr
     elif file_path.endswith(".js"):
@@ -59,13 +59,13 @@ def apply_batch_refinement(target_file, edits):
     passed, errors = lint_file(target_file)
     
     if not passed:
-        print(f"--- ⚠️ LINT WARNINGS DETECTED ---")
+        print("--- ⚠️ LINT WARNINGS DETECTED ---")
         print(errors)
         print("[NOTE] Changes persisted. Please address the lint issues manually.")
     else:
-        print(f"[PASS] File is lint-clean.")
+        print("[PASS] File is lint-clean.")
     
-    print(f"[DONE] Refinement committed.")
+    print("[DONE] Refinement committed.")
     os.remove(backup_file)
     return True
 
