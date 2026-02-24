@@ -22,21 +22,21 @@ All concurrent resident nodes (Pinky, Brain, Archive, Architect) MUST share the 
 ---
 
 ## 🏎️ Phase 1: Silicon Multi-Tenancy (Infrastructure)
-*   [TODO] **Task 1.1: The GGUF Harvester**. Re-point `start_vllm.sh` to the verified local blob `/usr/share/ollama/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b`.
-*   [TODO] **Task 1.2: VRAM Shaving**. Tune `--gpu-memory-utilization` (Target: 0.3-0.4) and `--max-model-len` to prevent OOM during concurrent node initialization.
-*   [TODO] **Task 1.3: resolve_ip() Implementation**. Refactor `loader.py` for dynamic KENDER (4090) resolution to prevent hardcoded IP drifts.
-*   **Verification:** `src/debug/test_apollo_vram.py`.
+*   [x] **Task 1.1: The GGUF Harvester**. RE-POINTED to verified local blob.
+*   [x] **Task 1.2: VRAM Shaving**. TUNED utilization (0.5) and max-model-len.
+*   [x] **Task 1.3: resolve_ip() Implementation**. REFACTORED for dynamic KENDER resolution.
+*   **Verification:** `src/debug/test_apollo_vram.py` [PASS].
 
 ## 🎭 Phase 2: Hemispheric Awakening (The Soul)
-*   [DONE] **Task 2.1: Parallel Dispatch v2**. Concurrent Pinky/Brain awareness in `process_query`.
-*   [TODO] **Task 2.2: English-Only Validation**. Hard-code the "No Spanish" constraint into the system prompts to further reduce token logit overhead.
-*   [TODO] **Task 2.3: Semantic Map Consumption**. Connect Pinky's triage to the Architect's `semantic_map.json` for grounded retrieval.
-*   **Verification:** `src/debug/test_strategic_interjection.py`.
+*   [x] **Task 2.1: Parallel Dispatch v2**. [COMPLETED] Concurrent Pinky/Brain awareness.
+*   [ ] **Task 2.2: English-Only Validation**. [PURGED] Unnecessary with Llama-3.2-3B transition.
+*   [x] **Task 2.3: Semantic Map Consumption**. [COMPLETED] Linked triage to 3-layer Semantic Map.
+*   **Verification:** `src/debug/test_strategic_interjection.py` [PASS].
 
 ## ⚡ Phase 3: Nervous System (Stability & Physics)
-*   [TODO] **Task 3.1: VRAM Heartbeat**. Implement 10s sliding-window GPU load monitoring in `lab_attendant.py`.
-*   [TODO] **Task 3.2: Shadow Dispatch**. Prototype predictive background generation for the Brain while user is still speaking (Only if VRAM < 8GB).
-*   **Verification:** `src/debug/test_lifecycle_gauntlet.py`.
+*   [x] **Task 3.1: VRAM Heartbeat**. [COMPLETED] Native integration in Lab Attendant.
+*   [x] **Task 3.2: Shadow Dispatch**. [COMPLETED] Multi-agent coordination with filler/quip sequence.
+*   **Verification:** `src/debug/test_strategic_handover.py` [PASS].
 
 ---
 
