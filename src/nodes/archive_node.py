@@ -4,7 +4,8 @@ import logging
 import datetime
 import glob
 import subprocess
-import shutil
+import chromadb
+from chromadb.utils import embedding_functions
 from nodes.loader import BicameralNode
 
 # --- Configuration ---
@@ -15,6 +16,24 @@ WHITEBOARD_DIR = os.path.join(WORKSPACE_DIR, "whiteboard")
 FIELD_NOTES_DIR = os.path.join(WORKSPACE_DIR, "field_notes")
 DATA_DIR = os.path.join(FIELD_NOTES_DIR, "data")
 RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
+DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
+COLLECTION_STREAM = "short_term_stream"
+COLLECTION_WISDOM = "long_term_wisdom"
+
+# Chroma Setup
+chroma_client = chromadb.PersistentClient(path=DB_PATH)
+ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+def get_safe_collection(name):
+    try:
+        return chroma_client.get_or_create_collection(name=name, embedding_function=ef)
+    except ValueError:
+        return chroma_client.get_or_create_collection(name=name)
+
+stream = get_safe_collection(COLLECTION_STREAM)
+wisdom = get_safe_collection(COLLECTION_WISDOM)
 
 # Ensure paths exist
 os.makedirs(DRAFTS_DIR, exist_ok=True)
@@ -252,6 +271,78 @@ async def notify_file_open(filename: str) -> str:
     """[FEAT-074] Workbench: Notifies the mice that the user has opened a file."""
     logging.info(f"[WORKBENCH] User opened: {filename}")
     return f"Acknowledged. Monitoring activity on {filename}."
+
+
+@mcp.tool()
+async def save_interaction(query: str, response: str) -> str:
+    """Saves a conversation turn to the short-term vector stream."""
+    try:
+        ts = datetime.datetime.now().isoformat()
+        doc = f"User: {query}\nAssistant: {response}"
+        stream.add(
+            documents=[doc],
+            metadatas=[{"timestamp": ts, "type": "turn"}],
+            ids=[f"turn_{ts}"],
+        )
+        return "Interaction secured in stream."
+    except Exception as e:
+        return f"Failed to save: {e}"
+
+
+@mcp.tool()
+async def dream(summary: str, sources: list[str]) -> str:
+    """
+    Consolidates synthesized wisdom into long-term memory and purges sources.
+    Input: High-density narrative summary and the list of raw IDs processed.
+    """
+    try:
+        ts = datetime.datetime.now().isoformat()
+        # 1. Store the high-density wisdom
+        wisdom.add(
+            documents=[summary],
+            metadatas=[
+                {"timestamp": ts, "type": "insight", "count": len(sources)}
+            ],
+            ids=[f"wisdom_{ts}"],
+        )
+        # 2. Purge the raw chaotic memories
+        if sources:
+            stream.delete(ids=sources)
+        return f"Dreaming complete. Consolidated {len(sources)} logs."
+    except Exception as e:
+        return f"Dream failed: {e}"
+
+
+@mcp.tool()
+async def scribble_note(query: str, response: str) -> str:
+    """Caches a response semantically for future recall."""
+    try:
+        ts = datetime.datetime.now().isoformat()
+        # COLLECTIONS_CACHE not defined, using default logic
+        # For simplicity, adding to stream with a cache tag
+        stream.add(
+            documents=[response],
+            metadatas=[{"query": query, "timestamp": ts, "type": "cache"}],
+            ids=[f"cache_{ts}"],
+        )
+        return "Note scribbled semantically."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+async def get_context(query: str, n_results: int = 3) -> str:
+    """Searches vector archives for relevant technical truth."""
+    try:
+        res = wisdom.query(query_texts=[query], n_results=n_results)
+        docs = res.get("documents", [[]])[0]
+        if not docs:
+            # Fallback to stream
+            res = stream.query(query_texts=[query], n_results=n_results)
+            docs = res.get("documents", [[]])[0]
+        return "\n---\n".join(docs) if docs else "No relevant artifacts found."
+    except Exception as e:
+        return f"Search Error: {e}"
 
 
 if __name__ == "__main__":

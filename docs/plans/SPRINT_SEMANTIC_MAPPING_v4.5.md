@@ -88,6 +88,11 @@ Every feature must be verified against the existing suite or new targeted tests.
 - [ ] **Task 2: Synthesis Resurrection (Dream Tool).** Restore automated consolidation of chaotic logs into stable wisdom.
 - [ ] **Task 3: Silicon Optimization (Liger).** Port verified bench-test logic into live `loader.py`.
 - [ ] **Task 4: Semantic Triggers (2019 Recall).** Update Pinky gateway to recognize year/theme patterns and inject vector results.
+- [ ] **Task 5: Observational Memory Pilot.** Begin incorporating real-time Lab vitals into the RAG context.
+- [ ] **Task 6: TTT-Discover Scaffolding.** Define the RL-reward signal for autonomous failure path discovery.
+- [ ] **Task 5: Whiteboard Visibility.** Update `intercom_v2.js` to include the `/whiteboard` folder in the filing cabinet view.
+- [ ] **Task 6: "Wave Paper" Event.** Implement UI trigger to auto-refresh viewer on whiteboard updates.
+- [ ] **Task 7: Synthesis Stability Audit.** Verify background `dream_cycle.py` service and MiniLM server latency.
 
 ---
 *Reference: [HomeLabAI/docs/Protocols.md](../Protocols.md)*
