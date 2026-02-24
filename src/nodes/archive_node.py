@@ -6,7 +6,10 @@ import glob
 import subprocess
 import chromadb
 from chromadb.utils import embedding_functions
-from nodes.loader import BicameralNode
+try:
+    from nodes.loader import BicameralNode
+except ImportError:
+    from loader import BicameralNode
 
 # --- Configuration ---
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -57,14 +60,14 @@ async def list_cabinet() -> str:
     """The Filing Cabinet: Lists all openable technical artifacts (JSON and HTML)."""
     try:
         all_items = []
-        jsons = glob.glob(os.path.join(DATA_DIR, "20*.json"))
-        all_items.extend([os.path.basename(f) for f in jsons])
+        # [FOLDER-FIRST] Restricting view to active shared folders. 
+        # Raw JSON logs are kept in background for RAG usage only.
         htmls = glob.glob(os.path.join(FIELD_NOTES_DIR, "*.html"))
         all_items.extend([os.path.basename(f) for f in htmls])
-        drafts = glob.glob(os.path.join(DRAFTS_DIR, "*"))
-        all_items.extend([os.path.basename(f) for f in drafts])
-        whiteboard = glob.glob(os.path.join(WHITEBOARD_DIR, "*"))
-        all_items.extend([os.path.basename(f) for f in whiteboard])
+        drafts = [f"drafts/{os.path.basename(f)}" for f in glob.glob(os.path.join(DRAFTS_DIR, "*"))]
+        all_items.extend(drafts)
+        whiteboard = [f"whiteboard/{os.path.basename(f)}" for f in glob.glob(os.path.join(WHITEBOARD_DIR, "*"))]
+        all_items.extend(whiteboard)
         return json.dumps(sorted(list(set(all_items))))
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -73,6 +76,16 @@ async def list_cabinet() -> str:
 @mcp.tool()
 async def read_document(filename: str) -> str:
     """Reads content from workspace, drafts, whiteboard, or data folders."""
+    # [FIX] Handle directory-prefixed filenames from UI
+    if "/" in filename:
+        # Check if the prefix is valid
+        parts = filename.split("/", 1)
+        prefix, actual_name = parts[0], parts[1]
+        if prefix == "drafts":
+            filename = actual_name
+        elif prefix == "whiteboard":
+            filename = actual_name
+
     search_paths = [
         os.path.join(DRAFTS_DIR, filename),
         os.path.join(WHITEBOARD_DIR, filename),
@@ -135,22 +148,33 @@ async def patch_file(filename: str, diff: str, soft_fail: bool = False) -> str:
 
         # 5. Lint-Gate
         if target_path.endswith(".py"):
+            # [SWEET SPOT] Focus on functional integrity and imports.
+            # Ignore E501 (Line Length) to prevent style noise from drowning out logic errors.
             l_res = subprocess.run(
-                [RUFF_PATH, "check", target_path, "--select", "E,F,W"],
+                [
+                    RUFF_PATH,
+                    "check",
+                    target_path,
+                    "--select",
+                    "E,F,W",
+                    "--ignore",
+                    "E501",
+                ],
                 capture_output=True,
                 text=True,
             )
             if l_res.returncode != 0:
-                msg = f"Lint failure in {filename}:\n{l_res.stdout}"
+                msg = f"LINT ERROR DETECTED IN {filename} - PLEASE FIX:\n{l_res.stdout}"
                 if soft_fail:
-                    return f"Applied with WARNINGS (Soft Fail):\n{msg}"
+                    # Return success status but with high-visibility warning message
+                    return f"⚠️ APPLIED WITH LINT ERRORS (SOFT FAIL):\n{msg}"
                 else:
                     # Rollback
                     with open(target_path, "w") as f:
                         f.write(original_content)
-                    return f"Rollback triggered due to lint failure:\n{msg}"
+                    return f"❌ ROLLBACK TRIGGERED DUE TO LINT FAILURE:\n{msg}"
 
-        return f"Surgically patched {filename} successfully."
+        return f"✅ Surgically patched {filename} successfully."
 
     except Exception as e:
         return f"Critical error during patching: {e}"
@@ -343,6 +367,27 @@ async def get_context(query: str, n_results: int = 3) -> str:
         return "\n---\n".join(docs) if docs else "No relevant artifacts found."
     except Exception as e:
         return f"Search Error: {e}"
+
+
+@mcp.tool()
+async def internal_debate(topic: str, turns: int = 3) -> str:
+    """
+    Initiates a high-fidelity peer review between Pinky and the Brain.
+    Useful for resolving technical contradictions or synthesizing BKMs.
+    """
+    from internal_debate import run_nightly_talk
+    try:
+        # We need nodes from the hub, but as an MCP tool we only have self.
+        # This requires the hub to pass the other nodes, OR we use the
+        # run_nightly_talk which is designed for background use.
+        # For now, we'll use it as a trigger for the established logic.
+        from nodes.loader import BicameralNode
+        pinky = BicameralNode("Pinky", "") # Stubs for the class
+        brain = BicameralNode("Brain", "")
+        res = await run_nightly_talk(node, pinky, brain, topic=topic)
+        return f"Debate Synthesis:\n{res}"
+    except Exception as e:
+        return f"Debate failed: {e}"
 
 
 if __name__ == "__main__":
