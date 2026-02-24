@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import datetime
 import os
@@ -44,12 +43,12 @@ class InternalDebate:
                 logging.error(f"[DEBATE] Brain failed: {e}")
                 break
 
-            # Pinky's Grounding/Banter
+            # Pinky's Grounding (Lab Pragmatist)
             logging.info(f"[DEBATE] Turn {i+1}: Pinky's turn.")
             pinky_prompt = (
                 f"The Brain said: '{brain_out}'. "
-                "Ground this in our practical lab environment. "
-                "Add your characteristic enthusiasm and Narf-isms."
+                "Ground this in physical lab constraints and implementation reality. "
+                "STRICT: No roleplay, no 'Narf', no character fillers. Be precise."
             )
             try:
                 res = await self.pinky.call_tool("facilitate", arguments={"query": pinky_prompt, "context": brain_out})

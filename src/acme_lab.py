@@ -683,6 +683,29 @@ class AcmeLab:
 
         is_casual = await self.check_intent_is_casual(query)
 
+        # [FEAT-088] Amygdala Year-Scanner
+        historical_context = ""
+        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        if year_match and "archive" in self.residents:
+            year = year_match.group(1)
+            logging.info(f"[AMYGDALA] detected {year}. Priming recall.")
+            res_context = await self.residents["archive"].call_tool(
+                name="get_context", arguments={"query": f"Events from {year}"}
+            )
+            historical_context = res_context.content[0].text
+
+        # [FEAT-088] Amygdala Year-Scanner
+        # Proactively trigger semantic recall for year-based queries
+        historical_context = ""
+        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        if year_match and "archive" in self.residents:
+            year = year_match.group(1)
+            logging.info(f"[AMYGDALA] Year detected: {year}. Priming archive recall.")
+            res_context = await self.residents["archive"].call_tool(
+                name="get_context", arguments={"query": f"Validation events from {year}"}
+            )
+            historical_context = res_context.content[0].text
+
         # [DEBUG] Persona Bleed Investigation
         logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
 
@@ -1029,16 +1052,25 @@ class AcmeLab:
                                 name="shallow_think",
                                 arguments={"task": f"[HANDOVER SIGNAL]: {query}"},
                             )
-                            await execute_dispatch(
-                                res_quip.content[0].text, "Brain (Signal)"
-                            )
+                            quip_text = res_quip.content[0].text
+                            await execute_dispatch(quip_text, "Brain (Signal)")
 
                             # Step 2: Deep Technical Derivation
                             ctx = "\n".join(self.recent_interactions)
+                            # [FEAT-114/088] Cognitive Bridge
+                            handover_ctx = (
+                                f"{ctx}\n"
+                                f"Assistant (Immediate Signal): {quip_text}\n"
+                                f"Historical Truth: {historical_context}"
+                            )
+
                             res_deep = await self.monitor_task_with_tics(
                                 self.residents["brain"].call_tool(
                                     name="deep_think",
-                                    arguments={"task": brain_task, "context": ctx},
+                                    arguments={
+                                        "task": brain_task,
+                                        "context": handover_ctx,
+                                    },
                                 )
                             )
                             await execute_dispatch(res_deep.content[0].text, "Brain")

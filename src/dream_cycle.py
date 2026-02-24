@@ -24,7 +24,7 @@ async def remote_brain_think(prompt, context):
             async with session.head(BRAIN_URL, timeout=2) as resp:
                 if resp.status != 200:
                     use_pinky = True
-    except:
+    except Exception:
         use_pinky = True
 
     target_url = PINKY_URL if use_pinky else BRAIN_URL
@@ -78,7 +78,8 @@ async def run_dream_cycle():
                     "Synthesize these interaction logs into a high-density 'Diamond Wisdom' paragraph. "
                     "Analyze the technical progression, identifying specific decisions made and validation scars uncovered. "
                     "Ignore greetings, character filler, and nervous tics. "
-                    "Provide a report suitable for long-term strategic grounding."
+                    "STRICT: NO ROLEPLAY. Do not use 'Narf', 'Poit', or character personality traits. "
+                    "Provide a professional report suitable for long-term strategic grounding."
                 )
 
                 summary = await remote_brain_think(prompt, narrative_input)
