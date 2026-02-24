@@ -2,6 +2,10 @@ import aiohttp
 import json
 import os
 import logging
+from liger_kernel.transformers import (
+    apply_liger_kernel_to_mistral,
+    apply_liger_kernel_to_qwen2,
+)
 import socket
 import time
 from mcp.server.fastmcp import FastMCP
@@ -42,6 +46,19 @@ class BicameralNode:
         node_cfg = self.infra.get("nodes", {}).get(self.name, {})
         self.primary_host = node_cfg.get("primary", "localhost")
         self.lora_name = node_cfg.get("lora_name")
+
+    def _patch_model(self, model_id):
+        """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
+        try:
+            m_id = str(model_id).lower()
+            if "mistral" in m_id or "mixtral" in m_id:
+                logging.info(f"[{self.name}] Applying Liger-Mistral patches.")
+                apply_liger_kernel_to_mistral()
+            elif "qwen" in m_id:
+                logging.info(f"[{self.name}] Applying Liger-Qwen patches.")
+                apply_liger_kernel_to_qwen2()
+        except Exception as e:
+            logging.error(f"[{self.name}] Liger patch failed: {e}")
 
     def _load_json(self, path):
         if os.path.exists(path):
@@ -279,6 +296,9 @@ class BicameralNode:
         self, query, context="", memory="", system_override=None, max_tokens=512
     ):
         engine, url, model = await self.probe_engine()
+        # [FEAT-031] Liger Optimization
+        if engine == "VLLM":
+            self._patch_model(model)
         if engine == "NONE":
             return json.dumps(
                 {
