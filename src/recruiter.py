@@ -7,7 +7,10 @@ from typing import List, Dict
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts")
+# [ALIGNMENT] Moving briefs to web-accessible SSD path
+DRAFTS_DIR = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs"
+)
 CONFIG_FILE = os.path.join(BASE_DIR, "../config/recruiter_config.json")
 
 
@@ -15,28 +18,25 @@ def load_config():
     default = {
         "target_roles": ["Senior Platform Telemetry Engineer"],
         "target_companies": ["NVIDIA"],
-        "keywords": ["telemetry"]
+        "keywords": ["telemetry"],
     }
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
         except Exception:
             pass
     return default
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [RECRUITER] %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [RECRUITER] %(message)s")
 config = load_config()
 
 
 class NightlyRecruiter:
     def __init__(self, archive_client=None, brain_client=None):
         self.archive = archive_client  # Injected dependency for Archive Node
-        self.brain = brain_client      # Injected dependency for Brain Node
+        self.brain = brain_client  # Injected dependency for Brain Node
         self.config = config
 
     async def fetch_career_context(self):
@@ -62,7 +62,7 @@ class NightlyRecruiter:
             {
                 "title": "Senior Telemetry Architect",
                 "company": "NVIDIA",
-                "url": "https://nvidia.wd1.myworkdayjobs.com/..."
+                "url": "https://nvidia.wd1.myworkdayjobs.com/...",
             }
         ]
 
@@ -105,18 +105,22 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None):
 
     # Notify the Pager
     try:
-        rel_path = "../../Portfolio_Dev/field_notes/data/pager_activity.json"
-        pager_path = os.path.join(BASE_DIR, rel_path)
+        # Use absolute path for robustness
+        pager_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+        )
         if os.path.exists(pager_path):
             with open(pager_path, "r") as f:
                 pager = json.load(f)
 
-            pager.append({
-                "timestamp": datetime.datetime.now().isoformat(),
-                "source": "Recruiter",
-                "severity": "INFO",
-                "message": f"Nightly Brief Ready: {os.path.basename(brief_path)}"
-            })
+            pager.append(
+                {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "source": "Recruiter",
+                    "severity": "INFO",
+                    "message": f"Nightly Brief Ready: {os.path.basename(brief_path)}",
+                }
+            )
 
             with open(pager_path, "w") as f:
                 json.dump(pager[-20:], f, indent=2)
@@ -127,12 +131,15 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None):
 
     # [FEAT-088] Recruiter Dashboard Reporting
     try:
-        report_path = os.path.join(BASE_DIR, "../../Portfolio_Dev/field_notes/data/recruiter_report.json")
+        # [ALIGNMENT] Consolidating all web artifacts in field_notes/data
+        report_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
+        )
         report = {
             "last_run": datetime.datetime.now().isoformat(),
             "brief_path": os.path.basename(brief_path),
             "jobs_found": len(jobs),
-            "top_targets": [f"{j['title']} @ {j['company']}" for j in jobs[:3]]
+            "top_targets": [f"{j['title']} @ {j['company']}" for j in jobs[:3]],
         }
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)

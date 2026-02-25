@@ -8,10 +8,13 @@ from mcp.client.stdio import stdio_client
 
 # Configuration
 PYTHON_PATH = sys.executable
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Root of HomeLabAI
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)  # Root of HomeLabAI
 ARCHIVE_NODE = os.path.join(BASE_DIR, "src/nodes/archive_node.py")
 BRAIN_URL = os.environ.get("BRAIN_URL", "http://192.168.1.26:11434/api/generate")
 PINKY_URL = "http://localhost:11434/api/generate"
+
 
 async def remote_brain_think(prompt, context):
     """Fallback for remote synthesis if Brain node is not local. Now with Pinky-Fallback."""
@@ -31,7 +34,9 @@ async def remote_brain_think(prompt, context):
     model = "llama-3.2-3b-awq" if use_pinky else "llama3:latest"
 
     if use_pinky:
-        logging.warning("⚠️ Brain (4090) is offline. Falling back to Pinky (2080 Ti) for Dreaming.")
+        logging.warning(
+            "⚠️ Brain (4090) is offline. Falling back to Pinky (2080 Ti) for Dreaming."
+        )
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -39,7 +44,7 @@ async def remote_brain_think(prompt, context):
                 "model": model,
                 "prompt": f"[TECHNICAL CONTEXT]\n{context}\n\n[TASK]: {prompt}",
                 "stream": False,
-                "options": {"num_predict": 1024, "temperature": 0.3}
+                "options": {"num_predict": 1024, "temperature": 0.3},
             }
             async with session.post(target_url, json=payload, timeout=60) as resp:
                 if resp.status == 200:
@@ -48,8 +53,9 @@ async def remote_brain_think(prompt, context):
     except Exception as e:
         return f"Remote Brain Error: {e}"
 
+
 async def run_dream_cycle():
-    logging.basicConfig(level=logging.INFO, format='[DREAM] %(message)s')
+    logging.basicConfig(level=logging.INFO, format="[DREAM] %(message)s")
     logging.info("🌙 Starting the Diamond Dream Cycle...")
 
     archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE])
@@ -70,7 +76,9 @@ async def run_dream_cycle():
                     logging.info("💤 No memories found. Returning to sleep.")
                     return
 
-                logging.info(f"🧠 Synthesizing {len(docs)} turns via The Brain (4090)...")
+                logging.info(
+                    f"🧠 Synthesizing {len(docs)} turns via The Brain (4090)..."
+                )
 
                 # 2. Synthesis (Use Remote 4090)
                 narrative_input = "\n---\n".join(docs)
@@ -86,14 +94,18 @@ async def run_dream_cycle():
                 logging.info("✨ Synthesis complete.")
 
                 # 3. Consolidation
-                logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
-                await archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
+                logging.info(
+                    f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns..."
+                )
+                await archive.call_tool(
+                    "dream", arguments={"summary": summary, "sources": ids}
+                )
 
                 logging.info("✅ Dream Cycle Finished. The Lab has evolved.")
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
 
+
 if __name__ == "__main__":
     asyncio.run(run_dream_cycle())
-

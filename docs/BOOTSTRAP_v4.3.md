@@ -18,7 +18,7 @@ Welcome, Agent. You are operating within a **Federated Lab** architecture.
 | :--- | :--- | :--- |
 | **Global Context & Cold Start** | `BOOTSTRAP.md` | **The Bootloader**: this file |
 | **TACTICAL** | **Operational Protocols**| `Protocols.md` | **The Law**: BKM-001+ (QQ, AFK, Cold-Start). |
-| **Diagnostic Rundown** | `DIAGNOSTIC_RUNDOWN.md` | **The Ledger**: Map of all tools and tests. |
+| **Diagnostic Script Map** | `DIAGNOSTIC_SCRIPT_MAP.md` | **The Ledger**: Map of all tools and tests. |
 | **Active Tasks & Agent State** | `GEMINI.md` | **The State Machine** |
 | **Milestones & Success History** | `00_FEDERATED_STATUS.md` | **The God View**: Tasks and backlog are here |
 | **Architecture "Why" & Mission** | `ENGINEERING_PEDIGREE.md`| **The Philosophy/Laws** |
@@ -46,7 +46,7 @@ To update this "Immutable" file:
     : This is your primary hub for navigating architectural blueprints and historical logs. **Check this file for recent session breadcrumbs and retrospectives.**
 2.  **Read [Portfolio_Dev/00_FEDERATED_STATUS.md](./Portfolio_Dev/00_FEDERATED_STATUS.md)** 
     :This tracks global milestones across both projects. Ignore other status docs if they conflict.
-3.  **Read [DIAGNOSTIC_RUNDOWN.md](./HomeLabAI/docs/DIAGNOSTIC_RUNDOWN.md)**: Identify existing tools before implementing new logic.
+3.  **Read [DIAGNOSTIC_SCRIPT_MAP.md](./HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md)**: Identify existing tools before implementing new logic.
 4.  **Read [FeatureTracker.md](./Portfolio_Dev/FeatureTracker.md)**: Understand the "Technical DNA" and Scars of the Lab.
 5.  **Read [ENGINEERING_PEDIGREE.md](./HomeLabAI/docs/ENGINEERING_PEDIGREE.md)**: Align with the Invariant Laws.
 

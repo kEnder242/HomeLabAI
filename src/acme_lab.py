@@ -675,7 +675,8 @@ class AcmeLab:
             logging.info(f"[AMYGDALA] detected {year}. Priming archive recall.")
             try:
                 res_context = await self.residents["archive"].call_tool(
-                    name="get_context", arguments={"query": f"Validation events from {year}"}
+                    name="get_context",
+                    arguments={"query": f"Validation events from {year}"},
                 )
                 raw_history = res_context.content[0].text
                 # [FEAT-088] Strict Grounding Mandate
@@ -908,7 +909,9 @@ class AcmeLab:
                         task = f"[FAILOVER ARCHITECT]: {task}"
 
                     # [FEAT-088] Ground task in historical truth
-                    logging.info(f"[DEBUG] Injection path: historical_context len={len(historical_context)}")
+                    logging.info(
+                        f"[DEBUG] Injection path: historical_context len={len(historical_context)}"
+                    )
                     if historical_context:
                         task = f"[HISTORICAL CONTEXT]: {historical_context}\n[TASK]: {task}"
 

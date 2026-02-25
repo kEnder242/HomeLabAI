@@ -6,6 +6,7 @@ import glob
 import subprocess
 import chromadb
 from chromadb.utils import embedding_functions
+
 try:
     from nodes.loader import BicameralNode
 except ImportError:
@@ -29,11 +30,13 @@ ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+
 def get_safe_collection(name):
     try:
         return chroma_client.get_or_create_collection(name=name, embedding_function=ef)
     except ValueError:
         return chroma_client.get_or_create_collection(name=name)
+
 
 stream = get_safe_collection(COLLECTION_STREAM)
 wisdom = get_safe_collection(COLLECTION_WISDOM)
@@ -60,13 +63,19 @@ async def list_cabinet() -> str:
     """The Filing Cabinet: Lists all openable technical artifacts (JSON and HTML)."""
     try:
         all_items = []
-        # [FOLDER-FIRST] Restricting view to active shared folders. 
+        # [FOLDER-FIRST] Restricting view to active shared folders.
         # Raw JSON logs are kept in background for RAG usage only.
         htmls = glob.glob(os.path.join(FIELD_NOTES_DIR, "*.html"))
         all_items.extend([os.path.basename(f) for f in htmls])
-        drafts = [f"drafts/{os.path.basename(f)}" for f in glob.glob(os.path.join(DRAFTS_DIR, "*"))]
+        drafts = [
+            f"drafts/{os.path.basename(f)}"
+            for f in glob.glob(os.path.join(DRAFTS_DIR, "*"))
+        ]
         all_items.extend(drafts)
-        whiteboard = [f"whiteboard/{os.path.basename(f)}" for f in glob.glob(os.path.join(WHITEBOARD_DIR, "*"))]
+        whiteboard = [
+            f"whiteboard/{os.path.basename(f)}"
+            for f in glob.glob(os.path.join(WHITEBOARD_DIR, "*"))
+        ]
         all_items.extend(whiteboard)
         return json.dumps(sorted(list(set(all_items))))
     except Exception as e:
@@ -324,9 +333,7 @@ async def dream(summary: str, sources: list[str]) -> str:
         # 1. Store the high-density wisdom
         wisdom.add(
             documents=[summary],
-            metadatas=[
-                {"timestamp": ts, "type": "insight", "count": len(sources)}
-            ],
+            metadatas=[{"timestamp": ts, "type": "insight", "count": len(sources)}],
             ids=[f"wisdom_{ts}"],
         )
         # 2. Purge the raw chaotic memories
@@ -388,6 +395,7 @@ async def internal_debate(topic: str, turns: int = 3) -> str:
     Useful for resolving technical contradictions or synthesizing BKMs.
     """
     from internal_debate import run_nightly_talk
+
     try:
         # Note: In MCP context, self is 'node'. Hub must provide resident access.
         # For now, we utilize the background-safe run_nightly_talk

@@ -153,3 +153,9 @@
     *   Implications: Impact on VRAM, latency, and security.
     *   The "Path Backwards": Rollback steps if the new silicon is unstable.
 4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
+
+## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
+**Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
+1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification).
+2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
+3.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression.

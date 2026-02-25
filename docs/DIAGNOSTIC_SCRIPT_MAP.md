@@ -126,4 +126,15 @@ Low-level verification of underlying libraries and architectural constraints.
 | **aiohttp Stability** | `src/debug/test_aiohttp.py` | Verifies WebSocket handshake resilience and async loop stability. |
 
 ---
-**Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py` and `src/debug/verify_sprint.py` to ensure the core is still standing.
+
+## 🛡️ 10. The Physician's Gauntlet (Deep Hardening)
+High-fidelity behavioral verification of cognitive and systemic integrity.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Grounding Fidelity** | `src/debug/test_grounding_fidelity.py` | Verifies Brain responses use ONLY provided historical anchors. |
+| **Consensus Loop** | `src/debug/test_consensus_loop.py` | Validates synthesis quality of the Internal Debate peer-review. |
+| **Deep Smoke** | `acme_lab.py --mode DEEP_SMOKE` | State-machine validation: Ingest -> Reason -> Dream -> Recall. |
+
+---
+**Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py`, `src/debug/verify_sprint.py`, and the **Physician's Gauntlet** to ensure the core is still standing.

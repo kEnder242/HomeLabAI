@@ -358,16 +358,16 @@ class BicameralNode:
                             "options": {"num_predict": max_tokens},
                         }
 
-                        # [FEAT-078] Forensic Mirroring (Pre-Send)
-                        self._mirror_forensics("send", payload, gen_url)
+                        # [FEAT-078] Neural Trace (Pre-Send)
+                        self._mirror_trace("send", payload, gen_url)
 
                         async with session.post(
                             gen_url, json=payload, timeout=120
                         ) as r:
                             data = await r.json()
 
-                            # [FEAT-078] Forensic Mirroring (Post-Recv)
-                            self._mirror_forensics("recv", data)
+                            # [FEAT-078] Neural Trace (Post-Recv)
+                            self._mirror_trace("recv", data)
 
                             # [STABILITY] Explicit Error Detection
                             if data.get("error"):
@@ -416,16 +416,16 @@ class BicameralNode:
                             "options": {"num_predict": max_tokens},
                         }
 
-                        # [FEAT-078] Forensic Mirroring (Pre-Send)
-                        self._mirror_forensics("send", payload, chat_url)
+                        # [FEAT-078] Neural Trace (Pre-Send)
+                        self._mirror_trace("send", payload, chat_url)
 
                         async with session.post(
                             chat_url, json=payload, timeout=120
                         ) as r:
                             data = await r.json()
 
-                            # [FEAT-078] Forensic Mirroring (Post-Recv)
-                            self._mirror_forensics("recv", data)
+                            # [FEAT-078] Neural Trace (Post-Recv)
+                            self._mirror_trace("recv", data)
 
                             if data.get("error"):
                                 logging.error(
@@ -452,17 +452,17 @@ class BicameralNode:
                     }
                 )
 
-    def _mirror_forensics(self, phase, data, url=None):
-        """[FEAT-078] Internal helper to write black-box data to logs."""
+    def _mirror_trace(self, phase, data, url=None):
+        """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
         try:
-            # Absolute path hardening for forensic logs
+            # Absolute path hardening for trace logs
             lab_root = os.path.dirname(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             )
             log_dir = os.path.join(lab_root, "logs")
             os.makedirs(log_dir, exist_ok=True)
 
-            log_path = os.path.join(log_dir, f"forensic_{self.name}.json")
+            log_path = os.path.join(log_dir, f"trace_{self.name}.json")
 
             mode = "w" if phase == "send" else "a"
             entry = {"phase": phase, "timestamp": time.time(), "data": data}
