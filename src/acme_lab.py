@@ -672,6 +672,8 @@ class AcmeLab:
         historical_context = ""
         year_match = re.search(r"\b(20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
+            # [FEAT-117] Year detection automatically elevates query to Strategic
+            is_strategic = True
             year = year_match.group(1)
             logging.info(f"[AMYGDALA] detected {year}. Priming archive recall.")
             try:
