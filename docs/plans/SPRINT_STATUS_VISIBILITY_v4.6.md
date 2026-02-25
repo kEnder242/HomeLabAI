@@ -1,70 +1,52 @@
 # Sprint Plan: Status Visibility & Pager Restoration [v4.6]
 **Status:** ACTIVE
-**Goal:** Restore high-fidelity interactive logging, Recruiter report visibility, and implement "The Physician's Gauntlet" deep hardening.
+**Goal:** Restore high-fidelity interactive logging, implement Multi-Stage Retrieval, and deploy the Resonant Oracle.
 
 ---
 
 ## 🏎️ 1. The Why
-The current `status.html` is "neutered." It provides metadata but lacks the interactive depth required for a "Physician's Ledger." We must transition from path-testing to behavioral-testing while maintaining our "Class 1" (no framework) philosophy.
+The Lab requires a transition from "Metadata" to "Deep Visibility." We need a non-destructive status UI, a way to retrieve raw technical truth (Discovery Pattern) without vector fragmentation, and a professional decoupling of persona from technical signals (Resonant Oracle).
 
-## 🧪 2. Core Logic: Interactive Pager
-**Target**: `Portfolio_Dev/field_notes/status.html`
+## 🧪 2. Core Logic Refinements
 
-### **The "Blue Tree" Port**:
-*   **Rationale**: Enable structured triage of lab events without gapping to the terminal.
-*   **Mechanism**: Port hierarchical expansion from `timeline.html`.
-*   **Markdown Viewer**: Use `marked.js` (off-the-shelf, single-file) to render `job_brief_*.md` files directly in the dashboard.
+### **The "Blue Tree" UI (Refined)**:
+*   **Rationale**: Fix "Long" display and destructive page refreshes.
+*   **Mechanism**: CSS overrides for `markdown-body` margins. Refactor `status.html` to use a "Diff-based" DOM update for the log tree.
+*   **Proof**: Page polls every 10s without closing open log nodes.
 
----
-
-## 🤕 3. Recovered Gems (The Feb 15 Restoration)
-These features were lost in the mania and will be restored during this sprint:
-*   **[FEAT-045] Neural Pager Interactivity**: Professional color-coded alerts and raw evidence viewing.
-*   **[FEAT-078] Neural Trace**: Automatic JSON logging of all Brain/Pinky payloads for debugging.
+### **[FEAT-117] Multi-Stage Retrieval**:
+*   **Rationale**: Prevent hallucination by giving the Brain access to the **Full Raw JSON** once a year/project is discovered.
+*   **Mechanism**: Stage 1: ChromaDB lookup. Stage 2: `ArchiveNode` reads the identified local file and extracts the specific entry.
+*   **Cross-Hemisphere**: Brain gets raw specs; Pinky gets the abstract for banter.
 
 ---
 
-## 📅 4. Re-ordered Tasks (BKM-020 Standards)
+## 📅 3. Tasks (BKM-020 Standards)
 
-### Task 10: Recruiter Path Hardening
-*   **Why**: Ensure artifacts are web-accessible and persistent on the SSD.
-*   **How**: Align `recruiter.py` storage paths to `Portfolio_Dev/field_notes/data/recruiter_briefs/`.
-*   **Proof**: `test_status_integration.py` confirms file existence on SSD and correct Pager registration.
+### Task 17: Resonant Oracle [FEAT-118]
+*   **Why**: Fully decouple persona from logic and remove hard-coded Python strings.
+*   **How**: Create `HomeLabAI/config/oracle.json` (The 8-Ball Registry). Update `acme_lab.py` to pick preambles based on Lab state.
+*   **Proof**: Brain signals vary based on context and are absent from Python source.
 
-### Task 11: Neural Trace (Inference Mirror) [FEAT-078]
-*   **Why**: To provide an immutable "Black Box" record for hallucination forensics.
-*   **How**: Re-enable the black-box logging of all AI payloads to `trace_*.json` in the `loader.py` decorator.
-*   **Proof**: Forensic JSONs are generated for every inference turn.
+### Task 18: UI High-Density Overhaul
+*   **Why**: Improve legibility of the "Physician's Ledger."
+*   **How**: Port "Blue Tree" interactivity. Add independent timer for Grafana refresh.
+*   **Proof**: No page-flicker during telemetry updates.
 
-### Task 8: Restore High-Fidelity Pager UI [FEAT-045]
-*   **Why**: To provide visual triage cues for silicon health and recruitment events.
-*   **How**: Implement color-coded alerts (Red/Orange/Blue) and the "Blue Tree" hierarchical expansion logic in `status.html`.
-*   **Proof**: Clicking a log entry successfully reveals the underlying telemetry data.
+### Task 19: The Assassin Logic
+*   **Why**: Prevent port 8765 collisions during boot.
+*   **How**: Implement port-sniffing and `fuser -k` fallback in `lab_attendant.py`.
+*   **Proof**: `run_deep_smoke.py` succeeds even if a ghost Lab is running.
 
-### Task 9: Implement Markdown Brief Viewer [FEAT-116]
-*   **Why**: To make Recruiter findings readable without leaving the dashboard using a standardized library.
-*   **How**: Integrate `marked.js` into `status.html` to fetch and render `job_brief_*.md` files.
-*   **Proof**: Selecting a Recruiter log displays the rendered Markdown content.
+### Task 20: Discovery Pattern Integration [FEAT-117]
+*   **Why**: Bridge the gap between vector "discovery" and raw technical "truth."
+*   **How**: Update the Amygdala loop to fetch the raw JSON block after a year-trigger.
+*   **Proof**: Brain can accurately quote project details found in `2010.json` during a "2010" query.
 
-### Task 15: Update Script Map
-*   **Why**: Maintain the "Physician's Ledger" accuracy.
-*   **How**: Add Tasks 12, 13, and 14 to `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md`.
-*   **Proof**: `cat DIAGNOSTIC_SCRIPT_MAP.md` shows the new gauntlet tests.
-
-### Task 12: Grounding Fidelity Test
-*   **Why**: Prove the Brain is using retrieved history instead of hallucinations.
-*   **How**: Write `src/debug/test_grounding_fidelity.py`. Verifies that Brain responses contain unique technical anchors from the RAG context.
-*   **Proof**: Test fails if Brain mentions generic scenarios not present in logs.
-
-### Task 13: Consensus Loop Stress-Test
-*   **Why**: Verify the "Internal Debate" improves technical synthesis quality.
-*   **How**: Write `src/debug/test_consensus_loop.py`. Triggers debate and has the Architect node evaluate the synthesis.
-*   **Proof**: Validated synthesis of conflicting viewpoints.
-
-### Task 14: Deep Smoke Cycle
-*   **Why**: Verify full system state-machine (Cycle of Life).
-*   **How**: Implement `acme_lab.py --mode DEEP_SMOKE`. Executes: Ingest -> Reason -> Dream -> Verify Recall.
-*   **Proof**: Successful end-to-end traversal without crashes.
+### Task 21: Update Script Map
+*   **Why**: Log today's deep-hardening tests.
+*   **How**: Add Gauntlet tests to `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md`.
+*   **Proof**: Map reflects actual 4.6 capabilities.
 
 ---
 *Reference: [HomeLabAI/docs/Protocols.md](../Protocols.md)*

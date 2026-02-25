@@ -231,6 +231,21 @@ class LabAttendant:
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
 
+        # [FEAT-119] The Assassin: Port-aware zombie mitigation
+        # Check if the port is busy before attempting launch
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('localhost', 8765)) == 0:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get("http://localhost:8765/heartbeat", timeout=1) as resp:
+                            if resp.status == 200:
+                                logger.info("[START] Lab already healthy on 8765. Attaching.")
+                                return web.json_response({"status": "attached"})
+                except Exception:
+                    logger.warning("[ASSASSIN] Zombie detected on 8765. Executing cleanup.")
+                    subprocess.run(["fuser", "-k", "8765/tcp"], capture_output=True)
+
         # [START] Unified inference engine boot
         # Kill existing residents BEFORE background task starts
         await self.cleanup_silicon()
