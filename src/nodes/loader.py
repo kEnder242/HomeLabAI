@@ -293,7 +293,13 @@ class BicameralNode:
         return f"{full_prompt}\n\nUser: {query}\n\nAssistant:"
 
     async def generate_response(
-        self, query, context="", memory="", system_override=None, max_tokens=512
+        self,
+        query,
+        context="",
+        memory="",
+        system_override=None,
+        max_tokens=512,
+        metadata=None,
     ):
         engine, url, model = await self.probe_engine()
         # [FEAT-031] Liger Optimization
@@ -359,7 +365,7 @@ class BicameralNode:
                         }
 
                         # [FEAT-078] Neural Trace (Pre-Send)
-                        self._mirror_trace("send", payload, gen_url)
+                        self._mirror_trace("send", payload, gen_url, metadata=metadata)
 
                         async with session.post(
                             gen_url, json=payload, timeout=120
@@ -417,7 +423,7 @@ class BicameralNode:
                         }
 
                         # [FEAT-078] Neural Trace (Pre-Send)
-                        self._mirror_trace("send", payload, chat_url)
+                        self._mirror_trace("send", payload, chat_url, metadata=metadata)
 
                         async with session.post(
                             chat_url, json=payload, timeout=120
@@ -452,7 +458,7 @@ class BicameralNode:
                     }
                 )
 
-    def _mirror_trace(self, phase, data, url=None):
+    def _mirror_trace(self, phase, data, url=None, metadata=None):
         """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
         try:
             # Absolute path hardening for trace logs
@@ -465,7 +471,12 @@ class BicameralNode:
             log_path = os.path.join(log_dir, f"trace_{self.name}.json")
 
             mode = "w" if phase == "send" else "a"
-            entry = {"phase": phase, "timestamp": time.time(), "data": data}
+            entry = {
+                "phase": phase,
+                "timestamp": time.time(),
+                "data": data,
+                "metadata": metadata,
+            }
             if url:
                 entry["url"] = url
 
