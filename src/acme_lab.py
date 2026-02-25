@@ -398,6 +398,16 @@ class AcmeLab:
         """Returns True if the user has typed recently (2s window)."""
         return (time.time() - self.last_typing_event) < 2.0
 
+    def get_oracle_signal(self, category):
+        """[FEAT-118] Resonant Oracle: Weighted preamble selection."""
+        try:
+            with open(ORACLE_CONFIG, "r") as f:
+                oracle = json.load(f)
+            options = oracle.get(category, ["Synthesizing..."])
+            return random.choice(options)
+        except Exception:
+            return "Neural resonance established."
+
     async def check_intent_is_casual(self, text):
         """[VIBE] Semantic Gatekeeper: Determines if a query is casual or strategic."""
         # Future: Call Llama-1B here for high-fidelity classification
@@ -668,8 +678,12 @@ class AcmeLab:
         logging.info(f"[USER] Intercom Query: {query}")
         logging.info(f"[DEBUG] Processing query for year-scanner: '{query}'")
 
-        # [FEAT-088] Amygdala Year-Scanner
+        # [VIBE] Intent State
+        is_strategic = False
         historical_context = ""
+        historical_sources = []
+
+        # [FEAT-088] Amygdala Year-Scanner
         year_match = re.search(r"\b(20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
             # [FEAT-117] Year detection automatically elevates query to Strategic
@@ -681,7 +695,11 @@ class AcmeLab:
                     name="get_context",
                     arguments={"query": f"Validation events from {year}"},
                 )
-                raw_history = res_context.content[0].text
+                # [FEAT-120] Structured RAG Extraction
+                rag_data = json.loads(res_context.content[0].text)
+                raw_history = rag_data.get("text", "")
+                historical_sources = rag_data.get("sources", [])
+
                 # [FEAT-088] Strict Grounding Mandate
                 historical_context = (
                     f"STRICT GROUNDING MANDATE: Use ONLY the following verified technical truth for the year {year}. "
@@ -740,10 +758,13 @@ class AcmeLab:
         ]
 
         # [FEAT-032] Amygdala Logic: Use 1B model as smart filter when typing
-        is_strategic = False
-        if self.mic_active:
-            # Voice Mode: Use keyword-based sentinel for speed
-            is_strategic = any(k in query.lower() for k in strat_keys) and not is_casual
+        # If not already elevated by Amygdala, check sentinels
+        if not is_strategic:
+            if self.mic_active:
+                # Voice Mode: Use keyword-based sentinel for speed
+                is_strategic = (
+                    any(k in query.lower() for k in strat_keys) and not is_casual
+                )
         else:
             # Typing Mode: Use Amygdala (1B) to filter
             if not is_casual:
@@ -752,9 +773,11 @@ class AcmeLab:
 
         addressed_brain = "brain" in query.lower()
 
-        async def execute_dispatch(raw_text, source, context_flags=None):
+        async def execute_dispatch(
+            raw_text, source, context_flags=None, oracle_category=None, sources=None
+        ):
             """Hardened Priority Dispatcher with Hallucination Shunt and [FEAT-110] Banter Sanitizer."""
-            nonlocal historical_context
+            nonlocal historical_context, historical_sources
             logging.info(
                 f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'"
             )
@@ -880,6 +903,8 @@ class AcmeLab:
                             "brain": str(reply),
                             "brain_source": source,
                             "channel": target_channel,
+                            "oracle_category": oracle_category,
+                            "sources": sources or historical_sources,
                         }
                     )
                     return True
@@ -1062,9 +1087,15 @@ class AcmeLab:
                         try:
                             # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
                             # [FEAT-118] Resonant Oracle: picking a state-aware preamble
-                            category = "RETRIEVING" if historical_context else "HANDSHAKE"
+                            category = (
+                                "RETRIEVING" if historical_context else "HANDSHAKE"
+                            )
                             oracle_signal = self.get_oracle_signal(category)
-                            await execute_dispatch(oracle_signal, "Brain (Signal)")
+                            await execute_dispatch(
+                                oracle_signal,
+                                "Brain (Signal)",
+                                oracle_category=category,
+                            )
 
                             # Step 2: Deep Technical Derivation
                             ctx = "\n".join(self.recent_interactions)
@@ -1175,7 +1206,10 @@ class AcmeLab:
                         return
 
                     await execute_dispatch(
-                        raw_out, source_name, {"direct": addressed_brain}
+                        raw_out,
+                        source_name,
+                        {"direct": addressed_brain},
+                        sources=historical_sources,
                     )
 
                     if "close_lab" in raw_out or "goodnight" in raw_out:
