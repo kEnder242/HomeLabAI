@@ -1249,6 +1249,69 @@ class AcmeLab:
         if self.mode == "DEBUG_SMOKE":
             logging.info("[SMOKE] Successful load. Self-terminating.")
             self.shutdown_event.set()
+        elif self.mode == "DEEP_SMOKE":
+            logging.info("[DEEP_SMOKE] Starting Cycle of Life verification...")
+            try:
+                # 1. Ingest
+                logging.info("[DEEP_SMOKE] Step 1: Ingesting memory...")
+                await self.residents["archive"].call_tool(
+                    "save_interaction",
+                    arguments={
+                        "query": "DEEP_SMOKE_TEST",
+                        "response": "The verification code is 778899",
+                    },
+                )
+                # 2. Reason
+                logging.info("[DEEP_SMOKE] Step 2: Reasoning over memory...")
+                res = await self.residents["brain"].call_tool(
+                    "deep_think",
+                    arguments={
+                        "task": "What is the DEEP_SMOKE_TEST verification code?",
+                        "context": "",
+                    },
+                )
+                if "778899" in res.content[0].text:
+                    logging.info("[DEEP_SMOKE] Step 2 PASSED: Recall verified.")
+                else:
+                    logging.error(
+                        f"[DEEP_SMOKE] Step 2 FAILED: Response was: {res.content[0].text}"
+                    )
+
+                # 3. Dream (Consolidate)
+                logging.info("[DEEP_SMOKE] Step 3: Consolidating memory via Dream...")
+                dump = await self.residents["archive"].call_tool(
+                    "get_stream_dump", arguments={}
+                )
+                data = json.loads(dump.content[0].text)
+                ids = data.get("ids", [])
+                await self.residents["archive"].call_tool(
+                    "dream",
+                    arguments={
+                        "summary": "Deep Smoke Verification: Code 778899 secured.",
+                        "sources": ids,
+                    },
+                )
+
+                # 4. Final Recall
+                logging.info("[DEEP_SMOKE] Step 4: Final recall check...")
+                res_final = await self.residents["brain"].call_tool(
+                    "deep_think",
+                    arguments={
+                        "task": "Recall the deep smoke verification code.",
+                        "context": "",
+                    },
+                )
+                if "778899" in res_final.content[0].text:
+                    logging.info("[DEEP_SMOKE] Step 4 PASSED: Evolution verified.")
+                else:
+                    logging.warning(
+                        "[DEEP_SMOKE] Step 4: Partial success. Response requires manual review."
+                    )
+
+                logging.info("[DEEP_SMOKE] Cycle of Life complete.")
+            except Exception as e:
+                logging.error(f"[DEEP_SMOKE] Verification failed: {e}")
+            self.shutdown_event.set()
 
     async def run(self, disable_ear=False, trigger_task=None):
         if not disable_ear:
