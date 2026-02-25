@@ -708,6 +708,10 @@ class AcmeLab:
                     "STRICT: DO NOT invent scenarios, drone swarms, or projects not listed below.\n"
                     f"--- VERIFIED LOGS [{year}] ---\n{raw_history}"
                 )
+                if historical_sources:
+                    logging.info(
+                        f"[HISTORY] Found truth anchors for {year}: {historical_sources}"
+                    )
             except Exception as e:
                 logging.error(f"[AMYGDALA] Recall failed: {e}")
 
@@ -796,7 +800,15 @@ class AcmeLab:
 
             # [FEAT-026] Brain Voice Restoration: Force raw text for Architect
             if source == "Brain" and "{" not in raw_text:
-                await self.broadcast({"brain": raw_text, "brain_source": "Brain"})
+                # [FEAT-120] Ensure metadata is included even in direct raw text dispatch
+                await self.broadcast(
+                    {
+                        "brain": raw_text,
+                        "brain_source": "Brain",
+                        "oracle_category": oracle_category,
+                        "sources": sources or historical_sources,
+                    }
+                )
                 return True
 
             try:
@@ -956,6 +968,12 @@ class AcmeLab:
                         )
 
                         # [FEAT-048] Monitor long-running Brain tasks
+                        # [FEAT-120] Pass metadata for Trace auditability
+                        if "metadata" not in t_args:
+                            t_args["metadata"] = {
+                                "sources": sources or historical_sources,
+                                "oracle_category": oracle_category,
+                            }
                         res = await self.monitor_task_with_tics(
                             self.residents[target_node].call_tool(
                                 name=t_name, arguments=t_args
@@ -988,6 +1006,7 @@ class AcmeLab:
                             raw_out,
                             "Brain" if self.brain_online else "Brain (Shadow)",
                             {"direct": addressed_brain, "channel": "insight"},
+                            sources=historical_sources,
                         )
                     else:
                         await self.broadcast(
@@ -1083,7 +1102,9 @@ class AcmeLab:
                 if is_strategic:
 
                     async def brain_strategy_chain():
-                        nonlocal historical_context
+                        nonlocal historical_context, historical_sources
+                        # [FEAT-118] Resonant Oracle: picking a state-aware preamble
+                        category = "RETRIEVING" if historical_context else "HANDSHAKE"
                         try:
                             # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
                             # [FEAT-118] Resonant Oracle: picking a state-aware preamble
@@ -1112,10 +1133,19 @@ class AcmeLab:
                                     arguments={
                                         "task": brain_task,
                                         "context": handover_ctx,
+                                        "metadata": {
+                                            "sources": historical_sources,
+                                            "oracle_category": category,
+                                        },
                                     },
                                 )
                             )
-                            await execute_dispatch(res_deep.content[0].text, "Brain")
+                            await execute_dispatch(
+                                res_deep.content[0].text,
+                                "Brain",
+                                oracle_category=category,
+                                sources=historical_sources,
+                            )
                         except Exception as e:
                             logging.error(f"[CHAIN] Agentic Handover failed: {e}")
 

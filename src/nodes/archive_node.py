@@ -373,7 +373,7 @@ async def get_context(query: str, n_results: int = 3) -> str:
         res = wisdom.query(query_texts=[query], n_results=n_results)
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
-        
+
         if not docs:
             res = stream.query(query_texts=[query], n_results=n_results)
             docs = res.get("documents", [[]])[0]
@@ -384,25 +384,38 @@ async def get_context(query: str, n_results: int = 3) -> str:
 
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
+        source_files = []
         for i, doc in enumerate(docs):
             meta = metas[i] if i < len(metas) else {}
-            # Look for YYYY_MM or YYYY date indicators in metadata
-            ts = meta.get("timestamp", "")
-            if ts and len(ts) >= 7:
-                year_month = ts[:7].replace("-", "_")
-                # Attempt to find the specific source file
-                target_file = f"{year_month}.json"
-                if os.path.exists(os.path.join(DATA_DIR, target_file)):
+            # [FIX] Handle varied metadata keys (date vs timestamp vs source)
+            ts = meta.get("timestamp") or meta.get("date") or meta.get("source", "")
+            if ts:
+                # Case 1: Full filename provided
+                if ts.endswith(".json"):
+                    target_file = ts
+                # Case 2: Date string provided (YYYY-MM-DD)
+                elif len(ts) >= 7:
+                    year_month = ts[:7].replace("-", "_")
+                    target_file = f"{year_month}.json"
+                else:
+                    target_file = None
+
+                if target_file and os.path.exists(os.path.join(DATA_DIR, target_file)):
                     # [FEAT-117] Bridge to raw JSON truth
                     full_truths.append(
                         f"[ACQUISITION Source: {target_file}]: "
                         f"Document anchor: {doc[:100]}..."
                     )
+                    if target_file not in source_files:
+                        source_files.append(target_file)
                     continue
 
             full_truths.append(f"[DISCOVERY]: {doc}")
 
-        return "\n---\n".join(full_truths)
+        # [FEAT-120] Return structured JSON for Hub transparency
+        return json.dumps(
+            {"text": "\n---\n".join(full_truths), "sources": source_files}
+        )
     except Exception as e:
         return f"Search Error: {e}"
 

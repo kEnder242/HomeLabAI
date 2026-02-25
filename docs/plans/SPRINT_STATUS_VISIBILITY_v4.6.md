@@ -48,5 +48,20 @@ The Lab requires a transition from "Metadata" to "Deep Visibility." We need a no
 *   **How**: Add Gauntlet tests to `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md`.
 *   **Proof**: Map reflects actual 4.6 capabilities.
 
+### Task 22: Context Transparency [FEAT-120]
+*   **Why**: Prove where the mice are getting their info to debug hallucinations in the UI.
+*   **How**: Update Hub to broadcast structured `sources`. Prepend clickable `[Ref: 2010.json]` links to the chat text.
+*   **Proof**: UI shows the exact source file used for the response.
+
+### Task 23: Zero-Indent UI Overhaul
+*   **Why**: Reclaim screen real-estate and stop the "Chat Bubble" indentation bloat across all platforms.
+*   **How**: Remove text margins in `style.css`. Shorten timestamps to `HH:MM:SS` and stack metadata above content.
+*   **Proof**: Text wraps back to the far left margin of the console on both desktop and mobile.
+
+### Task 24: Resonant Oracle Badge [FEAT-118]
+*   **Why**: Provide liveliness and state awareness without verbose preamble text or roleplay emojis.
+*   **How**: Replace preamble quips with text-only state badges in the source label (e.g., `[BRAIN (STATE: RETRIEVING)]`).
+*   **Proof**: UI shows immediate state changes with zero added text latency.
+
 ---
 *Reference: [HomeLabAI/docs/Protocols.md](../Protocols.md)*
