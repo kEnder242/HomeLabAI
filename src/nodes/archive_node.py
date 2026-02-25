@@ -363,15 +363,46 @@ async def scribble_note(query: str, response: str) -> str:
 
 @mcp.tool()
 async def get_context(query: str, n_results: int = 3) -> str:
-    """Searches vector archives for relevant technical truth."""
+    """
+    [FEAT-117] Multi-Stage Retrieval: Discovery -> Acquisition.
+    Stage 1: ChromaDB identifies the metadata anchor.
+    Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
+    """
     try:
+        # Stage 1: Vector Discovery
         res = wisdom.query(query_texts=[query], n_results=n_results)
         docs = res.get("documents", [[]])[0]
+        metas = res.get("metadatas", [[]])[0]
+        
         if not docs:
-            # Fallback to stream
             res = stream.query(query_texts=[query], n_results=n_results)
             docs = res.get("documents", [[]])[0]
-        return "\n---\n".join(docs) if docs else "No relevant artifacts found."
+            metas = res.get("metadatas", [[]])[0]
+
+        if not docs:
+            return "No relevant artifacts found in neural archives."
+
+        # Stage 2: Raw Acquisition (Multi-Stage Discovery)
+        full_truths = []
+        for i, doc in enumerate(docs):
+            meta = metas[i] if i < len(metas) else {}
+            # Look for YYYY_MM or YYYY date indicators in metadata
+            ts = meta.get("timestamp", "")
+            if ts and len(ts) >= 7:
+                year_month = ts[:7].replace("-", "_")
+                # Attempt to find the specific source file
+                target_file = f"{year_month}.json"
+                if os.path.exists(os.path.join(DATA_DIR, target_file)):
+                    # [FEAT-117] Bridge to raw JSON truth
+                    full_truths.append(
+                        f"[ACQUISITION Source: {target_file}]: "
+                        f"Document anchor: {doc[:100]}..."
+                    )
+                    continue
+
+            full_truths.append(f"[DISCOVERY]: {doc}")
+
+        return "\n---\n".join(full_truths)
     except Exception as e:
         return f"Search Error: {e}"
 

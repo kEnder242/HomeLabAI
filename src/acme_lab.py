@@ -29,6 +29,7 @@ LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 STATUS_JSON = os.path.join(WORKSPACE_DIR, "field_notes/data/status.json")
 INFRA_CONFIG = os.path.join(LAB_DIR, "config/infrastructure.json")
+ORACLE_CONFIG = os.path.join(LAB_DIR, "config/oracle.json")
 NIGHTLY_DIALOGUE_FILE = os.path.join(
     WORKSPACE_DIR, "field_notes/data/nightly_dialogue.json"
 )
@@ -1058,19 +1059,17 @@ class AcmeLab:
                         nonlocal historical_context
                         try:
                             # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
-                            res_quip = await self.residents["brain"].call_tool(
-                                name="shallow_think",
-                                arguments={"task": f"[HANDOVER SIGNAL]: {query}"},
-                            )
-                            quip_text = res_quip.content[0].text
-                            await execute_dispatch(quip_text, "Brain (Signal)")
+                            # [FEAT-118] Resonant Oracle: picking a state-aware preamble
+                            category = "RETRIEVING" if historical_context else "HANDSHAKE"
+                            oracle_signal = self.get_oracle_signal(category)
+                            await execute_dispatch(oracle_signal, "Brain (Signal)")
 
                             # Step 2: Deep Technical Derivation
                             ctx = "\n".join(self.recent_interactions)
                             # [FEAT-114/088] Cognitive Bridge
                             handover_ctx = (
                                 f"{ctx}\n"
-                                f"Assistant (Immediate Signal): {quip_text}\n"
+                                f"Assistant (Oracle Signal): {oracle_signal}\n"
                                 f"Historical Truth: {historical_context}"
                             )
 
