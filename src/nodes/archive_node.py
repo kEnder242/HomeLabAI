@@ -369,36 +369,44 @@ async def get_context(query: str, n_results: int = 3) -> str:
     Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
     """
     try:
-        # [FEAT-117] Hard Year Filtering
+        # [FEAT-117] Hard Year Filtering (Post-Filter)
         import re
-        where_filter = {}
         year_match = re.search(r"\b(20[0-2][0-9])\b", query)
-        if year_match:
-            year = year_match.group(1)
-            # Use where filter to force year accuracy in Stage 1
-            where_filter = {"date": {"$contains": year}}
-            logging.info(f"[ARCHIVE] Applying Hard Year Filter: {year}")
+        target_year = year_match.group(1) if year_match else None
+        
+        fetch_limit = n_results * 5 if target_year else n_results
+        if target_year:
+            logging.info(f"[ARCHIVE] Applying Hard Year Post-Filter: {target_year}")
 
         # Stage 1: Vector Discovery
-        res = wisdom.query(query_texts=[query], n_results=n_results, where=where_filter)
+        res = wisdom.query(query_texts=[query], n_results=fetch_limit)
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
 
         if not docs:
-            res = stream.query(query_texts=[query], n_results=n_results, where=where_filter)
+            res = stream.query(query_texts=[query], n_results=fetch_limit)
             docs = res.get("documents", [[]])[0]
             metas = res.get("metadatas", [[]])[0]
 
         if not docs:
-            return "No relevant artifacts found in neural archives."
+            return json.dumps({"text": "No relevant artifacts found in neural archives.", "sources": []})
 
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
         source_files = []
+        matched_count = 0
         for i, doc in enumerate(docs):
+            if matched_count >= n_results:
+                break
+                
             meta = metas[i] if i < len(metas) else {}
             # [FIX] Handle varied metadata keys (date vs timestamp vs source)
             ts = meta.get("timestamp") or meta.get("date") or meta.get("source", "")
+            
+            if target_year and ts and target_year not in str(ts):
+                continue
+                
+            matched_count += 1
             if ts:
                 # Case 1: Full filename provided
                 if ts.endswith(".json"):
@@ -427,7 +435,7 @@ async def get_context(query: str, n_results: int = 3) -> str:
             {"text": "\n---\n".join(full_truths), "sources": source_files}
         )
     except Exception as e:
-        return f"Search Error: {e}"
+        return json.dumps({"text": f"Search Error: {e}", "sources": []})
 
 
 @mcp.tool()
