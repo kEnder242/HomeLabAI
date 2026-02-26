@@ -369,13 +369,23 @@ async def get_context(query: str, n_results: int = 3) -> str:
     Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
     """
     try:
+        # [FEAT-117] Hard Year Filtering
+        import re
+        where_filter = {}
+        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        if year_match:
+            year = year_match.group(1)
+            # Use where filter to force year accuracy in Stage 1
+            where_filter = {"date": {"$contains": year}}
+            logging.info(f"[ARCHIVE] Applying Hard Year Filter: {year}")
+
         # Stage 1: Vector Discovery
-        res = wisdom.query(query_texts=[query], n_results=n_results)
+        res = wisdom.query(query_texts=[query], n_results=n_results, where=where_filter)
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
 
         if not docs:
-            res = stream.query(query_texts=[query], n_results=n_results)
+            res = stream.query(query_texts=[query], n_results=n_results, where=where_filter)
             docs = res.get("documents", [[]])[0]
             metas = res.get("metadatas", [[]])[0]
 

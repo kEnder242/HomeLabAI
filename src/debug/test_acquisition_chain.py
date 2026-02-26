@@ -13,8 +13,8 @@ async def test_acquisition_chain():
             await websocket.send(json.dumps({"type": "handshake", "version": "3.8.0"}))
             await asyncio.sleep(1)
 
-            # Trigger a year-based query
-            query = "Analyze technical validation work from 2010."
+            # Trigger a year-based query (2019)
+            query = "Analyze technical validation work from 2019."
             print(f"Sending Query: {query}")
             await websocket.send(json.dumps({"type": "text_input", "content": query}))
 
@@ -35,9 +35,9 @@ async def test_acquisition_chain():
                 with open(trace_path, "r") as f:
                     # Check the last 'send' entry
                     content = f.read()
-                    if "[ACQUISITION Source: 2010.json]" in content:
+                    if "[ACQUISITION Source: 2019.json]" in content or "[ACQUISITION Source: 2019_" in content:
                         print(
-                            "✅ PASSED: Discovery -> Acquisition chain verified in Trace."
+                            "✅ PASSED: Discovery -> Acquisition chain verified for 2019."
                         )
                         return True
                     else:
