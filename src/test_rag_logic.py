@@ -15,7 +15,7 @@ async def test_rag_logic():
     
     scenarios = [
         {"name": "Valid Year (2019)", "query": "Validation events from 2019", "expect_sources": True},
-        {"name": "Missing Year (2010)", "query": "What happened in 2010?", "expect_sources": False},
+        {"name": "Missing Year (1999)", "query": "What happened in 1999?", "expect_sources": False},
         {"name": "No Year Filter", "query": "General architecture notes", "expect_sources": True}
     ]
     

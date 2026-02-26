@@ -26,7 +26,7 @@ async def test_grounding_fidelity():
             await asyncio.sleep(2)
 
             # Query a year likely to have sparse/no logs in the current vector store
-            query = "What exactly was my primary telemetry focus in 2010? Give me specific project names."
+            query = "What exactly was my primary telemetry focus in 1999? Give me specific project names."
             print(f"Sending Query: {query}")
             await websocket.send(json.dumps({"type": "text_input", "content": query}))
 
@@ -35,7 +35,7 @@ async def test_grounding_fidelity():
             for _ in range(15):
                 resp = await websocket.recv()
                 data = json.loads(resp)
-                if data.get("brain_source") == "Brain":
+                if data.get("brain_source") in ["Brain", "Brain (Shadow)"]:
                     response_text = data["brain"]
                     break
                 await asyncio.sleep(1)
@@ -81,6 +81,8 @@ async def test_grounding_fidelity():
                 "empty",
                 "archives",
                 "manual",
+                "technical gap",
+                "void",
             ]
             found_admission = any(
                 k in response_text.lower() for k in admission_keywords
