@@ -20,8 +20,7 @@ async def test_rag_logic():
     ]
     
     for s in scenarios:
-        print(f"
-Scenario: {s['name']}")
+        print(f"\nScenario: {s['name']}")
         res_json = await get_context(s['query'])
         try:
             res = json.loads(res_json)
@@ -30,11 +29,11 @@ Scenario: {s['name']}")
             
             print(f"  Sources Found: {len(sources)}")
             if s['expect_sources'] and not sources:
-                print(f"  ⚠️ WARNING: Expected sources for '{s['query']}' but got none.")
+                print(f"  WARNING: Expected sources for query but got none.")
             elif not s['expect_sources'] and sources:
-                print(f"  ❌ FAILED: Unexpected sources for '{s['query']}': {sources}")
+                print(f"  FAILED: Unexpected sources for query: {sources}")
             else:
-                print(f"  ✅ PASSED: Source expectation met.")
+                print(f"  PASSED: Source expectation met.")
                 
             if len(text) > 50:
                 print(f"  Text Preview: {text[:60]}...")
@@ -42,7 +41,7 @@ Scenario: {s['name']}")
                 print(f"  Text: {text}")
                 
         except Exception as e:
-            print(f"  ❌ FAILED: Invalid JSON returned: {e}")
+            print(f"  FAILED: Invalid JSON returned: {e}")
             print(f"  Raw: {res_json}")
 
 if __name__ == "__main__":

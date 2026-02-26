@@ -1127,10 +1127,13 @@ class AcmeLab:
                     }
                 )
                 failover_prompt = (
-                    f"[FAILOVER ARCHITECT]: There are no records for the year {year}. "
-                    "STRICT IDENTITY: Laconic, technical systems architect. "
-                    f"CORE DIRECTIVE: Inform the user that the archives for {year} are empty. "
-                    "Do NOT invent projects. Report the gap in verified truth."
+                    "### SYSTEM MANDATE: ARCHIVE SILENCE ###\n"
+                    f"There are NO verified records for the year {year}. "
+                    "You are currently the 'Failover Architect'. "
+                    "STRICT IDENTITY: Laconic, technical, and grounded. "
+                    "CORE RULE: Do NOT invent projects, names (e.g., Chimera, Zenith), or scenarios. "
+                    f"MANDATE: State clearly that the technical archives for {year} are empty. "
+                    "Admit the gap in verified truth."
                 )
                 t_shadow = asyncio.create_task(
                     self.residents["pinky"].call_tool(
