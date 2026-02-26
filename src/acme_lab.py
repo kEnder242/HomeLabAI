@@ -7,6 +7,8 @@ import re
 import socket
 import sys
 import time
+import uuid
+import subprocess
 from typing import Dict, Set
 
 import aiohttp
@@ -66,16 +68,30 @@ _logger_initialized = False
 
 
 # --- THE MONTANA PROTOCOL ---
-def reclaim_logger():
+_BOOT_HASH = uuid.uuid4().hex[:4].upper()
+_GIT_COMMIT = "unknown"
+try:
+    _GIT_COMMIT = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+                                        cwd=LAB_DIR, text=True).strip()
+except Exception:
+    pass
+
+def get_fingerprint(role="HUB"):
+    return f"[{_BOOT_HASH}:{_GIT_COMMIT}:{role}]"
+
+def reclaim_logger(role="HUB"):
     global _logger_initialized
     if _logger_initialized:
         return
 
     root = logging.getLogger()
     # Aggressively clear all existing handlers to prevent double-logging
-    root.handlers = []
+    # and ensure only OUR formatted handlers remain.
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
 
-    fmt = logging.Formatter("%(asctime)s - [LAB] %(levelname)s - %(message)s")
+    # [FEAT-121] Lab Fingerprint Injection
+    fmt = logging.Formatter(f"%(asctime)s - {get_fingerprint(role)} %(levelname)s - %(message)s")
 
     sh = logging.StreamHandler(sys.stderr)
     sh.setFormatter(fmt)
@@ -107,9 +123,10 @@ class EarNode:
 
 
 class AcmeLab:
-    def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300):
+    def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
         self.mode = mode
         self.afk_timeout = afk_timeout
+        self.role = role
         self.status = "INIT"
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
@@ -125,7 +142,19 @@ class AcmeLab:
         self.mic_active = False  # [FEAT-025] Amygdala Switch State
         self.ear = None
         self.recent_interactions = []
-        reclaim_logger()
+        reclaim_logger(role)
+        self.set_proc_title()
+
+    def set_proc_title(self):
+        """[FEAT-122] Kernel-Level Visibility: Renames process in ps/htop."""
+        title = f"acme_lab {get_fingerprint(self.role)}"
+        try:
+            import setproctitle
+            setproctitle.setproctitle(title)
+        except ImportError:
+            # Fallback: Overwrite sys.argv
+            sys.argv[0] = title
+        logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
 
     def load_ear(self):
         """Lazy load real EarNode logic."""
@@ -1289,7 +1318,7 @@ class AcmeLab:
                 env["PINKY_MODEL"] = os.environ.get("PINKY_MODEL", "MEDIUM")
 
                 params = StdioServerParameters(
-                    command=PYTHON_PATH, args=[path], env=env
+                    command=PYTHON_PATH, args=[path, "--role", name.upper()], env=env
                 )
                 cl_stack = await stack.enter_async_context(stdio_client(params))
                 session = await stack.enter_async_context(
@@ -1432,13 +1461,14 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
     parser.add_argument("--afk-timeout", type=int, default=300)
     parser.add_argument("--disable-ear", action="store_true", default=False)
+    parser.add_argument("--role", default="HUB", help="Role of this node (HUB, PINKY, etc.)")
     parser.add_argument(
         "--trigger-task",
         choices=["recruiter", "architect"],
         help="Run a background task immediately on startup.",
     )
     args = parser.parse_args()
-    lab_instance = AcmeLab(mode=args.mode, afk_timeout=args.afk_timeout)
+    lab_instance = AcmeLab(mode=args.mode, afk_timeout=args.afk_timeout, role=args.role)
     asyncio.run(
         lab_instance.run(disable_ear=args.disable_ear, trigger_task=args.trigger_task)
     )
