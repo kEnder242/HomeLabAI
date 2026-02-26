@@ -2,14 +2,22 @@ import asyncio
 import json
 import os
 import websockets
+import sys
+
+# Setup Path
+LAB_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(LAB_ROOT, "src"))
+from test_utils import ensure_smart_lab # noqa: E402
 
 # Paths
-LAB_ROOT = os.path.expanduser("~/Dev_Lab/HomeLabAI")
 TRACE_FILE = os.path.join(LAB_ROOT, "logs/trace_brain.json")
 
 
 async def test_grounding_fidelity():
     print("--- [TEST] Grounding Fidelity (Anti-Hallucination) ---")
+
+    # [FEAT-125] Smart-Reuse Protocol
+    await ensure_smart_lab()
 
     uri = "ws://localhost:8765"
     try:

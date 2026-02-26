@@ -1,40 +1,20 @@
 import pytest
 import aiohttp
 import asyncio
-
-# --- Configuration ---
-ATTENDANT_URL = "http://localhost:9999"
+import re
+from test_utils import ensure_smart_lab, ATTENDANT_URL
 
 @pytest.mark.asyncio
 async def test_lab_attendant_full_cycle():
     """Tests the full lifecycle of the lab server via the attendant API."""
+    # [FEAT-125] Use Smart-Reuse utility
+    print("\n🏁 [STEP 1] Ensuring Lab is up and synchronized...")
+    success = await ensure_smart_lab(disable_ear=False)
+    assert success, "Failed to ensure Lab availability."
+
     async with aiohttp.ClientSession() as session:
-        # 1. Ensure it's stopped/cleaned
-        await session.post(f"{ATTENDANT_URL}/stop")
-        await session.post(f"{ATTENDANT_URL}/cleanup")
-
-        # 2. Start with EarNode enabled
-        print("\n🚀 Starting Lab Server with EarNode...")
-        async with session.post(f"{ATTENDANT_URL}/start", json={"disable_ear": False}) as resp:
-            assert resp.status == 200
-            data = await resp.json()
-            assert data["status"] == "success"
-            # Note: pid is no longer returned directly in start
-
-        # 3. Poll for READY status
-        print("⏳ Waiting for Lab to reach READY state...")
-        ready = False
-        for _ in range(60): # 60 seconds timeout
-            async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
-                status = await resp.json()
-                if status["full_lab_ready"]:
-                    ready = True
-                    print("✅ Lab is READY!")
-                    break
-            await asyncio.sleep(2)
-
-        assert ready, "Lab failed to reach READY state within timeout."
-
+        # [SMART] We are now guaranteed to have a synchronized Lab instance
+        
         # 4. Wait for EarNode specifically
         print("⏳ Waiting for EarNode to initialize (background thread)...")
         ear_ready = False
@@ -44,7 +24,6 @@ async def test_lab_attendant_full_cycle():
                 logs = await resp.text()
                 
                 # [FEAT-121] Verify Fingerprint Format [HASH:COMMIT:ROLE]
-                import re
                 if re.search(r"\[[0-9A-F]{4}:[0-9a-f]{7}:HUB\]", logs):
                     if not fingerprint_verified:
                         print("✅ Lab Fingerprint verified in logs.")

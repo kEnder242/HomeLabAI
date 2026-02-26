@@ -69,15 +69,18 @@ _logger_initialized = False
 
 # --- THE MONTANA PROTOCOL ---
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
-_GIT_COMMIT = "unknown"
-try:
-    _GIT_COMMIT = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
                                         cwd=LAB_DIR, text=True).strip()
-except Exception:
-    pass
+    except Exception:
+        return "unknown"
+
+_SOURCE_COMMIT = get_git_commit()
 
 def get_fingerprint(role="HUB"):
-    return f"[{_BOOT_HASH}:{_GIT_COMMIT}:{role}]"
+    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
 
 def reclaim_logger(role="HUB"):
     global _logger_initialized
@@ -147,7 +150,7 @@ class AcmeLab:
 
     def set_proc_title(self):
         """[FEAT-122] Kernel-Level Visibility: Renames process in ps/htop."""
-        title = f"acme_lab {get_fingerprint(self.role)}"
+        title = f"acme_lab [{_BOOT_HASH}:{get_git_commit()}:{self.role}]"
         try:
             import setproctitle
             setproctitle.setproctitle(title)
@@ -494,6 +497,9 @@ class AcmeLab:
                     {
                         "type": "status",
                         "version": VERSION,
+                        "boot_hash": _BOOT_HASH,
+                        "source_commit": _SOURCE_COMMIT,
+                        "disk_commit": get_git_commit(),
                         "state": "ready" if self.status == "READY" else "lobby",
                         "message": "Lab foyer is open.",
                     }
