@@ -287,9 +287,10 @@ class LabAttendant:
                 lab_process = subprocess.Popen(
                     cmd, cwd=LAB_DIR, env=env,
                     stderr=open(SERVER_LOG, "a", buffering=1),
+                    preexec_fn=os.setpgrp # [FEAT-121] Create process group for entire tree
                 )
                 self.monitor_task = asyncio.create_task(self.log_monitor_loop())
-                logger.info(f"[START] Lab Server started with PID: {lab_process.pid}")
+                logger.info(f"[START] Lab Server started with PID: {lab_process.pid} (PGID: {lab_process.pid})")
             except Exception as e:
                 logger.error(f"[START] Failed to launch Lab Server: {e}")
 
@@ -490,12 +491,27 @@ class LabAttendant:
             pass
 
     async def cleanup_silicon(self):
-        targets = ["vllm", "ollama", "acme_lab.py", "archive_node.py"]
+        """[FEAT-121] The Assassin: Refined PGID-aware cleanup."""
+        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                line = " ".join(proc.info["cmdline"] or []).lower()
-                if any(t in line for t in targets):
-                    proc.kill()
+                # [FEAT-121] Check command line for our targets
+                cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                if any(t in cmdline for t in targets):
+                    # If this is a Hub, try to kill the whole group
+                    try:
+                        pgid = os.getpgid(proc.info["pid"])
+                        logger.info(f"[ASSASSIN] Terminating process group: {pgid}")
+                        import signal
+                        os.killpg(pgid, signal.SIGTERM)
+                        # Short wait for graceful exit
+                        await asyncio.sleep(0.5)
+                        # Re-check and force if necessary
+                        if psutil.pid_exists(proc.info["pid"]):
+                            os.killpg(pgid, signal.SIGKILL)
+                    except Exception:
+                        # Fallback to individual kill if PGID fails or not found
+                        proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
