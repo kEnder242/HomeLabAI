@@ -396,11 +396,25 @@ async def get_context(query: str, n_results: int = 3) -> str:
         full_truths = []
         source_files = []
         
-        # [FEAT-126] Yearly Summary Injection
+        # [FEAT-126/127] Yearly Summary Injection & Grounding
         if target_year:
             summary_file = f"{target_year}.json"
-            if os.path.exists(os.path.join(DATA_DIR, summary_file)):
+            summary_path = os.path.join(DATA_DIR, summary_file)
+            if os.path.exists(summary_path):
                 source_files.append(summary_file)
+                try:
+                    with open(summary_path, 'r') as f:
+                        summary_data = json.load(f)
+                        # Extract the Top 3 highest-rank items for strategic context
+                        high_rank = sorted([e for e in summary_data if e.get('rank', 0) >= 3], 
+                                         key=lambda x: x.get('rank', 0), reverse=True)[:3]
+                        for entry in high_rank:
+                            full_truths.append(
+                                f"[STRATEGIC SUMMARY {target_year}]: {entry.get('summary')} "
+                                f"(Rank: {entry.get('rank')}, Gem: {entry.get('technical_gem', 'N/A')})"
+                            )
+                except Exception as e:
+                    logging.error(f"[ARCHIVE] Failed to parse summary {summary_file}: {e}")
 
         matched_count = 0
         for i, doc in enumerate(docs):
