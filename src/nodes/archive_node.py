@@ -371,7 +371,8 @@ async def get_context(query: str, n_results: int = 3) -> str:
     try:
         # [FEAT-117] Hard Year Filtering (Post-Filter)
         import re
-        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        # Support years from 1990 to 2029
+        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         target_year = year_match.group(1) if year_match else None
         
         fetch_limit = n_results * 5 if target_year else n_results
@@ -394,6 +395,13 @@ async def get_context(query: str, n_results: int = 3) -> str:
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
         source_files = []
+        
+        # [FEAT-126] Yearly Summary Injection
+        if target_year:
+            summary_file = f"{target_year}.json"
+            if os.path.exists(os.path.join(DATA_DIR, summary_file)):
+                source_files.append(summary_file)
+
         matched_count = 0
         for i, doc in enumerate(docs):
             if matched_count >= n_results:
@@ -401,9 +409,10 @@ async def get_context(query: str, n_results: int = 3) -> str:
                 
             meta = metas[i] if i < len(metas) else {}
             # [FIX] Handle varied metadata keys (date vs timestamp vs source)
-            ts = meta.get("timestamp") or meta.get("date") or meta.get("source", "")
+            ts = str(meta.get("timestamp") or meta.get("date") or meta.get("source", ""))
             
-            if target_year and ts and target_year not in str(ts):
+            # [STRICT-YEAR] If we have a target year, strictly reject any mismatch
+            if target_year and target_year not in ts:
                 continue
                 
             matched_count += 1

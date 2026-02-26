@@ -719,7 +719,7 @@ class AcmeLab:
         historical_sources = []
 
         # [FEAT-088/123/124] The Local Truth Sentry
-        year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         silence_mode = False
         if year_match and "archive" in self.residents:
             is_strategic = True
