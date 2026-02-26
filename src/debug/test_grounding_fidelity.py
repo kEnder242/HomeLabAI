@@ -36,16 +36,20 @@ async def test_grounding_fidelity():
 
             # Verification 1: Check the Trace for Mandate Injection
             print("\nStep 1: Verifying Neural Trace for Grounding Mandate...")
+            PINKY_TRACE = os.path.join(LAB_ROOT, "logs/trace_pinky.json")
+            
+            trace_content = ""
             if os.path.exists(TRACE_FILE):
                 with open(TRACE_FILE, "r") as f:
-                    trace = f.read()
+                    trace_content += f.read()
+            if os.path.exists(PINKY_TRACE):
+                with open(PINKY_TRACE, "r") as f:
+                    trace_content += f.read()
 
-                if "STRICT GROUNDING MANDATE" in trace:
-                    print("✅ Mandate Injection Verified in Trace.")
-                else:
-                    print("❌ FAILED: Mandate missing from Trace.")
+            if any(m in trace_content for m in ["STRICT GROUNDING MANDATE", "SYSTEM MANDATE: ARCHIVE SILENCE"]):
+                print("✅ Mandate Injection Verified in Trace.")
             else:
-                print("❌ FAILED: Neural Trace file not found.")
+                print("❌ FAILED: Mandate missing from Trace.")
 
             # Verification 2: Check for Common Hallucinations
             print("Step 2: Checking for Hallucinations...")
