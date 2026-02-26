@@ -247,11 +247,12 @@ class LabAttendant:
                     subprocess.run(["fuser", "-k", "8765/tcp"], capture_output=True)
 
         # [START] Unified inference engine boot
-        # Kill existing residents BEFORE background task starts
-        await self.cleanup_silicon()
         self.ready_event.clear() # Reset readiness
 
         async def boot_sequence():
+            # Ensure cleanup is DONE before starting new process
+            await self.cleanup_silicon()
+            
             global lab_process
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
@@ -491,7 +492,24 @@ class LabAttendant:
             pass
 
     async def cleanup_silicon(self):
-        """[FEAT-121] The Assassin: Refined PGID-aware cleanup."""
+        """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
+        # 1. Port-Aware Assassin: Kill whatever is holding our socket
+        import socket
+        try:
+            for conn in psutil.net_connections(kind='tcp'):
+                if conn.laddr.port == 8765:
+                    pid = conn.pid
+                    if pid:
+                        logger.warning(f"[ASSASSIN] Port 8765 held by PID {pid}. Terminating group.")
+                        try:
+                            pgid = os.getpgid(pid)
+                            os.killpg(pgid, signal.SIGKILL)
+                        except Exception:
+                            os.kill(pid, signal.SIGKILL)
+        except Exception as e:
+            logger.error(f"[ASSASSIN] Port check failed: {e}")
+
+        # 2. Name-Aware Sweep
         targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:

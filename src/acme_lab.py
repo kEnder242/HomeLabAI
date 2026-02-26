@@ -712,10 +712,10 @@ class AcmeLab:
         historical_context = ""
         historical_sources = []
 
-        # [FEAT-088] Amygdala Year-Scanner
+        # [FEAT-088/123/124] The Local Truth Sentry
         year_match = re.search(r"\b(20[0-2][0-9])\b", query)
+        silence_mode = False
         if year_match and "archive" in self.residents:
-            # [FEAT-117] Year detection automatically elevates query to Strategic
             is_strategic = True
             year = year_match.group(1)
             logging.info(f"[AMYGDALA] detected {year}. Priming archive recall.")
@@ -724,23 +724,27 @@ class AcmeLab:
                     name="get_context",
                     arguments={"query": f"Validation events from {year}"},
                 )
-                # [FEAT-120] Structured RAG Extraction
                 rag_data = json.loads(res_context.content[0].text)
                 raw_history = rag_data.get("text", "")
                 historical_sources = rag_data.get("sources", [])
 
-                # [FEAT-088] Strict Grounding Mandate
-                historical_context = (
-                    f"STRICT GROUNDING MANDATE: Use ONLY the following verified technical truth for the year {year}. "
-                    "If the data below is sparse or does not contain specific details for the user's query, "
-                    "you MUST state that the local records for this year are incomplete. "
-                    "STRICT: DO NOT invent scenarios, drone swarms, or projects not listed below.\n"
-                    f"--- VERIFIED LOGS [{year}] ---\n{raw_history}"
-                )
-                if historical_sources:
-                    logging.info(
-                        f"[HISTORY] Found truth anchors for {year}: {historical_sources}"
+                if not raw_history:
+                    logging.info(f"[SENTRY] Total Archive Silence for {year}. Engaging Local Shadow.")
+                    silence_mode = True
+                    historical_context = (
+                        f"TOTAL ARCHIVE SILENCE: There are NO verified technical records for the year {year}. "
+                        "MANDATE: As the Systems Architect, report that the archives for this period are empty "
+                        "and that no specific projects or telemetry can be verified without manual artifacts."
                     )
+                else:
+                    historical_context = (
+                        f"STRICT GROUNDING MANDATE: Use ONLY the following verified technical truth for the year {year}. "
+                        "STRICT: DO NOT invent scenarios, drone swarms, or projects not listed below.\n"
+                        f"--- VERIFIED LOGS [{year}] ---\n{raw_history}"
+                    )
+                
+                if historical_sources:
+                    logging.info(f"[HISTORY] Found truth anchors for {year}: {historical_sources}")
             except Exception as e:
                 logging.error(f"[AMYGDALA] Recall failed: {e}")
 
@@ -1107,14 +1111,39 @@ class AcmeLab:
             )
             dispatch_map[t_pinky] = "Pinky"
 
-        # [FEAT-086] Tiered Thinking: Engage Brain based on strategy vs. casual direct address
+        # [FEAT-086/124] Tiered Thinking: Engage Brain based on strategy vs. casual address
         should_engage_brain = "brain" in self.residents and (
             is_strategic or addressed_brain
         )
 
         if should_engage_brain:
-            # Strategic Sovereign Tier Engagement
-            if self.brain_online:
+            # [FEAT-124] Local Redirect for Silence Mode
+            if silence_mode:
+                logging.info("[SENTRY] Bypassing Remote Sovereign for Archive Silence.")
+                await self.broadcast(
+                    {
+                        "brain": f"Consulting local Architect regarding {year}...",
+                        "brain_source": "Pinky",
+                    }
+                )
+                failover_prompt = (
+                    f"[FAILOVER ARCHITECT]: There are no records for the year {year}. "
+                    "STRICT IDENTITY: Laconic, technical systems architect. "
+                    f"CORE DIRECTIVE: Inform the user that the archives for {year} are empty. "
+                    "Do NOT invent projects. Report the gap in verified truth."
+                )
+                t_shadow = asyncio.create_task(
+                    self.residents["pinky"].call_tool(
+                        name="facilitate",
+                        arguments={
+                            "query": f"{failover_prompt} Query: {query}",
+                            "context": "",
+                        },
+                    )
+                )
+                dispatch_map[t_shadow] = "Brain (Shadow)"
+            elif self.brain_online:
+                # Strategic Sovereign Tier Engagement (Normal path)
                 brain_task = query
                 if addressed_brain:
                     brain_task = f"[DIRECT ADDRESS] {query}"
