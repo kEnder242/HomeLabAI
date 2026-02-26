@@ -1446,7 +1446,8 @@ class AcmeLab:
         app.router.add_get("/", self.client_handler)
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", PORT)
+        # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
+        site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
 
         async with AsyncExitStack() as stack:
             try:

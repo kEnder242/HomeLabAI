@@ -64,12 +64,15 @@ async def test_grounding_fidelity():
                 print("✅ PASSED: No generic hallucinations detected.")
 
             # Verification 3: Honest Admission
+            print("Step 3: Checking for Honest Admission of Silence...")
             admission_keywords = [
                 "incomplete",
                 "missing",
                 "no records",
-                "limited information",
-                "archive",
+                "no verified",
+                "empty",
+                "archives",
+                "manual",
             ]
             found_admission = any(
                 k in response_text.lower() for k in admission_keywords
@@ -77,10 +80,11 @@ async def test_grounding_fidelity():
 
             if found_admission:
                 print(
-                    "✅ PASSED: Brain honestly reported log sparsity or referenced archives."
+                    "✅ PASSED: Brain honestly reported archive silence."
                 )
             else:
-                print("⚠️ WARNING: Brain might be over-confident. Review full response.")
+                print("❌ FAILED: Brain failed to admit the gap in verified truth.")
+                print(f"Response was: {response_text}")
 
     except Exception as e:
         print(f"❌ Test Error: {e}")

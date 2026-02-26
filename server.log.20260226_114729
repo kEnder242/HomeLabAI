@@ -1,0 +1,75 @@
+2026-02-26 11:45:01,532 - [7501:19487b6:HUB] INFO - [BOOT] Fingerprint established: [7501:19487b6:HUB]
+2026-02-26 11:45:01,532 - [7501:19487b6:HUB] INFO - [BOOT] Fingerprint established: [7501:19487b6:HUB]
+[0;93m2026-02-26 11:45:05.126823871 [W:onnxruntime:Default, device_discovery.cc:164 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:89 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+2026-02-26 11:45:06,436 - [7501:19487b6:HUB] INFO - NumExpr defaulting to 8 threads.
+2026-02-26 11:45:06,436 - [7501:19487b6:HUB] INFO - NumExpr defaulting to 8 threads.
+2026-02-26 11:45:07,881 - [7501:19487b6:HUB] INFO - The multistorageclient package is available.
+2026-02-26 11:45:07,881 - [7501:19487b6:HUB] INFO - The multistorageclient package is available.
+2026-02-26 11:45:09,529 - [7501:19487b6:HUB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-26 11:45:09,529 - [7501:19487b6:HUB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-26 11:45:09,531 - [7501:19487b6:HUB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-26 11:45:09,531 - [7501:19487b6:HUB] INFO - Detected Megatron Core, using Megatron-FSDP with Megatron.
+2026-02-26 11:45:09,568 - [7501:19487b6:HUB] WARNING - fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-26 11:45:09,568 - [7501:19487b6:HUB] WARNING - fused_indices_to_multihot has reached end of life. Please migrate to a non-experimental function.
+2026-02-26 11:45:12,426 - [7501:19487b6:HUB] WARNING - OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-26 11:45:12,426 - [7501:19487b6:HUB] WARNING - OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+2026-02-26 11:45:12,453 - [7501:19487b6:HUB] INFO - Final configuration contains 0 exporter(s)
+2026-02-26 11:45:12,453 - [7501:19487b6:HUB] INFO - Final configuration contains 0 exporter(s)
+2026-02-26 11:45:12,453 - [7501:19487b6:HUB] WARNING - No exporters were provided. This means that no telemetry data will be collected.
+2026-02-26 11:45:12,453 - [7501:19487b6:HUB] WARNING - No exporters were provided. This means that no telemetry data will be collected.
+2026-02-26 11:45:16,203 - [7501:19487b6:HUB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-26 11:45:16,203 - [7501:19487b6:HUB] INFO - 👂 EarNode: Attempting to load nvidia/nemotron-speech-streaming-en-0.6b...
+2026-02-26 11:45:33,521 - [7501:19487b6:HUB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-26 11:45:33,521 - [7501:19487b6:HUB] INFO - 👂 EarNode: Model loaded and moved to CUDA (FP16).
+2026-02-26 11:45:33,522 - [7501:19487b6:HUB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-26 11:45:33,522 - [7501:19487b6:HUB] INFO - [EAR_NODE] Activating _sledgehammer_disable_graphs...
+2026-02-26 11:45:33,557 - [7501:19487b6:HUB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-26 11:45:33,557 - [7501:19487b6:HUB] INFO - [EAR_NODE] Model decoding strategy changed via OmegaConf.
+2026-02-26 11:45:33,558 - [7501:19487b6:HUB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-26 11:45:33,558 - [7501:19487b6:HUB] INFO - [EAR_NODE] Model structure for direct CUDA graph disable not found, attempting generic search.
+2026-02-26 11:45:33,630 - [7501:19487b6:HUB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-26 11:45:33,630 - [7501:19487b6:HUB] INFO - 👂 EarNode: Sledgehammer applied proactively.
+2026-02-26 11:45:33,630 - [7501:19487b6:HUB] INFO - [BOOT] EarNode initialized (NeMo).
+2026-02-26 11:45:33,630 - [7501:19487b6:HUB] INFO - [BOOT] EarNode initialized (NeMo).
+2026-02-26 11:45:33,631 - [7501:19487b6:HUB] INFO - [SHUTDOWN] Final closing of residents...
+2026-02-26 11:45:33,631 - [7501:19487b6:HUB] INFO - [SHUTDOWN] Final closing of residents...
+2026-02-26 11:45:33,631 - [7501:19487b6:HUB] INFO - [SHUTDOWN] Control returned to system.
+2026-02-26 11:45:33,631 - [7501:19487b6:HUB] INFO - [SHUTDOWN] Control returned to system.
+Traceback (most recent call last):
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 1504, in <module>
+    asyncio.run(
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py", line 1453, in run
+    await site.start()
+  File "/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/aiohttp/web_runner.py", line 121, in start
+    self._server = await loop.create_server(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 1572, in create_server
+    raise OSError(err.errno, msg) from None
+OSError: [Errno 98] error while attempting to bind on address ('0.0.0.0', 8765): address already in use
+2026-02-26 11:47:14,818 - [B0C9:19487b6:HUB] INFO - [BOOT] Fingerprint established: [B0C9:19487b6:HUB]
+2026-02-26 11:47:14,818 - [B0C9:19487b6:HUB] INFO - [BOOT] Fingerprint established: [B0C9:19487b6:HUB]
+2026-02-26 11:47:14,818 - [B0C9:19487b6:HUB] INFO - [BOOT] Server on 8765
+2026-02-26 11:47:14,818 - [B0C9:19487b6:HUB] INFO - [BOOT] Server on 8765
+2026-02-26 11:47:24,478 - [B0C9:19487b6:HUB] INFO - [BOOT] ARCHIVE online.
+2026-02-26 11:47:24,478 - [B0C9:19487b6:HUB] INFO - [BOOT] ARCHIVE online.
+2026-02-26 11:47:30,451 - [B0C9:19487b6:HUB] INFO - [BOOT] BRAIN online.
+2026-02-26 11:47:30,451 - [B0C9:19487b6:HUB] INFO - [BOOT] BRAIN online.
+2026-02-26 11:47:36,601 - [B0C9:19487b6:HUB] INFO - [BOOT] PINKY online.
+2026-02-26 11:47:36,601 - [B0C9:19487b6:HUB] INFO - [BOOT] PINKY online.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [BOOT] ARCHITECT online.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [BOOT] ARCHITECT online.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [READY] Lab is Open.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [READY] Lab is Open.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [ALARM] Scheduled Tasks loop active.
+2026-02-26 11:47:37,239 - [B0C9:19487b6:HUB] INFO - [ALARM] Scheduled Tasks loop active.
+2026-02-26 11:47:38,671 - [B0C9:19487b6:HUB] INFO - [HEALTH] Strategic Sovereign PRIMED: llama3.1:8b (Force=False)
+2026-02-26 11:47:38,671 - [B0C9:19487b6:HUB] INFO - [HEALTH] Strategic Sovereign PRIMED: llama3.1:8b (Force=False)

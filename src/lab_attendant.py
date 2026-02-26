@@ -253,6 +253,9 @@ class LabAttendant:
             # Ensure cleanup is DONE before starting new process
             await self.cleanup_silicon()
             
+            # [FEAT-119] OS Cooldown: Give the kernel time to reap the socket
+            await asyncio.sleep(2.0)
+
             global lab_process
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
@@ -494,7 +497,7 @@ class LabAttendant:
     async def cleanup_silicon(self):
         """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
         # 1. Port-Aware Assassin: Kill whatever is holding our socket
-        import socket
+        import signal
         try:
             for conn in psutil.net_connections(kind='tcp'):
                 if conn.laddr.port == 8765:
@@ -506,6 +509,8 @@ class LabAttendant:
                             os.killpg(pgid, signal.SIGKILL)
                         except Exception:
                             os.kill(pid, signal.SIGKILL)
+                        # [FEAT-119] Atomic Reaping: Wait for kernel to release socket
+                        await asyncio.sleep(1.0)
         except Exception as e:
             logger.error(f"[ASSASSIN] Port check failed: {e}")
 
