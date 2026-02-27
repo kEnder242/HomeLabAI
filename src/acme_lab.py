@@ -416,13 +416,18 @@ class AcmeLab:
             await asyncio.sleep(30)
 
     async def manage_session_lock(self, active: bool):
+        """[FEAT-125] Refined Mutex: Lock is only cleared when all clients disconnect."""
         try:
             if active:
-                with open(ROUND_TABLE_LOCK, "w") as f:
-                    f.write(str(os.getpid()))
+                # Always ensure lock file exists if anyone is connected
+                if self.connected_clients:
+                    with open(ROUND_TABLE_LOCK, "w") as f:
+                        f.write(str(os.getpid()))
             else:
-                if os.path.exists(ROUND_TABLE_LOCK):
-                    os.remove(ROUND_TABLE_LOCK)
+                # Only remove if NO clients remain
+                if not self.connected_clients:
+                    if os.path.exists(ROUND_TABLE_LOCK):
+                        os.remove(ROUND_TABLE_LOCK)
         except Exception:
             pass
 
