@@ -53,6 +53,7 @@ class LabAttendant:
         self.app.router.add_post("/refresh", self.handle_refresh)
         self.app.router.add_get("/wait_ready", self.handle_wait_ready)
         self.app.router.add_get("/heartbeat", self.handle_heartbeat)
+        self.app.router.add_get("/mutex", self.handle_mutex)
         self.app.router.add_get("/logs", self.handle_logs)
         self.app.router.add_get("/blocking_status", self.handle_blocking_status)
         self.ready_event = asyncio.Event()
@@ -388,6 +389,26 @@ class LabAttendant:
                 return web.json_response(vitals)
             await asyncio.sleep(1)
         return web.json_response(await self._get_current_vitals())
+
+    async def handle_mutex(self, request):
+        """[FEAT-125] Politeness API: Check for active round table sessions."""
+        exists = os.path.exists(ROUND_TABLE_LOCK)
+        holding_pid = None
+        if exists:
+            # Check who holds it (if possible)
+            try:
+                for conn in psutil.net_connections(kind='tcp'):
+                    if conn.laddr.port == 8765:
+                        holding_pid = conn.pid
+                        break
+            except:
+                pass
+
+        return web.json_response({
+            "round_table_lock_exists": exists,
+            "holding_pid": holding_pid,
+            "lab_ready": self.ready_event.is_set()
+        })
 
     async def _get_vram_info(self):
         try:
