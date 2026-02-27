@@ -20,7 +20,7 @@ async def run_smoke():
         # 2. Start in DEBUG_SMOKE
         print("[SMOKE] Launching Lab in DEBUG_SMOKE mode...")
         payload = {
-            "engine": "vLLM",
+            "engine": "Ollama",
             "mode": "DEBUG_SMOKE",
             "disable_ear": True
         }

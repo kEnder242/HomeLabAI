@@ -1,4 +1,4 @@
-# 🩺 Acme Lab: Diagnostic & Test Rundown [v4.0]
+# 🩺 Acme Lab: Diagnostic & Test Rundown [v4.1]
 **"The Physician's Ledger"**
 
 This document is the **Master Inventory** of all diagnostic instruments, test suites, and verification scripts within the Federated Lab. For a catalog of agentic capabilities and node-specific tools, see **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)**.
@@ -27,6 +27,8 @@ These tools verify the `systemd` managed infrastructure and the Hub's resilience
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **The Assassin** | `lab_attendant.py` (Internal) | [FEAT-119] Atomic port-reaping using `fuser -k` before boot. |
+| **Ghost Hunter** | `lab_attendant.py` (Internal) | [FEAT-121] PGID-aware tree termination using `os.killpg()`. |
 | **Gauntlet** | `src/debug/test_lifecycle_gauntlet.py` | Stress tests the Hub with rapid connect/disconnect cycles. Essential for verifying `aiohttp` resilience. |
 | **Attendant Sanity** | `src/debug/test_attendant_sanity.py` | Verifies the Lab Attendant's HTTP API (Start/Stop/Status/Wait_Ready). |
 | **Shutdown Resilience**| `src/debug/test_shutdown_resilience.py`| Verifies that the Lab can shut down via native tool flow. |
@@ -134,7 +136,22 @@ High-fidelity behavioral verification of cognitive and systemic integrity.
 | :--- | :--- | :--- |
 | **Grounding Fidelity** | `src/debug/test_grounding_fidelity.py` | Verifies Brain responses use ONLY provided historical anchors. |
 | **Consensus Loop** | `src/debug/test_consensus_loop.py` | Validates synthesis quality of the Internal Debate peer-review. |
+| **Stability Marathon**| `src/debug/stability_marathon_v2.py` | Long-running stress test for 11GB VRAM fragmentation. |
 | **Deep Smoke** | `acme_lab.py --mode DEEP_SMOKE` | State-machine validation: Ingest -> Reason -> Dream -> Recall. |
+| **Smoke Verify** | `src/debug/smoke_verify.py` | Rapid verification of the Deep Smoke results in the archive. |
+
+---
+
+## 🏗️ 11. Scanner & Synthesis (Background Recovery)
+Surgical tools for the Portfolio_Dev "Face" pipeline. Use these when the Slow Burn stalls or parity is lost.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Nudge 2024** | `field_notes/nudge_2024.py` | [RECOVERY] Clears hash for 2024 files to force a targeted re-nibble. |
+| **Force Feed** | `field_notes/force_feed.py` | [EMERGENCY] Bypasses mutex/load checks to jam a specific file into the engine. |
+| **Librarian Debug** | `field_notes/test_chunking.py` | Verifies file splitting/classification logic before it hits the queue. |
+| **Path Probe** | `field_notes/debug_2024.py` | Verifies absolute path resolution for the 2024 technical notes. |
+| **Clean Data** | `field_notes/clean_data.py` | **NUCLEAR.** Wipes the data directory. Use ONLY for total archive corruption. |
 
 ---
 **Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py`, `src/debug/verify_sprint.py`, and the **Physician's Gauntlet** to ensure the core is still standing.
