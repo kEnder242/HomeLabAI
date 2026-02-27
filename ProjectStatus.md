@@ -1,34 +1,32 @@
-# Home Lab AI: Project Status (Feb 23, 2026)
+# Home Lab AI: Project Status (Feb 27, 2026)
 
-## Current Core Architecture: v4.3 "Responsive Multi-Agent Simulation"
+## Current Core Architecture: v4.4 "Resilient Synthesis & Scaling"
 *   **Orchestration**: Managed via **`lab-attendant.service` (systemd)**.
-    *   **Telemetry Watchdog**: Continuous Docker container monitoring and recovery.
-    *   **Resilience Ladder**: 4-Tier hierarchy (vLLM -> Ollama -> Downshift -> Suspend).
+    *   **The Assassin [FEAT-119]**: Atomic port-reaping and PGID process termination.
+    *   **Lab Fingerprint [FEAT-121]**: Distributed tracing for RAM-to-Disk parity.
 *   **The Communication Hub (Corpus Callosum)**:
-    *   **Unified Base**: Standardized on **Llama-3.2-3B** for the 2080 Ti residency.
+    *   **Unified Base**: Standardized on **Llama-3.2-3B** for residency; **8B** for synthesis.
     *   **Non-Blocking Dispatch**: Immediate streaming of node responses.
-    *   **Agentic Reflection**: Coordinated fillers and quips for sub-2s perceived latency.
-*   **Persona Tiers**:
-    *   **Pinky (Gateway)**: Intuitive triage and lively room fillers.
-    *   **The Brain (Sovereign)**: Eloquent synthesis and deep technical derivation.
-    *   **Shadow Brain (Failover)**: Laconic identity-locked local backup.
+*   **Synthesis Pipeline**:
+    *   **Strategic Anchoring [FEAT-128]**: Extraction of career-level focal points.
+    *   **Robust Extraction [FEAT-131]**: Regex fallback for conversational LLM parsing.
 
 ## Key Components & Status
 | Component | Status | Notes |
 | :--- | :--- | :--- |
 | **NVIDIA Driver** | ✅ ONLINE | Version 570.211.01 (CUDA 12.8) |
-| **Lab Attendant** | ✅ STABLE | Watchdog @ 10s; Docker health monitor active. |
-| **Bicameral Hub** | ✅ READY | Parallel dispatch; Handshake priming active. |
-| **Archive Node** | ✅ STABLE | 3-Layer Semantic Map (Strategic/Analytical/Tactical). |
+| **Lab Attendant** | ✅ STABLE | [FEAT-119/121] Atomic port-reaping active. |
+| **Bicameral Hub** | ✅ READY | Standardized on 120s timeouts for reasoning. |
+| **Synthesis Burn** | ✅ HARDENED | [FEAT-130/131] Robust JSON & Atomic state active. |
 | **EarNode (STT)** | ✅ STABLE | NeMo resident; Barge-In logic verified. |
 
-## Active Sprint: SPR-11-03 "Synthesis of Authority" (Feb 23, 2026)
-**Objective: Refine Brain eloquence and harden persona moats.**
-**Current Sprint:** **[Sprint Plan: Synthesis of Authority](Portfolio_Dev/docs/plans/SPRINT_SYNTHESIS_OF_AUTHORITY.md)**
+## Active Sprint: SPR-11-05 "Semantic Re-Mapping" (Feb 27, 2026)
+**Objective: Ingest high-fidelity career META documents and implement Strategic Anchoring.**
+**Current Sprint:** **[Sprint Plan: Semantic Re-Mapping](../Portfolio_Dev/SEMANTIC_RE_MAPPING.md)**
 
 **Status Summary:**
-*   **Phase 1 (Authority)**: [COMPLETE] "Brevity is Authority" prompts active.
-*   **Phase 2 (The Moat)**: [COMPLETE] Post-generation regex sanitizer for Brain sources.
-*   **Phase 3 (Identity)**: [COMPLETE] Hard identity-lock for Shadow Brain failover.
+*   **Phase A (Parity)**: [COMPLETE] Absolute pathing and timeout hardening standing.
+*   **Phase B (Synthesis)**: [ACTIVE] Ported strategic prompts and DOCX support.
+*   **Phase C (Grounding)**: [COMPLETE] Archaeological mapping (2005-2024) verified.
 
 *Refer to the Feature Tracker for permanent technical DNA.*
