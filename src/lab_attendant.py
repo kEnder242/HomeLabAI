@@ -91,6 +91,17 @@ class LabAttendant:
         try:
             while True:
                 await asyncio.sleep(10) # Check every 10s for stability
+
+                # [FEAT-138] Maintenance Silence
+                # If maintenance lock exists, do not attempt recovery or state transitions.
+                if os.path.exists(f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"):
+                    # We still update status for the dashboard, but remain passive.
+                    if failure_count % 6 == 0: # Log every minute
+                        logger.info("[WATCHDOG] Maintenance Lock active. Passive mode engaged.")
+                    failure_count += 1
+                    await self.update_status_json("MAINTENANCE MODE (Passive)")
+                    continue
+
                 vitals = await self._get_current_vitals()
                 used, total = await self._get_vram_info()
                 load = await self._get_gpu_load()
