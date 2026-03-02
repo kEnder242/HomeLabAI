@@ -3,63 +3,33 @@
 > [!IMPORTANT]
 > **IMMUTABILITY RULE:** Protocols in this document can ONLY be added. They must NEVER be refactored, slimmed down, or removed unless explicitly requested by the Lead Engineer.
 
-## BKM-001: The Cold-Start Protocol (Hardware & Service)
-**Objective**: Restore the Lab environment from a powered-off or crashed state.
+## BKM-001: The Cold-Start Protocol (Agent Orientation)
+**Objective**: Restore the Agent's technical context after a session break or crash.
 
 0.  **Orientation (Bootstrap)**:
-    *   Refer to the top-level **[README.md](../../README.md)** for the primary navigational hub and global project context.
-    *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active silicon mandates and invariant laws.
+    *   Refer to the top-level **[BOOSTRAP.md](../../BOOTSTRAP_v4.3.md)** for the primary navigational hub and global project context.
+    *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active architectural laws and design breadcrumbs.
     *   **Inventory Mandate**: Proactively identify existing "wheels" (tests, diagnostic scripts, and tools) in **[DIAGNOSTIC_RUNDOWN.md](./DIAGNOSTIC_RUNDOWN.md)** and **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)** before suggesting or implementing new code.
+    *   **State Snapshot**: Read the last 5 entries in **[00_FEDERATED_STATUS.md](../../Portfolio_Dev/00_FEDERATED_STATUS.md)** to identify the current "Front Line" and active sprint.
 
-1.  **Hardware/Driver Audit**:
-    *   Execute `nvidia-smi`.
-    *   **Success**: Driver version (e.g., 570+) and CUDA (e.g., 12.8) reported.
-    *   **Failure**: If "could not communicate with driver," run `sudo apt install --reinstall nvidia-driver-570 nvidia-dkms-570` and `sudo update-initramfs -u`, then reboot.
+## BKM-002: The Montana Protocol (Logger Awareness)
+**Objective**: Prevent diagnostic blindness when third-party libraries hijack the stream.
 
-2.  **The Heart-Check (Invariant Sensory Core)**:
-    *   **Action**: Verify `EarNode` (NeMo) is responsive before cognitive engines.
-    *   **Logic**: Sensing must never fail even if reasoning is "downshifted." The Heart is the invariant constant of the Lab.
+*   **Behavior**: If the Lab appears "silent" during a boot or tool-run, do not assume a hang. Third-party modules (NeMo/ChromaDB) frequently hijack the logging handlers.
+*   **Verification**: The Agent must prioritize port-polling (e.g., `curl /heartbeat`) over log-scraping when silence is encountered. If silence persists, check for uncommitted logger isolation fixes (FEAT-031).
 
-3.  **Orchestrator Liveliness**:
-    *   Execute `sudo systemctl status lab-attendant.service`.
-    *   **Action**: If not running, `sudo systemctl restart lab-attendant.service`.
-    *   **Verification**: `curl http://localhost:9999/status` should return JSON.
+## BKM-003: Resident Sequencing (Staged Loading)
+**Objective**: Maintain awareness of the Lab's staggered cognitive state.
 
-3.  **Lab Server Ignition**:
-    *   **Stable Path (No Mic)**:
-        `curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"mode": "SERVICE_UNATTENDED", "disable_ear": true}'`
-    *   **Experimental Path (With Mic)**:
-        `curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"mode": "SERVICE_UNATTENDED", "disable_ear": false}'`
+*   **Behavior**: When interacting with the Lab after a fresh boot, the Agent must recognize that nodes (Archive, Pinky, Brain) come online in stages.
+*   **Verification**: Wait for the staggered `[READY]` signals in the logs before assuming full capability. Refer to **[FEAT-133]** for the underlying technical law.
 
-4.  **Uplink Verification**:
-    *   `tail -f HomeLabAI/server.log` (Watch for `[READY] Lab is Open`).
-    *   Handshake via `intercom.py`.
+## BKM-004: The QQ Protocol (Quick Question)
+**Objective**: Prevent state drift and over-investigation during collaborative sessions.
 
-## BKM-002: The Montana Protocol (Logger Authority)
-**Objective**: Prevent third-party ML libraries from hijacking the diagnostic stream.
-
-*   All `acme_lab.py` logging must go to `sys.stderr`.
-*   Call `reclaim_logger()` immediately after heavy imports (NeMo, ChromaDB).
-*   `lab_attendant.py` is the authority for file redirection (`stderr -> server.log`).
-
-## BKM-003: Resident Sequencing
-**Objective**: Prevent MCP initialization deadlocks.
-
-*   Residents must be loaded **sequentially** with a minimum 2-second sleep between `archive` -> `pinky` -> `brain`.
-*   Avoid `asyncio.gather` for initial MCP handshakes on resource-constrained hosts.
-
-## BKM-004: The "Discuss with me" Protocol (QQ / Quick Question)
-**Objective**: Prevent state drift and hardware locks when automated recovery fails.
-
-1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question**. Fulfillment of this request consists **exclusively** of providing a direct, concise answer. The response constitutes total completion of the task; do not proceed to diagnostics, coding, or log-scraping unless a subsequent directive is issued.
-2.  **Halt Conditions**:
-    *   Encountering a "Zombie" process (orphaned PID) that ignores `pkill -9`.
-    *   Encountering a `torch.OutOfMemoryError` during a "Heads Down" sprint.
-    *   NVIDIA driver reporting "Communication Error" or `nvidia-smi` hanging.
-3.  **Action**: HALT all implementation.
-4.  **Reporting**: Present the hardware state (PID, VRAM usage, driver logs) to the Lead Engineer.
-5.  **Resolution**: WAIT for explicit approval before attempting `sudo` level interventions or system reboots.
-6.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
+1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question**. Fulfillment consists **exclusively** of providing a direct, concise answer.
+2.  **Absolute Halt**: A "QQ" response constitutes 100% completion of the task. Do not proceed to diagnostics, coding, or log-scraping.
+3.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
 
 ## BKM-005: The Design Studio (Greenlight before Silicon Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
@@ -69,13 +39,14 @@
 3.  **The Naming Ceremony**: Explicit agreement on Nouns (Folders, DB Collections) and Verbs (Tool Names).
 4.  **The Contract**: User gives "Greenlight" to a specific path.
 
-## BKM-006: Heads Down / AFK Continuity (Safety Valve Logic)
-**Objective**: Enable autonomous agent sprints while protecting hardware resources.
+## BKM-006: Heads Down / AFK Continuity (The Autonomous Sprint)
+**Objective**: Enable deep Agent work cycles during user downtime while maintaining transparency.
 
-1.  **Trigger**: User gives a "Heads Down" mandate or says "Going AFK" (or just "AFK").
-2.  **Continuity**: The Agent works sequentially through `ProjectStatus.md`, skipping blocked tasks.
-3.  **Safety Valve**: The Lab server MUST have `--afk-timeout 60` active. This ensures that if the Agent/User connection drops, the GPU is not left idling.
-4.  **Silence**: No incremental status updates; the Agent only "pops up" for BKM-004 Halt Conditions.
+1.  **Heads Down Trigger**: Signals the start of an autonomous sprint. The Agent works through the agreed-upon task list (from `ProjectStatus.md` or a specific session goal).
+2.  **AFK Hint**: User says "AFK" or "Coffee Break" to signal they are stepping away. The Agent should check for any queued tasks or proceed autonomously.
+3.  **High-Fidelity Reasoning**: "Heads Down" does NOT mean "Terse Mode." While the Agent should remain silent (no incremental status updates), it MUST still document its internal reasoning, trade-offs, and "Why" in its tool calls and final reports. High verbosity is the standard for intent preservation.
+4.  **Max Momentum**: The Agent must strive to complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
+5.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, provide the verbose **BKM-007** "Heads Up" report.
 ## BKM-008: The Resilience Ladder (Multi-Tenancy)
 **Objective**: Maintain Lab availability without impacting the Lead Engineer's primary tasks (Gaming/Transcoding).
 
