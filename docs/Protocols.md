@@ -46,15 +46,7 @@
 2.  **AFK Hint**: User says "AFK" or "Coffee Break" to signal they are stepping away. The Agent should check for any queued tasks or proceed autonomously.
 3.  **High-Fidelity Reasoning**: "Heads Down" does NOT mean "Terse Mode." While the Agent should remain silent (no incremental status updates), it MUST still document its internal reasoning, trade-offs, and "Why" in its tool calls and final reports. High verbosity is the standard for intent preservation.
 4.  **Max Momentum**: The Agent must strive to complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
-5.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, provide the verbose **BKM-007** "Heads Up" report.
-## BKM-008: The Resilience Ladder (Multi-Tenancy)
-**Objective**: Maintain Lab availability without impacting the Lead Engineer's primary tasks (Gaming/Transcoding).
-
-1.  **Tier 1 (High Fidelity)**: Native vLLM using **Gemma 2 2B** Unified Base. Priority: Maximum tool-calling precision.
-2.  **Tier 2 (Engine Swap)**: Transition to Ollama. Triggered by vLLM instability or initialization failure.
-3.  **Tier 3 (Downshift)**: Transition to **Llama-3.2-1B** or **TinyLlama**. Triggered by moderate GPU pressure from non-AI apps (e.g., Jellyfin).
-4.  **Tier 4 (Hibernation)**: Full SIGTERM of AI engines. Triggered by Critical GPU pressure (e.g., 4K Gaming). Context is preserved in the Hub's `recent_interactions` list but inference is paused.
-
+5.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
 ## BKM-009: The Checkpoint Protocol (Save State)
 **Objective**: Ensure 100% state persistence for session continuity.
 **Trigger**: "Checkpoint", "Save", "Close up shop", or end of a feature sprint.
@@ -97,12 +89,15 @@
 4.  **Lint-Gate**: Runs `ruff` check on the patched file. If lint fails, it restores the original content and reports the errors.
 5.  **Usage**: Prefer this for any complex, multi-line logic changes where string matching is brittle.
 
-## BKM-013: Pager-Aware Shell Execution (Non-Blocking)
-**Objective**: Prevent the Gemini CLI watchdog from terminating processes that are waiting for user input.
+## BKM-013: Pager-Aware Watchdog Safety (Non-Blocking Shell Execution)
+**Objective**: Prevent the Gemini CLI watchdog from killing active processes during long-running tasks or interactive traps.
 
-1.  **Mandatory Flags**: All `journalctl` and `systemctl` commands MUST include the `--no-pager` flag.
-2.  **Environment**: Use `PAGER=cat` for `git log` or other tools that default to a pager.
-3.  **Rationale**: In an agentic session, there is no \"User\" to press SPACE. If a command hangs in a pager, it produces no STDOUT, triggering the CLI orchestrator to kill the process as a perceived \"hang.\"
+1.  **The Pager Trap**: The Agent MUST be **Pager-Aware**. Assume there is no human to press "SPACE" or "Q." If a command hangs in a pager (e.g., `less`, `more`), it produces no STDOUT, triggering the CLI watchdog to terminate the process after a period of silence.
+2.  **Mandatory Defenses**:
+    *   **Flags**: Include `--no-pager` for all `journalctl`, `systemctl`, and `git` commands.
+    *   **Environment**: Prefix one-off commands with `PAGER=cat` (e.g., `PAGER=cat git log`).
+    *   **Non-Interactive**: Always use "quiet" or "yes" flags (e.g., `npm install --silent`, `apt-get -y`) to bypass confirmation prompts.
+3.  **The "Silence" Rule**: If a command is expected to take longer than 30s without output, the Agent MUST either run it in the background or use a progress-indicator tool to maintain "liveness" for the watchdog.
 
 ## BKM-014: The Deep-Dive (Show me / Tell me more / Teach me)
 **Objective**: Provide high-fidelity technical transfer upon user request.
