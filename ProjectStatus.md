@@ -1,7 +1,8 @@
-# Home Lab AI: Project Status (Feb 27, 2026)
+# Home Lab AI: Project Status (Mar 1, 2026)
 
-## Current Core Architecture: v4.4 "Resilient Synthesis & Scaling"
+## Current Core Architecture: v4.5 "Autonomous Residency"
 *   **Orchestration**: Managed via **`lab-attendant.service` (systemd)**.
+    *   **Safe-Pilot [FEAT-136]**: Autonomous Lab ignition post-boot with VRAM safety gate.
     *   **The Assassin [FEAT-119]**: Atomic port-reaping and PGID process termination.
     *   **Lab Fingerprint [FEAT-121]**: Distributed tracing for RAM-to-Disk parity.
 *   **The Communication Hub (Corpus Callosum)**:
@@ -14,8 +15,8 @@
 ## Key Components & Status
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| **NVIDIA Driver** | ✅ ONLINE | Version 570.211.01 (CUDA 12.8) |
-| **Lab Attendant** | ✅ STABLE | [FEAT-119/121] Atomic port-reaping active. |
+| **NVIDIA Driver** | ✅ ONLINE | Version 550.120 (CUDA 12.4) |
+| **Lab Attendant** | ✅ STABLE | [FEAT-119/121/136] Safe-Pilot autonomous boot active. |
 | **Bicameral Hub** | ✅ READY | Standardized on 120s timeouts for reasoning. |
 | **Synthesis Burn** | ✅ HARDENED | [FEAT-130/131] Robust JSON & Atomic state active. |
 | **EarNode (STT)** | ✅ STABLE | NeMo resident; Barge-In logic verified. |

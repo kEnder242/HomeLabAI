@@ -559,12 +559,52 @@ class LabAttendant:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
+    async def _safe_pilot_ignition(self):
+        """[FEAT-136] Autonomous Lab ignition after system boot."""
+        logger.info("[BOOT] Safe-Pilot: Stability window active (60s)...")
+        await asyncio.sleep(60)
+        
+        # 1. Check if already started manually during the window
+        vitals = await self._get_current_vitals()
+        if vitals["lab_server_running"] or current_lab_mode != "OFFLINE":
+            logger.info("[BOOT] Safe-Pilot: Lab already active. Standing down.")
+            return
+
+        # 2. Check GPU Availability
+        used, total = await self._get_vram_info()
+        if used > 1000: # Threshold: 1GB
+            logger.warning(f"[BOOT] Safe-Pilot: Aborted. GPU occupied (VRAM Used: {used}MiB).")
+            return
+
+        # 3. Trigger Ignition
+        logger.info("[BOOT] Safe-Pilot: Telemetry clear. Triggering autonomous ignition...")
+        
+        # Default payload for post-boot survival
+        payload = {
+            "mode": "SERVICE_UNATTENDED",
+            "engine": "OLLAMA",
+            "model": "MEDIUM",
+            "disable_ear": True
+        }
+
+        class MockReq:
+            async def json(self):
+                return payload
+
+        try:
+            await self.handle_start(MockReq())
+            logger.info("[BOOT] Safe-Pilot: Ignition sequence successful.")
+        except Exception as e:
+            logger.error(f"[BOOT] Safe-Pilot: Ignition failed: {e}")
+
     async def run(self):
         runner = web.AppRunner(self.app)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
         logger.info(f"[BOOT] Attendant online on {ATTENDANT_PORT}")
         asyncio.create_task(self.vram_watchdog_loop())
+        # [FEAT-136] Start the Safe-Pilot observer
+        asyncio.create_task(self._safe_pilot_ignition())
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
