@@ -1,67 +1,71 @@
 # Sprint Plan: vLLM 0.16.0 Silicon Gauntlet
-**Status:** ACTIVE | **Version:** 1.0
+**Status:** ACTIVE | **Version:** 1.1
 **Target Hardware:** NVIDIA RTX 2080 Ti (Turing / Compute 7.5 / 11GB VRAM)
 
 ## 🎯 Objective
-To evaluate **vLLM v0.16.0** for stable multi-LoRA residency on Turing hardware, specifically aiming to break the **"333MiB Wall"** that plagued previous versions.
+To evaluate **vLLM v0.16.0** for stable residency on Turing hardware, specifically aiming to break the **"333MiB Wall"** and achieve a functional `[READY]` state.
 
 ## 🏺 Historical Context & Scars
-*   **The 333MiB Wall**: Diagnosed in **[STABILIZATION_REPORT_FEB_13.md](../STABILIZATION_REPORT_FEB_13.md)**. Previous vLLM versions (0.5.0 - 0.15.1) hit a silent deadlock during the Ray/NCCL handshake when mapping BF16 tensors to Turing's lack of native BF16 units.
-*   **Aggressive Healing**: Documented in **[ATTENDANT_PROTOCOL.md](../ATTENDANT_PROTOCOL.md)**. The Lab Attendant historically killed experimental processes because it misinterpreted manual downtime as a system crash, re-allocating VRAM and causing collisions.
-*   **The Unity Pattern**: A forced pivot to **Ollama** (documented in **[RETROSPECTIVE_VLLM_RESURRECTION.md](../../../Portfolio_Dev/RETROSPECTIVE_VLLM_RESURRECTION.md)**) to handle BF16->FP16 casting safely.
+*   **The 333MiB Wall**: Diagnosed in **[STABILIZATION_REPORT_FEB_13.md](../STABILIZATION_REPORT_FEB_13.md)**. Historically, vLLM hit a silent deadlock during Ray/NCCL handshakes due to BF16 hardware mismatches.
+*   **The V1 Engine Lockdown**: Discovered during forensic code review (**[vLLM_016_REVIEW.md](../../../Portfolio_Dev/docs/vLLM_016_REVIEW.md)**). vLLM 0.16.0 has removed the legacy V0 path for the API server, forcing a multiprocessing V1 core using ZeroMQ (ZMQ).
+*   **Aggressive Healing**: Documented in **[ATTENDANT_PROTOCOL.md](../ATTENDANT_PROTOCOL.md)**. The Lab Attendant historically killed experimental processes, causing VRAM collisions.
 
-## 🛠️ Strategy: The "Experimental Pilot"
-We will leverage existing infrastructure formulas while adding a new "Maintenance Silence" layer.
+## 🛠️ Strategy: The Laboratory Pilot
+We will leverage existing infrastructure while adding a new "Maintenance Silence" layer.
 
-### 1. Leveraged Formulas
-*   **[FEAT-119] The Assassin**: Uses `fuser -k` and PGID termination to clear the deck before tests.
-*   **[FEAT-021] Dynamic Venv**: Uses the Attendant's ability to override the Python binary path for the experimental sandbox.
+### 1. Leveraged Infrastructure
+*   **[FEAT-119] The Assassin**: Uses `fuser -k` to clear the deck before tests.
+*   **[FEAT-138] Maintenance Silence**: Patched `lab_attendant.py` to respect `maintenance.lock`, ensuring the orchestrator remains passive during high-risk experiments.
 
-### 2. New Logic: Maintenance Silence
-To prevent "Aggressive Healing" during driver/engine tests, the Attendant will now respect the `maintenance.lock`.
+---
 
-```python
-# Proposed logic for lab_attendant.py
-if os.path.exists(MAINTENANCE_LOCK):
-    logger.info("[WATCHDOG] Maintenance Lock active. Passive mode engaged.")
-    return # Skip recovery/restarting
-```
+## 🏃 Plan A: The Unified Binary Gauntlet
+**Goal**: Reach `[READY]` using the stock v0.16.0 binary with environment-level Turing workarounds.
 
-## 🏃 Execution Steps
+### 1. Rationale
+Earlier breakthroughs tonight proved that **XFORMERS** and **NCCL_P2P_DISABLE=1** allow the binary to pass the 333MiB wall and reach 1200MiB+. Plan A focuses on stabilizing the subsequent V1 coordinator handshake.
 
-### Phase A: Quiesce & Lock
-1.  Send `POST /stop` to the Attendant (Port 9999) to clear production residents.
-2.  `touch Portfolio_Dev/field_notes/data/maintenance.lock` to freeze the orchestrator.
-
-### Phase B: The Forensic Launch
-Launch vLLM 0.16.0 from the `~/.venv_vllm_016` sandbox using the FP8 Llama model to maximize Turing compatibility.
-
-**Launcher Command Idea:**
+### 2. Execution Command
 ```bash
 export VLLM_ATTENTION_BACKEND=XFORMERS  # Bypasses FlashInfer BF16 risks
-./.venv_vllm_016/bin/python3 -m vllm.entrypoints.openai.api_server 
-    --model /speedy/models/Llama-3.2-3B-Instruct-FP8 
-    --dtype float16 
-    --enforce-eager 
-    --gpu-memory-utilization 0.7 
+export NCCL_P2P_DISABLE=1               # Prevents single-GPU Z87 deadlocks
+./.venv_vllm_016/bin/python3 -m vllm.entrypoints.openai.api_server \
+    --model /speedy/models/Qwen2.5-3B-Instruct \
+    --dtype float16 \
+    --enforce-eager \
+    --gpu-memory-utilization 0.7 \
+    --max-model-len 4096 \
     --port 8088
 ```
 
-### Phase C: Forensic Monitoring
-Use a new script `src/debug/monitor_wall.py` to watch for the 333MiB "deadlock signature."
+### 3. Monitoring
+Use **`src/debug/monitor_wall.py`** to watch for the 333MiB breakthrough.
 
-```python
-# monitor_wall.py Snippet
-if vram > 350:
-    print("[SUCCESS] 333MiB Wall Broken. Proceeding to inference test.")
-```
+---
+
+## 🏃 Plan B: The Targeted Source Build (Nuclear Option)
+**Goal**: Compile v0.16.0 specifically for Compute 7.5 to strip incompatible kernels.
+
+### 1. Rationale
+The code review confirmed that vLLM v1 architecture heavily prioritizes Flash Attention 2 (Compute 8.0+). Plan B uses a "Build-to-Target" strategy to ensure no illegal instructions or incompatible NCCL paths are even present in the binary.
+
+### 2. Setup & Constraints
+*   **Location**: `/home/jallred/Dev_Lab/vllm_source` (rpool/ZFS chosen for robustness and 244GB available space).
+*   **Environment**: Dedicated `~/.venv_vllm_build`.
+*   **Compiler Flags**:
+    *   `export TORCH_CUDA_ARCH_LIST="7.5"`: Forces Turing-only binary generation.
+    *   `export MAX_JOBS=4`: Prevents 32GB system RAM exhaustion during C++ linking.
+*   **Deployment**: Final `.so` artifacts will be symlinked to `/speedy` for model-loading performance.
+
+---
 
 ## 🧪 Verification & Proof
-*   **Primary Proof**: VRAM usage reaches ~7GB (0.7 utilization) without a deadlock.
-*   **Inference Proof**: `src/debug/repro_vllm_400.py` returns a valid "Poit!" from the 8088 port.
+*   **Primary Proof**: VRAM usage reaches ~7GB without a deadlock.
+*   **Inference Proof**: `src/debug/repro_vllm_400.py` returns a valid "Poit!" from port 8088.
 *   **Stability Proof**: **[stability_marathon_v2.py](../debug/stability_marathon_v2.py)** passes a 300s stress test.
 
 ## 🔗 Internal Links
-*   **Venv**: `/home/jallred/Dev_Lab/.venv_vllm_016`
-*   **Models**: `/speedy/models/` (Qwen2.5, Llama-3.2-FP8)
-*   **Attendant**: `HomeLabAI/src/lab_attendant.py`
+*   **Source Code**: `~/Dev_Lab/vllm_source` (Cloned Mar 2, 2026)
+*   **Venv**: `~/.venv_vllm_016`
+*   **Models**: `/speedy/models/` (Qwen2.5-3B-Instruct)
+*   **Review**: **[vLLM_016_REVIEW.md](../../../Portfolio_Dev/docs/vLLM_016_REVIEW.md)**
