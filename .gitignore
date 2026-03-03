@@ -25,3 +25,4 @@ data/
 # If you add real keys, add it here!vendor/vllm
 vendor/
 logs/forensic_*.json
+\n# [FEAT-151] Transient Telemetry\nlogs/trace_*.json\nserver.log.stale
