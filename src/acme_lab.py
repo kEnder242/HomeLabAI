@@ -1463,42 +1463,65 @@ class AcmeLab:
         # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
         site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
 
-        async with AsyncExitStack() as stack:
-            try:
-                await site.start()
-                logging.info(f"[BOOT] Server on {PORT}")
-                await self.boot_residents(stack)
+        while True:
+            # Clear previous state if this is a bounce
+            self.shutdown_event.clear()
+            self.residents = {}
+            
+            async with AsyncExitStack() as stack:
+                try:
+                    await site.start()
+                    logging.info(f"[BOOT] Server on {PORT}")
+                    await self.boot_residents(stack)
 
-                # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
-                if trigger_task:
-                    logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
-                    if trigger_task == "recruiter":
-                        import recruiter
+                    # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
+                    if trigger_task:
+                        logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
+                        if trigger_task == "recruiter":
+                            import recruiter
 
-                        asyncio.create_task(
-                            recruiter.run_recruiter_task(
-                                self.residents.get("archive"),
-                                self.residents.get("brain"),
-                            )
-                        )
-                    elif trigger_task == "architect":
-                        if "architect" in self.residents:
                             asyncio.create_task(
-                                self.residents["architect"].call_tool(
-                                    name="build_semantic_map"
+                                recruiter.run_recruiter_task(
+                                    self.residents.get("archive"),
+                                    self.residents.get("brain"),
                                 )
                             )
+                        elif trigger_task == "architect":
+                            if "architect" in self.residents:
+                                asyncio.create_task(
+                                    self.residents["architect"].call_tool(
+                                        name="build_semantic_map"
+                                    )
+                                )
 
-                asyncio.create_task(self.reflex_loop())
-                asyncio.create_task(
-                    self.scheduled_tasks_loop()
-                )  # [FEAT-049] Alarm Clock
-                await self.shutdown_event.wait()
-                logging.info("[SHUTDOWN] Event received. Cleaning up.")
-            finally:
-                logging.info("[SHUTDOWN] Final closing of residents...")
-                await runner.cleanup()
-                logging.info("[SHUTDOWN] Control returned to system.")
+                    asyncio.create_task(self.reflex_loop())
+                    asyncio.create_task(
+                        self.scheduled_tasks_loop()
+                    )  # [FEAT-049] Alarm Clock
+                    
+                    await self.shutdown_event.wait()
+                    logging.info("[SHUTDOWN] Event received. Cleaning up.")
+                    
+                    # [FEAT-149] The Persistence Check:
+                    # If we are in co-pilot/debug modes, we exit entirely.
+                    # If we are in SERVICE_UNATTENDED, we stay in this loop and bounce.
+                    if self.mode != "SERVICE_UNATTENDED":
+                        logging.info(f"[SHUTDOWN] Mode '{self.mode}' is terminal. Exiting.")
+                        break
+                    
+                    logging.info("[BOUNCE] Service Unattended mode active. Restarting residents...")
+                    # Give the port a second to breathe
+                    await site.stop()
+                    await asyncio.sleep(2.0)
+
+                except Exception as e:
+                    logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
+                    if self.mode != "SERVICE_UNATTENDED":
+                        break
+                    await asyncio.sleep(5.0) # Backoff before retry
+                finally:
+                    logging.info("[SHUTDOWN] Closing residents for current cycle...")
+                    # AsyncExitStack handles the closing of residents automatically here
 
 
 if __name__ == "__main__":
