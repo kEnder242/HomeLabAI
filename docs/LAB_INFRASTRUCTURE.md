@@ -105,7 +105,11 @@
     *   **MEDIUM**: Phi-3.5-mini-AWQ (Verified ~5.5GB)
     *   **SMALL**: Llama-3.2-1B-FP16 (Verified ~4.5GB)
 
-#### 🏺 SCARS: The "Why" behind the Invariants
+*   **SCAR: The WebSocket Hang (Mar 3, 2026)**: Attempting to `await ws.recv()` inside a synchronous shell command without a global timeout blocks the Agent turn. If the model chooses a tool instead of a direct response, the script hangs forever, triggering the CLI watchdog.
+*   **STRATEGY: The Loopback Moat (127.0.0.1 vs 0.0.0.0)**:
+    *   **Dev/Transitory**: Bind to `127.0.0.1` to ensure internal stability and zero external exposure during refactors. This aligns with the `lo` breakthrough (LAB-002) by preventing physical IP handshake traps.
+    *   **Production**: Bind to `0.0.0.0` for appliance-grade reachability across the Bicameral network (Linux <-> Windows), secured via Cloudflare/Zero-Trust.
+*   **Mandate**: Use "Trigger-Poll-Observe" pattern via Attendant registers and Trace Delta Capture.
 *   **SCAR: The Physical IP Trap**: Without `NCCL_SOCKET_IFNAME=lo`, vLLM attempts handshakes on the physical NIC (192.168.x.x). On the Z87 board, this overhead causes a race condition that results in the process silently exiting during the ZMQ/NCCL initialization phase.
 *   **SCAR: The HF Shadow-Lookup**: All local model paths **must be absolute** (starting with `/`). If a relative path is used, vLLM 0.16.0 defaults to a HuggingFace repository lookup and triggers an `OSError` crash.
 *   **SCAR: The Watchdog Reaper**: The vLLM v1 core requires a ~45s warmup. If the parent CLI tool terminates before this completes, the background engine is often reaped unless decoupled via `nohup` or `systemd`.
