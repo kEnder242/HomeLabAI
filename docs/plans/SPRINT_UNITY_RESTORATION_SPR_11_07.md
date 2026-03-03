@@ -49,3 +49,25 @@ To fully integrate **vLLM 0.16.0** as the primary inference engine for Linux res
 *   VRAM usage < 10.5GB with full resident stack + EarNode.
 *   Deep Smoke cycle completes with verified memory recall.
 *   Intercom log confirms sub-second switching between node personas.
+
+---
+
+## 📉 End of Session Report (Mar 2, 2026)
+
+### 1. Modifications Summary
+*   **Loader Refactor (`src/nodes/loader.py`)**: Implemented [FEAT-145] to support `lora_request` payloads. Added a defensive "Adaptive Unity" check that only requests a LoRA if the adapter directory exists, preventing vLLM V1 worker crashes.
+*   **Attendant API Expansion (`src/lab_attendant.py`)**: 
+    *   Implemented native `POST /quiesce` (Lockdown), `POST /ignition` (Reboot recovery), and `POST /ping` (Health probe).
+    *   Hardened the vLLM ignition sequence with breakthrough flags: `VLLM_ATTENTION_BACKEND=XFORMERS` and `NCCL_P2P_DISABLE=1`.
+    *   Resolved "Argument Bleed" by isolating vLLM CLI flags in environment variables.
+*   **VRAM Grounding**: Promoted vLLM 0.16.0 to Tier 1 in `vram_characterization.json` with a 0.7 utilization target.
+
+### 2. Current Trajectory
+We are at the threshold of **Phase 2: High-Fidelity Verification**. The "Unity" infrastructure is physically present and patched. The breakthrough proved that vLLM 0.16.0 binary **can** run on Turing hardware if forced into the legacy V0 path via environment variables and specific backend selections.
+
+### 3. Forensic Scars & Obstacles
+*   **Dependency Entropy**: The new `~/.venv_vllm_016` required a second pass of `pip install` for Lab-critical libraries (`chromadb`, `sentence-transformers`, `pynvml`).
+*   **V1 Core Sensitivity**: vLLM 0.16.0's new V1 engine is significantly more aggressive during initialization. It requires a quiet environment and stable networking (NCCL) to pass its internal profiling.
+*   **Split-Brain Orchestration**: Encountered issues where stale Attendant processes survived service restarts, leading to confusing log entries and argument errors. Final resolution required a total silicon purge.
+
+**Next Immediate Task**: Run the `DEEP_SMOKE` cycle to confirm archival integration.

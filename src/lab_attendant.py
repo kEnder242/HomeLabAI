@@ -277,6 +277,12 @@ class LabAttendant:
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
             
+            # [FEAT-137] vLLM Breakthrough Flags: Enforce Turing residency
+            if pref_eng == "VLLM":
+                env["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
+                env["NCCL_P2P_DISABLE"] = "1"
+                env["VLLM_USE_V1"] = "1"
+
             brain_pref = data.get("brain_model")
             
             if tier_or_mod in model_map:
@@ -302,9 +308,10 @@ class LabAttendant:
                 if data.get("disable_ear", True):
                     cmd.append("--disable-ear")
                 
-                # Split extra args into cmd list
-                if extra_args:
-                    cmd.extend(extra_args.split())
+                # [FEAT-030] Unity Pattern: Enable Multi-LoRA by default in vLLM
+                # These flags will be consumed by loader.py or start_vllm.sh
+                if pref_eng == "VLLM":
+                    env["VLLM_EXTRA_ARGS"] = f"--enable-lora --max-loras 4 {extra_args}"
 
                 lab_process = subprocess.Popen(
                     cmd, cwd=LAB_DIR, env=env,
