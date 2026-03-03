@@ -1,7 +1,9 @@
-# 🩺 Acme Lab: Diagnostic & Test Rundown [v4.1]
-**"The Physician's Ledger"**
+# Diagnostic Script Map: The Physician's Ledger
+**Role: [LEDGER] - Instrument Inventory**
 
-This document is the **Master Inventory** of all diagnostic instruments, test suites, and verification scripts within the Federated Lab. For a catalog of agentic capabilities and node-specific tools, see **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)**.
+> [!IMPORTANT]
+> **PURPOSE:** A mapping of every physical script, test, and verification tool.
+> **Tags**: [WD] Watchdog Logic | [PING] Health Probe | [SMOKE] Validation Cycle.
 
 ---
 

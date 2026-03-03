@@ -1,5 +1,9 @@
-# 🏗️ Lab Infrastructure: Physical & Logic Anchors [v1.0]
-**"The Grounding Wire"**
+# Lab Infrastructure: The Physical Floor
+**Role: [LAB] - Silicon Laws & Environment Anchors**
+
+> [!IMPORTANT]
+> **PURPOSE:** This is the technical ledger for the physical environment.
+> **[LAB]**: Hardware specs, mount points, absolute local paths, and environment-specific playbooks (e.g., Turing-specific breakthroughs).
 
 ## 📍 Physical Storage & Mounts
 | Mount Point | Label | Capacity | Purpose |

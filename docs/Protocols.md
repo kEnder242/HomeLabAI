@@ -1,7 +1,8 @@
-# Operational Protocols: Acme Lab
+# Operational Protocols: The Agentic Contract
+**Role: [BKM] - Rules of Behavior & Communication**
 
 > [!IMPORTANT]
-> **IMMUTABILITY RULE:** Protocols in this document can ONLY be added. They must NEVER be refactored, slimmed down, or removed unless explicitly requested by the Lead Engineer.
+> **BEHAVIORAL MANDATE:** This document defines the **Rules of Engagement** for the Gemini CLI Agent. It is the foundational contract for human-AI collaboration. It specifies how the Agent must behave, communicate, and handle state. It is strictly non-technical.
 
 ## BKM-001: The Cold-Start Protocol (Agent Orientation)
 **Objective**: Restore the Agent's technical context after a session break or crash.
