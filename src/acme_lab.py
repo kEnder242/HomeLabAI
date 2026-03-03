@@ -1451,8 +1451,11 @@ class AcmeLab:
             self.shutdown_event.set()
 
     async def run(self, disable_ear=False, trigger_task=None):
+        # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
+        # to ensure it gets contiguous memory before vLLM or residents spawn.
         if not disable_ear:
             self.load_ear()
+
         app = web.Application()
         app.router.add_get("/", self.client_handler)
         runner = web.AppRunner(app)

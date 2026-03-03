@@ -271,7 +271,7 @@ class LabAttendant:
             data = {}
             
         pref_eng = data.get("engine", "OLLAMA")
-        tier_or_mod = data.get("model")
+        tier_or_mod = data.get("model", "MEDIUM")
         
         # [FEAT-021] Dynamic Venv Selection
         custom_venv = data.get("venv_path")
@@ -330,6 +330,13 @@ class LabAttendant:
                 env["NCCL_P2P_DISABLE"] = "1"
                 env["NCCL_SOCKET_IFNAME"] = "lo" # Breakthrough: Force loopback for internal v1 handshakes
                 env["VLLM_USE_V1"] = "0" # Force standard v0 backend for stability
+                
+                # [FEAT-145] The Squeeze: Force low utilization to accommodate EarNode
+                user_args = data.get("extra_args", "")
+                if "--gpu-memory-utilization" not in user_args:
+                    env["VLLM_EXTRA_ARGS"] = f"{user_args} --gpu-memory-utilization 0.3"
+                else:
+                    env["VLLM_EXTRA_ARGS"] = user_args
 
                 # [FEAT-145] Explicit vLLM Ignition
                 logger.info(f"[VLLM] Igniting Sovereign Node: {current_model}")
