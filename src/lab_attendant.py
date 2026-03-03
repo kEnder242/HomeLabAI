@@ -633,17 +633,10 @@ class LabAttendant:
         """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
         import signal
         
-        # [FEAT-145] Hierarchy Protection: Collect all PIDs/PGIDs in our tree
-        # to ensure we don't kill the shell scripts or background tasks we just started.
+        # [FEAT-145] Hierarchy Protection: Shield only the Attendant itself.
+        # We MUST be allowed to kill our own previous resident children (Hub/vLLM).
         protected_pgids = {os.getpgid(os.getpid())}
-        try:
-            me = psutil.Process()
-            for child in me.children(recursive=True):
-                try:
-                    protected_pgids.add(os.getpgid(child.pid))
-                except: pass
-        except:
-            pass
+        protected_pids = {os.getpid(), os.getppid()}
 
         try:
             for conn in psutil.net_connections(kind="tcp"):
@@ -652,9 +645,10 @@ class LabAttendant:
                     if pid:
                         try:
                             pgid = os.getpgid(pid)
-                            if pgid in protected_pgids:
-                                logger.info(f"[ASSASSIN] Skipping protected PGID: {pgid}")
+                            if pgid in protected_pgids or pid in protected_pids:
+                                logger.info(f"[ASSASSIN] Skipping protected process: {pid} (PGID: {pgid})")
                                 continue
+
                                 
                             logger.warning(
                                 f"[ASSASSIN] Port {conn.laddr.port} held by PID {pid}. Terminating group {pgid}."
@@ -677,7 +671,7 @@ class LabAttendant:
         ]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                if proc.info["pid"] == os.getpid():
+                if proc.info["pid"] in protected_pids:
                     continue
                     
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
