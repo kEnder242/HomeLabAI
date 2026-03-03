@@ -1,4 +1,4 @@
-from mcp.server.fastmcp import FastMCP
+from nodes.loader import BicameralNode
 import logging
 import sys
 import os
@@ -7,14 +7,18 @@ import glob
 import re
 import datetime
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [ARCHITECT] %(levelname)s - %(message)s',
-    stream=sys.stderr
+ARCHITECT_SYSTEM_PROMPT = (
+    "You are The Architect, the High-Fidelity Synthesis Engine of the Acme Lab. "
+    "IDENTITY: Precise, logical, and strategic. "
+    "CORE RULE: You structure the 18-year technical history into actionable maps. "
+    "BEHAVIORAL INVARIANTS: "
+    "1. STRATEGIC HIERARCHY: Always group events by their career impact (Strategic, Analytical, Tactical). "
+    "2. DATA INTEGRITY: Use ONLY verified artifacts from the /field_notes/data directory. "
+    "3. BKM STANDARDIZATION: Ensure all generated templates follow the Execution/Validation/Scars format."
 )
 
-mcp = FastMCP("The Architect")
+node = BicameralNode("Architect", ARCHITECT_SYSTEM_PROMPT)
+mcp = node.mcp
 
 # Paths
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")

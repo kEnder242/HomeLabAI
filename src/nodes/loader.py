@@ -2,6 +2,8 @@ import aiohttp
 import json
 import os
 import logging
+import sys
+import uuid
 from liger_kernel.transformers import (
     apply_liger_kernel_to_mistral,
     apply_liger_kernel_to_qwen2,
@@ -11,6 +13,8 @@ import time
 from mcp.server.fastmcp import FastMCP
 
 # Global Paths
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 CHARACTERIZATION_FILE = os.path.join(FIELD_NOTES_DATA, "vram_characterization.json")
 INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
@@ -24,9 +28,58 @@ def resolve_ip(hostname, default_ip=None):
         return default_ip
 
 
+_logger_initialized = False
+_BOOT_HASH = uuid.uuid4().hex[:4].upper()
+
+
+def get_git_commit():
+    try:
+        # Resolve LAB_DIR for git command
+        l_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        import subprocess
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+                                        cwd=l_dir, text=True).strip()
+    except Exception:
+        return "unknown"
+
+
+def get_fingerprint(role="NODE"):
+    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
+
+
+def reclaim_logger(role="NODE"):
+    global _logger_initialized
+    if _logger_initialized:
+        return
+
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+
+    fmt = logging.Formatter(
+        f"%(asctime)s - {get_fingerprint(role)} %(levelname)s - %(message)s"
+    )
+
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    root.addHandler(sh)
+
+    fh = logging.FileHandler(SERVER_LOG, mode="a", delay=False)
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+
+    root.setLevel(logging.INFO)
+    logging.getLogger("nemo").setLevel(logging.ERROR)
+    logging.getLogger("chromadb").setLevel(logging.ERROR)
+    logging.getLogger("onelogger").setLevel(logging.ERROR)
+
+    _logger_initialized = True
+
+
 class BicameralNode:
     def __init__(self, name, system_prompt):
         self.name = name.lower()
+        reclaim_logger(self.name.upper())
         self.system_prompt = system_prompt
         self.mcp = FastMCP(name)
         self.engine_mode = "AUTO"

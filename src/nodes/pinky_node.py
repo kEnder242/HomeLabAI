@@ -6,9 +6,6 @@ import sys
 import pynvml
 from nodes.loader import FIELD_NOTES_DATA, BicameralNode
 
-# Logging
-logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-
 PINKY_SYSTEM_PROMPT = (
     "You are Pinky, the Right Hemisphere of the Acme Lab Bicameral Mind. "
     "CHARACTERISTICS: Intuitive, Enthusiastic, Aware. "
