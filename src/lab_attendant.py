@@ -8,11 +8,14 @@ import psutil
 import aiohttp
 from aiohttp import web
 import time
+import uuid
+import sys
 
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 SERVER_LOG = f"{LAB_DIR}/server.log"
+ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
 SERVER_PID_FILE = f"{LAB_DIR}/server.pid"
 STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
@@ -36,11 +39,44 @@ lab_process = None
 current_lab_mode = "OFFLINE"
 current_model = None
 
+# --- THE MONTANA PROTOCOL ---
+_logger_initialized = False
+_BOOT_HASH = uuid.uuid4().hex[:4].upper()
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+                                        cwd=LAB_DIR, text=True).strip()
+    except Exception:
+        return "unknown"
+
+def get_fingerprint(role="ATTENDANT"):
+    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
+
+def reclaim_logger(role="ATTENDANT"):
+    global _logger_initialized
+    if _logger_initialized:
+        return
+
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+
+    fmt = logging.Formatter(f"%(asctime)s - {get_fingerprint(role)} %(levelname)s - %(message)s")
+
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    root.addHandler(sh)
+
+    fh = logging.FileHandler(ATTENDANT_LOG, mode="a", delay=False)
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+
+    root.setLevel(logging.INFO)
+    _logger_initialized = True
+
 # --- Logger ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - [ATTENDANT] %(levelname)s - %(message)s",
-)
+reclaim_logger()
 logger = logging.getLogger("lab_attendant")
 
 
@@ -253,6 +289,17 @@ class LabAttendant:
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
 
+        # [FEAT-145] Path Hardening: Force absolute paths for vLLM local models
+        if current_lab_mode == "VLLM" and current_model and not current_model.startswith("/"):
+            potential_path = os.path.join("/speedy/models", current_model)
+            if os.path.exists(potential_path):
+                logger.info(f"[VLLM] Resolving relative model to absolute: {potential_path}")
+                current_model = potential_path
+            else:
+                # Fallback to standard Speedy path
+                current_model = f"/speedy/models/{current_model}"
+                logger.warning(f"[VLLM] Model path not found on disk, forcing: {current_model}")
+
         # [FEAT-119] The Assassin: Port-aware zombie mitigation
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -281,7 +328,19 @@ class LabAttendant:
             if pref_eng == "VLLM":
                 env["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
                 env["NCCL_P2P_DISABLE"] = "1"
-                env["VLLM_USE_V1"] = "1"
+                env["NCCL_SOCKET_IFNAME"] = "lo" # Breakthrough: Force loopback for internal v1 handshakes
+                env["VLLM_USE_V1"] = "0" # Force standard v0 backend for stability
+
+                # [FEAT-145] Explicit vLLM Ignition
+                logger.info(f"[VLLM] Igniting Sovereign Node: {current_model}")
+                # We use a non-blocking Popen for the shell script
+                # start_vllm.sh will background itself and log to vllm_server.log
+                subprocess.Popen(
+                    ["bash", VLLM_START_PATH, current_model, python_bin],
+                    env=env, cwd=LAB_DIR
+                )
+                # Give vLLM a small headstart before spawning residents
+                await asyncio.sleep(5.0)
 
             brain_pref = data.get("brain_model")
             
@@ -566,30 +625,62 @@ class LabAttendant:
     async def cleanup_silicon(self):
         """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
         import signal
+        
+        # [FEAT-145] Hierarchy Protection: Collect all PIDs/PGIDs in our tree
+        # to ensure we don't kill the shell scripts or background tasks we just started.
+        protected_pgids = {os.getpgid(os.getpid())}
         try:
-            for conn in psutil.net_connections(kind='tcp'):
-                if conn.laddr.port in [8765, 8088]: # Clean bench port too
+            me = psutil.Process()
+            for child in me.children(recursive=True):
+                try:
+                    protected_pgids.add(os.getpgid(child.pid))
+                except: pass
+        except:
+            pass
+
+        try:
+            for conn in psutil.net_connections(kind="tcp"):
+                if conn.laddr.port in [8765, 8088]:  # Clean bench port too
                     pid = conn.pid
                     if pid:
-                        logger.warning(f"[ASSASSIN] Port {conn.laddr.port} held by PID {pid}. Terminating group.")
                         try:
                             pgid = os.getpgid(pid)
+                            if pgid in protected_pgids:
+                                logger.info(f"[ASSASSIN] Skipping protected PGID: {pgid}")
+                                continue
+                                
+                            logger.warning(
+                                f"[ASSASSIN] Port {conn.laddr.port} held by PID {pid}. Terminating group {pgid}."
+                            )
                             os.killpg(pgid, signal.SIGKILL)
                         except Exception:
-                            os.kill(pid, signal.SIGKILL)
+                            if pid != os.getpid():
+                                os.kill(pid, signal.SIGKILL)
                         await asyncio.sleep(1.0)
         except Exception as e:
             logger.error(f"[ASSASSIN] Port check failed: {e}")
 
-        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
+        targets = [
+            "acme_lab.py",
+            "archive_node.py",
+            "pinky_node.py",
+            "brain_node.py",
+            "vllm",
+            "ollama",
+        ]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
+                if proc.info["pid"] == os.getpid():
+                    continue
+                    
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in cmdline for t in targets):
                     try:
                         pgid = os.getpgid(proc.info["pid"])
+                        if pgid in protected_pgids:
+                            continue
+                            
                         logger.info(f"[ASSASSIN] Terminating process group: {pgid}")
-                        import signal
                         os.killpg(pgid, signal.SIGTERM)
                         await asyncio.sleep(0.5)
                         if psutil.pid_exists(proc.info["pid"]):

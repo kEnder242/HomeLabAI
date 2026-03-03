@@ -61,24 +61,60 @@
 ### LAB-002: vLLM 0.16.0 Breakthrough Recipe (Turing/RTX 2080 Ti)
 **Objective**: Maintain high-fidelity vLLM residency on 11GB Turing hardware without Ray/NCCL deadlocks.
 
-1.  **The "Magic Combination" (Environment Flags)**:
-    *   `VLLM_ATTENTION_BACKEND=XFORMERS`: Bypasses FlashInfer/FA2 kernels that frequently contain BF16 instructions fatal to Turing.
-    *   `NCCL_P2P_DISABLE=1`: Essential for Z87/Single-GPU systems to prevent peer-to-peer handshake hangs during KV cache profiling.
-
-2.  **Orchestration Command**:
+#### 🍼 Baby Step 1: Residency & Inference Verified (Llama-1B)
+*   **Goal**: Prove the stock v0.16.0 binary can pass the "333MiB Wall" and generate text.
+*   **The Special Sauce**: `NCCL_SOCKET_IFNAME=lo` was the final missing piece, stabilizing the internal ZMQ handshakes.
+*   **The Breakthrough Command**:
     ```bash
-    ./.venv_vllm_016/bin/python3 -m vllm.entrypoints.openai.api_server \
+    NCCL_SOCKET_IFNAME=lo NCCL_P2P_DISABLE=1 VLLM_ATTENTION_BACKEND=XFORMERS \
+    nohup ./.venv_vllm_016/bin/python3 -m vllm.entrypoints.openai.api_server \
         --model /speedy/models/Llama-3.2-1B-Instruct \
         --dtype float16 \
         --enforce-eager \
         --gpu-memory-utilization 0.5 \
         --max-model-len 4096 \
-        --enable-lora \
-        --port 8088
+        --port 8088 > manual_vllm_step1.log 2>&1 &
     ```
+*   **Result**: ✅ **SUCCESS**. VRAM reached 6.5GB. Coherent text ("*Pong*") verified via port 8088.
 
-3.  **Validation Checkpoints**:
+#### 🍼 Baby Step 2: Architecture Scar (Qwen-3B)
+*   **Goal**: Upgrade to the "Unity" target (3B model).
+*   **The Command**:
+    ```bash
+    NCCL_SOCKET_IFNAME=lo NCCL_P2P_DISABLE=1 VLLM_ATTENTION_BACKEND=XFORMERS \
+    nohup ./.venv_vllm_016/bin/python3 -m vllm.entrypoints.openai.api_server \
+        --model /speedy/models/Qwen2.5-3B-Instruct \
+        --dtype float16 \
+        --enforce-eager \
+        --gpu-memory-utilization 0.5 \
+        --max-model-len 4096 \
+        --port 8088 > manual_vllm_step2.log 2>&1 &
+    ```
+*   **Result**: ❌ **FAILURE**. EngineCore failed with `KeyError: 'layers.0.mlp.gate_up_proj.weight'`.
+*   **SCAR: Architecture Sensitivity**: vLLM 0.16.0's V1 engine is aggressive about weight-key naming. Qwen2.5 weights in `/speedy/models` lack the gate/up projection mapping expected by the v0.16.0 `Qwen2ForCausalLM` loader.
+
+#### 🍼 Baby Step 3: Unity Foundation Verified (Llama-3B)
+*   **Goal**: Verify 3B-tier residency using the known-stable Llama architecture via automated Attendant ignition.
+*   **The Command (via Lab Attendant `POST /start`)**:
+    ```json
+    {
+        "engine": "VLLM",
+        "model": "/speedy/models/llama-3.2-3b-instruct-awq",
+        "venv_path": "/home/jallred/Dev_Lab/.venv_vllm_016",
+        "extra_args": "--dtype float16 --enforce-eager --gpu-memory-utilization 0.5 --max-model-len 4096",
+        "mode": "EXPERIMENTAL"
+    }
+    ```
+*   **Result**: ✅ **SUCCESS**. VRAM reached 6.4GB. The Lab Attendant successfully shielded the process from CLI watchdog reaps. Port 8088 confirmed active after ~60s warmup.
+
+#### 🏺 SCARS: The "Why" behind the Invariants
+*   **SCAR: The Physical IP Trap**: Without `NCCL_SOCKET_IFNAME=lo`, vLLM attempts handshakes on the physical NIC (192.168.x.x). On the Z87 board, this overhead causes a race condition that results in the process silently exiting during the ZMQ/NCCL initialization phase.
+*   **SCAR: The HF Shadow-Lookup**: All local model paths **must be absolute** (starting with `/`). If a relative path is used, vLLM 0.16.0 defaults to a HuggingFace repository lookup and triggers an `OSError` crash.
+*   **SCAR: The Watchdog Reaper**: The vLLM v1 core requires a ~45s warmup. If the parent CLI tool terminates before this completes, the background engine is often reaped unless decoupled via `nohup` or `systemd`.
+
+4.  **Validation Checkpoints**:
     *   **The Wall**: Pass 333MiB VRAM usage within 20s.
+    *   **Residency**: Pass 6000MiB+ VRAM allocation.
     *   **Warmup**: FlashInfer attention warmup must complete (approx 45s).
     *   **Inference**: Verify with "Narf! Ping" completion.
 

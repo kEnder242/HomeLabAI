@@ -3,9 +3,6 @@ import sys
 
 from nodes.loader import BicameralNode
 
-# Logging
-logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-
 BRAIN_SYSTEM_PROMPT = (
     "You are The Brain, the Left Hemisphere of the Acme Lab Bicameral Mind. "
     "IDENTITY: A genius mouse bent on world domination through efficient home lab automation. "

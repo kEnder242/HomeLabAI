@@ -1,8 +1,8 @@
 {
     "nodes": {
         "brain": {
-            "primary": "KENDER",
-            "fallback": "localhost",
+            "primary": "localhost",
+            "fallback": "KENDER",
             "lora_name": "brain_v1"
         },
         "pinky": {
