@@ -18,6 +18,7 @@ STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
 INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
 ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
+MAINTENANCE_LOCK = f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"
 PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
 GATEKEEPER_PATH = f"{PORTFOLIO_DIR}/monitor/notify_gatekeeper.py"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
@@ -51,6 +52,12 @@ class LabAttendant:
         self.app.router.add_post("/cleanup", self.handle_cleanup)
         self.app.router.add_post("/hard_reset", self.handle_hard_reset)
         self.app.router.add_post("/refresh", self.handle_refresh)
+        
+        # [FEAT-142/143/144] Laboratory Experiment Suite
+        self.app.router.add_post("/quiesce", self.handle_quiesce)
+        self.app.router.add_post("/ignition", self.handle_ignition)
+        self.app.router.add_post("/ping", self.handle_ping)
+        
         self.app.router.add_get("/wait_ready", self.handle_wait_ready)
         self.app.router.add_get("/heartbeat", self.handle_heartbeat)
         self.app.router.add_get("/mutex", self.handle_mutex)
@@ -94,7 +101,7 @@ class LabAttendant:
 
                 # [FEAT-138] Maintenance Silence
                 # If maintenance lock exists, do not attempt recovery or state transitions.
-                if os.path.exists(f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"):
+                if os.path.exists(MAINTENANCE_LOCK):
                     # We still update status for the dashboard, but remain passive.
                     if failure_count % 6 == 0: # Log every minute
                         logger.info("[WATCHDOG] Maintenance Lock active. Passive mode engaged.")
@@ -222,12 +229,15 @@ class LabAttendant:
 
     async def handle_start(self, request):
         global lab_process, current_lab_mode, current_model
-        data = await request.json()
+        try:
+            data = await request.json()
+        except:
+            data = {}
+            
         pref_eng = data.get("engine", "OLLAMA")
         tier_or_mod = data.get("model")
         
         # [FEAT-021] Dynamic Venv Selection
-        # Allow overriding the python binary for different vLLM versions (downgrade/source)
         custom_venv = data.get("venv_path")
         python_bin = os.path.join(custom_venv, "bin/python3") if custom_venv else LAB_VENV_PYTHON
         
@@ -244,7 +254,6 @@ class LabAttendant:
         )
 
         # [FEAT-119] The Assassin: Port-aware zombie mitigation
-        # Check if the port is busy before attempting launch
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             if s.connect_ex(('localhost', 8765)) == 0:
@@ -258,38 +267,31 @@ class LabAttendant:
                     logger.warning("[ASSASSIN] Zombie detected on 8765. Executing cleanup.")
                     subprocess.run(["fuser", "-k", "8765/tcp"], capture_output=True)
 
-        # [START] Unified inference engine boot
-        self.ready_event.clear() # Reset readiness
+        self.ready_event.clear()
 
         async def boot_sequence():
-            # Ensure cleanup is DONE before starting new process
             await self.cleanup_silicon()
-            
-            # [FEAT-119] OS Cooldown: Give the kernel time to reap the socket
             await asyncio.sleep(2.0)
 
             global lab_process
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
             
-            # [FEAT-081] Hemispheric Decoupling
-            # [FEAT-083] Smaller Sovereign: Allow independent brain model override
             brain_pref = data.get("brain_model")
             
             if tier_or_mod in model_map:
-                # If a tier was requested (e.g., MEDIUM), Pinky uses it
-                # but Brain is allowed to upscale to LARGE if on KENDER
                 env["BRAIN_MODEL"] = brain_pref if brain_pref else ("LARGE" if pref_eng == "OLLAMA" else current_model)
                 env["PINKY_MODEL"] = tier_or_mod
             else:
-                # Direct model name requested
                 env["BRAIN_MODEL"] = brain_pref if brain_pref else current_model
                 env["PINKY_MODEL"] = current_model
                 
             if data.get("disable_ear", True):
                 env["DISABLE_EAR"] = "1"
 
-            # Open in 'a' (append) mode to preserve interaction history across reboots
+            # [FEAT-137] Inject extra args for vLLM experiments
+            extra_args = data.get("extra_args", "")
+            
             try:
                 cmd = [
                     python_bin,
@@ -299,11 +301,15 @@ class LabAttendant:
                 ]
                 if data.get("disable_ear", True):
                     cmd.append("--disable-ear")
+                
+                # Split extra args into cmd list
+                if extra_args:
+                    cmd.extend(extra_args.split())
 
                 lab_process = subprocess.Popen(
                     cmd, cwd=LAB_DIR, env=env,
                     stderr=open(SERVER_LOG, "a", buffering=1),
-                    preexec_fn=os.setpgrp # [FEAT-121] Create process group for entire tree
+                    preexec_fn=os.setpgrp
                 )
                 self.monitor_task = asyncio.create_task(self.log_monitor_loop())
                 logger.info(f"[START] Lab Server started with PID: {lab_process.pid} (PGID: {lab_process.pid})")
@@ -316,6 +322,42 @@ class LabAttendant:
             "message": "Boot sequence initiated.",
             "wait_url": f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout=120"
         })
+
+    async def handle_quiesce(self, request):
+        """[FEAT-142] Total Silicon Lockdown."""
+        logger.warning("[QUIESCE] Lockdown initiated. Setting maintenance lock.")
+        with open(MAINTENANCE_LOCK, "w") as f:
+            f.write(datetime.datetime.now().isoformat())
+        
+        await self.cleanup_silicon()
+        await self.update_status_json("MAINTENANCE MODE (Locked)")
+        return web.json_response({"status": "locked", "message": "Lab frozen. Watchdog passive."})
+
+    async def handle_ignition(self, request):
+        """[FEAT-143] Manual override for Safe-Pilot sequence."""
+        logger.info("[IGNITION] Manual ignition triggered. Clearing lock.")
+        if os.path.exists(MAINTENANCE_LOCK):
+            os.remove(MAINTENANCE_LOCK)
+        
+        # Trigger autonomous boot immediately
+        asyncio.create_task(self._safe_pilot_ignition(grace=0))
+        return web.json_response({"status": "igniting", "message": "Lock cleared. Ignition sequence active."})
+
+    async def handle_ping(self, request):
+        """[FEAT-144] Integrated health verification probe."""
+        logger.info("[PING] Health probe requested.")
+        vitals = await self._get_current_vitals()
+        if not vitals["lab_server_running"]:
+            return web.json_response({"status": "offline", "error": "Lab server not running."}, status=503)
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                # We use the internal heartbeat of acme_lab which triggers a generation probe
+                async with session.get("http://localhost:8765/heartbeat", timeout=10) as resp:
+                    data = await resp.json()
+                    return web.json_response({"status": "online", "probe": data})
+        except Exception as e:
+            return web.json_response({"status": "error", "error": str(e)}, status=500)
 
     async def handle_stop(self, request):
         await self.cleanup_silicon()
@@ -354,7 +396,6 @@ class LabAttendant:
     def _trigger_pager_alert(self, severity, message):
         """Logs a persistent alert and triggers the external Gatekeeper (NTFY)."""
         try:
-            # notify_gatekeeper handles the file appending + deduplication + NTFY
             cmd = [
                 LAB_VENV_PYTHON, GATEKEEPER_PATH, 
                 message, 
@@ -369,7 +410,6 @@ class LabAttendant:
     async def handle_wait_ready(self, request):
         timeout = int(request.query.get("timeout", 60))
         try:
-            # wait_for returns the value of the awaitable, or raises TimeoutError
             await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
             vitals = await self._get_current_vitals()
             return web.json_response({"status": "ready", "vitals": vitals})
@@ -402,11 +442,9 @@ class LabAttendant:
         return web.json_response(await self._get_current_vitals())
 
     async def handle_mutex(self, request):
-        """[FEAT-125] Politeness API: Check for active round table sessions."""
         exists = os.path.exists(ROUND_TABLE_LOCK)
         holding_pid = None
         if exists:
-            # Check who holds it (if possible)
             try:
                 for conn in psutil.net_connections(kind='tcp'):
                     if conn.laddr.port == 8765:
@@ -444,9 +482,7 @@ class LabAttendant:
             "last_error": None,
         }
         
-        # 1. Check Engine Port (Ollama/Generic)
-        # Dynamic check based on lab mode to determine if the inference engine is alive
-        engine_port = 11434 # Default Ollama
+        engine_port = 11434 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"http://localhost:{engine_port}/api/tags", timeout=0.5) as r:
@@ -455,8 +491,6 @@ class LabAttendant:
         except Exception:
             pass
 
-        # 2. Check Lab Server Port (8765) - The definitive truth
-        # Use retry logic to avoid false negatives during transient loopback blips
         for _ in range(2):
             try:
                 reader, writer = await asyncio.wait_for(
@@ -473,7 +507,6 @@ class LabAttendant:
 
         global lab_process
         if lab_process and lab_process.poll() is not None:
-            # Only report died if we expected it to be running and port check failed
             if not vitals["lab_server_running"]:
                 vitals["last_error"] = f"Process died: {lab_process.poll()}"
         
@@ -487,13 +520,10 @@ class LabAttendant:
             
             msg = custom_message
             if not msg:
-                # Definitive Truth check: If the port is closed, we are NOT ready.
                 if not vitals["lab_server_running"]:
-                    # Crash Tail Logic: Get last few lines of log if offline
                     if os.path.exists(SERVER_LOG):
                         try:
                             with open(SERVER_LOG, 'r') as f:
-                                # Get last 50 lines to find the actual error
                                 all_lines = f.readlines()
                                 lines = [line.strip() for line in all_lines if line.strip()]
                                 if lines:
@@ -528,69 +558,58 @@ class LabAttendant:
 
     async def cleanup_silicon(self):
         """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
-        # 1. Port-Aware Assassin: Kill whatever is holding our socket
         import signal
         try:
             for conn in psutil.net_connections(kind='tcp'):
-                if conn.laddr.port == 8765:
+                if conn.laddr.port in [8765, 8088]: # Clean bench port too
                     pid = conn.pid
                     if pid:
-                        logger.warning(f"[ASSASSIN] Port 8765 held by PID {pid}. Terminating group.")
+                        logger.warning(f"[ASSASSIN] Port {conn.laddr.port} held by PID {pid}. Terminating group.")
                         try:
                             pgid = os.getpgid(pid)
                             os.killpg(pgid, signal.SIGKILL)
                         except Exception:
                             os.kill(pid, signal.SIGKILL)
-                        # [FEAT-119] Atomic Reaping: Wait for kernel to release socket
                         await asyncio.sleep(1.0)
         except Exception as e:
             logger.error(f"[ASSASSIN] Port check failed: {e}")
 
-        # 2. Name-Aware Sweep
         targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                # [FEAT-121] Check command line for our targets
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in cmdline for t in targets):
-                    # If this is a Hub, try to kill the whole group
                     try:
                         pgid = os.getpgid(proc.info["pid"])
                         logger.info(f"[ASSASSIN] Terminating process group: {pgid}")
                         import signal
                         os.killpg(pgid, signal.SIGTERM)
-                        # Short wait for graceful exit
                         await asyncio.sleep(0.5)
-                        # Re-check and force if necessary
                         if psutil.pid_exists(proc.info["pid"]):
                             os.killpg(pgid, signal.SIGKILL)
                     except Exception:
-                        # Fallback to individual kill if PGID fails or not found
                         proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
-    async def _safe_pilot_ignition(self):
+    async def _safe_pilot_ignition(self, grace=60):
         """[FEAT-136] Autonomous Lab ignition after system boot."""
-        logger.info("[BOOT] Safe-Pilot: Stability window active (60s)...")
-        await asyncio.sleep(60)
+        if grace > 0:
+            logger.info(f"[BOOT] Safe-Pilot: Stability window active ({grace}s)...")
+            await asyncio.sleep(grace)
         
-        # 1. Check if already started manually during the window
         vitals = await self._get_current_vitals()
         if vitals["lab_server_running"] or current_lab_mode != "OFFLINE":
             logger.info("[BOOT] Safe-Pilot: Lab already active. Standing down.")
             return
 
-        # 2. Check GPU Availability
         used, total = await self._get_vram_info()
-        if used > 1000: # Threshold: 1GB
+        if used > 1000: 
             logger.warning(f"[BOOT] Safe-Pilot: Aborted. GPU occupied (VRAM Used: {used}MiB).")
             return
 
-        # 3. Trigger Ignition
         logger.info("[BOOT] Safe-Pilot: Telemetry clear. Triggering autonomous ignition...")
         
-        # Default payload for post-boot survival
         payload = {
             "mode": "SERVICE_UNATTENDED",
             "engine": "OLLAMA",

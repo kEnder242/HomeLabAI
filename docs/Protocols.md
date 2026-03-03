@@ -125,3 +125,8 @@
 1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification).
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
 3.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression.
+
+## BKM-021: The "Wall" Audit (Final Verification)
+**Objective**: Prevent regression into initialization deadlocks.
+*   **Behavior**: Before committing any architectural change involving the inference engine, the Agent MUST verify the **333MiB Breakthrough** using the native `POST /ping` API.
+*   **Mandate**: A successful ping response is the mandatory "Gate" for production-ready status.
