@@ -1,29 +1,25 @@
-# SPRINT [v4.6]: Gemma-Infused Resilience (SML Fallback)
-**Status:** ACTIVE | **Focus:** VRAM-Efficient High-Fidelity Reasoning
+# SPRINT [v4.7]: Micro-Resilience (Qwen-Ladder Hardening)
+**Status:** ACTIVE | **Focus:** Ultra-Stable High-Throughput Reasoning
 
 ## 🎯 Objective
-Stabilize the "Both" (Voice + Logic) requirement on the 11GB Turing budget by replacing the heavy Llama-3B (LARGE) with a "Shrunk LARGE" (Gemma 2 2B AWQ) and implementing automated SML fallback triggers.
+Pivot from heavy/unstable architectures to a **Micro-Resilience Ladder** (Qwen 1.5B/0.5B + Llama 1B). Achieve "Appliance-Grade" reliability on the 11GB Turing budget with ~50% VRAM headroom and automated SML fallback.
 
-## 🏛️ The Fidelity Ladder (v4.6)
+## 🏛️ The Micro-Ladder (v4.7.1)
 | Tier | Model | Format | VRAM (Est) | Utilization | Goal |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **LARGE** | **Gemma 2 2B-it** | AWQ | ~4.5GB | 0.4 | Strategic reasoning & complex coding. |
-| **MEDIUM** | **Phi-3.5-mini** | AWQ | ~6.5GB | 0.4 | High-fidelity analytical/logic tasks. |
-| **SMALL** | **Llama-3.2-1B** | FP16 | ~4.5GB | 0.3 | Fast routing & reflex responses. |
+| **LARGE** | **Qwen 2.5 1.5B** | AWQ | ~5.5GB | 0.5 | Micro-Strategic reasoning (Unity Base). |
+| **MEDIUM** | **Llama 3.2 1B** | FP16 | ~5.0GB | 0.5 | Analytical logic & tool triage. |
+| **SMALL** | **Qwen 2.5 0.5B** | AWQ | ~3.8GB | 0.5 | Instant Reflex / Routing. |
 
-## 🛠️ Implementation Tasks
-1.  **[MODEL] Weight Acquisition**: Download `bartowski/gemma-2-2b-it-AWQ` to `/speedy/models/`.
-2.  **[CONFIG] Characterization**: Update `vram_characterization.json` with the new Gemma-centric LARGE tier.
-3.  **[LOGIC] SML Fallback (FEAT-148)**:
-    *   **Downshift Trigger**: If `mic_state == active` AND `vram_usage > 10.7GB` -> Force `SMALL` tier.
-    *   **Upshift Trigger**: If `mic_state == inactive` for > 5m AND `query_complexity == HIGH` -> Restore `LARGE` (Gemma).
-4.  **[TURING] Compatibility Check**: Verify Gemma 2 performance on Compute 7.5 (Float16 fallback).
-
-## 🚀 Execution Strategy
-1.  **Purge & Prime**: Standard silicon cleanup.
-2.  **Residency Test**: Load EarNode FIRST, then Ignite Gemma 2 2B (Util 0.4).
-3.  **Stress Test**: Perform simultaneous transcription and complex reasoning to monitor VRAM spikes.
+## 🛠️ Hardening Tasks (Post-Mortem)
+1.  **[ASSASSIN] Scorched Earth**: Update `cleanup_silicon` in the Lab Attendant to proactively check for and terminate `ollama` and `llama-box` binaries to prevent "Hidden VRAM" collisions.
+2.  **[SML] Hysteresis Loop**: Implement automated downshift to `SMALL` when `mic_state == active`. Add a 5-minute cool-down timer before allowing an upshift to prevent "Model Flapping."
+3.  **[BOOT] WARM_WAIT**: Hold the Hub in a `BOOT_WAIT` state (Port 8765) until the vLLM `/v1/models` endpoint returns a 200 (FlashInfer warmup completion).
+4.  **[LORA] Persona Integrity**: Verify that the `lora_name` is correctly applied by vLLM to differentiate "Brain" from "Pinky" on the shared 1.5B Unity base.
+5.  **[LOG] Global Montana Decorator**: Implement a base class decorator for all Nodes to automatically trigger `reclaim_logger()` after initialization, neutralizing NeMo/ChromaDB log hijacking globally.
 
 ## 🏺 Scars & Invariants
-- **[SCAR-09] bfloat16 hardware**: Turing lacks native bf16. vLLM MUST cast Gemma 2 to float16/float32 automatically.
-- **[UNITY] Single Foundation**: At any moment, only ONE Unity Base is active. SML swaps the base, Unity shares it.
+- **[SCAR-09] Gemma 2 Instability**: Tabled for Turing (Compute 7.5). Gemma 2's `float16` instability and `bfloat16` hardware requirement make it physically incompatible with our "High Fidelity" goal on this host.
+- **[SCAR-10] vLLM V1 Handshaking**: Requires `NCCL_SOCKET_IFNAME=lo` to prevent internal timeouts on the physical Z87 NIC.
+- **[UNITY] Single Foundation**: Unity (residency) and SML (tiering) are now distinct protocols. Unity shares the base; SML swaps it.
+
