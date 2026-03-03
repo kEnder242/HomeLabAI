@@ -1456,20 +1456,22 @@ class AcmeLab:
         if not disable_ear:
             self.load_ear()
 
-        app = web.Application()
-        app.router.add_get("/", self.client_handler)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
-        site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
-
         while True:
-            # Clear previous state if this is a bounce
+            # [FEAT-149] The SML/Unity Persistence Loop
+            # Allows the Lab to "Bounce" (re-initialize residents) on shutdown signals.
             self.shutdown_event.clear()
             self.residents = {}
-            
-            async with AsyncExitStack() as stack:
-                try:
+            self.status = "BOOTING"
+
+            app = web.Application()
+            app.router.add_get("/", self.client_handler)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
+            site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
+
+            try:
+                async with AsyncExitStack() as stack:
                     await site.start()
                     logging.info(f"[BOOT] Server on {PORT}")
                     await self.boot_residents(stack)
@@ -1500,28 +1502,25 @@ class AcmeLab:
                     )  # [FEAT-049] Alarm Clock
                     
                     await self.shutdown_event.wait()
-                    logging.info("[SHUTDOWN] Event received. Cleaning up.")
-                    
-                    # [FEAT-149] The Persistence Check:
-                    # If we are in co-pilot/debug modes, we exit entirely.
-                    # If we are in SERVICE_UNATTENDED, we stay in this loop and bounce.
-                    if self.mode != "SERVICE_UNATTENDED":
-                        logging.info(f"[SHUTDOWN] Mode '{self.mode}' is terminal. Exiting.")
-                        break
-                    
-                    logging.info("[BOUNCE] Service Unattended mode active. Restarting residents...")
-                    # Give the port a second to breathe
-                    await site.stop()
-                    await asyncio.sleep(2.0)
+                    logging.info("[SHUTDOWN] Event received. Cleaning up residents...")
+            except Exception as e:
+                logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
+                if self.mode != "SERVICE_UNATTENDED":
+                    break
+                await asyncio.sleep(5.0) # Backoff before retry
+            finally:
+                # MANDATORY: Full Silicon Scrub
+                # AsyncExitStack handles the closing of residents automatically here
+                await runner.cleanup()
+                logging.info("[SHUTDOWN] Cycle cleanup complete. Port 8765 released.")
 
-                except Exception as e:
-                    logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
-                    if self.mode != "SERVICE_UNATTENDED":
-                        break
-                    await asyncio.sleep(5.0) # Backoff before retry
-                finally:
-                    logging.info("[SHUTDOWN] Closing residents for current cycle...")
-                    # AsyncExitStack handles the closing of residents automatically here
+            # Exit logic for co-pilot/debug modes
+            if self.mode != "SERVICE_UNATTENDED":
+                logging.info(f"[SHUTDOWN] Mode '{self.mode}' is terminal. Exiting.")
+                break
+            
+            logging.info(f"[BOUNCE] Mode '{self.mode}' active. Restarting Lab in 2 seconds...")
+            await asyncio.sleep(2.0)
 
 
 if __name__ == "__main__":
