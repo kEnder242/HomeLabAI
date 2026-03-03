@@ -1,5 +1,5 @@
 # Sprint Plan: SPR-11-07 "The Unity Restoration"
-**Status:** DRAFT | **Version:** 1.0
+**Status:** ACTIVE | **Version:** 1.1
 **Context**: Following the vLLM 0.16.0 binary breakthrough (breaking the 333MiB wall).
 
 ## 🎯 Objective
@@ -11,45 +11,41 @@ To fully integrate **vLLM 0.16.0** as the primary inference engine for Linux res
 
 ### 1. Features (FEAT)
 *   **[FEAT-030] Unity Pattern (Multi-LoRA Residency)**:
-    *   **Status**: RESURRECTED (formerly Tabled).
+    *   **Status**: ACTIVE.
     *   **Logic**: Run all concurrent resident nodes (Pinky, Brain, Architect, Archive) on a shared **Unified Base Model** (Llama-3.2-3B) footprint.
     *   **SCAR #5: Windows Isolation**: Windows (Node 'Brain') does NOT need to sync with Linux models. Attempting to force identical weight sets across the bridge is a performance trap.
 *   **[FEAT-145] "Unity" Dispatcher (Hub Logic)**:
-    *   **Logic**: Refactor `loader.py` and `acme_lab.py` to append `?lora=X` or include adapter names in the OpenAI payload when `lab_mode == "vLLM"`.
+    *   **Logic**: Refactor `loader.py` and `acme_lab.py` to support Named LoRAs per resident.
 
 ### 2. Vibe (VIBE)
 *   **[VIBE-012] Hemispheric Independence**:
-    *   **Behavior**: The Agent acknowledges the split between "High-Efficiency Residency" (Linux) and "Unconstrained Strategic Depth" (Windows). No model-matching is attempted across the bridge.
+    *   **Behavior**: High-fidelity strategic depth on Windows (unconstrained); high-efficiency residency on Linux (unified).
 
 ### 3. Lab Infrastructure (LAB)
 *   **[LAB-004] vLLM Multi-LoRA Manifest**:
-    *   **Silicon Note**: Local paths on `/speedy/models/adapters/` for `brain_v1`, `pinky_v1`, etc.
-    *   **Environment**: Breakthrough flags (`XFORMERS`, `NCCL_P2P_DISABLE=1`) baked into the `lab-attendant.service`.
-
-### 4. Operational Protocols (BKM)
-*   **[BKM-021] The "Wall" Audit**:
-    *   **Behavior**: Mandatory verification of the **333MiB Breakthrough** using `POST /ping` before committing architectural updates to production.
+    *   **Silicon Note**: Hardcoded paths for `brain_v1`, `pinky_v1` on `/speedy/models/adapters/`.
+    *   **Environment**: breakthrough flags (`XFORMERS`, `NCCL_P2P_DISABLE=1`) baked into the `lab-attendant.service`.
 
 ---
 
 ## 🏃 Execution Phases
 
 ### Phase 1: Hub & Loader Refactor
-1.  Implement `FEAT-145` in `HomeLabAI/src/loader.py` to support adapter addressing.
-2.  Update `acme_lab.py` to correctly route requests based on node identity.
+1.  Implement `FEAT-145` in `src/loader.py` to support `lora_request` addressing.
+2.  Refactor `acme_lab.py` to assign node-specific LoRA names during dispatch.
 
-### Phase 2: Production Hardening
-1.  Update `lab-attendant.service` with breakthrough environment variables.
-2.  Update `vram_characterization.json` to register vLLM as Tier 1.
+### Phase 2: High-Fidelity Verification (The Gauntlet)
+1.  **[APOLLO] VRAM Characterization**: Run `src/debug/test_apollo_vram.py` to verify the 0.16.0 active peak fits within 11GB.
+2.  **[SMOKE] Inference Parity**: Run `src/vllm_smoke_test.py` to confirm coherent model responses from port 8088.
+3.  **[DEEP SMOKE] Cycle of Life**: Execute `acme_lab.py --mode DEEP_SMOKE` to verify end-to-end integration (Ingest -> Reason -> Dream -> Recall).
 
-### Phase 3: Validation (The works)
-1.  Run **[BKM-021] Wall Audit**.
-2.  Perform **[SMOKE]** test across 4 nodes.
-3.  Verify **[VIBE-012]** by requesting a 70B response on Windows while Linux is unified on 3B.
+### Phase 3: Production Ignition
+1.  Update `vram_characterization.json` to register vLLM 0.16.0 as Tier 1 (Nominal).
+2.  Trigger `POST /ignition` to bring the unified stack online.
 
 ---
 
 ## 🧪 Proof of Success
-*   VRAM usage < 10GB with all 4 nodes + EarNode resident.
-*   `POST /ping` returns coherent tokens.
-*   Intercom log shows sub-second switching between "Pinky" and "Brain" source tags.
+*   VRAM usage < 10.5GB with full resident stack + EarNode.
+*   Deep Smoke cycle completes with verified memory recall.
+*   Intercom log confirms sub-second switching between node personas.
