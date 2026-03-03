@@ -32,6 +32,7 @@ These tools verify the `systemd` managed infrastructure and the Hub's resilience
 | **The Assassin** | `lab_attendant.py` (Internal) | [FEAT-119][WD] Atomic port-reaping using `fuser -k` before boot. |
 | **Ghost Hunter** | `lab_attendant.py` (Internal) | [FEAT-121][WD] PGID-aware tree termination using `os.killpg()`. |
 | **Gauntlet** | `src/debug/test_lifecycle_gauntlet.py` | Stress tests the Hub with rapid connect/disconnect cycles. Essential for verifying `aiohttp` resilience. |
+| **Goodnight Bounce**| `src/debug/test_goodnight_bounce.py`| [FEAT-149][WD] Verifies appliance-grade resilience and auto-restart loop using Trace Monitoring. |
 | **Attendant Sanity** | `src/debug/test_attendant_sanity.py` | [WD] Verifies the Lab Attendant's HTTP API (Start/Stop/Status/Wait_Ready). |
 | **Shutdown Resilience**| `src/debug/test_shutdown_resilience.py`| Verifies that the Lab can shut down via native tool flow. |
 | **Liveliness** | `src/test_liveliness.py` | Standard heartbeat check. Verifies the WebSocket port is open and the `READY` state is achievable. |
@@ -127,6 +128,7 @@ Low-level verification of underlying libraries and architectural constraints.
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Forensic Logging** | `src/debug/test_forensic_logging.py`| Verifies the Montana Protocol and log rotation. |
+| **Trace Monitor** | `src/debug/trace_monitor.py` | [FEAT-151] Reusable utility for log delta capture during state transitions. |
 | **aiohttp Stability** | `src/debug/test_aiohttp.py` | Verifies WebSocket handshake resilience and async loop stability. |
 
 ---
