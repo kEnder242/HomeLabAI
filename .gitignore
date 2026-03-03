@@ -26,3 +26,7 @@ data/
 vendor/
 logs/forensic_*.json
 \n# [FEAT-151] Transient Telemetry\nlogs/trace_*.json\nserver.log.stale
+
+# [FEAT-151] Transient Telemetry
+logs/trace_*.json
+server.log.stale
