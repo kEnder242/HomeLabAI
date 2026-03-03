@@ -119,6 +119,11 @@
 ### LAB-003: The Unity Pattern (Multi-LoRA Residency)
 **Objective**: Optimize multi-agent residency on the 11GB Turing budget.
 
+> [!IMPORTANT]
+> **Unity vs. SML**: The Unity Pattern (Single Active Foundation) should NOT be conflated with the **SML (Small/Medium/Large) Fallback** logic. 
+> 1. **Unity** ensures that at any given moment, all active nodes share the *current* resident foundation to save VRAM. 
+> 2. **SML** provides the resilience ladder to *switch* the entire foundation (the Unity base) to a different tier (e.g., 3B to 1B) during mode transitions (e.g., Text-Only to Voice Gateway).
+
 1.  **Architecture**: The full Bicameral Mind (Pinky, Brain, Architect, Archive) should target a shared VRAM footprint using a **Unified Base Model** (e.g., Llama-3.2-3B) via vLLM 0.16.0.
 2.  **Fast-Switching**: Leverage `--enable-lora` to swap node personas (Brain_v1, Pinky_v1) without reloading base weights.
 3.  **SCAR: Windows Model Isolation**: Windows (Node 'Brain') does NOT need to sync with Linux models. Attempting to force identical weight sets across the bridge is a performance trap. Windows should leverage the RTX 4090's capacity for Mixtral/Llama-70B independently of the Linux resident tiering.
@@ -126,7 +131,9 @@
 ### LAB-004: vLLM Multi-LoRA Manifest
 **Objective**: Hardcode model and adapter paths for consistent Turing residency.
 
-1.  **Base Model Path**: `/speedy/models/Qwen2.5-3B-Instruct` (or `Llama-3.2-1B-Instruct`).
+1.  **Verified Foundation Paths**:
+    *   **LARGE/MEDIUM**: `/speedy/models/llama-3.2-3b-instruct-awq`
+    *   **SMALL**: `/speedy/models/Llama-3.2-1B-Instruct`
 2.  **Adapter Path**: `/speedy/models/adapters/`.
     *   `brain_v1`: Strategic strategic adapter.
     *   `pinky_v1`: Intuitive gateway adapter.
