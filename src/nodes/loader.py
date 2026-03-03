@@ -324,6 +324,13 @@ class BicameralNode:
                         "tool_choice": "auto",
                         "max_tokens": max_tokens,
                     }
+                    if self.lora_name:
+                        # [FEAT-145] Adaptive Unity: Only request LoRA if the adapter is physically present
+                        adapter_path = f"/speedy/models/adapters/{self.lora_name}"
+                        if os.path.exists(adapter_path):
+                            payload["lora_request"] = {"name": self.lora_name}
+                        else:
+                            logging.warning(f"[{self.name}] Adapter {self.lora_name} missing at {adapter_path}. Falling back to unified base.")
                     async with session.post(url, json=payload, timeout=120) as r:
                         data = await r.json()
                         if "choices" not in data:

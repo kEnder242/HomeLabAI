@@ -5,13 +5,8 @@ import os
 
 # Configuration from Environment or Defaults
 ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:9999")
-VLLM_URL = "http://localhost:8088/v1/chat/completions"
-MODEL_PATH = (
-    "/home/jallred/.cache/huggingface/hub/"
-    "models--casperhansen--llama-3.2-3b-instruct-awq/snapshots/"
-    "272b3bde867b606760447deb9a4d2719fbdfd3ae"
-)
-MODEL_NAME = "llama-3.2-3b-awq"
+VLLM_URL = "http://localhost:8765/v1/chat/completions" # Thru the hub
+MODEL_NAME = "LARGE" # Test the primary tier
 
 
 def get_gpu_info():
