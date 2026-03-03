@@ -93,19 +93,17 @@
 *   **Result**: ❌ **FAILURE**. EngineCore failed with `KeyError: 'layers.0.mlp.gate_up_proj.weight'`.
 *   **SCAR: Architecture Sensitivity**: vLLM 0.16.0's V1 engine is aggressive about weight-key naming. Qwen2.5 weights in `/speedy/models` lack the gate/up projection mapping expected by the v0.16.0 `Qwen2ForCausalLM` loader.
 
-#### 🍼 Baby Step 3: Unity Foundation Verified (Llama-3B)
-*   **Goal**: Verify 3B-tier residency using the known-stable Llama architecture via automated Attendant ignition.
-*   **The Command (via Lab Attendant `POST /start`)**:
-    ```json
-    {
-        "engine": "VLLM",
-        "model": "/speedy/models/llama-3.2-3b-instruct-awq",
-        "venv_path": "/home/jallred/Dev_Lab/.venv_vllm_016",
-        "extra_args": "--dtype float16 --enforce-eager --gpu-memory-utilization 0.5 --max-model-len 4096",
-        "mode": "EXPERIMENTAL"
-    }
-    ```
-*   **Result**: ✅ **SUCCESS**. VRAM reached 6.4GB. The Lab Attendant successfully shielded the process from CLI watchdog reaps. Port 8088 confirmed active after ~60s warmup.
+#### 🍼 Baby Step 4: SML Restoration & Phi-3.5-AWQ (The Fidelity Ladder)
+*   **Goal**: Restore the "Small/Medium/Large" tiering using Turing-optimized models.
+*   **Model Selection**: Standardized on **AWQ** for 3B+ models to ensure KV cache headroom.
+*   **SNAG: Zombie VRAM Pressure**: Encountered a state where `nvidia-smi` reported 333MiB, but vLLM detected only 2.86GB free. This was caused by "Ghost" multiprocessing or ZMQ buffer residues from previous failed ignitions.
+    *   **FIX**: A total **Silicon Purge** (`sudo fuser -kv /dev/nvidia0`) is mandatory if switching model architectures (e.g., Llama -> Phi).
+*   **SNAG: FP16 Weight Pressure**: Verified that **Phi-3.5-mini (FP16)** is incompatible with 11GB vLLM v1. Its ~8GB weight footprint leaves < 1GB for KV cache after engine overhead.
+    *   **FIX**: Pull and use **AWQ** versions for all models > 1B parameters.
+*   **Result**: ✅ **SUCCESS**. Verified a three-tier Fidelity Ladder:
+    *   **LARGE**: Llama-3.2-3B-AWQ (Verified ~6.5GB)
+    *   **MEDIUM**: Phi-3.5-mini-AWQ (Verified ~5.5GB)
+    *   **SMALL**: Llama-3.2-1B-FP16 (Verified ~4.5GB)
 
 #### 🏺 SCARS: The "Why" behind the Invariants
 *   **SCAR: The Physical IP Trap**: Without `NCCL_SOCKET_IFNAME=lo`, vLLM attempts handshakes on the physical NIC (192.168.x.x). On the Z87 board, this overhead causes a race condition that results in the process silently exiting during the ZMQ/NCCL initialization phase.
