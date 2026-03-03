@@ -110,6 +110,19 @@
 *   **SCAR: The HF Shadow-Lookup**: All local model paths **must be absolute** (starting with `/`). If a relative path is used, vLLM 0.16.0 defaults to a HuggingFace repository lookup and triggers an `OSError` crash.
 *   **SCAR: The Watchdog Reaper**: The vLLM v1 core requires a ~45s warmup. If the parent CLI tool terminates before this completes, the background engine is often reaped unless decoupled via `nohup` or `systemd`.
 
+### LAB-005: Modular Hub Architecture (v4.8 Refactor)
+**Objective**: Decouple the monolithic `acme_lab.py` into specialized managers to improve maintainability and residency efficiency.
+
+1.  **Sensory Layer (`SensoryManager`)**:
+    *   **Role**: Handles binary audio buffers, VAD (Voice Activity Detection), and EarNode (NeMo) residency.
+    *   **Invariant**: EarNode must be loaded **before** any cognitive nodes to claim contiguous VRAM.
+2.  **Cognitive Layer (`CognitiveHub`)**:
+    *   **Role**: Encapsulates reasoning logic, tool extraction, and node dispatching.
+    *   **Feature**: Employs robust regex-based JSON extraction to handle banter-wrapped tool calls.
+3.  **Observability Layer (Montana Protocol)**:
+    *   **Role**: Centralized in `src/infra/montana.py`.
+    *   **Function**: Reclaims log visibility from third-party libraries and injects the 4-part fingerprint `[BOOT_HASH : COMMIT : ROLE : PID]` into all streams.
+
 4.  **Validation Checkpoints**:
     *   **The Wall**: Pass 333MiB VRAM usage within 20s.
     *   **Residency**: Pass 6000MiB+ VRAM allocation.

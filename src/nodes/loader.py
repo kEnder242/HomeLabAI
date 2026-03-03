@@ -11,6 +11,7 @@ from liger_kernel.transformers import (
 import socket
 import time
 from mcp.server.fastmcp import FastMCP
+from infra.montana import reclaim_logger
 
 # Global Paths
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,54 +27,6 @@ def resolve_ip(hostname, default_ip=None):
         return socket.gethostbyname(hostname)
     except Exception:
         return default_ip
-
-
-_logger_initialized = False
-_BOOT_HASH = uuid.uuid4().hex[:4].upper()
-
-
-def get_git_commit():
-    try:
-        # Resolve LAB_DIR for git command
-        l_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        import subprocess
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
-                                        cwd=l_dir, text=True).strip()
-    except Exception:
-        return "unknown"
-
-
-def get_fingerprint(role="NODE"):
-    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
-
-
-def reclaim_logger(role="NODE"):
-    global _logger_initialized
-    if _logger_initialized:
-        return
-
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-
-    fmt = logging.Formatter(
-        f"%(asctime)s - {get_fingerprint(role)} %(levelname)s - %(message)s"
-    )
-
-    sh = logging.StreamHandler(sys.stderr)
-    sh.setFormatter(fmt)
-    root.addHandler(sh)
-
-    fh = logging.FileHandler(SERVER_LOG, mode="a", delay=False)
-    fh.setFormatter(fmt)
-    root.addHandler(fh)
-
-    root.setLevel(logging.INFO)
-    logging.getLogger("nemo").setLevel(logging.ERROR)
-    logging.getLogger("chromadb").setLevel(logging.ERROR)
-    logging.getLogger("onelogger").setLevel(logging.ERROR)
-
-    _logger_initialized = True
 
 
 class BicameralNode:

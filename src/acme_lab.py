@@ -3,16 +3,13 @@ import json
 import logging
 import os
 import random
-import re
 import socket
 import sys
 import time
-import uuid
-import subprocess
 from typing import Dict, Set
 
+from infra.montana import reclaim_logger
 import aiohttp
-import numpy as np
 from aiohttp import web
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -20,7 +17,8 @@ from contextlib import AsyncExitStack
 
 # Internal Task Imports
 import recruiter
-import internal_debate
+from equipment.sensory_manager import SensoryManager
+from logic.cognitive_hub import CognitiveHub
 
 # Configuration
 PORT = 8765
@@ -64,67 +62,6 @@ def resolve_brain_url():
     return "http://localhost:11434/api/tags"
 
 
-_logger_initialized = False
-
-
-# --- THE MONTANA PROTOCOL ---
-_BOOT_HASH = uuid.uuid4().hex[:4].upper()
-
-def get_git_commit():
-    try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
-                                        cwd=LAB_DIR, text=True).strip()
-    except Exception:
-        return "unknown"
-
-_SOURCE_COMMIT = get_git_commit()
-
-def get_fingerprint(role="HUB"):
-    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
-
-def reclaim_logger(role="HUB"):
-    global _logger_initialized
-    if _logger_initialized:
-        return
-
-    root = logging.getLogger()
-    # Aggressively clear all existing handlers to prevent double-logging
-    # and ensure only OUR formatted handlers remain.
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-
-    # [FEAT-121] Lab Fingerprint Injection
-    fmt = logging.Formatter(f"%(asctime)s - {get_fingerprint(role)} %(levelname)s - %(message)s")
-
-    sh = logging.StreamHandler(sys.stderr)
-    sh.setFormatter(fmt)
-    root.addHandler(sh)
-
-    fh = logging.FileHandler(SERVER_LOG, mode="a", delay=False)
-    fh.setFormatter(fmt)
-    root.addHandler(fh)
-
-    root.setLevel(logging.INFO)
-    logging.getLogger("nemo").setLevel(logging.ERROR)
-    logging.getLogger("chromadb").setLevel(logging.ERROR)
-    logging.getLogger("onelogger").setLevel(logging.ERROR)
-
-    _logger_initialized = True
-
-
-class EarNode:
-    """Stub for sensory input. NeMo imported via equipment/ear_node.py."""
-
-    def __init__(self):
-        self.is_listening = True
-
-    def check_turn_end(self):
-        return None
-
-    def process_audio(self, chunk):
-        return None
-
-
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
         self.mode = mode
@@ -143,14 +80,23 @@ class AcmeLab:
         self.brain_online = False
         self._last_brain_prime = 0  # [FEAT-085] Keep-alive tracking
         self.mic_active = False  # [FEAT-025] Amygdala Switch State
-        self.ear = None
+        self.sensory = SensoryManager(self.broadcast)
+        self.cognitive = CognitiveHub(
+            self.residents, 
+            self.broadcast, 
+            self.sensory, 
+            lambda: self.brain_online,
+            self.get_oracle_signal,
+            self.monitor_task_with_tics
+        )
         self.recent_interactions = []
         reclaim_logger(role)
         self.set_proc_title()
 
     def set_proc_title(self):
         """[FEAT-122] Kernel-Level Visibility: Renames process in ps/htop."""
-        title = f"acme_lab [{_BOOT_HASH}:{get_git_commit()}:{self.role}]"
+        from infra.montana import get_fingerprint
+        title = f"acme_lab {get_fingerprint(self.role)}"
         try:
             import setproctitle
             setproctitle.setproctitle(title)
@@ -158,18 +104,6 @@ class AcmeLab:
             # Fallback: Overwrite sys.argv
             sys.argv[0] = title
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
-
-    def load_ear(self):
-        """Lazy load real EarNode logic."""
-        try:
-            s_dir = os.path.dirname(os.path.abspath(__file__))
-            sys.path.append(os.path.join(s_dir, "equipment"))
-            from ear_node import EarNode
-
-            self.ear = EarNode()
-            logging.info("[BOOT] EarNode initialized (NeMo).")
-        except Exception as e:
-            logging.error(f"[BOOT] Failed to load EarNode: {e}")
 
     async def broadcast(self, message_dict):
         if self.shutdown_event.is_set():
@@ -489,11 +423,11 @@ class AcmeLab:
         return any(k in text_low for k in casual_indicators)
 
     async def client_handler(self, request):
+        from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.connected_clients.add(ws)
         await self.manage_session_lock(active=True)
-        audio_buffer = np.zeros(0, dtype=np.int16)
         current_processing_task = None
 
         try:
@@ -528,34 +462,33 @@ class AcmeLab:
             async def ear_poller():
                 nonlocal current_processing_task
                 while not ws.closed:
-                    if self.ear:
-                        query = self.ear.check_turn_end()
-                        if query:
-                            # BARGE-IN LOGIC
-                            interrupt_keys = ["wait", "stop", "hold on", "shut up"]
-                            if current_processing_task and any(
-                                k in query.lower() for k in interrupt_keys
-                            ):
-                                logging.info(
-                                    f"[BARGE-IN] Interrupt: '{query}'. Cancelling."
-                                )
-                                current_processing_task.cancel()
-                                await self.broadcast(
-                                    {
-                                        "brain": "Stopping... Narf!",
-                                        "brain_source": "Pinky",
-                                    }
-                                )
-                                current_processing_task = None
+                    query = self.sensory.check_turn_end()
+                    if query:
+                        # BARGE-IN LOGIC
+                        interrupt_keys = ["wait", "stop", "hold on", "shut up"]
+                        if current_processing_task and any(
+                            k in query.lower() for k in interrupt_keys
+                        ):
+                            logging.info(
+                                f"[BARGE-IN] Interrupt: '{query}'. Cancelling."
+                            )
+                            current_processing_task.cancel()
+                            await self.broadcast(
+                                {
+                                    "brain": "Stopping... Narf!",
+                                    "brain_source": "Pinky",
+                                }
+                            )
+                            current_processing_task = None
 
-                            if (
-                                not current_processing_task
-                                or current_processing_task.done()
-                            ):
-                                await self.broadcast({"type": "final", "text": query})
-                                current_processing_task = asyncio.create_task(
-                                    self.process_query(query, ws)
-                                )
+                        if (
+                            not current_processing_task
+                            or current_processing_task.done()
+                        ):
+                            await self.broadcast({"type": "final", "text": query})
+                            current_processing_task = asyncio.create_task(
+                                self.process_query(query, ws)
+                            )
                     await asyncio.sleep(0.1)
 
             asyncio.create_task(ear_poller())
@@ -633,41 +566,35 @@ class AcmeLab:
                     elif m_type == "user_typing":
                         self.last_typing_event = time.time()
                         self.last_activity = time.time()
-                elif message.type == aiohttp.WSMsgType.BINARY and self.ear:
-                    chunk = np.frombuffer(message.data, dtype=np.int16)
-                    audio_buffer = np.concatenate((audio_buffer, chunk))
-                    if np.abs(chunk).max() > 500 and random.random() < 0.05:
-                        logging.info("[AUDIO] Signal detected.")
-                    if len(audio_buffer) >= 24000:
-                        text = self.ear.process_audio(audio_buffer[:24000])
-                        if text:
-                            self.last_activity = time.time()
-                            await self.broadcast(
-                                {"text": text, "type": "transcription"}
-                            )
-                            # SHADOW DISPATCH: Proactive Brain Engagement
-                            strat_keys = [
-                                "architecture",
-                                "silicon",
-                                "regression",
-                                "validate",
-                            ]
-                            # [FEAT-027] Hard Gate for Shadow Dispatch
-                            is_text_casual = await self.check_intent_is_casual(text)
+                elif message.type == aiohttp.WSMsgType.BINARY:
+                    text = self.sensory.process_binary_chunk(message.data)
+                    if text:
+                        self.last_activity = time.time()
+                        await self.broadcast(
+                            {"text": text, "type": "transcription"}
+                        )
+                        # SHADOW DISPATCH: Proactive Brain Engagement
+                        strat_keys = [
+                            "architecture",
+                            "silicon",
+                            "regression",
+                            "validate",
+                        ]
+                        # [FEAT-027] Hard Gate for Shadow Dispatch
+                        is_text_casual = await self.check_intent_is_casual(text)
 
-                            if (
-                                any(k in text.lower() for k in strat_keys)
-                                and not current_processing_task
-                                and not is_text_casual
-                            ):
-                                logging.info(f"[SHADOW] Intent detected: {text}")
-                                await self.broadcast(
-                                    {
-                                        "brain": "Predicted strategic intent... preparing.",
-                                        "brain_source": "Brain (Shadow)",
-                                    }
-                                )
-                        audio_buffer = audio_buffer[16000:]
+                        if (
+                            any(k in text.lower() for k in strat_keys)
+                            and not current_processing_task
+                            and not is_text_casual
+                        ):
+                            logging.info(f"[SHADOW] Intent detected: {text}")
+                            await self.broadcast(
+                                {
+                                    "brain": "Predicted strategic intent... preparing.",
+                                    "brain_source": "Brain (Shadow)",
+                                }
+                            )
         finally:
             self.connected_clients.remove(ws)
             if not self.connected_clients:
@@ -714,623 +641,12 @@ class AcmeLab:
         self.last_activity = time.time()
 
     async def process_query(self, query, websocket):
-        # [FEAT-018] Interaction Logging: Ensuring user inputs are permanently captured
-        logging.info(f"[USER] Intercom Query: {query}")
-        logging.info(f"[DEBUG] Processing query for year-scanner: '{query}'")
-
-        # [VIBE] Intent State
-        is_strategic = False
-        historical_context = ""
-        historical_sources = []
-
-        # [FEAT-088/123/124] The Local Truth Sentry
-        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
-        silence_mode = False
-        if year_match and "archive" in self.residents:
-            is_strategic = True
-            year = year_match.group(1)
-            logging.info(f"[AMYGDALA] detected {year}. Priming archive recall.")
-            try:
-                res_context = await self.residents["archive"].call_tool(
-                    name="get_context",
-                    arguments={"query": f"Validation events from {year}"},
-                )
-                rag_data = json.loads(res_context.content[0].text)
-                raw_history = rag_data.get("text", "")
-                historical_sources = rag_data.get("sources", [])
-
-                if not raw_history:
-                    logging.info(f"[SENTRY] Total Archive Silence for {year}. Engaging Local Shadow.")
-                    silence_mode = True
-                    historical_context = (
-                        f"TOTAL ARCHIVE SILENCE: There are NO verified technical records for the year {year}. "
-                        "MANDATE: As the Systems Architect, report that the archives for this period are empty "
-                        "and that no specific projects or telemetry can be verified without manual artifacts."
-                    )
-                else:
-                    historical_context = (
-                        f"STRICT GROUNDING MANDATE: Use ONLY the following verified technical truth for the year {year}. "
-                        "STRICT: DO NOT invent scenarios, drone swarms, or projects not listed below.\n"
-                        f"--- VERIFIED LOGS [{year}] ---\n{raw_history}"
-                    )
-                
-                if historical_sources:
-                    logging.info(f"[HISTORY] Found truth anchors for {year}: {historical_sources}")
-            except Exception as e:
-                logging.error(f"[AMYGDALA] Recall failed: {e}")
-
-        # [FEAT-056] MIB Memory Wipe Mechanic
-        # Allows user to manually clear the interaction context (The "Neuralyzer")
-        wipe_keys = ["look at the light", "wipe memory", "neuralyzer", "clear context"]
-        if any(k in query.lower() for k in wipe_keys):
-            self.recent_interactions = []
-            logging.info("[MEMORY] MIB Wipe triggered. Context cleared.")
-            await self.broadcast(
-                {
-                    "brain": "Look at the light... *FLASH* ... Narf! What were we talking about?",
-                    "brain_source": "Pinky",
-                    "type": "memory_clear",
-                }
-            )
-            return
-
-        is_casual = await self.check_intent_is_casual(query)
-
-        # [DEBUG] Persona Bleed Investigation
-        logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
-
-        # 0. HEURISTIC SENTINEL
-        shutdown_keys = ["close the lab", "goodnight", "shutdown", "exit lab"]
-        if any(k in query.lower() for k in shutdown_keys):
-            logging.info("[SHUTDOWN] Heuristic Triggered.")
-            await self.broadcast(
-                {
-                    "brain": "Goodnight. Closing Lab.",
-                    "brain_source": "System",
-                    "type": "shutdown",
-                }
-            )
-            self.shutdown_event.set()
-            return
-
-        # 1. Strategic Sentinel Logic
-        strat_keys = [
-            "bottleneck",
-            "optimization",
-            "complex",
-            "root cause",
-            "race condition",
-            "unstable",
-            "design",
-            "calculate",
-        ]
-
-        # [FEAT-032] Amygdala Logic: Use 1B model as smart filter when typing
-        # If not already elevated by Amygdala, check sentinels
-        if not is_strategic:
-            if self.mic_active:
-                # Voice Mode: Use keyword-based sentinel for speed
-                is_strategic = (
-                    any(k in query.lower() for k in strat_keys) and not is_casual
-                )
-        else:
-            # Typing Mode: Use Amygdala (1B) to filter
-            if not is_casual:
-                logging.info("[AMYGDALA] Filtering query...")
-                is_strategic = True  # Future: Call Llama-1B to decide
-
-        addressed_brain = "brain" in query.lower()
-
-        async def execute_dispatch(
-            raw_text, source, context_flags=None, oracle_category=None, sources=None
-        ):
-            """Hardened Priority Dispatcher with Hallucination Shunt and [FEAT-110] Banter Sanitizer."""
-            nonlocal historical_context, historical_sources
-            logging.info(
-                f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'"
-            )
-
-            # [FEAT-110] Shadow Moat: Strip Pinky-isms from Brain sources
-            if "Brain" in source:
-                # Case-insensitive removal of common interjections and roleplay banter
-                banter_pattern = r"\b(narf|poit|zort|egad|trotro)\b"
-                raw_text = re.sub(
-                    banter_pattern, "", raw_text, flags=re.IGNORECASE
-                ).strip()
-                # Strip leading commas/periods/quotes/spaces left behind by sanitization
-                raw_text = re.sub(r"^[,\.\!\?\s\"\'\d]+", "", raw_text).strip()
-                # Also strip any roleplay actions like *adjusts goggles*
-                raw_text = re.sub(r"\*[^*]+\*", "", raw_text).strip()
-
-            # [FEAT-026] Brain Voice Restoration: Force raw text for Architect
-            if source == "Brain" and "{" not in raw_text:
-                # [FEAT-120] Ensure metadata is included even in direct raw text dispatch
-                await self.broadcast(
-                    {
-                        "brain": raw_text,
-                        "brain_source": "Brain",
-                        "oracle_category": oracle_category,
-                        "sources": sources or historical_sources,
-                    }
-                )
-                return True
-
-            try:
-                # Recursive JSON extraction
-                data = json.loads(raw_text) if "{" in raw_text else raw_text
-                tool = data.get("tool") if isinstance(data, dict) else None
-                params = data.get("parameters", {}) if isinstance(data, dict) else {}
-
-                is_shutdown = (
-                    tool == "close_lab"
-                    or "close_lab()" in raw_text
-                    or "goodnight" in raw_text.lower()
-                )
-                if is_shutdown:
-                    await self.broadcast(
-                        {
-                            "brain": "Goodnight. Closing Lab.",
-                            "brain_source": "System",
-                            "type": "shutdown",
-                        }
-                    )
-                    self.shutdown_event.set()
-                    return True
-
-                # Validation: Shunt hallucinations to Pinky
-                known_tools = [
-                    "reply_to_user",
-                    "ask_brain",
-                    "deep_think",
-                    "list_cabinet",
-                    "read_document",
-                    "peek_related_notes",
-                    "write_draft",
-                    "generate_bkm",
-                    "build_semantic_map",
-                    "peek_strategic_map",
-                    "discuss_offline",
-                    "select_file",
-                    "notify_file_open",
-                ]
-
-                # [FEAT-074] Workbench Routing
-                if tool == "select_file":
-                    fname = params.get("filename")
-                    await self.broadcast(
-                        {"type": "file_content_request", "filename": fname}
-                    )
-                    return True
-
-                if tool == "discuss_offline":
-                    topic = params.get("topic") or query
-                    logging.info(f"[DEBATE] User requested offline discussion: {topic}")
-                    await self.broadcast(
-                        {
-                            "brain": f"Narf! We'll chew on '{topic}' while you're out!",
-                            "brain_source": "Pinky",
-                        }
-                    )
-                    # Run in background without blocking interaction
-                    asyncio.create_task(
-                        internal_debate.run_nightly_talk(
-                            self.residents.get("archive"),
-                            self.residents.get("pinky"),
-                            self.residents.get("brain"),
-                            topic=topic,
-                        )
-                    )
-                    return True
-
-                if tool and tool not in known_tools:
-                    logging.warning(f"[SHUNT] Hallucinated tool '{tool}'.")
-                    if "pinky" in self.residents:
-                        res = await self.residents["pinky"].call_tool(
-                            name="facilitate",
-                            arguments={
-                                "query": f"I tried to use '{tool}' but it failed.",
-                                "context": "",
-                            },
-                        )
-                        return await execute_dispatch(
-                            res.content[0].text, "Pinky (Shunt)"
-                        )
-
-                if tool == "reply_to_user" or (
-                    isinstance(data, dict) and "reply_to_user" in data
-                ):
-                    reply = params.get("text") or data.get("reply_to_user") or raw_text
-                    if isinstance(reply, dict):
-                        reply = reply.get("text", str(reply))
-                    if isinstance(reply, list) and len(reply) == 1:
-                        reply = reply[0]
-
-                    # [FEAT-058] Redundant Routing: Force insight channel for all Brain sources
-                    target_channel = (
-                        context_flags.get("channel", "chat")
-                        if context_flags
-                        else "chat"
-                    )
-                    if "Brain" in source:
-                        target_channel = "insight"
-
-                    await self.broadcast(
-                        {
-                            "brain": str(reply),
-                            "brain_source": source,
-                            "channel": target_channel,
-                            "oracle_category": oracle_category,
-                            "sources": sources or historical_sources,
-                        }
-                    )
-                    return True
-
-                if tool == "ask_brain" or tool == "deep_think":
-                    task = params.get("task") or params.get("query") or query
-
-                    # [FEAT-027] Iron Gate: Double-check for casualness in both original and delegated task
-                    is_task_casual = await self.check_intent_is_casual(task)
-                    if is_casual or is_task_casual:
-                        logging.warning(
-                            f"[GATE] Blocking casual delegation. Task: '{task}'"
-                        )
-                        # Fallback: Just let Pinky answer naturally
-                        return False
-
-                    # Scrub 'Pinky' from Brain's task to prevent persona bleed
-                    task = task.replace("Pinky", "the Gateway")
-                    task = f"[DELEGATED]: {task}"
-
-                    if context_flags and context_flags.get("direct"):
-                        task = f"[DIRECT ADDRESS] {task}"
-
-                    # Bicameral Failover: Reroute to local if Sovereign is offline
-                    target_node = "brain" if self.brain_online else "pinky"
-                    if not self.brain_online:
-                        logging.warning(
-                            "[FAILOVER] Sovereign offline. Rerouting to Shadow Hemisphere."
-                        )
-                        task = f"[FAILOVER ARCHITECT]: {task}"
-
-                    # [FEAT-088] Ground task in historical truth
-                    logging.info(
-                        f"[DEBUG] Injection path: historical_context len={len(historical_context)}"
-                    )
-                    if historical_context:
-                        task = f"[HISTORICAL CONTEXT]: {historical_context}\n[TASK]: {task}"
-
-                    # [FEAT-057] Deep Context: Send full interaction history instead of sliced window
-                    if target_node in self.residents:
-                        ctx = "\n".join(self.recent_interactions)
-                        t_name = (
-                            "deep_think" if target_node == "brain" else "facilitate"
-                        )
-                        t_args = (
-                            {"task": task, "context": ctx}
-                            if target_node == "brain"
-                            else {"query": task, "context": ctx}
-                        )
-
-                        # [FEAT-048] Monitor long-running Brain tasks
-                        # [FEAT-120] Pass metadata for Trace auditability
-                        if "metadata" not in t_args:
-                            t_args["metadata"] = {
-                                "sources": sources or historical_sources,
-                                "oracle_category": oracle_category,
-                            }
-                        res = await self.monitor_task_with_tics(
-                            self.residents[target_node].call_tool(
-                                name=t_name, arguments=t_args
-                            )
-                        )
-                        raw_out = res.content[0].text
-
-                        # [FEAT-077] Quality-Gate Failover: Handle empty/dotted remote responses
-                        if (
-                            raw_out == "INTERNAL_QUALITY_FALLBACK"
-                            and target_node == "brain"
-                        ):
-                            logging.warning(
-                                "[FAILOVER] Sovereign returned low-quality response. Engaging Shadow."
-                            )
-                            task = f"[QUALITY FAILOVER]: {task}"
-                            res = await self.monitor_task_with_tics(
-                                self.residents["pinky"].call_tool(
-                                    name="facilitate",
-                                    arguments={"query": task, "context": ctx},
-                                )
-                            )
-                            return await execute_dispatch(
-                                res.content[0].text,
-                                "Brain (Shadow)",
-                                {"direct": addressed_brain, "channel": "insight"},
-                            )
-
-                        return await execute_dispatch(
-                            raw_out,
-                            "Brain" if self.brain_online else "Brain (Shadow)",
-                            {"direct": addressed_brain, "channel": "insight"},
-                            sources=historical_sources,
-                        )
-                    else:
-                        await self.broadcast(
-                            {
-                                "brain": "Analytical primary is OFFLINE.",
-                                "brain_source": "System",
-                                "channel": "insight",
-                            }
-                        )
-                        return False
-
-                t_node = "pinky"
-                a_tools = [
-                    "list_cabinet",
-                    "read_document",
-                    "peek_related_notes",
-                    "write_draft",
-                ]
-                if tool in a_tools:
-                    t_node = "archive"
-                elif tool in ["generate_bkm", "build_semantic_map"]:
-                    t_node = "architect"
-
-                if tool and t_node in self.residents:
-                    logging.info(f"[DISPATCH] {t_node}.{tool}")
-                    res = await self.residents[t_node].call_tool(
-                        name=tool, arguments=params
-                    )
-                    return await execute_dispatch(res.content[0].text, source)
-
-                # Extraction Fallback
-                def extract_val(obj):
-                    if isinstance(obj, str):
-                        return [obj]
-                    if isinstance(obj, dict):
-                        return [str(v) for v in obj.values()]
-                    if isinstance(obj, list):
-                        r = []
-                        for v in obj:
-                            r.extend(extract_val(v))
-                        return r
-                    return [str(obj)]
-
-                vals = extract_val(data)
-                reply = vals[0] if len(vals) == 1 else " ".join(vals)
-                await self.broadcast({"brain": reply, "brain_source": source})
-                return True
-
-            except Exception as e:
-                logging.error(f"[DISPATCH] Error: {e}")
-                await self.broadcast({"brain": raw_text, "brain_source": source})
-                return False
-
-        # 2. Parallel Dispatch
-        # Use a dict to map tasks back to their source node reliably
-        dispatch_map = {}
-
-        # [FEAT-108] Dynamic Shunt Hint
-        pinky_context = ""
-        if is_strategic and self.brain_online:
-            pinky_context = "[STRATEGIC_SHUNT] Reasoning delegated to Sovereign. Action: Provide high-fidelity coordination filler and technical acknowledgment. Do NOT attempt derivation."
-
-        if "pinky" in self.residents:
-            t_pinky = asyncio.create_task(
-                self.residents["pinky"].call_tool(
-                    name="facilitate",
-                    arguments={"query": query, "context": pinky_context},
-                )
-            )
-            dispatch_map[t_pinky] = "Pinky"
-
-        # [FEAT-086/124] Tiered Thinking: Engage Brain based on strategy vs. casual address
-        should_engage_brain = "brain" in self.residents and (
-            is_strategic or addressed_brain
+        """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
+        return await self.cognitive.process_query(
+            query, 
+            mic_active=self.mic_active, 
+            shutdown_event=self.shutdown_event
         )
-
-        if should_engage_brain:
-            # [FEAT-124] Local Redirect for Silence Mode
-            if silence_mode:
-                logging.info("[SENTRY] Bypassing Remote Sovereign for Archive Silence.")
-                await self.broadcast(
-                    {
-                        "brain": f"Consulting local Architect regarding {year}...",
-                        "brain_source": "Pinky",
-                    }
-                )
-                failover_prompt = (
-                    "### SYSTEM MANDATE: ARCHIVE SILENCE ###\n"
-                    f"There are NO verified records for the year {year}. "
-                    "You are currently the 'Failover Architect'. "
-                    "STRICT IDENTITY: Laconic, technical, and grounded. "
-                    "CORE RULE: Do NOT invent projects, names (e.g., Chimera, Zenith), or scenarios. "
-                    f"MANDATE: State clearly that the technical archives for {year} are empty. "
-                    "Admit the gap in verified truth."
-                )
-                t_shadow = asyncio.create_task(
-                    self.residents["pinky"].call_tool(
-                        name="facilitate",
-                        arguments={
-                            "query": f"{failover_prompt} Query: {query}",
-                            "context": "",
-                        },
-                    )
-                )
-                dispatch_map[t_shadow] = "Brain (Shadow)"
-            elif self.brain_online:
-                # Strategic Sovereign Tier Engagement (Normal path)
-                brain_task = query
-                if addressed_brain:
-                    brain_task = f"[DIRECT ADDRESS] {query}"
-                    if not is_strategic:
-                        # Characterful wake-up call for casual addresses
-                        await self.broadcast(
-                            {
-                                "brain": "Wake up the Architect! Narf!",
-                                "brain_source": "Pinky",
-                            }
-                        )
-
-                # [FEAT-108] Agentic Reflection Sequence
-                if is_strategic:
-
-                    async def brain_strategy_chain():
-                        nonlocal historical_context, historical_sources
-                        # [FEAT-118] Resonant Oracle: picking a state-aware preamble
-                        category = "RETRIEVING" if historical_context else "HANDSHAKE"
-                        try:
-                            # Step 1: Immediate Perk-up Quip (Parallel with Pinky's filler)
-                            # [FEAT-118] Resonant Oracle: picking a state-aware preamble
-                            category = (
-                                "RETRIEVING" if historical_context else "HANDSHAKE"
-                            )
-                            oracle_signal = self.get_oracle_signal(category)
-                            await execute_dispatch(
-                                oracle_signal,
-                                "Brain (Signal)",
-                                oracle_category=category,
-                            )
-
-                            # Step 2: Deep Technical Derivation
-                            ctx = "\n".join(self.recent_interactions)
-                            # [FEAT-114/088] Cognitive Bridge
-                            handover_ctx = (
-                                f"{ctx}\n"
-                                f"Assistant (Oracle Signal): {oracle_signal}\n"
-                                f"Historical Truth: {historical_context}"
-                            )
-
-                            res_deep = await self.monitor_task_with_tics(
-                                self.residents["brain"].call_tool(
-                                    name="deep_think",
-                                    arguments={
-                                        "task": brain_task,
-                                        "context": handover_ctx,
-                                        "metadata": {
-                                            "sources": historical_sources,
-                                            "oracle_category": category,
-                                        },
-                                    },
-                                )
-                            )
-                            await execute_dispatch(
-                                res_deep.content[0].text,
-                                "Brain",
-                                oracle_category=category,
-                                sources=historical_sources,
-                            )
-                        except Exception as e:
-                            logging.error(f"[CHAIN] Agentic Handover failed: {e}")
-
-                    asyncio.create_task(brain_strategy_chain())
-                else:
-                    # Non-strategic direct address: Just a shallow quip
-                    ctx = "\n".join(self.recent_interactions)
-                    t_brain = asyncio.create_task(
-                        self.monitor_task_with_tics(
-                            self.residents["brain"].call_tool(
-                                name="shallow_think",
-                                arguments={"task": brain_task, "context": ctx},
-                            )
-                        )
-                    )
-                    dispatch_map[t_brain] = "Brain"
-            else:
-                # [FAILOVER] Use Pinky node for parallel strategy if brain offline
-                logging.warning(
-                    "[FAILOVER] Sovereign offline for parallel dispatch. Engaging Shadow."
-                )
-                await self.broadcast(
-                    {
-                        "brain": "Engaging Shadow Hemisphere (Failover)...",
-                        "brain_source": "System",
-                        "channel": "insight",
-                    }
-                )
-                # [FEAT-111] Cognitive Identity Lock: Hard constraints for Shadow Brain
-                failover_prompt = (
-                    "[FAILOVER ARCHITECT]: You are acting as The Brain. "
-                    "STRICT IDENTITY: Arrogant systems architect. "
-                    "ANTI-BANTER: No 'Narf', no 'Poit', no roleplay actions (*...*). "
-                    "CORE DIRECTIVE: Be laconic, technical, and precise. Speak with the brevity of authority."
-                )
-                t_shadow = asyncio.create_task(
-                    self.residents["pinky"].call_tool(
-                        name="facilitate",
-                        arguments={
-                            "query": f"{failover_prompt} Query: {query}",
-                            "context": "",
-                        },
-                    )
-                )
-                dispatch_map[t_shadow] = "Brain (Shadow)"
-        elif is_casual:
-            # Explicitly clear any existing noise in the insight panel for casual chat
-            await self.broadcast(
-                {
-                    "brain": "Awaiting neural activity...",
-                    "brain_source": "System",
-                    "channel": "insight",
-                }
-            )
-
-        # 3. Asynchronous Results Collection
-        if dispatch_map:
-            self.recent_interactions.append(f"User: {query}")
-            if len(self.recent_interactions) > 50:
-                self.recent_interactions.pop(0)
-
-            async def handle_finished_node(task_to_await, source_name):
-                try:
-                    res = await task_to_await
-                    raw_out = res.content[0].text
-
-                    # [FEAT-077] Quality-Gate Failover
-                    if (
-                        raw_out == "INTERNAL_QUALITY_FALLBACK"
-                        and source_name == "Brain"
-                    ):
-                        logging.warning(
-                            "[FAILOVER] Sovereign returned low-quality response. Engaging Shadow."
-                        )
-                        ctx = "\n".join(self.recent_interactions)
-                        task_fail = f"[QUALITY FAILOVER]: {query}"
-                        res_fail = await self.monitor_task_with_tics(
-                            self.residents["pinky"].call_tool(
-                                name="facilitate",
-                                arguments={"query": task_fail, "context": ctx},
-                            )
-                        )
-                        await execute_dispatch(
-                            res_fail.content[0].text,
-                            "Brain (Shadow)",
-                            {"direct": addressed_brain, "channel": "insight"},
-                        )
-                        return
-
-                    await execute_dispatch(
-                        raw_out,
-                        source_name,
-                        {"direct": addressed_brain},
-                        sources=historical_sources,
-                    )
-
-                    if "close_lab" in raw_out or "goodnight" in raw_out:
-                        self.shutdown_event.set()
-
-                except Exception as e:
-                    logging.error(f"[TRIAGE] Node {source_name} failed: {e}")
-
-            # Launch all handlers in parallel
-            handlers = []
-            for task, source in dispatch_map.items():
-                handlers.append(handle_finished_node(task, source))
-
-            await asyncio.gather(*handlers)
-        else:
-            await self.broadcast(
-                {"brain": f"Hearing: {query}", "brain_source": "Pinky (Fallback)"}
-            )
-        return False
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task."""
@@ -1454,7 +770,7 @@ class AcmeLab:
         # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
         # to ensure it gets contiguous memory before vLLM or residents spawn.
         if not disable_ear:
-            self.load_ear()
+            await self.sensory.load()
 
         while True:
             # [FEAT-149] The SML/Unity Persistence Loop
@@ -1475,6 +791,9 @@ class AcmeLab:
                     await site.start()
                     logging.info(f"[BOOT] Server on {PORT}")
                     await self.boot_residents(stack)
+
+                    # [FEAT-145] Cognitive Delegation: Update hub with live residents
+                    self.cognitive.residents = self.residents
 
                     # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
                     if trigger_task:
