@@ -7,6 +7,7 @@ import logging
 import psutil
 import aiohttp
 from aiohttp import web
+import sys
 from mcp.server.fastmcp import FastMCP
 from infra.montana import reclaim_logger, get_fingerprint
 
@@ -23,7 +24,7 @@ MAINTENANCE_LOCK = f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
-ATTENDANT_PORT = 9999
+ATTENDANT_PORT = 9998 # Shoring: Use different port for V2 during transitory refactor
 
 MONITOR_CONTAINERS = [
     "field_prometheus", "field_grafana", "field_node_exporter", 
@@ -62,6 +63,7 @@ class Orchestrator:
             "model": self.model,
             "full_lab_ready": self.ready_event.is_set(),
             "last_error": None,
+            "trace_back": None
         }
         
         # Engine check (Ollama)
@@ -84,6 +86,13 @@ class Orchestrator:
         if self.lab_process and self.lab_process.poll() is not None:
             if not vitals["lab_server_running"]:
                 vitals["last_error"] = f"Process died: {self.lab_process.poll()}"
+                # [SWEETENER] Trace-Back: Capture last 5 lines of server log
+                if os.path.exists(SERVER_LOG):
+                    try:
+                        with open(SERVER_LOG, 'r') as f:
+                            vitals["trace_back"] = f.readlines()[-5:]
+                    except Exception:
+                        pass
         
         return vitals
 
@@ -193,6 +202,10 @@ async def rest_quiesce(request):
     return web.json_response(res)
 
 async def run_bilingual_server():
+    # [SHORING] Logging Moat: Ensure NO third-party library or print() uses stdout.
+    # This protects the MCP JSON stream from corruption.
+    sys.stdout = sys.stderr 
+    
     # 1. Start HTTP Server in background
     app = web.Application()
     app.router.add_get("/heartbeat", rest_heartbeat)
@@ -205,10 +218,15 @@ async def run_bilingual_server():
     await site.start()
     logger.info(f"[BOOT] REST API active on {ATTENDANT_PORT}")
 
-    # 2. Run MCP Server (owns stdin/stdout)
-    # Note: FastMCP.run() is blocking, so we run it last.
+    # 2. Run MCP Server (owns physical stdout)
+    # We must restore original stdout ONLY for the MCP protocol handler.
+    # Note: FastMCP handles its own stdio; we just ensure our global
+    # redirection doesn't interfere with the physical stream.
     logger.info(f"[BOOT] MCP Identity: {get_fingerprint('MCP')}")
-    mcp.run()
+    await mcp.run_stdio_async()
 
 if __name__ == "__main__":
-    asyncio.run(run_bilingual_server())
+    try:
+        asyncio.run(run_bilingual_server())
+    except KeyboardInterrupt:
+        pass
