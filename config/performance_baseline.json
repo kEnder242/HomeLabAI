@@ -1,0 +1,23 @@
+{
+    "characterized_at": "2026-03-04T12:25:00",
+    "nodes": {
+        "KENDER": {
+            "llama3.1:8b": {
+                "cold_start_ttft_seconds": 21.956,
+                "warm_state_ttft_seconds": 0.478,
+                "load_penalty_ms": 21530
+            }
+        },
+        "localhost": {
+            "unified-base": {
+                "cold_start_ttft_seconds": "TBD",
+                "warm_state_ttft_seconds": "TBD"
+            }
+        }
+    },
+    "recommended_timeouts": {
+        "reflex_seconds": 5.0,
+        "derivation_seconds": 60.0,
+        "handshake_seconds": 45.0
+    }
+}
