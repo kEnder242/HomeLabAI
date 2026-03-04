@@ -1,4 +1,4 @@
-# LoRA Training Map: The Pedigree Burn
+# LoRA Training Map: The Pedigree Burn [v3.0]
 **Role: [DNA] Silicon Memory Strategy**
 
 > [!IMPORTANT]
@@ -6,41 +6,50 @@
 
 ---
 
-## 🎭 ACTOR CURRICULUM
+## 🎭 ACTOR CURRICULUMS
 
-| Actor | LoRA Goal | Primary Training Data (Distilled) | 4th-Wall / Architectural Anchors |
-| :--- | :--- | :--- | :--- |
-| **Pinky (Foil)** | **Hardware Literalism** | **`file_manifest.json`**, **`scan_state.json`**, **`vram_characterization.json`**, `stories.html`. | **`BOOTSTRAP_v4.3.md`**, `DIAGNOSTIC_SCRIPT_MAP.md`. |
-| **Shadow Brain** | **Context Prep** | **`compressed_history.json`**, **`semantic_map.json`**, **`themes.json`**, `Resume (Current)`. | **`ENGINEERING_PEDIGREE.md`**, `RESEARCH_SYNTHESIS.md`. |
-| **Lab (Sentinel)** | **Situational Auditor** | **`status.json`**, **`pager_activity.json`**, **`privacy_audit.json`**, `Philosophy & Learnings`. | **`FeatureTracker.md`**, `Protocols.md`, `ATTENDANT_PROTOCOL.md`. |
-
----
-
-## 🧠 STRATEGIC PROFILES
-
-### 1. Pinky: The "Intuitive Librarian"
-*   **The Edge:** Physical knowledge of script locations and artifact ranks.
-*   **Emergent Behavior:** If the Brain suggests a test, Pinky can quip about the specific script availability: *"Narf! I see `test_liger_memory.py` in the manifest, Brain. Poit! Should I prime the 2080 Ti?"*
+### 1. Pinky: The "Physicality Auditor" (Foil)
+*   **LoRA Goal:** Hardware Literalism, Archaeology, and Asset Mapping.
+*   **Primary Training Data (Distilled Evidence):**
+    *   **`file_manifest.json` / `artifacts_*.json`**: Physical locations and "Expert Ranks" of all Lab assets.
+    *   **`stories.html`**: The refined "Legendary" versions of 18-year wins.
+    *   **Early Outliers**: `ras-viral.txt`, `notes_2005.txt` (Grounding project starts).
+    *   **Specialized Domains**: `DTTC_2022_Peci_Stress.pdf`.
+*   **4th-Wall / Architectural Anchors:**
+    *   **`BOOTSTRAP_v4.3.md`**: Environment orientation.
+    *   **`FeatureTracker.md`**: Physical list of technical features Pinky can reference.
 *   **Grounding:** Automatically pulls "Strategic" queries back to the physical constraints of the machine (VRAM, Thermals).
 
-### 2. Shadow Brain: The "Strategic Preparer"
-*   **The Edge:** Knowledge of 18-year "Eras" and "Themes" without the noise of raw logs.
-*   **Emergent Behavior:** Distills massive context into high-fidelity "Knowledge Packets" for the Sovereign Architect (4090).
-*   **Facilitation:** Identifies the Domain of a query instantly, acting as a high-speed router for the Sovereign's derivation.
+### 2. Shadow Brain: The "Strategic Preparer" (Facilitator)
+*   **LoRA Goal:** Strategic Synthesis & Visionary Framing.
+*   **Primary Training Data (Distilled Narrative):**
+    *   **`AR - InAWorld.docx` / `AI_MASTER_PLAN.md`**: The visionary narrative and multi-phase roadmap.
+    *   **`Philosophy and Learnings 2024.docx`**: Core engineering principles ("Class 1", "Verify over Velocity").
+    *   **`TECHNOLOGY_ROI.md`**: The MAXS (Value of Information) logic for ranking gems.
+    *   **`Resume (Current)`**: The executive summary of the engineering pedigree.
+*   **4th-Wall / Architectural Anchors:**
+    *   **`RESEARCH_SYNTHESIS.md`**: Mapping AI research to Lab implementations.
+    *   **`BKM_RETROSPECTIVE_FEB_15.md`**: Definition of the BKM Protocol.
+*   **Role:** Distills massive context into high-fidelity "Knowledge Packets." Specialist in strategic prep and data-readiness.
 
-### 3. Lab Actor: The "Architectural Sentinel"
-*   **The Edge:** Guardian of the project's own Laws (Protocols) and Design (Tracker).
-*   **Emergent Behavior:** Recognizes when an interaction is violating a Protocol or approaching a Silicon Limit (SCAR).
-*   **Status Hints:** Injects non-brittle coordination hints like `[WARN: VRAM_PRESSURE]` or `[SYSTEM: ASSASSIN_READY]`.
+### 3. Lab Actor: The "Architectural Sentinel" (Situational)
+*   **LoRA Goal:** Logic Awareness & Coordination.
+*   **Primary Training Data (System Logic):**
+    *   **`AcmeLab_PseudoCode.md`**: The original logical skeleton of the mind.
+    *   **`Architecture_Refinement_2026.md`**: The blueprints for MCP node separation.
+    *   **`Migration_Plan_Federated_Lab.md`**: Rationale for remote/local decoupling.
+*   **4th-Wall / Architectural Anchors:**
+    *   **`LAB_INFRASTRUCTURE.md`**: Physical and logical network topology.
+    *   **`FeatureTracker.md`**: Comprehensive DNA of the project's logic and Scars.
+*   **Role:** Guardian of the project's Laws and Logic. Injects hints like `[SYSTEM: DECOUPLING_ACTIVE]` or `[SENTIMENT: EXIT_LIKELY]`.
 
 ---
 
-## 🏛️ STRATEGIC RATIONALE: RAW vs. DISTILLED
-
-*   **Raw Notes (The Evidence Layer):** Used for **RAG (Archive Node)**. The Brain needs the granular ASCII truth (registers, error strings) to derive new engineering insights.
-*   **Distilled Notes (The Neural Layer):** Used for **LoRA (Refinement Pipeline)**. Training on distilled JSONs and summaries ensures the model learns the "Intuition" and "Anchors" of your history without wasting weights on ASCII noise.
+## 🏛️ DATA INTEGRITY [VIBE-008]
+*   **Sanitization:** All training data for Pinky and Shadow Brain MUST pass through the **`sanitize_achievements.py`** filter.
+*   **Constraint:** Behavioral coaching and personal feedback patterns (e.g. "Jason should") are surgically removed to ensure the model internalizes the **Technical Win**, not the **Behavioral Critique**.
 
 ---
 
 ## 🚀 PHASE 7 INTEGRATION
-This map serves as the blueprint for the **Unsloth-based fine-tuning cycles** defined in **[SPR-11-07]**.
+This map serves as the final blueprint for the **Phase 7: Silicon Refinement** fine-tuning cycles.
