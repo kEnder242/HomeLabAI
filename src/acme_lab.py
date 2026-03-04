@@ -90,6 +90,8 @@ class AcmeLab:
             self.monitor_task_with_tics
         )
         self.recent_interactions = []
+        self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
+        self.last_turn_time = 0.0
         reclaim_logger(role)
         self.set_proc_title()
 
@@ -640,12 +642,38 @@ class AcmeLab:
         self.last_save_event = time.time()
         self.last_activity = time.time()
 
+    async def update_turn_density(self):
+        """[FEAT-154] Sentient Sentinel: Updates density and identifies exit sentiment."""
+        now = time.time()
+        if self.last_turn_time == 0:
+            self.last_turn_time = now
+            self.turn_density = 1.0
+            return
+
+        elapsed = now - self.last_turn_time
+        # Decay density over time (1 point per 60s)
+        decay = elapsed / 60.0
+        self.turn_density = max(0.0, self.turn_density - decay)
+        self.turn_density += 1.0
+        self.last_turn_time = now
+        logging.info(f"[SENTINEL] Current Turn Density: {self.turn_density:.2f}")
+
+    def get_exit_hint(self, query):
+        """[FEAT-154] Determines if an exit hint should be injected."""
+        if self.turn_density > 3.0 and len(query.split()) < 5:
+            return "[SITUATION: EXIT_LIKELY]"
+        return ""
+
     async def process_query(self, query, websocket):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
+        await self.update_turn_density()
+        exit_hint = self.get_exit_hint(query)
+
         return await self.cognitive.process_query(
             query, 
             mic_active=self.mic_active, 
-            shutdown_event=self.shutdown_event
+            shutdown_event=self.shutdown_event,
+            exit_hint=exit_hint
         )
 
     async def boot_residents(self, stack: AsyncExitStack):

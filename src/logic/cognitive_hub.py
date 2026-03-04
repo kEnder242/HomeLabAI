@@ -106,11 +106,12 @@ class CognitiveHub:
             await self.broadcast({"brain": raw_text, "brain_source": source})
             return False
 
-    async def process_query(self, query, mic_active=False, shutdown_event=None):
+    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint=""):
         logging.info(f"[USER] Intercom Query: {query}")
         historical_context = ""
         historical_sources = []
 
+        # [FEAT-117] RAG Recall
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
             year = year_match.group(1)
@@ -125,28 +126,38 @@ class CognitiveHub:
         is_casual = await self.check_intent_is_casual(query)
         is_strategic = not is_casual or mic_active
 
+        # [FEAT-153] The Resonant Chamber: Prepare Oracle Signal for "Overhearing"
+        oracle_info = ""
+        if is_strategic and self.is_brain_online():
+            oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
+            oracle_info = self.get_oracle_signal(oracle_cat)
+
         # Parallel Dispatch Map
         dispatch_tasks = []
         if "pinky" in self.residents:
-            pinky_ctx = "[STRATEGIC_SHUNT]" if is_strategic and self.is_brain_online() else ""
+            # [FEAT-153] Inject Oracle intent and [FEAT-154] Exit Hints
+            pinky_ctx = f"[STRATEGIC_INTENT: {oracle_info}]" if oracle_info else ""
+            if exit_hint:
+                pinky_ctx += f"\n{exit_hint}"
+            
+            if is_strategic and self.is_brain_online():
+                pinky_ctx += "\n[MODE: COLLABORATIVE]"
+            
             t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": pinky_ctx}))
             dispatch_tasks.append((t_pinky, "Pinky"))
 
         if "brain" in self.residents and (is_strategic or "brain" in query.lower()):
             if self.is_brain_online():
-                oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
-                oracle_signal = self.get_oracle_signal(oracle_cat)
-                await self.execute_dispatch(oracle_signal, "Brain (Signal)", oracle_category=oracle_cat)
-                
+                # [FEAT-153] Brain receives its own signal context
                 ctx = "\n".join(self.recent_interactions)
-                res_deep = await self.monitor_task_with_tics(
+                t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": query,
-                        "context": f"{ctx}\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
+                        "context": f"{ctx}\n[SIGNAL: {oracle_info}]\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
                         "metadata": {"sources": historical_sources}
                     })
-                )
-                await self.execute_dispatch(res_deep.content[0].text, "Brain", historical_sources=historical_sources, shutdown_event=shutdown_event)
+                ))
+                dispatch_tasks.append((t_brain, "Brain"))
             else:
                 t_shadow = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": f"[FAILOVER]: {query}", "context": ""}))
                 dispatch_tasks.append((t_shadow, "Brain (Shadow)"))
@@ -156,8 +167,10 @@ class CognitiveHub:
             if len(self.recent_interactions) > 50:
                 self.recent_interactions.pop(0)
             
+            # [PHASE 2] Turn Bundling: Collect all responses
             pending = {t for t, s in dispatch_tasks}
             task_to_source = {t: s for t, s in dispatch_tasks}
+            bundled_results = []
 
             while pending:
                 done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
@@ -165,7 +178,17 @@ class CognitiveHub:
                     try:
                         res = await task
                         source = task_to_source[task]
-                        await self.execute_dispatch(res.content[0].text, source, historical_sources=historical_sources, shutdown_event=shutdown_event)
+                        bundled_results.append({"source": source, "text": res.content[0].text})
                     except Exception as e:
                         logging.error(f"[TRIAGE] Node failed: {e}")
+
+            # Execute unified dispatch for the bundle
+            for result in bundled_results:
+                await self.execute_dispatch(
+                    result["text"], 
+                    result["source"], 
+                    oracle_category=oracle_info if "Brain" in result["source"] else None,
+                    historical_sources=historical_sources, 
+                    shutdown_event=shutdown_event
+                )
         return True
