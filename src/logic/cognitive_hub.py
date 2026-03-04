@@ -74,7 +74,7 @@ class CognitiveHub:
                     shutdown_event.set()
                 return True
 
-            known_tools = ["reply_to_user", "ask_brain", "deep_think", "list_cabinet", "read_document", "peek_related_notes", "write_draft", "generate_bkm", "build_semantic_map", "peek_strategic_map", "discuss_offline", "select_file", "notify_file_open"]
+            known_tools = ["reply_to_user", "ask_brain", "deep_think", "list_cabinet", "read_document", "peek_related_notes", "write_draft", "generate_bkm", "build_semantic_map", "peek_strategic_map", "discuss_offline", "select_file", "notify_file_open", "get_lab_health", "vram_vibe_check", "access_personal_history", "build_cv_summary"]
 
             if tool == "select_file":
                 fname = params.get("filename")
@@ -93,14 +93,34 @@ class CognitiveHub:
                 })
                 return True
 
-            # Hallucination Shunt
-            if tool and tool not in known_tools:
+            # [FEAT-145] Generic Node Tool Execution
+            if tool in known_tools:
+                # Find which node has the tool (prioritize the source node)
+                target_node = None
+                if source.lower() in self.residents:
+                    target_node = self.residents[source.lower()]
+                else:
+                    # Search for any node that might have it (heuristic)
+                    for name in ["pinky", "archive", "brain", "architect"]:
+                        if name in self.residents:
+                            target_node = self.residents[name]
+                            break
+                
+                if target_node:
+                    try:
+                        res = await target_node.call_tool(tool, params)
+                        # Re-dispatch the result to the UI or another node
+                        return await self.execute_dispatch(res.content[0].text, f"{source} (Result)", shutdown_event=shutdown_event)
+                    except Exception as e:
+                        logging.error(f"[HUB] Tool execution failed: {tool} on {source}. Error: {e}")
+
+            # Hallucination Shunt (Prevent infinite loops)
+            if tool and tool not in known_tools and "Shunt" not in source:
                 logging.warning(f"[SHUNT] Hallucinated tool '{tool}'.")
                 if "pinky" in self.residents:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": f"I tried to use '{tool}' but it failed.", "context": ""})
                     return await self.execute_dispatch(res.content[0].text, "Pinky (Shunt)", shutdown_event=shutdown_event)
 
-            return True
         except Exception as e:
             logging.error(f"[DISPATCH] Error: {e}")
             await self.broadcast({"brain": raw_text, "brain_source": source})
@@ -197,15 +217,22 @@ class CognitiveHub:
             task_to_source = {t: s for t, s in dispatch_tasks}
             bundled_results = []
 
-            while pending:
-                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                for task in done:
-                    try:
-                        res = await task
-                        source = task_to_source[task]
-                        bundled_results.append({"source": source, "text": res.content[0].text})
-                    except Exception as e:
-                        logging.error(f"[TRIAGE] Node failed: {e}")
+            try:
+                async with asyncio.timeout(120):
+                    while pending:
+                        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                        for task in done:
+                            try:
+                                res = await task
+                                source = task_to_source[task]
+                                bundled_results.append({"source": source, "text": res.content[0].text})
+                            except Exception as e:
+                                logging.error(f"[TRIAGE] Node failed: {e}")
+            except asyncio.TimeoutError:
+                logging.error("[HUB] Turn Bundling TIMEOUT after 120s. Sending partial bundle.")
+                for t in pending: t.cancel()
+                if not bundled_results:
+                    await self.broadcast({"brain": "Egad! The Lab's hemispheres are out of sync! Narf!", "brain_source": "Pinky"})
 
             # Execute unified dispatch for the bundle
             for result in bundled_results:
