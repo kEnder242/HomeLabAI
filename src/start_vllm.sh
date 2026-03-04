@@ -27,7 +27,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --load-format auto \
     --host 0.0.0.0 \
     --port 8088 \
-    --gpu-memory-utilization 0.6 \
+    --gpu-memory-utilization 0.4 \
     --served-model-name unified-base \
     --max-model-len 8192 \
     --enforce-eager \

@@ -10,6 +10,7 @@ from aiohttp import web
 import time
 import uuid
 import sys
+import contextlib
 
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
@@ -45,7 +46,7 @@ _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 
 def get_git_commit():
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+        return subprocess.check_output(["git", "rev-parse", "--short", HEAD], 
                                         cwd=LAB_DIR, text=True).strip()
     except Exception:
         return "unknown"
@@ -136,9 +137,7 @@ class LabAttendant:
                 await asyncio.sleep(10) # Check every 10s for stability
 
                 # [FEAT-138] Maintenance Silence
-                # If maintenance lock exists, do not attempt recovery or state transitions.
                 if os.path.exists(MAINTENANCE_LOCK):
-                    # We still update status for the dashboard, but remain passive.
                     if failure_count % 6 == 0: # Log every minute
                         logger.info("[WATCHDOG] Maintenance Lock active. Passive mode engaged.")
                     failure_count += 1
@@ -164,7 +163,6 @@ class LabAttendant:
 
                 # 2. Service Port Recovery
                 if current_lab_mode != "OFFLINE" and not vitals["lab_server_running"]:
-                    # [FEAT-035] Graceful Boot Window: Allow time for residents to load
                     if not self.ready_event.is_set():
                         if boot_grace_period > 0:
                             boot_grace_period -= 1
@@ -172,14 +170,13 @@ class LabAttendant:
                             continue
                     
                     failure_count += 1
-                    logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/3.")
-                    if failure_count >= 3:
+                    logger.warning(f"[WATCHDOG] Port 8765 Unresponsive. Failure {failure_count}/6.")
+                    if failure_count >= 6:
                         logger.error("[WATCHDOG] Service DEAD. Triggering Autonomous Recovery.")
                         await self.handle_engine_swap(current_model)
                         failure_count = 0
                         boot_grace_period = 6
                     
-                    # [FEAT-043] Dead-Man's Switch: Trigger CRITICAL alert if down for 5 minutes (30 * 10s)
                     if failure_count == 30:
                         logger.critical("[WATCHDOG] Service UNRECOVERABLE for 5m. Triggering Dead-Man Switch.")
                         self._trigger_pager_alert("CRITICAL", "Lab Orchestrator Unresponsive for 5 minutes. Immediate manual intervention required.")
@@ -206,7 +203,7 @@ class LabAttendant:
                 warn_limit = safe_tiers.get("warning", total * 0.85)
                 model_map = self.vram_config.get("model_map", {})
                 medium_model = model_map.get("MEDIUM", {}).get("ollama")
-                if used > warn_limit and current_lab_mode == "vLLM" and total > 0:
+                if used > warn_limit and current_lab_mode == "VLLM" and total > 0:
                     logger.warning(f"[WATCHDOG] VRAM Warning ({used}MiB). Downshifting to Ollama.")
                     asyncio.create_task(self.handle_engine_swap(medium_model))
                     continue
@@ -247,7 +244,6 @@ class LabAttendant:
         self.ready_event.clear()
         if os.path.exists(SERVER_LOG):
             with open(SERVER_LOG, "r") as f:
-                # Seek to end of existing log to only catch NEW boot signals
                 f.seek(0, os.SEEK_END)
                 while True:
                     line = f.readline()
@@ -273,7 +269,6 @@ class LabAttendant:
         pref_eng = data.get("engine", "OLLAMA")
         tier_or_mod = data.get("model", "MEDIUM")
         
-        # [FEAT-021] Dynamic Venv Selection
         custom_venv = data.get("venv_path")
         python_bin = os.path.join(custom_venv, "bin/python3") if custom_venv else LAB_VENV_PYTHON
         
@@ -289,18 +284,15 @@ class LabAttendant:
             model_map.get("MEDIUM", {}).get(pref_eng.lower())
         )
 
-        # [FEAT-145] Path Hardening: Force absolute paths for vLLM local models
         if current_lab_mode == "VLLM" and current_model and not current_model.startswith("/"):
             potential_path = os.path.join("/speedy/models", current_model)
             if os.path.exists(potential_path):
                 logger.info(f"[VLLM] Resolving relative model to absolute: {potential_path}")
                 current_model = potential_path
             else:
-                # Fallback to standard Speedy path
                 current_model = f"/speedy/models/{current_model}"
                 logger.warning(f"[VLLM] Model path not found on disk, forcing: {current_model}")
 
-        # [FEAT-119] The Assassin: Port-aware zombie mitigation
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             if s.connect_ex(('localhost', 8765)) == 0:
@@ -323,31 +315,27 @@ class LabAttendant:
             global lab_process
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
+            env["LAB_MODE"] = pref_eng
             
-            # [FEAT-137] vLLM Breakthrough Flags: Enforce Turing residency
             if pref_eng == "VLLM":
                 env["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
                 env["NCCL_P2P_DISABLE"] = "1"
-                env["NCCL_SOCKET_IFNAME"] = "lo" # Breakthrough: Force loopback for internal v1 handshakes
-                env["VLLM_USE_V1"] = "0" # Force standard v0 backend for stability
+                env["NCCL_SOCKET_IFNAME"] = "lo"
+                env["VLLM_USE_V1"] = "0"
                 
-                # [FEAT-145] The Squeeze: Force low utilization to accommodate EarNode
                 user_args = data.get("extra_args", "")
                 if "--gpu-memory-utilization" not in user_args:
-                    env["VLLM_EXTRA_ARGS"] = f"{user_args} --gpu-memory-utilization 0.3"
+                    env["VLLM_EXTRA_ARGS"] = f"{user_args} --gpu-memory-utilization 0.4 --enforce-eager --dtype float16 --max-model-len 4096 --max-num-seqs 1"
                 else:
                     env["VLLM_EXTRA_ARGS"] = user_args
 
-                # [FEAT-145] Explicit vLLM Ignition
                 logger.info(f"[VLLM] Igniting Sovereign Node: {current_model}")
-                # We use a non-blocking Popen for the shell script
-                # start_vllm.sh will background itself and log to vllm_server.log
                 subprocess.Popen(
                     ["bash", VLLM_START_PATH, current_model, python_bin],
                     env=env, cwd=LAB_DIR
                 )
-                # Give vLLM a small headstart before spawning residents
-                await asyncio.sleep(5.0)
+                # [ROOT CAUSE FIX] Wait for the engine to physically respond before spawning residents
+                await self._wait_for_vllm()
 
             brain_pref = data.get("brain_model")
             
@@ -361,7 +349,6 @@ class LabAttendant:
             if data.get("disable_ear", True):
                 env["DISABLE_EAR"] = "1"
 
-            # [FEAT-137] Inject extra args for vLLM experiments
             extra_args = data.get("extra_args", "")
             
             try:
@@ -374,8 +361,6 @@ class LabAttendant:
                 if data.get("disable_ear", True):
                     cmd.append("--disable-ear")
                 
-                # [FEAT-030] Unity Pattern: Enable Multi-LoRA by default in vLLM
-                # These flags will be consumed by loader.py or start_vllm.sh
                 if pref_eng == "VLLM":
                     env["VLLM_EXTRA_ARGS"] = f"--enable-lora --max-loras 4 {extra_args}"
 
@@ -396,6 +381,23 @@ class LabAttendant:
             "wait_url": f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout=120"
         })
 
+    async def _wait_for_vllm(self, timeout=120):
+        """[FEAT-145] Engine Sync: Polls the vLLM port until it responds or times out."""
+        start_t = time.time()
+        logger.info("[VLLM] Waiting for engine on port 8088...")
+        while time.time() - start_t < timeout:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("http://localhost:8088/v1/models", timeout=1.0) as r:
+                        if r.status == 200:
+                            logger.info("[VLLM] Engine is READY.")
+                            return True
+            except Exception:
+                pass
+            await asyncio.sleep(2.0)
+        logger.error(f"[VLLM] Engine failed to respond in {timeout}s.")
+        return False
+
     async def handle_quiesce(self, request):
         """[FEAT-142] Total Silicon Lockdown."""
         logger.warning("[QUIESCE] Lockdown initiated. Setting maintenance lock.")
@@ -412,7 +414,6 @@ class LabAttendant:
         if os.path.exists(MAINTENANCE_LOCK):
             os.remove(MAINTENANCE_LOCK)
         
-        # Trigger autonomous boot immediately
         asyncio.create_task(self._safe_pilot_ignition(grace=0))
         return web.json_response({"status": "igniting", "message": "Lock cleared. Ignition sequence active."})
 
@@ -425,7 +426,6 @@ class LabAttendant:
             
         try:
             async with aiohttp.ClientSession() as session:
-                # We use the internal heartbeat of acme_lab which triggers a generation probe
                 async with session.get("http://localhost:8765/heartbeat", timeout=10) as resp:
                     data = await resp.json()
                     return web.json_response({"status": "online", "probe": data})
@@ -633,63 +633,42 @@ class LabAttendant:
         """[FEAT-121] The Assassin: Refined PGID-aware and Port-aware cleanup."""
         import signal
         
-        # [FEAT-145] Hierarchy Protection: Shield only the Attendant itself.
-        # We MUST be allowed to kill our own previous resident children (Hub/vLLM).
         protected_pgids = {os.getpgid(os.getpid())}
         protected_pids = {os.getpid(), os.getppid()}
+        pids_to_kill = set()
 
         try:
             for conn in psutil.net_connections(kind="tcp"):
-                if conn.laddr.port in [8765, 8088]:  # Clean bench port too
-                    pid = conn.pid
-                    if pid:
-                        try:
-                            pgid = os.getpgid(pid)
-                            if pgid in protected_pgids or pid in protected_pids:
-                                logger.info(f"[ASSASSIN] Skipping protected process: {pid} (PGID: {pgid})")
-                                continue
-
-                                
-                            logger.warning(
-                                f"[ASSASSIN] Port {conn.laddr.port} held by PID {pid}. Terminating group {pgid}."
-                            )
-                            os.killpg(pgid, signal.SIGKILL)
-                        except Exception:
-                            if pid != os.getpid():
-                                os.kill(pid, signal.SIGKILL)
-                        await asyncio.sleep(1.0)
+                if conn.laddr.port in [8765, 8088]:
+                    if conn.pid and conn.pid not in protected_pids:
+                        with contextlib.suppress(Exception):
+                            pgid = os.getpgid(conn.pid)
+                            if pgid not in protected_pgids:
+                                pids_to_kill.add((conn.pid, pgid))
         except Exception as e:
             logger.error(f"[ASSASSIN] Port check failed: {e}")
 
-        targets = [
-            "acme_lab.py",
-            "archive_node.py",
-            "pinky_node.py",
-            "brain_node.py",
-            "vllm",
-            "ollama",
-        ]
+        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 if proc.info["pid"] in protected_pids:
                     continue
-                    
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in cmdline for t in targets):
-                    try:
-                        pgid = os.getpgid(proc.info["pid"])
-                        if pgid in protected_pgids:
-                            continue
-                            
-                        logger.info(f"[ASSASSIN] Terminating process group: {pgid}")
-                        os.killpg(pgid, signal.SIGTERM)
-                        await asyncio.sleep(0.5)
-                        if psutil.pid_exists(proc.info["pid"]):
-                            os.killpg(pgid, signal.SIGKILL)
-                    except Exception:
-                        proc.kill()
+                    pgid = os.getpgid(proc.info["pid"])
+                    if pgid not in protected_pgids:
+                        pids_to_kill.add((proc.info["pid"], pgid))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
+
+        if pids_to_kill:
+            logger.warning(f"[ASSASSIN] Executing parallel purge of {len(pids_to_kill)} process groups.")
+            for pid, pgid in pids_to_kill:
+                with contextlib.suppress(Exception):
+                    os.killpg(pgid, signal.SIGKILL)
+            
+            await asyncio.sleep(2.0)
+            logger.info("[ASSASSIN] Silicon scrub complete.")
 
     async def _safe_pilot_ignition(self, grace=60):
         """[FEAT-136] Autonomous Lab ignition after system boot."""
@@ -703,7 +682,7 @@ class LabAttendant:
             return
 
         used, total = await self._get_vram_info()
-        if used > 1000: 
+        if used > 6000: 
             logger.warning(f"[BOOT] Safe-Pilot: Aborted. GPU occupied (VRAM Used: {used}MiB).")
             return
 
@@ -732,7 +711,6 @@ class LabAttendant:
         await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
         logger.info(f"[BOOT] Attendant online on {ATTENDANT_PORT}")
         asyncio.create_task(self.vram_watchdog_loop())
-        # [FEAT-136] Start the Safe-Pilot observer
         asyncio.create_task(self._safe_pilot_ignition())
         await asyncio.Event().wait()
 

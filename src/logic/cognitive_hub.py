@@ -39,10 +39,12 @@ class CognitiveHub:
             raw_text = re.sub(r"^[,\.\!\?\s\"\'\d]+", "", raw_text).strip()
             raw_text = re.sub(r"\*[^*]+\*", "", raw_text).strip()
 
-        if source == "Brain" and "{" not in raw_text:
+        if "{" not in raw_text:
+            target_channel = "insight" if "Brain" in source else "chat"
             await self.broadcast({
                 "brain": raw_text,
-                "brain_source": "Brain",
+                "brain_source": source,
+                "channel": target_channel,
                 "oracle_category": oracle_category,
                 "sources": sources or historical_sources,
             })
