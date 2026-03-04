@@ -347,6 +347,16 @@ class LabAttendantV2:
 
     async def cleanup_silicon(self):
         """[FEAT-119] The Assassin: Refined parallel SIGKILL + 2s settle."""
+        
+        # [ROOT CAUSE FIX] Purge-Before-Poll
+        # Explicitly kill any process holding the core ports first to ensure
+        # that subsequent readiness checks aren't fooled by zombie processes.
+        for port in [8088, 8765]:
+            try:
+                subprocess.run(["sudo", "fuser", "-k", f"{port}/tcp"], capture_output=True)
+            except Exception:
+                pass
+
         protected_pgids = {os.getpgid(os.getpid())}
         protected_pids = {os.getpid(), os.getppid()}
         pids_to_kill = set()
