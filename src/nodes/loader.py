@@ -304,7 +304,7 @@ class BicameralNode:
         context="",
         memory="",
         system_override=None,
-        max_tokens=512,
+        max_tokens=2048,
         metadata=None,
     ):
         engine, url, model = await self.probe_engine()
