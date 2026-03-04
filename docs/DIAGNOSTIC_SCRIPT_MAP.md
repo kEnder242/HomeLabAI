@@ -51,6 +51,7 @@ Ensures the Lab maintains its Bicameral character without falling into "Chatter 
 | **Contextual Echo** | `src/debug/test_contextual_echo.py` | Verifies persona-aware echo behavior. |
 | **MIB Wipe** | `src/debug/test_mib_wipe.py` | Verifies the \"Neuralyzer\" memory clearing mechanic and context cap. |
 | **Banter Decay** | `src/debug/test_banter_decay.py`| Verifies that reflexes slow down correctly during idle states. |
+| **Neural Probe** | `src/debug/probe_hub.py` | [PING] **Bicameral Auditor.** Sniffs internal Hub hints (Exit Sentiment, Strategic Intent) and verifies bundled turn execution. |
 | **Echo Check** | `src/test_echo.py` | Verifies basic text/binary processing in the \"Talk & Read\" loop. |
 | **Intercom Flow** | `src/test_intercom_flow.py` | End-to-end test of the CLI `intercom.py` client communication. |
 

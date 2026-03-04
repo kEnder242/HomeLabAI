@@ -134,9 +134,23 @@ class CognitiveHub:
 
         # Parallel Dispatch Map
         dispatch_tasks = []
+        
+        # [FEAT-157] Personality Unification: Merged persona traits into context
+        pinky_persona = (
+            "[PERSONA: Pinky]\n"
+            "Interjections: Narf!, Poit!\n"
+            "Role: Hardware Literalism / Narrative Foil.\n"
+            "Style: Inspired by AYPWIP. Respond to strategic intent with hardware-level absurdity.\n"
+        )
+        brain_persona = (
+            "[PERSONA: The Brain]\n"
+            "Role: Stoic Sovereign Strategist.\n"
+            "Style: Brevity is authority. Focus on technical derivation and root cause analysis.\n"
+        )
+
         if "pinky" in self.residents:
             # [FEAT-153] Inject Oracle intent and [FEAT-154] Exit Hints
-            pinky_ctx = f"[STRATEGIC_INTENT: {oracle_info}]" if oracle_info else ""
+            pinky_ctx = f"{pinky_persona}\n[STRATEGIC_INTENT: {oracle_info}]" if oracle_info else pinky_persona
             if exit_hint:
                 pinky_ctx += f"\n{exit_hint}"
             
@@ -153,7 +167,7 @@ class CognitiveHub:
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": query,
-                        "context": f"{ctx}\n[SIGNAL: {oracle_info}]\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
+                        "context": f"{brain_persona}\n{ctx}\n[SIGNAL: {oracle_info}]\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
                         "metadata": {"sources": historical_sources}
                     })
                 ))

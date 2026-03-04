@@ -104,12 +104,53 @@ class LabAttendantV2:
         self.app.router.add_get("/mutex", self.handle_mutex_rest)
         self.app.router.add_get("/logs", self.handle_logs_rest)
         self.app.router.add_get("/blocking_status", self.handle_blocking_status_rest)
+        
+        # [FEAT-156] SSE: Event Stream for remote tools
+        self.app.router.add_get("/events", self.handle_events_rest)
+        self.event_queues: Set[asyncio.Queue] = set()
 
         self.ready_event = asyncio.Event()
         self.monitor_task = None
         self.vram_config = {}
         self.model_manifest = {}
         self.refresh_vram_config()
+
+    async def broadcast_event(self, event_type, data):
+        """Broadcasts a JSON event to all connected SSE clients."""
+        payload = json.dumps({"type": event_type, "data": data, "timestamp": datetime.datetime.now().isoformat()})
+        for queue in list(self.event_queues):
+            await queue.put(payload)
+
+    async def handle_events_rest(self, request):
+        """[FEAT-156] SSE Endpoint: Streams status and log events."""
+        response = web.StreamResponse(
+            status=200,
+            reason='OK',
+            headers={
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            }
+        )
+        await response.prepare(request)
+        queue = asyncio.Queue()
+        self.event_queues.add(queue)
+        logger.info(f"[SSE] New client connected. Active: {len(self.event_queues)}")
+        
+        try:
+            # Initial status event
+            vitals = await self.mcp_heartbeat()
+            await response.write(f"data: {json.dumps({'type': 'init', 'vitals': vitals})}\n\n".encode('utf-8'))
+            
+            while True:
+                data = await queue.get()
+                await response.write(f"data: {data}\n\n".encode('utf-8'))
+        except Exception:
+            pass
+        finally:
+            self.event_queues.remove(queue)
+            logger.info(f"[SSE] Client disconnected. Active: {len(self.event_queues)}")
+        return response
 
     def refresh_vram_config(self):
         """Loads dynamic thresholds and model mappings."""
