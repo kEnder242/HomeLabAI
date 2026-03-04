@@ -1,7 +1,7 @@
 {
     "nodes": {
         "brain": {
-            "primary": "localhost",
+            "primary": "KENDER",
             "fallback": "KENDER",
             "lora_name": "brain_v1"
         },
