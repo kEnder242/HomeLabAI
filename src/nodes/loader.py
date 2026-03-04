@@ -111,15 +111,20 @@ class BicameralNode:
                     )
 
             # If it's a direct model name or resolved tier, verify it exists on host
-            # [HARDENING] If we have available_models, we MUST match one.
+            # [HARDENING] vLLM paths may not match served IDs.
             if available_models:
                 if env_mod in available_models:
                     return env_mod
-                else:
-                    logging.warning(
-                        f"[{self.name}] Environment model {env_mod} "
-                        "NOT FOUND on host. Forcing fallback."
-                    )
+                
+                # [FEAT-145] vLLM Path Trust: If it's an absolute path and we are in VLLM mode,
+                # assume the engine is serving this model under a unified ID.
+                if engine_type == "VLLM" and env_mod and (env_mod.startswith("/") or "unified-base" in available_models):
+                    return available_models[0]
+
+                logging.warning(
+                    f"[{self.name}] Environment model {env_mod} "
+                    "NOT FOUND on host. Forcing fallback."
+                )
             else:
                 # No host tags? Trust ENV but expect failure
                 return env_mod

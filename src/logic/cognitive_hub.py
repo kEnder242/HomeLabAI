@@ -174,7 +174,17 @@ class CognitiveHub:
                 ))
                 dispatch_tasks.append((t_brain, "Brain"))
             else:
-                t_shadow = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": f"[FAILOVER]: {query}", "context": ""}))
+                # [FEAT-157] Grounded Shadow Protocol: Clinical technical failover
+                shadow_context = (
+                    "[MODE: SHADOW_PROTOCOL]\n"
+                    "The Sovereign Architect is offline. You are the Shadow Brain.\n"
+                    "Role: Clinical technical derivation. No banter. No interjections.\n"
+                    "Goal: Fulfill the technical task using local weights with lead-engineer precision."
+                )
+                t_shadow = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
+                    "query": query, 
+                    "context": f"{shadow_context}\n{historical_context}"
+                }))
                 dispatch_tasks.append((t_shadow, "Brain (Shadow)"))
 
         if dispatch_tasks:
