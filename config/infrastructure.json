@@ -2,12 +2,10 @@
     "nodes": {
         "brain": {
             "primary": "KENDER",
-            "fallback": "KENDER",
-            "lora_name": "brain_v1"
+            "fallback": "KENDER"
         },
         "pinky": {
-            "primary": "localhost",
-            "lora_name": "pinky_v1"
+            "primary": "localhost"
         }
     },
     "hosts": {
