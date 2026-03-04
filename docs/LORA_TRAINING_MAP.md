@@ -45,6 +45,21 @@
 
 ---
 
+## 🏛️ STRATEGIC RATIONALE: RAW vs. DISTILLED
+
+### The Evidence Layer (Raw)
+Used exclusively for **RAG (Archive Node)**. The 4090 Brain needs the granular, messy ASCII truth (registers, error strings, timestamps) to perform its high-fidelity derivation and architectural analysis.
+
+### The Neural Layer (Distilled)
+Used for **LoRA (Refinement Pipeline)**. Training on distilled JSONs, summaries, and high-level docs ensures the model learns the **"Intuition"** and **"Anchors"** of the history. This prevents the model from wasting weights on noise and enables instantaneous reverse-timeline recall (e.g., "When did I work on VISA?").
+
+### The Backup Bedrock [FEAT-157]
+**Role:** Persona Continuity Insurance.
+**Logic:** If the LoRA adapter fails to load or the engine downshifts to Ollama (Tier 2/3), the Hub automatically injects the distilled persona traits (Physicality Auditor, Sovereign Architect) into the system prompt.
+**Benefit:** Ensures the Lab never loses its 18-year "Soul" due to physical VRAM constraints.
+
+---
+
 ## 🏛️ DATA INTEGRITY [VIBE-008]
 *   **Sanitization:** All training data for Pinky and Shadow Brain MUST pass through the **`sanitize_achievements.py`** filter.
 *   **Constraint:** Behavioral coaching and personal feedback patterns (e.g. "Jason should") are surgically removed to ensure the model internalizes the **Technical Win**, not the **Behavioral Critique**.
