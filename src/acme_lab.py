@@ -712,8 +712,19 @@ class AcmeLab:
                     ClientSession(cl_stack[0], cl_stack[1])
                 )
                 await session.initialize()
-                self.residents[name] = session
-                logging.info(f"[BOOT] {name.upper()} online.")
+                
+                # [FEAT-165] Resident Handshake Gate: Verify engine link before proceeding
+                try:
+                    # Probe the node's internal engine cache/connection
+                    # Most nodes have a way to check this or we can fire a dummy tool call
+                    await asyncio.wait_for(session.list_tools(), timeout=10.0)
+                    self.residents[name] = session
+                    logging.info(f"[BOOT] {name.upper()} online and verified.")
+                except Exception as e:
+                    logging.error(f"[BOOT] {name.upper()} failed engine handshake: {e}")
+                    # We don't block boot, but we log the failure clearly
+                    self.residents[name] = session
+
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
 
