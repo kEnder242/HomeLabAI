@@ -16,9 +16,15 @@ async def test_collaborative_handshake():
     print(f"[TEST] Connecting to {uri}...")
     
     async with websockets.connect(uri) as ws:
-        # 1. Handshake
-        await ws.send(json.dumps({"type": "handshake"}))
-        print("[BOOT] Handshake sent.")
+        # 1. Handshake & Wait for READY
+        print("[TEST] Connecting and waiting for READY signal...")
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if data.get("type") == "status" and data.get("state") == "ready":
+                print("✅ Lab is READY.")
+                break
+            await asyncio.sleep(0.5)
 
         # 2. Fire Strategic Query
         query = "Analyze the Lab's thermal efficiency. Is the 2080 Ti handling the load?"

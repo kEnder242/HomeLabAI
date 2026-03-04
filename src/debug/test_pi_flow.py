@@ -13,9 +13,15 @@ async def test_pi_to_21_digits_bundled_flow():
     """
     url = "ws://127.0.0.1:8765"
     async with websockets.connect(url) as ws:
-        # 1. Handshake
-        await ws.send(json.dumps({"type": "handshake"}))
-        print("[BOOT] Handshake sent.")
+        # 1. Handshake & Wait for READY
+        print("[BOOT] Connecting and waiting for READY signal...")
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if data.get("type") == "status" and data.get("state") == "ready":
+                print("✅ Lab is READY.")
+                break
+            await asyncio.sleep(0.5)
 
         # 2. Fire Query
         query = "What is the value of pi to exactly 21 digits? I need the technical truth."
