@@ -142,7 +142,7 @@ class CognitiveHub:
                 res_deep = await self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": query,
-                        "context": f"{ctx}\nTruth: {historical_context}",
+                        "context": f"{ctx}\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
                         "metadata": {"sources": historical_sources}
                     })
                 )

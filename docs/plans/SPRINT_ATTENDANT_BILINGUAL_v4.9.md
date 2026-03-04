@@ -13,19 +13,23 @@ To maintain 100% control of the silicon during development, we will use a **Tran
 
 ## 🛠️ TASKS
 
-### Phase 1: Shared Core Logic
+### Phase 1: Shared Core Logic & Hardening
 - [ ] Extract `ignite()`, `quiesce()`, and `get_heartbeat()` logic into `src/infra/orchestrator.py`.
-- [ ] Ensure core logic is pure Python (no framework dependencies).
+- [ ] **[FEAT-145] Parallel Assassin**: Implement the aggressive, parallel `SIGKILL` purge logic (removing per-process sleeps).
+- [ ] **[FEAT-145] Engine Readiness Gate**: Implement `_wait_for_vllm()` (port polling) to block resident spawning until the inference engine is physically responsive.
+- [ ] **[FEAT-145] Turing Auto-Profile**: Hardcode/Auto-detect the "Turing Breakthrough" flags (`--enforce-eager`, `--dtype float16`, utilization 0.4) for 2080 Ti residency.
 
 ### Phase 2: The Bilingual Server (v2)
 - [ ] Implement `FastMCP` decorators for the core orchestration functions.
 - [ ] Implement `aiohttp` routes that call the same core orchestration functions.
+- [ ] **[FEAT-145] Environment Moat**: Ensure 100% propagation of `LAB_MODE` and `MODEL` vars to all resident subprocesses to prevent "Silent Fallbacks".
 - [ ] Combine both into a single `asyncio` event loop.
 
 ### Phase 3: Integration & "Sweetening"
 - [ ] Register `lab_attendant_v2.py` in `~/.gemini/settings.json`.
 - [ ] Verify native tools (`ignite_lab`, `quiesce_lab`, `get_status`) appear in the CLI.
-- [ ] Add the "Trace-Back" sweetener: `/heartbeat` includes the last 5 lines of `server.log` on failure.
+- [ ] **[FEAT-151] Enhanced Forensic Trace**: `/heartbeat` and `get_status` must return the last 50 lines of `server.log` or the specific `Traceback` on failure.
+- [ ] **[FEAT-145] Reservation Awareness**: Update thresholds to respect the "EarNode Reservation" (approx 4GB) when calculating ignition safety.
 
 ## 🛡️ VIBE CHECK (Anti-Pattern Interception)
 - **VIBE-001**: "I see you're trying to use `curl`. Did you know `get_status` is a native tool?"
