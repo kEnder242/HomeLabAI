@@ -40,31 +40,57 @@ class NightlyRecruiter:
         self.config = config
 
     async def fetch_career_context(self):
-        """Retrieves the 3x3 CVT summary from the Archive Node."""
+        """Retrieves the 3x3 CVT summary and strategic anchors from the Archive Node."""
         if not self.archive:
             return "Expert in Silicon Validation and Telemetry. 18 years experience."
         try:
-            # Call the real CVT builder tool in Archive Node
-            res = await self.archive.call_tool("build_cv_summary", arguments={})
-            return res.content[0].text
+            # Stage 1: Get the high-level summary
+            # Using get_context with a strategic query to pull Diamond artifacts
+            res_json = await self.archive.call_tool("get_context", arguments={"query": "Diamond Rank technical gems silicon validation telemetry", "n_results": 5})
+            res = json.loads(res_json.content[0].text)
+            return res.get("text", "Expert in Silicon Validation and Telemetry. 18 years experience.")
         except Exception as e:
             logging.error(f"[RECRUITER] CVT Fetch Failed: {e}")
             return "Expert in Silicon Validation and Telemetry. 18 years experience."
 
-    async def search_for_jobs(self, search_results: List[Dict] = None) -> List[Dict]:
+    async def search_for_jobs(self) -> List[Dict]:
         """
-        Uses provided results or stubs to identify target listings.
+        Uses the Brain's reasoning to identify target listings.
+        Note: The Brain uses deep_think to process internal knowledge or search-enhanced context.
         """
-        if search_results:
-            return search_results
+        if not self.brain:
+            logging.warning("[RECRUITER] No Brain Node for search. Using stubs.")
+            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
 
-        return [
-            {
-                "title": "Senior Telemetry Architect",
-                "company": "NVIDIA",
-                "url": "https://nvidia.wd1.myworkdayjobs.com/...",
-            }
-        ]
+        query = f"Target Roles: {', '.join(self.config.get('target_roles', []))}. Keywords: {', '.join(self.config.get('keywords', []))}."
+        task = f"Find 3-5 high-fidelity job URLs matching these criteria: {query}. Provide ONLY a list of URLs."
+        logging.info(f"[RECRUITER] Tasking Brain with search: {task}")
+        
+        try:
+            # Using deep_think to generate search targets based on the Brain's resident knowledge
+            # [FEAT-088] In a live agentic session, the Brain has access to web search tools.
+            res = await self.brain.call_tool("deep_think", arguments={"task": task})
+            
+            # Simple parsing of results
+            jobs = []
+            if res and res.content:
+                text = res.content[0].text
+                import re
+                urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
+                for url in list(set(urls))[:5]:
+                    jobs.append({
+                        "title": "Automated Search Result",
+                        "company": "External Site",
+                        "url": url
+                    })
+            
+            if not jobs:
+                # Fallback to high-value hardcoded targets if reasoning fails
+                return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
+            return jobs
+        except Exception as e:
+            logging.error(f"[RECRUITER] Brain Search Task Failed: {e}")
+            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
 
     async def generate_brief(self, jobs: List[Dict], context: str) -> str:
         """
