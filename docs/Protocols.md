@@ -136,10 +136,9 @@
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
 3.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression.
 
-## BKM-021: The "Wall" Audit (Final Verification)
-**Objective**: Prevent regression into initialization deadlocks.
-*   **Behavior**: Before committing any architectural change involving the inference engine, the Agent MUST verify the **333MiB Breakthrough** using the native `POST /ping` API.
-*   **Mandate**: A successful ping response is the mandatory "Gate" for production-ready status.
+## BKM-021: [DEPRECATED] The "Wall" Audit
+**Status**: MOVED to **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** as the **Silicon Verification Law**.
+**Rationale**: Final stability verification is a mandatory silicon gate, not a behavioral guideline.
 
 ## BKM-022: Atomic Write Pattern (Race Condition Prevention)
 **Objective**: Ensure data integrity during background synthesis and static site reading.

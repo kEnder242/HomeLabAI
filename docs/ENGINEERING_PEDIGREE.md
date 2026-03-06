@@ -25,6 +25,8 @@
 *   **Memory Bridge**: Handover logic requiring a 3-turn context echo for Brain interjections to ensure cognitive continuity.
 
 ## 🛠️ Operational Laws
+*   **Silicon Verification Law (The "Wall" Audit)**: Final stability verification is a mandatory silicon gate. Before committing any architectural change involving the inference engine, the Agent MUST verify the **333MiB Breakthrough** using the native `POST /ping` API. A successful ping response is the mandatory "Gate" for production-ready status.
+
 *   **Unitary Task Lifecycle**: `AsyncExitStack` MUST be managed in a single sequential task. Split-task management causes `aclose` hangs. See **[BKM_RETROSPECTIVE_FEB_15.md](./BKM_RETROSPECTIVE_FEB_15.md)**.
 *   **The Resilience Ladder**: 4-Tier degradation hierarchy (vLLM -> Ollama -> Downshift -> Suspend) enforced by native NVML telemetry.
 *   **Silicon Manifest**: All models must be tracked by absolute filesystem path in `infrastructure.json` to prevent "Weight Volatility."

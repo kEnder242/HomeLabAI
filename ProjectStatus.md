@@ -1,4 +1,4 @@
-# Home Lab AI: Project Status (Mar 1, 2026)
+# Home Lab AI: Project Status (Mar 6, 2026)
 
 ## Current Core Architecture: v4.5 "Autonomous Residency"
 *   **Orchestration**: Managed via **`lab-attendant.service` (systemd)**.
@@ -6,7 +6,8 @@
     *   **The Assassin [FEAT-119]**: Atomic port-reaping and PGID process termination.
     *   **Lab Fingerprint [FEAT-121]**: Distributed tracing for RAM-to-Disk parity.
 *   **The Communication Hub (Corpus Callosum)**:
-    *   **Unified Base**: Standardized on **Llama-3.2-3B** for residency; **8B** for synthesis.
+    *   **Unified Base Model [FEAT-030]**: Standardized on **Llama-3.2-3B-AWQ** for residency; **Qwen-2.5-27B** for synthesis.
+    *   **vLLM 0.16.0 Breakthrough**: Successfully bypassed Turing (2080 Ti) VRAM constraints using `lo` loopback handshakes.
     *   **Non-Blocking Dispatch**: Immediate streaming of node responses.
 *   **Synthesis Pipeline**:
     *   **Strategic Anchoring [FEAT-128]**: Extraction of career-level focal points.
