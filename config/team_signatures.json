@@ -1,0 +1,96 @@
+{
+  "Telemetry & Observability": {
+    "primary": [
+      "RAPL",
+      "MSR",
+      "DCGM",
+      "Telemetry"
+    ],
+    "secondary": [
+      "Grafana",
+      "Prometheus",
+      "Power Analysis"
+    ],
+    "companies": [
+      "NVIDIA",
+      "Intel",
+      "Microsoft"
+    ],
+    "local_focus": [
+      "Hillsboro",
+      "Portland"
+    ],
+    "signature_match": "Performance profiling + Telemetry visualization"
+  },
+  "SoC Debug & Pre-Silicon": {
+    "primary": [
+      "Simics",
+      "JTAG",
+      "Intel VISA",
+      "Bring-up"
+    ],
+    "secondary": [
+      "Pre-Silicon",
+      "Subsystem Debug",
+      "Model Development"
+    ],
+    "companies": [
+      "Intel",
+      "Synopsys",
+      "NVIDIA"
+    ],
+    "local_focus": [
+      "Hillsboro",
+      "Beaverton"
+    ],
+    "signature_match": "Low-level silicon debug + Simulation-to-Hardware parity"
+  },
+  "Manageability (Redfish/IPMI)": {
+    "primary": [
+      "OpenBMC",
+      "Redfish",
+      "IPMI",
+      "PECI"
+    ],
+    "secondary": [
+      "MCTP",
+      "PLDM",
+      "Firmware Validation"
+    ],
+    "companies": [
+      "Intel",
+      "Microsoft",
+      "Supermicro",
+      "Cisco"
+    ],
+    "local_focus": [
+      "Hillsboro",
+      "Beaverton"
+    ],
+    "signature_match": "Out-of-band management + Enterprise Server Lifecycle"
+  },
+  "Python Validation & Automation": {
+    "primary": [
+      "PythonSV",
+      "PyTest",
+      "Automation Framework"
+    ],
+    "secondary": [
+      "CI/CD",
+      "Regression",
+      "API Testing"
+    ],
+    "companies": [
+      "Intel",
+      "NVIDIA",
+      "Qualcomm",
+      "AMD"
+    ],
+    "local_focus": [
+      "Hillsboro",
+      "Beaverton",
+      "Portland"
+    ],
+    "signature_match": "Scalable test architecture + Post-silicon automation"
+  }
+}

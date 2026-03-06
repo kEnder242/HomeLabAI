@@ -1,7 +1,72 @@
 {
-  "target_roles": ["Senior Platform Telemetry Engineer", "Silicon Validation Engineer", "AI Infrastructure Engineer", "System Architect", "OpenBMC Firmware Engineer"],
-  "target_companies": ["NVIDIA", "Microsoft", "Anthropic", "OpenAI", "AMD", "Intel", "Supermicro"],
-  "keywords": ["telemetry", "silicon", "validation", "python", "agentic", "rapl", "msr", "peci", "redfish", "openbmc"],
-  "search_sites": ["hiring.cafe", "linkedin", "nvidai.wd1.myworkdayjobs.com"],
-  "brief_retention_days": 7
+  "target_roles": [
+    "Senior Platform Telemetry Engineer",
+    "Silicon Validation Engineer",
+    "AI Infrastructure Engineer",
+    "System Architect",
+    "OpenBMC Firmware Engineer"
+  ],
+  "target_companies": [
+    "NVIDIA",
+    "Microsoft",
+    "Anthropic",
+    "OpenAI",
+    "AMD",
+    "Intel",
+    "Supermicro"
+  ],
+  "keywords": [
+    "telemetry",
+    "silicon",
+    "validation",
+    "python",
+    "agentic",
+    "rapl",
+    "msr",
+    "peci",
+    "redfish",
+    "openbmc"
+  ],
+  "search_sites": [
+    "hiring.cafe",
+    "linkedin",
+    "nvidai.wd1.myworkdayjobs.com"
+  ],
+  "brief_retention_days": 7,
+  "team_profiles": [
+    {
+      "name": "The Telemetry Squad",
+      "keywords": [
+        "RAPL",
+        "MSR",
+        "DCGM",
+        "Telemetry",
+        "Intel",
+        "NVIDIA",
+        "Python"
+      ]
+    },
+    {
+      "name": "The Validation Core",
+      "keywords": [
+        "PCIe",
+        "Validation",
+        "Automation",
+        "Xeon",
+        "KNL",
+        "Regression"
+      ]
+    },
+    {
+      "name": "The AI Infra Team",
+      "keywords": [
+        "vLLM",
+        "Ollama",
+        "Agentic",
+        "GPU",
+        "Orchestration",
+        "MCP"
+      ]
+    }
+  ]
 }

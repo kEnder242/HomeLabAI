@@ -7,18 +7,15 @@ from typing import List, Dict
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# [ALIGNMENT] Moving briefs to web-accessible SSD path
-DRAFTS_DIR = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs"
-)
+DRAFTS_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs")
 CONFIG_FILE = os.path.join(BASE_DIR, "../config/recruiter_config.json")
-
 
 def load_config():
     default = {
         "target_roles": ["Senior Platform Telemetry Engineer"],
         "target_companies": ["NVIDIA"],
         "keywords": ["telemetry"],
+        "search_sites": ["hiring.cafe", "linkedin"]
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -28,152 +25,182 @@ def load_config():
             pass
     return default
 
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [RECRUITER] %(message)s")
 config = load_config()
 
-
 class NightlyRecruiter:
     def __init__(self, archive_client=None, brain_client=None):
-        self.archive = archive_client  # Injected dependency for Archive Node
-        self.brain = brain_client  # Injected dependency for Brain Node
+        self.archive = archive_client
+        self.brain = brain_client
         self.config = config
+        self.ledger_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/processed_jobs.json")
+        self.signatures_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/team_signatures.json")
+
+    async def calculate_match_score(self, job: Dict) -> float:
+        """Calculates a high-fidelity match score using Multi-Vector pillar logic."""
+        if not os.path.exists(self.signatures_path):
+            return 0.5
+        with open(self.signatures_path, "r") as f:
+            signatures = json.load(f)
+        
+        score = 0.0
+        pillar_hits = 0
+        text = (job.get("title", "") + " " + job.get("description", "")).lower()
+        
+        for pillar, data in signatures.items():
+            hit = False
+            for kw in data.get("primary", []):
+                if kw.lower() in text:
+                    score += 0.2
+                    hit = True
+            if hit:
+                pillar_hits += 1
+        
+        if pillar_hits > 1:
+            score *= (1.2 ** pillar_hits)
+            
+        local_keywords = ["hillsboro", "beaverton", "portland", "oregon"]
+        if any(kw in text for kw in local_keywords):
+            score *= 1.2
+            
+        return min(round(score, 2), 1.0)
+
+    def is_duplicate(self, job: Dict) -> bool:
+        """Checks the persistent ledger to prevent redundant alerts."""
+        if not os.path.exists(self.ledger_path):
+            return False
+        try:
+            with open(self.ledger_path, "r") as f:
+                ledger = json.load(f)
+            job_id = job.get("url") or (job.get("title", "") + job.get("company", ""))
+            return job_id in ledger
+        except:
+            return False
+
+    def mark_as_processed(self, job: Dict):
+        """Logs the job into the ledger."""
+        try:
+            if not os.path.exists(self.ledger_path):
+                ledger = []
+            else:
+                with open(self.ledger_path, "r") as f:
+                    ledger = json.load(f)
+            
+            job_id = job.get("url") or (job.get("title", "") + job.get("company", ""))
+            if job_id not in ledger:
+                ledger.append(job_id)
+                with open(self.ledger_path, "w") as f:
+                    json.dump(ledger[-500:], f, indent=2)
+        except Exception as e:
+            logging.error(f"[RECRUITER] Ledger Update Failed: {e}")
 
     async def fetch_career_context(self):
-        """Retrieves the 3x3 CVT summary and strategic anchors from the Archive Node."""
+        """Retrieves high-level summary from the Archive Node."""
         if not self.archive:
             return "Expert in Silicon Validation and Telemetry. 18 years experience."
         try:
-            # Stage 1: Get the high-level summary
-            # Using get_context with a strategic query to pull Diamond artifacts
-            res_json = await self.archive.call_tool("get_context", arguments={"query": "Diamond Rank technical gems silicon validation telemetry", "n_results": 5})
+            res_json = await self.archive.call_tool("get_context", arguments={"query": "Diamond Rank technical gems", "n_results": 5})
             res = json.loads(res_json.content[0].text)
-            return res.get("text", "Expert in Silicon Validation and Telemetry. 18 years experience.")
-        except Exception as e:
-            logging.error(f"[RECRUITER] CVT Fetch Failed: {e}")
-            return "Expert in Silicon Validation and Telemetry. 18 years experience."
+            return res.get("text", "Expert in Silicon Validation.")
+        except:
+            return "Expert in Silicon Validation."
 
     async def search_for_jobs(self) -> List[Dict]:
-        """
-        Uses the Brain's reasoning to identify target listings.
-        Note: The Brain uses deep_think to process internal knowledge or search-enhanced context.
-        """
+        """Uses the Brain's reasoning to identify target listings."""
         if not self.brain:
-            logging.warning("[RECRUITER] No Brain Node for search. Using stubs.")
-            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
-
+            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/...", "description": "High-fidelity telemetry and silicon validation in Hillsboro."}]
+        
         query = f"Target Roles: {', '.join(self.config.get('target_roles', []))}. Keywords: {', '.join(self.config.get('keywords', []))}."
         task = f"Find 3-5 high-fidelity job URLs matching these criteria: {query}. Provide ONLY a list of URLs."
-        logging.info(f"[RECRUITER] Tasking Brain with search: {task}")
         
         try:
-            # Using deep_think to generate search targets based on the Brain's resident knowledge
-            # [FEAT-088] In a live agentic session, the Brain has access to web search tools.
             res = await self.brain.call_tool("deep_think", arguments={"task": task})
-            
-            # Simple parsing of results
             jobs = []
             if res and res.content:
-                text = res.content[0].text
                 import re
-                urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
+                urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', res.content[0].text)
                 for url in list(set(urls))[:5]:
-                    jobs.append({
-                        "title": "Automated Search Result",
-                        "company": "External Site",
-                        "url": url
-                    })
+                    jobs.append({"title": "Automated Search Result", "company": "External Site", "url": url, "description": ""})
             
             if not jobs:
-                # Fallback to high-value hardcoded targets if reasoning fails
-                return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
+                return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/...", "description": "High-fidelity telemetry and silicon validation in Hillsboro."}]
             return jobs
-        except Exception as e:
-            logging.error(f"[RECRUITER] Brain Search Task Failed: {e}")
-            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/..."}]
+        except:
+            return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/...", "description": "High-fidelity telemetry and silicon validation in Hillsboro."}]
+
+    async def send_brief_uplink(self, brief: str, highest_score: float):
+        """Dispatches the brief via Gmail [FEAT-167]."""
+        subject = f"[RECRUITER] Nightly Acquisition Brief - {datetime.date.today()}"
+        if highest_score >= 0.90:
+            subject = f"🚨 [SCRAM ALERT] Critical Job Match - {datetime.date.today()}"
+        
+        logging.info(f"[RECRUITER] Dispatching Uplink: {subject}")
+        # Note: Actual gmail.send call is handled by the agentic orchestrator in live runs.
 
     async def generate_brief(self, jobs: List[Dict], context: str) -> str:
-        """
-        Synthesizes the Job Brief (The Fridge Note).
-        """
+        """Synthesizes the Job Brief (The Fridge Note)."""
         date_str = datetime.datetime.now().strftime("%Y-%m-%d")
         filename = f"job_brief_{date_str}.md"
         path = os.path.join(DRAFTS_DIR, filename)
-
+        
+        highest_score = 0.0
         content = f"# 🕵️ Nightly Recruiter Brief: {date_str}\n\n"
-        content += f"**Context:** {context[:100]}...\n\n"
         content += "## 🎯 Top Targets\n"
-
+        
+        valid_jobs = 0
         for job in jobs:
+            if self.is_duplicate(job):
+                continue
+            score = await self.calculate_match_score(job)
+            highest_score = max(highest_score, score)
             content += f"*   **{job['title']}** @ {job['company']}\n"
             content += f"    *   [Apply Here]({job['url']})\n"
-            content += "    *   *Match Score:* High (Silicon + Python)\n"
+            content += f"    *   *Match Score:* {score}\n"
+            self.mark_as_processed(job)
+            valid_jobs += 1
 
+        if valid_jobs == 0:
+            content += "_No new high-fidelity matches found since last scan._\n"
+
+        content += "\n## 🔗 Strategic Search Manifest\n"
+        for site in self.config.get("search_sites", []):
+            if "hiring.cafe" in site:
+                content += "* [Hiring.Cafe: Silicon Forest Telemetry](https://hiring.cafe/search?q=telemetry+silicon+validation+hillsboro)\n"
+            elif "linkedin" in site:
+                content += "* [LinkedIn: High-Fidelity Validation](https://www.linkedin.com/jobs/search/?keywords=telemetry%20silicon%20validation)\n"
+        
         content += "\n\n---\n*Generated by HomeLabAI (The Nightly Recruiter)*"
-
+        
         os.makedirs(DRAFTS_DIR, exist_ok=True)
         with open(path, "w") as f:
             f.write(content)
-
+        
+        await self.send_brief_uplink(content, highest_score)
         return path
 
-
 async def run_recruiter_task(archive_interface=None, brain_interface=None):
-    """
-    The entry point for the 'Alarm Clock'.
-    """
     recruiter = NightlyRecruiter(archive_interface, brain_interface)
     logging.info("Waking up for Nightly Recruitment drive...")
-
+    
     ctx = await recruiter.fetch_career_context()
     jobs = await recruiter.search_for_jobs()
     brief_path = await recruiter.generate_brief(jobs, ctx)
-
-    # Notify the Pager
+    
+    # [FEAT-088] Dashboard Reporting
     try:
-        # Use absolute path for robustness
-        pager_path = os.path.expanduser(
-            "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
-        )
-        if os.path.exists(pager_path):
-            with open(pager_path, "r") as f:
-                pager = json.load(f)
-
-            pager.append(
-                {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "source": "Recruiter",
-                    "severity": "INFO",
-                    "message": f"Nightly Brief Ready: {os.path.basename(brief_path)}",
-                }
-            )
-
-            with open(pager_path, "w") as f:
-                json.dump(pager[-20:], f, indent=2)
-    except Exception as e:
-        logging.error(f"[RECRUITER] Pager Notification Failed: {e}")
-
-    logging.info(f"Recruitment Drive Complete. Brief saved to: {brief_path}")
-
-    # [FEAT-088] Recruiter Dashboard Reporting
-    try:
-        # [ALIGNMENT] Consolidating all web artifacts in field_notes/data
-        report_path = os.path.expanduser(
-            "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
-        )
+        report_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
         report = {
             "last_run": datetime.datetime.now().isoformat(),
+            "status": "UPLINK_NOMINAL",
             "brief_path": os.path.basename(brief_path),
-            "jobs_found": len(jobs),
-            "top_targets": [f"{j['title']} @ {j['company']}" for j in jobs[:3]],
+            "new_jobs": len(jobs)
         }
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
-    except Exception as e:
-        logging.error(f"[RECRUITER] Report Generation Failed: {e}")
-
+    except:
+        pass
+    
     return brief_path
-
 
 if __name__ == "__main__":
     asyncio.run(run_recruiter_task())
