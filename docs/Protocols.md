@@ -49,6 +49,18 @@
 4.  **Max Momentum**: The Agent must strive to complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
 6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
+
+## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
+**Objective**: Restore technical context after a deep work cycle.
+
+1.  **Trigger**: Conclusion of a "Heads Down" sprint.
+2.  **Verbosity**: The report must be detailed and verbose (reversing minimalist CLI compression).
+3.  **Content**:
+    *   Summary of all completed items.
+    *   Implications: Impact on VRAM, latency, and security.
+    *   The "Path Backwards": Rollback steps if the new silicon is unstable.
+4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
+
 ## BKM-009: The Checkpoint Protocol (Save State)
 **Objective**: Ensure 100% state persistence for session continuity.
 **Trigger**: "Checkpoint", "Save", "Close up shop", or end of a feature sprint.
@@ -58,16 +70,6 @@
 3.  **Memory**: Save key architectural decisions to Long-Term Memory.
 4.  **Persistence**: `git add .` and `git commit` with a semantic message. (NEVER push).
 5.  **Handover**: Provide a 1-sentence summary of "Where we are" and "What to do next."
-
-
-## BKM-011: The Safe-Scalpel (Atomic Patcher)
-**Objective**: Ensure lint-verified, regression-free code edits.
-**Tool**: `HomeLabAI/src/debug/atomic_patcher.py`
-
-1.  **Usage**: Mandatory for ALL code edits in the `HomeLabAI` and `Portfolio_Dev` repositories.
-2.  **CLI Mode**: `python3 atomic_patcher.py <file> <desc> <old_text> <new_text>`
-3.  **Library Mode**: Import `apply_batch_refinement` for complex, multi-edit tasks.
-4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
 
 ## BKM-010: Silicon Co-Pilot (Interactive Mode)
 **Objective**: Maintain diagnostic fidelity during live user/agent collaboration.
@@ -80,6 +82,14 @@
 4.  **Verbal Feedback**: Actively mine logs for user notes (e.g., "Pinky, note that X is broken") received during the session.
 5.  **Post-Mortem**: Immediately update `ProjectStatus.md` with findings from both logs and user feedback.
 
+## BKM-011: The Safe-Scalpel (Atomic Patcher)
+**Objective**: Ensure lint-verified, regression-free code edits.
+**Tool**: `HomeLabAI/src/debug/atomic_patcher.py`
+
+1.  **Usage**: Mandatory for ALL code edits in the `HomeLabAI` and `Portfolio_Dev` repositories.
+2.  **CLI Mode**: `python3 atomic_patcher.py <file> <desc> <old_text> <new_text>`
+3.  **Library Mode**: Import `apply_batch_refinement` for complex, multi-edit tasks.
+4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
 
 ## BKM-012: The Ultimate Patcher (Archive Node)
 **Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
@@ -111,16 +121,14 @@
     *   **Performance Delta**: (If applicable) Perceived or measured change in latency, VRAM, or responsiveness.
 3.  **Tone**: Professional, direct, and technical. Avoid conversational chitchat.
 
-## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
-**Objective**: Restore technical context after a deep work cycle.
+## BKM-017: Agentic Delegation (Context Preservation)
+*   **Why:** To postpone "Manic Phases" (cognitive overload leading to lossy compression of design documentation).
+*   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
+*   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
-1.  **Trigger**: Conclusion of a "Heads Down" sprint.
-2.  **Verbosity**: The report must be detailed and verbose (reversing minimalist CLI compression).
-3.  **Content**:
-    *   Summary of all completed items.
-    *   Implications: Impact on VRAM, latency, and security.
-    *   The "Path Backwards": Rollback steps if the new silicon is unstable.
-4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
+## BKM-018: The Bilingual Attendant (MCP Toolset)
+*   **Usage:** Standardize on native MCP tool calls (`lab_start`, `lab_heartbeat`) for Lab lifecycle management. Avoid manual `curl` or shell hacks.
+*   **Verification:** Always verify the `[BOOT_HASH]` returned by the tools to ensure tool-to-service synchronization trust.
 
 ## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
@@ -132,3 +140,28 @@
 **Objective**: Prevent regression into initialization deadlocks.
 *   **Behavior**: Before committing any architectural change involving the inference engine, the Agent MUST verify the **333MiB Breakthrough** using the native `POST /ping` API.
 *   **Mandate**: A successful ping response is the mandatory "Gate" for production-ready status.
+
+## BKM-022: Atomic Write Pattern (Race Condition Prevention)
+**Objective**: Ensure data integrity during background synthesis and static site reading.
+*   **Rule**: Standardize on the `.tmp` + `os.replace` pattern for all scanner and worker outputs (e.g., yearly JSONs).
+*   **Logic**: Write to a temporary file first, then perform an atomic rename. This prevents the static dashboard from reading half-written files, eliminating UI flicker and "Empty Year" bugs.
+
+## BKM-023: The Surgical Preservation Protocol
+**Objective**: To prevent "Lossy Compression," erasures of technical pedigree, and documentation thrash during architectural refactors.
+
+**Why**: To combat the LLM's natural instinct to simplify and summarize complex history. Treating documentation as "Write-Protected DNA" ensures that technical findings are layered rather than replaced, maintaining the "Silicon Scar" pedigree as the primary defense against agentic state-drift and loss of intent.
+
+#### **🏎️ 1. Execution (The Surgical Additive Pass)**
+*   **Step 1**: Target the most granular line-ranges possible for `replace` operations to avoid context-bleed.
+*   **Step 2**: Layer new technical "Wins" directly above or alongside historical "Scars" using an append-only logic.
+*   **Step 3**: Apply `[PIVOT]` or `[HISTORICAL]` tags to deprecated strategies instead of deleting the original text.
+*   **Step 4**: Restore "Lost Gems" word-for-word immediately if a fidelity loss is identified.
+
+#### **🧪 2. Validation Logic**
+*   **Link Gate**: Verify the physical existence of a target file on disk before editing or adding any documentation link.
+*   **Anchor Check**: Ensure "Validation Anchors" (specific IPs, Ports, IDs, kernel settings) are preserved word-for-word in the final output.
+*   **Pedigree Verification**: Compare the "God View" roadmap against previous git commits to ensure no historical phases were compressed or "grouped" into high-level points.
+
+#### **🤕 3. Scars (Known Failures)**
+*   **The Compression Trap**: LLMs naturally instinct to "clean up" or "summarize" old tasks to save space—this is a fatal error that leads to the total loss of technical intent.
+*   **The Erasure Regret**: Deleting "Tabled" tasks or previous failures makes the Lab look reactive rather than evolved; the history of the struggle is the source of robustness.

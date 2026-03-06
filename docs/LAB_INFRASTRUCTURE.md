@@ -26,6 +26,14 @@
     *   **Constraint**: No native `bfloat16` support for fused kernels (use `float16` for Liger).
 *   **Network**: Tailscale MagicDNS active.
 
+## 📡 Bilingual Transport Layer (V2)
+| Protocol | Interface | Port/Path | Role |
+| :--- | :--- | :--- | :--- |
+| **REST** | HTTP | `:9999` | Systemd Lifecycle & VRAM Watchdog. |
+| **MCP** | stdio/SSE | `acme_attendant` | Native Agentic Tool integration. |
+| **Hub** | WebSocket | `:8765` | Bicameral Dispatch & Node Coordination. |
+| **vLLM** | OpenAI API | `:8088` | Unified 3B Base Model inference. |
+
 ## 🔗 Critical Symlinks
 *   `~/Dev_Lab/models/hf_downloads` -> `/speedy/models` (In progress).
 
@@ -46,13 +54,14 @@
     *   **Logic**: Sensing is the invariant constant of the Lab; reasoning is secondary.
 
 3.  **Orchestrator Liveliness (`lab-attendant`)**:
-    *   Execute `sudo systemctl status lab-attendant.service`.
-    *   **Action**: If stopped, `sudo systemctl restart lab-attendant.service`.
-    *   **Verification**: `curl http://localhost:9999/heartbeat` should return JSON.
+    *   **Action**: `acme_attendant lab_heartbeat`
+    *   **Verification**: Should return JSON with `[BOOT_HASH]`.
+    *   **Autonomous Safety**: Employs the **Parallel Assassin [FEAT-119]** logic (`SIGKILL` + 2s kernel settle) to autonomously clear port 8765/8088 contention, eliminating manual `pkill` requirements.
 
 4.  **Lab Server Ignition**:
-    *   **Action**: `curl -X POST http://localhost:9999/start -H "Content-Type: application/json" -d '{"mode": "SERVICE_UNATTENDED", "disable_ear": true}'`
-    *   **Verification**: `tail -f HomeLabAI/server.log` (Watch for `[READY] Lab is Open`).
+    *   **Action**: `acme_attendant lab_start`
+    *   **Logic**: Triggers the **Resident Handshake Gate [FEAT-165]**, blocking until all nodes are resident.
+    *   **Verification**: `acme_attendant lab_status` (Watch for `[READY] Lab is Open`).
 
 5.  **Uplink Verification**:
     *   `tail -f HomeLabAI/server.log` 
