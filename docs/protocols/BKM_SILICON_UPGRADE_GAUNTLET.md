@@ -46,4 +46,13 @@ The upgrade is only considered **VERIFIED** if these three gates are cleared in 
     *   *Prevention*: Load vLLM *before* the EarNode. 0.17's aggressive cache allocation may prevent NeMo from claiming its resident 1.5GB if the order is reversed.
 
 ---
+## 📜 Execution Log (Audit Trail)
+*   **2026-03-10 13:55**: [GATE 0] REBOOT SUCCESS. Active Kernel: `6.14.0-36-generic`. Drivers: `PURGED`.
+*   **2026-03-10 14:15**: [NETWORK] Restored Wi-Fi via `linux-modules-extra`. Speed verified at 123Mbit/s.
+*   **2026-03-10 14:27**: [PHASE A] Driver 580 installed. `nvidia-smi` verified.
+*   **2026-03-10 14:50**: [PHASE B] vLLM 0.17 environment `.venv_vllm_017` created.
+*   **2026-03-10 15:20**: [GATE 3] Heartbeat SUCCESS. Qwen-2.5-1.5B responding on port 8088.
+*   **STATUS**: **VERIFIED PRODUCTION READY**.
+
+---
 **"Verify the silicon before the soul."**
