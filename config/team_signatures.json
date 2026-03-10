@@ -71,6 +71,7 @@
   },
   "Python Validation & Automation": {
     "primary": [
+      "Python",
       "PythonSV",
       "PyTest",
       "Automation Framework"
