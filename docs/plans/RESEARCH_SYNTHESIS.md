@@ -22,6 +22,12 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | **Dreaming** | Subconscious Compression. | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **100%** |
 | **Internal Debate** | Moderated Consensus. | **Consensus:** `delegate_internal_debate` facilitates multi-path reasoning. | **100%** |
 | **3x3 CVT** | High-Density Resume Indexer. | **Synthesis:** `build_cv_summary` correlates Focal goals with Artifact evidence. | **100%** |
+| **AT2QA** (2603.01853) | Autonomous Exploration Pivot. | **Autonomy:** [FEAT-173] Pivot-query logic pass for thin tool-results. | **Design** |
+| **Agentic FS** (2602.20478) | Context as a File System. | **Grounding:** Validates our "Static Synthesis" (FS-Researcher) memory tier. | **100%** |
+| **13-Param Reason** (2602.04118) | Extreme parameter efficiency. | **Sentinel:** Optimization logic for the 1B/tiny "Sentinel" mice nodes. | **Active** |
+| **REDSearcher** (2602.14234) | Long-Horizon Search Scaling. | **Discovery:** [FEAT-173] framework for deep technical history discovery. | **Design** |
+| **Memex(RL)** (2603.04257) | Indexed Experience Memory. | **Wisdom:** [FEAT-067] grounds our Subconscious Dreaming consolidation. | **100%** |
+| **Byzantine ToM** (2603.00142) | Theory of Mind in MAS. | **Debate:** [FEAT-071] grounds our Moderated Consensus / Debate logic. | **100%** |
 
 ---
 
@@ -35,6 +41,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | **3x3 CVT** | **Automated CV Synthesis.** Correlates 18 years of technical scars with yearly strategic goals. | **Portfolio Signature.** Physically demonstrates the value of the archive to non-technical stakeholders. | **100%** |
 | **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **100%** |
 | **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to enable massive KV cache pools on 11GB silicon. | **100%** |
+| **AT2QA** | **Iterative Autonomy.** Replacing hand-crafted workflows with tool-decision agency. | **Strategic Pivot.** Allows the Hub to autonomously redirect a search if initial tool-results are thin or temporally inconsistent. | **Design** |
 
 ---
 
