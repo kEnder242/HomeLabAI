@@ -34,4 +34,5 @@
 ## 🔗 Design Breadcrumbs (The Map)
 *   **Infrastructure**: **[infrastructure.json](../config/infrastructure.json)** (Dynamic host resolution/KENDER).
 *   **VRAM Plan**: **[VLLM_INTEGRATION_PLAN.md](./plans/VLLM_INTEGRATION_PLAN.md)** (Budget management).
-*   **Active Sprint**: **[SPRINT_RESURRECTION_FEB_15.md](./plans/SPRINT_RESURRECTION_FEB_15.md)** (Current focus).
+*   **Upgrade Protocol**: **[BKM_SILICON_UPGRADE_GAUNTLET.md](./protocols/BKM_SILICON_UPGRADE_GAUNTLET.md)** (Safety Gauntlet for Driver/vLLM updates).
+*   **Active Sprint**: **[SPR-11-09](../../Portfolio_Dev/00_FEDERATED_STATUS.md)** (Signature Synthesis & Scaling).
