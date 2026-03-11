@@ -12,6 +12,7 @@ These tools verify that the Lab's weights fit within the 11GB VRAM budget and th
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Hardware Grounding**| `src/tests/test_hardware_grounding.py`| [PHASE 7] Verifies real-time telemetry tools (`get_lab_health`) and engine priming. |
 | **Engine Swap** | `src/debug/test_engine_swap.py` | Verifies the hot-swap from vLLM to Ollama fallback during moderate VRAM pressure. |
 | **Apollo 11** | `src/debug/test_apollo_vram.py` | **CRITICAL.** Profiles active inference peak. Runs "Token Burn" to allocate KV cache and verify headroom. |
 | **VRAM Guard** | `src/test_vram_guard.py` | Validates the "Stub" fallback logic when VRAM is >95% or engines fail to load. |
@@ -29,6 +30,7 @@ These tools verify the `systemd` managed infrastructure and the Hub's resilience
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Strategic Live Fire**| `src/tests/test_strategic_live_fire.py`| [PHASE 7] **DEFINITIVE.** End-to-end physical hardware validation of the PMM routing and fidelity lifecycle. |
 | **The Assassin** | `lab_attendant.py` (Internal) | [FEAT-119][WD] Atomic port-reaping using `fuser -k` before boot. |
 | **Ghost Hunter** | `lab_attendant.py` (Internal) | [FEAT-121][WD] PGID-aware tree termination using `os.killpg()`. |
 | **Gauntlet** | `src/debug/test_lifecycle_gauntlet.py` | Stress tests the Hub with rapid connect/disconnect cycles. Essential for verifying `aiohttp` resilience. |
@@ -46,6 +48,7 @@ Ensures the Lab maintains its Bicameral character without falling into "Chatter 
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Morning Briefing** | `src/tests/test_vibe_triggers.py` | [PHASE 7] Verifies semantic trigger for news/updates based on intent vibe (No hard-coded keywords). |
 | **Latency Tics** | `src/test_latency_tics.py` | Verifies that Pinky sends \"Thinking\" tics during long Brain reasoning cycles. |
 | **Persona Audit** | `src/debug/test_persona_bugs.py` | Checks for verbosity issues and ensures \"Certainly!\" filler is stripped. |
 | **Contextual Echo** | `src/debug/test_contextual_echo.py` | Verifies persona-aware echo behavior. |
@@ -62,12 +65,14 @@ Validates "Thought Partner" capabilities, including delegation, tool access, and
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Agentic Backtrack** | `src/tests/test_agentic_backtrack.py` | [PHASE 7] Verifies the Hallway Protocol and Strategic Pivot logic for Agentic-R. |
 | **Pi Flow** | `src/debug/test_pi_flow.py` | **CRITICAL.** Verifies the \"Direct Answer First\" rule. |
-| **Iron Gate Audit** | `src/debug/gate_triage_audit.py`| Verifies the hardened gate for casual vs. strategic triage. |
+| **Ghost Tool Sentry** | `src/tests/test_tool_validation.py` | [PHASE 7] Verifies detection and shunting of hallucinated tools back to Pinky. |
+| **Iron Gate Audit** | `src/debug/gate_triage_audit.py`| **STALE.** Verifies the hardened gate for casual vs. strategic triage. (Requires audit for semantic intent). |
 | **Dispatch Logic** | `src/debug/test_dispatch_logic.py` | Verifies the hardened priority dispatcher and hallucination shunt. |
 | **Round Table** | `src/test_round_table.py` | Validates the Pinky -> Brain handover logic and shared context persistence. |
 | **Tool Registry** | `src/debug/test_tool_registry.py` | [PING] **CRITICAL.** Confirms all physical MCP tools are visible to the agentic layer. |
-| **Strategic Sentinel**| `src/debug/test_strategic_sentinel.py`| [PING] Verifies Amygdala filtering and typing-aware reflex suppression. |
+| **Strategic Sentinel**| `src/debug/test_strategic_sentinel.py`| [PING] **STALE.** Verifies Amygdala filtering and typing-aware reflex suppression. (Requires audit). |
 | **Resurrection Tools**| `src/debug/test_resurrection_tools.py`| Verifies high-value restored tools: CV Builder, BKM Generator, and History Access. |
 | **Architect Flow** | `src/debug/test_architect_flow.py` | Validates the Architect Node's BKM synthesis logic. |
 | **Draft Agency** | `src/test_draft_agency.py` | Tests the `write_draft` tool and the "Editor Cleaning" pattern. |
@@ -75,7 +80,17 @@ Validates "Thought Partner" capabilities, including delegation, tool access, and
 
 ---
 
-## 💾 5. Data & Memory (The Archives)
+## ⚒️ 5. The Forge (LoRA Synthesis)
+Tools for distilling technical pedigree into specialized training data.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Distill Forge** | `src/forge/distill_gems.py` | [PHASE 8] Transforms Rank 4 gems into high-density LoRA training pairs. |
+| **Expert Forge** | `src/train/train_expert.py` | [PHASE 8] Unsloth scaffolding for local 2080 Ti fine-tuning. |
+
+---
+
+## 💾 6. Data & Memory (The Archives)
 Verifies the transition from raw logs to synthesized "Diamond" wisdom.
 
 | Tool | Path | Goal |
@@ -89,7 +104,7 @@ Verifies the transition from raw logs to synthesized "Diamond" wisdom.
 
 ---
 
-## 🎙️ 6. Audio & Streaming (The Sensory Node)
+## 🎙️ 7. Audio & Streaming (The Sensory Node)
 Verifies the NeMo-based EarNode and real-time STT capabilities.
 
 | Tool | Path | Goal |
@@ -101,7 +116,17 @@ Verifies the NeMo-based EarNode and real-time STT capabilities.
 
 ---
 
-## 🔪 7. The Scalpels (Atomic Patching)
+## 📡 8. The Scouts & Logic (New Nodes)
+Extended capabilities for live research and structured thinking.
+
+| Tool | Path | Goal |
+| :--- | :--- | :--- |
+| **Browser Probe** | `src/test_browser_isolated.py` | Verifies Playwright initialization in the Browser Node. |
+| **Sequential Thinking**| `src/test_thinking_node.py` | Verifies stateful multi-step reasoning chains. |
+
+---
+
+## 🔪 9. The Scalpels (Atomic Patching)
 Scripts wrapping `atomic_patcher.py` for lint-verified, high-fidelity core changes.
 
 | Tool | Path | Goal |
@@ -112,7 +137,9 @@ Scripts wrapping `atomic_patcher.py` for lint-verified, high-fidelity core chang
 | **Scalpel Core** | `src/debug/run_scalpel.py` | General-purpose atomic patching wrapper. |
 | **Verify Sprint** | `src/debug/verify_sprint.py` | Aggregate script that runs a subset of tests to verify sprint goals. |
 
-## 🧱 8. Resilience Ladder (Stability States)
+---
+
+## 🧱 10. Resilience Ladder (Stability States)
 These instruments verify the system's ability to degrade gracefully under hardware pressure.
 
 | Tool | Path | Goal |
@@ -123,18 +150,7 @@ These instruments verify the system's ability to degrade gracefully under hardwa
 
 ---
 
-## 🏗️ 9. Core Framework Audits
-Low-level verification of underlying libraries and architectural constraints.
-
-| Tool | Path | Goal |
-| :--- | :--- | :--- |
-| **Forensic Logging** | `src/debug/test_forensic_logging.py`| Verifies the Montana Protocol and log rotation. |
-| **Trace Monitor** | `src/debug/trace_monitor.py` | [FEAT-151] Reusable utility for log delta capture during state transitions. |
-| **aiohttp Stability** | `src/debug/test_aiohttp.py` | Verifies WebSocket handshake resilience and async loop stability. |
-
----
-
-## 🛡️ 10. The Physician's Gauntlet (Deep Hardening)
+## 🛡️ 11. The Physician's Gauntlet (Deep Hardening)
 High-fidelity behavioral verification of cognitive and systemic integrity.
 
 | Tool | Path | Goal |
@@ -147,11 +163,12 @@ High-fidelity behavioral verification of cognitive and systemic integrity.
 
 ---
 
-## 🏗️ 11. Scanner & Synthesis (Background Recovery)
+## 🏗️ 12. Scanner & Synthesis (Background Recovery)
 Surgical tools for the Portfolio_Dev "Face" pipeline. Use these when the Slow Burn stalls or parity is lost.
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
+| **Hallway Protocol** | `mass_scan.py --keyword [K]` | [PHASE 7] Real-time \"Deep Retrieval\" for targeted technical gaps. |
 | **Nudge 2024** | `field_notes/nudge_2024.py` | [RECOVERY] Clears hash for 2024 files to force a targeted re-nibble. |
 | **Force Feed** | `field_notes/force_feed.py` | [EMERGENCY] Bypasses mutex/load checks to jam a specific file into the engine. |
 | **Librarian Debug** | `field_notes/test_chunking.py` | Verifies file splitting/classification logic before it hits the queue. |
