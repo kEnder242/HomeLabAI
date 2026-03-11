@@ -29,28 +29,28 @@ The recruiter currently ignores the `team_signatures.json` metadata. We must res
 ## 🛠️ Implementation Tasks
 
 ### PHASE 1: The Scout (Infrastructure)
-- [ ] **[RE-FEAT-168.1] Browser Node Scaffolding**: 
-    - Implement `src/nodes/browser_node.py` using Playwright.
-    - Tool: `browse_url(url)` -> returns clean markdown of page content.
-- [ ] **[RE-FEAT-168.2] JD Verification**:
-    - Update `recruiter.py` to verify every LLM-discovered URL via the Scout.
-    - Discard 404s, expired listings, or gated login walls.
+- [x] **[RE-FEAT-168.1] Browser Node Scaffolding**: 
+    - Implement `src/nodes/browser_node.py` using Playwright. (COMPLETED)
+    - Tool: `browse_url(url)` -> returns clean markdown of page content. (COMPLETED)
+- [x] **[RE-FEAT-168.2] JD Verification**:
+    - Update `recruiter.py` to verify every LLM-discovered URL via the Scout. (COMPLETED)
+    - Discard 404s, expired listings, or gated login walls. (COMPLETED)
 
 ### PHASE 2: The Auditor (Logic)
-- [ ] **[RE-FEAT-167.1] Multi-Vector Scoring Refactor**:
-    - Replace the basic keyword counter in `calculate_match_score` with a Brain-driven semantic pass.
-    - Input: Verified JD text + `team_signatures.json`.
-    - Output: Bucket-specific alignment scores.
-- [ ] **[RE-FEAT-167.2] DNA Evidence Mapping**:
-    - Task the Brain with finding the "Matching Scar" for every top target.
-    - Query the Archive Node for specific gems matching the JD's requirements.
+- [x] **[RE-FEAT-167.1] Multi-Vector Scoring Refactor**:
+    - Replace the basic keyword counter in `calculate_match_score` with a Brain-driven semantic pass. (COMPLETED)
+    - Input: Verified JD text + `team_signatures.json`. (COMPLETED)
+    - Output: Bucket-specific alignment scores. (COMPLETED)
+- [x] **[RE-FEAT-167.2] DNA Evidence Mapping**:
+    - Task the Brain with finding the "Matching Scar" for every top target. (COMPLETED)
+    - Query the Archive Node for specific gems matching the JD's requirements. (COMPLETED)
 
 ### PHASE 3: The Brief (Synthesis)
-- [ ] **[UI-042] Bucket-Aware Job Brief**:
-    - Refactor `generate_brief` to group jobs by **Team Signature Bucket**.
-    - Add a "Lead Engineer Audit" section for each job, explaining the match.
-- [ ] **[UI-043] Dashboard Reporting**:
-    - Update `recruiter_report.json` to include bucket-level density (e.g., "3 Telemetry matches, 1 SoC Debug match").
+- [x] **[UI-042] Bucket-Aware Job Brief**:
+    - Refactor `generate_brief` to group jobs by **Team Signature Bucket**. (COMPLETED)
+    - Add a "Lead Engineer Audit" section for each job, explaining the match. (COMPLETED)
+- [x] **[UI-043] Dashboard Reporting**:
+    - Update `recruiter_report.json` to include bucket-level density. (COMPLETED)
 
 ---
 
