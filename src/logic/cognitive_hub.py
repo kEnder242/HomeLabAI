@@ -35,7 +35,7 @@ class CognitiveHub:
             with open(self.semantic_map_path, "r") as f:
                 self.semantic_map = json.load(f)
 
-    async def execute_dispatch(self, text, source, shutdown_event=None):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False):
         """
         Standardizes the dispatch of reasoning results to the user.
         Returns the clean text if it was a plain message, or True if it handled a tool.
@@ -169,13 +169,14 @@ class CognitiveHub:
                 logging.error(f"[HUB] Tool Dispatch Error: {e}")
                 return await self.execute_dispatch(f"Error executing tool: {e}", "Pinky (System)", shutdown_event=shutdown_event)
 
-        # 3. Fallback: Pure Text
-        await self.broadcast({
-            "brain": clean_text,
-            "brain_source": source.replace("Result", "").strip(),
-            "channel": "chat"
-        })
-        return clean_text
+        if "{" not in clean_text:
+            await self.broadcast({
+                "brain": clean_text,
+                "brain_source": source.replace("Result", "").strip(),
+                "channel": "chat",
+                "is_internal": is_internal
+            })
+            return clean_text
 
     def _route_expert_domain(self, query, interjection=""):
         """[FEAT-174.1] Strategic Routing: Identifies the expert adapter needed using JSON anchors."""
@@ -223,7 +224,8 @@ class CognitiveHub:
                 await self.broadcast({
                     "brain": self.get_oracle_signal("Pinky"),
                     "brain_source": "Pinky (Intuition)",
-                    "channel": "insight"
+                    "channel": "insight",
+                    "is_internal": True
                 })
                 t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"}))
                 dispatch_tasks.append((t_pinky, "Pinky"))
@@ -261,6 +263,11 @@ class CognitiveHub:
             result_text = result["text"]
             source = result["source"]
             
+            # [VISUAL THINK] Mark Pinky's strategic interjections as internal
+            internal_flag = False
+            if source == "Pinky" and any(r["source"] == "Brain" for r in bundled_results):
+                internal_flag = True
+
             # Recursive check: if response is a tool call, handle it
             if "{" in result_text:
                 await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event)
@@ -282,9 +289,9 @@ class CognitiveHub:
                         await self.broadcast({
                             "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
                             "brain_source": "Pinky (Forensic)",
-                            "channel": "insight"
+                            "channel": "insight",
+                            "is_internal": True
                         })
-                        
                         # Execute targeted mass scan
                         try:
                             scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
@@ -303,13 +310,14 @@ class CognitiveHub:
                     await self.broadcast({
                         "brain": "derivation too thin... swapping glasses and retrying. Poit!",
                         "brain_source": "Pinky (Fidelity)",
-                        "channel": "insight"
+                        "channel": "insight",
+                        "is_internal": True
                     })
                     # Retry with pivot
                     return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
 
             # Passed Fidelity Gate or not Brain
-            await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event)
+            await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event, is_internal=internal_flag)
 
         if not bundled_results:
             return await self.execute_dispatch("The Cognitive Hub is out of alignment.", "Pinky (System)", shutdown_event=shutdown_event)
