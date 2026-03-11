@@ -2,8 +2,6 @@ import aiohttp
 import json
 import os
 import logging
-import sys
-import uuid
 from liger_kernel.transformers import (
     apply_liger_kernel_to_mistral,
     apply_liger_kernel_to_qwen2,
@@ -335,13 +333,18 @@ class BicameralNode:
                         "tool_choice": "auto",
                         "max_tokens": max_tokens,
                     }
-                    if self.lora_name:
+                    adapter_name = self.lora_name
+                    if metadata and metadata.get("expert_adapter"):
+                        adapter_name = metadata.get("expert_adapter")
+                        logging.info(f"[{self.name}] [FEAT-174.2] Dynamically selecting expert adapter: {adapter_name}")
+
+                    if adapter_name:
                         # [FEAT-145] Adaptive Unity: Only request LoRA if the adapter is physically present
-                        adapter_path = f"/speedy/models/adapters/{self.lora_name}"
+                        adapter_path = f"/speedy/models/adapters/{adapter_name}"
                         if os.path.exists(adapter_path):
-                            payload["lora_request"] = {"name": self.lora_name}
+                            payload["lora_request"] = {"name": adapter_name}
                         else:
-                            logging.warning(f"[{self.name}] Adapter {self.lora_name} missing at {adapter_path}. Falling back to unified base.")
+                            logging.warning(f"[{self.name}] Adapter {adapter_name} missing at {adapter_path}. Falling back to unified base.")
                     async with session.post(url, json=payload, timeout=120) as r:
                         data = await r.json()
                         if "choices" not in data:
