@@ -179,7 +179,7 @@ class BicameralNode:
             if p_ip and self.primary_host != "localhost":
                 p_url = f"http://{p_ip}:{p_host_cfg.get('ollama_port', 11434)}"
                 try:
-                    async with session.get(f"{p_url}/api/tags", timeout=1.0) as r:
+                    async with session.get(f"{p_url}/api/tags", timeout=5.0) as r:
                         if r.status == 200:
                             data = await r.json()
                             available = [m.get("name") for m in data.get("models", [])]
@@ -291,15 +291,21 @@ class BicameralNode:
         return tools
 
     def unify_prompt(self, query, context="", memory="", system_override=None):
-        # Removing bracketed tags which may confuse some model templates
-        sys_p = system_override if system_override else self.system_prompt
-        full_prompt = f"System: {sys_p}"
+        """[FEAT-189] Instruct Template: Uses Llama-3.1 header tokens for raw generation."""
+        system = system_override if system_override else self.system_prompt
         if memory:
-            full_prompt += f"\n\nMemory: {memory}"
+            system += f"\n\n[MEMORY]:\n{memory}"
         if context:
-            full_prompt += f"\n\nRecent Context: {context}"
+            system += f"\n\n[CONTEXT]:\n{context}"
 
-        return f"{full_prompt}\n\nUser: {query}\n\nAssistant:"
+        # Llama-3.1 Instruct Format
+        return (
+            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+            f"{system}<|eot_id|>"
+            "<|start_header_id|>user<|end_header_id|>\n\n"
+            f"{query}<|eot_id|>"
+            "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        )
 
     async def generate_response(
         self,
@@ -367,109 +373,66 @@ class BicameralNode:
                             )
                         return msg["content"]
                 else:
-                    # [STABILITY] Target-Aware Routing
-                    # Remote hosts (Windows) often have older/different templates.
-                    # Use raw /api/generate for remote, /api/chat for local.
-                    is_remote = "127.0.0.1" not in url and "localhost" not in url
+                    # [STABILITY] Use Chat API by default for all hosts (Local & Remote)
+                    chat_url = url.replace("/api/generate", "/api/chat")
+                    
+                    full_system = (
+                        system_override if system_override else self.system_prompt
+                    )
+                    if memory:
+                        full_system += f"\n\n[MEMORY]:\n{memory}"
+                    if context:
+                        full_system += f"\n\n[RECENT CONTEXT]:\n{context}"
 
-                    if is_remote:
-                        # Revert to Raw Prompt for Remote (Robustness)
-                        gen_url = url.replace("/api/chat", "/api/generate")
-                        unified = self.unify_prompt(
-                            query, context, memory, system_override
-                        )
-                        payload = {
-                            "model": model,
-                            "prompt": unified,
-                            "stream": False,
-                            "options": {"num_predict": max_tokens},
-                        }
+                    messages = [
+                        {"role": "system", "content": full_system},
+                        {"role": "user", "content": query},
+                    ]
+                    payload = {
+                        "model": model,
+                        "messages": messages,
+                        "stream": False,
+                        "options": {"num_predict": max_tokens},
+                    }
 
-                        # [FEAT-078] Neural Trace (Pre-Send)
-                        self._mirror_trace("send", payload, gen_url, metadata=metadata)
+                    # [FEAT-078] Neural Trace (Pre-Send)
+                    self._mirror_trace("send", payload, chat_url, metadata=metadata)
 
-                        async with session.post(
-                            gen_url, json=payload, timeout=120
-                        ) as r:
+                    async with session.post(chat_url, json=payload, timeout=120) as r:
+                        if r.status != 200:
+                            # LEGACY FALLBACK: Downshift to /api/generate
+                            logging.warning(f"[{self.name}] Chat API failed ({r.status}). Falling back to Generate.")
+                            gen_url = url.replace("/api/chat", "/api/generate")
+                            unified = self.unify_prompt(query, context, memory, system_override)
+                            gen_payload = {
+                                "model": model,
+                                "prompt": unified,
+                                "stream": False,
+                                "options": {"num_predict": max_tokens},
+                            }
+                            async with session.post(gen_url, json=gen_payload, timeout=120) as r2:
+                                data = await r2.json()
+                                raw_resp = data.get("response", "").strip()
+                        else:
                             data = await r.json()
+                            raw_resp = data.get("message", {}).get("content", "").strip()
 
-                            # [FEAT-078] Neural Trace (Post-Recv)
-                            self._mirror_trace("recv", data)
+                        # [FEAT-078] Neural Trace (Post-Recv)
+                        self._mirror_trace("recv", data)
 
-                            # [STABILITY] Explicit Error Detection
-                            if data.get("error"):
-                                logging.error(
-                                    f"[{self.name}] Remote Ollama Error: "
-                                    f"{data.get('error')}"
-                                )
-                                self._engine_cache = (
-                                    None  # [FEAT-084] Clear cache on error
-                                )
-                                return "INTERNAL_QUALITY_FALLBACK"
+                        # [STABILITY] Explicit Error Detection
+                        if data.get("error"):
+                            logging.error(f"[{self.name}] Ollama Error: {data.get('error')}")
+                            self._engine_cache = None  # [FEAT-084] Clear cache on error
+                            return "INTERNAL_QUALITY_FALLBACK"
 
-                            raw_resp = data.get("response", "").strip()
-                            logging.info(
-                                f"[{self.name}] RAW OLLAMA RESP (Remote): "
-                                f"'{raw_resp[:50]}...'"
-                            )
+                        logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
 
-                            # [FEAT-077] Quality-Gate: If remote response is empty
-                            if not raw_resp or raw_resp == "..." or raw_resp == ".":
-                                logging.warning(
-                                    f"[{self.name}] Remote host returned empty."
-                                    " Triggering internal quality fallback."
-                                )
-                                return "INTERNAL_QUALITY_FALLBACK"
-                            return raw_resp
-                    else:
-                        # Use Chat API for Local (Alignment)
-                        chat_url = url.replace("/api/generate", "/api/chat")
-                        full_system = (
-                            system_override if system_override else self.system_prompt
-                        )
-                        if memory:
-                            full_system += f"\n\n[MEMORY]:\n{memory}"
-                        if context:
-                            full_system += f"\n\n[RECENT CONTEXT]:\n{context}"
-
-                        messages = [
-                            {"role": "system", "content": full_system},
-                            {"role": "user", "content": query},
-                        ]
-                        payload = {
-                            "model": model,
-                            "messages": messages,
-                            "stream": False,
-                            "options": {"num_predict": max_tokens},
-                        }
-
-                        # [FEAT-078] Neural Trace (Pre-Send)
-                        self._mirror_trace("send", payload, chat_url, metadata=metadata)
-
-                        async with session.post(
-                            chat_url, json=payload, timeout=120
-                        ) as r:
-                            data = await r.json()
-
-                            # [FEAT-078] Neural Trace (Post-Recv)
-                            self._mirror_trace("recv", data)
-
-                            if data.get("error"):
-                                logging.error(
-                                    f"[{self.name}] Local Ollama Error: "
-                                    f"{data.get('error')}"
-                                )
-                                self._engine_cache = (
-                                    None  # [FEAT-084] Clear cache on error
-                                )
-                                return "INTERNAL_QUALITY_FALLBACK"
-
-                            raw_resp = data.get("message", {}).get("content", "")
-                            logging.info(
-                                f"[{self.name}] RAW OLLAMA RESP (Local): "
-                                f"'{raw_resp[:50]}...'"
-                            )
-                            return raw_resp
+                        # [FEAT-077] Quality-Gate: If response is empty
+                        if not raw_resp or raw_resp in ["...", ".", ""]:
+                            logging.warning(f"[{self.name}] Host returned empty. Triggering internal quality fallback.")
+                            return "INTERNAL_QUALITY_FALLBACK"
+                        return raw_resp
             except Exception as e:
                 self._engine_cache = None  # [FEAT-084] Clear cache on error
                 return json.dumps(
