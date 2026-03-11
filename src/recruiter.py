@@ -4,6 +4,7 @@ import logging
 import datetime
 import asyncio
 import re
+import time
 from typing import List, Dict
 
 from infra.atomic_io import atomic_write_json, atomic_write_text
@@ -13,6 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DRAFTS_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs")
 CONFIG_FILE = os.path.join(BASE_DIR, "../config/recruiter_config.json")
 SIGNATURES_FILE = os.path.join(BASE_DIR, "../config/team_signatures.json")
+PAGER_FILE = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
 
 def load_config():
     default = {
@@ -37,6 +39,26 @@ def load_signatures():
         except Exception:
             pass
     return {}
+
+def trigger_pager(message, severity="INFO", source="Recruiter"):
+    """Internal pager trigger to update status dashboard."""
+    try:
+        entry = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "severity": severity.upper(),
+            "source": source,
+            "message": message
+        }
+        activities = []
+        if os.path.exists(PAGER_FILE):
+            try:
+                with open(PAGER_FILE, 'r') as f:
+                    activities = json.load(f)
+            except: pass
+        activities.append(entry)
+        atomic_write_json(PAGER_FILE, activities[-20:])
+    except Exception as e:
+        logging.error(f"[RECRUITER] Pager Trigger Failed: {e}")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [RECRUITER] %(message)s")
 config = load_config()
@@ -272,8 +294,11 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None, brows
             "bucket_density": density
         }
         atomic_write_json(report_path, report)
-    except Exception:
-        pass
+        
+        # [ALARM] Pulse the dashboard pager
+        trigger_pager(f"Nightly Multi-Vector Brief Ready: {os.path.basename(brief_path)}", severity="INFO", source="Recruiter")
+    except Exception as e:
+        logging.error(f"[RECRUITER] Reporting failed: {e}")
     
     return brief_path
 
