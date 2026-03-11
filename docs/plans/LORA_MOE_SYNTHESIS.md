@@ -212,7 +212,53 @@ The following items will be addressed in future sprints to finalize the Agentic-
     *   **Goal**: Zero-manual-intervention archive synthesis. 
     *   **Task**: Configure `mass_scan.py` to autonomously prioritize "Reverse RAG" (Strategic Seed-to-Tactical Evidence) harvesting as its primary Epoch 1 objective.
 
+## 🩹 Feature Restoration (The "Lost Gems" Recovery)
+The following features were "squished" during the unified loader refactor and must be restored to ground the models in reality:
+
+*   **[RE-FEAT-045] The "Bounce" Reflex**: 
+    *   **Task**: Restore the `bounce_node` tool to Pinky's schema, allowing him to trigger local process restarts via the Hub.
+*   **[RE-FEAT-082] Memory Scribble**: 
+    *   **Task**: Plumb the `scribble_note` tool from the ArchiveNode back into the Brain's active schema to enable turn-to-turn technical memory.
+*   **[RE-FEAT-121] Physical Identity Grounding**: 
+    *   **Task**: Inject `infrastructure.json` host mappings directly into `unify_prompt`, forcing models to acknowledge the 2080 Ti (11GB) vs 4090 (24GB) reality.
+
+---
+
+## 🏛️ Post-Refactor Technical Audit: Feature-to-Code Mapping
+
+### ✅ Active & Verified Features
+| Feature ID | Name | Code Mapping |
+| :--- | :--- | :--- |
+| [FEAT-174] | Pre-Gated Router | `cognitive_hub.py`: `_route_expert_domain` |
+| [FEAT-173] | Strategic Pivot | `cognitive_hub.py`: `process_query` retry logic |
+| [FEAT-172] | Hemispheric Interjection | `cognitive_hub.py`: `_interject_thinking` |
+| [FEAT-180] | Atomic Write Audit | `infra/atomic_io.py` + `utils.py` (Centralized) |
+| [FEAT-189] | Instruct Template | `nodes/loader.py`: `unify_prompt` (Llama-3.1 Headers) |
+| [FEAT-171] | Intelligent Socket | `acme_lab.py`: `manage_session_lock` (Mode-Aware) |
+
+### ⚠️ Undocumented "Ghost" Features (Found in Refactor)
+1.  **[GHOST-01] Parallel Turn Purge**: In `cognitive_hub.py`, I implemented an automatic `asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)` for strategic queries. This was a "just-in-case" addition to handle the 4090 latency but isn't formally tracked in the DNA.
+2.  **[GHOST-02] Regex JSON Hardening**: I added a recursive `re.search(r'\[.*\]', text, re.DOTALL)` to `nibble.py`. This significantly improves local 1B model extraction success but was never logged as a feature.
+
+### ❌ Documented Features Still Missing (Beyond 1-3)
+*   **[FEAT-031] Liger Optimization**: I have the imports in `loader.py`, but the logic to actually *apply* the kernels to vLLM models is currently a stub (`_patch_model`).
+*   **[FEAT-078] Neural Trace Feedback**: We are *writing* the traces to `logs/`, but the "Feedback Loop" (where the model reviews its own trace to correct hallucinations) is missing.
+*   **[FEAT-110] The Shadow Moat**: The post-generation sanitization logic for persona isolation is currently inactive in the new `CognitiveHub` flow.
+*   **[FEAT-154] Sentient Sentinel (Turn Density)**: The `turn_density` variable is initialized in `acme_lab.py`, but it isn't currently used to throttle or boost model creativity.
+
 ## 🏺 Tabled / Deprecated Concepts
 *   **[FEAT-183] Multi-LoRA Multiplexing (Layering)**: 
     *   **Status**: TABLED. 
     *   **Rationale**: Decided against additive weight blending. The Lab strictly uses a **Discrete Lens** model (Single-Adapter Swapping) to maintain high technical fidelity and prevent character-vibe contamination during clinical tasks.
+
+### 🏺 Sprint Finalization: Gauge Restoration [TODO]
+*   **[FEAT-191] get_hardware_status (The "Eyes" Tool)**:
+    *   **Goal**: Stop "vRAM Hallucinations" by providing real telemetry to the models.
+    *   **Task**: Implement a tool in the Hub that performs a sub-request to the Attendant's :9999/heartbeat or :9999/logs and returns actual VRAM, Temperature, and Power metrics to the reasoning nodes.
+*   **[FIX-GROUNDING] Physical Map Plumbing**:
+    *   **Goal**: Ensure the "Lab Map" is visible in the /api/chat path used by the Brain.
+    *   **Task**: Inject the infrastructure.json hardware context into the system message of the Chat API payload in loader.py.
+*   **[PHASE 6] Implementation**:
+    *   Complete **[FEAT-031]** Liger Apply, **[FEAT-110]** Shadow Moat (Persona Sanitization), and **[FEAT-154]** Sentient Sentinel (Turn Density Logic).
+*   **[VERIFY-LORE]**:
+    *   Final Integration test must prove Pinky can correctly identify his 2080 Ti and the Brain's 4090 without guessing.
