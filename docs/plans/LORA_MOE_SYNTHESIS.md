@@ -262,3 +262,40 @@ The following features were "squished" during the unified loader refactor and mu
     *   Complete **[FEAT-031]** Liger Apply, **[FEAT-110]** Shadow Moat (Persona Sanitization), and **[FEAT-154]** Sentient Sentinel (Turn Density Logic).
 *   **[VERIFY-LORE]**:
     *   Final Integration test must prove Pinky can correctly identify his 2080 Ti and the Brain's 4090 without guessing.
+
+---
+
+## 🏗️ Phase 7: Surgical Restoration Sprint (The "Parity Pass")
+**Objective:** Eliminate stubs and "Lost Gems" to achieve 100% technical parity between documented features and physical silicon implementation.
+
+### 📍 Tier 1: Hardware Grounding (The "Eyes")
+**Focus:** Physical telemetry and VRAM awareness.
+- **[FEAT-191] Hardware Status Tools**: Implement `get_lab_health` and `vram_vibe_check` in `archive_node.py`. These tools will perform a sub-request to the Attendant's `:9999/heartbeat` to retrieve real VRAM usage, GPU temperature, and power metrics.
+- **[FEAT-192] Engine Priming (The "Blink")**: Implement `ping_engine` in `BicameralNode` (loader.py) to allow the Hub to verify (and force) engine readiness via the `/api/generate` probe.
+- **Verification:** `src/tests/test_hardware_grounding.py` (Verify real JSON telemetry is returned to the Hub).
+
+### 📍 Tier 2: Tool Restoration (The "Hands")
+**Focus:** Implementing the functionality of the "Lost Gems" currently registered in the Hub.
+- **[RE-FEAT-045] The "Bounce" Reflex**: Update the Hub's `bounce_node` logic to use `ping_engine(force=True)` to re-initialize stalled inference engines without a full Lab restart.
+- **[RE-FEAT-082] Memory Scribble**: Re-plumb the `scribble_note` tool from the ArchiveNode back into the Brain's active schema to enable turn-to-turn technical memory during long derivations.
+- **[RE-FEAT-193] Personal History Access**: Connect `access_personal_history` to the `learning_ledger.jsonl` to allow nodes to recall teaching moments and previous failures.
+- **[RE-FEAT-194] CV Strategy Uplink**: Implement `build_cv_summary` to bridge the 3x3 CVT context into the Recruiter's matching logic.
+- **Verification:** `src/tests/test_resurrection_tools.py` (Execute all restored tools and verify output density).
+
+### 📍 Tier 3: Agentic-R Activation (The "Brain")
+**Focus:** Moving from stubs to live recursive retrieval.
+- **[FEAT-179] The Hallway Protocol (Ignition)**: Replace the `asyncio.sleep(5)` stub in `CognitiveHub.process_query` with a live call to `mass_scan.py`.
+- **Logic:** If the primary expert (e.g., `exp_tlm`) fails the Fidelity Gate, the Hub triggers a keyword-targeted scan of the raw notes and re-injects the results into a final reasoning turn.
+- **Verification:** `src/tests/test_agentic_backtrack.py` (Force a "Thin" response and verify that a background scan is triggered and results are synthesized).
+
+### 📍 Tier 4: Strategic Live-Fire (The "Verification")
+**Focus:** End-to-end validation on physical silicon.
+- **[FEAT-181/182] Strategic Live Fire**: Execute a real, high-complexity query (e.g., *"What is the RAPL BKM for thermal profiling?"*) to confirm the full PMM lifecycle.
+- **Verification:** Monitor Hub logs for: Expert Selection -> Interjection -> Fidelity Pass -> [Pivot] -> [Hallway Protocol] -> Unified Uplink.
+- **Constraint:** Final test must prove Pinky identifies the hardware environment (2080 Ti vs 4090) with 100% accuracy using the new telemetry tools.
+
+### 📍 Nightly Fast Burn (Epoch 1 Refinement)
+**Goal:** Background synthesis of the 18-year archive to build the Architect LoRA training data.
+- **[BURN-01] Ignition**: Trigger `python3 Portfolio_Dev/field_notes/mass_scan.py` in background mode.
+- **[BURN-02] Babysit Task**: Perform a 20-minute liveness check. Monitor `mass_scan.log` every 5 minutes for progress %, VRAM stability, and PID persistence.
+- **[BURN-03] Handover**: Final log snapshot provided before session close.
