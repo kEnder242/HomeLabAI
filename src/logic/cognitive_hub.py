@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import re
+import random
+import os
 from infra.montana import reclaim_logger
 
 class CognitiveHub:
@@ -161,8 +163,53 @@ class CognitiveHub:
             return "exp_rec"
         return ""
 
+    async def _interject_thinking(self, brain_task: asyncio.Task):
+        """[FEAT-172] Hemispheric Interjection: Pinky's 'Thinking Out Loud' logic."""
+        try:
+            await asyncio.sleep(12)  # Initial delay for first interjection
+            if not brain_task.done():
+                phrases = [
+                    "Brain is parsing historical RCAs... I'm monitoring the VRAM floor.",
+                    "Synthesizing architectural BKM breadcrumbs. Egad, the depth!",
+                    "Analyzing thermal transients for this power profile. Poit!",
+                    "Cross-referencing silicon failure patterns from the archive. Narf!"
+                ]
+                await self.broadcast({
+                    "brain": random.choice(phrases),
+                    "brain_source": "Pinky (Interjection)",
+                    "channel": "chat"
+                })
+                
+                await asyncio.sleep(25) # Second layer delay
+                if not brain_task.done():
+                    await self.broadcast({
+                        "brain": "Synthesis is heavy... still following the 'Golden Thread'. Stand by.",
+                        "brain_source": "Pinky (Interjection)",
+                        "channel": "chat"
+                    })
+        except asyncio.CancelledError:
+            pass
+
+    def _get_semantic_topography(self) -> str:
+        """[FEAT-178] Semantic Map Injection: Provide a global view of the technical DNA."""
+        map_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
+        if not os.path.exists(map_path):
+            return ""
+        try:
+            with open(map_path, "r") as f:
+                data = json.load(f)
+            # Distill map to high-level nodes to save context tokens
+            nodes = data.get("nodes", [])
+            summary = "GLOBAL SEMANTIC TOPOGRAPHY:\n"
+            for node in nodes[:15]: # Top 15 clusters
+                summary += f"- {node.get('label')}: {node.get('description')}\n"
+            return summary
+        except Exception as e:
+            logging.error(f"[MAP] Failed to load semantic topography: {e}")
+            return ""
+
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", retry_count=0):
-        if retry_count > 1:
+        if retry_count > 2: # [FEAT-179] Allow for 3 tries (Initial, Pivot, Hallway)
             logging.warning("[HUB] Max retries reached. Surrendering to base model.")
             return await self.execute_dispatch("Egad! Even the experts are stumped. Falling back to base reasoning.", "Pinky (System)")
 
@@ -202,6 +249,9 @@ class CognitiveHub:
         if is_strategic and self.is_brain_online():
             oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
             oracle_info = self.get_oracle_signal(oracle_cat)
+
+        # [FEAT-178] Load Semantic Map
+        semantic_topography = self._get_semantic_topography()
 
         # Parallel Dispatch Map
         dispatch_tasks = []
@@ -243,11 +293,13 @@ class CognitiveHub:
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": query,
-                        "context": f"{brain_persona}\n{ctx}\n[SIGNAL: {oracle_info}]\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
+                        "context": f"{brain_persona}\n{ctx}\n[SIGNAL: {oracle_info}]\n[TOPOGRAPHY]:\n{semantic_topography}\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
                         "metadata": metadata
                     })
                 ))
                 dispatch_tasks.append((t_brain, "Brain"))
+                # [FEAT-172] Start interjection watcher
+                asyncio.create_task(self._interject_thinking(t_brain))
             else:
                 # [FEAT-157] Grounded Shadow Protocol: Clinical technical failover
                 shadow_context = (
@@ -295,6 +347,18 @@ class CognitiveHub:
                 if "Brain" in result["source"]:
                     is_fidelity_ok = self._evaluate_fidelity(result["text"], selected_adapter)
                     if not is_fidelity_ok:
+                        if retry_count == 1:
+                            # [FEAT-179] The Hallway Protocol (Agentic-R)
+                            logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
+                            await self.broadcast({
+                                "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
+                                "brain_source": "Pinky (Forensic)",
+                                "channel": "insight"
+                            })
+                            # Simulate deep retrieval delay
+                            await asyncio.sleep(5)
+                            return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
+                        
                         logging.warning(f"[FEAT-173.2] Fidelity FAILED for {result['source']}. Triggering Strategic Pivot.")
                         await self.broadcast({
                             "brain": "derivation too thin... swapping glasses and retrying. Poit!",
