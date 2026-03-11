@@ -30,6 +30,28 @@ class CognitiveHub:
             return True
         return any(k in text_low for k in casual_indicators)
 
+    def _evaluate_fidelity(self, text: str, domain: str) -> bool:
+        """[FEAT-173.1] Fidelity Gate: Judge if a response is technically dense enough."""
+        t_low = text.lower().strip()
+        
+        # 1. Failure Indicators
+        fail_markers = ["i don't know", "i do not know", "weights offline", "internal_quality_fallback", "not found in archive"]
+        if any(m in t_low for m in fail_markers):
+            return False
+            
+        # 2. Density Check
+        word_count = len(text.split())
+        if word_count < 15: # Too brief for a 'Strategic' response
+            return False
+            
+        # 3. Domain-Specific Fidelity
+        if domain == "exp_tlm" and not any(k in t_low for k in ["rapl", "msr", "peci", "dcgm", "watt", "pkg"]):
+            return False
+        if domain == "exp_bkm" and not any(k in t_low for k in ["protocol", "bkm", "architecture", "pattern", "logic"]):
+            return False
+            
+        return True
+
     async def execute_dispatch(self, raw_text, source, context_flags=None, oracle_category=None, sources=None, historical_sources=None, shutdown_event=None):
         logging.info(f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'")
 
@@ -126,8 +148,25 @@ class CognitiveHub:
             await self.broadcast({"brain": raw_text, "brain_source": source})
             return False
 
-    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint=""):
-        logging.info(f"[USER] Intercom Query: {query}")
+    def _route_expert_domain(self, query: str) -> str:
+        """[FEAT-174.1] Pre-Gated Router: Identify Expert Domains from queries using keyword vectors."""
+        q_low = query.lower()
+        if any(k in q_low for k in ["rapl", "peci", "dcgm", "msr", "power", "thermal", "profiling"]):
+            return "exp_tlm"
+        if any(k in q_low for k in ["bkm", "class 1", "architecture", "design", "pattern", "system"]):
+            return "exp_bkm"
+        if any(k in q_low for k in ["search", "find", "archive", "history", "previous", "yesterday", "remember"]):
+            return "exp_for"
+        if any(k in q_low for k in ["job", "career", "cvt", "resume", "recruiter", "interview", "hire"]):
+            return "exp_rec"
+        return ""
+
+    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", retry_count=0):
+        if retry_count > 1:
+            logging.warning("[HUB] Max retries reached. Surrendering to base model.")
+            return await self.execute_dispatch("Egad! Even the experts are stumped. Falling back to base reasoning.", "Pinky (System)")
+
+        logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count})")
         historical_context = ""
         historical_sources = []
 
@@ -145,6 +184,18 @@ class CognitiveHub:
 
         is_casual = await self.check_intent_is_casual(query)
         is_strategic = not is_casual or mic_active
+
+        # [FEAT-174.1] Intent Gating: Pre-Gated Router
+        selected_adapter = self._route_expert_domain(query)
+        if retry_count > 0:
+            # Simple pivot: If we already tried an expert, try the Forensic expert as fallback for better search
+            if selected_adapter != "exp_for":
+                selected_adapter = "exp_for"
+            else:
+                selected_adapter = "" # Base model fallback
+
+        if selected_adapter:
+            logging.info(f"[ROUTER] Expert Domain matched: {selected_adapter} (Retry: {retry_count})")
 
         # [FEAT-153] The Resonant Chamber: Prepare Oracle Signal for "Overhearing"
         oracle_info = ""
@@ -169,7 +220,7 @@ class CognitiveHub:
             "Style: Brevity is authority. Focus on structure, logic, and root cause analysis. No cartoonish references.\n"
         )
 
-        if "pinky" in self.residents:
+        if "pinky" in self.residents and retry_count == 0: # Only Pinky speaks on first attempt
             # [FEAT-153] Inject Oracle intent and [FEAT-154] Exit Hints
             pinky_ctx = f"{pinky_persona}\n[STRATEGIC_INTENT: {oracle_info}]" if oracle_info else pinky_persona
             if exit_hint:
@@ -185,11 +236,15 @@ class CognitiveHub:
             if self.is_brain_online():
                 # [FEAT-153] Brain receives its own signal context
                 ctx = "\n".join(self.recent_interactions)
+                metadata = {"sources": historical_sources}
+                if selected_adapter:
+                    metadata["expert_adapter"] = selected_adapter
+
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": query,
                         "context": f"{brain_persona}\n{ctx}\n[SIGNAL: {oracle_info}]\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
-                        "metadata": {"sources": historical_sources}
+                        "metadata": metadata
                     })
                 ))
                 dispatch_tasks.append((t_brain, "Brain"))
@@ -230,9 +285,23 @@ class CognitiveHub:
                                 logging.error(f"[TRIAGE] Node failed: {e}")
             except asyncio.TimeoutError:
                 logging.error("[HUB] Turn Bundling TIMEOUT after 120s. Sending partial bundle.")
-                for t in pending: t.cancel()
+                for t in pending:
+                    t.cancel()
                 if not bundled_results:
                     await self.broadcast({"brain": "Egad! The Lab's hemispheres are out of sync! Narf!", "brain_source": "Pinky"})
+
+            # [FEAT-173.1] Fidelity Gate Check
+            for result in bundled_results:
+                if "Brain" in result["source"]:
+                    is_fidelity_ok = self._evaluate_fidelity(result["text"], selected_adapter)
+                    if not is_fidelity_ok:
+                        logging.warning(f"[FEAT-173.2] Fidelity FAILED for {result['source']}. Triggering Strategic Pivot.")
+                        await self.broadcast({
+                            "brain": "derivation too thin... swapping glasses and retrying. Poit!",
+                            "brain_source": "Pinky (Reflex)",
+                            "channel": "insight"
+                        })
+                        return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
 
             # Execute unified dispatch for the bundle
             for result in bundled_results:

@@ -1,5 +1,3 @@
-import logging
-import sys
 
 from nodes.loader import BicameralNode
 
@@ -22,9 +20,9 @@ mcp = node.mcp
 
 
 @mcp.tool()
-async def deep_think(task: str, context: str = "") -> str:
+async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
     """The Reasoning Engine: Execute complex architectural or coding tasks."""
-    return await node.generate_response(task, context)
+    return await node.generate_response(task, context, metadata=metadata)
 
 
 @mcp.tool()
