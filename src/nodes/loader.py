@@ -277,6 +277,33 @@ class BicameralNode:
                 {
                     "type": "function",
                     "function": {
+                        "name": "scribble_note",
+                        "description": "Caches a response semantically for future recall.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "response": {"type": "string"}
+                            },
+                            "required": ["query", "response"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bounce_node",
+                        "description": "Trigger a local process restart for this hemisphere.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"reason": {"type": "string"}},
+                            "required": ["reason"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
                         "name": "reply_to_user",
                         "description": "Provide natural language response.",
                         "parameters": {
@@ -293,6 +320,20 @@ class BicameralNode:
     def unify_prompt(self, query, context="", memory="", system_override=None):
         """[FEAT-189] Instruct Template: Uses Llama-3.1 header tokens for raw generation."""
         system = system_override if system_override else self.system_prompt
+        
+        # [RE-FEAT-121] Physical Identity Grounding
+        # Inject hardware reality into the system persona
+        hosts = self.infra.get("hosts", {})
+        localhost = hosts.get("localhost", {})
+        kender = hosts.get("KENDER", {})
+        lab_map = (
+            "\n[PHYSICAL_LAB_MAP]\n"
+            f"- Local Node (This Host): RTX 2080 Ti (11GB VRAM) | IP: {localhost.get('ip_hint', '127.0.0.1')}\n"
+            f"- Remote Node (KENDER): RTX 4090 (24GB VRAM) | IP: {kender.get('ip_hint', '192.168.1.26')}\n"
+            f"- Current Identity: {self.name.upper()}\n"
+        )
+        system = f"{lab_map}\n{system}"
+
         if memory:
             system += f"\n\n[MEMORY]:\n{memory}"
         if context:
