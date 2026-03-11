@@ -74,8 +74,22 @@ class NightlyRecruiter:
         try:
             with open(self.ledger_path, "r") as f:
                 ledger = json.load(f)
-            job_id = job.get("url") or (job.get("title", "") + job.get("company", ""))
-            return job_id in ledger
+            
+            # Case 1: Direct URL match
+            if job.get("url") and job.get("url") in ledger:
+                return True
+                
+            # Case 2: Fuzzy Identity match (Title + Company)
+            # Standardize strings to prevent whitespace/case noise
+            identity = (job.get("title", "") + job.get("company", "")).lower().replace(" ", "").strip()
+            if not identity: return False
+            
+            for item in ledger:
+                # If ledger item is an identity string (not a URL)
+                if not item.startswith("http") and identity == item.lower().replace(" ", "").strip():
+                    return True
+            
+            return False
         except Exception:
             return False
 
@@ -88,10 +102,16 @@ class NightlyRecruiter:
                 with open(self.ledger_path, "r") as f:
                     ledger = json.load(f)
             
-            job_id = job.get("url") or (job.get("title", "") + job.get("company", ""))
-            if job_id not in ledger:
-                ledger.append(job_id)
-                atomic_write_json(self.ledger_path, ledger[-500:])
+            # Always store both URL and Identity to be safe
+            url = job.get("url")
+            identity = (job.get("title", "") + job.get("company", ""))
+            
+            if url and url not in ledger:
+                ledger.append(url)
+            if identity and identity not in ledger:
+                ledger.append(identity)
+                
+            atomic_write_json(self.ledger_path, ledger[-1000:]) # Increased to 1000 for better historical coverage
         except Exception as e:
             logging.error(f"[RECRUITER] Ledger Update Failed: {e}")
 
@@ -119,8 +139,17 @@ class NightlyRecruiter:
             jobs = []
             if res and res.content:
                 import re
+                # Improved URL extraction
                 urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', res.content[0].text)
-                for url in list(set(urls))[:5]:
+                
+                # Internal De-duplication (preventing 5 identical openings in one run)
+                unique_urls = []
+                for u in urls:
+                    clean_u = u.split("?")[0].rstrip("/") # Strip query params for fuzzy matching
+                    if clean_u not in [x.split("?")[0].rstrip("/") for x in unique_urls]:
+                        unique_urls.append(u)
+                
+                for url in unique_urls[:5]:
                     jobs.append({"title": "Automated Search Result", "company": "External Site", "url": url, "description": ""})
             
             if not jobs:
@@ -129,17 +158,8 @@ class NightlyRecruiter:
         except Exception:
             return [{"title": "Senior Telemetry Architect", "company": "NVIDIA", "url": "https://nvidia.wd1.myworkdayjobs.com/...", "description": "High-fidelity telemetry and silicon validation in Hillsboro."}]
 
-    async def send_brief_uplink(self, brief: str, highest_score: float):
-        """Dispatches the brief via Gmail [FEAT-167]."""
-        subject = f"[RECRUITER] Nightly Acquisition Brief - {datetime.date.today()}"
-        if highest_score >= 0.90:
-            subject = f"🚨 [SCRAM ALERT] Critical Job Match - {datetime.date.today()}"
-        
-        logging.info(f"[RECRUITER] Dispatching Uplink: {subject}")
-        # Note: Actual gmail.send call is handled by the agentic orchestrator in live runs.
-
-    async def generate_brief(self, jobs: List[Dict], context: str) -> str:
-        """Synthesizes the Job Brief (The Fridge Note)."""
+    async def generate_brief(self, jobs: List[Dict], context: str) -> (str, int):
+        """Synthesizes the Job Brief (The Fridge Note). Returns path and new job count."""
         date_str = datetime.datetime.now().strftime("%Y-%m-%d")
         filename = f"job_brief_{date_str}.md"
         path = os.path.join(DRAFTS_DIR, filename)
@@ -174,8 +194,18 @@ class NightlyRecruiter:
         
         atomic_write_text(path, content)
         
-        await self.send_brief_uplink(content, highest_score)
-        return path
+        if valid_jobs > 0:
+            await self.send_brief_uplink(content, highest_score)
+            
+        return path, valid_jobs
+
+    async def send_brief_uplink(self, brief: str, highest_score: float):
+        """Dispatches the brief via Gmail [FEAT-167]."""
+        subject = f"[RECRUITER] Nightly Acquisition Brief - {datetime.date.today()}"
+        if highest_score >= 0.90:
+            subject = f"🚨 [SCRAM ALERT] Critical Job Match - {datetime.date.today()}"
+        
+        logging.info(f"[RECRUITER] Dispatching Uplink: {subject}")
 
 async def run_recruiter_task(archive_interface=None, brain_interface=None):
     recruiter = NightlyRecruiter(archive_interface, brain_interface)
@@ -183,7 +213,7 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None):
     
     ctx = await recruiter.fetch_career_context()
     jobs = await recruiter.search_for_jobs()
-    brief_path = await recruiter.generate_brief(jobs, ctx)
+    brief_path, new_count = await recruiter.generate_brief(jobs, ctx)
     
     # [FEAT-088] Dashboard Reporting
     try:
@@ -192,7 +222,7 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None):
             "last_run": datetime.datetime.now().isoformat(),
             "status": "UPLINK_NOMINAL",
             "brief_path": os.path.basename(brief_path),
-            "new_jobs": len(jobs)
+            "new_jobs": new_count
         }
         atomic_write_json(report_path, report)
     except Exception:
