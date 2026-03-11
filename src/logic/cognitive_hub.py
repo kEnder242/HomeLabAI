@@ -4,6 +4,7 @@ import logging
 import re
 import random
 import os
+import sys
 from infra.montana import reclaim_logger
 
 class CognitiveHub:
@@ -383,8 +384,21 @@ class CognitiveHub:
                                 "brain_source": "Pinky (Forensic)",
                                 "channel": "insight"
                             })
-                            # Simulate deep retrieval delay
-                            await asyncio.sleep(5)
+                            
+                            # Execute targeted mass scan
+                            try:
+                                scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
+                                # Use high-speed grep search first to see if it's worth it
+                                proc = await asyncio.create_subprocess_exec(
+                                    sys.executable, scan_script, "--keyword", query,
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.PIPE
+                                )
+                                stdout, stderr = await proc.communicate()
+                                logging.info(f"[HALLWAY] Scan complete. Exit code: {proc.returncode}")
+                            except Exception as e:
+                                logging.error(f"[HALLWAY] Scan execution failed: {e}")
+
                             return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
                         
                         logging.warning(f"[FEAT-173.2] Fidelity FAILED for {result['source']}. Triggering Strategic Pivot.")
