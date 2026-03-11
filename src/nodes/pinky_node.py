@@ -128,6 +128,12 @@ async def peek_strategic_map(pillar: str = "") -> str:
 
 
 @mcp.tool()
+async def trigger_morning_briefing() -> str:
+    """The High-Fidelity Update: Summarizes what happened while the user was away."""
+    return json.dumps({"tool": "trigger_morning_briefing", "parameters": {}})
+
+
+@mcp.tool()
 async def ping_engine(force: bool = False) -> str:
     """[FEAT-192] Verify and force engine readiness."""
     success, msg = await node.ping_engine(force=force)
