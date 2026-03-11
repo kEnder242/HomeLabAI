@@ -75,12 +75,20 @@ class CognitiveHub:
                         available_tools = []
 
                 # Hardcoded Hub Tools (Known Truths)
-                known_hub_tools = ["reply_to_user", "ask_brain", "bounce_node", "scribble_note", "trigger_morning_briefing"]
+                known_hub_tools = ["reply_to_user", "ask_brain", "bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history"]
                 
                 if tool not in available_tools and tool not in known_hub_tools:
                     logging.warning(f"[HUB] Hallucination Detected: {source} tried to use '{tool}'. Shunting to Pinky.")
                     hallucination_msg = f"Egad! I tried to use '{tool}', but my circuits don't support it yet. Narf!"
                     return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event)
+
+                if tool == "build_cv_summary" or tool == "access_personal_history":
+                    logging.info(f"[HUB] Cross-node tool call: {tool} requested by {source}")
+                    if "archive" in self.residents:
+                        res = await self.residents["archive"].call_tool(tool, params)
+                        return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event)
+                    else:
+                        return await self.execute_dispatch("Archive Node is offline.", "Pinky (System)", shutdown_event=shutdown_event)
 
                 if tool == "bounce_node":
                     reason = params.get("reason", "No reason provided.")
