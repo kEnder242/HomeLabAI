@@ -314,8 +314,9 @@ class AcmeLab:
                 logging.info("[ALARM] Triggering Nightly Recruiter...")
                 a_node = self.residents.get("archive")
                 b_node = self.residents.get("brain")
+                br_node = self.residents.get("browser")
                 try:
-                    await recruiter.run_recruiter_task(a_node, b_node)
+                    await recruiter.run_recruiter_task(a_node, b_node, br_node)
                 except Exception as e:
                     logging.error(f"[ALARM] Recruiter Task failed: {e}")
                 await asyncio.sleep(61)
@@ -703,6 +704,7 @@ class AcmeLab:
             ("brain", os.path.join(n_dir, "brain_node.py")),
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("architect", os.path.join(n_dir, "architect_node.py")),
+            ("browser", os.path.join(n_dir, "browser_node.py")),
         ]
 
         for name, path in nodes:
@@ -855,6 +857,7 @@ class AcmeLab:
                                 recruiter.run_recruiter_task(
                                     self.residents.get("archive"),
                                     self.residents.get("brain"),
+                                    self.residents.get("browser"),
                                 )
                             )
                         elif trigger_task == "architect":
