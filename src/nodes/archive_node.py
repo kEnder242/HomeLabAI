@@ -5,6 +5,7 @@ import datetime
 import glob
 import subprocess
 import chromadb
+import aiohttp
 from chromadb.utils import embedding_functions
 
 try:
@@ -488,6 +489,76 @@ async def internal_debate(topic: str, turns: int = 3) -> str:
         return f"✅ Internal Debate Initiated. Synthesis will appear in nightly_dialogue.json.\nPreview: {res[:200]}..."
     except Exception as e:
         return f"❌ Debate execution failed: {e}"
+
+
+@mcp.tool()
+async def get_lab_health() -> str:
+    """[FEAT-191] Retrieves physical telemetry from the Lab Attendant."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:9999/heartbeat", timeout=2.0) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    return json.dumps(data)
+                return json.dumps({"error": f"Attendant status {r.status}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def vram_vibe_check() -> str:
+    """[FEAT-191] Quick check of physical VRAM and temperature."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:9999/heartbeat", timeout=2.0) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    gpu = data.get("gpu", {})
+                    vram_used = gpu.get("vram_used_mb", 0)
+                    vram_total = gpu.get("vram_total_mb", 1)
+                    pct = (vram_used / vram_total) * 100
+                    temp = gpu.get("temperature", "??")
+                    return f"VRAM: {vram_used}MB / {vram_total}MB ({pct:.1f}%) | Temp: {temp}C"
+                return f"Error: Attendant unreachable (Status {r.status})"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+async def access_personal_history(topic_query: str = None) -> str:
+    """[RE-FEAT-193] Recalls teaching moments and previous failures from the learning ledger."""
+    l_path = os.path.join(DATA_DIR, "learning_ledger.jsonl")
+    if not os.path.exists(l_path):
+        return "No personal history found."
+    
+    try:
+        history = []
+        with open(l_path, "r") as f:
+            for line in f:
+                event = json.loads(line)
+                if not topic_query or topic_query.lower() in event.get("topic", "").lower():
+                    history.append(event)
+        
+        # Return last 5 events
+        recent = history[-5:]
+        return json.dumps(recent)
+    except Exception as e:
+        return f"Error reading ledger: {e}"
+
+
+@mcp.tool()
+async def build_cv_summary() -> str:
+    """[RE-FEAT-194] Bridges the 3x3 CVT context into the active reasoning stream."""
+    cvt_path = os.path.join(FIELD_NOTES_DIR, "data/cv_3x3_summary.json")
+    if not os.path.exists(cvt_path):
+        return "CV Strategy document missing. Please generate via Recruiter node."
+    
+    try:
+        with open(cvt_path, "r") as f:
+            data = json.load(f)
+            return json.dumps(data)
+    except Exception as e:
+        return f"Error: {e}"
 
 
 if __name__ == "__main__":

@@ -245,6 +245,33 @@ class BicameralNode:
 
         return "NONE", None, None
 
+    async def ping_engine(self, force=False):
+        """[FEAT-192] Verify and force engine readiness via /api/generate probe."""
+        engine, url, model = await self.probe_engine(force=force)
+        if engine == "NONE":
+            return False, "No engine online."
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                if engine == "OLLAMA":
+                    gen_url = url.replace("/api/chat", "/api/generate")
+                    payload = {
+                        "model": model,
+                        "prompt": "ping",
+                        "stream": False,
+                        "options": {"num_predict": 1}
+                    }
+                    async with session.post(gen_url, json=payload, timeout=5.0) as r:
+                        return r.status == 200, f"Ollama {r.status}"
+                elif engine == "VLLM":
+                    # Use the models endpoint for a quick health check
+                    health_url = url.replace("/v1/chat/completions", "/v1/models")
+                    async with session.get(health_url, timeout=5.0) as r:
+                        return r.status == 200, f"vLLM {r.status}"
+        except Exception as e:
+            return False, f"Ping error: {e}"
+        return False, "Unknown engine state"
+
     def get_tool_schemas(self):
         """Generates OpenAI-compatible tool schemas."""
         tools = []
