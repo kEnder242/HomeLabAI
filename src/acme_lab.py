@@ -179,7 +179,7 @@ class AcmeLab:
                         tic_msg = random.choice(base_tics)
 
                     await self.broadcast(
-                        {"brain": tic_msg, "brain_source": "Pinky (Reflex)"}
+                        {"brain": tic_msg, "brain_source": "Pinky (Reflex)", "is_internal": True}
                     )
                     tic_count += 1
 
