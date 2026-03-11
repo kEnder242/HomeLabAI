@@ -92,6 +92,7 @@ class AcmeLab:
         self.recent_interactions = []
         self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
         self.last_turn_time = 0.0
+        self._disconnect_task = None # [FEAT-171] Idle timer task
         reclaim_logger(role)
         self.set_proc_title()
 
@@ -355,17 +356,41 @@ class AcmeLab:
         """[FEAT-125] Refined Mutex: Lock is only cleared when all clients disconnect."""
         try:
             if active:
+                # Cancel existing disconnect timer if someone reconnects
+                if self._disconnect_task:
+                    self._disconnect_task.cancel()
+                    self._disconnect_task = None
+                
                 # Always ensure lock file exists if anyone is connected
                 if self.connected_clients:
                     with open(ROUND_TABLE_LOCK, "w") as f:
                         f.write(str(os.getpid()))
             else:
-                # Only remove if NO clients remain
+                # [FEAT-171] Intelligent Socket Logic
                 if not self.connected_clients:
-                    if os.path.exists(ROUND_TABLE_LOCK):
-                        os.remove(ROUND_TABLE_LOCK)
-        except Exception:
+                    if self.mode == "SERVICE_UNATTENDED":
+                        logging.info("[SOCKET] Persistence Mode: Staying resident despite disconnect.")
+                        return
+
+                    # Debug/Handshake Mode: Start idle timer
+                    if not self._disconnect_task:
+                        logging.info(f"[SOCKET] Debug Mode: Starting {self.afk_timeout}s idle timer.")
+                        self._disconnect_task = asyncio.create_task(self._delayed_lock_clear())
+        except Exception as e:
+            logging.error(f"[LOCK] Error: {e}")
+
+    async def _delayed_lock_clear(self):
+        """Helper for FEAT-171: Clears the lock after a timeout."""
+        try:
+            await asyncio.sleep(self.afk_timeout)
+            if not self.connected_clients:
+                logging.info("[SOCKET] Idle timeout reached. Clearing session lock.")
+                if os.path.exists(ROUND_TABLE_LOCK):
+                    os.remove(ROUND_TABLE_LOCK)
+        except asyncio.CancelledError:
             pass
+        finally:
+            self._disconnect_task = None
 
     def is_user_typing(self):
         """Returns True if the user has typed recently (2s window)."""
@@ -446,10 +471,7 @@ class AcmeLab:
                     }
                 )
             )
-
-            # [FEAT-072] Morning Briefing
-            asyncio.create_task(self.trigger_morning_briefing(ws))
-
+            
             # [FEAT-026] Initial Brain Status Feedback
             await ws.send_str(
                 json.dumps(
@@ -668,6 +690,12 @@ class AcmeLab:
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
+
+        # [WYWO] Intent Gate: Passive morning briefing trigger
+        q_low = query.lower()
+        if any(k in q_low for k in ["what's up", "any updates", "while i was out", "status report", "morning briefing", "anything happen"]):
+             logging.info("[WYWO] Morning briefing triggered by user intent.")
+             asyncio.create_task(self.trigger_morning_briefing(websocket))
 
         return await self.cognitive.process_query(
             query, 

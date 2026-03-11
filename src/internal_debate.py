@@ -1,7 +1,7 @@
 import logging
 import datetime
 import os
-import json
+from infra.atomic_io import atomic_write_json
 
 
 class InternalDebate:
@@ -95,8 +95,7 @@ class InternalDebate:
         }
 
         try:
-            with open(log_path, "w") as f:
-                json.dump(event, f, indent=4)
+            atomic_write_json(log_path, event, indent=4)
             logging.info(f"[DEBATE] Dialogue saved to {log_path}")
         except Exception as e:
             logging.error(f"[DEBATE] Failed to save dialogue: {e}")
