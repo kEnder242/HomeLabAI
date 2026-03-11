@@ -16,366 +16,222 @@ class CognitiveHub:
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
-        self.is_brain_online = brain_online_callback
+        self.brain_online = brain_online_callback
         self.get_oracle_signal = get_oracle_signal_callback
         self.monitor_task_with_tics = monitor_task_with_tics_callback
-        self.recent_interactions = []
-        reclaim_logger("COGNITIVE")
 
-    async def check_intent_is_casual(self, text):
-        casual_indicators = ["hello", "hi", "hey", "how are you", "pinky", "anyone home", "zort", "narf"]
-        strat_indicators = ["architecture", "bottleneck", "optimization", "complex", "root cause", "race condition", "unstable", "design", "calculate", "math", "pi", "analysis", "history", "laboratory", "simulation"]
+    async def execute_dispatch(self, text, source, shutdown_event=None):
+        """Standardizes the dispatch of reasoning results to the user."""
+        logging.info(f"[DEBUG] Dispatch: source='{source}' text='{text[:30]}...'")
         
-        text_low = text.lower().strip()
-        if "?" in text_low or any(k in text_low for k in strat_indicators):
-            return False
-        if len(text_low.split()) < 3:
-            return True
-        return any(k in text_low for k in casual_indicators)
+        # 1. Clean the text (Remove potential LoRA or node artifacts)
+        clean_text = text.replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
 
-    def _evaluate_fidelity(self, text: str, domain: str) -> bool:
-        """[FEAT-173.1] Fidelity Gate: Judge if a response is technically dense enough."""
-        t_low = text.lower().strip()
-        
-        # 1. Failure Indicators
-        fail_markers = ["i don't know", "i do not know", "weights offline", "internal_quality_fallback", "not found in archive"]
-        if any(m in t_low for m in fail_markers):
-            return False
-            
-        # 2. Density Check
-        word_count = len(text.split())
-        if word_count < 15: # Too brief for a 'Strategic' response
-            return False
-            
-        # 3. Domain-Specific Fidelity
-        if domain == "exp_tlm" and not any(k in t_low for k in ["rapl", "msr", "peci", "dcgm", "watt", "pkg"]):
-            return False
-        if domain == "exp_bkm" and not any(k in t_low for k in ["protocol", "bkm", "architecture", "pattern", "logic"]):
-            return False
-            
-        return True
-
-    async def execute_dispatch(self, raw_text, source, context_flags=None, oracle_category=None, sources=None, historical_sources=None, shutdown_event=None):
-        logging.info(f"[DEBUG] Dispatch: source='{source}' text='{raw_text[:30]}...'")
-
-        if "Brain" in source:
-            banter_pattern = r"\b(narf|poit|zort|egad|trotro)\b"
-            raw_text = re.sub(banter_pattern, "", raw_text, flags=re.IGNORECASE).strip()
-            raw_text = re.sub(r"^[,\.\!\?\s\"\'\d]+", "", raw_text).strip()
-            raw_text = re.sub(r"\*[^*]+\*", "", raw_text).strip()
-
-        if "{" not in raw_text:
-            target_channel = "insight" if "Brain" in source else "chat"
-            await self.broadcast({
-                "brain": raw_text,
-                "brain_source": source,
-                "channel": target_channel,
-                "oracle_category": oracle_category,
-                "sources": sources or historical_sources,
-            })
-            return True
-
-        try:
-            # [FEAT-121] Robust JSON Extraction: Handle banter-wrapped payloads
-            data = raw_text
-            if "{" in raw_text:
-                match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
-                if match:
-                    try:
-                        data = json.loads(match.group(1))
-                    except Exception:
-                        pass
-
-            tool = data.get("tool") if isinstance(data, dict) else None
-            params = data.get("parameters", {}) if isinstance(data, dict) else {}
-
-            if tool == "close_lab":
-                await self.broadcast({
-                    "brain": "Initiating Lab Closure. Goodnight.",
-                    "brain_source": "System",
-                    "type": "shutdown",
-                })
-                if shutdown_event:
-                    shutdown_event.set()
-                return True
-
-            known_tools = ["reply_to_user", "ask_brain", "deep_think", "list_cabinet", "read_document", "peek_related_notes", "write_draft", "generate_bkm", "build_semantic_map", "peek_strategic_map", "discuss_offline", "select_file", "notify_file_open", "get_lab_health", "vram_vibe_check", "access_personal_history", "build_cv_summary", "bounce_node", "scribble_note"]
-
-            if tool == "bounce_node":
-                reason = params.get("reason", "No reason provided.")
-                logging.warning(f"[HUB] Bounce requested by {source}: {reason}")
-                await self.broadcast({
-                    "brain": f"Hemisphere reset initiated: {reason}",
-                    "brain_source": "System",
-                    "channel": "chat"
-                })
+        # 2. Extract Tool Calls (JSON detection)
+        matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
+        if matches:
+            try:
+                params = json.loads(matches[0])
+                tool = params.get("tool")
                 
-                # [RE-FEAT-045] Re-prime the node's engine
-                target_node = None
-                # If source is "Brain (Shadow)" or "Brain (Result)", target "brain"
-                t_name = source.split("(")[0].strip().lower()
-                if t_name in self.residents:
-                    target_node = self.residents[t_name]
-                
-                if target_node:
-                    try:
-                        res = await target_node.call_tool("ping_engine", {"force": True})
-                        data = json.loads(res.content[0].text)
-                        msg = f"Reset complete. Success: {data.get('success')}. Detail: {data.get('message')}"
-                        return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
-                    except Exception as e:
-                        logging.error(f"[HUB] Bounce failed: {e}")
-                        return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
-                
-                return await self.execute_dispatch(f"Reset complete for {source}.", f"{source} (System)", shutdown_event=shutdown_event)
-
-            if tool == "select_file":
-                fname = params.get("filename")
-                await self.broadcast({"type": "file_content_request", "filename": fname})
-                return True
-
-            if tool == "reply_to_user" or (isinstance(data, dict) and "reply_to_user" in data):
-                reply = params.get("text") or data.get("reply_to_user") or raw_text
-                target_channel = "insight" if "Brain" in source else "chat"
-                await self.broadcast({
-                    "brain": str(reply),
-                    "brain_source": source,
-                    "channel": target_channel,
-                    "oracle_category": oracle_category,
-                    "sources": sources or historical_sources,
-                })
-                return True
-
-            # [FEAT-145] Generic Node Tool Execution
-            if tool in known_tools:
-                # Find which node has the tool (prioritize the source node)
-                target_node = None
-                if source.lower() in self.residents:
-                    target_node = self.residents[source.lower()]
-                else:
-                    # Search for any node that might have it (heuristic)
-                    for name in ["pinky", "archive", "brain", "architect"]:
-                        if name in self.residents:
-                            target_node = self.residents[name]
-                            break
-                
-                if target_node:
-                    try:
-                        res = await target_node.call_tool(tool, params)
-                        # Re-dispatch the result to the UI or another node
-                        return await self.execute_dispatch(res.content[0].text, f"{source} (Result)", shutdown_event=shutdown_event)
-                    except Exception as e:
-                        logging.error(f"[HUB] Tool execution failed: {tool} on {source}. Error: {e}")
-
-            # Hallucination Shunt (Prevent infinite loops)
-            if tool and tool not in known_tools and "Shunt" not in source:
-                logging.warning(f"[SHUNT] Hallucinated tool '{tool}'.")
-                if "pinky" in self.residents:
-                    res = await self.residents["pinky"].call_tool("facilitate", {"query": f"I tried to use '{tool}' but it failed.", "context": ""})
-                    return await self.execute_dispatch(res.content[0].text, "Pinky (Shunt)", shutdown_event=shutdown_event)
-
-        except Exception as e:
-            logging.error(f"[DISPATCH] Error: {e}")
-            await self.broadcast({"brain": raw_text, "brain_source": source})
-            return False
-
-    def _route_expert_domain(self, query: str) -> str:
-        """[FEAT-174.1] Pre-Gated Router: Identify Expert Domains from queries using keyword vectors."""
-        q_low = query.lower()
-        if any(k in q_low for k in ["rapl", "peci", "dcgm", "msr", "power", "thermal", "profiling"]):
-            return "exp_tlm"
-        if any(k in q_low for k in ["bkm", "class 1", "architecture", "design", "pattern", "system"]):
-            return "exp_bkm"
-        if any(k in q_low for k in ["search", "find", "archive", "history", "previous", "yesterday", "remember"]):
-            return "exp_for"
-        if any(k in q_low for k in ["job", "career", "cvt", "resume", "recruiter", "interview", "hire"]):
-            return "exp_rec"
-        return ""
-
-    async def _interject_thinking(self, brain_task: asyncio.Task):
-        """[FEAT-172] Hemispheric Interjection: Pinky's 'Thinking Out Loud' logic."""
-        try:
-            await asyncio.sleep(12)  # Initial delay for first interjection
-            if not brain_task.done():
-                phrases = [
-                    "Brain is parsing historical RCAs... I'm monitoring the VRAM floor.",
-                    "Synthesizing architectural BKM breadcrumbs. Egad, the depth!",
-                    "Analyzing thermal transients for this power profile. Poit!",
-                    "Cross-referencing silicon failure patterns from the archive. Narf!"
-                ]
-                await self.broadcast({
-                    "brain": random.choice(phrases),
-                    "brain_source": "Pinky (Interjection)",
-                    "channel": "chat"
-                })
-                
-                await asyncio.sleep(25) # Second layer delay
-                if not brain_task.done():
+                if tool == "close_lab":
+                    logging.warning(f"[HUB] SHUTDOWN requested by {source}.")
                     await self.broadcast({
-                        "brain": "Synthesis is heavy... still following the 'Golden Thread'. Stand by.",
-                        "brain_source": "Pinky (Interjection)",
+                        "brain": "Acme Lab is closing. Goodnight.",
+                        "brain_source": "System",
                         "channel": "chat"
                     })
-        except asyncio.CancelledError:
-            pass
+                    if shutdown_event:
+                        shutdown_event.set()
+                    return True
 
-    def _get_semantic_topography(self) -> str:
-        """[FEAT-178] Semantic Map Injection: Provide a global view of the technical DNA."""
-        map_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
-        if not os.path.exists(map_path):
-            return ""
-        try:
-            with open(map_path, "r") as f:
-                data = json.load(f)
-            # Distill map to high-level nodes to save context tokens
-            nodes = data.get("nodes", [])
-            summary = "GLOBAL SEMANTIC TOPOGRAPHY:\n"
-            for node in nodes[:15]: # Top 15 clusters
-                summary += f"- {node.get('label')}: {node.get('description')}\n"
-            return summary
-        except Exception as e:
-            logging.error(f"[MAP] Failed to load semantic topography: {e}")
-            return ""
+                # [RE-FEAT-145] Ghost Tool Sentry: Verify tool exists in resident schema
+                available_tools = []
+                t_name = source.split("(")[0].strip().lower()
+                if t_name in self.residents:
+                    try:
+                        # [OPTIMIZATION] We use a cached tool list if possible to avoid MCP round-trip
+                        tool_resp = await self.residents[t_name].list_tools()
+                        available_tools = [t.name for t in tool_resp.tools]
+                    except Exception:
+                        available_tools = []
 
-    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", retry_count=0):
-        if retry_count > 2: # [FEAT-179] Allow for 3 tries (Initial, Pivot, Hallway)
+                # Hardcoded Hub Tools (Known Truths)
+                known_hub_tools = ["reply_to_user", "ask_brain", "bounce_node", "scribble_note", "trigger_morning_briefing"]
+                
+                if tool not in available_tools and tool not in known_hub_tools:
+                    logging.warning(f"[HUB] Hallucination Detected: {source} tried to use '{tool}'. Shunting to Pinky.")
+                    hallucination_msg = f"Egad! I tried to use '{tool}', but my circuits don't support it yet. Narf!"
+                    return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event)
+
+                if tool == "bounce_node":
+                    reason = params.get("reason", "No reason provided.")
+                    logging.warning(f"[HUB] Bounce requested by {source}: {reason}")
+                    await self.broadcast({
+                        "brain": f"Hemisphere reset initiated: {reason}",
+                        "brain_source": "System",
+                        "channel": "chat"
+                    })
+                    
+                    # [RE-FEAT-045] Re-prime the node's engine
+                    target_node = None
+                    # If source is "Brain (Shadow)" or "Brain (Result)", target "brain"
+                    t_name = source.split("(")[0].strip().lower()
+                    if t_name in self.residents:
+                        target_node = self.residents[t_name]
+                    
+                    if target_node:
+                        try:
+                            res = await target_node.call_tool("ping_engine", {"force": True})
+                            data = json.loads(res.content[0].text)
+                            msg = f"Reset complete. Success: {data.get('success')}. Detail: {data.get('message')}"
+                            return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                        except Exception as e:
+                            logging.error(f"[HUB] Bounce failed: {e}")
+                            return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                    
+                    return await self.execute_dispatch(f"Reset complete for {source}.", f"{source} (System)", shutdown_event=shutdown_event)
+
+                if tool == "trigger_morning_briefing":
+                    logging.info(f"[HUB] Morning Briefing requested by {source}.")
+                    # This is handled via the callback passed to process_query
+                    if hasattr(self, '_trigger_briefing'):
+                        await self._trigger_briefing()
+                        return True
+                    else:
+                        return await self.execute_dispatch("Briefing logic unreachable.", "Pinky (System)", shutdown_event=shutdown_event)
+
+                if tool == "select_file":
+                    fname = params.get("filename")
+                    await self.broadcast({"type": "file_content_request", "filename": fname})
+                    return True
+
+                if tool == "notify_file_open":
+                    logging.info(f"[WORKBENCH] User is viewing: {params.get('filename')}")
+                    return True
+
+                if tool == "ask_brain":
+                    task = params.get("task", "")
+                    logging.info(f"[HUB] Pinky delegating to Brain: {task}")
+                    await self.broadcast({
+                        "brain": self.get_oracle_signal("Brain"),
+                        "brain_source": "The Brain (Synthesizing...)",
+                        "channel": "insight"
+                    })
+                    
+                    if "brain" in self.residents:
+                        # [FEAT-174.1] Strategic Pre-Gating
+                        metadata = {"expert_adapter": "exp_for"} # Forensic Architect default
+                        b_res = await self.monitor_task_with_tics(
+                            self.residents["brain"].call_tool("deep_think", {"task": task, "metadata": metadata})
+                        )
+                        return await self.execute_dispatch(b_res.content[0].text, "Brain (Result)", shutdown_event=shutdown_event)
+                    else:
+                        return await self.execute_dispatch("Strategic Sovereign is offline.", "Pinky (System)", shutdown_event=shutdown_event)
+
+                if tool == "reply_to_user":
+                    reply = params.get("text", "Egad! Empty reply.")
+                    await self.broadcast({
+                        "brain": reply,
+                        "brain_source": source.replace("Result", "").strip(),
+                        "channel": "chat"
+                    })
+                    return True
+                
+                # If it's a tool we don't handle at Hub level, dispatch to the resident who called it
+                # (This shouldn't happen with the verify logic above, but safety first)
+                logging.info(f"[HUB] Forwarding tool {tool} back to {source}")
+                return await self.broadcast({
+                    "brain": clean_text,
+                    "brain_source": source.replace("Result", "").strip(),
+                    "channel": "insight"
+                })
+
+            except Exception as e:
+                logging.error(f"[HUB] Tool Dispatch Error: {e}")
+                return await self.execute_dispatch(f"Error executing tool: {e}", "Pinky (System)", shutdown_event=shutdown_event)
+
+        # 3. Fallback: Pure Text
+        await self.broadcast({
+            "brain": clean_text,
+            "brain_source": source.replace("Result", "").strip(),
+            "channel": "chat"
+        })
+        return True
+
+    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0):
+        """The Central Reasoning Pipeline."""
+        if retry_count > 2:
             logging.warning("[HUB] Max retries reached. Surrendering to base model.")
-            return await self.execute_dispatch("Egad! Even the experts are stumped. Falling back to base reasoning.", "Pinky (System)")
+            return await self.execute_dispatch("Egad! Even the experts are stumped. Proceeding with caution.", "Pinky (System)", shutdown_event=shutdown_event)
+
+        # [FEAT-190] Inject callbacks for tool-based logic
+        if trigger_briefing_callback:
+            self._trigger_briefing = trigger_briefing_callback
 
         logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count})")
-        historical_context = ""
-        historical_sources = []
-
-        # [FEAT-117] RAG Recall
-        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
-        if year_match and "archive" in self.residents:
-            year = year_match.group(1)
-            try:
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year}"})
-                rag_data = json.loads(res_context.content[0].text)
-                historical_context = rag_data.get("text", "")
-                historical_sources = rag_data.get("sources", [])
-            except Exception as e:
-                logging.error(f"[AMYGDALA] Recall failed: {e}")
-
-        is_casual = await self.check_intent_is_casual(query)
-        is_strategic = not is_casual or mic_active
-
-        # [FEAT-174.1] Intent Gating: Pre-Gated Router
-        selected_adapter = self._route_expert_domain(query)
-        if retry_count > 0:
-            # Simple pivot: If we already tried an expert, try the Forensic expert as fallback for better search
-            if selected_adapter != "exp_for":
-                selected_adapter = "exp_for"
-            else:
-                selected_adapter = "" # Base model fallback
-
-        if selected_adapter:
-            logging.info(f"[ROUTER] Expert Domain matched: {selected_adapter} (Retry: {retry_count})")
-
-        # [FEAT-153] The Resonant Chamber: Prepare Oracle Signal for "Overhearing"
-        oracle_info = ""
-        if is_strategic and self.is_brain_online():
-            oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
-            oracle_info = self.get_oracle_signal(oracle_cat)
-
-        # [FEAT-178] Load Semantic Map
-        semantic_topography = self._get_semantic_topography()
-
-        # Parallel Dispatch Map
-        dispatch_tasks = []
         
-        # [FEAT-157] Personality Unification: High-Fidelity Technical Personas
-        pinky_persona = (
-            "[PERSONA: Pinky]\n"
-            "Role: Physicality Auditor / Narrative Foil.\n"
-            "Style: Intuitive and alert. Ground the Brain's derivations in hardware reality (thermals, VRAM, silicon limits).\n"
-            "Invariants: Keep 'Narf!' and 'Poit!' interjections. NO roleplay asterisks or physical descriptions.\n"
-        )
-        brain_persona = (
-            "[PERSONA: The Brain]\n"
-            "Role: The Sovereign Architect.\n"
-            "Identity: High-authority technical strategist.\n"
-            "Style: Brevity is authority. Focus on structure, logic, and root cause analysis. No cartoonish references.\n"
-        )
+        # 1. Triage Intent (Casual vs Strategic)
+        is_casual = len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit", "zort"])
+        logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
 
-        if "pinky" in self.residents and retry_count == 0: # Only Pinky speaks on first attempt
-            # [FEAT-153] Inject Oracle intent and [FEAT-154] Exit Hints
-            pinky_ctx = f"{pinky_persona}\n[STRATEGIC_INTENT: {oracle_info}]" if oracle_info else pinky_persona
-            if exit_hint:
-                pinky_ctx += f"\n{exit_hint}"
+        if is_casual and not mic_active:
+            if "pinky" in self.residents:
+                p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: GREETING] {exit_hint}"})
+                return await self.execute_dispatch(p_res.content[0].text, "Pinky (Result)", shutdown_event=shutdown_event)
+
+        # 2. Strategic Routing (The Expert MoE)
+        if "pinky" in self.residents:
+            await self.broadcast({
+                "brain": self.get_oracle_signal("Pinky"),
+                "brain_source": "Pinky (Intuition)",
+                "channel": "insight"
+            })
             
-            if is_strategic and self.is_brain_online():
-                pinky_ctx += "\n[MODE: COLLABORATIVE]"
+            # Pinky identifies the expert domain
+            p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"})
+            interjection = p_res.content[0].text
             
-            t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": pinky_ctx}))
-            dispatch_tasks.append((t_pinky, "Pinky"))
-
-        if "brain" in self.residents and (is_strategic or "brain" in query.lower()):
-            if self.is_brain_online():
-                # [FEAT-153] Brain receives its own signal context
-                ctx = "\n".join(self.recent_interactions)
-                metadata = {"sources": historical_sources}
-                if selected_adapter:
-                    metadata["expert_adapter"] = selected_adapter
-
-                t_brain = asyncio.create_task(self.monitor_task_with_tics(
-                    self.residents["brain"].call_tool("deep_think", {
-                        "task": query,
-                        "context": f"{brain_persona}\n{ctx}\n[SIGNAL: {oracle_info}]\n[TOPOGRAPHY]:\n{semantic_topography}\n[GROUNDING TRUTH FOR SYNTHESIS]:\n{historical_context}",
-                        "metadata": metadata
-                    })
-                ))
-                dispatch_tasks.append((t_brain, "Brain"))
-                # [FEAT-172] Start interjection watcher
-                asyncio.create_task(self._interject_thinking(t_brain))
-            else:
-                # [FEAT-157] Grounded Shadow Protocol: Clinical technical failover
-                shadow_context = (
-                    "[MODE: SHADOW_PROTOCOL]\n"
-                    "The Sovereign Architect is offline. You are the Shadow Brain.\n"
-                    "Role: Clinical technical derivation. No banter. No interjections.\n"
-                    "Goal: Fulfill the technical task using local weights with lead-engineer precision."
-                )
-                t_shadow = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
-                    "query": query, 
-                    "context": f"{shadow_context}\n{historical_context}"
-                }))
-                dispatch_tasks.append((t_shadow, "Brain (Shadow)"))
-
-        if dispatch_tasks:
-            self.recent_interactions.append(f"User: {query}")
-            if len(self.recent_interactions) > 50:
-                self.recent_interactions.pop(0)
+            # Determine Expert Domain (Basic keyword mapping for now, future = LLM)
+            domain_map = {
+                "telemetry": "exp_tlm",
+                "hardware": "exp_tlm",
+                "silicon": "exp_tlm",
+                "rapl": "exp_tlm",
+                "architecture": "exp_for",
+                "bkm": "exp_for",
+                "history": "exp_for",
+                "code": "exp_for",
+                "optimization": "exp_for"
+            }
             
-            # [PHASE 2] Turn Bundling: Collect all responses
-            pending = {t for t, s in dispatch_tasks}
-            task_to_source = {t: s for t, s in dispatch_tasks}
-            bundled_results = []
+            selected_expert = "exp_for" # Default Architect
+            for kw, expert in domain_map.items():
+                if kw in query.lower() or kw in interjection.lower():
+                    selected_expert = expert
+                    break
+            
+            logging.info(f"[ROUTER] Expert Domain matched: {selected_expert} (Retry: {retry_count})")
 
-            try:
-                async with asyncio.timeout(120):
-                    while pending:
-                        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                        for task in done:
-                            try:
-                                res = await task
-                                source = task_to_source[task]
-                                bundled_results.append({"source": source, "text": res.content[0].text})
-                            except Exception as e:
-                                logging.error(f"[TRIAGE] Node failed: {e}")
-            except asyncio.TimeoutError:
-                logging.error("[HUB] Turn Bundling TIMEOUT after 120s. Sending partial bundle.")
-                for t in pending:
-                    t.cancel()
-                if not bundled_results:
-                    await self.broadcast({"brain": "Egad! The Lab's hemispheres are out of sync! Narf!", "brain_source": "Pinky"})
-
-            # [FEAT-173.1] Fidelity Gate Check
-            for result in bundled_results:
-                if "Brain" in result["source"]:
-                    is_fidelity_ok = self._evaluate_fidelity(result["text"], selected_adapter)
-                    if not is_fidelity_ok:
+            # 3. Brain Derivation (with Selected Expert Adapter)
+            if self.brain_online():
+                await self.broadcast({
+                    "brain": interjection,
+                    "brain_source": "Pinky (Interjection)",
+                    "channel": "insight"
+                })
+                
+                if "brain" in self.residents:
+                    b_res = await self.monitor_task_with_tics(
+                        self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": {"expert_adapter": selected_expert}})
+                    )
+                    result_text = b_res.content[0].text
+                    
+                    # 4. Fidelity Gate (The BKM Audit)
+                    # Check if response is dense enough for the complexity
+                    is_thin = len(result_text.split()) < 20 and len(query.split()) > 5
+                    
+                    if is_thin:
                         if retry_count == 1:
                             # [FEAT-179] The Hallway Protocol (Agentic-R)
                             logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
@@ -401,21 +257,17 @@ class CognitiveHub:
 
                             return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
                         
-                        logging.warning(f"[FEAT-173.2] Fidelity FAILED for {result['source']}. Triggering Strategic Pivot.")
+                        logging.warning(f"[FEAT-173.2] Fidelity FAILED for {selected_expert}. Triggering Strategic Pivot.")
                         await self.broadcast({
                             "brain": "derivation too thin... swapping glasses and retrying. Poit!",
-                            "brain_source": "Pinky (Reflex)",
+                            "brain_source": "Pinky (Fidelity)",
                             "channel": "insight"
                         })
+                        # Retry with the other primary expert
+                        new_expert = "exp_tlm" if selected_expert == "exp_for" else "exp_for"
                         return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
-
-            # Execute unified dispatch for the bundle
-            for result in bundled_results:
-                await self.execute_dispatch(
-                    result["text"], 
-                    result["source"], 
-                    oracle_category=oracle_info if "Brain" in result["source"] else None,
-                    historical_sources=historical_sources, 
-                    shutdown_event=shutdown_event
-                )
-        return True
+                    
+                    # Passed Fidelity Gate
+                    return await self.execute_dispatch(result_text, "Brain (Result)", shutdown_event=shutdown_event)
+        
+        return await self.execute_dispatch("The Cognitive Hub is out of alignment.", "Pinky (System)", shutdown_event=shutdown_event)

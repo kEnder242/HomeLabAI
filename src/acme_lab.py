@@ -121,32 +121,28 @@ class AcmeLab:
             except Exception:
                 self.connected_clients.remove(ws)
 
-    async def trigger_morning_briefing(self, ws):
-        """[FEAT-072] Checks for recent nightly dialogue and briefs the user."""
+    async def trigger_morning_briefing(self, ws=None):
+        """[FEAT-072] Briefs the user on recent nightly dialogue."""
         import datetime
+        import logging
 
         if os.path.exists(NIGHTLY_DIALOGUE_FILE):
             try:
                 with open(NIGHTLY_DIALOGUE_FILE, "r") as f:
                     data = json.load(f)
 
-                # Only brief if it's from 'today'
-                diag_date = data.get("timestamp", "").split(" ")[0]
-                today = datetime.datetime.now().strftime("%Y-%m-%d")
-
-                if diag_date == today:
-                    content = data.get("content", "")
-                    # Clean up formatting for briefing
-                    summary = content[:250].replace("\n", " ")
-                    await ws.send_str(
-                        json.dumps(
-                            {
-                                "brain": f"While you were out, we discussed: {summary}...",
-                                "brain_source": "Pinky",
-                                "channel": "chat",
-                            }
-                        )
-                    )
+                # Brief the user
+                content = data.get("content", "")
+                summary = content[:500].replace("\n", " ")
+                msg = {
+                    "brain": f"While you were out, we discussed: {summary}...",
+                    "brain_source": "Pinky (Reviewer)",
+                    "channel": "chat",
+                }
+                if ws:
+                    await ws.send_str(json.dumps(msg))
+                else:
+                    await self.broadcast(msg)
             except Exception as e:
                 logging.error(f"[BRIEF] Failed to trigger briefing: {e}")
 
@@ -691,17 +687,12 @@ class AcmeLab:
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
 
-        # [WYWO] Intent Gate: Passive morning briefing trigger
-        q_low = query.lower()
-        if any(k in q_low for k in ["what's up", "any updates", "while i was out", "status report", "morning briefing", "anything happen"]):
-             logging.info("[WYWO] Morning briefing triggered by user intent.")
-             asyncio.create_task(self.trigger_morning_briefing(websocket))
-
         return await self.cognitive.process_query(
             query, 
             mic_active=self.mic_active, 
             shutdown_event=self.shutdown_event,
-            exit_hint=exit_hint
+            exit_hint=exit_hint,
+            trigger_briefing_callback=lambda: self.trigger_morning_briefing(websocket)
         )
 
     async def boot_residents(self, stack: AsyncExitStack):
