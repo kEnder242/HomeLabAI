@@ -121,6 +121,19 @@
     *   **Performance Delta**: (If applicable) Perceived or measured change in latency, VRAM, or responsiveness.
 3.  **Tone**: Professional, direct, and technical. Avoid conversational chitchat.
 
+## BKM-015: Semantic Anchor Protocol (Anti-Drift)
+**Objective**: Eliminate functional drift caused by hard-coded keyword lists.
+
+1.  **Rule of the Ghost Keyword**: No technical keywords or domain-specific anchors (e.g., "RAPL", "ESB2") are allowed in `.py` logic blocks. They must reside in `config/intent_anchors.json` or a dedicated ChromaDB collection.
+2.  **The Vibe-First Mandate**: Any `if/else` logic determining intent or routing must be preceded by a call to a `_classify_vibe()` or `_route_expert_domain()` method that utilizes a semantic pass (Vector or LLM).
+3.  **DNA-First Verification**: A feature is only marked `[COMPLETE]` if its implementation matches the "Mechanism" described in `FeatureTracker.md`. If the mechanism specifies "Sentinel Pass" and the code uses "List-Matching," the status is `[PARTIAL/STALE]`.
+
+## BKM-016: The Montana Protocol (Logger Control)
+**Objective**: Prevent external library logger hijacking and ensure forensic traceability.
+
+1.  **Usage**: Call `infra.montana.reclaim_logger(role)` at the top of every node and main entry point.
+2.  **Fingerprint**: All log output must be preceded by the unique session fingerprint `[BOOT_HASH:COMMIT:ROLE]` to ensure forensic traceability across the federated lab.
+
 ## BKM-017: Agentic Delegation (Context Preservation)
 *   **Why:** To postpone "Manic Phases" (cognitive overload leading to lossy compression of design documentation).
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."

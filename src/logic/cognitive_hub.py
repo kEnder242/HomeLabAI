@@ -19,6 +19,21 @@ class CognitiveHub:
         self.brain_online = brain_online_callback
         self.get_oracle_signal = get_oracle_signal_callback
         self.monitor_task_with_tics = monitor_task_with_tics_callback
+        
+        # [BKM-015] Anchor Migration
+        self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
+        self.anchors_path = os.path.join(self.config_dir, "intent_anchors.json")
+        self.intent_anchors = {}
+        if os.path.exists(self.anchors_path):
+            with open(self.anchors_path, "r") as f:
+                self.intent_anchors = json.load(f)
+        
+        # [FEAT-178] Semantic Integration
+        self.semantic_map_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
+        self.semantic_map = {}
+        if os.path.exists(self.semantic_map_path):
+            with open(self.semantic_map_path, "r") as f:
+                self.semantic_map = json.load(f)
 
     async def execute_dispatch(self, text, source, shutdown_event=None):
         """
@@ -163,31 +178,22 @@ class CognitiveHub:
         return clean_text
 
     def _route_expert_domain(self, query, interjection=""):
-        """[FEAT-174.1] Strategic Routing: Identifies the expert adapter needed."""
-        domain_map = {
-            "telemetry": "exp_tlm",
-            "hardware": "exp_tlm",
-            "silicon": "exp_tlm",
-            "rapl": "exp_tlm",
-            "architecture": "exp_bkm",
-            "architectural": "exp_bkm",
-            "bkm": "exp_bkm",
-            "history": "exp_for",
-            "code": "exp_for",
-            "optimization": "exp_for"
-        }
-        
+        """[FEAT-174.1] Strategic Routing: Identifies the expert adapter needed using JSON anchors."""
         q_low = query.lower()
         i_low = interjection.lower()
         
-        for kw, expert in domain_map.items():
-            if kw in q_low or kw in i_low:
-                return expert
+        # [BKM-015] Use loaded anchors for dynamic routing
+        for domain, cfg in self.intent_anchors.items():
+            adapter = cfg.get("adapter")
+            anchors = cfg.get("anchors", [])
+            for anchor in anchors:
+                if anchor in q_low or anchor in i_low:
+                    return adapter
         
         return "exp_for" # Default Forensic/Architect
 
-    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0):
-        """The Central Reasoning Pipeline."""
+    async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
+        """The Central Reasoning Pipeline with [GHOST-01] Parallel Turn Bundler."""
         if retry_count > 2:
             logging.warning("[HUB] Max retries reached. Surrendering to base model.")
             return await self.execute_dispatch("Egad! Even the experts are stumped. Proceeding with caution.", "Pinky (System)", shutdown_event=shutdown_event)
@@ -196,97 +202,116 @@ class CognitiveHub:
         if trigger_briefing_callback:
             self._trigger_briefing = trigger_briefing_callback
 
-        logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count})")
+        logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count}, Density: {turn_density:.2f})")
         
         # 1. Triage Intent (Casual vs Strategic)
         is_casual = len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit", "zort"])
-        logging.info(f"[DEBUG] query='{query}' is_casual={is_casual}")
-
-        if is_casual and not mic_active:
-            if "pinky" in self.residents:
-                p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: GREETING] {exit_hint}"})
-                # Check for tool call in Pinky response
-                return await self.execute_dispatch(p_res.content[0].text, "Pinky (Result)", shutdown_event=shutdown_event)
-
+        
         # 2. Strategic Routing (The Expert MoE)
-        if "pinky" in self.residents:
-            await self.broadcast({
-                "brain": self.get_oracle_signal("Pinky"),
-                "brain_source": "Pinky (Intuition)",
-                "channel": "insight"
-            })
-            
-            # Pinky identifies the expert domain
-            p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"})
-            interjection = p_res.content[0].text
-            
-            # Recursive check: if Pinky response itself is a tool call, handle it
-            if "{" in interjection:
-                # Dispatch tool and return
-                return await self.execute_dispatch(interjection, "Pinky (Result)", shutdown_event=shutdown_event)
-
-            selected_expert = self._route_expert_domain(query, interjection)
-            logging.info(f"[ROUTER] Expert Domain matched: {selected_expert} (Retry: {retry_count})")
-
-            # 3. Brain Derivation (with Selected Expert Adapter)
-            if self.brain_online():
+        selected_expert = self._route_expert_domain(query)
+        
+        # [PHASE 2] Turn Bundling: Parallel Dispatch
+        dispatch_tasks = []
+        
+        if is_casual and not mic_active and retry_count == 0:
+            if "pinky" in self.residents:
+                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: GREETING] {exit_hint}"}))
+                dispatch_tasks.append((t_pinky, "Pinky"))
+        else:
+            # Strategic Path
+            if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
-                    "brain": interjection,
-                    "brain_source": "Pinky (Interjection)",
+                    "brain": self.get_oracle_signal("Pinky"),
+                    "brain_source": "Pinky (Intuition)",
                     "channel": "insight"
                 })
-                
-                if "brain" in self.residents:
-                    b_res = await self.monitor_task_with_tics(
-                        self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": {"expert_adapter": selected_expert}})
-                    )
-                    result_text = b_res.content[0].text
-                    
-                    # Check for tool calls first
-                    if "{" in result_text:
-                        # Tool call dispatched
-                        return await self.execute_dispatch(result_text, "Brain (Result)", shutdown_event=shutdown_event)
+                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"}))
+                dispatch_tasks.append((t_pinky, "Pinky"))
 
-                    # 4. Fidelity Gate (The BKM Audit)
-                    # Check if response is dense enough for the complexity
-                    is_thin = len(result_text.split()) < 20 and len(query.split()) > 4
-                    
-                    if is_thin:
-                        if retry_count == 1:
-                            # [FEAT-179] The Hallway Protocol (Agentic-R)
-                            logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
-                            await self.broadcast({
-                                "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
-                                "brain_source": "Pinky (Forensic)",
-                                "channel": "insight"
-                            })
-                            
-                            # Execute targeted mass scan
+            if self.brain_online() and "brain" in self.residents:
+                # [FEAT-174.1] Strategic Pre-Gating
+                metadata = {"expert_adapter": selected_expert}
+                t_brain = asyncio.create_task(self.monitor_task_with_tics(
+                    self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata})
+                ))
+                dispatch_tasks.append((t_brain, "Brain"))
+
+        # [GHOST-01-RECOVER] Parallel Turn Bundler: Collect all responses
+        bundled_results = []
+        if dispatch_tasks:
+            pending = {t for t, s in dispatch_tasks}
+            task_to_source = {t: s for t, s in dispatch_tasks}
+            try:
+                async with asyncio.timeout(120):
+                    while pending:
+                        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                        for task in done:
                             try:
-                                scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-                                proc = await asyncio.create_subprocess_exec(
-                                    sys.executable, scan_script, "--keyword", query,
-                                    stdout=asyncio.subprocess.PIPE,
-                                    stderr=asyncio.subprocess.PIPE
-                                )
-                                stdout, stderr = await proc.communicate()
-                                logging.info(f"[HALLWAY] Scan complete. Exit code: {proc.returncode}")
+                                res = await task
+                                source = task_to_source[task]
+                                bundled_results.append({"source": source, "text": res.content[0].text})
                             except Exception as e:
-                                logging.error(f"[HALLWAY] Scan execution failed: {e}")
+                                logging.error(f"[HUB] Task failed for {task_to_source[task]}: {e}")
+            except asyncio.TimeoutError:
+                for t in pending: t.cancel()
+                logging.warning("[HUB] Turn bundling timed out.")
 
-                            return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
-                        
-                        logging.warning(f"[FEAT-173.2] Fidelity FAILED for {selected_expert}. Triggering Strategic Pivot.")
+        # 4. Processing Bundled Results
+        for result in bundled_results:
+            result_text = result["text"]
+            source = result["source"]
+            
+            # Recursive check: if response is a tool call, handle it
+            if "{" in result_text:
+                await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event)
+                continue
+
+            # Fidelity Gate (The BKM Audit)
+            if source == "Brain":
+                # [FEAT-154] Use turn_density to adjust vibe thresholds
+                # Higher density (more fast turns) = lower threshold for "thin"
+                base_threshold = 20
+                adjusted_threshold = max(5, base_threshold - int(turn_density * 2))
+                
+                is_thin = len(result_text.split()) < adjusted_threshold and len(query.split()) > 4
+                
+                if is_thin:
+                    if retry_count == 1:
+                        # [FEAT-179] The Hallway Protocol (Agentic-R)
+                        logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
                         await self.broadcast({
-                            "brain": "derivation too thin... swapping glasses and retrying. Poit!",
-                            "brain_source": "Pinky (Fidelity)",
+                            "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
+                            "brain_source": "Pinky (Forensic)",
                             "channel": "insight"
                         })
-                        # Retry with the other primary expert
-                        new_expert = "exp_tlm" if "tlm" not in selected_expert else "exp_bkm"
-                        return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
+                        
+                        # Execute targeted mass scan
+                        try:
+                            scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
+                            proc = await asyncio.create_subprocess_exec(
+                                sys.executable, scan_script, "--keyword", query,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE
+                            )
+                            await proc.communicate()
+                        except Exception as e:
+                            logging.error(f"[HALLWAY] Scan execution failed: {e}")
+
+                        return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
                     
-                    # Passed Fidelity Gate
-                    return await self.execute_dispatch(result_text, "Brain (Result)", shutdown_event=shutdown_event)
+                    logging.warning(f"[FEAT-173.2] Fidelity FAILED for {selected_expert}. Triggering Strategic Pivot.")
+                    await self.broadcast({
+                        "brain": "derivation too thin... swapping glasses and retrying. Poit!",
+                        "brain_source": "Pinky (Fidelity)",
+                        "channel": "insight"
+                    })
+                    # Retry with pivot
+                    return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
+
+            # Passed Fidelity Gate or not Brain
+            await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event)
+
+        if not bundled_results:
+            return await self.execute_dispatch("The Cognitive Hub is out of alignment.", "Pinky (System)", shutdown_event=shutdown_event)
         
-        return await self.execute_dispatch("The Cognitive Hub is out of alignment.", "Pinky (System)", shutdown_event=shutdown_event)
+        return True
