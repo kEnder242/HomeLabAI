@@ -30,3 +30,4 @@ logs/forensic_*.json
 # [FEAT-151] Transient Telemetry
 logs/trace_*.json
 server.log.stale
+round_table.lock
