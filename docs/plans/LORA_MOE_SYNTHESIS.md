@@ -299,3 +299,21 @@ The following features were "squished" during the unified loader refactor and mu
 - **[BURN-01] Ignition**: Trigger `python3 Portfolio_Dev/field_notes/mass_scan.py` in background mode.
 - **[BURN-02] Babysit Task**: Perform a 20-minute liveness check. Monitor `mass_scan.log` every 5 minutes for progress %, VRAM stability, and PID persistence.
 - **[BURN-03] Handover**: Final log snapshot provided before session close.
+
+---
+
+## 🏗️ Phase 8: Distillation Ignition (The "Expert" Forge)
+**Objective:** Establish the technical pipeline to transform verified "Gems" into specialized LoRA adapters (PMM Experts) without disrupting the ongoing archive burn.
+
+### 🟢 What we can do NOW (No VRAM dependency):
+- **[FEAT-161.1] Distillation Script**: Code `src/forge/distill_gems.py`. This script will task the Sovereign Brain (4090) with converting high-rank (Rank 4) JSON events into high-density "Instruction-Response" pairs.
+- **[FEAT-161.2] Test Distillation**: Run small-batch distillations (1-5 gems) to verify the "Lead Engineer" tone and formatting. This uses 4090 compute, leaving the 2080 Ti free.
+- **[FEAT-160.1] Training Scaffolding**: Prepare `src/train/train_expert.py` using the Unsloth framework.
+
+### 🟡 What must wait for Burn Completion (VRAM Bound):
+- **[FEAT-160.2] Full Scale Training**: The physical execution of the Unsloth training loop on the local 2080 Ti.
+- **[FEAT-162] Resident Loading**: Hot-swapping the new `architect_v1` LoRA into the active Hub session.
+
+### 📍 Immediate Tasks:
+1.  **Ignite Distillation**: Create the conversion pipeline and test it on the "Diamond" gems identified in today's burn.
+2.  **Verify Pedigree**: Confirm the distilled output follows the **BKM Protocol** and ** Montana Protocol** standards.
