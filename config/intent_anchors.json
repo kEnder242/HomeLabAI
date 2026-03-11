@@ -1,0 +1,18 @@
+{
+    "telemetry": {
+        "adapter": "exp_tlm",
+        "anchors": ["rapl", "silicon", "hardware", "peci", "dcgm", "msr", "performance", "profiling", "voltage", "power", "thermal", "frequency"]
+    },
+    "architecture": {
+        "adapter": "exp_bkm",
+        "anchors": ["architecture", "architectural", "bkm", "design", "patterns", "class 1", "philosophy", "system-level", "structural", "standard"]
+    },
+    "forensic": {
+        "adapter": "exp_for",
+        "anchors": ["history", "code", "optimization", "at2qa", "breadcrumb", "temporal", "investigative", "discovery", "forensic", "root cause", "trace", "archive"]
+    },
+    "recruiter": {
+        "adapter": "exp_rec",
+        "anchors": ["recruiter", "cv", "resume", "hiring", "career", "strategy", "cvt", "uplink", "interview", "job", "application", "pillar"]
+    }
+}

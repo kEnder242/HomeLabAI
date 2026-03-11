@@ -30,7 +30,7 @@ def hub(mock_residents):
         return await coro
     monitor = AsyncMock(side_effect=monitor_pass_through)
     
-    return CognitiveHub(
+    hub_inst = CognitiveHub(
         residents=mock_residents,
         broadcast_callback=broadcast,
         sensory_manager=sensory,
@@ -38,6 +38,13 @@ def hub(mock_residents):
         get_oracle_signal_callback=get_oracle,
         monitor_task_with_tics_callback=monitor
     )
+    # [FIX] Manually inject anchors for test isolation
+    hub_inst.intent_anchors = {
+        "telemetry": {"adapter": "exp_tlm", "anchors": ["telemetry", "thermal", "rapl"]},
+        "architecture": {"adapter": "exp_bkm", "anchors": ["architecture", "bkm"]},
+        "forensic": {"adapter": "exp_for", "anchors": ["history", "forensic"]}
+    }
+    return hub_inst
 
 @pytest.mark.asyncio
 async def test_is_casual_detection(hub):
@@ -47,7 +54,6 @@ async def test_is_casual_detection(hub):
     # "Hi" should be casual
     await hub.process_query("Hi")
     # Verify Pinky was called with facilitate
-    # call_args[0] is (tool_name, params)
     hub.residents["pinky"].call_tool.assert_called_with("facilitate", ANY)
     
     hub.residents["pinky"].call_tool.reset_mock()
@@ -78,6 +84,7 @@ async def test_strategic_delegation(hub):
     # Mock Brain's deep_think to return a result
     hub.residents["brain"].call_tool.return_value = MagicMock(content=[MagicMock(text="The result of the analysis.")])
     
+    # "thermal profile" should map to exp_tlm now
     await hub.process_query("Analyze the thermal profile of the 2080 Ti")
     
     # Should call Pinky for intuition
@@ -85,7 +92,7 @@ async def test_strategic_delegation(hub):
     # Should call Brain for deep_think
     assert hub.residents["brain"].call_tool.called
     
-    hub.residents["brain"].call_tool.assert_called_with("deep_think", {"task": ANY, "metadata": {"expert_adapter": "exp_for"}})
+    hub.residents["brain"].call_tool.assert_called_with("deep_think", {"task": ANY, "metadata": {"expert_adapter": "exp_tlm"}})
 
 @pytest.mark.asyncio
 async def test_expert_routing_telemetry(hub):

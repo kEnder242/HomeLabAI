@@ -349,31 +349,22 @@ class AcmeLab:
             await asyncio.sleep(30)
 
     async def manage_session_lock(self, active: bool):
-        """[FEAT-125] Refined Mutex: Lock is only cleared when all clients disconnect."""
-        try:
-            if active:
-                # Cancel existing disconnect timer if someone reconnects
-                if self._disconnect_task:
-                    self._disconnect_task.cancel()
-                    self._disconnect_task = None
-                
-                # Always ensure lock file exists if anyone is connected
-                if self.connected_clients:
-                    with open(ROUND_TABLE_LOCK, "w") as f:
-                        f.write(str(os.getpid()))
-            else:
-                # [FEAT-171] Intelligent Socket Logic
-                if not self.connected_clients:
-                    if self.mode == "SERVICE_UNATTENDED":
-                        logging.info("[SOCKET] Persistence Mode: Staying resident despite disconnect.")
-                        return
-
-                    # Debug/Handshake Mode: Start idle timer
-                    if not self._disconnect_task:
-                        logging.info(f"[SOCKET] Debug Mode: Starting {self.afk_timeout}s idle timer.")
-                        self._disconnect_task = asyncio.create_task(self._delayed_lock_clear())
-        except Exception as e:
-            logging.error(f"[LOCK] Error: {e}")
+        """[FEAT-171-RECOVER] Lifecycle Matrix Restoration: Gem 2 alignment."""
+        if active:
+            if self._disconnect_task:
+                self._disconnect_task.cancel()
+                self._disconnect_task = None
+            if self.connected_clients:
+                with open(ROUND_TABLE_LOCK, "w") as f:
+                    f.write(str(os.getpid()))
+        else:
+            if not self.connected_clients:
+                if self.mode == "SERVICE_UNATTENDED":
+                    logging.info("[SOCKET] Persistence Mode: Staying resident.")
+                    return
+                if not self._disconnect_task:
+                    logging.info(f"[SOCKET] Debug Mode: Starting {self.afk_timeout}s idle timer.")
+                    self._disconnect_task = asyncio.create_task(self._delayed_lock_clear())
 
     async def _delayed_lock_clear(self):
         """Helper for FEAT-171: Clears the lock after a timeout."""
@@ -692,7 +683,8 @@ class AcmeLab:
             mic_active=self.mic_active, 
             shutdown_event=self.shutdown_event,
             exit_hint=exit_hint,
-            trigger_briefing_callback=lambda: self.trigger_morning_briefing(websocket)
+            trigger_briefing_callback=lambda: self.trigger_morning_briefing(websocket),
+            turn_density=self.turn_density
         )
 
     async def boot_residents(self, stack: AsyncExitStack):
