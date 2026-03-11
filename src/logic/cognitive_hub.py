@@ -21,7 +21,10 @@ class CognitiveHub:
         self.monitor_task_with_tics = monitor_task_with_tics_callback
 
     async def execute_dispatch(self, text, source, shutdown_event=None):
-        """Standardizes the dispatch of reasoning results to the user."""
+        """
+        Standardizes the dispatch of reasoning results to the user.
+        Returns the clean text if it was a plain message, or True if it handled a tool.
+        """
         logging.info(f"[DEBUG] Dispatch: source='{source}' text='{text[:30]}...'")
         
         # 1. Clean the text (Remove potential LoRA or node artifacts)
@@ -139,13 +142,13 @@ class CognitiveHub:
                     return True
                 
                 # If it's a tool we don't handle at Hub level, dispatch to the resident who called it
-                # (This shouldn't happen with the verify logic above, but safety first)
                 logging.info(f"[HUB] Forwarding tool {tool} back to {source}")
-                return await self.broadcast({
+                await self.broadcast({
                     "brain": clean_text,
                     "brain_source": source.replace("Result", "").strip(),
                     "channel": "insight"
                 })
+                return True
 
             except Exception as e:
                 logging.error(f"[HUB] Tool Dispatch Error: {e}")
@@ -157,7 +160,31 @@ class CognitiveHub:
             "brain_source": source.replace("Result", "").strip(),
             "channel": "chat"
         })
-        return True
+        return clean_text
+
+    def _route_expert_domain(self, query, interjection=""):
+        """[FEAT-174.1] Strategic Routing: Identifies the expert adapter needed."""
+        domain_map = {
+            "telemetry": "exp_tlm",
+            "hardware": "exp_tlm",
+            "silicon": "exp_tlm",
+            "rapl": "exp_tlm",
+            "architecture": "exp_bkm",
+            "architectural": "exp_bkm",
+            "bkm": "exp_bkm",
+            "history": "exp_for",
+            "code": "exp_for",
+            "optimization": "exp_for"
+        }
+        
+        q_low = query.lower()
+        i_low = interjection.lower()
+        
+        for kw, expert in domain_map.items():
+            if kw in q_low or kw in i_low:
+                return expert
+        
+        return "exp_for" # Default Forensic/Architect
 
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0):
         """The Central Reasoning Pipeline."""
@@ -178,6 +205,7 @@ class CognitiveHub:
         if is_casual and not mic_active:
             if "pinky" in self.residents:
                 p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: GREETING] {exit_hint}"})
+                # Check for tool call in Pinky response
                 return await self.execute_dispatch(p_res.content[0].text, "Pinky (Result)", shutdown_event=shutdown_event)
 
         # 2. Strategic Routing (The Expert MoE)
@@ -192,25 +220,12 @@ class CognitiveHub:
             p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"})
             interjection = p_res.content[0].text
             
-            # Determine Expert Domain (Basic keyword mapping for now, future = LLM)
-            domain_map = {
-                "telemetry": "exp_tlm",
-                "hardware": "exp_tlm",
-                "silicon": "exp_tlm",
-                "rapl": "exp_tlm",
-                "architecture": "exp_for",
-                "bkm": "exp_for",
-                "history": "exp_for",
-                "code": "exp_for",
-                "optimization": "exp_for"
-            }
-            
-            selected_expert = "exp_for" # Default Architect
-            for kw, expert in domain_map.items():
-                if kw in query.lower() or kw in interjection.lower():
-                    selected_expert = expert
-                    break
-            
+            # Recursive check: if Pinky response itself is a tool call, handle it
+            if "{" in interjection:
+                # Dispatch tool and return
+                return await self.execute_dispatch(interjection, "Pinky (Result)", shutdown_event=shutdown_event)
+
+            selected_expert = self._route_expert_domain(query, interjection)
             logging.info(f"[ROUTER] Expert Domain matched: {selected_expert} (Retry: {retry_count})")
 
             # 3. Brain Derivation (with Selected Expert Adapter)
@@ -227,9 +242,14 @@ class CognitiveHub:
                     )
                     result_text = b_res.content[0].text
                     
+                    # Check for tool calls first
+                    if "{" in result_text:
+                        # Tool call dispatched
+                        return await self.execute_dispatch(result_text, "Brain (Result)", shutdown_event=shutdown_event)
+
                     # 4. Fidelity Gate (The BKM Audit)
                     # Check if response is dense enough for the complexity
-                    is_thin = len(result_text.split()) < 20 and len(query.split()) > 5
+                    is_thin = len(result_text.split()) < 20 and len(query.split()) > 4
                     
                     if is_thin:
                         if retry_count == 1:
@@ -244,7 +264,6 @@ class CognitiveHub:
                             # Execute targeted mass scan
                             try:
                                 scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-                                # Use high-speed grep search first to see if it's worth it
                                 proc = await asyncio.create_subprocess_exec(
                                     sys.executable, scan_script, "--keyword", query,
                                     stdout=asyncio.subprocess.PIPE,
@@ -264,7 +283,7 @@ class CognitiveHub:
                             "channel": "insight"
                         })
                         # Retry with the other primary expert
-                        new_expert = "exp_tlm" if selected_expert == "exp_for" else "exp_for"
+                        new_expert = "exp_tlm" if "tlm" not in selected_expert else "exp_bkm"
                         return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1)
                     
                     # Passed Fidelity Gate
