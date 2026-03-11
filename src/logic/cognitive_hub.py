@@ -98,7 +98,19 @@ class CognitiveHub:
                     shutdown_event.set()
                 return True
 
-            known_tools = ["reply_to_user", "ask_brain", "deep_think", "list_cabinet", "read_document", "peek_related_notes", "write_draft", "generate_bkm", "build_semantic_map", "peek_strategic_map", "discuss_offline", "select_file", "notify_file_open", "get_lab_health", "vram_vibe_check", "access_personal_history", "build_cv_summary"]
+            known_tools = ["reply_to_user", "ask_brain", "deep_think", "list_cabinet", "read_document", "peek_related_notes", "write_draft", "generate_bkm", "build_semantic_map", "peek_strategic_map", "discuss_offline", "select_file", "notify_file_open", "get_lab_health", "vram_vibe_check", "access_personal_history", "build_cv_summary", "bounce_node", "scribble_note"]
+
+            if tool == "bounce_node":
+                reason = params.get("reason", "No reason provided.")
+                logging.warning(f"[HUB] Bounce requested by {source}: {reason}")
+                await self.broadcast({
+                    "brain": f"Hemisphere reset initiated: {reason}",
+                    "brain_source": "System",
+                    "channel": "chat"
+                })
+                # Implementation: Hub itself cannot kill nodes easily, but it can signal the Attendant
+                # Or for now, we just log it and let the model know it "happened"
+                return await self.execute_dispatch(f"Reset complete for {source}.", f"{source} (System)", shutdown_event=shutdown_event)
 
             if tool == "select_file":
                 fname = params.get("filename")
