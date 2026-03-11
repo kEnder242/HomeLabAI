@@ -13,24 +13,24 @@ from nodes.pinky_node import start_draft
 
 @pytest.mark.asyncio
 async def test_build_cv_summary():
-    with patch("nodes.archive_node.wisdom.query") as mock_wisdom, \
-         patch("os.path.exists", return_value=True), \
-         patch("builtins.open", MagicMock(side_effect=[MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: '[{"summary": "Test Summary", "rank": 4}]')])):
+    mock_data = {"test": "data"}
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", MagicMock(return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: json.dumps(mock_data)))):
         
-        mock_wisdom.return_value = {'documents': [["Strategic Pillar 1"]]}
-        
-        res = build_cv_summary("2024")
-        assert "STRATEGIC PILLARS (2024):" in res
-        assert "Strategic Pillar 1" in res
-        assert "TECHNICAL EVIDENCE (2024):" in res
-        assert "Test Summary" in res
+        res = await build_cv_summary()
+        data = json.loads(res)
+        assert data["test"] == "data"
 
 @pytest.mark.asyncio
 async def test_access_personal_history():
-    with patch("nodes.archive_node.peek_related_notes", return_value="Historical Fact") as mock_peek:
-        res = access_personal_history("keyword")
-        assert res == "Historical Fact"
-        mock_peek.assert_called_with("keyword")
+    mock_event = {"topic": "Test Topic", "context": "Test Context", "successful": True}
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", MagicMock(return_value=MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, __iter__=lambda s: iter([json.dumps(mock_event)])))):
+        
+        res = await access_personal_history("Test")
+        data = json.loads(res)
+        assert len(data) == 1
+        assert data[0]["topic"] == "Test Topic"
 
 @pytest.mark.asyncio
 async def test_generate_bkm():

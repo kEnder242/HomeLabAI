@@ -183,5 +183,12 @@ async def triage_response(raw_text: str) -> str:
     return "TEXT"
 
 
+@mcp.tool()
+async def ping_engine(force: bool = False) -> str:
+    """[FEAT-192] Verify and force engine readiness."""
+    success, msg = await node.ping_engine(force=force)
+    return json.dumps({"success": success, "message": msg})
+
+
 if __name__ == "__main__":
     mcp.run()

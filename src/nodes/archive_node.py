@@ -561,5 +561,12 @@ async def build_cv_summary() -> str:
         return f"Error: {e}"
 
 
+@mcp.tool()
+async def ping_engine(force: bool = False) -> str:
+    """[FEAT-192] Verifies and optionally forces engine readiness via a generation probe."""
+    success, msg = await node.ping_engine(force=force)
+    return json.dumps({"success": success, "message": msg})
+
+
 if __name__ == "__main__":
     node.run()
