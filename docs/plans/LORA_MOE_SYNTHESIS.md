@@ -259,6 +259,35 @@ The following features were "squished" during the unified loader refactor and mu
 - **[AUDIT-02] Strategic Sentinel Audit**: Run `src/debug/test_strategic_sentinel.py` and synchronize with the new Cognitive Hub triage logic.
 - **Verification:** Both tests achieved 100% pass rate using the semantic classification engine.
 
+---
+
+## 🏗️ Phase 9: Semantic Alignment (The BKM-015 Refactor)
+**Objective:** Replace brittle, hard-coded keyword lists with the intended fuzzy, vector-driven architecture to achieve 100% DNA parity.
+
+### 📍 Immediate Alignment Tasks:
+- **[FEAT-174.1-FIX] Vector Routing**: 
+    - **Rationale**: BKM-015 Rule of the Ghost Keyword.
+    - **Mechanism**: Move technical anchors (`rapl`, `silicon`) from `cognitive_hub.py` into `config/intent_anchors.json`.
+    - **Verification**: Refactor `_route_expert_domain` to use a ChromaDB "Flash-Search" or JSON similarity pass.
+- **[FEAT-027-FIX] Shadow Moat (Triage)**:
+    - **Rationale**: BKM-015 Vibe-First Mandate.
+    - **Mechanism**: Replace `strat_keys` in `acme_lab.py` with a call to the Hub's intent classifier.
+- **[FEAT-154-ACTIVATE] Density-Aware Vibe**:
+    - **Rationale**: Sentient Sentinel logic.
+    - **Mechanism**: Use `turn_density` to adjust the semantic threshold for "Casual" vs. "Strategic" classification. (e.g. Higher density = lower strategic threshold).
+- **[FEAT-178-ACTIVATE] Deep Map Routing**:
+    - **Rationale**: Global Topography grounding.
+    - **Mechanism**: Plumb `semantic_map.json` into the Hub so it can route queries to the correct LoRA based on the archive's actual clusters rather than hard-coded strings.
+- **[FEAT-176-RESTORE] Deep-Connect Ignition**:
+    - **Rationale**: Recovered Gem from commit `303562b`.
+    - **Mechanism**: Restore "Reverse RAG" evidence harvesting in `nibble.py` to extract 50-100 word technical blocks for LoRA training.
+- **[FEAT-171-HARDEN] Lifecycle Matrix**:
+    - **Rationale**: Functional Drift identified in `acme_lab.py`.
+    - **Mechanism**: Re-align `manage_session_lock` with the `SERVICE_UNATTENDED` vs `DEBUG` matrix in the Feature Tracker.
+- **[GHOST-01-RECOVER] Parallel Turn Purge**:
+    - **Rationale**: Recovered Gem from commit `8a3a230`.
+    - **Mechanism**: Re-implement `asyncio.wait(pending, return_when=FIRST_COMPLETED)` in the Hub to handle strategic latency.
+
 ### 📍 Nightly Fast Burn (Epoch 1 Refinement)
 **Goal:** Background synthesis of the 18-year archive to build the Architect LoRA training data.
 - **[BURN-01] Ignition**: Trigger `python3 Portfolio_Dev/field_notes/mass_scan.py` in background mode. (ACTIVE)
