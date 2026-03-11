@@ -176,5 +176,26 @@ except asyncio.TimeoutError:
 
 ---
 
-## 🏛️ Final Session Report: The "Parity" Audit [March 10, 2026]
+## 🏗️ Phase 10: The Scout's Eye (FEAT-168)
+**Objective:** Replace simulated LLM job listings with real-world technical acquisitions using a headless Browser Node and Brain-driven semantic scoring.
+
+### 📍 Implementation Plan:
+1.  **[FEAT-168.1] Browser Node Scaffolding**:
+    - Create `HomeLabAI/src/nodes/browser_node.py` using **Playwright**.
+    - Implement the `browse_url(url)` tool to extract clean text/markdown from job board HTML (NVIDIA Workday, Hiring.Cafe).
+    - Register the Browser Node as a resident in `acme_lab.py`.
+
+2.  **[FEAT-168.2] Recruiter "Deep Read" Integration**:
+    - Update `recruiter.py` to use the Browser Node for URL verification.
+    - **Workflow**: Brain identifies candidate URLs -> Browser Node fetches the full JD -> Brain performs semantic scoring.
+
+3.  **[FEAT-168.3] Multi-Vector Semantic Scoring**:
+    - Use the Sovereign Brain (4090) to compare the fetched JD against the **18-year Archive Gems** (Rank 4).
+    - Output a high-fidelity "Lead Engineer Match" score (0.0-1.0) with specific evidence of why it matches your pedigree.
+
+4.  **[FEAT-168.4] Duplicate Prevention Hardening**:
+    - Finalize the `processed_jobs.json` logic to store content-hashes of JDs, preventing "Re-labeled" duplicates from reappearing.
+
+### 📍 Verification:
+- **Test**: `src/tests/test_recruiter_deep_read.py` (Verify live JD extraction and scoring).
 (Summary of restoration completion and remaining stubs...)
