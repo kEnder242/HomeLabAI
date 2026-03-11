@@ -108,8 +108,24 @@ class CognitiveHub:
                     "brain_source": "System",
                     "channel": "chat"
                 })
-                # Implementation: Hub itself cannot kill nodes easily, but it can signal the Attendant
-                # Or for now, we just log it and let the model know it "happened"
+                
+                # [RE-FEAT-045] Re-prime the node's engine
+                target_node = None
+                # If source is "Brain (Shadow)" or "Brain (Result)", target "brain"
+                t_name = source.split("(")[0].strip().lower()
+                if t_name in self.residents:
+                    target_node = self.residents[t_name]
+                
+                if target_node:
+                    try:
+                        res = await target_node.call_tool("ping_engine", {"force": True})
+                        data = json.loads(res.content[0].text)
+                        msg = f"Reset complete. Success: {data.get('success')}. Detail: {data.get('message')}"
+                        return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                    except Exception as e:
+                        logging.error(f"[HUB] Bounce failed: {e}")
+                        return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                
                 return await self.execute_dispatch(f"Reset complete for {source}.", f"{source} (System)", shutdown_event=shutdown_event)
 
             if tool == "select_file":

@@ -49,5 +49,12 @@ async def update_whiteboard(content: str) -> str:
         return f"Whiteboard update failed: {e}"
 
 
+@mcp.tool()
+async def ping_engine(force: bool = False) -> str:
+    """[FEAT-192] Verify and force engine readiness."""
+    success, msg = await node.ping_engine(force=force)
+    return json.dumps({"success": success, "message": msg})
+
+
 if __name__ == "__main__":
     node.mcp.run()

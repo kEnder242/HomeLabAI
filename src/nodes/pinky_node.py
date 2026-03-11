@@ -127,5 +127,12 @@ async def peek_strategic_map(pillar: str = "") -> str:
     return "Strategic Map file missing."
 
 
+@mcp.tool()
+async def ping_engine(force: bool = False) -> str:
+    """[FEAT-192] Verify and force engine readiness."""
+    success, msg = await node.ping_engine(force=force)
+    return json.dumps({"success": success, "message": msg})
+
+
 if __name__ == "__main__":
     node.mcp.run()
