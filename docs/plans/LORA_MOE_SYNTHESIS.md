@@ -110,6 +110,9 @@ We are moving away from monolithic "Brain" vs "Pinky" weights toward a library o
 - **[FEAT-178-ACTIVATE] Deep Map Routing**:
     - **Rationale**: Global Topography grounding.
     - **Mechanism**: Plumb `semantic_map.json` into the Hub.
+- **[FEAT-195] Remote Lab Control**:
+    - **Rationale**: Manual lifecycle management via dashboard.
+    - **Mechanism**: Implement a button-driven control panel in `status.html` that interfaces with the Lab Attendant's REST API (:9999). Supports Ignition, Quiesce, and Hard Reset.
 - **[FEAT-176-RECOVER] Deep-Connect Restoration**:
     - **Source**: `lost_nibble.py` (Commit `303562b`).
     - **Task**: Restore "Reverse RAG" evidence harvesting in `nibble.py`.

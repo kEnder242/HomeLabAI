@@ -147,7 +147,7 @@
 3.  **The Exception**: Manual shell intervention is only permitted if the Lab Attendant itself is confirmed unresponsive (no response on port 9999).
 4.  **Verification**: Always verify the `[BOOT_HASH]` and `commit` returned by the Attendant heartbeat to ensure the Lab is running the intended code version.
 
-**Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab's sovereignty."
+**Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a pkill or shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab's sovereignty."
 
 ## BKM-024: Validation-Aware Synchronization
 **Objective**: Ensure the physical Lab state matches the active sprint implementation.
