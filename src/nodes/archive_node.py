@@ -24,6 +24,7 @@ RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_STREAM = "short_term_stream"
 COLLECTION_WISDOM = "long_term_wisdom"
+COLLECTION_DNA = "behavioral_dna"
 
 # Chroma Setup
 chroma_client = chromadb.PersistentClient(path=DB_PATH)
@@ -41,6 +42,7 @@ def get_safe_collection(name):
 
 stream = get_safe_collection(COLLECTION_STREAM)
 wisdom = get_safe_collection(COLLECTION_WISDOM)
+dna = get_safe_collection(COLLECTION_DNA)
 
 # Ensure paths exist
 os.makedirs(DRAFTS_DIR, exist_ok=True)
@@ -566,6 +568,27 @@ async def ping_engine(force: bool = False) -> str:
     """[FEAT-192] Verifies and optionally forces engine readiness via a generation probe."""
     success, msg = await node.ping_engine(force=force)
     return json.dumps({"success": success, "message": msg})
+
+
+@mcp.tool()
+async def query_vibe(query_text: str) -> str:
+    """
+    [FEAT-181] The Tendon: Performs a semantic 'Vibe Check' against the behavioral DNA.
+    Returns the target adapter and behavioral guidance.
+    """
+    try:
+        results = dna.query(query_texts=[query_text], n_results=1)
+        if not results["ids"][0]:
+            return json.dumps({"adapter": "standard", "guidance": "Follow standard operating protocols."})
+        
+        metadata = results["metadatas"][0][0]
+        return json.dumps({
+            "adapter": metadata.get("adapter", "standard"),
+            "guidance": metadata.get("guidance", ""),
+            "vibe": metadata.get("vibe", "CLINICAL")
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e), "adapter": "standard"})
 
 
 if __name__ == "__main__":

@@ -467,14 +467,38 @@ class LabAttendantV2:
         except: pass
 
     async def vram_watchdog_loop(self):
+        """
+        [FEAT-180] Graceful Resource Governance: Replaces fallbacks with a Hard Stop.
+        """
         while True:
-            await asyncio.sleep(15)
+            await asyncio.sleep(5) # Increased frequency for Phase 12 hardening
             if os.path.exists(MAINTENANCE_LOCK): continue
+            
+            # 1. VRAM Check
             used, total = await self._get_vram_info()
-            if total > 0 and used > (total * 0.95):
-                logger.error(f"[WATCHDOG] Critical VRAM ({used}MiB). Suspending Lab.")
+            critical_vram = total > 0 and used > (total * 0.95)
+            
+            # 2. Load Check
+            load1, _, _ = os.getloadavg()
+            critical_load = load1 > 8.0
+            
+            if critical_vram or critical_load:
+                reason = "Critical VRAM" if critical_vram else "Critical System Load"
+                logger.error(f"[WATCHDOG] {reason} ({used}MiB / {load1}). Executing SIGTERM.")
+                
+                # Execute [TASK-008] Hard Stop
                 await self.cleanup_silicon()
-                await self.update_status_json("Mind SUSPENDED (Critical VRAM)")
+                await self.update_status_json(f"Mind TERMINATED ({reason})")
+                
+                # Notify active clients via Pager
+                try:
+                    with open(os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/pager_activity.json"), "a") as f:
+                        f.write(json.dumps({
+                            "severity": "CRITICAL",
+                            "message": f"Lab Hub hard-stopped due to {reason} to preserve silicon integrity.",
+                            "timestamp": datetime.datetime.now().isoformat()
+                        }) + "\n")
+                except: pass
 
     async def _get_vram_info(self):
         try:

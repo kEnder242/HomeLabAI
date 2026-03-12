@@ -1,23 +1,14 @@
 {
-  "version": "1.1",
-  "anchors": [
-    {
-      "domain": "telemetry",
-      "keywords": ["vram", "rapl", "thermal", "wattage"],
-      "vibe": "CLINICAL",
-      "guidance": "Prefer 'peek_telemetry'. Execute [FEAT-180] on resource violation. No fallback."
-    },
-    {
-      "domain": "interaction",
-      "keywords": ["synergy", "listening", "pinky", "brain"],
-      "vibe": "RESONANT",
-      "guidance": "Inject Pinky's initial intuition as a [HEARING] tag in Brain context to foster emergent synergy."
-    },
-    {
-      "domain": "architecture",
-      "keywords": ["bones", "muscle", "tendons", "dna"],
-      "vibe": "STRUCTURAL",
-      "guidance": "Bones=Data, Muscle=LLM, Tendons=Vibes. Maintain BKM-015 'Ghost Keyword' law strictly."
-    }
-  ]
+  "telemetry": {
+    "adapter": "exp_tlm",
+    "anchors": ["vram", "rapl", "thermal", "wattage"]
+  },
+  "forensic": {
+    "adapter": "exp_for",
+    "anchors": ["history", "search", "crash"]
+  },
+  "architecture": {
+    "adapter": "exp_bkm",
+    "anchors": ["bkm", "class 1", "architecture"]
+  }
 }
