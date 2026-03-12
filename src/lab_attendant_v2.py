@@ -29,7 +29,7 @@ PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
 GATEKEEPER_PATH = f"{PORTFOLIO_DIR}/monitor/notify_gatekeeper.py"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
-LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
+LAB_VENV_PYTHON = sys.executable
 ATTENDANT_PORT = 9999
 
 MONITOR_CONTAINERS = [
