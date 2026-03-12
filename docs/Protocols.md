@@ -139,9 +139,20 @@
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
 *   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
-## BKM-018: The Bilingual Attendant (MCP Toolset)
-*   **Usage:** Standardize on native MCP tool calls (`lab_start`, `lab_heartbeat`) for Lab lifecycle management. Avoid manual `curl` or shell hacks.
-*   **Verification:** Always verify the `[BOOT_HASH]` returned by the tools to ensure tool-to-service synchronization trust.
+## BKM-018: The Orchestrator-First Mandate (No-Hack Law)
+**Objective**: Prevent "Zombie States" and diagnostic blindness caused by manual process manipulation.
+
+1.  **Usage**: Native MCP tool calls (`lab_start`, `lab_stop`, `lab_ignition`) are the **ONLY** permitted way to manage the Lab Mind. 
+2.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
+3.  **The Exception**: Manual shell intervention is only permitted if the Lab Attendant itself is confirmed unresponsive (no response on port 9999).
+4.  **Verification**: Always verify the `[BOOT_HASH]` and `commit` returned by the Attendant heartbeat to ensure the Lab is running the intended code version.
+
+## BKM-024: Validation-Aware Synchronization
+**Objective**: Ensure the physical Lab state matches the active sprint implementation.
+
+1.  **Sync-Gate**: Before any `[LIVE FIRE]` or `[SHAKEDOWN]` test, the Agent must perform a `curl /heartbeat`. 
+2.  **Logic**: If the current `commit` or `model` in the heartbeat does not match the session's active implementation, the Agent MUST trigger a `POST /hard_reset` (or `lab_stop` -> `lab_start`) to synchronize the silicon with the code.
+3.  **State Trust**: Do not assume a background process persisted correctly across a git commit or hard reset. Re-verify liveness before proceeding with test execution.
 
 ## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
