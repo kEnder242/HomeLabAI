@@ -186,20 +186,26 @@ class CognitiveHub:
             })
             return clean_text
 
-    def _route_expert_domain(self, query, interjection=""):
-        """[FEAT-174.1] Strategic Routing: Identifies the expert adapter needed using JSON anchors."""
-        q_low = query.lower()
-        i_low = interjection.lower()
-        
-        # [BKM-015] Use loaded anchors for dynamic routing
-        for domain, cfg in self.intent_anchors.items():
-            adapter = cfg.get("adapter")
-            anchors = cfg.get("anchors", [])
-            for anchor in anchors:
-                if anchor in q_low or anchor in i_low:
-                    return adapter
-        
-        return "exp_for" # Default Forensic/Architect
+    async def _route_expert_domain(self, query, interjection=""):
+        """
+        [BKM-015.1] The Law of Semantic Indirection: Identifies the expert adapter
+        via vector similarity against the 'behavioral_dna' collection.
+        """
+        try:
+            if 'archive' not in self.residents:
+                return "exp_for"
+            
+            vibe_json = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
+            vibe_data = json.loads(vibe_json)
+            
+            adapter = vibe_data.get("adapter", "exp_for")
+            self.current_vibe_guidance = vibe_data.get("guidance", "")
+            
+            logging.info(f"[HUB] Semantic Route: {adapter} (Vibe: {vibe_data.get('vibe')})")
+            return adapter
+        except Exception as e:
+            logging.error(f"[HUB] Vibe Check Failed: {e}")
+            return "exp_for" # Default Forensic/Architect fallback
 
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
         """The Central Reasoning Pipeline with [GHOST-01] Parallel Turn Bundler."""
@@ -217,7 +223,7 @@ class CognitiveHub:
         is_casual = len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit", "zort"])
         
         # 2. Strategic Routing (The Expert MoE)
-        selected_expert = self._route_expert_domain(query)
+        selected_expert = await self._route_expert_domain(query)
         
         # [PHASE 2] Turn Bundling: Parallel Dispatch
         dispatch_tasks = []
@@ -228,6 +234,7 @@ class CognitiveHub:
                 dispatch_tasks.append((t_pinky, "Pinky"))
         else:
             # Strategic Path
+            pinky_intuition = ""
             if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
                     "brain": self.get_oracle_signal("Pinky"),
@@ -235,14 +242,31 @@ class CognitiveHub:
                     "channel": "insight",
                     "is_internal": True
                 })
-                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"}))
-                dispatch_tasks.append((t_pinky, "Pinky"))
+                # [FEAT-182] Strategic Interjection: Await fast intuition
+                try:
+                    res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"})
+                    pinky_intuition = res.content[0].text
+                    # Dispatch intuition immediately to UI
+                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=True)
+                except Exception as e:
+                    logging.error(f"[HUB] Pinky intuition failed: {e}")
 
             if self.brain_online() and "brain" in self.residents:
                 # [FEAT-174.1] Strategic Pre-Gating
-                metadata = {"expert_adapter": selected_expert}
+                # [FEAT-182] Inject Pinky's Hearing into Brain context
+                hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
+                metadata = {
+                    "expert_adapter": selected_expert,
+                    "behavioral_guidance": getattr(self, 'current_vibe_guidance', ""),
+                    "pinky_hearing": pinky_intuition
+                }
+                
+                # Brain derivation
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
-                    self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata})
+                    self.residents["brain"].call_tool("deep_think", {
+                        "task": f"{query}{hearing_tag}", 
+                        "metadata": metadata
+                    })
                 ))
                 dispatch_tasks.append((t_brain, "Brain"))
 

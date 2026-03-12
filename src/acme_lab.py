@@ -179,12 +179,12 @@ class AcmeLab:
                         tic_msg = random.choice(base_tics)
 
                     await self.broadcast(
-                        {"brain": tic_msg, "brain_source": "Pinky (Reflex)", "is_internal": True}
+                        {"brain": tic_msg, "brain_source": "Pinky (Lag Shield)", "is_internal": True}
                     )
                     tic_count += 1
 
                 # Increase delay exponentially
-                current_delay = min(current_delay * 1.5, 8.0)
+                current_delay = min(current_delay * 1.5, 12.0)
             except Exception:
                 if task.done():
                     return task.result()
