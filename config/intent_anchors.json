@@ -1,18 +1,20 @@
 {
-    "telemetry": {
-        "adapter": "exp_tlm",
-        "anchors": ["rapl", "silicon", "hardware", "peci", "dcgm", "msr", "performance", "profiling", "voltage", "power", "thermal", "frequency"]
+  "version": "1.0",
+  "anchors": [
+    {
+      "domain": "telemetry",
+      "keywords": ["vram", "rapl", "thermal", "wattage"],
+      "guidance": "Prefer 'peek_telemetry' for real-time vitals. Ground derivations in 'baseline_gpu.csv' values."
     },
-    "architecture": {
-        "adapter": "exp_bkm",
-        "anchors": ["architecture", "architectural", "bkm", "design", "patterns", "class 1", "philosophy", "system-level", "structural", "standard"]
+    {
+      "domain": "services",
+      "keywords": ["jellyfin", "navidrome", "prometheus", "grafana"],
+      "guidance": "Verify container status via Attendant /heartbeat before suggesting restarts."
     },
-    "forensic": {
-        "adapter": "exp_for",
-        "anchors": ["history", "code", "optimization", "at2qa", "breadcrumb", "temporal", "investigative", "discovery", "forensic", "root cause", "trace", "archive"]
-    },
-    "recruiter": {
-        "adapter": "exp_rec",
-        "anchors": ["recruiter", "cv", "resume", "hiring", "career", "strategy", "cvt", "uplink", "interview", "job", "application", "pillar"]
+    {
+      "domain": "architecture",
+      "keywords": ["bones", "muscle", "tendons", "dna", "feat"],
+      "guidance": "Data=Bones, LLM=Muscle, Flow=Tendons. Maintain BKM-015 'Ghost Keyword' law strictly."
     }
+  ]
 }
