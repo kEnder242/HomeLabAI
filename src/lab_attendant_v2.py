@@ -29,7 +29,7 @@ PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
 GATEKEEPER_PATH = f"{PORTFOLIO_DIR}/monitor/notify_gatekeeper.py"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
-LAB_VENV_PYTHON = sys.executable
+LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
 ATTENDANT_PORT = 9999
 
 MONITOR_CONTAINERS = [
@@ -85,54 +85,9 @@ logger = logging.getLogger("lab_attendant_v2")
 # --- FastMCP Server ---
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
 
-@web.middleware
-async def cors_middleware(request, handler):
-    # 1. Allowed Origins
-    allowed_origins = ["http://localhost:9001", "https://notes.jason-lab.dev", "https://www.jason-lab.dev"]
-    origin = request.headers.get("Origin")
-    
-    # 2. Shared Secret (The "Cache-Bust" Key)
-    # We use the current hash of style.css as a rotating shared secret
-    style_path = f"{PORTFOLIO_DIR}/field_notes/style.css"
-    current_key = "unknown"
-    if os.path.exists(style_path):
-        with open(style_path, "rb") as f:
-            import hashlib
-            current_key = hashlib.md5(f.read()).hexdigest()[:8]
-
-    # 3. Path Whitelist for Remote Access
-    remote_whitelist = ["/ignition", "/quiesce", "/refresh", "/hard_reset", "/heartbeat", "/events"]
-    
-    if request.method == "OPTIONS":
-        response = web.Response(status=200)
-    else:
-        # Strict Gate for POST actions
-        if request.method == "POST" and request.path not in remote_whitelist:
-            logger.warning(f"[SECURITY] Blocked unauthorized POST to {request.path}")
-            return web.json_response({"error": "Unauthorized endpoint"}, status=403)
-            
-        # Key Verification for sensitive actions
-        if request.method == "POST":
-            provided_key = request.headers.get("X-Lab-Key")
-            if provided_key != current_key:
-                logger.error(f"[SECURITY] Invalid X-Lab-Key from {origin}. Drift detected.")
-                return web.json_response({"error": "Security Key Mismatch"}, status=401)
-
-        response = await handler(request)
-    
-    # Apply CORS headers
-    if origin in allowed_origins:
-        response.headers['Access-Control-Allow-Origin'] = origin
-    else:
-        response.headers['Access-Control-Allow-Origin'] = allowed_origins[0] # Default to local
-        
-    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key'
-    return response
-
 class LabAttendantV2:
     def __init__(self):
-        self.app = web.Application(middlewares=[cors_middleware])
+        self.app = web.Application()
         self.app.router.add_post("/start", self.handle_start_rest)
         self.app.router.add_post("/stop", self.handle_stop_rest)
         self.app.router.add_post("/cleanup", self.handle_cleanup_rest)
