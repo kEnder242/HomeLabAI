@@ -554,16 +554,6 @@ class LabAttendantV2:
             await asyncio.sleep(1)
         return web.json_response(await self._get_current_vitals())
 
-    async def handle_events_sse(self, request):
-        """[FEAT-156] Server-Sent Events stream for real-time Attendant status."""
-        response = web.StreamResponse()
-        response.headers['Content-Type'] = 'text/event-stream'
-        response.headers['Cache-Control'] = 'no-cache'
-        response.headers['Connection'] = 'keep-alive'
-        await response.prepare(request)
-        
-        while True:
-            await asyncio.sleep(5)
 
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV2()
