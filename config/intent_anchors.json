@@ -1,20 +1,23 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "anchors": [
     {
       "domain": "telemetry",
       "keywords": ["vram", "rapl", "thermal", "wattage"],
-      "guidance": "Prefer 'peek_telemetry' for real-time vitals. Ground derivations in 'baseline_gpu.csv' values."
+      "vibe": "CLINICAL",
+      "guidance": "Prefer 'peek_telemetry'. Execute [FEAT-180] on resource violation. No fallback."
     },
     {
-      "domain": "services",
-      "keywords": ["jellyfin", "navidrome", "prometheus", "grafana"],
-      "guidance": "Verify container status via Attendant /heartbeat before suggesting restarts."
+      "domain": "interaction",
+      "keywords": ["synergy", "listening", "pinky", "brain"],
+      "vibe": "RESONANT",
+      "guidance": "Inject Pinky's initial intuition as a [HEARING] tag in Brain context to foster emergent synergy."
     },
     {
       "domain": "architecture",
-      "keywords": ["bones", "muscle", "tendons", "dna", "feat"],
-      "guidance": "Data=Bones, LLM=Muscle, Flow=Tendons. Maintain BKM-015 'Ghost Keyword' law strictly."
+      "keywords": ["bones", "muscle", "tendons", "dna"],
+      "vibe": "STRUCTURAL",
+      "guidance": "Bones=Data, Muscle=LLM, Tendons=Vibes. Maintain BKM-015 'Ghost Keyword' law strictly."
     }
   ]
 }
