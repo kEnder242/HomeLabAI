@@ -31,3 +31,4 @@ logs/forensic_*.json
 logs/trace_*.json
 server.log.stale
 round_table.lock
+.venv*/
