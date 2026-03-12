@@ -85,9 +85,22 @@ logger = logging.getLogger("lab_attendant_v2")
 # --- FastMCP Server ---
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
 
+@web.middleware
+async def cors_middleware(request, handler):
+    # This is a simplified version for local dev; we can harden it later.
+    if request.method == "OPTIONS":
+        response = web.Response(status=200)
+    else:
+        response = await handler(request)
+    
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key'
+    return response
+
 class LabAttendantV2:
     def __init__(self):
-        self.app = web.Application()
+        self.app = web.Application(middlewares=[cors_middleware])
         self.app.router.add_post("/start", self.handle_start_rest)
         self.app.router.add_post("/stop", self.handle_stop_rest)
         self.app.router.add_post("/cleanup", self.handle_cleanup_rest)
@@ -278,7 +291,7 @@ class LabAttendantV2:
 
                 logger.info(f"[VLLM] Igniting Sovereign Node: {current_model}")
                 subprocess.Popen(
-                    ["bash", VLLM_START_PATH, current_model, python_bin],
+                    ["bash", VLLM_START_PATH, current_model, sys.executable],
                     env=env, cwd=LAB_DIR
                 )
                 # [FEAT-145] Engine Sync
@@ -325,10 +338,10 @@ class LabAttendantV2:
         return web.json_response({
             "status": "success", 
             "message": "Boot sequence initiated.",
-            "wait_url": f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout=120"
+            "wait_url": f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout=180"
         })
 
-    async def _wait_for_vllm(self, timeout=120):
+    async def _wait_for_vllm(self, timeout=180):
         """[FEAT-145] Engine Sync: Polls the vLLM port until it responds or times out."""
         start_t = time.time()
         logger.info("[VLLM] Waiting for engine on port 8088...")
@@ -540,6 +553,17 @@ class LabAttendantV2:
             if vitals["full_lab_ready"]: return web.json_response(vitals)
             await asyncio.sleep(1)
         return web.json_response(await self._get_current_vitals())
+
+    async def handle_events_sse(self, request):
+        """[FEAT-156] Server-Sent Events stream for real-time Attendant status."""
+        response = web.StreamResponse()
+        response.headers['Content-Type'] = 'text/event-stream'
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Connection'] = 'keep-alive'
+        await response.prepare(request)
+        
+        while True:
+            await asyncio.sleep(5)
 
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV2()
