@@ -34,7 +34,7 @@ ATTENDANT_PORT = 9999
 
 MONITOR_CONTAINERS = [
     "field_prometheus", "field_grafana", "field_node_exporter", 
-    "field_rapl_sim", "field_dcgm_exporter", "field_loki", "field_promtail"
+    "field_rapl_sim", "field_dcgm_exporter", "field_loki", "field_promtail", "jellyfin", "navidrome"
 ]
 
 # --- Global State ---
