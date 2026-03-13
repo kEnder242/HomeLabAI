@@ -54,6 +54,33 @@ async def remote_brain_think(prompt, context):
         return f"Remote Brain Error: {e}"
 
 
+async def audit_synthesis(summary, context):
+    """
+    [FEAT-191] Judicial Feedback Loop: Uses peer-node auditing
+    to verify 'Diamond Wisdom' quality before storage.
+    """
+    from infra.cognitive_audit import CognitiveAudit
+    
+    # We use a mock node wrapper for the auditor to call the remote brain
+    class AuditorProxy:
+        async def call_tool(self, name, params):
+            # The Auditor library expects a node.call_tool interface
+            # We wrap remote_brain_think to satisfy this
+            res = await remote_brain_think(params["task"], "AUDIT_MODE")
+            class MockRes:
+                def __init__(self, t): self.content = [type('obj', (object,), {'text': t})]
+            return MockRes(res)
+
+    auditor = CognitiveAudit(AuditorProxy())
+    constraints = "Technical precision, no roleplay, no conversational filler, high-density synthesis."
+    
+    is_valid = await auditor.audit_technical_truth(
+        query="Verify the quality of this Diamond Wisdom synthesis.",
+        response=summary,
+        constraints=constraints
+    )
+    return is_valid
+
 async def run_dream_cycle():
     logging.basicConfig(level=logging.INFO, format="[DREAM] %(message)s")
     logging.info("🌙 Starting the Diamond Dream Cycle...")
@@ -91,7 +118,14 @@ async def run_dream_cycle():
                 )
 
                 summary = await remote_brain_think(prompt, narrative_input)
-                logging.info("✨ Synthesis complete.")
+                
+                # [FEAT-191] Judicial Feedback Loop: Audit the synthesis
+                logging.info("⚖️ Auditing synthesis for technical fidelity...")
+                if await audit_synthesis(summary, narrative_input):
+                    logging.info("✨ Synthesis verified.")
+                else:
+                    logging.warning("⚠️ Synthesis failed audit. Lowering rank and storing with caution.")
+                    summary = f"[AUDIT_FAIL] {summary}"
 
                 # 3. Consolidation
                 logging.info(

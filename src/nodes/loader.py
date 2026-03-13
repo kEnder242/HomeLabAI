@@ -272,10 +272,15 @@ class BicameralNode:
             return False, f"Ping error: {e}"
         return False, "Unknown engine state"
 
-    def get_tool_schemas(self):
-        """Generates OpenAI-compatible tool schemas."""
+    def get_tool_schemas(self, allowlist=None):
+        """
+        [FEAT-189] Tool Pruning: Generates OpenAI-compatible tool schemas,
+        optionally filtered by an allowlist.
+        """
         tools = []
         for tool_obj in self.mcp._tool_manager.list_tools():
+            if allowlist and tool_obj.name not in allowlist:
+                continue
             tools.append(
                 {
                     "type": "function",
@@ -287,61 +292,65 @@ class BicameralNode:
                 }
             )
 
-        tools.extend(
-            [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "ask_brain",
-                        "description": "Delegate reasoning to the Left Hemisphere.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"task": {"type": "string"}},
-                            "required": ["task"],
-                        },
+        core_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "ask_brain",
+                    "description": "Delegate reasoning to the Left Hemisphere.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"task": {"type": "string"}},
+                        "required": ["task"],
                     },
                 },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "scribble_note",
-                        "description": "Caches a response semantically for future recall.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string"},
-                                "response": {"type": "string"}
-                            },
-                            "required": ["query", "response"],
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "scribble_note",
+                    "description": "Caches a response semantically for future recall.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "response": {"type": "string"}
                         },
+                        "required": ["query", "response"],
                     },
                 },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "bounce_node",
-                        "description": "Trigger a local process restart for this hemisphere.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"reason": {"type": "string"}},
-                            "required": ["reason"],
-                        },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "bounce_node",
+                    "description": "Trigger a local process restart for this hemisphere.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"reason": {"type": "string"}},
+                        "required": ["reason"],
                     },
                 },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "reply_to_user",
-                        "description": "Provide natural language response.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"text": {"type": "string"}},
-                            "required": ["text"],
-                        },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "reply_to_user",
+                    "description": "Provide natural language response.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"text": {"type": "string"}},
+                        "required": ["text"],
                     },
                 },
-            ]
-        )
+            },
+        ]
+        
+        for ct in core_tools:
+            if allowlist and ct["function"]["name"] not in allowlist:
+                continue
+            tools.append(ct)
+            
         return tools
 
     def unify_prompt(self, query, context="", memory="", system_override=None):
@@ -396,6 +405,9 @@ class BicameralNode:
                 }
             )
 
+        # [FEAT-189] Tool Pruning: derived from metadata
+        tool_allowlist = metadata.get("tool_allowlist") if metadata else None
+
         async with aiohttp.ClientSession() as session:
             try:
                 if engine == "VLLM":
@@ -403,7 +415,7 @@ class BicameralNode:
                     payload = {
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
-                        "tools": self.get_tool_schemas(),
+                        "tools": self.get_tool_schemas(allowlist=tool_allowlist),
                         "tool_choice": "auto",
                         "max_tokens": max_tokens,
                     }
