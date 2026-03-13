@@ -663,5 +663,41 @@ async def read_chronological_excerpts(year: str, months: list[str] = None) -> st
         return f"Excerpts retrieval failed: {e}"
 
 
+@mcp.tool()
+async def safe_scalpel(target_file: str, old_string: str, new_string: str, description: str) -> str:
+    """
+    [FEAT-198] The Safe-Scalpel: A lint-gated surgical replacement tool.
+    Uses 'atomic_patcher.py' logic to ensure only ONE occurrence is replaced
+    and the file remains logically valid (Python/JS).
+    """
+    # Construct full path if relative
+    if not target_file.startswith("/"):
+        # Default to workspace root
+        target_file = os.path.join(os.path.expanduser("~/Dev_Lab"), target_file)
+    
+    if not os.path.exists(target_file):
+        return f"Error: File not found at {target_file}"
+
+    try:
+        from debug.atomic_patcher import apply_batch_refinement
+        edits = [{"old": old_string, "new": new_string, "desc": description}]
+        success = apply_batch_refinement(target_file, edits)
+        return "Surgical strike successful." if success else "Surgical strike failed: old_string not found."
+    except ImportError:
+        # Fallback to direct string replacement if library not found
+        with open(target_file, "r") as f:
+            content = f.read()
+        
+        if old_string not in content:
+            return "Error: old_string not found in file."
+        
+        new_content = content.replace(old_string, new_string, 1)
+        with open(target_file, "w") as f:
+            f.write(new_content)
+        return "Surgical strike successful (Linter missing)."
+    except Exception as e:
+        return f"Error: {e}"
+
+
 if __name__ == "__main__":
     node.run()
