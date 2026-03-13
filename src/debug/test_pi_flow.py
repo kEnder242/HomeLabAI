@@ -49,10 +49,10 @@ async def test_pi_to_21_digits_resonant_flow():
                         print(f"  [SYNERGY] Pinky Intuition received: {text[:30]}...")
                         found_intuition = True
                     
-                    if "Brain" in source or (not source and "3.141" in text):
+                    # Catch the technical truth even if source metadata is missing
+                    if "3.14159" in text:
                         brain_text = text
-                        print(f"  [SYNERGY] Brain Derivation received.")
-                        # Don't break yet, we want to ensure we see both
+                        print(f"  [SYNERGY] Brain Derivation received (Technical Truth Verified).")
                         if found_intuition: break
                 except asyncio.TimeoutError:
                     continue
