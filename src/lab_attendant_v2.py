@@ -14,6 +14,10 @@ import contextlib
 import signal
 from mcp.server.fastmcp import FastMCP
 
+# [BKM-022] Atomic IO & [FEAT-151] Trace Monitoring
+from infra.atomic_io import atomic_write_json, atomic_write_text
+from debug.trace_monitor import TraceMonitor
+
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
@@ -41,6 +45,10 @@ MONITOR_CONTAINERS = [
 lab_process = None
 current_lab_mode = "OFFLINE"
 current_model = None
+
+# [BKM-002] Montana Protocol: Aggressive Logger Authority
+from infra.montana import reclaim_logger
+reclaim_logger(role="ATTENDANT")
 
 # --- THE MONTANA PROTOCOL ---
 _logger_initialized = False
@@ -101,15 +109,15 @@ async def cors_middleware(request, handler):
 class LabAttendantV2:
     def __init__(self):
         self.app = web.Application(middlewares=[cors_middleware])
-        self.app.router.add_post("/start", self.handle_start_rest)
-        self.app.router.add_post("/stop", self.handle_stop_rest)
+        # self.app.router.add_post("/start", self.handle_start_rest)
+        # self.app.router.add_post("/stop", self.handle_stop_rest)
         self.app.router.add_post("/cleanup", self.handle_cleanup_rest)
-        self.app.router.add_post("/hard_reset", self.handle_hard_reset_rest)
+        # self.app.router.add_post("/hard_reset", self.handle_hard_reset_rest)
         self.app.router.add_post("/refresh", self.handle_refresh_rest)
         
         # [FEAT-142/143/144] Laboratory Experiment Suite
-        self.app.router.add_post("/quiesce", self.handle_quiesce_rest)
-        self.app.router.add_post("/ignition", self.handle_ignition_rest)
+        # self.app.router.add_post("/quiesce", self.handle_quiesce_rest)
+        # self.app.router.add_post("/ignition", self.handle_ignition_rest)
         self.app.router.add_post("/ping", self.handle_ping_rest)
         
         self.app.router.add_get("/wait_ready", self.handle_wait_ready_rest)
@@ -121,6 +129,9 @@ class LabAttendantV2:
         # [FEAT-156] SSE: Event Stream for remote tools
         self.app.router.add_get("/events", self.handle_events_rest)
         self.event_queues: Set[asyncio.Queue] = set()
+
+        # [FEAT-151] Forensic Ledger
+        self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
 
         self.ready_event = asyncio.Event()
         self.monitor_task = None
@@ -272,6 +283,9 @@ class LabAttendantV2:
             await self.cleanup_silicon()
             await asyncio.sleep(2.0)
 
+            # [FEAT-151] Mark logs before boot
+            self.trace_monitor.refresh_marks()
+
             global lab_process
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{LAB_DIR}/src"
@@ -285,7 +299,7 @@ class LabAttendantV2:
                 
                 user_args = data.get("extra_args", "")
                 if "--gpu-memory-utilization" not in user_args:
-                    env["VLLM_EXTRA_ARGS"] = f"{user_args} --gpu-memory-utilization 0.4 --enforce-eager --dtype float16 --max-model-len 4096 --max-num-seqs 1"
+                    env["VLLM_EXTRA_ARGS"] = f"{user_args} --gpu-memory-utilization 0.4 --enforce-eager --dtype float16 --max-model-len 4096 --max-num-seqs 1 --attention-backend TRITON_ATTN"
                 else:
                     env["VLLM_EXTRA_ARGS"] = user_args
 
@@ -462,43 +476,74 @@ class LabAttendantV2:
                     "mode": current_lab_mode,
                 },
             }
-            with open(STATUS_JSON, "w") as f:
-                json.dump(live_data, f)
-        except: pass
+            # [BKM-022] Atomic File Swap
+            atomic_write_json(STATUS_JSON, live_data)
+        except Exception as e:
+            logger.error(f"[STATUS] Atomic update failed: {e}")
+
+    async def _append_to_forensic_ledger(self, severity, message):
+        """[FEAT-151] Appends a message and log deltas to the forensic ledger atomically."""
+        try:
+            deltas = self.trace_monitor.capture_delta()
+            entry = {
+                "severity": severity,
+                "message": message,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "trace": deltas
+            }
+            
+            # [BKM-022] Atomic Append (Read-Modify-Write)
+            path = os.path.expanduser(PAGER_ACTIVITY_FILE)
+            existing = ""
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    existing = f.read()
+            
+            new_content = existing + json.dumps(entry) + "\n"
+            atomic_write_text(path, new_content)
+        except Exception as e:
+            logger.error(f"[FORENSIC] Ledger append failed: {e}")
 
     async def vram_watchdog_loop(self):
         """
-        [FEAT-180] Graceful Resource Governance: Replaces fallbacks with a Hard Stop.
+        [FEAT-180] Graceful Resource Governance (The Resilience Ladder).
+        Tier 1: vLLM (Primary).
+        Tier 2: Ollama Fallback (Auto-restart if VRAM > 85% but < 95%).
+        Tier 3: Hard Stop (SIGTERM if VRAM > 98% or load > 12.0).
         """
         while True:
-            await asyncio.sleep(5) # Increased frequency for Phase 12 hardening
+            await asyncio.sleep(5)
             if os.path.exists(MAINTENANCE_LOCK): continue
             
-            # 1. VRAM Check
+            # 1. Resource Telemetry
             used, total = await self._get_vram_info()
-            critical_vram = total > 0 and used > (total * 0.95)
-            
-            # 2. Load Check
+            v_pct = (used / total * 100) if total > 0 else 0
             load1, _, _ = os.getloadavg()
-            critical_load = load1 > 8.0
             
-            if critical_vram or critical_load:
-                reason = "Critical VRAM" if critical_vram else "Critical System Load"
-                logger.error(f"[WATCHDOG] {reason} ({used}MiB / {load1}). Executing SIGTERM.")
+            # --- Tier 3: Hard Stop ---
+            if v_pct > 98 or load1 > 12.0:
+                reason = "Critical VRAM (>98%)" if v_pct > 98 else "Critical Load (>12.0)"
+                logger.error(f"[WATCHDOG] TIER 3: {reason} ({used}MiB / {load1}). Executing Hard Stop.")
                 
-                # Execute [TASK-008] Hard Stop
                 await self.cleanup_silicon()
                 await self.update_status_json(f"Mind TERMINATED ({reason})")
+                await self._append_to_forensic_ledger("CRITICAL", f"Lab Hub hard-stopped due to {reason}.")
+                continue
+
+            # --- Tier 2: Ollama Fallback ---
+            if 85 < v_pct < 95 and current_lab_mode == "VLLM":
+                logger.warning(f"[WATCHDOG] TIER 2: VRAM Pressure ({v_pct:.1f}%). Downshifting to Ollama.")
                 
-                # Notify active clients via Pager
-                try:
-                    with open(os.path.expanduser("~/Dev_Lab/Portfolio_Dev/monitor/pager_activity.json"), "a") as f:
-                        f.write(json.dumps({
-                            "severity": "CRITICAL",
-                            "message": f"Lab Hub hard-stopped due to {reason} to preserve silicon integrity.",
-                            "timestamp": datetime.datetime.now().isoformat()
-                        }) + "\n")
-                except: pass
+                await self._append_to_forensic_ledger("WARNING", "VRAM Pressure detected. Downshifting vLLM to Ollama fallback.")
+                
+                # Execute Downshift: Start in OLLAMA mode
+                # We use handle_start_rest mock to trigger a clean restart
+                class MockReq:
+                    async def json(self): 
+                        return {"engine": "OLLAMA", "model": "MEDIUM", "mode": "SERVICE_UNATTENDED"}
+                
+                await self.handle_start_rest(MockReq())
+                continue
 
     async def _get_vram_info(self):
         try:

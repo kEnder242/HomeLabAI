@@ -25,6 +25,10 @@ from logic.cognitive_hub import CognitiveHub
 PORT = 8765
 PYTHON_PATH = sys.executable
 VERSION = "3.8.1"  # Force-priming and Witty Preamble
+
+# [BKM-002] Montana Protocol: Aggressive Logger Authority
+reclaim_logger(role="HUB")
+
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -911,7 +915,7 @@ class AcmeLab:
 
 if __name__ == "__main__":
     import argparse
-
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
     parser.add_argument("--afk-timeout", type=int, default=300)
