@@ -52,7 +52,25 @@ The upgrade is only considered **VERIFIED** if these three gates are cleared in 
 *   **2026-03-10 14:27**: [PHASE A] Driver 580 installed. `nvidia-smi` verified.
 *   **2026-03-10 14:50**: [PHASE B] vLLM 0.17 environment `.venv_vllm_017` created.
 *   **2026-03-10 15:20**: [GATE 3] Heartbeat SUCCESS. Qwen-2.5-1.5B responding on port 8088.
+*   **2026-03-13 14:45**: [SPR-13.0] **PRODUCTION WIN**. Successfully baseline-stabilized **Llama-3.2-3B-AWQ** on vLLM 0.17 using the **TRITON_ATTN** backend and **0.5 utilization** config. Environment consolidated into `HomeLabAI/.venv`.
 *   **STATUS**: **VERIFIED PRODUCTION READY**.
 
 ---
-**"Verify the silicon before the soul."**
+
+## [SPR-13.0] Finalized vLLM 0.17 "Win Recipe" (Mar 13, 2026)
+**Context:** Standardizing the **Unified 3B Base** on the RTX 2080 Ti (11GB). Resolves the FlashInfer JIT build failures encountered on Compute 7.5 silicon.
+
+### 🏛️ The Configuration
+*   **Model:** `llama-3.2-3b-instruct-awq` (UNIFIED Tier).
+*   **Backend:** `TRITON_ATTN` (Mandatory; bypasses failing FlashInfer JIT).
+*   **Utilization:** `0.5` (The "Safe Win"; provides necessary KV cache block allocation).
+*   **Engine Mode:** vLLM V1 (Native in 0.17; `VLLM_USE_V1=0` is ignored by the engine).
+*   **Network:** `NCCL_P2P_DISABLE=1` and `NCCL_SOCKET_IFNAME=lo` (Bypasses the 333MiB stall).
+
+### 🩺 Verification Gate
+*   **Audit Tool:** `python3 HomeLabAI/src/debug/test_vram_guard.py`
+*   **Success Logic:** Physical VRAM Breakthrough (>400MiB) + Inference Ping (HTTP 200).
+*   **VRAM Peak (Static):** 5125 MiB (verified).
+
+--
+**"Trust the silicon, then the soul."**

@@ -154,8 +154,8 @@ class LabAttendantV3:
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
             env["VLLM_ATTENTION_BACKEND"] = backend
+            # VLLM_EXTRA_ARGS must include the backend flag as the env var is ignored in 0.17
             env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4"
-
             
             logger.info(f"[VLLM] Igniting Sovereign Node: {target_model} (Util: {utilization}, Backend: {backend})")
             logger.info(f"[DEBUG] Env Backend: {env.get('VLLM_ATTENTION_BACKEND')}, Use_V1: {env.get('VLLM_USE_V1')}")
@@ -195,31 +195,43 @@ class LabAttendantV3:
         return {"status": "unlocked", "message": "Maintenance lock cleared."}
 
     async def cleanup_silicon(self):
-        """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by port."""
+        """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID."""
         pids_to_kill = set()
+        pgids_to_kill = set()
         
-        # [DYNAMIC PROTECTION] Identify 'self' and 'family' to avoid suicide.
+        # Identify 'self' to avoid suicide
         my_pgid = os.getpgid(os.getpid())
         
+        # 1. Port-Based Discovery (Master Residents)
         for port in [8088, 8765]:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
                 for line in res.split("\n"):
                     if ":" in line:
                         pid_str = line.split(":")[1].strip()
-                        if pid_str:
-                            for pid in pid_str.split():
-                                try:
-                                    target_pgid = os.getpgid(int(pid))
-                                    # Never kill our own process group.
-                                    if target_pgid != my_pgid:
-                                        pids_to_kill.add(target_pgid)
-                                except: pass
+                        for pid in pid_str.split():
+                            try:
+                                t_pgid = os.getpgid(int(pid))
+                                if t_pgid != my_pgid:
+                                    pgids_to_kill.add(t_pgid)
+                            except: pass
             except Exception: pass
 
-        if pids_to_kill:
-            logger.warning(f"[ASSASSIN] Purging {len(pids_to_kill)} process groups holding ports.")
-            for pgid in pids_to_kill:
+        # 2. Name-Based Discovery (Orphaned Residents)
+        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                if proc.info["pid"] == os.getpid(): continue
+                cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                if any(t in cmdline for t in targets):
+                    t_pgid = os.getpgid(proc.info["pid"])
+                    if t_pgid != my_pgid:
+                        pgids_to_kill.add(t_pgid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError): pass
+
+        if pgids_to_kill:
+            logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} process groups to clear zombies.")
+            for pgid in pgids_to_kill:
                 with contextlib.suppress(Exception):
                     os.killpg(pgid, signal.SIGKILL)
         
