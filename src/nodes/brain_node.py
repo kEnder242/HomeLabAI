@@ -22,7 +22,11 @@ mcp = node.mcp
 @mcp.tool()
 async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
     """The Reasoning Engine: Execute complex architectural or coding tasks."""
-    return await node.generate_response(task, context, metadata=metadata)
+    system_override = None
+    if metadata and metadata.get("behavioral_guidance"):
+        system_override = f"{BRAIN_SYSTEM_PROMPT}\n\n[VIBE_GUIDANCE]: {metadata['behavioral_guidance']}"
+    
+    return await node.generate_response(task, context, metadata=metadata, system_override=system_override)
 
 
 @mcp.tool()

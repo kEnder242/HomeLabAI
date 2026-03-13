@@ -591,5 +591,35 @@ async def query_vibe(query_text: str) -> str:
         return json.dumps({"error": str(e), "adapter": "standard"})
 
 
+@mcp.tool()
+async def retrospective_audit(interaction_log: str, domain: str, adapter: str, vibe: str) -> str:
+    """
+    [FEAT-183] CLaRa Retrospective: Strengthens the 'Tendons' by generating new Vibe anchors.
+    interaction_log: The recent conversation turns.
+    domain: The technical domain (telemetry, architecture, etc.)
+    adapter: The LoRA adapter used (exp_tlm, exp_for, etc.)
+    vibe: The successful VIBE identified.
+    """
+    try:
+        # Use simple date-based ID
+        anchor_id = f"retro_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # We store the interaction summary as the anchor document
+        # The Hub will use semantic similarity to find this retro-fit later
+        dna.add(
+            ids=[anchor_id],
+            documents=[interaction_log[:500]], # ChromaDB doc limit/efficiency
+            metadatas=[{
+                "domain": domain,
+                "adapter": adapter,
+                "vibe": vibe,
+                "guidance": f"Observed success in {domain}. Replicate this {vibe} tone."
+            }]
+        )
+        return f"Retrospective anchor {anchor_id} committed to Behavioral DNA."
+    except Exception as e:
+        return f"Retrospective audit failed: {e}"
+
+
 if __name__ == "__main__":
     node.run()
