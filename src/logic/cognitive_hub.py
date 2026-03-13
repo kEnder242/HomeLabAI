@@ -6,11 +6,12 @@ import random
 import os
 import sys
 from infra.montana import reclaim_logger
+from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
     """
     [FEAT-145] Cognitive Hub: Modularized Reasoning & Dispatch Logic.
-    Extracts the 'Thinking' logic from acme_lab.py to improve maintainability.
+    [FEAT-190] The Judge: Logic-based validation for technical derivations.
     """
     def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
         self.residents = residents
@@ -19,6 +20,7 @@ class CognitiveHub:
         self.brain_online = brain_online_callback
         self.get_oracle_signal = get_oracle_signal_callback
         self.monitor_task_with_tics = monitor_task_with_tics_callback
+        self.auditor = None # Initialized on demand once residents are stable
         
         # [BKM-015] Anchor Migration
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
@@ -28,7 +30,7 @@ class CognitiveHub:
             with open(self.anchors_path, "r") as f:
                 self.intent_anchors = json.load(f)
         
-        # [FEAT-178] Semantic Integration
+        # [FEAT-181] Semantic Integration
         self.semantic_map_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
         self.semantic_map = {}
         if os.path.exists(self.semantic_map_path):
@@ -52,8 +54,16 @@ class CognitiveHub:
         matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
         for m in matches:
             try:
-                # Basic cleanup for common malformed JSON
-                data = json.loads(m)
+                # Basic cleanup: LLMs sometimes provide { 'tool': ... } which is invalid JSON
+                m_clean = m.replace("'", '"')
+                # Standardize common malformed structural tokens
+                m_clean = m_clean.replace("True", "true").replace("False", "false")
+                
+                # Validation gate: must contain "tool" or a known Hub tool name
+                if '"tool"' not in m_clean and '"reply_to_user"' not in m_clean:
+                    continue
+
+                data = json.loads(m_clean)
                 tool = data.get("tool")
                 params = data.get("parameters", {})
                 
@@ -359,16 +369,26 @@ class CognitiveHub:
             # Fidelity Gate (The BKM Audit)
             if source == "Brain":
                 # [FEAT-154] Use turn_density to adjust vibe thresholds
-                # Higher density (more fast turns) = lower threshold for "thin"
                 base_threshold = 20
                 adjusted_threshold = max(5, base_threshold - int(turn_density * 2))
                 
                 is_thin = len(result_text.split()) < adjusted_threshold and len(query.split()) > 4
                 
-                # [FIX] Bypass thin check for technical constants (e.g., Pi)
-                if "3.141" in result_text:
-                    is_thin = False
-                
+                # [FEAT-190] The Judge: Replace hardcoded bypass with logic-based audit
+                if is_thin:
+                    # Lazy initialize auditor using Lab Node Sentinel
+                    if not self.auditor and "pinky" in self.residents:
+                        self.auditor = CognitiveAudit(self.residents["pinky"])
+                    
+                    if self.auditor:
+                        logging.info(f"[HUB] Response is thin ({len(result_text.split())} words). Invoking Cognitive Auditor...")
+                        constraints = "High technical precision, terse but authoritative, accurate technical constants."
+                        if await self.auditor.audit_technical_truth(query, result_text, constraints):
+                            logging.info("[HUB] Cognitive Auditor: Response verified as SUFFICIENT. Bypassing thin gate.")
+                            is_thin = False
+                        else:
+                            logging.warning("[HUB] Cognitive Auditor: Response confirmed THIN/INSUFFICIENT.")
+
                 if is_thin:
                     if retry_count == 1:
                         # [FEAT-179] The Hallway Protocol (Agentic-R)
