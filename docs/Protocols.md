@@ -191,15 +191,10 @@
 *   **The Compression Trap**: LLMs naturally instinct to "clean up" or "summarize" old tasks to save space—this is a fatal error that leads to the total loss of technical intent.
 *   **The Erasure Regret**: Deleting "Tabled" tasks or previous failures makes the Lab look reactive rather than evolved; the history of the struggle is the source of robustness.
 
-### [BKM-015.1] The Law of Semantic Indirection (The Tendons)
-**Context:** Replaces the "Waffling" period (Feb-Mar 2026) where routing was managed via static JSON lists in `intent_anchors.json`. 
-**Why:** Rigid mapping causes "Logic Drift" when new tools are added. The agent must rely on semantic "Vibes" to select its cognitive loadout.
-**The Rule:** No `.py` logic block may map a domain to a tool or adapter via a switch/case or list-matching. All behavioral mapping must be retrieved via vector similarity from the `behavioral_dna` collection.
-**Trigger:** Every `CognitiveHub` dispatch must first perform a "Vibe Check" against the neural archive.
-**Scars:** Previous hardcoded `if "rapl" in query` logic failed to capture "What's the power draw?" which lacks the keyword but carries the vibe.
 
 
-### [BKM-015.1] The Law of Semantic Indirection (The Tendons)
+
+### [BKM-015.1] The Law of Semantic Indirection (The Bones)
 **Context:** Replaces the "Waffling" period (Feb-Mar 2026) where routing was managed via static JSON lists in `intent_anchors.json`. 
 **Why:** Rigid mapping causes "Logic Drift" when new tools are added. The agent must rely on semantic "Vibes" to select its cognitive loadout.
 **The Rule:** No `.py` logic block may map a domain to a tool or adapter via a switch/case or list-matching. All behavioral mapping must be retrieved via vector similarity from the `behavioral_dna` collection.
