@@ -50,11 +50,20 @@ class CognitiveHub:
 
         # 2. Extract Tool Calls (JSON detection)
         matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
-        if matches:
+        for m in matches:
             try:
-                params = json.loads(matches[0])
-                tool = params.get("tool")
+                # Basic cleanup for common malformed JSON
+                data = json.loads(m)
+                tool = data.get("tool")
+                params = data.get("parameters", {})
                 
+                if not tool:
+                    if "reply_to_user" in data:
+                        tool = "reply_to_user"
+                        params = {"text": data["reply_to_user"]}
+                    else:
+                        continue
+
                 if tool == "close_lab":
                     logging.warning(f"[HUB] SHUTDOWN requested by {source}.")
                     await self.broadcast({
@@ -198,7 +207,10 @@ class CognitiveHub:
             if 'archive' not in self.residents:
                 return "exp_for"
             
-            vibe_json = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
+            vibe_result = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
+            # Robust extraction from FastMCP response object
+            vibe_json = str(vibe_result.content[0].text)
+            logging.info(f"[HUB] Vibe JSON: {vibe_json[:50]}...")
             vibe_data = json.loads(vibe_json)
             
             adapter = vibe_data.get("adapter", "exp_for")
