@@ -107,7 +107,7 @@ We are moving away from monolithic "Brain" vs "Pinky" weights toward a library o
 - **[FEAT-154-ACTIVATE] Density-Aware Vibe**:
     - **Rationale**: Sentient Sentinel logic.
     - **Mechanism**: Use `turn_density` to adjust classification thresholds.
-- **[FEAT-178-ACTIVATE] Deep Map Routing**:
+- **[FEAT-181-ACTIVATE] Deep Map Routing**:
     - **Rationale**: Global Topography grounding.
     - **Mechanism**: Plumb `semantic_map.json` into the Hub.
 - **[FEAT-195] Remote Lab Control**:
