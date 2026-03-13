@@ -53,7 +53,7 @@ This document provides a technical overview of every high-fidelity tool availabl
 | Tool | Function | Purpose |
 | :--- | :--- | :--- |
 | `facilitate` | Intuitive intent classification. | Determines domain (Telemetry vs. Architecture) for PMM routing. |
-| `peek_strategic_map` | Views the Archive Topography. | [FEAT-178] Accesses `semantic_map.json` for global context. |
+| `peek_strategic_map` | Views the Archive Topography. | [FEAT-181] Accesses `semantic_map.json` for global context. |
 | `trigger_morning_briefing`| Semantically triggers news. | [FEAT-072] Briefs user on nightly activities based on intent "vibe". |
 | `lab_shutdown` | The Curfew. | Gracefully terminates the Lab's active mind loop. |
 
