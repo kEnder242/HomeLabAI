@@ -166,10 +166,12 @@
 **Status**: MOVED to **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** as the **Silicon Verification Law**.
 **Rationale**: Final stability verification is a mandatory silicon gate, not a behavioral guideline.
 
-## BKM-022: Atomic Write Pattern (Race Condition Prevention)
-**Objective**: Ensure data integrity during background synthesis and static site reading.
-*   **Rule**: Standardize on the `.tmp` + `os.replace` pattern for all scanner and worker outputs (e.g., yearly JSONs).
-*   **Logic**: Write to a temporary file first, then perform an atomic rename. This prevents the static dashboard from reading half-written files, eliminating UI flicker and "Empty Year" bugs.
+## BKM-022: The Atomic File Swap Protocol (Filesystem Safety)
+**Objective**: Ensure filesystem atomicity for all file updates and prevent race conditions.
+
+1.  **Protocol**: Consumers (UIs or Workers) must never encounter partially written or corrupted states during background synthesis or logging. While the risk of reading a partial file during overnight scans is low, this protocol remains the standard for all file-based state transitions to maintain system hygiene.
+2.  **Mechanism**: Standardize on the `.tmp` + `os.replace` pattern for all scanner and worker outputs (e.g., yearly JSONs and the Forensic Ledger). Write to a temporary file first, then perform an atomic rename. This prevents the static dashboard from reading half-written files, eliminating UI flicker and "Empty Year" bugs.
+3.  **Content Integrity**: The protocol is strictly a **Filesystem-Level Safety** mechanism. It must not be used to overwrite history; the underlying content logic (e.g., Cumulative Synthesis) must ensure that historical data is preserved during the swap.
 
 ## BKM-023: The Surgical Preservation Protocol
 **Objective**: To prevent "Lossy Compression," erasures of technical pedigree, and documentation thrash during architectural refactors.
