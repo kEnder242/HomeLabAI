@@ -11,6 +11,7 @@ from typing import Dict, Set
 from infra.montana import reclaim_logger
 import aiohttp
 from aiohttp import web
+import aiohttp_cors
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
@@ -439,6 +440,7 @@ class AcmeLab:
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
+        logging.info(f"[SOCKET] New client connection request from {request.remote}")
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.connected_clients.add(ws)
@@ -832,7 +834,19 @@ class AcmeLab:
             self.status = "BOOTING"
 
             app = web.Application()
-            app.router.add_get("/", self.client_handler)
+            
+            # [FEAT-199] CORS Support for browser Intercom
+            cors = aiohttp_cors.setup(app, defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*",
+                )
+            })
+            
+            route = app.router.add_get("/", self.client_handler)
+            cors.add(route)
+            
             runner = web.AppRunner(app)
             await runner.setup()
             # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
