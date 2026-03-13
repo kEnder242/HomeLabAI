@@ -34,6 +34,9 @@ class CognitiveHub:
         if os.path.exists(self.semantic_map_path):
             with open(self.semantic_map_path, "r") as f:
                 self.semantic_map = json.load(f)
+        
+        # [FEAT-188] Resonant Memory: Buffer for Pinky's intuition
+        self.resonant_history = []
 
     async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False):
         """
@@ -255,16 +258,41 @@ class CognitiveHub:
                 # [FEAT-174.1] Strategic Pre-Gating
                 # [FEAT-182] Inject Pinky's Hearing into Brain context
                 hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
+                
+                # [FEAT-188] Resonant Memory: build momentum from history
+                history_tag = ""
+                if self.resonant_history:
+                    history_content = "\n".join(self.resonant_history[-3:])
+                    history_tag = f"\n\n[RESONANT_HISTORY]:\n{history_content}"
+                
+                # Update history buffer
+                if pinky_intuition:
+                    self.resonant_history.append(f"- {pinky_intuition}")
+                    if len(self.resonant_history) > 10: self.resonant_history.pop(0)
+
+                # [FEAT-189] Tool Pruning: Generate allowlist based on adapter/vibe
+                tool_allowlist = ["ask_brain", "reply_to_user"] # Core defaults
+                if selected_expert == "exp_tlm":
+                    tool_allowlist.extend(["peek_telemetry", "get_hardware_vitals"])
+                elif selected_expert == "exp_for":
+                    tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map"])
+                elif selected_expert == "exp_bkm":
+                    tool_allowlist.extend(["generate_bkm", "read_document", "update_whiteboard"])
+                else:
+                    tool_allowlist = None # Allow all for standard
+
                 metadata = {
                     "expert_adapter": selected_expert,
                     "behavioral_guidance": getattr(self, 'current_vibe_guidance', ""),
-                    "pinky_hearing": pinky_intuition
+                    "pinky_hearing": pinky_intuition,
+                    "resonant_history": self.resonant_history[-3:],
+                    "tool_allowlist": tool_allowlist
                 }
                 
                 # Brain derivation
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
-                        "task": f"{query}{hearing_tag}", 
+                        "task": f"{query}{hearing_tag}{history_tag}", 
                         "metadata": metadata
                     })
                 ))
