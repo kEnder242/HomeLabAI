@@ -12,13 +12,14 @@ if [ -z "$MODEL_PATH" ]; then
     MODEL_PATH="/speedy/models/Qwen2.5-3B-Instruct"
 fi
 
-# [TURING BREAKTHROUGH] Force XFORMERS and P2P Disable for RTX 2080 Ti stability
-export VLLM_ATTENTION_BACKEND=XFORMERS
-export NCCL_P2P_DISABLE=1
-export VLLM_USE_V1=0 # vLLM V1 still has issues on Turing; stick to V0 with XFORMERS
+# [TURING BREAKTHROUGH] Optimization Defaults for RTX 2080 Ti
+# These can be overridden by the Lab Attendant (V3) environment.
+export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
+export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
+export VLLM_USE_V1=${VLLM_USE_V1:-0}
 
 echo "--- vLLM Sovereign Ignition: $MODEL_PATH ---"
-echo "Env: XFORMERS=1, NCCL_P2P_DISABLE=1, V1=0"
+echo "Env: Backend=${VLLM_ATTENTION_BACKEND}, P2P_Disable=${NCCL_P2P_DISABLE}, V1=${VLLM_USE_V1}"
 
 # [FEAT-030] Unity Pattern: Consume VLLM_EXTRA_ARGS from lab_attendant
 # Path Hardening: We assume we are running from HomeLabAI/ or its parent.
@@ -27,15 +28,11 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --load-format auto \
     --host 0.0.0.0 \
     --port 8088 \
-    --gpu-memory-utilization 0.4 \
     --served-model-name unified-base \
     --max-model-len 8192 \
-    --enforce-eager \
     --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
-    --enable-lora \
-    --max-loras 4 \
     $VLLM_EXTRA_ARGS \
     > vllm_server.log 2>&1 &
 

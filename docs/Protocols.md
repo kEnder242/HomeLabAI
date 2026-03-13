@@ -144,6 +144,17 @@
 
 1.  **Service Model**: The Lab Attendant is now a permanent resident service. Direct execution of the orchestration script for hardware control is no longer supported.
 2.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
+
+### 📖 V3 Tool Usage Guide
+
+| Tool | Intent | Physical Action |
+| :--- | :--- | :--- |
+| **`lab_start`** | Primary Ignition | **Atomic Scrub**: Executes a PGID-aware purge of all previous Lab processes before launching the Hub and Engine. **No manual cleanup required.** |
+| **`lab_stop`** | Full Shutdown | **Assassin Activation**: Immediately terminates all process groups holding Lab ports (8088, 8765) and settles the silicon. |
+| **`lab_quiesce`** | Maintenance Lock | **Persistence Gate**: Sets a `maintenance.lock`, kills all residents, and enters a passive state where the Watchdog is disabled. Use this for driver updates or manual config testing. |
+| **`lab_heartbeat`** | Vitals Audit | **Forensic Truth**: Returns the physical port status, VRAM used/total, and the unique `[BOOT_HASH]` to verify which code version is actually resident. |
+| **`lab_ignition`** | Lock Clearance | **Emergency Override**: Clears any existing `maintenance.lock` files but does NOT start models. Follow this with `lab_start`. |
+
 3.  **Critical REST**: The REST API (port 9999) is a critical infrastructure layer that enables the `status.html` remote control and provides the backend communication for the MCP Proxy. 
 4.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
 5.  **Legacy Support**: `LAB_REST_CURL_CONTROL` (Default: ENABLED) preserves backward compatibility for existing `curl` scripts and remote status indicators while steering the agent toward the high-fidelity Proxy path.
