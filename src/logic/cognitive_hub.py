@@ -252,9 +252,10 @@ class CognitiveHub:
             # Strategic Path
             pinky_intuition = ""
             if "pinky" in self.residents and retry_count == 0:
+                # [FEAT-182-FIX] Immediate feedback: Notify user that triage is starting
                 await self.broadcast({
                     "brain": self.get_oracle_signal("Pinky"),
-                    "brain_source": "Pinky (Intuition)",
+                    "brain_source": "Pinky (Triage)",
                     "channel": "insight",
                     "is_internal": True
                 })
