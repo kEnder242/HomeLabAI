@@ -139,13 +139,14 @@
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
 *   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
-## BKM-018: The Orchestrator-First Mandate (No-Hack Law)
+## BKM-018: The Orchestrator-First Mandate (Attendant V3)
 **Objective**: Prevent "Zombie States" and diagnostic blindness caused by manual process manipulation.
 
-1.  **Usage**: Native MCP tool calls (`lab_start`, `lab_stop`, `lab_ignition`) are the **ONLY** permitted way to manage the Lab Mind. 
-2.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
-3.  **The Exception**: Manual shell intervention is only permitted if the Lab Attendant itself is confirmed unresponsive (no response on port 9999).
-4.  **Verification**: Always verify the `[BOOT_HASH]` and `commit` returned by the Attendant heartbeat to ensure the Lab is running the intended code version.
+1.  **Service Model**: The Lab Attendant is now a permanent resident service. Direct execution of the orchestration script for hardware control is no longer supported.
+2.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
+3.  **Critical REST**: The REST API (port 9999) is a critical infrastructure layer that enables the `status.html` remote control and provides the backend communication for the MCP Proxy. 
+4.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
+5.  **Legacy Support**: `LAB_REST_CURL_CONTROL` (Default: ENABLED) preserves backward compatibility for existing `curl` scripts and remote status indicators while steering the agent toward the high-fidelity Proxy path.
 
 **Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a pkill or shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab's sovereignty."
 
