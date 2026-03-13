@@ -380,6 +380,9 @@ class AcmeLab:
                 logging.info("[SOCKET] Idle timeout reached. Clearing session lock.")
                 if os.path.exists(ROUND_TABLE_LOCK):
                     os.remove(ROUND_TABLE_LOCK)
+                # [SPR-13.0] Auto-shutdown for debug modes
+                if self.mode != "SERVICE_UNATTENDED":
+                    self.shutdown_event.set()
         except asyncio.CancelledError:
             pass
         finally:
@@ -710,8 +713,13 @@ class AcmeLab:
             ("brain", os.path.join(n_dir, "brain_node.py")),
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("architect", os.path.join(n_dir, "architect_node.py")),
+            ("thinking", os.path.join(n_dir, "thinking_node.py")),
             ("browser", os.path.join(n_dir, "browser_node.py")),
         ]
+        
+        # [SPR-13.0] Orchestration Test Mode
+        if self.mode == "DEBUG_PINKY":
+            nodes = [("pinky", os.path.join(n_dir, "pinky_node.py"))]
 
         for name, path in nodes:
             try:
@@ -825,6 +833,7 @@ class AcmeLab:
             self.shutdown_event.set()
 
     async def run(self, disable_ear=False, trigger_task=None):
+        logging.info(f"[BOOT] Starting Lab in mode: {self.mode}")
         # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
         # to ensure it gets contiguous memory before vLLM or residents spawn.
         if not disable_ear:

@@ -13,10 +13,13 @@ import sys
 import contextlib
 import signal
 from mcp.server.fastmcp import FastMCP
+import pynvml
 
 # [BKM-022] Atomic IO & [FEAT-151] Trace Monitoring
-from infra.atomic_io import atomic_write_json, atomic_write_text
+from infra.atomic_io import atomic_write_json
 from debug.trace_monitor import TraceMonitor
+from infra.forensic_ledger import ForensicLedger
+from infra.status_model import StatusModel
 
 # --- Path Self-Awareness ---
 _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +46,7 @@ ATTENDANT_PORT = 9999
 lab_process = None
 current_lab_mode = "OFFLINE"
 current_model = None
+requested_model_tier = "UNIFIED"
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
@@ -88,6 +92,8 @@ class LabAttendantV3:
         self.app.router.add_get("/mutex", self.handle_mutex_rest)
         
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
+        self.forensic = ForensicLedger()
+        self.status_model = StatusModel()
         self.ready_event = asyncio.Event()
         self.vram_config = {}
         self.refresh_vram_config()
@@ -97,37 +103,26 @@ class LabAttendantV3:
             try:
                 with open(CHARACTERIZATION_FILE, "r") as f:
                     self.vram_config = json.load(f)
+                logger.info("[VRAM] Config refreshed from disk.")
             except Exception: pass
 
     # --- Proxy Helper ---
     async def _proxy_request(self, method, endpoint, data=None):
-        """Redirects tool calls from the Proxy process to the Master Service."""
         url = f"http://localhost:{ATTENDANT_PORT}/{endpoint}"
         async with aiohttp.ClientSession() as session:
             try:
-                if method == "POST":
-                    async with session.post(url, json=data) as r:
-                        return await r.json()
-                else:
-                    async with session.get(url) as r:
-                        return await r.json()
+                async with session.request(method, url, json=data) as r:
+                    return await r.json()
             except Exception as e:
-                return {"status": "error", "message": f"Proxy connection to Master failed: {e}"}
+                return {"status": "error", "message": str(e)}
 
-    # --- MCP Tools Implementation ---
-    async def mcp_heartbeat(self):
+    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, is_autonomous: bool = False, op_mode: str = "SERVICE_UNATTENDED"):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("GET", "heartbeat")
-        vitals = await self._get_current_vitals()
-        vitals["fingerprint"] = get_fingerprint()
-        vitals["timestamp"] = datetime.datetime.now().isoformat()
-        return vitals
-
-    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True):
-        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear})
+            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode})
         
-        global current_lab_mode, current_model, lab_process
+        global current_lab_mode, current_model, lab_process, requested_model_tier
+        if not is_autonomous:
+            requested_model_tier = model
         self.refresh_vram_config() # Reload latest model mappings
         
         # Resolve model path and config from map
@@ -144,6 +139,9 @@ class LabAttendantV3:
         await self.cleanup_silicon()
         self.ready_event.clear()
         self.trace_monitor.refresh_marks()
+        self.forensic.refresh_marks()
+        
+        self.status_model.update_logical(mode="IGNITION", task=f"Starting {model}", readiness="BOOTING")
         
         env = os.environ.copy()
         env["LAB_MODE"] = engine
@@ -163,18 +161,21 @@ class LabAttendantV3:
             await self._wait_for_vllm()
 
         # Start Hub
-        cmd = [sys.executable, LAB_SERVER_PATH, "--mode", "SERVICE_UNATTENDED"]
+        cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
         if disable_ear: cmd.append("--disable-ear")
         
+        logger.info(f"[BOOT] Executing: {' '.join(cmd)}")
         lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=open(SERVER_LOG, "a", buffering=1), preexec_fn=os.setpgrp)
+        self.forensic.record_event("INFO", f"Lab Ignition: {model} via {engine}", {"tier": model, "engine": engine, "op_mode": op_mode})
         asyncio.create_task(self.log_monitor_loop())
         return {"status": "success", "message": f"Ignited {model} via {engine}"}
 
     async def mcp_stop(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "stop")
+        self.forensic.record_event("WARNING", "Manual Lab Stop Initiated", {"user": "gemini-cli"})
         await self.cleanup_silicon()
-        await self.update_status_json("OFFLINE (Manual Stop)")
+        self.status_model.update_logical(mode="OFFLINE", task="None", readiness="OFFLINE")
         return {"status": "success", "message": "Lab stopped."}
 
     async def mcp_quiesce(self):
@@ -184,7 +185,7 @@ class LabAttendantV3:
         with open(MAINTENANCE_LOCK, "w") as f:
             f.write(datetime.datetime.now().isoformat())
         await self.cleanup_silicon()
-        await self.update_status_json("MAINTENANCE MODE (Locked)")
+        self.status_model.update_logical(mode="MAINTENANCE", task="Lockdown", readiness="OFFLINE")
         return {"status": "locked", "message": "Lab frozen. Watchdog passive."}
 
     async def mcp_ignition(self):
@@ -196,7 +197,6 @@ class LabAttendantV3:
 
     async def cleanup_silicon(self):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID."""
-        pids_to_kill = set()
         pgids_to_kill = set()
         
         # Identify 'self' to avoid suicide
@@ -218,7 +218,7 @@ class LabAttendantV3:
             except Exception: pass
 
         # 2. Name-Based Discovery (Orphaned Residents)
-        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
+        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama", "enginecore", "python"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 if proc.info["pid"] == os.getpid(): continue
@@ -249,16 +249,6 @@ class LabAttendantV3:
         except: pass
         return vitals
 
-    async def update_status_json(self, msg=None):
-        vitals = await self._get_current_vitals()
-        live_data = {
-            "status": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
-            "message": msg or ("READY" if vitals["full_lab_ready"] else "BOOTING"),
-            "timestamp": datetime.datetime.now().isoformat(),
-            "vitals": vitals
-        }
-        atomic_write_json(STATUS_JSON, live_data)
-
     async def log_monitor_loop(self):
         self.ready_event.clear()
         if not os.path.exists(SERVER_LOG):
@@ -281,7 +271,7 @@ class LabAttendantV3:
                 if "[READY] Lab is Open" in line:
                     self.ready_event.set()
                     logger.info("[WATCHDOG] Lab reported READY signal.")
-                    await self.update_status_json("Mind is READY")
+                    self.status_model.update_logical(mode="READY", task="Idle", readiness="READY")
                     return
 
     async def _wait_for_vllm(self, timeout=120):
@@ -296,16 +286,65 @@ class LabAttendantV3:
         return False
 
     async def vram_watchdog_loop(self):
-        """[FEAT-180] Resilience Ladder: Passive Monitoring."""
+        """[FEAT-180] Resilience Ladder: Auto-Restart & Tiered Downshift."""
+        global lab_process, current_lab_mode, current_model, requested_model_tier
+        
+        try:
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        except Exception as e:
+            logger.error(f"[WATCHDOG] Failed to initialize NVML: {e}")
+            return
+
         while True:
             await asyncio.sleep(10)
             if os.path.exists(MAINTENANCE_LOCK): continue
-            pass
+            self.refresh_vram_config()
+            
+            # 1. VRAM Monitoring
+            try:
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                used_mib = info.used / 1024 / 1024
+                downshift_threshold = self.vram_config.get("safe_tiers", {}).get("downshift", 9500)
+                critical_threshold = self.vram_config.get("safe_tiers", {}).get("critical", 11000)
+                
+                vitals = await self._get_current_vitals()
+                logger.info(f"[WATCHDOG] Heartbeat | VRAM: {used_mib:.0f}MiB / {downshift_threshold}MiB | Lab: {'Active' if lab_process else 'None'} | Tier: {requested_model_tier}")
+                
+                self.status_model.update_physical(
+                    vram_used_mib=int(used_mib),
+                    engine_active=vitals["engine_running"],
+                    lab_active=vitals["lab_server_running"]
+                )
+
+                if used_mib > critical_threshold:
+                    logger.error(f"[WATCHDOG] VRAM Critical ({used_mib:.0f}MiB). Emergency Stop.")
+                    self.forensic.record_event("CRITICAL", f"VRAM Critical: {used_mib:.0f}MiB", {"threshold": critical_threshold})
+                    await self.mcp_stop()
+                elif used_mib > downshift_threshold and requested_model_tier == "UNIFIED":
+                    model_map = self.vram_config.get("model_map", {})
+                    large_model = model_map.get("LARGE", {}).get("vllm" if current_lab_mode == "VLLM" else "ollama")
+                    if current_model != large_model:
+                        logger.warning(f"[WATCHDOG] VRAM Pressure ({used_mib:.0f}MiB). Downshifting to LARGE tier.")
+                        self.forensic.record_event("WARNING", f"VRAM Pressure: {used_mib:.0f}MiB. Downshifting.", {"threshold": downshift_threshold})
+                        await self.mcp_start(engine=current_lab_mode, model="LARGE", is_autonomous=True)
+            except Exception as e:
+                logger.error(f"[WATCHDOG] Monitor error: {e}")
+
+            # 2. Auto-Restart Check
+            if lab_process is not None:
+                poll = lab_process.poll()
+                if poll is not None:
+                    logger.warning(f"[WATCHDOG] Lab process died with code {poll}. Restarting...")
+                    self.forensic.record_event("ERROR", f"Lab Process Died (Code: {poll}). Restarting.", {"code": poll})
+                    await self.mcp_start(engine=current_lab_mode, model=requested_model_tier, is_autonomous=True)
+                    continue
 
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
         data = await r.json()
-        return web.json_response(await self.mcp_start(data.get("engine"), data.get("model"), data.get("disable_ear", True)))
+        logger.info(f"[REST] Received /start: {data}")
+        return web.json_response(await self.mcp_start(data.get("engine"), data.get("model"), data.get("disable_ear", True), op_mode=data.get("op_mode", "SERVICE_UNATTENDED")))
     async def handle_stop_rest(self, r): return web.json_response(await self.mcp_stop())
     async def handle_quiesce_rest(self, r): return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r): return web.json_response(await self.mcp_ignition())
@@ -323,12 +362,15 @@ class LabAttendantV3:
     async def handle_mutex_rest(self, r):
         return web.json_response({"round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK)})
 
+    async def mcp_heartbeat(self):
+        return await self._get_current_vitals()
+
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV3()
 @mcp.tool()
 async def lab_heartbeat(): return await attendant.mcp_heartbeat()
 @mcp.tool()
-async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True): return await attendant.mcp_start(engine, model, disable_ear)
+async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"): return await attendant.mcp_start(engine, model, disable_ear, op_mode=op_mode)
 @mcp.tool()
 async def lab_stop(): return await attendant.mcp_stop()
 @mcp.tool()
