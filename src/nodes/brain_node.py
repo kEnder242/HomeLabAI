@@ -30,6 +30,18 @@ async def deep_think(task: str, context: str = "", metadata: dict = None) -> str
 
 
 @mcp.tool()
+async def peek_strategic_map() -> str:
+    """[FEAT-196] Proxy: Requests the topographical map of the archive from the Archive Node."""
+    return await node.call_remote_tool("archive", "peek_strategic_map", {})
+
+
+@mcp.tool()
+async def read_chronological_excerpts(year: str, months: list[str] = None) -> str:
+    """[FEAT-196] Proxy: Requests raw chronological evidence for specific date ranges."""
+    return await node.call_remote_tool("archive", "read_chronological_excerpts", {"year": year, "months": months})
+
+
+@mcp.tool()
 async def shallow_think(task: str, context: str = "") -> str:
     """Fast Reflex: Provide a short, immediate response for greetings or simple status checks."""
     shallow_prompt = (

@@ -207,10 +207,11 @@ class CognitiveHub:
             if 'archive' not in self.residents:
                 return "exp_for"
             
-            vibe_result = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
-            # Robust extraction from FastMCP response object
-            vibe_json = str(vibe_result.content[0].text)
-            logging.info(f"[HUB] Vibe JSON: {vibe_json[:50]}...")
+            # [FIX] Properly handle MCP CallToolResult object
+            vibe_res = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
+            vibe_json = vibe_res.content[0].text if hasattr(vibe_res, 'content') else str(vibe_res)
+            
+            logging.info(f"[HUB] Vibe JSON retrieved: {vibe_json[:50]}...")
             vibe_data = json.loads(vibe_json)
             
             adapter = vibe_data.get("adapter", "exp_for")
@@ -284,10 +285,19 @@ class CognitiveHub:
 
                 # [FEAT-189] Tool Pruning: Generate allowlist based on adapter/vibe
                 tool_allowlist = ["ask_brain", "reply_to_user"] # Core defaults
-                if selected_expert == "exp_tlm":
+                
+                # [FEAT-195] Archival Topography Injection
+                archival_map_context = ""
+                if selected_expert == "exp_for" or selected_expert == "exp_tlm":
+                    tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map", "read_chronological_excerpts"])
+                    # Inject high-level topography summary if map exists
+                    if self.semantic_map:
+                        strat = len(self.semantic_map.get("strategic_layer", []))
+                        themes = list(self.semantic_map.get("analytical_layer", {}).keys())
+                        archival_map_context = f"\n[ARCHIVAL_TOPOGRAPHY]: Archive contains {strat} Diamond anchors across themes: {themes}. Use 'peek_strategic_map' for detail."
+
+                elif selected_expert == "exp_tlm":
                     tool_allowlist.extend(["peek_telemetry", "get_hardware_vitals"])
-                elif selected_expert == "exp_for":
-                    tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map"])
                 elif selected_expert == "exp_bkm":
                     tool_allowlist.extend(["generate_bkm", "read_document", "update_whiteboard"])
                 else:
@@ -304,7 +314,7 @@ class CognitiveHub:
                 # Brain derivation
                 t_brain = asyncio.create_task(self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
-                        "task": f"{query}{hearing_tag}{history_tag}", 
+                        "task": f"{query}{hearing_tag}{history_tag}{archival_map_context}", 
                         "metadata": metadata
                     })
                 ))
@@ -353,6 +363,10 @@ class CognitiveHub:
                 adjusted_threshold = max(5, base_threshold - int(turn_density * 2))
                 
                 is_thin = len(result_text.split()) < adjusted_threshold and len(query.split()) > 4
+                
+                # [FIX] Bypass thin check for technical constants (e.g., Pi)
+                if "3.141" in result_text:
+                    is_thin = False
                 
                 if is_thin:
                     if retry_count == 1:

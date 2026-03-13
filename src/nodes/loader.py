@@ -549,5 +549,19 @@ class BicameralNode:
         except Exception:
             pass
 
+    async def call_remote_tool(self, target_node: str, tool_name: str, parameters: dict) -> str:
+        """
+        [FEAT-196] Cross-Hemispheric Calling: Allows a node to request a tool
+        from another resident node via the Hub's WebSocket relay.
+        """
+        logging.info(f"[{self.name}] Requesting remote tool: {target_node}.{tool_name}")
+        # Placeholder for future implementation: Currently Hub handles 
+        # cross-node calls if specifically wired. For now, we return 
+        # a structural prompt to the LLM to 'ask_brain' or 'ask_archive'
+        return json.dumps({
+            "error": "Cross-node direct tool calling via MCP is in DESIGN. Please use 'ask_brain' for delegation.",
+            "suggestion": f"I cannot reach {target_node} directly. I should provide my derivation to the user."
+        })
+
     def run(self):
         self.mcp.run()
