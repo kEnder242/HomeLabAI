@@ -128,8 +128,18 @@ class LabAttendantV3:
             return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear})
         
         global current_lab_mode, current_model, lab_process
+        self.refresh_vram_config() # Reload latest model mappings
+        
+        # Resolve model path and config from map
+        model_map = self.vram_config.get("model_map", {})
+        tier_config = model_map.get(model, model_map.get("UNIFIED", {}))
+        
+        target_model = tier_config.get("vllm" if engine == "VLLM" else "ollama", model)
+        utilization = tier_config.get("gpu_memory_utilization", 0.4)
+        backend = tier_config.get("attention_backend", "TRITON_ATTN")
+
         current_lab_mode = engine
-        current_model = model
+        current_model = target_model
         
         await self.cleanup_silicon()
         self.ready_event.clear()
@@ -140,13 +150,16 @@ class LabAttendantV3:
         if disable_ear: env["DISABLE_EAR"] = "1"
         
         if engine == "VLLM":
-            # [SPR-13.0] Verified 0.17 Stable Config for Compute 7.5
+            # [SPR-13.0] Verified Stable Config from characterization.json
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
-            env["VLLM_EXTRA_ARGS"] = "--gpu-memory-utilization 0.4 --enforce-eager --attention-backend TRITON_ATTN --enable-lora --max-loras 4"
+            env["VLLM_ATTENTION_BACKEND"] = backend
+            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4"
+
             
-            logger.info(f"[VLLM] Igniting Sovereign Node: {model}")
-            subprocess.Popen(["bash", VLLM_START_PATH, model, sys.executable], env=env, cwd=LAB_DIR)
+            logger.info(f"[VLLM] Igniting Sovereign Node: {target_model} (Util: {utilization}, Backend: {backend})")
+            logger.info(f"[DEBUG] Env Backend: {env.get('VLLM_ATTENTION_BACKEND')}, Use_V1: {env.get('VLLM_USE_V1')}")
+            subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR)
             await self._wait_for_vllm()
 
         # Start Hub
