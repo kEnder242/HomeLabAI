@@ -5,7 +5,7 @@ MODEL_PATH=$1
 LAB_VENV_PYTHON=$2
 
 if [ -z "$LAB_VENV_PYTHON" ]; then
-    LAB_VENV_PYTHON="/home/jallred/Dev_Lab/.venv_vllm_016/bin/python3"
+    LAB_VENV_PYTHON="/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
 fi
 
 if [ -z "$MODEL_PATH" ]; then
@@ -34,6 +34,8 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
+    --enable-lora \
+    --max-loras 4 \
     $VLLM_EXTRA_ARGS \
     > vllm_server.log 2>&1 &
 
