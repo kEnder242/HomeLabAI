@@ -86,7 +86,7 @@ class AcmeLab:
             self.residents, 
             self.broadcast, 
             self.sensory, 
-            lambda: self.brain_online,
+            lambda force=False: self.brain_online,
             self.get_oracle_signal,
             self.monitor_task_with_tics
         )
@@ -125,7 +125,6 @@ class AcmeLab:
 
     async def trigger_morning_briefing(self, ws=None):
         """[FEAT-072] Briefs the user on recent nightly dialogue."""
-        import datetime
         import logging
 
         if os.path.exists(NIGHTLY_DIALOGUE_FILE):
