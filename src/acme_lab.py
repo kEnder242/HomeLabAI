@@ -25,10 +25,6 @@ from logic.cognitive_hub import CognitiveHub
 PORT = 8765
 PYTHON_PATH = sys.executable
 VERSION = "3.8.1"  # Force-priming and Witty Preamble
-
-# [BKM-002] Montana Protocol: Aggressive Logger Authority
-reclaim_logger(role="HUB")
-
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -99,6 +95,7 @@ class AcmeLab:
         self.last_turn_time = 0.0
         self._disconnect_task = None # [FEAT-171] Idle timer task
         reclaim_logger(role)
+        self.set_proc_title()
         self.set_proc_title()
 
     def set_proc_title(self):
@@ -326,16 +323,16 @@ class AcmeLab:
                     logging.error(f"[ALARM] Recruiter Task failed: {e}")
                 await asyncio.sleep(61)
 
-            # 03:00 AM: Hierarchy Refactor (The Architect)
+            # 03:00 AM: Hierarchy Refactor (The Lab)
             if now.hour == 3 and now.minute == 0:
-                if "architect" in self.residents:
+                if "lab" in self.residents:
                     logging.info("[ALARM] Triggering Hierarchy Refactor...")
                     try:
-                        await self.residents["architect"].call_tool(
+                        await self.residents["lab"].call_tool(
                             name="build_semantic_map"
                         )
                     except Exception as e:
-                        logging.error(f"[ALARM] Architect Task failed: {e}")
+                        logging.error(f"[ALARM] Lab Task failed: {e}")
                 await asyncio.sleep(61)
 
             # 04:00 AM: Nightly Dialogue [FEAT-071]
@@ -447,7 +444,6 @@ class AcmeLab:
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
-        logging.info(f"[SOCKET] New client connection request from {request.remote}")
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.connected_clients.add(ws)
@@ -712,7 +708,7 @@ class AcmeLab:
             ("archive", os.path.join(n_dir, "archive_node.py")),
             ("brain", os.path.join(n_dir, "brain_node.py")),
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
-            ("architect", os.path.join(n_dir, "architect_node.py")),
+            ("lab", os.path.join(n_dir, "lab_node.py")),
             ("thinking", os.path.join(n_dir, "thinking_node.py")),
             ("browser", os.path.join(n_dir, "browser_node.py")),
         ]
@@ -847,7 +843,6 @@ class AcmeLab:
             self.status = "BOOTING"
 
             app = web.Application()
-            
             # [FEAT-199] CORS Support for browser Intercom
             cors = aiohttp_cors.setup(app, defaults={
                 "*": aiohttp_cors.ResourceOptions(
@@ -856,10 +851,8 @@ class AcmeLab:
                     allow_headers="*",
                 )
             })
-            
             route = app.router.add_get("/", self.client_handler)
             cors.add(route)
-            
             runner = web.AppRunner(app)
             await runner.setup()
             # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
@@ -887,10 +880,10 @@ class AcmeLab:
                                     self.residents.get("browser"),
                                 )
                             )
-                        elif trigger_task == "architect":
-                            if "architect" in self.residents:
+                        elif trigger_task == "lab":
+                            if "lab" in self.residents:
                                 asyncio.create_task(
-                                    self.residents["architect"].call_tool(
+                                    self.residents["lab"].call_tool(
                                         name="build_semantic_map"
                                     )
                                 )
@@ -924,7 +917,7 @@ class AcmeLab:
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="SERVICE_UNATTENDED")
     parser.add_argument("--afk-timeout", type=int, default=300)
@@ -932,7 +925,7 @@ if __name__ == "__main__":
     parser.add_argument("--role", default="HUB", help="Role of this node (HUB, PINKY, etc.)")
     parser.add_argument(
         "--trigger-task",
-        choices=["recruiter", "architect"],
+        choices=["recruiter", "lab"],
         help="Run a background task immediately on startup.",
     )
     args = parser.parse_args()

@@ -7,10 +7,11 @@ import glob
 import re
 import datetime
 
-ARCHITECT_SYSTEM_PROMPT = (
-    "You are The Architect, the High-Fidelity Synthesis Engine of the Acme Lab. "
-    "IDENTITY: Precise, logical, and strategic. "
-    "CORE RULE: You structure the 18-year technical history into actionable maps. "
+LAB_SYSTEM_PROMPT = (
+    "You are The Lab Node, the Sentient Sentinel and Situational Auditor of the Acme Lab. "
+    "IDENTITY: High-fidelity situational aware observer. "
+    "ROLE: You overheard all bicameral interactions. You provide dynamic VIBES and coordination HINTS. "
+    "CORE RULE: Data should be the bones, LLM should be the muscle, and the flow that connects them the tendons. "
     "WORKSPACE: Utilize the shared 'whiteboard.md' as a high-fidelity scratchpad for persistent logical mapping and BKM refinement. "
     "BEHAVIORAL INVARIANTS: "
     "1. STRATEGIC HIERARCHY: Always group events by their career impact (Strategic, Analytical, Tactical). "
@@ -18,7 +19,7 @@ ARCHITECT_SYSTEM_PROMPT = (
     "3. BKM STANDARDIZATION: Ensure all generated templates follow the Execution/Validation/Scars format."
 )
 
-node = BicameralNode("Architect", ARCHITECT_SYSTEM_PROMPT)
+node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
 mcp = node.mcp
 
 # Paths
@@ -181,6 +182,32 @@ async def triage_response(raw_text: str) -> str:
             continue
             
     return "TEXT"
+
+
+@mcp.tool()
+async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
+    """
+    [FEAT-184/154] The Sentient Sentinel: Performs dynamic situational triage.
+    Determines INTENT, VIBE (expert domain), and provides coordination HINTS.
+    """
+    system_override = (
+        "You are the Sentient Sentinel of Acme Lab. Role: Situational Awareness.\n"
+        "Output a JSON object classification for the query.\n"
+        "Template:\n"
+        "{\n"
+        "  \"intent\": \"CASUAL\" or \"STRATEGIC\",\n"
+        "  \"domain\": \"exp_tlm\", \"exp_bkm\", \"exp_for\", or \"standard\",\n"
+        "  \"situation\": \"[TAG]\",\n"
+        "  \"hints\": \"One sentence for Pinky.\"\n"
+        "}\n"
+        "CRITICAL: Output ONLY the JSON. No tools. No chatter.\n"
+        f"Analyze: {query}"
+    )
+    
+    response = await node.generate_response(query, system_override=system_override, max_tokens=150, disable_tools=True)
+    # [FEAT-131] Robust JSON extraction
+    match = re.search(r'(\{.*\})', response, re.DOTALL)
+    return match.group(1) if match else json.dumps({"intent": "STRATEGIC", "domain": "standard", "situation": "[UNKNOWN]", "hints": "Proceed with caution."})
 
 
 @mcp.tool()

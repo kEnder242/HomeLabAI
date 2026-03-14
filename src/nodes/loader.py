@@ -392,6 +392,7 @@ class BicameralNode:
         system_override=None,
         max_tokens=2048,
         metadata=None,
+        disable_tools=False,
     ):
         engine, url, model = await self.probe_engine()
         # [FEAT-031] Liger Optimization
@@ -415,10 +416,11 @@ class BicameralNode:
                     payload = {
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
-                        "tools": self.get_tool_schemas(allowlist=tool_allowlist),
-                        "tool_choice": "auto",
                         "max_tokens": max_tokens,
                     }
+                    if not disable_tools:
+                        payload["tools"] = self.get_tool_schemas(allowlist=tool_allowlist)
+                        payload["tool_choice"] = "auto"
                     adapter_name = self.lora_name
                     if metadata and metadata.get("expert_adapter"):
                         adapter_name = metadata.get("expert_adapter")

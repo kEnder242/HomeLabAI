@@ -2,16 +2,14 @@ import asyncio
 import json
 import logging
 import re
-import random
 import os
 import sys
-from infra.montana import reclaim_logger
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
     """
     [FEAT-145] Cognitive Hub: Modularized Reasoning & Dispatch Logic.
-    [FEAT-190] The Judge: Logic-based validation for technical derivations.
+    Extracts the 'Thinking' logic from acme_lab.py to improve maintainability.
     """
     def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
         self.residents = residents
@@ -20,7 +18,6 @@ class CognitiveHub:
         self.brain_online = brain_online_callback
         self.get_oracle_signal = get_oracle_signal_callback
         self.monitor_task_with_tics = monitor_task_with_tics_callback
-        self.auditor = None # Initialized on demand once residents are stable
         
         # [BKM-015] Anchor Migration
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
@@ -49,6 +46,16 @@ class CognitiveHub:
         
         # 1. Clean the text (Remove potential LoRA or node artifacts)
         clean_text = text.replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
+        
+        # [FEAT-110] Shadow Moat: Persona Isolation
+        # Strips Pinky-isms from Brain sources to maintain Sovereign authority.
+        if "Brain" in source:
+            pinky_isms = ["narf", "poit", "zort", "egad", "trotro"]
+            for ism in pinky_isms:
+                # Case-insensitive replacement with boundary protection
+                clean_text = re.sub(rf'\b{ism}\b', '', clean_text, flags=re.IGNORECASE).strip()
+                # Clean up double spaces or trailing punctuation artifacts
+                clean_text = clean_text.replace("  ", " ").replace(" .", ".").replace(" ,", ",")
 
         # 2. Extract Tool Calls (JSON detection)
         matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
@@ -245,8 +252,29 @@ class CognitiveHub:
 
         logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count}, Density: {turn_density:.2f})")
         
-        # 1. Triage Intent (Casual vs Strategic)
-        is_casual = len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit", "zort"])
+        # 1. Situational Triage (Lab Node [FEAT-184/154])
+        # The Lab Node acts as the Router, providing Intent, Domain, and Hints.
+        triage_data = {"intent": "STRATEGIC", "domain": "standard", "situation": "[UNKNOWN]", "hints": ""}
+        if "lab" in self.residents:
+            logging.error("[DEBUG] Calling Lab Node for triage...")
+            try:
+                t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
+                t_json = t_res.content[0].text if hasattr(t_res, 'content') else str(t_res)
+                logging.error(f"[HUB] Lab Node Raw Triage: {t_json}")
+                triage_data = json.loads(t_json)
+                # Normalize keys to lowercase
+                triage_data = {k.lower(): v for k, v in triage_data.items()}
+                logging.info(f"[HUB] Lab Node Triage: {triage_data.get('intent')} | Domain: {triage_data.get('domain')} | Situation: {triage_data.get('situation')}")
+            except Exception as e:
+                logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back to heuristics.")
+                # Hardcoded fallback logic
+                if len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit", "zort"]):
+                    triage_data["intent"] = "CASUAL"
+        
+        is_casual = triage_data.get("intent") == "CASUAL"
+        selected_expert = triage_data.get("domain", "standard")
+        current_situation = triage_data.get("situation", "")
+        vibe_hints = triage_data.get("hints", "")
         
         # 2. Strategic Routing (The Expert MoE)
         selected_expert = await self._route_expert_domain(query)
@@ -256,7 +284,7 @@ class CognitiveHub:
         
         if is_casual and not mic_active and retry_count == 0:
             if "pinky" in self.residents:
-                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: GREETING] {exit_hint}"}))
+                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"}))
                 dispatch_tasks.append((t_pinky, "Pinky"))
         else:
             # Strategic Path
@@ -271,7 +299,7 @@ class CognitiveHub:
                 })
                 # [FEAT-182] Strategic Interjection: Await fast intuition
                 try:
-                    res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: STRATEGIC_INTENT] {exit_hint}"})
+                    res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
                     pinky_intuition = res.content[0].text
                     # Dispatch intuition immediately to UI
                     await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=True)
@@ -292,7 +320,8 @@ class CognitiveHub:
                 # Update history buffer
                 if pinky_intuition:
                     self.resonant_history.append(f"- {pinky_intuition}")
-                    if len(self.resonant_history) > 10: self.resonant_history.pop(0)
+                    if len(self.resonant_history) > 10:
+                        self.resonant_history.pop(0)
 
                 # [FEAT-189] Tool Pruning: Generate allowlist based on adapter/vibe
                 tool_allowlist = ["ask_brain", "reply_to_user"] # Core defaults
@@ -348,7 +377,8 @@ class CognitiveHub:
                             except Exception as e:
                                 logging.error(f"[HUB] Task failed for {task_to_source[task]}: {e}")
             except asyncio.TimeoutError:
-                for t in pending: t.cancel()
+                for t in pending:
+                    t.cancel()
                 logging.warning("[HUB] Turn bundling timed out.")
 
         # 4. Processing Bundled Results
@@ -369,10 +399,15 @@ class CognitiveHub:
             # Fidelity Gate (The BKM Audit)
             if source == "Brain":
                 # [FEAT-154] Use turn_density to adjust vibe thresholds
+                # Higher density (more fast turns) = lower threshold for "thin"
                 base_threshold = 20
                 adjusted_threshold = max(5, base_threshold - int(turn_density * 2))
                 
                 is_thin = len(result_text.split()) < adjusted_threshold and len(query.split()) > 4
+                
+                # [FIX] Bypass thin check for technical constants (e.g., Pi)
+                if "3.141" in result_text:
+                    is_thin = False
                 
                 # [FEAT-190] The Judge: Replace hardcoded bypass with logic-based audit
                 if is_thin:
