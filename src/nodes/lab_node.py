@@ -1,6 +1,5 @@
 from nodes.loader import BicameralNode
 import logging
-import sys
 import os
 import json
 import glob
@@ -57,13 +56,18 @@ async def build_semantic_map() -> str:
     artifacts = glob.glob(os.path.join(FIELD_NOTES_DATA, "20*.json"))
     
     hierarchy = {
-        "strategic_layer": [], # Rank 4 (Diamond) anchors
-        "analytical_layer": {}, # Theme-based insight clusters
+        "strategic_layer": [], # Rank 4 (Diamond) anchors - Career PIVOTS
+        "analytical_layer": {}, # Theme-based insight clusters - TECHNICAL DOMAINS
         "tactical_layer": {
             "total_events": 0,
-            "year_distribution": {}
+            "year_distribution": {},
+            "description": "Raw chronological technical evidence."
         },
-        "last_refactor": datetime.datetime.now().isoformat()
+        "meta_layer": {
+            "resonance_score": 0.0,
+            "active_themes": [],
+            "last_refactor": datetime.datetime.now().isoformat()
+        }
     }
     
     theme_keywords = ["telemetry", "silicon", "validation", "automation", "agentic", "architecture"]
@@ -190,17 +194,12 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
     [FEAT-184/154] The Sentient Sentinel: Performs dynamic situational triage.
     Determines INTENT, VIBE (expert domain), and provides coordination HINTS.
     """
+    template = "{\n  \"intent\": \"CASUAL\",\n  \"domain\": \"standard\",\n  \"situation\": \"[TAG_HERE]\",\n  \"hints\": \"Guidance for Pinky.\"\n}"
     system_override = (
         "You are the Sentient Sentinel of Acme Lab. Role: Situational Awareness.\n"
         "CRITICAL: Output ONLY a valid JSON object. Do NOT include markdown blocks. Do NOT include multiple options in a value.\n"
         "Pick the SINGLE most relevant domain from: 'exp_tlm', 'exp_bkm', 'exp_for', or 'standard'.\n"
-        "Structure:\n"
-        "{{\n"
-        "  \"intent\": \"CASUAL\",\n"
-        "  \"domain\": \"standard\",\n"
-        "  \"situation\": \"[TAG_HERE]\",\n"
-        "  \"hints\": \"Guidance for Pinky.\"\n"
-        "}}\n"
+        f"Structure: {template}\n"
         f"Analyze: {query}"
     )
     

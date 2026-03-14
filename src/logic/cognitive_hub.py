@@ -50,24 +50,29 @@ class CognitiveHub:
         clean = re.sub(r"```json\s*|\s*```", "", text)
 
         # 2. Find innermost { } block to handle double braces and conversational chatter
-        matches = re.findall(r"(\{.*\})", clean, re.DOTALL)
-        if not matches:
-            return None
-
-        # Take the most complete match
-        json_str = matches[0]
+        match = re.search(r'(\{.*\})', clean, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+        else:
+            # Salvage truncated JSON
+            if "{" in clean:
+                json_str = clean[clean.find("{"):] + '\n  "error": "truncated"\n}'
+            else:
+                return None
 
         # 3. Structural Sanitization
         json_str = json_str.replace("{{", "{").replace("}}", "}")
         json_str = json_str.replace("'", '"')
         json_str = json_str.replace("True", "true").replace("False", "false")
 
-        # 4. Domain Multi-Pick Correction
-        json_str = re.sub(r'("domain":\s*"[^"]+"),\s*"[^"]+"', r"\1", json_str)
+        # 4. Domain Multi-Pick Correction: "domain": "a", "b", ... -> "domain": "a"
+        json_str = re.sub(r'("domain":\s*"[^"]+")((?:,\s*"[^"]+")+)(?=\s*,|\s*\})', r'\1', json_str)
+        # Clean up trailing commas
+        json_str = re.sub(r',\s*\}', r'\n}', json_str)
 
         return json_str
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0):
         """
         Standardizes the dispatch of reasoning results to the user.
         [FEAT-199] Uses Nuclear JSON Sanitization.
@@ -128,7 +133,11 @@ class CognitiveHub:
                     known_hub_tools = ["reply_to_user", "ask_brain", "bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open"]
                     
                     if tool not in available_tools and tool not in known_hub_tools:
-                        logging.warning(f"[HUB] Hallucination Detected: {source} tried to use '{tool}'. Shunting to Pinky.")
+                        logging.warning(f"[HUB] Hallucination Detected: {source} tried to use '{tool}'. Applying Neural Shock.")
+                        if original_query and retry_count < 2:
+                            shock_query = f"[SYSTEM_SHOCK]: You attempted to use tool '{tool}' which is INVALID. Use only provided tools. Re-think your approach.\n\nOriginal Query: {original_query}"
+                            return await self.process_query(shock_query, shutdown_event=shutdown_event, retry_count=retry_count + 1)
+                        
                         hallucination_msg = f"Egad! I tried to use '{tool}', but my circuits don't support it yet. Narf!"
                         return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event)
 
@@ -269,7 +278,7 @@ class CognitiveHub:
         # [FEAT-186] Predictive Warm-up
         if not is_casual and self.brain_online():
             logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
-            asyncio.create_task(self.monitor_task_with_tics(self.brain_online(force=True)))
+            asyncio.create_task(self.monitor_task_with_tics(self.brain_online()))
 
         if not is_casual:
             selected_expert = await self._route_expert_domain(query)
@@ -393,6 +402,13 @@ class CognitiveHub:
                     logging.warning(f"[HUB] Fidelity Pivot triggered for {source}")
                     return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
 
-            await self.execute_dispatch(result_text, f"{source} (Result)", shutdown_event=shutdown_event, is_internal=internal_flag)
+            await self.execute_dispatch(
+                result_text,
+                f"{source} (Result)",
+                shutdown_event=shutdown_event,
+                is_internal=internal_flag,
+                original_query=query,
+                retry_count=retry_count
+            )
 
         return True
