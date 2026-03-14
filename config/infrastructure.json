@@ -8,6 +8,10 @@
         "pinky": {
             "primary": "localhost",
             "lora_name": "pinky_v2"
+        },
+        "lab": {
+            "primary": "localhost",
+            "lora_name": "lab_sentinel_v1"
         }
     },
     "hosts": {
