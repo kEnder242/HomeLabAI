@@ -178,6 +178,13 @@ class BicameralNode:
 
             if p_ip and self.primary_host != "localhost":
                 p_url = f"http://{p_ip}:{p_host_cfg.get('ollama_port', 11434)}"
+                
+                # [FEAT-205] Long-Tail Gate: Handle 4090 Residency Lag
+                # If we were previously local or none, wait 60s for remote load
+                if self._engine_cache and self._engine_cache[1] and "127.0.0.1" in self._engine_cache[1]:
+                    logging.info(f"[{self.name}] Transitioning to Primary host. Applying 60s Long-Tail warm-up...")
+                    time.sleep(60)
+
                 try:
                     async with session.get(f"{p_url}/api/tags", timeout=5.0) as r:
                         if r.status == 200:

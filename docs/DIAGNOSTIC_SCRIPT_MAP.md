@@ -89,6 +89,7 @@ Tools for distilling technical pedigree into specialized training data.
 | :--- | :--- | :--- |
 | **Deep-Connect Capture**| `src/forge/deep_connect_epoch_v2.py`| [PHASE 7][FEAT-202] **Stage 1 Capture.** Background harvest of raw technical blocks from the 18-year archive. |
 | **Surgical Refinement**| `src/forge/refine_bones.py`| [PHASE 7][FEAT-202] **Stage 2 Refine.** Bicameral Bridge signal cleaning pass to clean raw blocks into high-density BKM pairs. |
+| **Prompt Extractor** | `src/forge/extract_gemini_prompts.py` | [PHASE 8][FEAT-204] Aggregates multi-year CLI prompt history for Persona Induction. |
 | **Distill Forge** | `src/forge/distill_gems.py` | [PHASE 8] Transforms Rank 4 gems into high-density LoRA training pairs. |
 | **Expert Forge** | `src/train/train_expert.py` | [PHASE 8] Unsloth scaffolding for local 2080 Ti fine-tuning. |
 
