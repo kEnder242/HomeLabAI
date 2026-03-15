@@ -92,6 +92,17 @@
 4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
 5.  **Precision**: When providing multi-line strings, ensure blank lines are **truly empty** (zero spaces) to prevent `W293` whitespace thrashing.
 
+## BKM-026: The Asymmetric Probe Standard
+**Objective**: Optimize federated failover by differentiating between "Hard Failure" (Offline) and "Soft Latency" (Loading/Processing).
+
+1.  **Discovery Phase**: Use a strict 5s timeout for `/api/tags` to verify the server is alive.
+2.  **Asymmetric TTL**:
+    *   **Success Cache (300s)**: If the host is `PRIMARY_LOCKED`, trust it for 5 minutes. Do not re-ping the network for every turn.
+    *   **Failure Cache (15s)**: If the host is `PRIMARY_OFFLINE`, re-verify it every 15 seconds. Ensure the 4090 can "re-join" the Lab quickly after a reboot.
+3.  **The Wait Mandate**: Once a host is `LOCKED`, the Hub must allow up to 180s for inference to complete before declaring a quality fallback.
+4.  **Airtime Rule**: Any turn exceeding 10s of remote latency **MUST** be interleaved with a Pinky interjection or dynamic tic.
+
+
 ## BKM-012: The Ultimate Patcher (Archive Node)
 **Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
 **Tool**: `patch_file(filename, diff)` via the Archive Node.

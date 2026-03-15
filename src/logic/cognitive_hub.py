@@ -95,7 +95,7 @@ class CognitiveHub:
         if json_block:
             try:
                 # Validation gate: must contain "tool" or a known Hub key
-                if '"tool"' not in json_block and '"reply_to_user"' not in json_block:
+                if '"tool"' not in json_block and '"reply_to_user"' not in json_block and '"facilitate"' not in json_block and '"name"' not in json_block:
                     pass # Not a tool call
                 else:
                     data = json.loads(json_block)

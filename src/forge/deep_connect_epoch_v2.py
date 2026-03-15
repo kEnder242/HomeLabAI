@@ -147,7 +147,7 @@ async def main(limit=None):
             # --- THE CAPTURE ---
             logging.info(f"Querying Lab Node for: {summary[:50]}...")
             raw_response = await call_lab_node_raw(prompt)
-            await asyncio.sleep(15) # Wait for VRAM/Hub to settle
+            await asyncio.sleep(30) # Wait for VRAM/Hub to settle
 
             if raw_response:
                 processed_count += 1

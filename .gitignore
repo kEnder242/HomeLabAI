@@ -32,3 +32,4 @@ logs/trace_*.json
 server.log.stale
 round_table.lock
 .venv*/
+src/forge/expertise/*.jsonl
