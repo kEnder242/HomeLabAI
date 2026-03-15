@@ -138,8 +138,20 @@ async def main():
                     with open(MANIFEST_FILE, "r") as mf:
                         manifest = json.load(mf)
                     for fname, meta in manifest.items():
-                        m_year = meta.get("year", "")
-                        if m_year and str(log_key) in str(m_year):
+                        m_year = str(meta.get("year", ""))
+                        is_match = False
+                        if m_year:
+                            if "-" in m_year:
+                                try:
+                                    start, end = map(int, m_year.split("-"))
+                                    if start <= int(log_key) <= end:
+                                        is_match = True
+                                except Exception:
+                                    pass
+                            if not is_match and (str(log_key) in m_year or m_year in str(log_key)):
+                                is_match = True
+                        
+                        if is_match:
                             if meta.get("type") in ["LOG", "META"]:
                                 target_files.append(KNOWLEDGE_BASE_DIR / fname)
                 except Exception as e:
