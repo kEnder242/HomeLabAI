@@ -36,7 +36,7 @@ logging.basicConfig(
 )
 
 
-def nuclear_json_clean(text):
+def bridge_signal_clean(text):
     """Refined JSON extraction logic from the experiment."""
     if "{" not in text:
         return text.strip()
@@ -95,8 +95,8 @@ def main():
                 raw_text = entry.get("raw_llm_output", "")
                 summary = entry.get("summary", "")
                 
-                # Apply Nuclear Clean
-                clean_json = nuclear_json_clean(raw_text)
+                # Apply Bridge Signal Clean
+                clean_json = bridge_signal_clean(raw_text)
                 
                 if clean_json:
                     try:

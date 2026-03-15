@@ -9,7 +9,7 @@ from infra.cognitive_audit import CognitiveAudit
 class CognitiveHub:
     """
     [FEAT-145] Cognitive Hub: Modularized Reasoning & Dispatch Logic.
-    [FEAT-199] Nuclear Refactor: Hardened JSON extraction and parallel gate protection.
+    [FEAT-203] Bicameral Bridge: Hardened neural signal extraction and parallel gate protection.
     """
     def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
         self.residents = residents
@@ -38,9 +38,9 @@ class CognitiveHub:
         self.resonant_history = []
         self.auditor = None
 
-    def nuclear_json_clean(self, text):
+    def bridge_signal_clean(self, text):
         """
-        [FEAT-199] Nuclear JSON Extraction Utility.
+        [FEAT-203] Bicameral Bridge Signal Cleaning Utility.
         Robustly extracts and sanitizes JSON from 3B model outputs.
         """
         if "{" not in text:
@@ -75,7 +75,7 @@ class CognitiveHub:
     async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0):
         """
         Standardizes the dispatch of reasoning results to the user.
-        [FEAT-199] Uses Nuclear JSON Sanitization.
+        [FEAT-203] Uses Bicameral Bridge signal cleaning.
         """
         logging.info(f"[DEBUG] Dispatch: source='{source}' text='{text[:30]}...'")
         
@@ -90,7 +90,7 @@ class CognitiveHub:
             clean_text = clean_text.replace("  ", " ").replace(" .", ".").replace(" ,", ",")
 
         # 2. Extract Tool Calls (Nuclear Gate)
-        json_block = self.nuclear_json_clean(clean_text)
+        json_block = self.bridge_signal_clean(clean_text)
 
         if json_block:
             try:
@@ -213,7 +213,7 @@ class CognitiveHub:
                     return True
 
             except json.JSONDecodeError as e:
-                logging.error(f"[HUB] Nuclear Extraction Failed: {e} | Raw: {clean_text[:50]}")
+                logging.error(f"[HUB] Bridge Signal Extraction Failed: {e} | Raw: {clean_text[:50]}")
                 return await self._dispatch_plain_text(clean_text, source, is_internal)
             except Exception as e:
                 logging.error(f"[HUB] Tool Dispatch Error: {e}")
@@ -271,7 +271,7 @@ class CognitiveHub:
                         if len(parts) >= 4:
                             triage_data["hints"] = parts[3].strip()
                 else:
-                    t_clean = self.nuclear_json_clean(t_json)
+                    t_clean = self.bridge_signal_clean(t_json)
                     if t_clean:
                         t_parsed = json.loads(t_clean)
                         triage_data.update({k.lower(): v for k, v in t_parsed.items()})
