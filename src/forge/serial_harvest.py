@@ -24,29 +24,14 @@ RAW_STAGE_1_FILE = (
     Path.home() / "Dev_Lab/HomeLabAI/src/forge/expertise/raw_stage_1.jsonl"
 )
 BRAIN_NODE_URI = "ws://localhost:8765"
+MANIFEST_FILE = Path.home() / "Dev_Lab/Portfolio_Dev/field_notes/data/file_manifest.json"
+KNOWLEDGE_BASE_DIR = Path.home() / "Dev_Lab/knowledge_base"
 
-# LOG_MAP for resolving log file paths
-LOG_MAP = {
-    "2005": "/home/jallred/Dev_Lab/knowledge_base/notes_2005.txt",
-    "2006": "/home/jallred/Dev_Lab/knowledge_base/notes_2006_EPSD.txt",
-    "2007": "/home/jallred/Dev_Lab/knowledge_base/notes_2006_EPSD.txt",
-    "2008": "/home/jallred/Dev_Lab/knowledge_base/Performance_Review_2008-2018.txt",
-    "2009": "/home/jallred/Dev_Lab/knowledge_base/Performance_Review_2008-2018.txt",
-    "2010": "/home/jallred/Dev_Lab/knowledge_base/Performance_Review_2008-2018.txt",
-    "2011": "/home/jallred/Dev_Lab/knowledge_base/notes_2015_DSD.txt",
-    "2012": "/home/jallred/Dev_Lab/knowledge_base/notes_2015_DSD.txt",
-    "2013": "/home/jallred/Dev_Lab/knowledge_base/notes_2015_DSD.txt",
-    "2014": "/home/jallred/Dev_Lab/knowledge_base/notes_2015_DSD.txt",
-    "2015": "/home/jallred/Dev_Lab/knowledge_base/notes_2015_DSD.txt",
-    "2016": "/home/jallred/Dev_Lab/knowledge_base/notes_2016_MVE.txt",
-    "2017": "/home/jallred/Dev_Lab/knowledge_base/notes_2018_PAE.txt",
-    "2018": "/home/jallred/Dev_Lab/knowledge_base/notes_2018_PAE.txt",
-    "2019": "/home/jallred/Dev_Lab/knowledge_base/notes_2018_PAE.txt",
-    "2020": "/home/jallred/Dev_Lab/knowledge_base/notes_2024_PIAV.txt",
-    "2021": "/home/jallred/Dev_Lab/knowledge_base/notes_2024_PIAV.txt",
-    "2022": "/home/jallred/Dev_Lab/knowledge_base/notes_2024_PIAV.txt",
-    "2023": "/home/jallred/Dev_Lab/knowledge_base/notes_2024_PIAV.txt",
-    "2024": "/home/jallred/Dev_Lab/knowledge_base/notes_2024_PIAV.txt",
+# Specialized Expert Overrides
+EXPERT_OVERRIDES = {
+    "GIT": "notes_GIT.txt",
+    "INSIGHTS": "11066402 Insights 2019-2024.txt",
+    "ERA": "project_8149f759.md"
 }
 
 logging.basicConfig(
@@ -124,24 +109,58 @@ async def main():
             summary = gem.get("summary")
             filename = Path(file_path).name
             year_match = re.search(r'(20\d\d)', filename)
-            log_key = gem.get("log_file") or (year_match.group(1) if year_match else None)
+            
+            # 1. Use log_file key, or filename year, or date field year
+            log_key = gem.get("log_file")
+            if not log_key:
+                if year_match:
+                    log_key = year_match.group(1)
+                elif gem.get("date"):
+                    date_match = re.search(r'(20\d\d)', gem["date"])
+                    if date_match:
+                        log_key = date_match.group(1)
+            
+            # Specialized catch for GIT
+            if not log_key and "GIT" in summary.upper():
+                log_key = "GIT"
             
             if not summary or not log_key:
-                continue
-            
-            log_file_path = LOG_MAP.get(str(log_key))
-            if not log_file_path:
+                logging.info(f"SKIPPED: No log_key for {summary[:30]} in {file_path}")
                 continue
 
-            prompt = (
-                f"Find the specific paragraphs in the raw log file ({log_file_path}) "
-                f"that correspond to this summary: '{summary}'. Output ONLY the raw "
-                "paragraphs, no conversational filler."
-            )
+            # 2. Resolve Paths via Manifest (Manifest Authority)
+            target_files = []
+            if log_key in EXPERT_OVERRIDES:
+                target_files.append(KNOWLEDGE_BASE_DIR / EXPERT_OVERRIDES[log_key])
+            else:
+                try:
+                    with open(MANIFEST_FILE, "r") as mf:
+                        manifest = json.load(mf)
+                    for fname, meta in manifest.items():
+                        m_year = meta.get("year", "")
+                        if m_year and str(log_key) in str(m_year):
+                            if meta.get("type") in ["LOG", "META"]:
+                                target_files.append(KNOWLEDGE_BASE_DIR / fname)
+                except Exception as e:
+                    logging.error(f"Manifest Load Failed: {e}")
 
-            logging.info(f"Harvesting gem [{processed_count+1}/{len(all_gems)}]: {summary[:50]}...")
-            
-            success = await harvest_gem(websocket, prompt, summary, file_path, log_file_path)
+            if not target_files:
+                logging.info(f"SKIPPED: No manifest match for key '{log_key}' ({summary[:30]})")
+                continue
+
+            # --- THE HARVEST ---
+            for log_file_path in target_files:
+                if not log_file_path.exists():
+                    continue
+
+                prompt = (
+                    f"Find the specific paragraphs in the raw file ({log_file_path.name}) "
+                    f"that correspond to this summary: '{summary}'. Output ONLY the raw "
+                    "paragraphs, no conversational filler."
+                )
+
+                logging.info(f"Harvesting gem [{processed_count+1}/{len(all_gems)}] from {log_file_path.name}...")
+                success = await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path))
             
             if success:
                 processed_count += 1
