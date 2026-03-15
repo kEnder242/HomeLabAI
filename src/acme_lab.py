@@ -338,6 +338,22 @@ class AcmeLab:
                     logging.error(f"[ALARM] Recruiter Task failed: {e}")
                 await asyncio.sleep(61)
 
+            # 02:00 AM: Stage 1 Sequential Harvest [FEAT-202]
+            if now.hour == 2 and now.minute == 0:
+                logging.info("[ALARM] Triggering Nightly Sequential Harvest...")
+                try:
+                    harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest.py")
+                    # Note: We use subprocess rather than create_task to ensure sequentiality
+                    proc = await asyncio.create_subprocess_exec(
+                        sys.executable, harvest_script,
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    await proc.communicate()
+                    logging.info("[ALARM] Nightly Harvest complete.")
+                except Exception as e:
+                    logging.error(f"[ALARM] Harvest failed: {e}")
+                await asyncio.sleep(61)
+
             # 03:00 AM: Hierarchy Refactor (The Lab)
             if now.hour == 3 and now.minute == 0:
                 if "lab" in self.residents:

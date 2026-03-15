@@ -100,6 +100,21 @@ async def main():
 
     logging.info(f"Found {len(all_gems)} Rank 4+ gems to harvest.")
 
+    # [FEAT-202] Resume Logic: Skip already harvested gems
+    seen_summaries = set()
+    if RAW_STAGE_1_FILE.exists():
+        with open(RAW_STAGE_1_FILE, 'r') as f_check:
+            for line in f_check:
+                try:
+                    summary_text = json.loads(line).get('summary')
+                    if summary_text:
+                        seen_summaries.add(summary_text)
+                except Exception:
+                    pass
+    
+    if seen_summaries:
+        logging.info(f"Resume: Found {len(seen_summaries)} already in manifest.")
+
     async with websockets.connect(BRAIN_NODE_URI) as websocket:
         # Wait for greeting
         await websocket.recv()
@@ -127,6 +142,9 @@ async def main():
             if not summary or not log_key:
                 safe_summary = summary[:30] if summary else "[MISSING_SUMMARY]"
                 logging.info(f"SKIPPED: No log_key for {safe_summary} in {file_path}")
+                continue
+            
+            if summary in seen_summaries:
                 continue
 
             # 2. Resolve Paths via Manifest (Manifest Authority)
