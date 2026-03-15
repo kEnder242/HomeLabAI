@@ -303,13 +303,86 @@ class AcmeLab:
                 # Still check health occasionally to keep status.json accurate
                 await self.check_brain_health()
 
+    async def run_full_induction_cycle(self):
+        """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
+        logging.info("[ALARM] Initiating Full Induction Cycle...")
+        
+        # 1. Nightly Dialogue (Fast Local)
+        logging.info("[ALARM] Step 1: Nightly Dialogue...")
+        a_node = self.residents.get("archive")
+        p_node = self.residents.get("pinky")
+        b_node = self.residents.get("brain")
+        try:
+            from internal_debate import run_nightly_talk
+            await run_nightly_talk(a_node, p_node, b_node)
+        except Exception as e:
+            logging.error(f"[ALARM] Nightly Dialogue failed: {e}")
+
+        # 2. Nightly Recruiter (Mixed)
+        logging.info("[ALARM] Step 2: Nightly Recruiter...")
+        br_node = self.residents.get("browser")
+        try:
+            await recruiter.run_recruiter_task(a_node, b_node, br_node)
+        except Exception as e:
+            logging.error(f"[ALARM] Recruiter Task failed: {e}")
+
+        # 3. Hierarchy Refactor (CPU)
+        logging.info("[ALARM] Step 3: Hierarchy Refactor...")
+        if "lab" in self.residents:
+            try:
+                await self.residents["lab"].call_tool(name="build_semantic_map")
+            except Exception as e:
+                logging.error(f"[ALARM] Lab Task failed: {e}")
+
+        # 4. Sequential Harvest (Long-Tail 4090)
+        logging.info("[ALARM] Step 4: Sequential Harvest...")
+        try:
+            harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest.py")
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, harvest_script,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+        except Exception as e:
+            logging.error(f"[ALARM] Harvest failed: {e}")
+
+        # 5. Nightly Dream Pass (Long-Tail 4090)
+        logging.info("[ALARM] Step 5: Nightly Dream Pass...")
+        try:
+            dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, dream_script, "300",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+        except Exception as e:
+            logging.error(f"[ALARM] Dream Pass failed: {e}")
+
+        logging.info("[ALARM] Full Induction Cycle Complete.")
+
     async def scheduled_tasks_loop(self):
-        """The Alarm Clock: Runs scheduled jobs like the Nightly Recruiter."""
+        """The Alarm Clock: Executes the induction cycle once per day."""
         import datetime
 
         logging.info("[ALARM] Scheduled Tasks loop active.")
+        
+        # 0. Immediate Trigger (if between 4 AM and 6 AM)
+        # Handles the case where the Lab starts after the 1 AM window but needs to grind today.
+        now = datetime.datetime.now()
+        if now.hour >= 4 and now.hour < 6:
+            logging.info("[ALARM] Early morning startup detected. Triggering immediate induction cycle...")
+            await self.run_full_induction_cycle()
+
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
+            
+            # Daily Trigger: 01:00 AM
+            if now.hour == 1 and now.minute == 0:
+                await self.run_full_induction_cycle()
+                await asyncio.sleep(61)
+
+            # Global Throttle: Avoid hot-looping
+            await asyncio.sleep(10)
 
             # 01:00 AM: Nightly Dream Pass [FEAT-204]
             if now.hour == 1 and now.minute == 0:
@@ -338,8 +411,8 @@ class AcmeLab:
                     logging.error(f"[ALARM] Recruiter Task failed: {e}")
                 await asyncio.sleep(61)
 
-            # 02:00 AM: Stage 1 Sequential Harvest [FEAT-202]
-            if now.hour == 2 and now.minute == 0:
+            # 02:30 AM: Stage 1 Sequential Harvest [FEAT-202]
+            if now.hour == 2 and now.minute == 30:
                 logging.info("[ALARM] Triggering Nightly Sequential Harvest...")
                 try:
                     harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest.py")
@@ -379,6 +452,9 @@ class AcmeLab:
                 except Exception as e:
                     logging.error(f"[ALARM] Nightly Dialogue failed: {e}")
                 await asyncio.sleep(61)
+
+            # Global Throttle: Avoid hot-looping when no task is active
+            await asyncio.sleep(10)
 
             await asyncio.sleep(30)
 
