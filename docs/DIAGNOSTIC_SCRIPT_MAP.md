@@ -30,8 +30,8 @@ These tools verify the `systemd` managed infrastructure and the Hub's resilience
 
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
-| **Live Fire Triage**| `src/debug/test_live_fire_triage.py`| [PHASE 7][FEAT-199] **Active Auditor.** Rapid verification of parallel turn-bundling and hybrid (Pipe/JSON) triage. |
-| **JSON Fix Experiment**| `src/debug/experiment_json_fix.py`| [DEBUG][FEAT-199] Standalone testbed for the Nuclear JSON extraction regex patterns. |
+| **Live Fire Triage**| `src/debug/test_live_fire_triage.py`| [PHASE 7][FEAT-203] **Active Auditor.** Rapid verification of parallel turn-bundling and hybrid (Pipe/JSON) triage. |
+| **JSON Fix Experiment**| `src/debug/experiment_json_fix.py`| [DEBUG][FEAT-203] Standalone testbed for the Bicameral Bridge signal cleaning regex patterns. |
 | **Strategic Live Fire**| `src/tests/test_strategic_live_fire.py`| [PHASE 7] **DEFINITIVE.** End-to-end physical hardware validation of the PMM routing and fidelity lifecycle. |
 | **The Assassin** | `lab_attendant.py` (Internal) | [FEAT-119][WD] Atomic port-reaping using `fuser -k` before boot. |
 | **Ghost Hunter** | `lab_attendant.py` (Internal) | [FEAT-121][WD] PGID-aware tree termination using `os.killpg()`. |
@@ -88,7 +88,7 @@ Tools for distilling technical pedigree into specialized training data.
 | Tool | Path | Goal |
 | :--- | :--- | :--- |
 | **Deep-Connect Capture**| `src/forge/deep_connect_epoch_v2.py`| [PHASE 7][FEAT-202] **Stage 1 Capture.** Background harvest of raw technical blocks from the 18-year archive. |
-| **Surgical Refinement**| `src/forge/refine_bones.py`| [PHASE 7][FEAT-202] **Stage 2 Refine.** Nuclear parsing pass to clean raw blocks into high-density BKM pairs. |
+| **Surgical Refinement**| `src/forge/refine_bones.py`| [PHASE 7][FEAT-202] **Stage 2 Refine.** Bicameral Bridge signal cleaning pass to clean raw blocks into high-density BKM pairs. |
 | **Distill Forge** | `src/forge/distill_gems.py` | [PHASE 8] Transforms Rank 4 gems into high-density LoRA training pairs. |
 | **Expert Forge** | `src/train/train_expert.py` | [PHASE 8] Unsloth scaffolding for local 2080 Ti fine-tuning. |
 

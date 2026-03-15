@@ -18,7 +18,7 @@ This playbook defines the multi-stage cycle for moving the Acme Lab from **Promp
 ### Stage 2: Surgical Refinement (Curating)
 *   **Script**: `HomeLabAI/src/forge/refine_bones.py`
 *   **Input**: `raw_stage_1.jsonl`
-*   **Goal**: Apply Nuclear JSON cleaning to raw LLM outputs. Extract only the technical context.
+*   **Goal**: Apply **Bicameral Bridge signal cleaning** to raw LLM outputs. Extract only the technical context.
 *   **Output**: `HomeLabAI/src/forge/expertise/bkm_master_manifest.jsonl` (Final training-ready blocks).
 *   **Command**: `python3 src/forge/refine_bones.py`
 *   **Validation**: Success count should match input line count.
