@@ -94,6 +94,7 @@ class AcmeLab:
         self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
         self.last_turn_time = 0.0
         self._disconnect_task = None # [FEAT-171] Idle timer task
+        self.last_induction_date = None # [FEAT-202] Track daily grounding
         reclaim_logger(role)
         self.set_proc_title()
         self.set_proc_title()
@@ -363,98 +364,19 @@ class AcmeLab:
     async def scheduled_tasks_loop(self):
         """The Alarm Clock: Executes the induction cycle once per day."""
         import datetime
-
         logging.info("[ALARM] Scheduled Tasks loop active.")
-        
-        # 0. Immediate Trigger (if between 4 AM and 6 AM)
-        # Handles the case where the Lab starts after the 1 AM window but needs to grind today.
-        now = datetime.datetime.now()
-        if now.hour >= 4 and now.hour < 6:
-            logging.info("[ALARM] Early morning startup detected. Triggering immediate induction cycle...")
-            await self.run_full_induction_cycle()
 
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
-            
-            # Daily Trigger: 01:00 AM
-            if now.hour == 1 and now.minute == 0:
+            today = now.date()
+
+            # Trigger Logic: 1 AM Window OR 4 AM - 6 AM Catch-up
+            is_window = (now.hour == 1) or (now.hour >= 4 and now.hour < 6)
+
+            if self.last_induction_date != today and is_window:
+                logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")
                 await self.run_full_induction_cycle()
-                await asyncio.sleep(61)
-
-            # Global Throttle: Avoid hot-looping
-            await asyncio.sleep(10)
-
-            # 01:00 AM: Nightly Dream Pass [FEAT-204]
-            if now.hour == 1 and now.minute == 0:
-                logging.info("[ALARM] Triggering Nightly Dream Pass (Persona Synthesis)...")
-                try:
-                    # Run the dreaming script with a 300-sample limit
-                    dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
-                    proc = await asyncio.create_subprocess_exec(
-                        sys.executable, dream_script, "300",
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                    )
-                    await proc.communicate()
-                    logging.info("[ALARM] Nightly Dream Pass complete.")
-                except Exception as e:
-                    logging.error(f"[ALARM] Dream Pass failed: {e}")
-                await asyncio.sleep(61)
-            # 02:00 AM: Nightly Recruiter
-            if now.hour == 2 and now.minute == 0:
-                logging.info("[ALARM] Triggering Nightly Recruiter...")
-                a_node = self.residents.get("archive")
-                b_node = self.residents.get("brain")
-                br_node = self.residents.get("browser")
-                try:
-                    await recruiter.run_recruiter_task(a_node, b_node, br_node)
-                except Exception as e:
-                    logging.error(f"[ALARM] Recruiter Task failed: {e}")
-                await asyncio.sleep(61)
-
-            # 02:30 AM: Stage 1 Sequential Harvest [FEAT-202]
-            if now.hour == 2 and now.minute == 30:
-                logging.info("[ALARM] Triggering Nightly Sequential Harvest...")
-                try:
-                    harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest.py")
-                    # Note: We use subprocess rather than create_task to ensure sequentiality
-                    proc = await asyncio.create_subprocess_exec(
-                        sys.executable, harvest_script,
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                    )
-                    await proc.communicate()
-                    logging.info("[ALARM] Nightly Harvest complete.")
-                except Exception as e:
-                    logging.error(f"[ALARM] Harvest failed: {e}")
-                await asyncio.sleep(61)
-
-            # 03:00 AM: Hierarchy Refactor (The Lab)
-            if now.hour == 3 and now.minute == 0:
-                if "lab" in self.residents:
-                    logging.info("[ALARM] Triggering Hierarchy Refactor...")
-                    try:
-                        await self.residents["lab"].call_tool(
-                            name="build_semantic_map"
-                        )
-                    except Exception as e:
-                        logging.error(f"[ALARM] Lab Task failed: {e}")
-                await asyncio.sleep(61)
-
-            # 04:00 AM: Nightly Dialogue [FEAT-071]
-            if now.hour == 4 and now.minute == 0:
-                logging.info("[ALARM] Triggering Nightly Dialogue...")
-                a_node = self.residents.get("archive")
-                p_node = self.residents.get("pinky")
-                b_node = self.residents.get("brain")
-                try:
-                    from internal_debate import run_nightly_talk
-
-                    await run_nightly_talk(a_node, p_node, b_node)
-                except Exception as e:
-                    logging.error(f"[ALARM] Nightly Dialogue failed: {e}")
-                await asyncio.sleep(61)
-
-            # Global Throttle: Avoid hot-looping when no task is active
-            await asyncio.sleep(10)
+                self.last_induction_date = today
 
             await asyncio.sleep(30)
 
