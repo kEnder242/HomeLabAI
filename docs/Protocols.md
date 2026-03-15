@@ -102,6 +102,15 @@
 3.  **The Wait Mandate**: Once a host is `LOCKED`, the Hub must allow up to 180s for inference to complete before declaring a quality fallback.
 4.  **Airtime Rule**: Any turn exceeding 10s of remote latency **MUST** be interleaved with a Pinky interjection or dynamic tic.
 
+## BKM-027: The Dream Pass Synthesis
+**Objective**: Generate high-fidelity instruction-tuning datasets by utilizing the Sovereign Brain to process raw historical context.
+
+1.  **Instruction Framing**: Use the `[DREAM_PASS]` header to force the Sovereign into a specific persona (e.g., "Lead Engineer").
+2.  **Dataset Integrity**: Instruction pairs must consist of a verified user prompt and a Sovereign-validated technical response.
+3.  **Refinement Gate**: Always run Stage 2 Refinement (regex cleaning) before passing data to the induction adapter.
+4.  **Rationale**: Native weights learn more effectively from "Idealized Logic" than from raw, messy chat history.
+
+
 
 ## BKM-012: The Ultimate Patcher (Archive Node)
 **Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
