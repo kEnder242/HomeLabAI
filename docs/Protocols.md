@@ -90,6 +90,7 @@
 2.  **CLI Mode**: `python3 atomic_patcher.py <file> <desc> <old_text> <new_text>`
 3.  **Library Mode**: Import `apply_batch_refinement` for complex, multi-edit tasks.
 4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
+5.  **Precision**: When providing multi-line strings, ensure blank lines are **truly empty** (zero spaces) to prevent `W293` whitespace thrashing.
 
 ## BKM-012: The Ultimate Patcher (Archive Node)
 **Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
