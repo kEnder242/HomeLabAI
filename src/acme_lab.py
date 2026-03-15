@@ -310,6 +310,22 @@ class AcmeLab:
         logging.info("[ALARM] Scheduled Tasks loop active.")
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
+
+            # 01:00 AM: Nightly Dream Pass [FEAT-204]
+            if now.hour == 1 and now.minute == 0:
+                logging.info("[ALARM] Triggering Nightly Dream Pass (Persona Synthesis)...")
+                try:
+                    # Run the dreaming script with a 300-sample limit
+                    dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
+                    proc = await asyncio.create_subprocess_exec(
+                        sys.executable, dream_script, "300",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    await proc.communicate()
+                    logging.info("[ALARM] Nightly Dream Pass complete.")
+                except Exception as e:
+                    logging.error(f"[ALARM] Dream Pass failed: {e}")
+                await asyncio.sleep(61)
             # 02:00 AM: Nightly Recruiter
             if now.hour == 2 and now.minute == 0:
                 logging.info("[ALARM] Triggering Nightly Recruiter...")

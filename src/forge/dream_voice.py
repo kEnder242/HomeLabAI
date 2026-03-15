@@ -71,6 +71,18 @@ async def main(limit=10):
         return
 
     VOICE_DATASET.parent.mkdir(parents=True, exist_ok=True)
+    
+    # [FEAT-204] Resume Logic: Load already dreamed prompts
+    seen_prompts = set()
+    if VOICE_DATASET.exists():
+        with open(VOICE_DATASET, 'r') as f_check:
+            for line in f_check:
+                try:
+                    instruction = json.loads(line).get('instruction')
+                    if instruction:
+                        seen_prompts.add(instruction)
+                except Exception:
+                    pass
 
     count = 0
     async with websockets.connect(BRAIN_NODE_URI) as websocket:
@@ -83,6 +95,9 @@ async def main(limit=10):
 
                 entry = json.loads(line)
                 prompt = entry.get("prompt")
+                
+                if prompt in seen_prompts:
+                    continue
 
                 logging.info(f"Dreaming response for: {prompt[:50]}...")
                 ideal_response = await generate_dream_response(websocket, prompt)
