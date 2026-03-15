@@ -121,7 +121,7 @@ async def main():
                         log_key = date_match.group(1)
             
             # Specialized catch for GIT
-            if not log_key and "GIT" in summary.upper():
+            if not log_key and summary and "GIT" in summary.upper():
                 log_key = "GIT"
             
             if not summary or not log_key:
