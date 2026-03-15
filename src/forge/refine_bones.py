@@ -39,7 +39,7 @@ logging.basicConfig(
 def nuclear_json_clean(text):
     """Refined JSON extraction logic from the experiment."""
     if "{" not in text:
-        return None
+        return text.strip()
 
     # 1. Strip markdown blocks
     clean = re.sub(r"```json\s*|\s*```", "", text)
@@ -100,13 +100,10 @@ def main():
                 
                 if clean_json:
                     try:
-                        # We are looking for the 'context' or 'situation' block
-                        # In the extraction prompt, we asked for ONLY raw paragraphs.
-                        # Sometimes the model still outputs JSON with a 'context' key.
-                        data = json.loads(clean_json)
-                        
-                        # Extract the actual technical content
-                        context = data.get("context") or data.get("situation") or raw_text
+                        context = clean_json
+                        if clean_json.startswith("{"):
+                            data = json.loads(clean_json)
+                            context = data.get("context") or data.get("situation") or clean_json
                         
                         bkm_pair = {
                             "summary": summary,
