@@ -79,7 +79,7 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
             break
     return False
 
-async def main():
+async def main(limit=None):
     logging.info("Starting Serial Harvest (v12)...")
     processed_count = 0
     
@@ -196,6 +196,9 @@ async def main():
             if success:
                 processed_count += 1
                 logging.info(f"Successfully captured gem. Progress: {processed_count}/{len(all_gems)}")
+                if limit and processed_count >= limit:
+                    logging.info(f"Limit reached ({limit}). Stopping harvest.")
+                    return
             else:
                 logging.warning(f"Failed to capture gem: {summary[:50]}")
             
@@ -208,4 +211,9 @@ async def main():
     logging.info(f"Serial Harvest Finished. Total gems captured: {processed_count}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    limit_val = None
+    for arg in sys.argv:
+        if arg.startswith("--limit="):
+            limit_val = int(arg.split('=')[1])
+    asyncio.run(main(limit=limit_val))
