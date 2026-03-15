@@ -80,15 +80,15 @@ async def call_lab_node_raw(prompt):
             await websocket.send(json.dumps(message))
             
             # 3. Collect Response
-            for _ in range(5):
+            for _ in range(10): # Increased loop to catch later Brain results
                 try:
                     resp = await asyncio.wait_for(websocket.recv(), timeout=60)
                     data = json.loads(resp)
                     source = data.get("brain_source", "")
                     text = data.get("brain", "")
                     
-                    # We look for the Lab Node's result specifically
-                    if "Lab" in source and "Result" in source:
+                    # Accept result from either Hemisphere (Brain or Lab)
+                    if ("Lab" in source or "Brain" in source) and "Result" in source:
                         return text
                 except asyncio.TimeoutError:
                     break

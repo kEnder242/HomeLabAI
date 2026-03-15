@@ -199,7 +199,7 @@ class CognitiveHub:
                         reply = params.get("text", "Egad! Empty reply.")
                         await self.broadcast({
                             "brain": reply,
-                            "brain_source": source.replace("Result", "").strip(),
+                            "brain_source": source,
                             "channel": "chat"
                         })
                         return True
@@ -224,7 +224,7 @@ class CognitiveHub:
     async def _dispatch_plain_text(self, text, source, is_internal):
         await self.broadcast({
             "brain": text,
-            "brain_source": source.replace("Result", "").strip(),
+            "brain_source": source,
             "channel": "chat",
             "is_internal": is_internal
         })
@@ -260,10 +260,21 @@ class CognitiveHub:
             try:
                 t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
                 t_json = t_res.content[0].text if hasattr(t_res, 'content') else str(t_res)
-                t_clean = self.nuclear_json_clean(t_json)
-                if t_clean:
-                    triage_data = json.loads(t_clean)
-                    triage_data = {k.lower(): v for k, v in triage_data.items()}
+                # [FEAT-199] Hybrid Triage Parsing (Pipe or JSON)
+                if "|" in t_json and "intent" not in t_json.lower():
+                    parts = t_json.split("|")
+                    if len(parts) >= 2:
+                        triage_data["intent"] = parts[0].strip().upper()
+                        triage_data["domain"] = parts[1].strip().lower()
+                        if len(parts) >= 3:
+                            triage_data["situation"] = parts[2].strip()
+                        if len(parts) >= 4:
+                            triage_data["hints"] = parts[3].strip()
+                else:
+                    t_clean = self.nuclear_json_clean(t_json)
+                    if t_clean:
+                        t_parsed = json.loads(t_clean)
+                        triage_data.update({k.lower(): v for k, v in t_parsed.items()})
                 logging.info(f"[HUB] Lab Node Triage: {triage_data.get('intent')} | Domain: {triage_data.get('domain')}")
             except Exception as e:
                 logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back.")
@@ -271,6 +282,7 @@ class CognitiveHub:
                     triage_data["intent"] = "CASUAL"
         
         is_casual = triage_data.get("intent") == "CASUAL"
+        is_extraction = "[ARCHIVE_EXTRACT]" in query
         selected_expert = triage_data.get("domain", "standard")
         current_situation = triage_data.get("situation", "")
         vibe_hints = triage_data.get("hints", "")
@@ -278,13 +290,15 @@ class CognitiveHub:
         # [FEAT-186] Predictive Warm-up
         if not is_casual and self.brain_online():
             logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
-            asyncio.create_task(self.monitor_task_with_tics(self.brain_online()))
+            if "brain" in self.residents:
+                # Trigger a non-blocking ping to wake up the 4090
+                asyncio.create_task(self.residents["brain"].call_tool("ping_engine", {"force": True}))
 
         if not is_casual:
             selected_expert = await self._route_expert_domain(query)
 
         dispatch_tasks = []
-        if is_casual and not mic_active and retry_count == 0:
+        if is_casual and not is_extraction and not mic_active and retry_count == 0:
             if "pinky" in self.residents:
                 t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"}))
                 dispatch_tasks.append((t_pinky, "Pinky"))
@@ -318,7 +332,7 @@ class CognitiveHub:
 
                 tool_allowlist = ["ask_brain", "reply_to_user"]
                 archival_map_context = ""
-                if selected_expert in ["exp_for", "exp_tlm"]:
+                if selected_expert in ["exp_for", "exp_tlm"] or is_extraction:
                     tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map", "read_chronological_excerpts"])
                     if self.semantic_map:
                         strat = len(self.semantic_map.get("strategic_layer", []))
@@ -367,7 +381,7 @@ class CognitiveHub:
             if source == "Pinky" and any(r["source"] == "Brain" for r in bundled_results):
                 internal_flag = True
 
-            if source == "Brain":
+            if source == "Brain" and not is_extraction:
                 base_threshold = 20
                 adj_threshold = max(5, base_threshold - int(turn_density * 2))
                 is_thin = len(result_text.split()) < adj_threshold and len(query.split()) > 4

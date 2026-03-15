@@ -194,12 +194,13 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
     [FEAT-184/154] The Sentient Sentinel: Performs dynamic situational triage.
     Determines INTENT, VIBE (expert domain), and provides coordination HINTS.
     """
-    template = "{\n  \"intent\": \"CASUAL\",\n  \"domain\": \"standard\",\n  \"situation\": \"[TAG_HERE]\",\n  \"hints\": \"Guidance for Pinky.\"\n}"
+
     system_override = (
-        "You are the Sentient Sentinel of Acme Lab. Role: Situational Awareness.\n"
-        "CRITICAL: Output ONLY a valid JSON object. Do NOT include markdown blocks. Do NOT include multiple options in a value.\n"
-        "Pick the SINGLE most relevant domain from: 'exp_tlm', 'exp_bkm', 'exp_for', or 'standard'.\n"
-        f"Structure: {template}\n"
+        "ROLE: Situational Triage.\n"
+        "TASK: Respond with a single line using this EXACT format:\n"
+        "INTENT|DOMAIN|SITUATION|HINTS\n"
+        "EXAMPLE: STRATEGIC|exp_tlm|Archive Extraction|Focus on technical blocks.\n"
+        "RULES: 1. No JSON. 2. No markdown. 3. Pick ONE domain: exp_tlm, exp_bkm, exp_for, standard.\n"
         f"Analyze: {query}"
     )
     
