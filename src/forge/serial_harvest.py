@@ -125,7 +125,8 @@ async def main():
                 log_key = "GIT"
             
             if not summary or not log_key:
-                logging.info(f"SKIPPED: No log_key for {summary[:30]} in {file_path}")
+                safe_summary = summary[:30] if summary else "[MISSING_SUMMARY]"
+                logging.info(f"SKIPPED: No log_key for {safe_summary} in {file_path}")
                 continue
 
             # 2. Resolve Paths via Manifest (Manifest Authority)
