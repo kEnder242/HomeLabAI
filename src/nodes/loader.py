@@ -40,7 +40,8 @@ class BicameralNode:
         # to avoid per-query network hits
         self._engine_cache = None
         self._last_probe = 0
-        self._probe_ttl = 60  # Seconds
+        self._probe_ttl_success = 300  # 5 Minutes [FEAT-206]
+        self._probe_ttl_failure = 15   # 15 Seconds [FEAT-206]
 
         # Load configs
         self.vram_config = self._load_json(CHARACTERIZATION_FILE)
@@ -163,13 +164,12 @@ class BicameralNode:
 
     async def probe_engine(self, force=False):
         """Dynamic engine selection with Federated Failover."""
-        # [FEAT-084] Return cached engine if available and TTL not exceeded
-        if (
-            not force
-            and self._engine_cache
-            and (time.time() - self._last_probe < self._probe_ttl)
-        ):
-            return self._engine_cache
+        # [FEAT-084] [FEAT-206] Asymmetric TTL Cache
+        # Failures (NONE) are cached for 15s; Successes (OLLAMA/VLLM) for 300s.
+        if not force and self._engine_cache:
+            ttl = self._probe_ttl_failure if self._engine_cache[0] == "NONE" else self._probe_ttl_success
+            if (time.time() - self._last_probe < ttl):
+                return self._engine_cache
 
         async with aiohttp.ClientSession() as session:
             # 1. Check Primary Host (e.g., KENDER)
@@ -181,8 +181,11 @@ class BicameralNode:
                 
                 # [FEAT-205] Long-Tail Gate: Handle 4090 Residency Lag
                 # If we were previously local or none, wait 60s for remote load
-                if self._engine_cache and self._engine_cache[1] and "127.0.0.1" in self._engine_cache[1]:
-                    logging.info(f"[{self.name}] Transitioning to Primary host. Applying 60s Long-Tail warm-up...")
+                was_local = self._engine_cache and self._engine_cache[1] and "127.0.0.1" in self._engine_cache[1]
+                was_none = self._engine_cache and self._engine_cache[0] == "NONE"
+                
+                if was_local or was_none:
+                    logging.info(f"[{self.name}] [FEAT-205] Transitioning to PRIMARY_LOCKED. Applying 60s warm-up wait...")
                     time.sleep(60)
 
                 try:
@@ -196,7 +199,7 @@ class BicameralNode:
                             # Only log if the result changed or was empty
                             if res != self._engine_cache:
                                 logging.info(
-                                    f"[{self.name}] Resolved Primary: {p_ip} -> {model}"
+                                    f"[{self.name}] Resolved PRIMARY_LOCKED: {p_ip} -> {model}"
                                 )
 
                             self._engine_cache = res
@@ -250,7 +253,10 @@ class BicameralNode:
             except Exception:
                 pass
 
-        return "NONE", None, None
+        # Final Fallback: NONE
+        self._engine_cache = ("NONE", None, None)
+        self._last_probe = time.time()
+        return self._engine_cache
 
     async def ping_engine(self, force=False):
         """[FEAT-192] Verify and force engine readiness via /api/generate probe."""

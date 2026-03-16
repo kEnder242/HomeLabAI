@@ -20,6 +20,7 @@ import websockets
 # --- Configuration ---
 LOG_LEVEL = logging.INFO
 FIELD_NOTES_DATA_DIR = Path.home() / "Dev_Lab/Portfolio_Dev/field_notes/data"
+PAGER_LOG = FIELD_NOTES_DATA_DIR / "pager_activity.json"
 RAW_STAGE_1_FILE = (
     Path.home() / "Dev_Lab/HomeLabAI/src/forge/expertise/raw_stage_1.jsonl"
 )
@@ -42,6 +43,36 @@ logging.basicConfig(
         logging.FileHandler("serial_harvest.log"),
     ],
 )
+
+def log_to_pager(message, severity="info"):
+    """[FEAT-045] Appends induction status to the status.html interleaved logs."""
+    try:
+        from datetime import datetime
+        import os
+        
+        alert = {
+            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "source": "Induction",
+            "severity": severity,
+            "message": message
+        }
+        
+        # [BKM-022] Atomic File Swap
+        temp_file = str(PAGER_LOG) + ".tmp"
+        data = []
+        if PAGER_LOG.exists():
+            with open(PAGER_LOG, "r") as f:
+                data = json.load(f)
+        
+        data.append(alert)
+        # Keep last 100 entries to prevent bloat
+        data = data[-100:]
+        
+        with open(temp_file, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, str(PAGER_LOG))
+    except Exception as e:
+        logging.error(f"Pager log failed: {e}")
 
 async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
     """Sends a single extraction query and waits for the result."""
@@ -119,9 +150,12 @@ async def main(limit=None):
         # Wait for greeting
         await websocket.recv()
         
+        log_to_pager(f"Harvest Cycle Started: {len(all_gems)} gems identified.")
+
         for gem, file_path in all_gems:
             loop_start = asyncio.get_event_loop().time()
-            summary = gem.get("summary")
+            # [FIX] Synopsis fallback for missing summary
+            summary = gem.get("summary") or gem.get("synopsis") or gem.get("title")
             filename = Path(file_path).name
             year_match = re.search(r'(20\d\d)', filename)
             
@@ -131,7 +165,7 @@ async def main(limit=None):
                 if year_match:
                     log_key = year_match.group(1)
                 elif gem.get("date"):
-                    date_match = re.search(r'(20\d\d)', gem["date"])
+                    date_match = re.search(r'(20\d\d)', str(gem["date"]))
                     if date_match:
                         log_key = date_match.group(1)
             
@@ -140,8 +174,8 @@ async def main(limit=None):
                 log_key = "GIT"
             
             if not summary or not log_key:
-                safe_summary = summary[:30] if summary else "[MISSING_SUMMARY]"
-                logging.info(f"SKIPPED: No log_key for {safe_summary} in {file_path}")
+                safe_summary = summary[:30] if summary else "[MISSING_DATA]"
+                logging.info(f"SKIPPED: Missing fields (log_key: {log_key}, summary: {summary is not None}) for {safe_summary} in {file_path}")
                 continue
             
             if summary in seen_summaries:
@@ -162,8 +196,12 @@ async def main(limit=None):
                             if "-" in m_year:
                                 try:
                                     start, end = map(int, m_year.split("-"))
-                                    if start <= int(log_key) <= end:
-                                        is_match = True
+                                    # Handle log_key being a year or a string
+                                    try:
+                                        if start <= int(log_key) <= end:
+                                            is_match = True
+                                    except ValueError:
+                                        pass
                                 except Exception:
                                     pass
                             if not is_match and (str(log_key) in m_year or m_year in str(log_key)):
@@ -180,6 +218,7 @@ async def main(limit=None):
                 continue
 
             # --- THE HARVEST ---
+            success = False
             for log_file_path in target_files:
                 if not log_file_path.exists():
                     continue
@@ -191,23 +230,32 @@ async def main(limit=None):
                 )
 
                 logging.info(f"Harvesting gem [{processed_count+1}/{len(all_gems)}] from {log_file_path.name}...")
-                success = await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path))
+                if await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path)):
+                    success = True
             
             if success:
                 processed_count += 1
-                logging.info(f"Successfully captured gem. Progress: {processed_count}/{len(all_gems)}")
+                progress_pct = int((processed_count / len(all_gems)) * 100)
+                logging.info(f"Successfully captured gem. Progress: {processed_count}/{len(all_gems)} ({progress_pct}%)")
+                
+                # Report major milestones to the status page
+                if processed_count % 5 == 0 or processed_count == len(all_gems):
+                    log_to_pager(f"Harvest Progress: {processed_count}/{len(all_gems)} ({progress_pct}%)")
+
                 if limit and processed_count >= limit:
                     logging.info(f"Limit reached ({limit}). Stopping harvest.")
+                    log_to_pager(f"Harvest Stalled: Limit {limit} reached.")
                     return
             else:
                 logging.warning(f"Failed to capture gem: {summary[:50]}")
             
-            # [FEAT-202] Dynamic Cadence: Ensure at least a 2s pulse to keep GPU resident, but no extra delay if logic was slow.
+            # [FEAT-202] Dynamic Cadence
             MIN_CADENCE = 5.0 
             elapsed = asyncio.get_event_loop().time() - loop_start
             sleep_time = max(0.1, MIN_CADENCE - elapsed)
             await asyncio.sleep(sleep_time)
 
+    log_to_pager(f"Harvest Cycle Finished. Total gems: {processed_count}")
     logging.info(f"Serial Harvest Finished. Total gems captured: {processed_count}")
 
 if __name__ == "__main__":
