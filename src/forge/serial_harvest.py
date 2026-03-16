@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Serial Harvest (Stage 1: Capture v12)
+Serial Harvest (Stage 1: Capture v12.1)
 [FEAT-202] Decoupled Extraction Pipeline
 
 Strictly sequential harvesting to ensure 100% gem capture.
-Leverages FEAT-205 Long-Tail Gate for Windows GPU residency.
+Leverages FEAT-205 Long-Tail Gate for remote model loading.
 """
 
 import asyncio
 import json
 import logging
-import glob
+import os
 import re
+import glob
 from pathlib import Path
 import websockets
 
@@ -80,23 +81,31 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
         "type": "text_input",
         "content": f"[ARCHIVE_EXTRACT]: {prompt}"
     }
-    await websocket.send(json.dumps(message))
     
-    # We wait up to 120s for the remote 4090 to respond (including load time)
-    start_time = asyncio.get_event_loop().time()
-    while (asyncio.get_event_loop().time() - start_time) < 120:
+    try:
+        await websocket.send(json.dumps(message))
+    except Exception as e:
+        logging.error(f"Failed to send harvest query: {e}")
+        return False
+
+    # Wait for completion (Brain Result)
+    while True:
         try:
-            resp = await asyncio.wait_for(websocket.recv(), timeout=5)
+            resp = await asyncio.wait_for(websocket.recv(), timeout=120)
             data = json.loads(resp)
-            source = data.get("brain_source", "")
-            text = data.get("brain", "")
             
-            # Look for Result from either hemisphere
-            if ("Lab" in source or "Brain" in source) and "Result" in source:
+            # Check for Brain Result
+            if "Brain" in data.get("brain_source", "") and "Result" in data.get("brain_source", ""):
+                result_text = data.get("brain", "")
+                if len(result_text) < 50:
+                    logging.warning(f"Capture too thin ({len(result_text)} chars).")
+                    return False
+                
+                # Save to raw_stage_1.jsonl
                 entry = {
                     "summary": summary,
-                    "raw_llm_output": text,
-                    "source_file": str(file_path),
+                    "raw_text": result_text,
+                    "source_file": file_path,
                     "log_file": log_file_path,
                     "timestamp": Path(file_path).stat().st_mtime
                 }
@@ -104,14 +113,15 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
                     f.write(json.dumps(entry) + "\n")
                 return True
         except asyncio.TimeoutError:
-            continue
+            logging.warning("Harvest timeout waiting for response.")
+            return False
         except Exception as e:
             logging.error(f"Error during recv: {e}")
             break
     return False
 
 async def main(limit=None):
-    logging.info("Starting Serial Harvest (v12)...")
+    logging.info("Starting Serial Harvest (v12.1)...")
     processed_count = 0
     
     RAW_STAGE_1_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -137,9 +147,11 @@ async def main(limit=None):
         with open(RAW_STAGE_1_FILE, 'r') as f_check:
             for line in f_check:
                 try:
-                    summary_text = json.loads(line).get('summary')
-                    if summary_text:
-                        seen_summaries.add(summary_text)
+                    entry = json.loads(line)
+                    # Track all possible identifiers to prevent re-harvesting
+                    for key in ['summary', 'synopsis', 'title']:
+                        if entry.get(key):
+                            seen_summaries.add(entry[key])
                 except Exception:
                     pass
     
@@ -152,10 +164,17 @@ async def main(limit=None):
         
         log_to_pager(f"Harvest Cycle Started: {len(all_gems)} gems identified.")
 
+        # track total progress including resumed
+        total_captured = len(seen_summaries)
+
         for gem, file_path in all_gems:
             loop_start = asyncio.get_event_loop().time()
             # [FIX] Synopsis fallback for missing summary
             summary = gem.get("summary") or gem.get("synopsis") or gem.get("title")
+            
+            if not summary or summary in seen_summaries:
+                continue
+
             filename = Path(file_path).name
             year_match = re.search(r'(20\d\d)', filename)
             
@@ -165,7 +184,9 @@ async def main(limit=None):
                 if year_match:
                     log_key = year_match.group(1)
                 elif gem.get("date"):
-                    date_match = re.search(r'(20\d\d)', str(gem["date"]))
+                    # Robust date parsing for Unknown.json entries
+                    date_val = str(gem["date"])
+                    date_match = re.search(r'(20\d\d)', date_val)
                     if date_match:
                         log_key = date_match.group(1)
             
@@ -173,14 +194,15 @@ async def main(limit=None):
             if not log_key and summary and "GIT" in summary.upper():
                 log_key = "GIT"
             
-            if not summary or not log_key:
-                safe_summary = summary[:30] if summary else "[MISSING_DATA]"
-                logging.info(f"SKIPPED: Missing fields (log_key: {log_key}, summary: {summary is not None}) for {safe_summary} in {file_path}")
+            # [FIX] specialized catch for Unknown.json / Orphaned gems
+            if not log_key:
+                log_key = "2024" # Default to 2024 to at least attempt a harvest
+                logging.info(f"ORPHAN detected: Defaulting to {log_key} for {summary[:30]}")
+
+            if not summary:
+                logging.info(f"SKIPPED: No summary for {file_path}")
                 continue
             
-            if summary in seen_summaries:
-                continue
-
             # 2. Resolve Paths via Manifest (Manifest Authority)
             target_files = []
             if log_key in EXPERT_OVERRIDES:
@@ -196,14 +218,11 @@ async def main(limit=None):
                             if "-" in m_year:
                                 try:
                                     start, end = map(int, m_year.split("-"))
-                                    # Handle log_key being a year or a string
                                     try:
                                         if start <= int(log_key) <= end:
                                             is_match = True
-                                    except ValueError:
-                                        pass
-                                except Exception:
-                                    pass
+                                    except ValueError: pass
+                                except Exception: pass
                             if not is_match and (str(log_key) in m_year or m_year in str(log_key)):
                                 is_match = True
                         
@@ -219,35 +238,41 @@ async def main(limit=None):
 
             # --- THE HARVEST ---
             success = False
-            for log_file_path in target_files:
-                if not log_file_path.exists():
-                    continue
+            valid_targets = [f for f in target_files if f.exists()]
+            if not valid_targets:
+                logging.warning(f"SKIPPED: No physical files found for key '{log_key}'")
+                continue
 
+            for log_file_path in valid_targets:
                 prompt = (
                     f"Find the specific paragraphs in the raw file ({log_file_path.name}) "
                     f"that correspond to this summary: '{summary}'. Output ONLY the raw "
                     "paragraphs, no conversational filler."
                 )
 
-                logging.info(f"Harvesting gem [{processed_count+1}/{len(all_gems)}] from {log_file_path.name}...")
+                logging.info(f"Harvesting gem [{total_captured+1}/{len(all_gems)}] from {log_file_path.name}...")
                 if await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path)):
                     success = True
+                    break # Break on first success
             
             if success:
                 processed_count += 1
-                progress_pct = int((processed_count / len(all_gems)) * 100)
-                logging.info(f"Successfully captured gem. Progress: {processed_count}/{len(all_gems)} ({progress_pct}%)")
+                total_captured += 1
+                progress_pct = int((total_captured / len(all_gems)) * 100)
+                logging.info(f"Successfully captured gem. Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
                 
                 # Report major milestones to the status page
-                if processed_count % 5 == 0 or processed_count == len(all_gems):
-                    log_to_pager(f"Harvest Progress: {processed_count}/{len(all_gems)} ({progress_pct}%)")
+                if total_captured % 5 == 0 or total_captured == len(all_gems):
+                    log_to_pager(f"Harvest Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
 
                 if limit and processed_count >= limit:
                     logging.info(f"Limit reached ({limit}). Stopping harvest.")
                     log_to_pager(f"Harvest Stalled: Limit {limit} reached.")
                     return
             else:
-                logging.warning(f"Failed to capture gem: {summary[:50]}")
+                logging.warning(f"Failed to capture gem after exhausting {len(valid_targets)} files: {summary[:50]}")
+                # Mark as seen to prevent infinite session stall
+                seen_summaries.add(summary)
             
             # [FEAT-202] Dynamic Cadence
             MIN_CADENCE = 5.0 
