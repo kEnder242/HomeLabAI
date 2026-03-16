@@ -9,6 +9,8 @@ Strictly sequential harvesting to ensure 100% gem capture.
 Leverages FEAT-205 Long-Tail Gate for remote model loading.
 """
 
+BAD code
+
 import asyncio
 import json
 import logging
