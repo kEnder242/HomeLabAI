@@ -287,7 +287,13 @@ class CognitiveHub:
         current_situation = triage_data.get("situation", "")
         vibe_hints = triage_data.get("hints", "")
         
-        # [FEAT-186] Predictive Warm-up
+        # 2. Predictive Warm-up & [FEAT-207] Airtime Check
+        brain_is_remote = False
+        if "brain" in self.residents:
+            engine, url, model = await self.residents["brain"].probe_engine()
+            if engine != "NONE" and url and "127.0.0.1" not in url:
+                brain_is_remote = True
+
         if not is_casual and self.brain_online():
             logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
             if "brain" in self.residents:
@@ -304,7 +310,10 @@ class CognitiveHub:
                 dispatch_tasks.append((t_pinky, "Pinky"))
         else:
             pinky_intuition = ""
-            if "pinky" in self.residents and retry_count == 0:
+            # [FEAT-207] Bicameral Airtime: Force Pinky triage if Brain is remote
+            force_pinky = brain_is_remote and not is_extraction and retry_count == 0
+
+            if "pinky" in self.residents and (retry_count == 0 or force_pinky):
                 await self.broadcast({
                     "brain": self.get_oracle_signal("Pinky"),
                     "brain_source": "Pinky (Triage)",
@@ -314,7 +323,8 @@ class CognitiveHub:
                 try:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
                     pinky_intuition = res.content[0].text
-                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=True)
+                    # Broadcast Pinky immediately to cover 4090 latency
+                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=not force_pinky)
                 except Exception as e:
                     logging.error(f"[HUB] Pinky intuition failed: {e}")
 
