@@ -123,9 +123,9 @@ class LabAttendantV3:
         vitals["timestamp"] = datetime.datetime.now().isoformat()
         return vitals
 
-    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True):
+    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear})
+            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode})
         
         global current_lab_mode, current_model, lab_process
         self.refresh_vram_config() # Reload latest model mappings
@@ -163,12 +163,12 @@ class LabAttendantV3:
             await self._wait_for_vllm()
 
         # Start Hub
-        cmd = [sys.executable, LAB_SERVER_PATH, "--mode", "SERVICE_UNATTENDED"]
+        cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
         if disable_ear: cmd.append("--disable-ear")
         
         lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=open(SERVER_LOG, "a", buffering=1), preexec_fn=os.setpgrp)
         asyncio.create_task(self.log_monitor_loop())
-        return {"status": "success", "message": f"Ignited {model} via {engine}"}
+        return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode}"}
 
     async def mcp_stop(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
@@ -328,7 +328,7 @@ attendant = LabAttendantV3()
 @mcp.tool()
 async def lab_heartbeat(): return await attendant.mcp_heartbeat()
 @mcp.tool()
-async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True): return await attendant.mcp_start(engine, model, disable_ear)
+async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"): return await attendant.mcp_start(engine, model, disable_ear, op_mode)
 @mcp.tool()
 async def lab_stop(): return await attendant.mcp_stop()
 @mcp.tool()

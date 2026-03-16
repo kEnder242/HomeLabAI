@@ -169,9 +169,9 @@ class AcmeLab:
                 # Attempt to get a characterful tic from the local 2080 Ti
                 tic_msg = None
                 if self.residents.get("brain") and tic_count > 0:
-                    engine, url, model = await self.residents["brain"].probe_engine()
+                    url = resolve_brain_url()
                     # If we are local (2080 Ti), use it for a fast tic
-                    if url and "127.0.0.1" in url:
+                    if url and ("127.0.0.1" in url or "localhost" in url):
                         try:
                             tic_res = await self.residents["brain"].call_tool("shallow_think", {
                                 "task": "Provide a 1-sentence cognitive 'tic' or status update (e.g. 'Synthesizing MSR logs...') for the user while the deep-think completes. Be brief and lead-engineer clinical.", 

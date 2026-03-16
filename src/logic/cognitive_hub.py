@@ -4,7 +4,6 @@ import logging
 import re
 import os
 import sys
-from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
     """
@@ -290,9 +289,23 @@ class CognitiveHub:
         # 2. Predictive Warm-up & [FEAT-207] Airtime Check
         brain_is_remote = False
         if "brain" in self.residents:
-            engine, url, model = await self.residents["brain"].probe_engine()
-            if engine != "NONE" and url and "127.0.0.1" not in url:
-                brain_is_remote = True
+            try:
+                import socket
+                infra_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config/infrastructure.json")
+                if os.path.exists(infra_path):
+                    with open(infra_path, "r") as f:
+                        infra = json.load(f)
+                    primary = infra.get("nodes", {}).get("brain", {}).get("primary", "localhost")
+                    if primary != "localhost" and primary != "127.0.0.1":
+                        ip_hint = infra.get("hosts", {}).get(primary, {}).get("ip_hint", "127.0.0.1")
+                        try:
+                            ip = socket.gethostbyname(primary)
+                        except:
+                            ip = ip_hint
+                        if ip != "127.0.0.1":
+                            brain_is_remote = True
+            except Exception as e:
+                logging.debug(f"[HUB] Failed to resolve brain remote status: {e}")
 
         if not is_casual and self.brain_online():
             logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
@@ -437,78 +450,17 @@ class CognitiveHub:
                                 logging.error(f"[HALLWAY] Scan execution failed: {e}")
                             return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
                         
-                        logging.warning(f"[HUB] Fidelity Pivot triggered for Sovereign turn.")
+                        logging.warning("[HUB] Fidelity Pivot triggered for Sovereign turn.")
                         return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
                 await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
             else:
-        if dispatch_tasks:
-            pending = {t for t, s in dispatch_tasks}
-            task_to_source = {t: s for t, s in dispatch_tasks}
-            try:
-                async with asyncio.timeout(120):
-                    while pending:
-                        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                        for task in done:
-                            try:
-                                res = await task
-                                source = task_to_source[task]
-                                bundled_results.append({"source": source, "text": res.content[0].text})
-                            except Exception as e:
-                                logging.error(f"[HUB] Task failed for {task_to_source[task]}: {e}")
-            except asyncio.TimeoutError:
-                for t in pending:
-                    t.cancel()
-
-        for result in bundled_results:
-            result_text = result["text"]
-            source = result["source"]
-            internal_flag = False
-            if source == "Pinky" and any(r["source"] == "Brain" for r in bundled_results):
-                internal_flag = True
-
-            if source == "Brain" and not is_extraction:
-                base_threshold = 20
-                adj_threshold = max(5, base_threshold - int(turn_density * 2))
-                is_thin = len(result_text.split()) < adj_threshold and len(query.split()) > 4
-                if "3.141" in result_text:
-                    is_thin = False
-
-                if is_thin:
-                    if not self.auditor and "pinky" in self.residents:
-                        self.auditor = CognitiveAudit(self.residents["pinky"])
-                    if self.auditor:
-                        if await self.auditor.audit_technical_truth(query, result_text, ""):
-                            is_thin = False
-
-                if is_thin:
-                    if retry_count == 1:
-                        # [FEAT-179] The Hallway Protocol (Agentic-R)
-                        logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
-                        await self.broadcast({
-                            "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
-                            "brain_source": "Pinky (Forensic)",
-                            "channel": "insight",
-                            "is_internal": True
-                        })
-                        try:
-                            scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-                            proc = await asyncio.create_subprocess_exec(sys.executable, scan_script, "--keyword", query, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                            await proc.communicate()
-                        except Exception as e:
-                            logging.error(f"[HALLWAY] Scan execution failed: {e}")
-                        return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
-                    
-                    logging.warning(f"[HUB] Fidelity Pivot triggered for {source}")
-                    return await self.process_query(query, mic_active, shutdown_event, exit_hint, retry_count=retry_count+1, turn_density=turn_density)
-
-            await self.execute_dispatch(
-                result_text,
-                f"{source} (Result)",
-                shutdown_event=shutdown_event,
-                is_internal=internal_flag,
-                original_query=query,
-                retry_count=retry_count
-            )
+                # If Brain is truly offline, Shadow becomes the primary Result
+                if shadow_intuition:
+                     await self.execute_dispatch(shadow_intuition, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
+                elif "pinky" in self.residents:
+                     # Final fallback to Pinky
+                     res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[FAILOVER]: {query}", "context": ""})
+                     await self.execute_dispatch(res.content[0].text, "Brain (Failover)", shutdown_event=shutdown_event)
 
         return True
