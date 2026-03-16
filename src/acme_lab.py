@@ -152,7 +152,7 @@ class AcmeLab:
         """Sends state-aware tics during long reasoning tasks."""
         task = asyncio.create_task(coro)
 
-        # Standard character tics
+        # Standard character tics as fallback
         base_tics = [
             "Thinking...",
             "Processing...",
@@ -165,14 +165,23 @@ class AcmeLab:
 
         while not task.done():
             try:
-                done, pending = await asyncio.wait([task], timeout=current_delay)
-                if task in done:
-                    return task.result()
+                # [FEAT-053] Dynamic Shadow Tics: 
+                # Attempt to get a characterful tic from the local 2080 Ti
+                tic_msg = None
+                if self.residents.get("brain") and tic_count > 0:
+                    engine, url, model = await self.residents["brain"].probe_engine()
+                    # If we are local (2080 Ti), use it for a fast tic
+                    if url and "127.0.0.1" in url:
+                        try:
+                            tic_res = await self.residents["brain"].call_tool("shallow_think", {
+                                "task": "Provide a 1-sentence cognitive 'tic' or status update (e.g. 'Synthesizing MSR logs...') for the user while the deep-think completes. Be brief and lead-engineer clinical.", 
+                                "context": "[INTERNAL_STATUS_MODE]"
+                            })
+                            tic_msg = tic_res.content[0].text
+                        except Exception:
+                            pass
 
-                if self.connected_clients and not self.is_user_typing():
-                    # [FEAT-053] Contextual Insight: Check Brain status during wait
-                    await self.check_brain_health()
-
+                if not tic_msg:
                     if not self.brain_online:
                         tic_msg = "Sovereign unreachable... attempting failover."
                     elif tic_count == 0:
@@ -180,13 +189,20 @@ class AcmeLab:
                     else:
                         tic_msg = random.choice(base_tics)
 
-                    await self.broadcast(
-                        {"brain": tic_msg, "brain_source": "Pinky (Lag Shield)", "is_internal": True}
-                    )
+                # Wait for task or timeout
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=current_delay)
+                except asyncio.TimeoutError:
+                    if self.connected_clients and not self.is_user_typing():
+                        await self.broadcast(
+                            {"brain": tic_msg, "brain_source": "Shadow (Tic)", "is_internal": True}
+                        )
                     tic_count += 1
+                    # Increase delay exponentially
+                    current_delay = min(current_delay * 1.5, 15.0)
 
-                # Increase delay exponentially
-                current_delay = min(current_delay * 1.5, 12.0)
+                if task.done():
+                    return task.result()
             except Exception:
                 if task.done():
                     return task.result()

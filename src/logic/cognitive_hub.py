@@ -300,6 +300,22 @@ class CognitiveHub:
                 # Trigger a non-blocking ping to wake up the 4090
                 asyncio.create_task(self.residents["brain"].call_tool("ping_engine", {"force": True}))
 
+        # 3. [FEAT-211] Proactive Archivist: Look for years/keywords
+        historical_context = ""
+        historical_sources = []
+        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
+        if year_match and "archive" in self.residents:
+            year = year_match.group(1)
+            try:
+                # Use sub-second local retrieval via Archive Node
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year}"})
+                rag_data = json.loads(res_context.content[0].text) if "{" in res_context.content[0].text else {"text": res_context.content[0].text}
+                historical_context = rag_data.get("text", res_context.content[0].text)
+                historical_sources = rag_data.get("sources", [])
+                logging.info(f"[HUB] [FEAT-211] Archivist retrieved context for {year}.")
+            except Exception as e:
+                logging.error(f"[HUB] Archivist failed: {e}")
+
         if not is_casual:
             selected_expert = await self._route_expert_domain(query)
 
@@ -310,10 +326,10 @@ class CognitiveHub:
                 dispatch_tasks.append((t_pinky, "Pinky"))
         else:
             pinky_intuition = ""
-            # [FEAT-207] Bicameral Airtime: Force Pinky triage if Brain is remote
-            force_pinky = brain_is_remote and not is_extraction and retry_count == 0
-
-            if "pinky" in self.residents and (retry_count == 0 or force_pinky):
+            shadow_intuition = ""
+            
+            # [FEAT-207] Tricameral Flow Stage 1: Pinky (Instant Triage)
+            if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
                     "brain": self.get_oracle_signal("Pinky"),
                     "brain_source": "Pinky (Triage)",
@@ -323,13 +339,41 @@ class CognitiveHub:
                 try:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
                     pinky_intuition = res.content[0].text
-                    # Broadcast Pinky immediately to cover 4090 latency
-                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=not force_pinky)
+                    # Broadcast Pinky immediately as internal thought
+                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=True)
                 except Exception as e:
                     logging.error(f"[HUB] Pinky intuition failed: {e}")
 
+            # [FEAT-207] Tricameral Flow Stage 2: Shadow Brain (Fast Intuition)
+            if "brain" in self.residents and brain_is_remote and retry_count == 0:
+                await self.broadcast({
+                    "brain": "Initiating local technical intuition... Narf!",
+                    "brain_source": "Shadow",
+                    "channel": "insight",
+                    "is_internal": True
+                })
+                try:
+                    # Execute a shallow_think on the local 2080 Ti
+                    s_res = await self.residents["brain"].call_tool("shallow_think", {
+                        "task": query, 
+                        "context": f"Triage: {pinky_intuition}\nTruth: {historical_context}"
+                    })
+                    shadow_intuition = s_res.content[0].text
+                    # Broadcast Shadow to mask 4090 latency
+                    await self.execute_dispatch(shadow_intuition, "Brain (Shadow)", shutdown_event=shutdown_event)
+                except Exception as e:
+                    logging.error(f"[HUB] Shadow intuition failed: {e}")
+
+            # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
             if self.brain_online() and "brain" in self.residents:
+                oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
+                oracle_signal = self.get_oracle_signal(oracle_cat)
+                await self.execute_dispatch(oracle_signal, "Brain (Signal)", shutdown_event=shutdown_event, is_internal=True)
+                
                 hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
+                shadow_tag = f"\n\n[SHADOW_INTUITION]: {shadow_intuition}" if shadow_intuition else ""
+                truth_tag = f"\n\n[ARCHIVAL_TRUTH]: {historical_context}" if historical_context else ""
+                
                 history_tag = ""
                 if self.resonant_history:
                     history_content = "\n".join(self.resonant_history[-3:])
@@ -353,19 +397,51 @@ class CognitiveHub:
                     "expert_adapter": selected_expert,
                     "behavioral_guidance": getattr(self, "current_vibe_guidance", ""),
                     "pinky_hearing": pinky_intuition,
+                    "shadow_intuition": shadow_intuition,
+                    "archival_truth": historical_context,
                     "resonant_history": self.resonant_history[-3:],
-                    "tool_allowlist": tool_allowlist
+                    "tool_allowlist": tool_allowlist,
+                    "sources": historical_sources
                 }
                 
-                t_brain = asyncio.create_task(self.monitor_task_with_tics(
+                res_deep = await self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
-                        "task": f"{query}{hearing_tag}{history_tag}{archival_map_context}", 
+                        "task": f"{query}{hearing_tag}{shadow_tag}{truth_tag}{history_tag}{archival_map_context}", 
                         "metadata": metadata
                     })
-                ))
-                dispatch_tasks.append((t_brain, "Brain"))
+                )
+                result_text = res_deep.content[0].text
 
-        bundled_results = []
+                # [FEAT-077] Fidelity Gate: Audit Sovereign Output
+                if not is_extraction:
+                    base_threshold = 20
+                    is_thin = len(result_text.split()) < base_threshold and len(query.split()) > 4
+                    if "3.141" in result_text: # Technical constant bypass
+                        is_thin = False
+
+                    if is_thin:
+                        if retry_count == 1:
+                            # [FEAT-179] The Hallway Protocol (Agentic-R)
+                            logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
+                            await self.broadcast({
+                                "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
+                                "brain_source": "Pinky (Forensic)",
+                                "channel": "insight",
+                                "is_internal": True
+                            })
+                            try:
+                                scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
+                                proc = await asyncio.create_subprocess_exec(sys.executable, scan_script, "--keyword", query, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                                await proc.communicate()
+                            except Exception as e:
+                                logging.error(f"[HALLWAY] Scan execution failed: {e}")
+                            return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+                        
+                        logging.warning(f"[HUB] Fidelity Pivot triggered for Sovereign turn.")
+                        return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+
+                await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
+            else:
         if dispatch_tasks:
             pending = {t for t, s in dispatch_tasks}
             task_to_source = {t: s for t, s in dispatch_tasks}
