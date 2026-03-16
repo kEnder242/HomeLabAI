@@ -9,8 +9,6 @@ Strictly sequential harvesting to ensure 100% gem capture.
 Leverages FEAT-205 Long-Tail Gate for remote model loading.
 """
 
-BAD code
-
 import asyncio
 import json
 import logging
@@ -82,26 +80,32 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
         "type": "text_input",
         "content": f"[ARCHIVE_EXTRACT]: {prompt}"
     }
-    
-    try:
-        await websocket.send(json.dumps(message))
-    except Exception as e:
-        logging.error(f"Failed to send harvest query: {e}")
-        return False
 
-    # Wait for completion (Brain Result)
-    while True:
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
-            resp = await asyncio.wait_for(websocket.recv(), timeout=120)
+            send_start_time = asyncio.get_event_loop().time()
+            await websocket.send(json.dumps(message))
+            send_end_time = asyncio.get_event_loop().time()
+            logging.info(f"Prompt sent. Send time: {send_end_time - send_start_time:.2f}s")
+
+            # Wait for completion (Brain Result)
+            recv_start_time = asyncio.get_event_loop().time()
+            resp = await asyncio.wait_for(websocket.recv(), timeout=60) # Shortened timeout to fail faster
+            recv_end_time = asyncio.get_event_loop().time()
+            llm_call_duration = recv_end_time - recv_start_time
+            logging.info(f"LLM Call duration: {llm_call_duration:.2f}s")
+
             data = json.loads(resp)
-            
+
             # Check for Brain Result
             if "Brain" in data.get("brain_source", "") and "Result" in data.get("brain_source", ""):
                 result_text = data.get("brain", "")
                 if len(result_text) < 50:
-                    logging.warning(f"Capture too thin ({len(result_text)} chars).")
-                    return False
-                
+                    logging.warning(f"Capture too thin ({len(result_text)} chars). Attempt {attempt + 1}/{max_retries}")
+                    await asyncio.sleep(2) # Small delay before retry
+                    continue # Retry
+
                 # Save to raw_stage_1.jsonl
                 entry = {
                     "summary": summary,
@@ -113,12 +117,22 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
                 with open(RAW_STAGE_1_FILE, "a") as f:
                     f.write(json.dumps(entry) + "\n")
                 return True
+            else:
+                # Handle unexpected response types, treat as failure for retry
+                logging.warning(f"Unexpected response format from Brain: {data}. Attempt {attempt + 1}/{max_retries}")
+                await asyncio1.sleep(2)
+                continue # Retry
+
         except asyncio.TimeoutError:
-            logging.warning("Harvest timeout waiting for response.")
-            return False
+            logging.warning(f"Harvest timeout waiting for response (LLM call took too long). Attempt {attempt + 1}/{max_retries}")
+            await asyncio.sleep(2) # Small delay before retry
+            continue # Retry
         except Exception as e:
             logging.error(f"Error during recv: {e}")
+            # If any other exception occurs, break the retry loop for this gem
             break
+    # If all retries fail
+    logging.error(f"Failed to harvest gem after {max_retries} attempts.")
     return False
 
 async def main(limit=None):
