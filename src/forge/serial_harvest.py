@@ -12,7 +12,6 @@ Leverages FEAT-205 Long-Tail Gate for remote model loading.
 import asyncio
 import json
 import logging
-import os
 import re
 import glob
 from pathlib import Path
@@ -221,8 +220,11 @@ async def main(limit=None):
                                     try:
                                         if start <= int(log_key) <= end:
                                             is_match = True
-                                    except ValueError: pass
-                                except Exception: pass
+                                    except ValueError:
+                                        pass
+                                except Exception:
+                                    pass
+
                             if not is_match and (str(log_key) in m_year or m_year in str(log_key)):
                                 is_match = True
                         
@@ -253,7 +255,7 @@ async def main(limit=None):
                 logging.info(f"Harvesting gem [{total_captured+1}/{len(all_gems)}] from {log_file_path.name}...")
                 if await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path)):
                     success = True
-                    break # Break on first success
+                    break # [CRITICAL FIX] Break on first success
             
             if success:
                 processed_count += 1
@@ -261,7 +263,6 @@ async def main(limit=None):
                 progress_pct = int((total_captured / len(all_gems)) * 100)
                 logging.info(f"Successfully captured gem. Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
                 
-                # Report major milestones to the status page
                 if total_captured % 5 == 0 or total_captured == len(all_gems):
                     log_to_pager(f"Harvest Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
 
@@ -271,7 +272,7 @@ async def main(limit=None):
                     return
             else:
                 logging.warning(f"Failed to capture gem after exhausting {len(valid_targets)} files: {summary[:50]}")
-                # Mark as seen to prevent infinite session stall
+                # [CRITICAL FIX] Mark as seen to prevent infinite session stall on this specific summary
                 seen_summaries.add(summary)
             
             # [FEAT-202] Dynamic Cadence

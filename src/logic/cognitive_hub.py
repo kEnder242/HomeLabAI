@@ -300,7 +300,7 @@ class CognitiveHub:
                         ip_hint = infra.get("hosts", {}).get(primary, {}).get("ip_hint", "127.0.0.1")
                         try:
                             ip = socket.gethostbyname(primary)
-                        except:
+                        except Exception:
                             ip = ip_hint
                         if ip != "127.0.0.1":
                             brain_is_remote = True

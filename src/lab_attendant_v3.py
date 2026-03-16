@@ -13,9 +13,10 @@ import sys
 import contextlib
 import signal
 from mcp.server.fastmcp import FastMCP
+from infra.montana import reclaim_logger
 
 # [BKM-022] Atomic IO & [FEAT-151] Trace Monitoring
-from infra.atomic_io import atomic_write_json, atomic_write_text
+from infra.atomic_io import atomic_write_json
 from debug.trace_monitor import TraceMonitor
 
 # --- Path Self-Awareness ---
@@ -46,7 +47,6 @@ current_model = None
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
-from infra.montana import reclaim_logger
 reclaim_logger(role="ATTENDANT")
 logger = logging.getLogger("lab_attendant_v3")
 
@@ -97,7 +97,8 @@ class LabAttendantV3:
             try:
                 with open(CHARACTERIZATION_FILE, "r") as f:
                     self.vram_config = json.load(f)
-            except Exception: pass
+            except Exception:
+                pass
 
     # --- Proxy Helper ---
     async def _proxy_request(self, method, endpoint, data=None):
@@ -147,7 +148,8 @@ class LabAttendantV3:
         
         env = os.environ.copy()
         env["LAB_MODE"] = engine
-        if disable_ear: env["DISABLE_EAR"] = "1"
+        if disable_ear:
+            env["DISABLE_EAR"] = "1"
         
         if engine == "VLLM":
             # [SPR-13.0] Verified Stable Config from characterization.json
@@ -164,7 +166,8 @@ class LabAttendantV3:
 
         # Start Hub
         cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
-        if disable_ear: cmd.append("--disable-ear")
+        if disable_ear:
+            cmd.append("--disable-ear")
         
         lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=open(SERVER_LOG, "a", buffering=1), preexec_fn=os.setpgrp)
         asyncio.create_task(self.log_monitor_loop())
@@ -196,7 +199,6 @@ class LabAttendantV3:
 
     async def cleanup_silicon(self):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID."""
-        pids_to_kill = set()
         pgids_to_kill = set()
         
         # Identify 'self' to avoid suicide
@@ -214,20 +216,24 @@ class LabAttendantV3:
                                 t_pgid = os.getpgid(int(pid))
                                 if t_pgid != my_pgid:
                                     pgids_to_kill.add(t_pgid)
-                            except: pass
-            except Exception: pass
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
         # 2. Name-Based Discovery (Orphaned Residents)
         targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                if proc.info["pid"] == os.getpid(): continue
+                if proc.info["pid"] == os.getpid():
+                    continue
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in cmdline for t in targets):
                     t_pgid = os.getpgid(proc.info["pid"])
                     if t_pgid != my_pgid:
                         pgids_to_kill.add(t_pgid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError): pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
+                pass
 
         if pgids_to_kill:
             logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} process groups to clear zombies.")
@@ -242,11 +248,14 @@ class LabAttendantV3:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get("http://localhost:8765/heartbeat", timeout=0.2) as r:
-                    if r.status == 200: vitals["lab_server_running"] = True
+                    if r.status == 200:
+                        vitals["lab_server_running"] = True
                 port = 8088 if current_lab_mode == "VLLM" else 11434
                 async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=0.2) as r:
-                    if r.status == 200: vitals["engine_running"] = True
-        except: pass
+                    if r.status == 200:
+                        vitals["engine_running"] = True
+        except Exception:
+            pass
         return vitals
 
     async def update_status_json(self, msg=None):
@@ -290,8 +299,10 @@ class LabAttendantV3:
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get("http://localhost:8088/v1/models", timeout=1.0) as r:
-                        if r.status == 200: return True
-            except: pass
+                        if r.status == 200:
+                            return True
+            except Exception:
+                pass
             await asyncio.sleep(2)
         return False
 
@@ -299,26 +310,34 @@ class LabAttendantV3:
         """[FEAT-180] Resilience Ladder: Passive Monitoring."""
         while True:
             await asyncio.sleep(10)
-            if os.path.exists(MAINTENANCE_LOCK): continue
+            if os.path.exists(MAINTENANCE_LOCK):
+                continue
             pass
 
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
         data = await r.json()
         return web.json_response(await self.mcp_start(data.get("engine"), data.get("model"), data.get("disable_ear", True)))
-    async def handle_stop_rest(self, r): return web.json_response(await self.mcp_stop())
-    async def handle_quiesce_rest(self, r): return web.json_response(await self.mcp_quiesce())
-    async def handle_ignition_rest(self, r): return web.json_response(await self.mcp_ignition())
-    async def handle_heartbeat_rest(self, r): return web.json_response(await self.mcp_heartbeat())
-    async def handle_ping_rest(self, r): return web.json_response(await self.mcp_heartbeat())
+    async def handle_stop_rest(self, r):
+        return web.json_response(await self.mcp_stop())
+    async def handle_quiesce_rest(self, r):
+        return web.json_response(await self.mcp_quiesce())
+    async def handle_ignition_rest(self, r):
+        return web.json_response(await self.mcp_ignition())
+    async def handle_heartbeat_rest(self, r):
+        return web.json_response(await self.mcp_heartbeat())
+    async def handle_ping_rest(self, r):
+        return web.json_response(await self.mcp_heartbeat())
     async def handle_wait_ready_rest(self, r):
         try:
             await asyncio.wait_for(self.ready_event.wait(), timeout=int(r.query.get("timeout", 60)))
             return web.json_response({"status": "ready"})
-        except: return web.json_response({"status": "timeout"}, status=408)
+        except Exception:
+            return web.json_response({"status": "timeout"}, status=408)
     async def handle_logs_rest(self, r):
         if os.path.exists(SERVER_LOG):
-            with open(SERVER_LOG, "r") as f: return web.Response(text=f.read()[-5000:])
+            with open(SERVER_LOG, "r") as f:
+                return web.Response(text=f.read()[-5000:])
         return web.Response(status=404)
     async def handle_mutex_rest(self, r):
         return web.json_response({"round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK)})
@@ -326,15 +345,20 @@ class LabAttendantV3:
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV3()
 @mcp.tool()
-async def lab_heartbeat(): return await attendant.mcp_heartbeat()
+async def lab_heartbeat():
+    return await attendant.mcp_heartbeat()
 @mcp.tool()
-async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"): return await attendant.mcp_start(engine, model, disable_ear, op_mode)
+async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
+    return await attendant.mcp_start(engine, model, disable_ear, op_mode)
 @mcp.tool()
-async def lab_stop(): return await attendant.mcp_stop()
+async def lab_stop():
+    return await attendant.mcp_stop()
 @mcp.tool()
-async def lab_quiesce(): return await attendant.mcp_quiesce()
+async def lab_quiesce():
+    return await attendant.mcp_quiesce()
 @mcp.tool()
-async def lab_ignition(): return await attendant.mcp_ignition()
+async def lab_ignition():
+    return await attendant.mcp_ignition()
 
 async def run_bilingual():
     # If Proxing, skip background loops and REST
@@ -348,8 +372,10 @@ async def run_bilingual():
     logger.info(f"[BOOT] Lab Attendant V3 (Master) active on {ATTENDANT_PORT}")
     asyncio.create_task(attendant.vram_watchdog_loop())
     
-    if sys.stdin.isatty(): await mcp.run_stdio_async()
-    else: await asyncio.Event().wait()
+    if sys.stdin.isatty():
+        await mcp.run_stdio_async()
+    else:
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(run_bilingual())
