@@ -197,6 +197,26 @@ class LabAttendantV3:
             os.remove(MAINTENANCE_LOCK)
         return {"status": "unlocked", "message": "Maintenance lock cleared."}
 
+    async def mcp_wait_ready(self, timeout: int = 60):
+        """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            # For proxy mode, we use the existing REST endpoint
+            url = f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout={timeout}"
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(url) as r:
+                        return await r.json()
+                except Exception as e:
+                    return {"status": "error", "message": f"Proxy wait_ready failed: {e}"}
+        
+        try:
+            await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
+            return {"status": "ready", "message": "Lab is Open."}
+        except asyncio.TimeoutError:
+            return {"status": "timeout", "message": f"Lab failed to reach READY within {timeout}s"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     async def cleanup_silicon(self):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID."""
         pgids_to_kill = set()
@@ -247,11 +267,11 @@ class LabAttendantV3:
         vitals = {"attendant_pid": os.getpid(), "lab_server_running": False, "engine_running": False, "lab_mode": current_lab_mode, "model": current_model, "full_lab_ready": self.ready_event.is_set(), "boot_hash": _BOOT_HASH}
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8765/heartbeat", timeout=0.2) as r:
+                async with session.get("http://localhost:8765/heartbeat", timeout=2.0) as r:
                     if r.status == 200:
                         vitals["lab_server_running"] = True
                 port = 8088 if current_lab_mode == "VLLM" else 11434
-                async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=0.2) as r:
+                async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=2.0) as r:
                     if r.status == 200:
                         vitals["engine_running"] = True
         except Exception:
@@ -359,6 +379,11 @@ async def lab_quiesce():
 @mcp.tool()
 async def lab_ignition():
     return await attendant.mcp_ignition()
+
+@mcp.tool()
+async def lab_wait_ready(timeout: int = 60):
+    """Wait for the Lab Hub to reach the READY state."""
+    return await attendant.mcp_wait_ready(timeout)
 
 async def run_bilingual():
     # If Proxing, skip background loops and REST
