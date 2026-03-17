@@ -80,8 +80,8 @@ class LabAttendantV3:
         self.app.router.add_post("/stop", self.handle_stop_rest)
         self.app.router.add_post("/quiesce", self.handle_quiesce_rest)
         self.app.router.add_post("/ignition", self.handle_ignition_rest)
+        self.app.router.add_post("/train", self.handle_train_rest)
         self.app.router.add_post("/hard_reset", self.handle_stop_rest)
-        
         self.app.router.add_get("/heartbeat", self.handle_heartbeat_rest)
         self.app.router.add_get("/ping", self.handle_ping_rest)
         self.app.router.add_get("/wait_ready", self.handle_wait_ready_rest)
@@ -208,6 +208,16 @@ class LabAttendantV3:
         # 1. Quiesce to free VRAM
         await self.mcp_quiesce()
         await asyncio.sleep(5)
+        
+        # [FEAT-213] VRAM Guard: Verify silicon is ready for Unsloth
+        self.refresh_vram_config()
+        max_vram = self.vram_config.get("unsloth_threshold_mb", 10000)
+        used_mb, total_mb = await self._get_vram_info()
+        
+        if used_mb > max_vram:
+            logger.error(f"[FORGE] VRAM Guard Triggered: {used_mb}MB used, threshold is {max_vram}MB. Aborting.")
+            await self.mcp_ignition()
+            return {"status": "error", "message": f"Silicon contention: {used_mb}MB used."}
         
         # 2. Identify Dataset
         dataset_map = {
@@ -388,6 +398,9 @@ class LabAttendantV3:
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):
         return web.json_response(await self.mcp_ignition())
+    async def handle_train_rest(self, r):
+        data = await r.json()
+        return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
     async def handle_heartbeat_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
     async def handle_ping_rest(self, r):
