@@ -23,7 +23,7 @@ def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/
             f.write('{"mock": true}')
         return
 
-    max_seq_length = 2048 # [RESTORED] from 1024
+    max_seq_length = 2048 
     dtype = None 
     load_in_4bit = True 
 
@@ -50,12 +50,22 @@ def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/
     dataset = load_dataset("json", data_files=dataset_path, split="train")
 
     def formatting_prompts_func(examples):
-        instructions = examples["instruction"]
-        inputs       = examples["input"]
-        outputs      = examples["output"]
+        # [FIX] Robust key detection to handle diverse datasets (Sentinel vs Voice vs History)
+        available_keys = list(examples.keys())
+        
+        # Determine which fields to use
+        instr_key = "instruction" if "instruction" in available_keys else ("prompt" if "prompt" in available_keys else None)
+        out_key = "output" if "output" in available_keys else ("response" if "response" in available_keys else ("text" if "text" in available_keys else None))
+        
+        if not instr_key or not out_key:
+            print(f"❌ DATASET SCHEMA ERROR: Found keys {available_keys}")
+            raise KeyError("Missing required keys. Needs 'instruction' or 'prompt' and 'output' or 'response'.")
+
+        instructions = examples[instr_key]
+        outputs      = examples[out_key]
         texts = []
-        for instruction, input, output in zip(instructions, inputs, outputs):
-            text = f"User: {instruction}\\n\\nAssistant: {output}" + tokenizer.eos_token
+        for instruction, output in zip(instructions, outputs):
+            text = f"User: {instruction}\n\nAssistant: {output}" + tokenizer.eos_token
             texts.append(text)
         return { "text" : texts, }
 

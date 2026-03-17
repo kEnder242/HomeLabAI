@@ -3,11 +3,11 @@
         "brain": {
             "primary": "KENDER",
             "fallback": "KENDER",
-            "lora_name": "shadow_brain_v2"
+            "lora_name": "lab_history_v1"
         },
         "pinky": {
             "primary": "localhost",
-            "lora_name": "pinky_v2"
+            "lora_name": "cli_voice_v1"
         },
         "lab": {
             "primary": "localhost",
