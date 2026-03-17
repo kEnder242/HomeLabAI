@@ -148,9 +148,12 @@ class LabAttendantV3:
         self.trace_monitor.refresh_marks()
         
         env = os.environ.copy()
-        env["LAB_MODE"] = engine
+        env["LAB_MODE"] = str(engine)
         if disable_ear:
             env["DISABLE_EAR"] = "1"
+        
+        # Sanitize: subprocess.Popen requires all env values to be strings and not None
+        env = {k: str(v) for k, v in env.items() if v is not None}
         
         if engine == "VLLM":
             # [SPR-13.0] Verified Stable Config from characterization.json
@@ -194,18 +197,28 @@ class LabAttendantV3:
     async def mcp_ignition(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "ignition")
+        
+        # [FEAT-213] Re-Ignition must clear the maintenance lock first
         if os.path.exists(MAINTENANCE_LOCK):
             os.remove(MAINTENANCE_LOCK)
-        return {"status": "unlocked", "message": "Maintenance lock cleared."}
+            
+        # [SPR-13.0] Restoration using current state or defaults
+        engine = os.environ.get("LAB_MODE", "OLLAMA")
+        model = os.environ.get("LAB_MODEL", "MEDIUM")
+        disable_ear = os.environ.get("DISABLE_EAR") == "1"
+        return await self.mcp_start(engine, model, disable_ear)
 
     async def mcp_train_adapter(self, adapter_name: str, steps: int = 60):
-        """[FEAT-213] Autonomous VRAM Handover for LoRA Forging."""
+        """[FEAT-213/218] Autonomous VRAM Handover for Sequenced Batch Forging."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            # For proxy mode, we forward to the Master Attendant (which will then handle the batch logic)
             return await self._proxy_request("POST", "train", {"adapter": adapter_name, "steps": steps})
         
-        logger.info(f"[FORGE] Initiating autonomous training for {adapter_name} ({steps} steps).")
+        # Support batch mode (comma-separated list)
+        adapters = [a.strip() for a in adapter_name.split(",")]
+        logger.info(f"[FORGE] Initiating sequenced batch training for: {adapters} ({steps} steps each).")
         
-        # 1. Quiesce to free VRAM
+        # 1. Quiesce once for the entire batch
         await self.mcp_quiesce()
         await asyncio.sleep(5)
         
@@ -219,37 +232,42 @@ class LabAttendantV3:
             await self.mcp_ignition()
             return {"status": "error", "message": f"Silicon contention: {used_mb}MB used."}
         
-        # 2. Identify Dataset
-        dataset_map = {
-            "lab_history": f"{EXPERTISE_DIR}/lab_history_training.jsonl",
-            "cli_voice": f"{EXPERTISE_DIR}/cli_voice_training.jsonl",
-            "lab_sentinel": f"{EXPERTISE_DIR}/lab_sentinel_training.jsonl"
-        }
-        dataset = dataset_map.get(adapter_name)
-        output_dir = f"/speedy/models/adapters/{adapter_name}"
-        
-        if not dataset or not os.path.exists(dataset):
-            logger.error(f"[FORGE] Dataset not found: {dataset}")
-            await self.mcp_ignition()
-            return {"status": "error", "message": f"Dataset missing for {adapter_name}"}
-
-        # 3. Execute Forge (Unsloth)
-        try:
-            cmd = [LAB_VENV_PYTHON, f"{LAB_DIR}/src/forge/train_expert.py", dataset, output_dir, str(steps)]
-            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            stdout, stderr = await process.communicate()
+        results = []
+        for target in adapters:
+            # 2. Identify Dataset
+            dataset_map = {
+                "lab_history": f"{EXPERTISE_DIR}/lab_history_training.jsonl",
+                "cli_voice": f"{EXPERTISE_DIR}/cli_voice_training.jsonl",
+                "lab_sentinel": f"{EXPERTISE_DIR}/lab_sentinel_training.jsonl"
+            }
+            dataset = dataset_map.get(target)
+            output_dir = f"/speedy/models/adapters/{target}"
             
-            if process.returncode == 0:
-                logger.info(f"[FORGE] {adapter_name} completed successfully.")
-            else:
-                logger.error(f"[FORGE] {adapter_name} failed: {stderr.decode()}")
-        except Exception as e:
-            logger.error(f"[FORGE] Execution error: {e}")
+            if not dataset or not os.path.exists(dataset):
+                logger.error(f"[FORGE] Dataset not found: {dataset}")
+                results.append({"adapter": target, "status": "missing_dataset"})
+                continue
+
+            # 3. Execute Forge (Unsloth)
+            logger.info(f"[FORGE] Training {target}...")
+            try:
+                cmd = [LAB_VENV_PYTHON, f"{LAB_DIR}/src/forge/train_expert.py", dataset, output_dir, str(steps)]
+                process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode == 0:
+                    logger.info(f"[FORGE] {target} completed successfully.")
+                    results.append({"adapter": target, "status": "complete"})
+                else:
+                    logger.error(f"[FORGE] {target} failed: {stderr.decode()}")
+                    results.append({"adapter": target, "status": "failed"})
+            except Exception as e:
+                logger.error(f"[FORGE] Execution error for {target}: {e}")
+                results.append({"adapter": target, "status": "error", "message": str(e)})
         
-        # 4. Re-Ignite Hub
+        # 4. Re-Ignite Hub once after all adapters are processed
         await self.mcp_ignition()
-        await self.mcp_start() # Default restart
-        return {"status": "complete", "adapter": adapter_name}
+        return {"status": "batch_complete", "results": results}
 
     async def mcp_wait_ready(self, timeout: int = 60):
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state."""
@@ -332,6 +350,19 @@ class LabAttendantV3:
             pass
         return vitals
 
+    async def _get_vram_info(self):
+        """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            pynvml.nvmlShutdown()
+            return int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+        except Exception as e:
+            logger.error(f"[VRAM] Failed to probe silicon: {e}")
+            return 0, 0
+
     async def update_status_json(self, msg=None):
         vitals = await self._get_current_vitals()
         live_data = {
@@ -391,7 +422,11 @@ class LabAttendantV3:
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
         data = await r.json()
-        return web.json_response(await self.mcp_start(data.get("engine"), data.get("model"), data.get("disable_ear", True)))
+        engine = data.get("engine", "OLLAMA")
+        model = data.get("model", "MEDIUM")
+        disable_ear = data.get("disable_ear", True)
+        op_mode = data.get("op_mode", "SERVICE_UNATTENDED")
+        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode))
     async def handle_stop_rest(self, r):
         return web.json_response(await self.mcp_stop())
     async def handle_quiesce_rest(self, r):
