@@ -4,6 +4,7 @@ import logging
 import re
 import os
 import sys
+from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
     """
@@ -17,6 +18,7 @@ class CognitiveHub:
         self.brain_online = brain_online_callback
         self.get_oracle_signal = get_oracle_signal_callback
         self.monitor_task_with_tics = monitor_task_with_tics_callback
+        self.auditor = None  # [FEAT-190] The Judge
         
         # [BKM-015] Anchor Migration
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
@@ -341,6 +343,16 @@ class CognitiveHub:
             pinky_intuition = ""
             shadow_intuition = ""
             
+            # [FEAT-184] Uncertainty Gate (Amygdala Reflex)
+            uncertainty = float(triage_data.get("uncertainty", 0.0))
+            if uncertainty > 0.7:
+                await self.broadcast({
+                    "brain": "Detecting cognitive dissonance... requesting clarification turns. Poit!",
+                    "brain_source": "Pinky (Reflex)",
+                    "channel": "insight",
+                    "is_internal": False
+                })
+
             # [FEAT-207] Tricameral Flow Stage 1: Pinky (Instant Triage)
             if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
@@ -426,17 +438,20 @@ class CognitiveHub:
                 )
                 result_text = res_deep.content[0].text
 
-                # [FEAT-077] Fidelity Gate: Audit Sovereign Output
+                # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
                 if not is_extraction:
-                    base_threshold = 20
-                    is_thin = len(result_text.split()) < base_threshold and len(query.split()) > 4
-                    if "3.141" in result_text: # Technical constant bypass
-                        is_thin = False
-
-                    if is_thin:
+                    if not self.auditor and "pinky" in self.residents:
+                        self.auditor = CognitiveAudit(self.residents["pinky"])
+                    
+                    is_valid = True
+                    if self.auditor:
+                        # Judge technical consistency
+                        is_valid = await self.auditor.audit_technical_truth(query, result_text, vibe_hints)
+                    
+                    if not is_valid:
                         if retry_count == 1:
                             # [FEAT-179] The Hallway Protocol (Agentic-R)
-                            logging.warning(f"[FEAT-179] Pivot FAILED. Triggering Hallway Protocol for: {query}")
+                            logging.warning(f"[FEAT-179] Audit FAILED. Triggering Hallway Protocol for: {query}")
                             await self.broadcast({
                                 "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
                                 "brain_source": "Pinky (Forensic)",
@@ -451,7 +466,8 @@ class CognitiveHub:
                                 logging.error(f"[HALLWAY] Scan execution failed: {e}")
                             return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
                         
-                        logging.warning("[HUB] Fidelity Pivot triggered for Sovereign turn.")
+                        # [FEAT-173] Strategic Pivot: Recursive retry with Audit failure in context
+                        logging.warning("[HUB] [FEAT-173] Strategic Pivot triggered by Auditor.")
                         return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
                 await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
