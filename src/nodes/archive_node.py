@@ -508,6 +508,21 @@ async def get_lab_health() -> str:
 
 
 @mcp.tool()
+async def lab_train_adapter(adapter_name: str, steps: int = 60) -> str:
+    """[FEAT-213] Autonomous Forge: Triggers a LoRA training run via the Attendant."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {"adapter": adapter_name, "steps": steps}
+            async with session.post("http://localhost:9999/train", json=payload, timeout=3600) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    return json.dumps(data)
+                return json.dumps({"error": f"Attendant status {r.status}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 async def vram_vibe_check() -> str:
     """[FEAT-191] Quick check of physical VRAM and temperature."""
     try:
