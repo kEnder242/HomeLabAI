@@ -32,6 +32,7 @@ ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
 STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
 INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
+EXPERTISE_DIR = f"{LAB_DIR}/src/forge/expertise"
 ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
 MAINTENANCE_LOCK = f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"
 PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
@@ -196,6 +197,49 @@ class LabAttendantV3:
         if os.path.exists(MAINTENANCE_LOCK):
             os.remove(MAINTENANCE_LOCK)
         return {"status": "unlocked", "message": "Maintenance lock cleared."}
+
+    async def mcp_train_adapter(self, adapter_name: str, steps: int = 60):
+        """[FEAT-213] Autonomous VRAM Handover for LoRA Forging."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "train", {"adapter": adapter_name, "steps": steps})
+        
+        logger.info(f"[FORGE] Initiating autonomous training for {adapter_name} ({steps} steps).")
+        
+        # 1. Quiesce to free VRAM
+        await self.mcp_quiesce()
+        await asyncio.sleep(5)
+        
+        # 2. Identify Dataset
+        dataset_map = {
+            "lab_history": f"{EXPERTISE_DIR}/lab_history_training.jsonl",
+            "cli_voice": f"{EXPERTISE_DIR}/cli_voice_training.jsonl",
+            "lab_sentinel": f"{EXPERTISE_DIR}/lab_sentinel_training.jsonl"
+        }
+        dataset = dataset_map.get(adapter_name)
+        output_dir = f"/speedy/models/adapters/{adapter_name}"
+        
+        if not dataset or not os.path.exists(dataset):
+            logger.error(f"[FORGE] Dataset not found: {dataset}")
+            await self.mcp_ignition()
+            return {"status": "error", "message": f"Dataset missing for {adapter_name}"}
+
+        # 3. Execute Forge (Unsloth)
+        try:
+            cmd = [LAB_VENV_PYTHON, f"{LAB_DIR}/src/forge/train_expert.py", dataset, output_dir, str(steps)]
+            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                logger.info(f"[FORGE] {adapter_name} completed successfully.")
+            else:
+                logger.error(f"[FORGE] {adapter_name} failed: {stderr.decode()}")
+        except Exception as e:
+            logger.error(f"[FORGE] Execution error: {e}")
+        
+        # 4. Re-Ignite Hub
+        await self.mcp_ignition()
+        await self.mcp_start() # Default restart
+        return {"status": "complete", "adapter": adapter_name}
 
     async def mcp_wait_ready(self, timeout: int = 60):
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state."""
@@ -379,6 +423,11 @@ async def lab_quiesce():
 @mcp.tool()
 async def lab_ignition():
     return await attendant.mcp_ignition()
+
+@mcp.tool()
+async def lab_train_adapter(adapter_name: str, steps: int = 60):
+    """Perform an autonomous training run for a specific adapter."""
+    return await attendant.mcp_train_adapter(adapter_name, steps)
 
 @mcp.tool()
 async def lab_wait_ready(timeout: int = 60):
