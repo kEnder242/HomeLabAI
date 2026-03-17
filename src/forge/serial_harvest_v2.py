@@ -198,37 +198,49 @@ async def main(limit=None):
                 log_key = "2024"
                 logging.debug(f"ORPHAN: Defaulting {summary[:20]} to {log_key}")
 
-            # 3. Resolve Files via Manifest
+            # 3. Resolve Files via Manifest (Prioritize JSON/Zoom)
             target_files = []
-            if str(log_key).upper() in EXPERT_OVERRIDES:
-                target_files.append(KNOWLEDGE_BASE_DIR / EXPERT_OVERRIDES[str(log_key).upper()])
-            else:
-                try:
-                    with open(MANIFEST_FILE, "r") as mf:
-                        manifest = json.load(mf)
-                    for fname, meta in manifest.items():
-                        m_year = str(meta.get("year", ""))
-                        m_desc = str(meta.get("description", "")).upper()
-                        
-                        is_match = False
-                        if m_year:
-                            if str(log_key) in m_year:
-                                is_match = True
-                            elif "-" in m_year:
-                                try:
-                                    start, end = map(int, m_year.split("-"))
-                                    if start <= int(log_key) <= end:
-                                        is_match = True
-                                except Exception: pass
-                        
-                        if not is_match and str(log_key).upper() in m_desc:
-                            is_match = True
+            is_zoom = False
+            
+            # Check for JSON aggregate first (The "Zoom" method)
+            zoom_path = FIELD_NOTES_DATA_DIR / f"{log_key}.json"
+            if zoom_path.exists():
+                target_files.append(zoom_path)
+                is_zoom = True
+            
+            if not target_files:
+                if str(log_key).upper() in EXPERT_OVERRIDES:
+                    target_files.append(KNOWLEDGE_BASE_DIR / EXPERT_OVERRIDES[str(log_key).upper()])
+                else:
+                    try:
+                        with open(MANIFEST_FILE, "r") as mf:
+                            manifest = json.load(mf)
+                        for fname, meta in manifest.items():
+                            m_year = str(meta.get("year", ""))
+                            m_desc = str(meta.get("description", "")).upper()
                             
-                        if is_match:
-                            if meta.get("type") in ["LOG", "META"]:
-                                target_files.append(KNOWLEDGE_BASE_DIR / fname)
-                except Exception:
-                    pass
+                            is_match = False
+                            if m_year:
+                                if str(log_key) in m_year:
+                                    is_match = True
+                                elif "-" in m_year:
+                                    try:
+                                        start, end = map(int, m_year.split("-"))
+                                        if start <= int(log_key) <= end:
+                                            is_match = True
+                                    except ValueError:
+                                        pass
+                                    except Exception:
+                                        pass
+                            
+                            if not is_match and str(log_key).upper() in m_desc:
+                                is_match = True
+                                
+                            if is_match:
+                                if meta.get("type") in ["LOG", "META", "REFERENCE"]:
+                                    target_files.append(KNOWLEDGE_BASE_DIR / fname)
+                    except Exception:
+                        pass
             
             # [FIX] Final recursive glob fallback for orphaned years/keywords
             if not target_files:
@@ -247,17 +259,21 @@ async def main(limit=None):
             
             logging.info(f"Harvesting [{processed_count+len(seen_keys)+1}/{len(all_gems)}]: {summary[:50]}")
             
-            for log_file_path in valid_targets:
-                prompt = (
-                    f"Find the specific paragraphs in the raw file ({log_file_path.name}) "
-                    f"that correspond to this summary: '{summary}'.\n"
-                    "[PRIVACY MANDATE VIBE-008]: Output ONLY technical paragraphs. "
-                    "Exclude any manager feedback, results coaching, improvement areas, "
-                    "or sentences like 'Jason should' or 'Jason needs to'. "
-                    "Output ONLY the raw paragraphs, no conversational filler."
-                )
+            for target_path in valid_targets:
+                if is_zoom:
+                    prompt = (
+                        f"Find the specific chronological entries in the provided JSON context "
+                        f"that correspond to this summary: '{summary}'.\n"
+                        "Output ONLY the relevant technical blocks, no conversational filler."
+                    )
+                else:
+                    prompt = (
+                        f"Find the specific paragraphs in the raw file ({target_path.name}) "
+                        f"that correspond to this summary: '{summary}'. Output ONLY the raw "
+                        "paragraphs, no conversational filler."
+                    )
 
-                if await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path)):
+                if await harvest_gem(websocket, prompt, summary, file_path, str(target_path)):
                     success = True
                     break # Captured! Move to next gem.
             

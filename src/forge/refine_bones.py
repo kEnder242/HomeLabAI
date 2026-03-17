@@ -92,11 +92,21 @@ def main():
             
             try:
                 entry = json.loads(line)
-                raw_text = entry.get("raw_llm_output", "")
+                # [FIX] Handle both legacy and v2 harvest field names
+                raw_text = entry.get("raw_text") or entry.get("raw_llm_output", "")
                 summary = entry.get("summary", "")
                 
                 # Apply Bridge Signal Clean
                 clean_json = bridge_signal_clean(raw_text)
+                
+                # [FIX] If clean_json fails but raw_text exists, 
+                # salvage the raw technical block for extraction integrity.
+                if not clean_json and len(raw_text) > 100:
+                    clean_json = json.dumps({
+                        "bkm_content": raw_text,
+                        "logic": "Direct extraction salvage",
+                        "status": "RAW"
+                    })
                 
                 if clean_json:
                     try:
