@@ -23,7 +23,7 @@ def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/
             f.write('{"mock": true}')
         return
 
-    max_seq_length = 2048 
+    max_seq_length = 2048 # [RESTORED] from 1024
     dtype = None 
     load_in_4bit = True 
 
