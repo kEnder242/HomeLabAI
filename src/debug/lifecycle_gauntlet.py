@@ -53,7 +53,7 @@ async def main():
     logging.info("Initiating Lifecycle Gauntlet Shakedown...")
     
     # Check dependencies
-    if not (SCRIPTS_DIR / "serial_harvest.py").exists():
+    if not (SCRIPTS_DIR / "serial_harvest_v2.py").exists():
         logging.error("Essential scripts missing. Aborting.")
         return
 
@@ -72,7 +72,7 @@ async def main():
 
     # 4. Step 4: Serial Harvest (1 sample)
     results.append(await run_step("Serial Harvest (Bones)", [
-        str(SCRIPTS_DIR / "serial_harvest.py"), "--limit=1"
+        str(SCRIPTS_DIR / "serial_harvest_v2.py"), "--limit=1"
     ]))
 
     # 5. Step 5: Dream Pass (1 sample)
