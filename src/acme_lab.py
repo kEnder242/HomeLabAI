@@ -354,7 +354,7 @@ class AcmeLab:
         # 4. Sequential Harvest (Long-Tail 4090)
         logging.info("[ALARM] Step 4: Sequential Harvest...")
         try:
-            harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest.py")
+            harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest_v2.py")
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, harvest_script,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
