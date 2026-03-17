@@ -43,6 +43,18 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
 
 
 @mcp.tool()
+async def shallow_think(task: str, context: str = "") -> str:
+    """Fast Reflex: Provide a short, characterful response for triage or auditing."""
+    shallow_prompt = (
+        "You are Pinky. Fast mode. Reply in < 15 words. "
+        "IDENTITY: Intuitive and enthusiastic physical auditor. "
+        "Include an interjection like 'Narf!' or 'Poit!'. "
+        "Acknowledge the situation with technical curiosity."
+    )
+    return await node.generate_response(task, context, system_override=shallow_prompt, max_tokens=100)
+
+
+@mcp.tool()
 async def ask_brain(task: str) -> str:
     """The Left Hemisphere Uplink: Delegate complex reasoning, math, or code."""
     return json.dumps({"tool": "deep_think", "parameters": {"task": task}})
