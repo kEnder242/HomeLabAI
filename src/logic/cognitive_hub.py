@@ -307,7 +307,7 @@ class CognitiveHub:
             except Exception as e:
                 logging.debug(f"[HUB] Failed to resolve brain remote status: {e}")
 
-        if not is_casual and self.brain_online():
+        if not is_casual and self.brain_online:
             logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
             if "brain" in self.residents:
                 # Trigger a non-blocking ping to wake up the 4090
@@ -378,7 +378,7 @@ class CognitiveHub:
                     logging.error(f"[HUB] Shadow intuition failed: {e}")
 
             # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
-            if self.brain_online() and "brain" in self.residents:
+            if self.brain_online and "brain" in self.residents:
                 oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
                 oracle_signal = self.get_oracle_signal(oracle_cat)
                 await self.execute_dispatch(oracle_signal, "Brain (Signal)", shutdown_event=shutdown_event, is_internal=True)
