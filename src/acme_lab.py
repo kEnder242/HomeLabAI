@@ -379,18 +379,15 @@ class AcmeLab:
         # 6. Nightly Forge (Autonomous LoRA Weight Induction)
         logging.info("[ALARM] Step 6: Nightly Forge Turn...")
         try:
-            # We use the day of the year to alternate training targets
-            day_of_year = datetime.datetime.now().timetuple().tm_yday
-            targets = ["lab_history", "cli_voice", "lab_sentinel"]
-            target = targets[day_of_year % 3]
-            
-            logging.info(f"[ALARM] Forging soul component: {target}")
+            # [FEAT-217] Sequenced Batch Forge: Train all three soul components every night
+            target = "lab_history,cli_voice,lab_sentinel"
+            logging.info(f"[ALARM] Forging soul components: {target}")
+
             if "archive" in self.residents:
                 # We call the Attendant tool via the Archive node's proxy
                 await self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60})
         except Exception as e:
             logging.error(f"[ALARM] Nightly Forge failed: {e}")
-
         logging.info("[ALARM] Full Induction Cycle Complete.")
 
     async def scheduled_tasks_loop(self):

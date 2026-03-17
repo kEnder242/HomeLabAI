@@ -15,6 +15,10 @@ server.log
 tmp/
 *.wav
 *.mp3
+unsloth_compiled_cache/
+unsloth_install.log
+*.out
+*.pid
 
 # Ignore raw data/models (too big)
 models/
@@ -22,10 +26,9 @@ data/
 
 # Secrets (BE CAREFUL)
 # my_config.yaml is currently tracked but SCRUBBED. 
-# If you add real keys, add it here!vendor/vllm
+# If you add real keys, add it here!
 vendor/
 logs/forensic_*.json
-\n# [FEAT-151] Transient Telemetry\nlogs/trace_*.json\nserver.log.stale
 
 # [FEAT-151] Transient Telemetry
 logs/trace_*.json
