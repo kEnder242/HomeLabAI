@@ -352,9 +352,8 @@ class CognitiveHub:
                 try:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
                     pinky_intuition = res.content[0].text
-                    # Broadcast Pinky as Triage/Intuition, NOT Result
-                    await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=True)
-
+                    # Broadcast Pinky as Triage/Intuition, VISIBLE
+                    await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False)
                 except Exception as e:
                     logging.error(f"[HUB] Pinky intuition failed: {e}")
 
@@ -364,7 +363,7 @@ class CognitiveHub:
                     "brain": "Initiating local technical intuition... Narf!",
                     "brain_source": "Shadow",
                     "channel": "insight",
-                    "is_internal": True
+                    "is_internal": False
                 })
                 try:
                     # Execute a shallow_think on the local 2080 Ti
@@ -373,8 +372,8 @@ class CognitiveHub:
                         "context": f"Triage: {pinky_intuition}\nTruth: {historical_context}"
                     })
                     shadow_intuition = s_res.content[0].text
-                    # Broadcast Shadow as Intuition
-                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event)
+                    # Broadcast Shadow as Intuition, VISIBLE
+                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False)
                 except Exception as e:
                     logging.error(f"[HUB] Shadow intuition failed: {e}")
 

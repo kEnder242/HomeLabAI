@@ -9,7 +9,6 @@ Strictly sequential harvesting to ensure 100% gem capture.
 Leverages FEAT-205 Long-Tail Gate for remote model loading.
 """
 
-import asyncio
 import json
 import logging
 import re
@@ -120,7 +119,7 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
             else:
                 # Handle unexpected response types, treat as failure for retry
                 logging.warning(f"Unexpected response format from Brain: {data}. Attempt {attempt + 1}/{max_retries}")
-                await asyncio1.sleep(2)
+                await asyncio.sleep(2)
                 continue # Retry
 
         except asyncio.TimeoutError:

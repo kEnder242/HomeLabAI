@@ -153,19 +153,21 @@ async def main(limit=None):
     logging.info(f"Inventory: {len(all_gems)} candidates identified.")
 
     # Resume Logic
-    seen_summaries = set()
+    seen_keys = set()
     if RAW_STAGE_1_FILE.exists():
         with open(RAW_STAGE_1_FILE, 'r') as f_check:
             for line in f_check:
                 try:
                     entry = json.loads(line)
-                    for key in ['summary', 'synopsis', 'title']:
-                        if entry.get(key):
-                            seen_summaries.add(entry[key])
-                except Exception: pass
+                    summary_text = entry.get('summary') or entry.get('synopsis') or entry.get('title')
+                    source_file = entry.get('source_file')
+                    if summary_text and source_file:
+                        seen_keys.add(f"{summary_text}|{source_file}")
+                except Exception:
+                    pass
     
-    if seen_summaries:
-        logging.info(f"Resume: Skipping {len(seen_summaries)} already harvested.")
+    if seen_keys:
+        logging.info(f"Resume: Skipping {len(seen_keys)} already harvested gems.")
 
     async with websockets.connect(BRAIN_NODE_URI) as websocket:
         await websocket.recv() # Wait for greeting
@@ -174,7 +176,8 @@ async def main(limit=None):
         for gem, file_path in all_gems:
             # 1. Resolve Identity
             summary = gem.get("summary") or gem.get("synopsis") or gem.get("title")
-            if not summary or summary in seen_summaries:
+            gem_key = f"{summary}|{file_path}"
+            if not summary or gem_key in seen_keys:
                 continue
 
             # 2. Resolve Year/Context
@@ -183,10 +186,12 @@ async def main(limit=None):
             log_key = gem.get("log_file")
             
             if not log_key:
-                if year_match: log_key = year_match.group(1)
+                if year_match:
+                    log_key = year_match.group(1)
                 elif gem.get("date"):
                     date_match = re.search(r'(20\d\d)', str(gem["date"]))
-                    if date_match: log_key = date_match.group(1)
+                    if date_match:
+                        log_key = date_match.group(1)
             
             # specialized catch for Unknown.json / Orphans
             if not log_key:
@@ -203,10 +208,34 @@ async def main(limit=None):
                         manifest = json.load(mf)
                     for fname, meta in manifest.items():
                         m_year = str(meta.get("year", ""))
-                        if m_year and (str(log_key) in m_year or m_year in str(log_key)):
+                        m_desc = str(meta.get("description", "")).upper()
+                        
+                        is_match = False
+                        if m_year:
+                            if str(log_key) in m_year:
+                                is_match = True
+                            elif "-" in m_year:
+                                try:
+                                    start, end = map(int, m_year.split("-"))
+                                    if start <= int(log_key) <= end:
+                                        is_match = True
+                                except Exception: pass
+                        
+                        if not is_match and str(log_key).upper() in m_desc:
+                            is_match = True
+                            
+                        if is_match:
                             if meta.get("type") in ["LOG", "META"]:
                                 target_files.append(KNOWLEDGE_BASE_DIR / fname)
-                except Exception: pass
+                except Exception:
+                    pass
+            
+            # [FIX] Final recursive glob fallback for orphaned years/keywords
+            if not target_files:
+                recursive_search = glob.glob(str(KNOWLEDGE_BASE_DIR / "**" / f"*{log_key}*"), recursive=True)
+                for f in recursive_search:
+                    if f.endswith(".txt") or f.endswith(".md"):
+                        target_files.append(Path(f))
 
             if not target_files:
                 logging.info(f"SKIPPED: No files found for {log_key}")
@@ -216,13 +245,16 @@ async def main(limit=None):
             success = False
             valid_targets = [f for f in target_files if f.exists()]
             
-            logging.info(f"Harvesting [{processed_count+len(seen_summaries)+1}/{len(all_gems)}]: {summary[:50]}")
+            logging.info(f"Harvesting [{processed_count+len(seen_keys)+1}/{len(all_gems)}]: {summary[:50]}")
             
             for log_file_path in valid_targets:
                 prompt = (
                     f"Find the specific paragraphs in the raw file ({log_file_path.name}) "
-                    f"that correspond to this summary: '{summary}'. Output ONLY the raw "
-                    "paragraphs, no conversational filler."
+                    f"that correspond to this summary: '{summary}'.\n"
+                    "[PRIVACY MANDATE VIBE-008]: Output ONLY technical paragraphs. "
+                    "Exclude any manager feedback, results coaching, improvement areas, "
+                    "or sentences like 'Jason should' or 'Jason needs to'. "
+                    "Output ONLY the raw paragraphs, no conversational filler."
                 )
 
                 if await harvest_gem(websocket, prompt, summary, file_path, str(log_file_path)):
@@ -231,7 +263,7 @@ async def main(limit=None):
             
             if success:
                 processed_count += 1
-                total = processed_count + len(seen_summaries)
+                total = processed_count + len(seen_keys)
                 pct = int((total / len(all_gems)) * 100)
                 if total % 5 == 0:
                     log_to_pager(f"Harvest Progress: {total}/{len(all_gems)} ({pct}%)")
@@ -242,7 +274,7 @@ async def main(limit=None):
             else:
                 logging.warning(f"Failed to capture gem across {len(valid_targets)} candidates.")
                 # Mark as seen to avoid infinite retries in this session
-                seen_summaries.add(summary)
+                seen_keys.add(summary)
 
             # Keep OLLAMA from unloading if we are between files
             await asyncio.sleep(2.0)
