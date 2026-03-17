@@ -71,7 +71,7 @@ class CognitiveHub:
 
         return json_str
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, sources=None):
         """
         Standardizes the dispatch of reasoning results to the user.
         [FEAT-203] Uses Bicameral Bridge signal cleaning.
@@ -352,8 +352,9 @@ class CognitiveHub:
                 try:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
                     pinky_intuition = res.content[0].text
-                    # Broadcast Pinky immediately as internal thought
-                    await self.execute_dispatch(pinky_intuition, "Pinky (Result)", shutdown_event=shutdown_event, is_internal=True)
+                    # Broadcast Pinky as Triage/Intuition, NOT Result
+                    await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=True)
+
                 except Exception as e:
                     logging.error(f"[HUB] Pinky intuition failed: {e}")
 
@@ -372,8 +373,8 @@ class CognitiveHub:
                         "context": f"Triage: {pinky_intuition}\nTruth: {historical_context}"
                     })
                     shadow_intuition = s_res.content[0].text
-                    # Broadcast Shadow to mask 4090 latency
-                    await self.execute_dispatch(shadow_intuition, "Brain (Shadow)", shutdown_event=shutdown_event)
+                    # Broadcast Shadow as Intuition
+                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event)
                 except Exception as e:
                     logging.error(f"[HUB] Shadow intuition failed: {e}")
 
@@ -417,6 +418,7 @@ class CognitiveHub:
                     "sources": historical_sources
                 }
                 
+                # Execute Sovereignty turn with mandatory completion
                 res_deep = await self.monitor_task_with_tics(
                     self.residents["brain"].call_tool("deep_think", {
                         "task": f"{query}{hearing_tag}{shadow_tag}{truth_tag}{history_tag}{archival_map_context}", 
@@ -455,7 +457,12 @@ class CognitiveHub:
 
                 await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
             else:
-                # If Brain is truly offline, Shadow becomes the primary Result
+                # [SOVEREIGN GATE] Forbidden to failover if this is a high-fidelity extraction
+                if is_extraction:
+                    await self.execute_dispatch("❌ Sovereign offline. Archive extraction forbidden in failover mode.", "Brain (Error)", shutdown_event=shutdown_event)
+                    return True
+
+                # Standard failover for casual/strategic
                 if shadow_intuition:
                      await self.execute_dispatch(shadow_intuition, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
                 elif "pinky" in self.residents:
