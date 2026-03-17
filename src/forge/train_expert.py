@@ -11,11 +11,11 @@ except ImportError:
     print("Unsloth not installed. Skipping actual import.")
     FastLanguageModel = None
 
-def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/Llama-3.2-3B-Instruct"):
+def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct"):
     """
     [FORGE-02] Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
     """
-    print(f"Starting training on {dataset_path} -> {output_dir}")
+    print(f"Starting training on {dataset_path} -> {output_dir} ({steps} steps)")
     if FastLanguageModel is None:
         print("Mocking training completion since Unsloth is missing.")
         os.makedirs(output_dir, exist_ok=True)
@@ -83,7 +83,7 @@ def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/
             per_device_train_batch_size = 2,
             gradient_accumulation_steps = 4,
             warmup_steps = 5,
-            max_steps = 60,
+            max_steps = steps,
             learning_rate = 2e-4,
             fp16 = not torch.cuda.is_bf16_supported(),
             bf16 = torch.cuda.is_bf16_supported(),
@@ -103,6 +103,11 @@ def train_expert(dataset_path: str, output_dir: str, model_name: str = "unsloth/
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python train_expert.py <dataset_jsonl> <output_lora_dir>")
+        print("Usage: python train_expert.py <dataset_jsonl> <output_lora_dir> [steps]")
         sys.exit(1)
-    train_expert(sys.argv[1], sys.argv[2])
+    
+    dataset_in = sys.argv[1]
+    output_out = sys.argv[2]
+    steps_in = int(sys.argv[3]) if len(sys.argv) > 3 else 60
+    
+    train_expert(dataset_in, output_out, steps=steps_in)
