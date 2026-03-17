@@ -19,6 +19,7 @@ unsloth_compiled_cache/
 unsloth_install.log
 *.out
 *.pid
+outputs/
 
 # Ignore raw data/models (too big)
 models/
