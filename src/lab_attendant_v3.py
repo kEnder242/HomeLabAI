@@ -6,6 +6,7 @@ import datetime
 import logging
 import psutil
 import aiohttp
+import hashlib
 from aiohttp import web
 import time
 import uuid
@@ -39,6 +40,7 @@ PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
 VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
+STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
 ATTENDANT_PORT = 9999
 
 # --- Global State ---
@@ -50,6 +52,14 @@ _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
 reclaim_logger(role="ATTENDANT")
 logger = logging.getLogger("lab_attendant_v3")
+
+def get_style_key():
+    """Generates the 'Moving Target' key from the style.css hash."""
+    if not os.path.exists(STYLE_CSS):
+        logger.error(f"[SECURITY] STYLE_CSS missing: {STYLE_CSS}")
+        return "missing"
+    with open(STYLE_CSS, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()[:8]
 
 def get_git_commit():
     try:
@@ -65,33 +75,64 @@ def get_fingerprint(role="ATTENDANT"):
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
 
 @web.middleware
+async def key_middleware(request, handler):
+    """[FEAT-219] Silicon Handshake: Validates the Lab Key (Query or Header)."""
+    # Allow OPTIONS for CORS
+    if request.method == "OPTIONS":
+        return await handler(request)
+        
+    # Heartbeat and Ping are public-read for the dashboard
+    if any(request.path.endswith(p) for p in ["/heartbeat", "/ping", "/mutex", "/wait_ready"]):
+        return await handler(request)
+
+    expected_key = get_style_key()
+    provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
+
+    if provided_key != expected_key:
+        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected: {expected_key}) from {request.remote}")
+        return web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
+    
+    return await handler(request)
+
+@web.middleware
 async def cors_middleware(request, handler):
     response = await handler(request)
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key'
     return response
 
 class LabAttendantV3:
     def __init__(self):
-        self.app = web.Application(middlewares=[cors_middleware])
-        # [SERVICE] Control & Monitoring Endpoints
-        self.app.router.add_post("/start", self.handle_start_rest)
-        self.app.router.add_post("/stop", self.handle_stop_rest)
-        self.app.router.add_post("/quiesce", self.handle_quiesce_rest)
-        self.app.router.add_post("/ignition", self.handle_ignition_rest)
-        self.app.router.add_post("/train", self.handle_train_rest)
-        self.app.router.add_post("/hard_reset", self.handle_stop_rest)
-        self.app.router.add_get("/heartbeat", self.handle_heartbeat_rest)
-        self.app.router.add_get("/ping", self.handle_ping_rest)
-        self.app.router.add_get("/wait_ready", self.handle_wait_ready_rest)
-        self.app.router.add_get("/logs", self.handle_logs_rest)
-        self.app.router.add_get("/mutex", self.handle_mutex_rest)
+        self.app = web.Application(middlewares=[cors_middleware, key_middleware])
+        
+        # [SERVICE] Control & Monitoring Endpoints (Dual-Registration for Option B)
+        self.register_route("POST", "/start", self.handle_start_rest)
+        self.register_route("POST", "/stop", self.handle_stop_rest)
+        self.register_route("POST", "/quiesce", self.handle_quiesce_rest)
+        self.register_route("POST", "/ignition", self.handle_ignition_rest)
+        self.register_route("POST", "/refresh", self.handle_ignition_rest)
+        self.register_route("POST", "/train", self.handle_train_rest)
+        self.register_route("POST", "/hard_reset", self.handle_stop_rest)
+        self.register_route("GET", "/heartbeat", self.handle_heartbeat_rest)
+        self.register_route("GET", "/ping", self.handle_ping_rest)
+        self.register_route("GET", "/wait_ready", self.handle_wait_ready_rest)
+        self.register_route("GET", "/logs", self.handle_logs_rest)
+        self.register_route("GET", "/mutex", self.handle_mutex_rest)
         
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
         self.ready_event = asyncio.Event()
         self.vram_config = {}
         self.refresh_vram_config()
+
+    def register_route(self, method, path, handler):
+        """[FEAT-219] Silicon Handshake: Multi-Path Router."""
+        if method == "POST":
+            self.app.router.add_post(path, handler)
+            self.app.router.add_post(f"/attendant{path}", handler)
+        else:
+            self.app.router.add_get(path, handler)
+            self.app.router.add_get(f"/attendant{path}", handler)
 
     def refresh_vram_config(self):
         if os.path.exists(CHARACTERIZATION_FILE):
@@ -101,10 +142,42 @@ class LabAttendantV3:
             except Exception:
                 pass
 
+    # --- Pager Helper ---
+    def log_event(self, message, severity="INFO"):
+        """Appends a milestone event to the interleaved Forensic Ledger."""
+        try:
+            alert = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "source": "LabAttendant",
+                "severity": severity,
+                "message": message
+            }
+            data = []
+            if os.path.exists(PAGER_ACTIVITY_FILE):
+                with open(PAGER_ACTIVITY_FILE, "r") as f:
+                    data = json.load(f)
+            data.append(alert)
+            data = data[-100:] # Keep last 100
+            with open(PAGER_ACTIVITY_FILE + ".tmp", "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(PAGER_ACTIVITY_FILE + ".tmp", PAGER_ACTIVITY_FILE)
+        except Exception as e:
+            logger.error(f"[PAGER] Failed to log event: {e}")
+
+    # --- Pulse Loop ---
+    async def pulse_loop(self):
+        """Continuous background vitals pulse for the dashboard."""
+        logger.info("[PULSE] Background status cycle active (2s).")
+        while True:
+            await self.update_status_json()
+            await asyncio.sleep(2)
+
     # --- Proxy Helper ---
     async def _proxy_request(self, method, endpoint, data=None):
         """Redirects tool calls from the Proxy process to the Master Service."""
-        url = f"http://localhost:{ATTENDANT_PORT}/{endpoint}"
+        key = get_style_key()
+        connector = "&" if "?" in endpoint else "?"
+        url = f"http://localhost:{ATTENDANT_PORT}/{endpoint}{connector}key={key}"
         async with aiohttp.ClientSession() as session:
             try:
                 if method == "POST":
@@ -130,6 +203,8 @@ class LabAttendantV3:
             return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode})
         
         global current_lab_mode, current_model, lab_process
+        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode})")
+        
         self.refresh_vram_config() # Reload latest model mappings
         
         # Resolve model path and config from map
@@ -149,6 +224,9 @@ class LabAttendantV3:
         
         env = os.environ.copy()
         env["LAB_MODE"] = str(engine)
+        # [FEAT-220] Silicon Handshake: Inject Immunity Token into all spawned families
+        env["LAB_IMMUNITY_TOKEN"] = str(_BOOT_HASH)
+        
         if disable_ear:
             env["DISABLE_EAR"] = "1"
         
@@ -164,7 +242,7 @@ class LabAttendantV3:
             env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4"
             
             logger.info(f"[VLLM] Igniting Sovereign Node: {target_model} (Util: {utilization}, Backend: {backend})")
-            logger.info(f"[DEBUG] Env Backend: {env.get('VLLM_ATTENTION_BACKEND')}, Use_V1: {env.get('VLLM_USE_V1')}")
+            self.log_event(f"Ignition: {engine}/{target_model} (Mode: {op_mode})")
             subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR)
             await self._wait_for_vllm()
 
@@ -173,13 +251,20 @@ class LabAttendantV3:
         if disable_ear:
             cmd.append("--disable-ear")
         
-        lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=open(SERVER_LOG, "a", buffering=1), preexec_fn=os.setpgrp)
+        # [FEAT-213] Engine Warm-up Delay
+        await asyncio.sleep(3)
+        
+        with open(SERVER_LOG, "a", buffering=1) as log_f:
+            lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=log_f, start_new_session=True)
+            
         asyncio.create_task(self.log_monitor_loop())
+        logger.info(f"[IGNITION] Hub process spawned with PID: {lab_process.pid} (Immunity: {_BOOT_HASH})")
         return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode}"}
 
     async def mcp_stop(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "stop")
+        self.log_event("Shutdown: Manual signal received.")
         await self.cleanup_silicon()
         await self.update_status_json("OFFLINE (Manual Stop)")
         return {"status": "success", "message": "Lab stopped."}
@@ -188,6 +273,7 @@ class LabAttendantV3:
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "quiesce")
         logger.warning("[QUIESCE] Lockdown initiated. Setting maintenance lock.")
+        self.log_event("Quiesce: Lab locked for maintenance.", severity="WARNING")
         with open(MAINTENANCE_LOCK, "w") as f:
             f.write(datetime.datetime.now().isoformat())
         await self.cleanup_silicon()
@@ -201,12 +287,14 @@ class LabAttendantV3:
         # [FEAT-213] Re-Ignition must clear the maintenance lock first
         if os.path.exists(MAINTENANCE_LOCK):
             os.remove(MAINTENANCE_LOCK)
+            self.log_event("Ignition: Maintenance lock cleared.")
             
         # [SPR-13.0] Restoration using current state or defaults
         engine = os.environ.get("LAB_MODE", "OLLAMA")
         model = os.environ.get("LAB_MODEL", "MEDIUM")
         disable_ear = os.environ.get("DISABLE_EAR") == "1"
-        return await self.mcp_start(engine, model, disable_ear)
+        
+        return await self.mcp_start(engine, model, disable_ear, "SERVICE_UNATTENDED")
 
     async def mcp_train_adapter(self, adapter_name: str, steps: int = 60):
         """[FEAT-213/218] Autonomous VRAM Handover for Sequenced Batch Forging."""
@@ -217,6 +305,7 @@ class LabAttendantV3:
         # Support batch mode (comma-separated list)
         adapters = [a.strip() for a in adapter_name.split(",")]
         logger.info(f"[FORGE] Initiating sequenced batch training for: {adapters} ({steps} steps each).")
+        self.log_event(f"Forge: Starting batch training for {len(adapters)} adapters.")
         
         # 1. Quiesce once for the entire batch
         await self.mcp_quiesce()
@@ -229,6 +318,7 @@ class LabAttendantV3:
         
         if used_mb > max_vram:
             logger.error(f"[FORGE] VRAM Guard Triggered: {used_mb}MB used, threshold is {max_vram}MB. Aborting.")
+            self.log_event(f"Forge: VRAM Guard Triggered ({used_mb}MB). Aborting.", severity="WARNING")
             await self.mcp_ignition()
             return {"status": "error", "message": f"Silicon contention: {used_mb}MB used."}
         
@@ -245,11 +335,13 @@ class LabAttendantV3:
             
             if not dataset or not os.path.exists(dataset):
                 logger.error(f"[FORGE] Dataset not found: {dataset}")
+                self.log_event(f"Forge: Dataset missing for {target}", severity="WARNING")
                 results.append({"adapter": target, "status": "missing_dataset"})
                 continue
 
             # 3. Execute Forge (Unsloth)
             logger.info(f"[FORGE] Training {target}...")
+            self.log_event(f"Forge: Training {target}...")
             try:
                 cmd = [LAB_VENV_PYTHON, f"{LAB_DIR}/src/forge/train_expert.py", dataset, output_dir, str(steps)]
                 process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -257,29 +349,26 @@ class LabAttendantV3:
                 
                 if process.returncode == 0:
                     logger.info(f"[FORGE] {target} completed successfully.")
+                    self.log_event(f"Forge: {target} completed successfully.")
                     results.append({"adapter": target, "status": "complete"})
                 else:
                     logger.error(f"[FORGE] {target} failed: {stderr.decode()}")
+                    self.log_event(f"Forge: {target} FAILED.", severity="WARNING")
                     results.append({"adapter": target, "status": "failed"})
             except Exception as e:
                 logger.error(f"[FORGE] Execution error for {target}: {e}")
+                self.log_event(f"Forge: Execution error for {target}", severity="WARNING")
                 results.append({"adapter": target, "status": "error", "message": str(e)})
         
         # 4. Re-Ignite Hub once after all adapters are processed
         await self.mcp_ignition()
+        self.log_event("Forge: Batch complete. Hub re-ignited.")
         return {"status": "batch_complete", "results": results}
 
     async def mcp_wait_ready(self, timeout: int = 60):
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            # For proxy mode, we use the existing REST endpoint
-            url = f"http://localhost:{ATTENDANT_PORT}/wait_ready?timeout={timeout}"
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url) as r:
-                        return await r.json()
-                except Exception as e:
-                    return {"status": "error", "message": f"Proxy wait_ready failed: {e}"}
+            return await self._proxy_request("GET", f"wait_ready?timeout={timeout}")
         
         try:
             await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
@@ -290,50 +379,60 @@ class LabAttendantV3:
             return {"status": "error", "message": str(e)}
 
     async def cleanup_silicon(self):
-        """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID."""
+        """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID with Immunity."""
         pgids_to_kill = set()
-        
-        # Identify 'self' to avoid suicide
         my_pgid = os.getpgid(os.getpid())
         
-        # 1. Port-Based Discovery (Master Residents)
+        # 1. Port-Based Discovery
         for port in [8088, 8765]:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
                 for line in res.split("\n"):
                     if ":" in line:
                         pid_str = line.split(":")[1].strip()
-                        for pid in pid_str.split():
-                            try:
-                                t_pgid = os.getpgid(int(pid))
-                                if t_pgid != my_pgid:
-                                    pgids_to_kill.add(t_pgid)
-                            except Exception:
-                                pass
+                        for p in pid_str.split():
+                            p_int = int(p)
+                            if self._is_immune(p_int): continue
+                            pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
                 pass
 
-        # 2. Name-Based Discovery (Orphaned Residents)
+        # 2. Name-Based Discovery
         targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                if proc.info["pid"] == os.getpid():
-                    continue
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 if any(t in cmdline for t in targets):
-                    t_pgid = os.getpgid(proc.info["pid"])
-                    if t_pgid != my_pgid:
-                        pgids_to_kill.add(t_pgid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
+                    if self._is_immune(proc.info["pid"]): continue
+                    pgids_to_kill.add(os.getpgid(proc.info["pid"]))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
         if pgids_to_kill:
-            logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} process groups to clear zombies.")
-            for pgid in pgids_to_kill:
-                with contextlib.suppress(Exception):
-                    os.killpg(pgid, signal.SIGKILL)
+            # Final Safety Catch: Never kill our own group
+            pgids_to_kill.discard(my_pgid)
+            if pgids_to_kill:
+                logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} process groups: {pgids_to_kill}")
+                for pgid in pgids_to_kill:
+                    with contextlib.suppress(Exception):
+                        os.killpg(pgid, signal.SIGKILL)
         
         await asyncio.sleep(2.0)
+
+    def _is_immune(self, pid):
+        """[FEAT-220] Checks if a process carries the current Diplomatic Immunity token."""
+        try:
+            if pid == os.getpid(): return True
+            proc = psutil.Process(pid)
+            # Check environment for the current boot hash
+            env = proc.environ()
+            token = env.get("LAB_IMMUNITY_TOKEN")
+            if token == _BOOT_HASH:
+                logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        return False
 
     async def _get_current_vitals(self):
         vitals = {"attendant_pid": os.getpid(), "lab_server_running": False, "engine_running": False, "lab_mode": current_lab_mode, "model": current_model, "full_lab_ready": self.ready_event.is_set(), "boot_hash": _BOOT_HASH}
@@ -483,21 +582,28 @@ async def lab_wait_ready(timeout: int = 60):
     return await attendant.mcp_wait_ready(timeout)
 
 async def run_bilingual():
-    # If Proxing, skip background loops and REST
-    if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-        await mcp.run_stdio_async()
-        return
-
-    runner = web.AppRunner(attendant.app)
-    await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
-    logger.info(f"[BOOT] Lab Attendant V3 (Master) active on {ATTENDANT_PORT}")
-    asyncio.create_task(attendant.vram_watchdog_loop())
+    # [FEAT-219] Silicon Handshake: Role-Based Execution
+    role = os.environ.get("LAB_ATTENDANT_ROLE")
+    is_tool = not sys.stdin.isatty()
     
-    if sys.stdin.isatty():
-        await mcp.run_stdio_async()
+    if role == "MASTER":
+        # Full Master Mode: REST API + Pulse + Watchdog
+        runner = web.AppRunner(attendant.app)
+        await runner.setup()
+        await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
+        logger.info(f"[BOOT] Lab Attendant V3 (Master) active on {ATTENDANT_PORT}")
+        asyncio.create_task(attendant.vram_watchdog_loop())
+        asyncio.create_task(attendant.pulse_loop())
+        
+        # If in a TTY, also allow local tools, otherwise just wait
+        if sys.stdin.isatty():
+            await mcp.run_stdio_async()
+        else:
+            await asyncio.Event().wait()
     else:
-        await asyncio.Event().wait()
+        # Proxy Mode: Tool execution forwards to the Master
+        os.environ["LAB_ATTENDANT_ROLE"] = "PROXY" 
+        await mcp.run_stdio_async()
 
 if __name__ == "__main__":
     asyncio.run(run_bilingual())

@@ -500,6 +500,11 @@ class AcmeLab:
 
         return any(k in text_low for k in casual_indicators)
 
+    async def heartbeat_handler(self, request):
+        """[FEAT-219] Silicon Handshake: Public-read heartbeat."""
+        import datetime
+        return web.json_response({"status": "online", "mode": self.mode, "timestamp": datetime.datetime.now().isoformat()})
+
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
         ws = web.WebSocketResponse()
@@ -911,6 +916,8 @@ class AcmeLab:
             })
             route = app.router.add_get("/", self.client_handler)
             cors.add(route)
+            hb_route = app.router.add_get("/heartbeat", self.heartbeat_handler)
+            cors.add(hb_route)
             runner = web.AppRunner(app)
             await runner.setup()
             # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
