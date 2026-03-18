@@ -279,7 +279,7 @@ async def main(limit=None):
                 logging.info(f"Successfully captured gem. Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
                 
                 if total_captured % 5 == 0 or total_captured == len(all_gems):
-                    log_to_pager(f"Harvest Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
+                    logging.info(f"Harvest Progress: {total_captured}/{len(all_gems)} ({progress_pct}%)")
 
                 if limit and processed_count >= limit:
                     logging.info(f"Limit reached ({limit}). Stopping harvest.")

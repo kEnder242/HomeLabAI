@@ -281,8 +281,8 @@ async def main(limit=None):
                 processed_count += 1
                 total = processed_count + len(seen_keys)
                 pct = int((total / len(all_gems)) * 100)
-                if total % 5 == 0:
-                    log_to_pager(f"Harvest Progress: {total}/{len(all_gems)} ({pct}%)")
+                if total % 10 == 0:
+                    logging.info(f"Harvest Progress: {total}/{len(all_gems)} ({pct}%)")
                 
                 if limit and processed_count >= limit:
                     logging.info(f"Limit reached ({limit}).")
