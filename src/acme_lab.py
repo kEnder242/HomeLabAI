@@ -195,7 +195,7 @@ class AcmeLab:
                 except asyncio.TimeoutError:
                     if self.connected_clients and not self.is_user_typing():
                         await self.broadcast(
-                            {"brain": tic_msg, "brain_source": "Shadow (Tic)", "is_internal": True}
+                            {"type": "crosstalk", "brain": tic_msg, "brain_source": "Shadow"}
                         )
                     tic_count += 1
                     # Increase delay exponentially
@@ -280,7 +280,8 @@ class AcmeLab:
         """Background maintenance and status updates."""
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
-            await asyncio.sleep(self.reflex_ttl)
+            # [FEAT-221] Slower tick rate for crosstalk/status
+            await asyncio.sleep(10.0)
             if self.connected_clients:
                 await self.broadcast(
                     {
@@ -292,32 +293,21 @@ class AcmeLab:
                 # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
                 idle_time = time.time() - self.last_activity
                 if idle_time > 60:
-                    if self.banter_backoff < 10:  # Cap at 6s interval (1.0 + 10*0.5)
-                        self.banter_backoff += 1
-
                     # [FEAT-047] Reflex Tics: Occasionally bubble up a character tic
-                    # Only if idle for > 60s, not typing, and low probability (approx every 2 mins @ 6s interval)
+                    # Very low probability for background noise
                     if not self.is_user_typing() and random.random() < 0.05:
                         await self.broadcast(
                             {
+                                "type": "crosstalk",
                                 "brain": random.choice(tics),
-                                "brain_source": "Pinky (Reflex)",
+                                "brain_source": "Pinky",
                             }
                         )
-                else:
-                    self.banter_backoff = 0
-
-                self.reflex_ttl = 1.0 + (self.banter_backoff * 0.5)
-                # Ensure we check health at least every 5s if active
-                if self.reflex_ttl > 5.0:
-                    self.reflex_ttl = 5.0
 
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
-                # If no clients, reset TTL and wait patiently
-                self.reflex_ttl = 10.0
-                # Still check health occasionally to keep status.json accurate
+                # If no clients, wait patiently
                 await self.check_brain_health()
 
     async def run_full_induction_cycle(self):
