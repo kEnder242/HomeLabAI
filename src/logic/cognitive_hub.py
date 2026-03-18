@@ -337,8 +337,10 @@ class CognitiveHub:
         dispatch_tasks = []
         if is_casual and not is_extraction and not mic_active and retry_count == 0:
             if "pinky" in self.residents:
-                t_pinky = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"}))
-                dispatch_tasks.append((t_pinky, "Pinky"))
+                # [FEAT-222] Direct Pinky turn for casual input
+                res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
+                await self.execute_dispatch(res.content[0].text, "Pinky", shutdown_event=shutdown_event)
+                return True
         else:
             pinky_intuition = ""
             shadow_intuition = ""
@@ -356,10 +358,9 @@ class CognitiveHub:
             # [FEAT-207] Tricameral Flow Stage 1: Pinky (Instant Triage)
             if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
+                    "type": "crosstalk",
                     "brain": self.get_oracle_signal("Pinky"),
-                    "brain_source": "Pinky (Triage)",
-                    "channel": "insight",
-                    "is_internal": True
+                    "brain_source": "Pinky",
                 })
                 try:
                     res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
@@ -372,10 +373,9 @@ class CognitiveHub:
             # [FEAT-207] Tricameral Flow Stage 2: Shadow Brain (Fast Intuition)
             if "brain" in self.residents and brain_is_remote and retry_count == 0:
                 await self.broadcast({
-                    "brain": "Initiating local technical intuition... Narf!",
+                    "type": "crosstalk",
+                    "brain": "Initiating local technical intuition...",
                     "brain_source": "Shadow",
-                    "channel": "insight",
-                    "is_internal": False
                 })
                 try:
                     # Execute a shallow_think on the local 2080 Ti
@@ -393,7 +393,11 @@ class CognitiveHub:
             if self.brain_online and "brain" in self.residents:
                 oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
                 oracle_signal = self.get_oracle_signal(oracle_cat)
-                await self.execute_dispatch(oracle_signal, "Brain (Signal)", shutdown_event=shutdown_event, is_internal=True)
+                await self.broadcast({
+                    "type": "crosstalk",
+                    "brain": oracle_signal,
+                    "brain_source": "Brain",
+                })
                 
                 hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
                 shadow_tag = f"\n\n[SHADOW_INTUITION]: {shadow_intuition}" if shadow_intuition else ""
