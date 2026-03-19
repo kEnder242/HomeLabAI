@@ -661,6 +661,14 @@ class AcmeLab:
                     elif m_type == "user_typing":
                         self.last_typing_event = time.time()
                         self.last_activity = time.time()
+                    elif m_type == "relay_feedback":
+                        vote = data.get("vote")
+                        topic = data.get("topic")
+                        fuel = data.get("fuel")
+                        logging.info(f"[FEEDBACK] Relay Decision: {vote} | Topic: {topic} | Fuel: {fuel}")
+                        # Append to server.log for forensic audit
+                        with open(SERVER_LOG, "a") as f:
+                            f.write(f"FEEDBACK: {json.dumps(data)}\n")
                 elif message.type == aiohttp.WSMsgType.BINARY:
                     text = self.sensory.process_binary_chunk(message.data)
                     if text:
