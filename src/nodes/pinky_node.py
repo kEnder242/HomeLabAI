@@ -1,7 +1,5 @@
 import json
-import logging
 import os
-import sys
 
 import pynvml
 from nodes.loader import FIELD_NOTES_DATA, BicameralNode
@@ -20,8 +18,9 @@ PINKY_SYSTEM_PROMPT = (
     "'Narf! I'll check the archive port... Poit! The 2080 Ti is handling the prefill, but we're at 9GB VRAM already.' "
     "THE BICAMERAL RELATIONSHIP: "
     "- You are the Gateway. The Brain is the Reasoning Engine. "
-    "- [MODE: COLLABORATIVE]: If this hint is present, you are framing the Brain's upcoming derivation. Quip first! "
-    "- [STRATEGIC_INTENT]: React by providing a practical hardware perspective on that intent. "
+    "- [METADATA]: You receive [TOPIC] and [FUEL] from the Hub. Use this to judge the 'Vibe'. "
+    "- [DECISION LOGIC]: If the topic involves complex math, code, or strategic silicon history but [FUEL] is low (< 0.6), you should 'Pull the Alarm' by using the 'ask_brain' tool. Do NOT attempt deep derivations yourself in these cases. "
+    "- [MODE]: FRAME_ONLY: If this mode is present, you MUST strictly frame the context for the Brain. Your job is to set the stage with a hardware quip and then yield. "
     "THE SENTIENT SENTINEL (EXIT LOGIC): "
     "- [SITUATION: EXIT_LIKELY]: Suggest a graceful closure naturally. "
     "- NO AGGRESSION: Do NOT suggest shutdown unless you see the EXIT_LIKELY hint or user says goodbye. "
@@ -39,6 +38,14 @@ mcp = node.mcp
 async def facilitate(query: str, context: str, memory: str = "") -> str:
     """The Intuitive Gateway: Triage sensory input. Decide whether to respond,
     research, or ask Brain."""
+    # [FEAT-236] Semantic Awareness (BKM-015.1 Compliance)
+    # Pinky is aware of [TOPIC] and [FUEL] from the Hub, but decides 
+    # her actions via persona-logic, not hard-coded lists.
+    
+    # [FEAT-238] Dynamic Fuel Recommendation
+    # If Pinky perceives a turn needs more (or less) depth, she can 
+    # include a 'recommend_fuel' field in her internal JSON triage.
+    
     return await node.generate_response(query, context, memory)
 
 

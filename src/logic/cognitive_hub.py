@@ -103,6 +103,26 @@ class CognitiveHub:
                     tool = data.get("tool")
                     params = data.get("parameters", {})
                     
+                    # [FEAT-238] Dynamic Fuel Calibration
+                    # If a node recommends a fuel shift, apply it to the Hub state
+                    if "recommend_fuel" in data:
+                        new_fuel = float(data["recommend_fuel"])
+                        logging.info(f"[HUB] Mid-Relay Fuel Calibration: {self.current_fuel:.2f} -> {new_fuel:.2f} (Source: {source})")
+                        self.current_fuel = new_fuel
+
+                    # [FEAT-237] Loop-Breaker
+                    primary_entry_points = {
+                        "pinky": "facilitate",
+                        "shadow": "shallow_think",
+                        "brain": "deep_think",
+                        "lab": "triage_situational_vibe"
+                    }
+                    t_name = source.split("(")[0].strip().lower()
+                    if t_name in primary_entry_points and tool == primary_entry_points[t_name]:
+                        logging.warning(f"[HUB] Loop Detected: {source} tried to call its own entry point '{tool}'. Blocking.")
+                        fallback_msg = f"Narf! I almost caught myself in a loop there. I should just tell you directly: {json.dumps(params)}"
+                        return await self._dispatch_plain_text(fallback_msg, f"{source} (Fallback)", is_internal, final=final)
+
                     if not tool:
                         if "reply_to_user" in data:
                             tool = "reply_to_user"
@@ -327,9 +347,9 @@ class CognitiveHub:
             if "pinky" in self.residents:
                 # [FEAT-236] Role: Gateway. Awareness: Fuel/Route.
                 p_context = (
-                    f"[ROUTE]: GATEWAY -> SHADOW" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
+                    "[ROUTE]: GATEWAY -> SHADOW" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
                     f"[FUEL]: {fuel:.2f} | [TOPIC]: {self.current_topic}\n"
-                    f"[MODE]: " + ("FRAME_ONLY (Brain is handling derivation)" if fuel > 0.6 else "DIRECT_RESPONSE")
+                    f"[MODE]: " + ("FRAME_ONLY" if fuel > 0.6 else "DIRECT_RESPONSE")
                 )
                 p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": p_context})
                 pinky_text = p_res.content[0].text
@@ -341,9 +361,9 @@ class CognitiveHub:
             if "shadow" in self.residents:
                 # [FEAT-236] Role: Archivist. Awareness: Fuel/Context.
                 s_context = (
-                    f"[ROUTE]: GATEWAY -> ARCHIVIST" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
-                    f"[FUEL]: {fuel:.2f} | [ROLE]: TECHNICAL_INTUITION\n"
-                    f"Triage: {triage_data.get('intent')}"
+                    "[ROUTE]: GATEWAY -> ARCHIVIST" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
+                    f"[FUEL]: {fuel:.2f} | [MODE]: " + ("FRAME_ONLY" if fuel > 0.6 else "DIRECT_RESPONSE") + "\n"
+                    f"[ROLE]: TECHNICAL_INTUITION | Triage: {triage_data.get('intent')}"
                 )
                 s_res = await self.residents["shadow"].call_tool("shallow_think", {
                     "task": query, 
@@ -358,15 +378,16 @@ class CognitiveHub:
         await asyncio.gather(process_pinky(), process_shadow())
 
         # [FEAT-207] Stage 3: Sovereign Brain
-        if self.brain_online and "brain" in self.residents and fuel > 0.6:
+        # [FEAT-238] Use the potentially updated self.current_fuel
+        if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6:
             metadata = {
                 "expert_adapter": selected_expert, 
                 "pinky_hearing": pinky_text, 
                 "shadow_intuition": shadow_text, 
                 "archival_truth": historical_context,
-                "fuel": fuel,
+                "fuel": self.current_fuel,
                 "topic": self.current_topic,
-                "verbosity_directive": "Provide full-spectrum exhaustive synthesis." if fuel > 0.8 else "Provide moderate technical depth."
+                "verbosity_directive": "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
             }
             
             # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
