@@ -407,7 +407,13 @@ class BicameralNode:
         metadata=None,
         disable_tools=False,
         stream=False,
+        context_queue=None,
     ):
+        """
+        [FEAT-233.2] Live Context Ingestion.
+        If context_queue is provided, the node will attempt to prepend
+        incoming tokens to the reasoning window (Model Dependent).
+        """
         engine, url, model = await self.probe_engine()
         # [FEAT-031] Liger Optimization
         if engine == "VLLM":
