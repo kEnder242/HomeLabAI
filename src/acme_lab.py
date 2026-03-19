@@ -95,6 +95,7 @@ class AcmeLab:
         self.last_turn_time = 0.0
         self._disconnect_task = None # [FEAT-171] Idle timer task
         self.last_induction_date = None # [FEAT-202] Track daily grounding
+        self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         reclaim_logger(role)
         self.set_proc_title()
         self.set_proc_title()
@@ -117,6 +118,10 @@ class AcmeLab:
 
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
+        else:
+            # Store non-status messages in history for persistence [FEAT-225]
+            self.message_history.append(message_dict)
+            self.message_history = self.message_history[-20:] # Keep last 20
 
         for ws in list(self.connected_clients):
             try:
@@ -500,6 +505,14 @@ class AcmeLab:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.connected_clients.add(ws)
+        
+        # [FEAT-225] Persistence Replay: Send history before current status
+        for old_msg in self.message_history:
+            try:
+                await ws.send_str(json.dumps(old_msg))
+            except Exception:
+                pass
+
         await self.manage_session_lock(active=True)
         current_processing_task = None
 
@@ -669,6 +682,11 @@ class AcmeLab:
             self.connected_clients.remove(ws)
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
+            
+            # [FEAT-225] Persistence Wipe: Clear history on Hub termination
+            if self.shutdown_event.is_set():
+                logging.info("[HUB] Shutdown event active. Wiping short-term memory.")
+                self.message_history = []
         return ws
 
     async def handle_workspace_save(self, filename, content, ws):
