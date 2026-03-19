@@ -5,7 +5,7 @@ import sys
 
 async def test_live_fire():
     uri = "ws://localhost:8765"
-    query = "Can you analyze the 18-year technical history and explain the evolution of the silicon validation strategy in the Acme Lab?"
+    query = "[ME] Can you analyze the 18-year technical history and explain the evolution of the silicon validation strategy in the Acme Lab?"
     
     print(f"Connecting to {uri}...")
     try:
