@@ -27,7 +27,7 @@ async def test_collaborative_handshake():
             await asyncio.sleep(0.5)
 
         # 2. Fire Strategic Query
-        query = "Analyze the Lab's thermal efficiency. Is the 2080 Ti handling the load?"
+        query = "[ME] Analyze the Lab's thermal efficiency. Is the 2080 Ti handling the load?"
         print(f"[USER] -> {query}")
         await ws.send(json.dumps({"type": "text_input", "content": query}))
 
