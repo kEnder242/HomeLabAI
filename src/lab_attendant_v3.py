@@ -435,19 +435,33 @@ class LabAttendantV3:
         return False
 
     async def _get_current_vitals(self):
-        vitals = {"attendant_pid": os.getpid(), "lab_server_running": False, "engine_running": False, "lab_mode": current_lab_mode, "model": current_model, "full_lab_ready": self.ready_event.is_set(), "boot_hash": _BOOT_HASH}
+        lab_server_running = False
+        engine_running = False
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get("http://localhost:8765/heartbeat", timeout=2.0) as r:
                     if r.status == 200:
-                        vitals["lab_server_running"] = True
+                        lab_server_running = True
                 port = 8088 if current_lab_mode == "VLLM" else 11434
                 async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=2.0) as r:
                     if r.status == 200:
-                        vitals["engine_running"] = True
+                        engine_running = True
         except Exception:
             pass
-        return vitals
+
+        used_mb, total_mb = await self._get_vram_info()
+        vram_pct = f"{(used_mb / total_mb * 100):.1f}%" if total_mb > 0 else "0.0%"
+
+        return {
+            "attendant_pid": os.getpid(),
+            "mode": current_lab_mode,
+            "model": current_model,
+            "intercom": "ONLINE" if lab_server_running else "OFFLINE",
+            "brain": "ONLINE" if engine_running else "OFFLINE",
+            "vram": vram_pct,
+            "full_lab_ready": self.ready_event.is_set(),
+            "boot_hash": _BOOT_HASH
+        }
 
     async def _get_vram_info(self):
         """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
@@ -465,7 +479,7 @@ class LabAttendantV3:
     async def update_status_json(self, msg=None):
         vitals = await self._get_current_vitals()
         live_data = {
-            "status": "ONLINE" if vitals["lab_server_running"] else "OFFLINE",
+            "status": "ONLINE" if vitals["intercom"] == "ONLINE" else "OFFLINE",
             "message": msg or ("READY" if vitals["full_lab_ready"] else "BOOTING"),
             "timestamp": datetime.datetime.now().isoformat(),
             "vitals": vitals
