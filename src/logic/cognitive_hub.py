@@ -338,19 +338,23 @@ class CognitiveHub:
                 p_stream = await self.residents["pinky"].call_tool("facilitate", {"query": query}, stream=True)
                 async for token in p_stream:
                     pinky_text += token
-                    # [Task 8.3] Promotion-Aware Streaming to Status Bar
+                    # [Task 8.3] Real-time Streaming to UI
                     await self.broadcast({"brain": token, "brain_source": "Pinky", "final": False, "topic": self.current_topic, "fuel": fuel})
+                
+                # Final Promotion (adds to persistent history)
                 await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
 
         async def process_shadow():
             nonlocal shadow_text
             if "shadow" in self.residents:
-                # Shadow "Hears" triage intent early
+                # [FEAT-233] Shadow "Hears" Pinky via local context injection (Designed for next-gen loader)
                 s_stream = await self.residents["shadow"].call_tool("shallow_think", {"task": query, "context": f"Triage: {triage_data.get('intent')}"}, stream=True)
                 async for token in s_stream:
                     shadow_text += token
                     if fuel > 0.2:
                         await self.broadcast({"brain": token, "brain_source": "Shadow", "final": False, "topic": self.current_topic, "fuel": fuel})
+                
+                # Final Promotion
                 if fuel > 0.2:
                     await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
 
@@ -374,6 +378,7 @@ class CognitiveHub:
             brain_text = ""
             async for token in b_stream:
                 brain_text += token
+                # [Task 8.3] Real-time Streaming to UI (Eliminates Paragraph Pop)
                 await self.broadcast({"brain": token, "brain_source": "Brain", "final": False, "topic": self.current_topic, "fuel": fuel})
             
             # Perform Audit on final text
