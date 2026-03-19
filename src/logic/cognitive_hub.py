@@ -235,7 +235,9 @@ class CognitiveHub:
             "brain_source": source,
             "channel": "chat",
             "is_internal": is_internal,
-            "final": final
+            "final": final,
+            "topic": getattr(self, "current_topic", "Casual"),
+            "fuel": getattr(self, "current_fuel", 0.0)
         })
         return text
 
@@ -263,282 +265,136 @@ class CognitiveHub:
 
         logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count}, Density: {turn_density:.2f})")
         
-        # 1. Situational Triage (Lab Node [FEAT-184/154])
-        triage_data = {"intent": "STRATEGIC", "domain": "standard", "situation": "[UNKNOWN]", "hints": ""}
+        # 1. Situational Triage (Lab Node [FEAT-184/154/233])
+        triage_data = {"intent": "STRATEGIC", "domain": "standard", "topic": "Casual", "casual": 0.5, "intrigue": 0.5, "importance": 0.5}
+        
         if "lab" in self.residents:
             try:
-                t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
-                t_json = t_res.content[0].text if hasattr(t_res, 'content') else str(t_res)
-                # [FEAT-199] Hybrid Triage Parsing (Pipe or JSON)
-                if "|" in t_json and "intent" not in t_json.lower():
-                    parts = t_json.split("|")
-                    if len(parts) >= 2:
-                        triage_data["intent"] = parts[0].strip().upper()
-                        triage_data["domain"] = parts[1].strip().lower()
-                        if len(parts) >= 3:
-                            triage_data["situation"] = parts[2].strip()
-                        if len(parts) >= 4:
-                            triage_data["hints"] = parts[3].strip()
-                else:
-                    t_clean = self.bridge_signal_clean(t_json)
-                    if t_clean:
-                        t_parsed = json.loads(t_clean)
-                        triage_data.update({k.lower(): v for k, v in t_parsed.items()})
+                # [FEAT-233] Incremental Triage Streaming
+                t_stream = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density}, stream=True)
+                full_t_json = ""
+                async for token in t_stream:
+                    full_t_json += token
+                    # Incremental parse: the moment we have 'intent', we can proceed
+                    if '"intent":' in full_t_json:
+                        m = re.search(r'"intent":\s*"([^"]+)"', full_t_json)
+                        if m:
+                            triage_data["intent"] = m.group(1).upper()
+                            logging.info(f"[HUB] Incremental Intent Identified: {triage_data['intent']}")
+                            break
                 
-                # [FEAT-230.2] Shadow Scoring: Log for calibration
-                logging.info(
-                    f"[HUB] Scalar Triage: Intent={triage_data.get('intent')} "
-                    f"Casual={triage_data.get('casual')} Intrigue={triage_data.get('intrigue')} "
-                    f"Importance={triage_data.get('importance')}"
-                )
-                logging.info(f"[HUB] Lab Node Triage: {triage_data.get('intent')} | Domain: {triage_data.get('domain')}")
+                # Consume remaining triage tokens
+                async for token in t_stream: full_t_json += token
+                
+                t_clean = self.bridge_signal_clean(full_t_json)
+                if t_clean:
+                    t_parsed = json.loads(t_clean)
+                    triage_data.update({k.lower(): v for k, v in t_parsed.items()})
+                
+                # [FEAT-231.2] Multiplicative Fuel Function
+                raw_importance = float(triage_data.get("importance", 0.5))
+                raw_casual = float(triage_data.get("casual", 0.5))
+                raw_intrigue = float(triage_data.get("intrigue", 0.5))
+                self.current_fuel = ((1.0 - raw_casual) * (raw_intrigue + raw_importance)) / 2.0
+                self.current_topic = triage_data.get("topic", "Casual")
+
+                logging.info(f"[HUB] Scalar Triage: Intent={triage_data.get('intent')} Topic={self.current_topic} Fuel={self.current_fuel:.2f}")
             except Exception as e:
                 logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back.")
+                self.current_topic = "Casual"; self.current_fuel = 0.2
                 if len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit"]):
                     triage_data["intent"] = "CASUAL"
         
-        is_casual = triage_data.get("intent") == "CASUAL"
-        is_extraction = "[ARCHIVE_EXTRACT]" in query
-        selected_expert = triage_data.get("domain", "standard")
-        current_situation = triage_data.get("situation", "")
-        vibe_hints = triage_data.get("hints", "")
+        fuel = self.current_fuel
         
-        # 2. Predictive Warm-up & [FEAT-207] Airtime Check
-        brain_is_remote = False
-        if "brain" in self.residents:
-            try:
-                import socket
-                infra_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config/infrastructure.json")
-                if os.path.exists(infra_path):
-                    with open(infra_path, "r") as f:
-                        infra = json.load(f)
-                    primary = infra.get("nodes", {}).get("brain", {}).get("primary", "localhost")
-                    if primary != "localhost" and primary != "127.0.0.1":
-                        ip_hint = infra.get("hosts", {}).get(primary, {}).get("ip_hint", "127.0.0.1")
-                        try:
-                            ip = socket.gethostbyname(primary)
-                        except Exception:
-                            ip = ip_hint
-                        if ip != "127.0.0.1":
-                            brain_is_remote = True
-            except Exception as e:
-                logging.debug(f"[HUB] Failed to resolve brain remote status: {e}")
-
-        if not is_casual and self.brain_online:
-            logging.info("[HUB] Strategic triage detected. Pre-warming Brain...")
-            if "brain" in self.residents:
-                # Trigger a non-blocking ping to wake up the 4090
-                asyncio.create_task(self.residents["brain"].call_tool("ping_engine", {"force": True}))
-
-        # 3. [FEAT-211] Proactive Archivist: Look for years/keywords
-        historical_context = ""
-        historical_sources = []
-        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
-        if year_match and "archive" in self.residents:
-            year = year_match.group(1)
-            try:
-                # Use sub-second local retrieval via Archive Node
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year}"})
-                rag_data = json.loads(res_context.content[0].text) if "{" in res_context.content[0].text else {"text": res_context.content[0].text}
-                historical_context = rag_data.get("text", res_context.content[0].text)
-                historical_sources = rag_data.get("sources", [])
-                logging.info(f"[HUB] [FEAT-211] Archivist retrieved context for {year}.")
-            except Exception as e:
-                logging.error(f"[HUB] Archivist failed: {e}")
+        # [FEAT-231.1] Operational Shortcut
+        if triage_data.get("intent") == "OPERATIONAL":
+            logging.info(f"[HUB] Operational Shortcut triggered.")
+            if "pinky" in self.residents:
+                res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}"})
+                return await self.execute_dispatch(res.content[0].text, "System", shutdown_event=shutdown_event, final=True)
 
         if triage_data.get("intent") != "CASUAL":
             selected_expert = await self._route_expert_domain(query)
         else:
             selected_expert = triage_data.get("domain", "standard")
 
-        # [FEAT-231] Baseline Fuel established before parallel spark
-        fuel = float(triage_data.get("importance", 0.5))
+        # 3. Proactive Archivist (RAG context)
+        historical_context = ""
+        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
+        if year_match and "archive" in self.residents:
+            try:
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
+                historical_context = str(res_context.content[0].text)
+            except Exception: pass
 
-        pinky_intuition = ""
-        shadow_intuition = ""
+        pinky_text = ""
+        shadow_text = ""
         
-        # [FEAT-184] Uncertainty Gate (Amygdala Reflex)
-        uncertainty = float(triage_data.get("uncertainty", 0.0))
-        if uncertainty > 0.7:
-            await self.broadcast({
-                "brain": "Detecting cognitive dissonance... requesting clarification turns. Poit!",
-                "brain_source": "Pinky (Reflex)",
-                "channel": "insight",
-                "is_internal": False,
-                "final": False
-            })
+        # [FEAT-233] The Waterfall Handshake: Token-based relay
+        async def process_pinky():
+            nonlocal pinky_text
+            if "pinky" in self.residents:
+                p_stream = await self.residents["pinky"].call_tool("facilitate", {"query": query}, stream=True)
+                async for token in p_stream:
+                    pinky_text += token
+                    # [Task 8.3] Promotion-Aware Streaming to Status Bar
+                    await self.broadcast({"brain": token, "brain_source": "Pinky", "final": False, "topic": self.current_topic, "fuel": fuel})
+                await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
 
-        # [FEAT-229] Parallel Local Fan-out: Pinky & Shadow Spark Simultaneously
-        pinky_task = None
-        shadow_task = None
-        
-        if "pinky" in self.residents and retry_count == 0:
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": self.get_oracle_signal("Pinky"),
-                "brain_source": "Pinky",
-                "final": False
-            })
-            # Stage 1: Pinky (Persona/Triage)
-            pinky_task = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
-                "query": query, 
-                "context": f"[SITUATION: {current_situation}] {vibe_hints}"
-            }))
+        async def process_shadow():
+            nonlocal shadow_text
+            if "shadow" in self.residents:
+                # Shadow "Hears" triage intent early
+                s_stream = await self.residents["shadow"].call_tool("shallow_think", {"task": query, "context": f"Triage: {triage_data.get('intent')}"}, stream=True)
+                async for token in s_stream:
+                    shadow_text += token
+                    if fuel > 0.2:
+                        await self.broadcast({"brain": token, "brain_source": "Shadow", "final": False, "topic": self.current_topic, "fuel": fuel})
+                if fuel > 0.2:
+                    await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
 
-        if "brain" in self.residents and brain_is_remote and retry_count == 0:
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": "Initiating local technical intuition...",
-                "brain_source": "Shadow",
-                "final": False
-            })
-            # [FEAT-231] Scalar Verbosity Directive
-            v_hint = "Be laconic." if fuel < 0.4 else "Provide moderate depth."
-            
-            # Stage 2: Shadow Brain (Technical Intuition)
-            shadow_task = asyncio.create_task(self.residents["brain"].call_tool("shallow_think", {
-                "task": query, 
-                "context": f"Triage: [PENDING]\nTruth: {historical_context}\nDirective: {v_hint}"
-            }))
+        await asyncio.gather(process_pinky(), process_shadow())
 
-        # Await local results
-        if pinky_task or shadow_task:
-            tasks = []
-            if pinky_task:
-                tasks.append(pinky_task)
-            if shadow_task:
-                tasks.append(shadow_task)
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-        # 1. Process Pinky result (Persona always ascends)
-        if pinky_task and not pinky_task.exception():
-            res = pinky_task.result()
-            pinky_intuition = res.content[0].text
-            await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
-            
-            # [FEAT-230] Pinky intuition can "Add Fuel" to the relay
-            if any(k in pinky_intuition.lower() for k in ["trace", "log", "error", "driver", "silicon"]):
-                fuel = min(1.0, fuel + 0.3)
-                logging.info(f"[HUB] Pinky boosted Fuel: {fuel:.2f}")
-
-        # 2. Process Shadow result (Speculative Promotion)
-        if shadow_task and not shadow_task.exception():
-            s_res = shadow_task.result()
-            shadow_intuition = s_res.content[0].text
-            
-            # [FEAT-229] The Promotion Gate (Threshold: 0.2)
-            if fuel > 0.2:
-                await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
-            else:
-                logging.info(f"[HUB] Shadow intuition discarded (Fuel: {fuel:.2f}).")
-
-        # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
-        # Only trigger Sovereign if Fuel is high (Threshold: 0.6)
+        # [FEAT-207] Stage 3: Sovereign Brain
         if self.brain_online and "brain" in self.residents and fuel > 0.6:
-            oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
-            oracle_signal = self.get_oracle_signal(oracle_cat)
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": oracle_signal,
-                "brain_source": "Brain",
-                "final": False
-            })
-            
-            hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
-            shadow_tag = f"\n\n[SHADOW_INTUITION]: {shadow_intuition}" if shadow_intuition else ""
-            truth_tag = f"\n\n[ARCHIVAL_TRUTH]: {historical_context}" if historical_context else ""
-            
-            history_tag = ""
-            if self.resonant_history:
-                history_content = "\n".join(self.resonant_history[-3:])
-                history_tag = f"\n\n[RESONANT_HISTORY]:\n{history_content}"
-            
-            if pinky_intuition:
-                self.resonant_history.append(f"- {pinky_intuition}")
-                if len(self.resonant_history) > 10:
-                    self.resonant_history.pop(0)
-
-            tool_allowlist = ["ask_brain", "reply_to_user"]
-            archival_map_context = ""
-            if selected_expert in ["exp_for", "exp_tlm"] or is_extraction:
-                tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map", "read_chronological_excerpts"])
-                if self.semantic_map:
-                    strat = len(self.semantic_map.get("strategic_layer", []))
-                    themes = list(self.semantic_map.get("analytical_layer", {}).keys())
-                    archival_map_context = f"\n[ARCHIVAL_TOPOGRAPHY]: Archive contains {strat} Diamond anchors themes: {themes}."
-
             metadata = {
-                "expert_adapter": selected_expert,
-                "behavioral_guidance": getattr(self, "current_vibe_guidance", ""),
-                "pinky_hearing": pinky_intuition,
-                "shadow_intuition": shadow_intuition,
+                "expert_adapter": selected_expert, 
+                "pinky_hearing": pinky_text, 
+                "shadow_intuition": shadow_text, 
                 "archival_truth": historical_context,
-                "resonant_history": self.resonant_history[-3:],
-                "tool_allowlist": tool_allowlist,
-                "sources": historical_sources,
+                "fuel": fuel,
+                "topic": self.current_topic,
                 "verbosity_directive": "Provide full-spectrum exhaustive synthesis." if fuel > 0.8 else "Provide moderate technical depth."
             }
             
-            # Execute Sovereignty turn with mandatory completion
-            res_deep = await self.monitor_task_with_tics(
-                self.residents["brain"].call_tool("deep_think", {
-                    "task": f"{query}{hearing_tag}{shadow_tag}{truth_tag}{history_tag}{archival_map_context}", 
-                    "metadata": metadata
-                })
-            )
-            result_text = res_deep.content[0].text
-
             # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
-            if not is_extraction:
+            # Note: We stream brain result for UI feedback but audit the final text
+            b_stream = await self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata}, stream=True)
+            brain_text = ""
+            async for token in b_stream:
+                brain_text += token
+                await self.broadcast({"brain": token, "brain_source": "Brain", "final": False, "topic": self.current_topic, "fuel": fuel})
+            
+            # Perform Audit on final text
+            if not getattr(self, "is_extraction", False):
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 
-                is_valid = True
                 if self.auditor:
-                    # Judge technical consistency
-                    is_valid = await self.auditor.audit_technical_truth(query, result_text, vibe_hints)
-                
-                if not is_valid:
-                    if retry_count == 1:
-                        # [FEAT-179] The Hallway Protocol (Agentic-R)
-                        logging.warning(f"[FEAT-179] Audit FAILED. Triggering Hallway Protocol for: {query}")
-                        await self.broadcast({
-                            "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
-                            "brain_source": "Pinky (Forensic)",
-                            "channel": "insight",
-                            "is_internal": True,
-                            "final": True
-                        })
-                        try:
-                            scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-                            proc = await asyncio.create_subprocess_exec(sys.executable, scan_script, "--keyword", query, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                            await proc.communicate()
-                        except Exception as e:
-                            logging.error(f"[HALLWAY] Scan execution failed: {e}")
+                    is_valid = await self.auditor.audit_technical_truth(query, brain_text, "")
+                    if not is_valid:
+                        # [FEAT-231.3] Verbal Retraction
+                        if "pinky" in self.residents:
+                            retract_res = await self.residents["pinky"].call_tool("facilitate", {
+                                "query": "[AUDIT_FAILURE]: The Sovereign output failed technical validation.",
+                                "context": f"Failure: {brain_text[:200]}..."
+                            })
+                            await self.execute_dispatch(retract_res.content[0].text, "Pinky (Retraction)", shutdown_event=shutdown_event, is_internal=False, final=True)
                         return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
-                    
-                    # [FEAT-173] Strategic Pivot: Recursive retry with Audit failure in context
-                    logging.warning("[HUB] [FEAT-173] Strategic Pivot triggered by Auditor.")
-                    return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
-            await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
-
-            # [FEAT-227] The Grounding Gate: Post-Synthesis Persona Summary
-            await self.evaluate_grounding("Brain", result_text, fuel, shutdown_event)
-        else:
-            # [SOVEREIGN GATE] Forbidden to failover if this is a high-fidelity extraction
-            if is_extraction:
-                await self.execute_dispatch("❌ Sovereign offline or Fuel insufficient for archive extraction.", "Brain (Error)", shutdown_event=shutdown_event, final=True)
-                return True
-
-            # Terminal turns for non-strategic queries (Fuel <= 0.6)
-            if fuel <= 0.6:
-                logging.info(f"[HUB] Strategic relay terminal at Stage 2 (Fuel: {fuel:.2f}).")
-                # Shadow grounding if Shadow spoke but Brain did not
-                if shadow_intuition and fuel > 0.2:
-                    await self.evaluate_grounding("Shadow", shadow_intuition, fuel, shutdown_event)
-
-        return True
+            await self.execute_dispatch(brain_text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
+            await self.evaluate_grounding("Brain", brain_text, fuel, shutdown_event)
 
         return True
 
@@ -572,7 +428,7 @@ class CognitiveHub:
                 })
                 cool_text = res_cool.content[0].text
                 
-                # Robust JSON extraction for Pinky's personality
+                # Robust JSON extraction
                 m = re.search(r'(\{.*\})', cool_text, re.DOTALL)
                 if m:
                     try:
