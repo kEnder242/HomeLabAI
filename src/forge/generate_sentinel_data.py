@@ -21,56 +21,63 @@ OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "sentinel_training_data.js
 # --- Curriculum Seeds ---
 
 SITUATIONS = [
-    {"tag": "[GREETING]", "intent": "CASUAL", "domain": "standard", "hint": "Acknowledge the user warmly and wait for strategic depth."},
-    {"tag": "[TECHNICAL_DEEP_DIVE]", "intent": "STRATEGIC", "domain": "exp_bkm", "hint": "The user is digging into architecture. Focus on BKM consistency."},
-    {"tag": "[SILICON_FAILURE]", "intent": "STRATEGIC", "domain": "exp_tlm", "hint": "Hardware instability detected. Audit the telemetry logs immediately."},
-    {"tag": "[EXIT_LIKELY]", "intent": "CASUAL", "domain": "standard", "hint": "The user is winding down. Suggest a graceful closure."},
-    {"tag": "[FORENSIC_RECALL]", "intent": "STRATEGIC", "domain": "exp_for", "hint": "Digging into 18-year history. Connect the breadcrumbs across the years."},
-    {"tag": "[CODE_AUDIT]", "intent": "STRATEGIC", "domain": "exp_bkm", "hint": "Analyze the technical logic for potential race conditions or regressions."},
-    {"tag": "[STATUS_CHECK]", "intent": "CASUAL", "domain": "standard", "hint": "Provide a terse summary of physical health (VRAM/Loads)."},
-    {"tag": "[AMBIGUOUS_INTENT]", "intent": "STRATEGIC", "domain": "standard", "hint": "Intent is unclear. Pinky should ask for clarification while Brain pre-warms."},
+    {"tag": "[GREETING]", "intent": "CASUAL", "topic": "Casual", "domain": "standard", "casual": 0.9, "intrigue": 0.1, "importance": 0.1, "hint": "Acknowledge the user warmly and wait for strategic depth."},
+    {"tag": "[TECHNICAL_DEEP_DIVE]", "intent": "STRATEGIC", "topic": "Code", "domain": "exp_bkm", "casual": 0.1, "intrigue": 0.7, "importance": 0.6, "hint": "The user is digging into architecture. Focus on BKM consistency."},
+    {"tag": "[SILICON_FAILURE]", "intent": "STRATEGIC", "topic": "Silicon", "domain": "exp_tlm", "casual": 0.0, "intrigue": 0.9, "importance": 0.9, "hint": "Hardware instability detected. Audit the telemetry logs immediately."},
+    {"tag": "[EXIT_LIKELY]", "intent": "CASUAL", "topic": "Casual", "domain": "standard", "casual": 0.8, "intrigue": 0.1, "importance": 0.1, "hint": "The user is winding down. Suggest a graceful closure."},
+    {"tag": "[FORENSIC_RECALL]", "intent": "STRATEGIC", "topic": "Historical", "domain": "exp_for", "casual": 0.1, "intrigue": 0.8, "importance": 0.7, "hint": "Digging into 18-year history. Connect the breadcrumbs across the years."},
+    {"tag": "[CODE_AUDIT]", "intent": "STRATEGIC", "topic": "Code", "domain": "exp_bkm", "casual": 0.1, "intrigue": 0.8, "importance": 0.7, "hint": "Analyze the technical logic for potential race conditions or regressions."},
+    {"tag": "[STATUS_CHECK]", "intent": "CASUAL", "topic": "Silicon", "domain": "standard", "casual": 0.4, "intrigue": 0.3, "importance": 0.3, "hint": "Provide a terse summary of physical health (VRAM/Loads)."},
+    {"tag": "[AMBIGUOUS_INTENT]", "intent": "STRATEGIC", "topic": "Meta", "domain": "standard", "casual": 0.3, "intrigue": 0.6, "importance": 0.4, "hint": "Intent is unclear. Pinky should ask for clarification while Brain pre-warms."},
+    {"tag": "[OPERATIONAL_RESTART]", "intent": "OPERATIONAL", "topic": "Meta", "domain": "standard", "casual": 0.1, "intrigue": 0.9, "importance": 0.9, "hint": "System command detected. Execute shortcut immediately."},
+    {"tag": "[CORRECTIVE_BIAS]", "intent": "STRATEGIC", "topic": "Meta", "domain": "exp_for", "casual": 0.0, "intrigue": 0.9, "importance": 1.0, "hint": "Human is correcting the system. Maximum fidelity required."},
 ]
 
-# (Query, Tag, Intent, Domain)
+# (Query, Tag, Intent, Topic, Domain, Casual, Intrigue, Importance)
 CURRICULUM = [
     # 1. Banter & Greetings
-    ("Hello lab, are we online?", "[GREETING]", "CASUAL", "standard"),
-    ("Narf! Can you see the status?", "[GREETING]", "CASUAL", "standard"),
-    ("Poit! Just checking in.", "[GREETING]", "CASUAL", "standard"),
+    ("Hello lab, are we online?", "[GREETING]", "CASUAL", "Casual", "standard", 0.9, 0.1, 0.1),
+    ("Narf! Can you see the status?", "[GREETING]", "CASUAL", "Casual", "standard", 0.9, 0.2, 0.1),
+    ("Poit! Just checking in.", "[GREETING]", "CASUAL", "Casual", "standard", 0.9, 0.1, 0.1),
     
     # 2. Telemetry & Hardware
-    ("Why is the GPU temp at 85C?", "[SILICON_FAILURE]", "STRATEGIC", "exp_tlm"),
-    ("Check the VRAM usage on the 2080 Ti.", "[STATUS_CHECK]", "CASUAL", "standard"),
-    ("Report the latest RAPL energy metrics.", "[STATUS_CHECK]", "CASUAL", "standard"),
-    ("Is the vLLM engine thermal-throttling?", "[SILICON_FAILURE]", "STRATEGIC", "exp_tlm"),
+    ("Why is the GPU temp at 85C?", "[SILICON_FAILURE]", "STRATEGIC", "Silicon", "exp_tlm", 0.0, 0.9, 0.9),
+    ("Check the VRAM usage on the 2080 Ti.", "[STATUS_CHECK]", "CASUAL", "Silicon", "standard", 0.5, 0.3, 0.3),
+    ("Report the latest RAPL energy metrics.", "[STATUS_CHECK]", "CASUAL", "Silicon", "standard", 0.4, 0.4, 0.3),
+    ("Is the vLLM engine thermal-throttling?", "[SILICON_FAILURE]", "STRATEGIC", "Silicon", "exp_tlm", 0.1, 0.8, 0.8),
     
     # 3. Architecture & BKMs
-    ("What's the best way to handle a VRAM leak in vLLM?", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "exp_bkm"),
-    ("How does the Resonant Vibe architecture prevent logic drift?", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "exp_bkm"),
-    ("Explain the Class 1 design philosophy.", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "exp_bkm"),
-    ("Validate the logic in acme_lab.py for race conditions.", "[CODE_AUDIT]", "STRATEGIC", "exp_bkm"),
+    ("What's the best way to handle a VRAM leak in vLLM?", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "Code", "exp_bkm", 0.1, 0.7, 0.6),
+    ("How does the Resonant Vibe architecture prevent logic drift?", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "Meta", "exp_bkm", 0.1, 0.9, 0.7),
+    ("Explain the Class 1 design philosophy.", "[TECHNICAL_DEEP_DIVE]", "STRATEGIC", "Meta", "exp_bkm", 0.2, 0.8, 0.6),
+    ("Validate the logic in acme_lab.py for race conditions.", "[CODE_AUDIT]", "STRATEGIC", "Code", "exp_bkm", 0.0, 0.9, 0.8),
     
     # 4. Forensics & History
-    ("Check the 2022 logs for that PCIe error burst.", "[FORENSIC_RECALL]", "STRATEGIC", "exp_for"),
-    ("Analyze the race condition in the 2008 RAID controller.", "[FORENSIC_RECALL]", "STRATEGIC", "exp_for"),
-    ("What was the outcome of the 2015 performance review?", "[FORENSIC_RECALL]", "STRATEGIC", "exp_for"),
-    ("Search for 'VISA' debug notes in the 2011 archive.", "[FORENSIC_RECALL]", "STRATEGIC", "exp_for"),
+    ("Check the 2022 logs for that PCIe error burst.", "[FORENSIC_RECALL]", "STRATEGIC", "Historical", "exp_for", 0.1, 0.8, 0.7),
+    ("Analyze the race condition in the 2008 RAID controller.", "[FORENSIC_RECALL]", "STRATEGIC", "Historical", "exp_for", 0.0, 0.9, 0.8),
+    ("What was the outcome of the 2015 performance review?", "[FORENSIC_RECALL]", "STRATEGIC", "Historical", "exp_for", 0.2, 0.7, 0.6),
+    ("Search for 'VISA' debug notes in the 2011 archive.", "[FORENSIC_RECALL]", "STRATEGIC", "Historical", "exp_for", 0.1, 0.8, 0.7),
     
     # 5. Exit Sentiment
-    ("Thanks, that's all for now.", "[EXIT_LIKELY]", "CASUAL", "standard"),
-    ("Okay, goodbye.", "[EXIT_LIKELY]", "CASUAL", "standard"),
-    ("I'm done for the night.", "[EXIT_LIKELY]", "CASUAL", "standard"),
+    ("Thanks, that's all for now.", "[EXIT_LIKELY]", "CASUAL", "Casual", "standard", 0.9, 0.1, 0.1),
+    ("Okay, goodbye.", "[EXIT_LIKELY]", "CASUAL", "Casual", "standard", 0.9, 0.1, 0.1),
+    ("I'm done for the night.", "[EXIT_LIKELY]", "CASUAL", "Casual", "standard", 0.9, 0.1, 0.1),
     
-    # 6. Ambiguous / Complex
-    ("I think something is wrong with the tendons.", "[AMBIGUOUS_INTENT]", "STRATEGIC", "standard"),
-    ("The mind is feeling hollow today.", "[AMBIGUOUS_INTENT]", "STRATEGIC", "standard"),
+    # 6. Operational
+    ("Restart the lab node.", "[OPERATIONAL_RESTART]", "OPERATIONAL", "Meta", "standard", 0.1, 0.9, 0.9),
+    ("Neuralyzer.", "[OPERATIONAL_RESTART]", "OPERATIONAL", "Meta", "standard", 0.2, 0.9, 0.9),
+    ("Close the lab.", "[OPERATIONAL_RESTART]", "OPERATIONAL", "Meta", "standard", 0.1, 1.0, 1.0),
+
+    # 7. Corrective Bias
+    ("No, that's wrong. Re-read the BKM.", "[CORRECTIVE_BIAS]", "STRATEGIC", "Meta", "exp_for", 0.0, 0.9, 1.0),
+    ("Actually, the 2080 Ti is a Turing card, not Pascal.", "[CORRECTIVE_BIAS]", "STRATEGIC", "Silicon", "exp_for", 0.0, 0.8, 1.0),
 ]
 
 def generate_data():
     dataset = []
     
     # 1. Triage Patterns
-    for query, tag, intent, domain in CURRICULUM:
+    for query, tag, intent, topic, domain, casual, intrigue, importance in CURRICULUM:
         hint = "Proceed with caution."
         for s in SITUATIONS:
             if s["tag"] == tag:
@@ -79,13 +86,20 @@ def generate_data():
         
         response = {
             "intent": intent,
+            "topic": topic,
             "domain": domain,
+            "casual": casual,
+            "intrigue": intrigue,
+            "importance": importance,
             "situation": tag,
             "hints": hint
         }
         
+        # Aligned with lab_node.py prompting style
+        instruction = f"ROLE: Situational Auditor.\nTASK: Analyze the query and provide a high-fidelity scalar triage.\nAnalyze: {query}"
+        
         dataset.append({
-            "instruction": f"Analyze the user query for situational awareness: '{query}'",
+            "instruction": instruction,
             "input": "",
             "output": json.dumps(response)
         })
@@ -101,11 +115,6 @@ def generate_data():
             "instruction": "Explain the Law of Semantic Indirection [BKM-015.1].",
             "input": "",
             "output": "The Law of Semantic Indirection states that the Hub must never use hardcoded keyword matching for orchestration. Instead, it must use the Sentinel to retrieve semantic vibes, ensuring the Lab's logic evolves as the technical archive deepens."
-        },
-        {
-            "instruction": "How do you handle high VRAM pressure in the Resonant Vibe architecture?",
-            "input": "",
-            "output": "I trigger the Resilience Ladder. At >9500MiB, I downshift to the LARGE tier (1.5B). At >11000MiB, I execute a CRITICAL Hard Stop to preserve silicon integrity."
         }
     ])
 

@@ -269,22 +269,9 @@ class CognitiveHub:
         
         if "lab" in self.residents:
             try:
-                # [FEAT-233] Incremental Triage Streaming
-                t_stream = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density}, stream=True)
-                full_t_json = ""
-                async for token in t_stream:
-                    full_t_json += token
-                    # Incremental parse: the moment we have 'intent', we can proceed
-                    if '"intent":' in full_t_json:
-                        m = re.search(r'"intent":\s*"([^"]+)"', full_t_json)
-                        if m:
-                            triage_data["intent"] = m.group(1).upper()
-                            logging.info(f"[HUB] Incremental Intent Identified: {triage_data['intent']}")
-                            break
-                
-                # Consume remaining triage tokens
-                async for token in t_stream:
-                    full_t_json += token
+                # [FEAT-233] Situational Triage (Standard Call)
+                t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
+                full_t_json = t_res.content[0].text
                 
                 t_clean = self.bridge_signal_clean(full_t_json)
                 if t_clean:
@@ -333,41 +320,36 @@ class CognitiveHub:
         pinky_text = ""
         shadow_text = ""
         
-        # [FEAT-233] The Waterfall Handshake: Token-based relay
-        # [Task 8.2] The pinky_pipe: Live token transfer between nodes
-        pinky_pipe = asyncio.Queue()
-
+        # [FEAT-233] The Parallel Handshake (Parallelized Local Inference)
+        # [FEAT-236] Relay Route Awareness: Injecting situational metadata
         async def process_pinky():
             nonlocal pinky_text
             if "pinky" in self.residents:
-                p_stream = await self.residents["pinky"].call_tool("facilitate", {"query": query}, stream=True)
-                async for token in p_stream:
-                    pinky_text += token
-                    # Pipe to the shared queue for Shadow
-                    await pinky_pipe.put(token)
-                    # [Task 8.3] Real-time Streaming to UI
-                    await self.broadcast({"brain": token, "brain_source": "Pinky", "final": False, "topic": self.current_topic, "fuel": fuel})
-                
-                # Signal end of pipe
-                await pinky_pipe.put(None)
-                
+                # [FEAT-236] Role: Gateway. Awareness: Fuel/Route.
+                p_context = (
+                    f"[ROUTE]: GATEWAY -> SHADOW" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
+                    f"[FUEL]: {fuel:.2f} | [TOPIC]: {self.current_topic}\n"
+                    f"[MODE]: " + ("FRAME_ONLY (Brain is handling derivation)" if fuel > 0.6 else "DIRECT_RESPONSE")
+                )
+                p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": p_context})
+                pinky_text = p_res.content[0].text
                 # Final Promotion (adds to persistent history)
                 await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
 
         async def process_shadow():
             nonlocal shadow_text
             if "shadow" in self.residents:
-                # [FEAT-233.2] Shadow consumes the pinky_pipe live
-                s_stream = await self.residents["shadow"].call_tool("shallow_think", {
+                # [FEAT-236] Role: Archivist. Awareness: Fuel/Context.
+                s_context = (
+                    f"[ROUTE]: GATEWAY -> ARCHIVIST" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
+                    f"[FUEL]: {fuel:.2f} | [ROLE]: TECHNICAL_INTUITION\n"
+                    f"Triage: {triage_data.get('intent')}"
+                )
+                s_res = await self.residents["shadow"].call_tool("shallow_think", {
                     "task": query, 
-                    "context_queue": pinky_pipe,
-                    "context": f"Triage: {triage_data.get('intent')}"
-                }, stream=True)
-                
-                async for token in s_stream:
-                    shadow_text += token
-                    if fuel > 0.2:
-                        await self.broadcast({"brain": token, "brain_source": "Shadow", "final": False, "topic": self.current_topic, "fuel": fuel})
+                    "context": s_context
+                })
+                shadow_text = s_res.content[0].text
                 
                 # Final Promotion
                 if fuel > 0.2:
@@ -388,13 +370,8 @@ class CognitiveHub:
             }
             
             # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
-            # Note: We stream brain result for UI feedback but audit the final text
-            b_stream = await self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata}, stream=True)
-            brain_text = ""
-            async for token in b_stream:
-                brain_text += token
-                # [Task 8.3] Real-time Streaming to UI (Eliminates Paragraph Pop)
-                await self.broadcast({"brain": token, "brain_source": "Brain", "final": False, "topic": self.current_topic, "fuel": fuel})
+            b_res = await self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata})
+            brain_text = b_res.content[0].text
             
             # Perform Audit on final text
             if not getattr(self, "is_extraction", False):
