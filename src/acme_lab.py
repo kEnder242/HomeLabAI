@@ -790,6 +790,7 @@ class AcmeLab:
         nodes = [
             ("archive", os.path.join(n_dir, "archive_node.py")),
             ("brain", os.path.join(n_dir, "brain_node.py")),
+            ("shadow", os.path.join(n_dir, "brain_node.py")),
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("lab", os.path.join(n_dir, "lab_node.py")),
             ("thinking", os.path.join(n_dir, "thinking_node.py")),
