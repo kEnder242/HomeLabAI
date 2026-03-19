@@ -406,6 +406,7 @@ class BicameralNode:
         max_tokens=2048,
         metadata=None,
         disable_tools=False,
+        stream=False,
     ):
         engine, url, model = await self.probe_engine()
         # [FEAT-031] Liger Optimization
@@ -430,112 +431,101 @@ class BicameralNode:
                         "model": model,
                         "messages": [{"role": "user", "content": unified}],
                         "max_tokens": max_tokens,
+                        "stream": stream
                     }
                     if not disable_tools:
                         payload["tools"] = self.get_tool_schemas(allowlist=tool_allowlist)
                         payload["tool_choice"] = "auto"
+                    
                     adapter_name = self.lora_name
                     if metadata and metadata.get("expert_adapter"):
                         adapter_name = metadata.get("expert_adapter")
-                        logging.info(f"[{self.name}] [FEAT-174.2] Dynamically selecting expert adapter: {adapter_name}")
 
                     if adapter_name:
-                        # [FEAT-145] Adaptive Unity: Only request LoRA if the adapter is physically present
                         adapter_path = f"/speedy/models/adapters/{adapter_name}"
                         if os.path.exists(adapter_path):
                             payload["lora_request"] = {"name": adapter_name}
-                        else:
-                            logging.warning(f"[{self.name}] Adapter {adapter_name} missing at {adapter_path}. Falling back to unified base.")
+
+                    if stream:
+                        return self._stream_vllm(url, payload)
+
                     async with session.post(url, json=payload, timeout=120) as r:
                         data = await r.json()
-                        if "choices" not in data:
-                            logging.error(f"[{self.name}] vLLM Error: {data}")
-                            self._engine_cache = None  # [FEAT-084] Clear cache on error
-                            return json.dumps(
-                                {
-                                    "tool": "reply_to_user",
-                                    "parameters": {"text": f"vLLM Error: {data}"},
-                                }
-                            )
                         msg = data["choices"][0]["message"]
                         if msg.get("tool_calls"):
                             tc = msg["tool_calls"][0]["function"]
-                            return json.dumps(
-                                {
-                                    "tool": tc["name"],
-                                    "parameters": json.loads(tc["arguments"]),
-                                }
-                            )
+                            return json.dumps({
+                                "tool": tc["name"],
+                                "parameters": json.loads(tc["arguments"]),
+                            })
                         return msg["content"]
                 else:
-                    # [STABILITY] Use Chat API by default for all hosts (Local & Remote)
+                    # Ollama Streaming logic
                     chat_url = url.replace("/api/generate", "/api/chat")
-                    
-                    full_system = (
-                        system_override if system_override else self.system_prompt
-                    )
+                    full_system = system_override if system_override else self.system_prompt
                     if memory:
                         full_system += f"\n\n[MEMORY]:\n{memory}"
                     if context:
                         full_system += f"\n\n[RECENT CONTEXT]:\n{context}"
 
-                    messages = [
-                        {"role": "system", "content": full_system},
-                        {"role": "user", "content": query},
-                    ]
                     payload = {
                         "model": model,
-                        "messages": messages,
-                        "stream": False,
+                        "messages": [
+                            {"role": "system", "content": full_system},
+                            {"role": "user", "content": query}
+                        ],
+                        "stream": stream,
                         "options": {"num_predict": max_tokens},
                     }
 
-                    # [FEAT-078] Neural Trace (Pre-Send)
-                    self._mirror_trace("send", payload, chat_url, metadata=metadata)
+                    if stream:
+                        return self._stream_ollama(chat_url, payload)
 
                     async with session.post(chat_url, json=payload, timeout=120) as r:
-                        if r.status != 200:
-                            # LEGACY FALLBACK: Downshift to /api/generate
-                            logging.warning(f"[{self.name}] Chat API failed ({r.status}). Falling back to Generate.")
-                            gen_url = url.replace("/api/chat", "/api/generate")
-                            unified = self.unify_prompt(query, context, memory, system_override)
-                            gen_payload = {
-                                "model": model,
-                                "prompt": unified,
-                                "stream": False,
-                                "options": {"num_predict": max_tokens},
-                            }
-                            async with session.post(gen_url, json=gen_payload, timeout=120) as r2:
-                                data = await r2.json()
-                                raw_resp = data.get("response", "").strip()
-                        else:
-                            data = await r.json()
-                            raw_resp = data.get("message", {}).get("content", "").strip()
+                        data = await r.json()
+                        return data.get("message", {}).get("content", "").strip()
 
-                        # [FEAT-078] Neural Trace (Post-Recv)
-                        self._mirror_trace("recv", data)
+            except Exception as e:
+                self._engine_cache = None
+                return f"Error: {e}"
 
-                        # [STABILITY] Explicit Error Detection
-                        if data.get("error"):
-                            logging.error(f"[{self.name}] Ollama Error: {data.get('error')}")
-                            self._engine_cache = None  # [FEAT-084] Clear cache on error
-                            return "INTERNAL_QUALITY_FALLBACK"
+    async def _stream_vllm(self, url, payload):
+        """[FEAT-233] vLLM token generator."""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=120) as r:
+                async for line in r.content:
+                    if line:
+                        decoded = line.decode('utf-8').strip()
+                        if decoded.startswith("data: "):
+                            if "[DONE]" in decoded:
+                                break
+                            try:
+                                data = json.loads(decoded[6:])
+                                token = data["choices"][0]["delta"].get("content", "")
+                                if token:
+                                    yield token
+                            except Exception:
+                                continue
 
-                        logging.info(f"[{self.name}] RAW OLLAMA RESP: '{raw_resp[:50]}...'")
-
-                        # [FEAT-077] Quality-Gate: If response is empty
-                        if not raw_resp or raw_resp in ["...", ".", ""]:
-                            logging.warning(f"[{self.name}] Host returned empty. Triggering internal quality fallback.")
-                            return "INTERNAL_QUALITY_FALLBACK"
-                        return raw_resp
+    async def _stream_ollama(self, url, payload):
+        """[FEAT-233] Ollama token generator."""
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, json=payload, timeout=120) as r:
+                    async for line in r.content:
+                        if line:
+                            try:
+                                data = json.loads(line.decode('utf-8'))
+                                token = data.get("message", {}).get("content", "")
+                                if token:
+                                    yield token
+                                if data.get("done"):
+                                    break
+                            except Exception:
+                                continue
             except Exception as e:
                 self._engine_cache = None  # [FEAT-084] Clear cache on error
-                return json.dumps(
-                    {
-                        "tool": "reply_to_user",
-                        "parameters": {"text": f"Error: {e}"},
-                    }
-                )
+                logging.error(f"[{self.name}] Stream failed: {e}")
 
     def _mirror_trace(self, phase, data, url=None, metadata=None):
         """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
