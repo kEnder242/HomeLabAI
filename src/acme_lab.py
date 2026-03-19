@@ -904,10 +904,14 @@ class AcmeLab:
                     allow_headers="*",
                 )
             })
-            route = app.router.add_get("/", self.client_handler)
-            cors.add(route)
-            hb_route = app.router.add_get("/heartbeat", self.heartbeat_handler)
-            cors.add(hb_route)
+            # [FEAT-222] Unified Origin: Support both root and /hub path
+            for path in ["/", "/hub"]:
+                route = app.router.add_get(path, self.client_handler)
+                cors.add(route)
+                
+            for path in ["/heartbeat", "/hub/heartbeat"]:
+                hb_route = app.router.add_get(path, self.heartbeat_handler)
+                cors.add(hb_route)
             runner = web.AppRunner(app)
             await runner.setup()
             # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
