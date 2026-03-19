@@ -202,6 +202,7 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
         "FORMAT: Return ONLY a JSON object with this schema:\n"
         "{\n"
         "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL | OPERATIONAL\",\n"
+        "  \"topic\": \"Historical | Silicon | Code | Meta | Casual\",\n"
         "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\",\n"
         "  \"casual\": 0.0-1.0,\n"
         "  \"intrigue\": 0.0-1.0,\n"

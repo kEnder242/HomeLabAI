@@ -5,6 +5,10 @@
             "fallback": "KENDER",
             "lora_name": "lab_history_v1"
         },
+        "shadow": {
+            "primary": "localhost",
+            "lora_name": "shadow_brain_v2"
+        },
         "pinky": {
             "primary": "localhost",
             "lora_name": "cli_voice_v1"
