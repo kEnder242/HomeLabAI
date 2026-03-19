@@ -3,7 +3,6 @@ import json
 import logging
 import re
 import os
-import sys
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
@@ -284,7 +283,8 @@ class CognitiveHub:
                             break
                 
                 # Consume remaining triage tokens
-                async for token in t_stream: full_t_json += token
+                async for token in t_stream:
+                    full_t_json += token
                 
                 t_clean = self.bridge_signal_clean(full_t_json)
                 if t_clean:
@@ -301,7 +301,8 @@ class CognitiveHub:
                 logging.info(f"[HUB] Scalar Triage: Intent={triage_data.get('intent')} Topic={self.current_topic} Fuel={self.current_fuel:.2f}")
             except Exception as e:
                 logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back.")
-                self.current_topic = "Casual"; self.current_fuel = 0.2
+                self.current_topic = "Casual"
+                self.current_fuel = 0.2
                 if len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit"]):
                     triage_data["intent"] = "CASUAL"
         
@@ -309,7 +310,7 @@ class CognitiveHub:
         
         # [FEAT-231.1] Operational Shortcut
         if triage_data.get("intent") == "OPERATIONAL":
-            logging.info(f"[HUB] Operational Shortcut triggered.")
+            logging.info("[HUB] Operational Shortcut triggered.")
             if "pinky" in self.residents:
                 res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}"})
                 return await self.execute_dispatch(res.content[0].text, "System", shutdown_event=shutdown_event, final=True)
@@ -326,20 +327,29 @@ class CognitiveHub:
             try:
                 res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
                 historical_context = str(res_context.content[0].text)
-            except Exception: pass
+            except Exception:
+                pass
 
         pinky_text = ""
         shadow_text = ""
         
         # [FEAT-233] The Waterfall Handshake: Token-based relay
+        # [Task 8.2] The pinky_pipe: Live token transfer between nodes
+        pinky_pipe = asyncio.Queue()
+
         async def process_pinky():
             nonlocal pinky_text
             if "pinky" in self.residents:
                 p_stream = await self.residents["pinky"].call_tool("facilitate", {"query": query}, stream=True)
                 async for token in p_stream:
                     pinky_text += token
+                    # Pipe to the shared queue for Shadow
+                    await pinky_pipe.put(token)
                     # [Task 8.3] Real-time Streaming to UI
                     await self.broadcast({"brain": token, "brain_source": "Pinky", "final": False, "topic": self.current_topic, "fuel": fuel})
+                
+                # Signal end of pipe
+                await pinky_pipe.put(None)
                 
                 # Final Promotion (adds to persistent history)
                 await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
@@ -347,8 +357,13 @@ class CognitiveHub:
         async def process_shadow():
             nonlocal shadow_text
             if "shadow" in self.residents:
-                # [FEAT-233] Shadow "Hears" Pinky via local context injection (Designed for next-gen loader)
-                s_stream = await self.residents["shadow"].call_tool("shallow_think", {"task": query, "context": f"Triage: {triage_data.get('intent')}"}, stream=True)
+                # [FEAT-233.2] Shadow consumes the pinky_pipe live
+                s_stream = await self.residents["shadow"].call_tool("shallow_think", {
+                    "task": query, 
+                    "context_queue": pinky_pipe,
+                    "context": f"Triage: {triage_data.get('intent')}"
+                }, stream=True)
+                
                 async for token in s_stream:
                     shadow_text += token
                     if fuel > 0.2:
