@@ -111,17 +111,22 @@ class AcmeLab:
             # Fallback: Overwrite sys.argv
             sys.argv[0] = title
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
-
     async def broadcast(self, message_dict):
         if self.shutdown_event.is_set():
             return
 
+        # [FEAT-227] Session Reset: Wipe history on explicit request
+        if message_dict.get("reset_session"):
+            logging.info("[HUB] Session Reset triggered. Wiping message history.")
+            self.message_history = []
+
         if message_dict.get("type") == "status":
             message_dict["version"] = VERSION
         else:
-            # Store non-status messages in history for persistence [FEAT-225]
-            self.message_history.append(message_dict)
-            self.message_history = self.message_history[-20:] # Keep last 20
+            # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
+            if message_dict.get("final", True):
+                self.message_history.append(message_dict)
+                self.message_history = self.message_history[-20:] # Keep last 20
 
         for ws in list(self.connected_clients):
             try:
@@ -317,7 +322,6 @@ class AcmeLab:
 
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
-        import datetime
         logging.info("[ALARM] Initiating Full Induction Cycle...")
         
         # 1. Nightly Dialogue (Fast Local)
@@ -568,9 +572,11 @@ class AcmeLab:
                             not current_processing_task
                             or current_processing_task.done()
                         ):
-                            await self.broadcast({"type": "final", "text": query})
+                            # [FEAT-227] Implement Atomic Anchor for voice input
+                            tagged_query = f"[ME] {query}"
+                            await self.broadcast({"type": "final", "text": tagged_query})
                             current_processing_task = asyncio.create_task(
-                                self.process_query(query, ws)
+                                self.process_query(tagged_query, ws)
                             )
                     await asyncio.sleep(0.1)
 
@@ -616,6 +622,12 @@ class AcmeLab:
                         )
                     elif m_type == "text_input":
                         query = data.get("content", "")
+                        
+                        # [FEAT-227] Atomic Anchor Gate: Strictly ignore input without [ME] prefix
+                        if not query.startswith("[ME]"):
+                            logging.warning(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
+                            continue
+
                         self.last_activity = time.time()
                         if (
                             current_processing_task

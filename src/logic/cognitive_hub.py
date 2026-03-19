@@ -73,12 +73,13 @@ class CognitiveHub:
 
         return json_str
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, sources=None):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, sources=None, final=True):
         """
         Standardizes the dispatch of reasoning results to the user.
         [FEAT-203] Uses Bicameral Bridge signal cleaning.
+        [FEAT-229] Support 'final' flag for speculative yielding.
         """
-        logging.info(f"[DEBUG] Dispatch: source='{source}' text='{text[:30]}...'")
+        logging.info(f"[DEBUG] Dispatch: source='{source}' final={final} text='{text[:30]}...'")
         
         # 1. Clean the text (Remove potential LoRA or node artifacts)
         clean_text = text.replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
@@ -108,14 +109,16 @@ class CognitiveHub:
                             tool = "reply_to_user"
                             params = {"text": data["reply_to_user"]}
                         else:
-                            return await self._dispatch_plain_text(clean_text, source, is_internal)
+                            return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
 
                     if tool == "close_lab":
                         logging.warning(f"[HUB] SHUTDOWN requested by {source}.")
                         await self.broadcast({
                             "brain": "Acme Lab is closing. Goodnight.",
                             "brain_source": "System",
-                            "channel": "chat"
+                            "channel": "chat",
+                            "final": True,
+                            "reset_session": True
                         })
                         if shutdown_event:
                             shutdown_event.set()
@@ -140,37 +143,38 @@ class CognitiveHub:
                             return await self.process_query(shock_query, shutdown_event=shutdown_event, retry_count=retry_count + 1)
                         
                         hallucination_msg = f"Egad! I tried to use '{tool}', but my circuits don't support it yet. Narf!"
-                        return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event)
+                        return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
                     if tool in ["build_cv_summary", "access_personal_history"]:
                         if "archive" in self.residents:
                             res = await self.residents["archive"].call_tool(tool, params)
-                            return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event)
+                            return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, final=True)
                         else:
-                            return await self.execute_dispatch("Archive Node is offline.", "Pinky (System)", shutdown_event=shutdown_event)
+                            return await self.execute_dispatch("Archive Node is offline.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
                     if tool == "bounce_node":
                         reason = params.get("reason", "No reason provided.")
                         await self.broadcast({
                             "brain": f"Hemisphere reset initiated: {reason}",
                             "brain_source": "System",
-                            "channel": "chat"
+                            "channel": "chat",
+                            "final": True
                         })
                         if t_name in self.residents:
                             try:
                                 res = await self.residents[t_name].call_tool("ping_engine", {"force": True})
                                 r_data = json.loads(res.content[0].text)
                                 msg = f"Reset complete. Success: {r_data.get('success')}. Detail: {r_data.get('message')}"
-                                return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                                return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event, final=True)
                             except Exception as e:
-                                return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event)
+                                return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event, final=True)
                         return True
 
                     if tool == "trigger_morning_briefing":
                         if hasattr(self, '_trigger_briefing'):
                             await self._trigger_briefing()
                             return True
-                        return await self.execute_dispatch("Briefing logic unreachable.", "Pinky (System)", shutdown_event=shutdown_event)
+                        return await self.execute_dispatch("Briefing logic unreachable.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
                     if tool == "select_file":
                         fname = params.get("filename")
@@ -185,23 +189,25 @@ class CognitiveHub:
                         await self.broadcast({
                             "brain": self.get_oracle_signal("Brain"),
                             "brain_source": "The Brain (Synthesizing...)",
-                            "channel": "insight"
+                            "channel": "insight",
+                            "final": False
                         })
                         if "brain" in self.residents:
                             metadata = {"expert_adapter": "exp_for"}
                             b_res = await self.monitor_task_with_tics(
                                 self.residents["brain"].call_tool("deep_think", {"task": task, "metadata": metadata})
                             )
-                            return await self.execute_dispatch(b_res.content[0].text, "Brain (Result)", shutdown_event=shutdown_event)
+                            return await self.execute_dispatch(b_res.content[0].text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
                         else:
-                            return await self.execute_dispatch("Strategic Sovereign is offline.", "Pinky (System)", shutdown_event=shutdown_event)
+                            return await self.execute_dispatch("Strategic Sovereign is offline.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
                     if tool == "reply_to_user":
                         reply = params.get("text", "Egad! Empty reply.")
                         await self.broadcast({
                             "brain": reply,
                             "brain_source": source,
-                            "channel": "chat"
+                            "channel": "chat",
+                            "final": True
                         })
                         return True
 
@@ -209,25 +215,27 @@ class CognitiveHub:
                     await self.broadcast({
                         "brain": clean_text,
                         "brain_source": source.replace("Result", "").strip(),
-                        "channel": "insight"
+                        "channel": "insight",
+                        "final": True
                     })
                     return True
 
             except json.JSONDecodeError as e:
                 logging.error(f"[HUB] Bridge Signal Extraction Failed: {e} | Raw: {clean_text[:50]}")
-                return await self._dispatch_plain_text(clean_text, source, is_internal)
+                return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
             except Exception as e:
                 logging.error(f"[HUB] Tool Dispatch Error: {e}")
-                return await self.execute_dispatch(f"Error executing tool: {e}", "Pinky (System)", shutdown_event=shutdown_event)
+                return await self.execute_dispatch(f"Error executing tool: {e}", "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
-        return await self._dispatch_plain_text(clean_text, source, is_internal)
+        return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
 
-    async def _dispatch_plain_text(self, text, source, is_internal):
+    async def _dispatch_plain_text(self, text, source, is_internal, final=True):
         await self.broadcast({
             "brain": text,
             "brain_source": source,
             "channel": "chat",
-            "is_internal": is_internal
+            "is_internal": is_internal,
+            "final": final
         })
         return text
 
@@ -276,6 +284,13 @@ class CognitiveHub:
                     if t_clean:
                         t_parsed = json.loads(t_clean)
                         triage_data.update({k.lower(): v for k, v in t_parsed.items()})
+                
+                # [FEAT-230.2] Shadow Scoring: Log for calibration
+                logging.info(
+                    f"[HUB] Scalar Triage: Intent={triage_data.get('intent')} "
+                    f"Casual={triage_data.get('casual')} Intrigue={triage_data.get('intrigue')} "
+                    f"Importance={triage_data.get('importance')}"
+                )
                 logging.info(f"[HUB] Lab Node Triage: {triage_data.get('intent')} | Domain: {triage_data.get('domain')}")
             except Exception as e:
                 logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back.")
@@ -334,7 +349,6 @@ class CognitiveHub:
         if not is_casual:
             selected_expert = await self._route_expert_domain(query)
 
-        dispatch_tasks = []
         if is_casual and not is_extraction and not mic_active and retry_count == 0:
             if "pinky" in self.residents:
                 # [FEAT-222] Direct Pinky turn for casual input
@@ -352,42 +366,75 @@ class CognitiveHub:
                     "brain": "Detecting cognitive dissonance... requesting clarification turns. Poit!",
                     "brain_source": "Pinky (Reflex)",
                     "channel": "insight",
-                    "is_internal": False
+                    "is_internal": False,
+                    "final": False
                 })
 
-            # [FEAT-207] Tricameral Flow Stage 1: Pinky (Instant Triage)
+            # [FEAT-229] Parallel Local Fan-out: Pinky & Shadow Spark Simultaneously
+            pinky_task = None
+            shadow_task = None
+            
             if "pinky" in self.residents and retry_count == 0:
                 await self.broadcast({
                     "type": "crosstalk",
                     "brain": self.get_oracle_signal("Pinky"),
                     "brain_source": "Pinky",
+                    "final": False
                 })
-                try:
-                    res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
-                    pinky_intuition = res.content[0].text
-                    # Broadcast Pinky as Triage/Intuition, VISIBLE
-                    await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False)
-                except Exception as e:
-                    logging.error(f"[HUB] Pinky intuition failed: {e}")
+                # Stage 1: Pinky (Persona/Triage)
+                pinky_task = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
+                    "query": query, 
+                    "context": f"[SITUATION: {current_situation}] {vibe_hints}"
+                }))
 
-            # [FEAT-207] Tricameral Flow Stage 2: Shadow Brain (Fast Intuition)
             if "brain" in self.residents and brain_is_remote and retry_count == 0:
                 await self.broadcast({
                     "type": "crosstalk",
                     "brain": "Initiating local technical intuition...",
                     "brain_source": "Shadow",
+                    "final": False
                 })
-                try:
-                    # Execute a shallow_think on the local 2080 Ti
-                    s_res = await self.residents["brain"].call_tool("shallow_think", {
-                        "task": query, 
-                        "context": f"Triage: {pinky_intuition}\nTruth: {historical_context}"
-                    })
-                    shadow_intuition = s_res.content[0].text
-                    # Broadcast Shadow as Intuition, VISIBLE
-                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False)
-                except Exception as e:
-                    logging.error(f"[HUB] Shadow intuition failed: {e}")
+                # Stage 2: Shadow Brain (Technical Intuition)
+                # Note: Shadow starts without Pinky's result to minimize latency
+                shadow_task = asyncio.create_task(self.residents["brain"].call_tool("shallow_think", {
+                    "task": query, 
+                    "context": f"Triage: [PENDING]\nTruth: {historical_context}"
+                }))
+
+            # Await local results
+            if pinky_task or shadow_task:
+                tasks = []
+                if pinky_task:
+                    tasks.append(pinky_task)
+                if shadow_task:
+                    tasks.append(shadow_task)
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 1. Process Pinky result (Persona always ascends)
+            fuel = float(triage_data.get("importance", 0.5))
+            
+            if pinky_task and not pinky_task.exception():
+                res = pinky_task.result()
+                pinky_intuition = res.content[0].text
+                await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
+                
+                # [FEAT-230] Pinky intuition can "Add Fuel" to the relay
+                # If Pinky is verbose or uses technical keywords, boost fuel
+                if any(k in pinky_intuition.lower() for k in ["trace", "log", "error", "driver", "silicon"]):
+                    fuel = min(1.0, fuel + 0.3)
+                    logging.info(f"[HUB] Pinky boosted Fuel: {fuel:.2f}")
+
+            # 2. Process Shadow result (Speculative Promotion)
+            if shadow_task and not shadow_task.exception():
+                s_res = shadow_task.result()
+                shadow_intuition = s_res.content[0].text
+                
+                # [FEAT-229] The Promotion Gate
+                # Only dispatch Shadow intuition to the UI if Fuel is sufficient
+                if fuel > 0.4:
+                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
+                else:
+                    logging.info(f"[HUB] Shadow intuition discarded (Fuel: {fuel:.2f}).")
 
             # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
             if self.brain_online and "brain" in self.residents:
@@ -397,6 +444,7 @@ class CognitiveHub:
                     "type": "crosstalk",
                     "brain": oracle_signal,
                     "brain_source": "Brain",
+                    "final": False
                 })
                 
                 hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
@@ -475,6 +523,9 @@ class CognitiveHub:
                         return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
                 await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
+
+                # [FEAT-227] The Grounding Gate: Post-Synthesis Persona Summary
+                await self.evaluate_grounding("Brain", result_text, fuel, shutdown_event)
             else:
                 # [SOVEREIGN GATE] Forbidden to failover if this is a high-fidelity extraction
                 if is_extraction:
@@ -482,11 +533,60 @@ class CognitiveHub:
                     return True
 
                 # Standard failover for casual/strategic
+                failover_text = ""
                 if shadow_intuition:
-                     await self.execute_dispatch(shadow_intuition, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
+                     failover_text = await self.execute_dispatch(shadow_intuition, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
                 elif "pinky" in self.residents:
                      # Final fallback to Pinky
                      res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[FAILOVER]: {query}", "context": ""})
-                     await self.execute_dispatch(res.content[0].text, "Brain (Failover)", shutdown_event=shutdown_event)
+                     failover_text = await self.execute_dispatch(res.content[0].text, "Brain (Failover)", shutdown_event=shutdown_event)
+                
+                # [FEAT-227] Grounding for failover technical outputs
+                if failover_text:
+                    await self.evaluate_grounding("Shadow", failover_text, fuel, shutdown_event)
 
         return True
+
+    async def evaluate_grounding(self, source, text, fuel, shutdown_event):
+        """
+        [FEAT-227] The Grounding Gate (Cooldown).
+        Restores character balance after verbose or high-stakes technical synthesis.
+        """
+        if "pinky" not in self.residents:
+            return
+
+        # Importance calculation using scalar Fuel and length
+        importance = fuel
+        if len(text) > 800:
+            importance = min(1.0, importance + 0.2)
+        
+        if importance > 0.7:
+            logging.info(f"[HUB] Grounding Gate triggered for {source} (Importance: {importance:.2f}).")
+            
+            cooldown_query = (
+                f"The {source} hemisphere just provided a deep technical response. "
+                "1. Provide a 1-sentence persona-driven summary (TL;DR). "
+                "2. Probabilistically add a 'Pondering' challenge (Are you pondering what I'm pondering?) if you see a technical edge case."
+            )
+            
+            try:
+                # Cooldown turns are terminal and do not re-trigger the relay
+                res_cool = await self.residents["pinky"].call_tool("facilitate", {
+                    "query": cooldown_query, 
+                    "context": f"Technical Output: {text}"
+                })
+                cool_text = res_cool.content[0].text
+                
+                # Robust JSON extraction for Pinky's personality
+                m = re.search(r'(\{.*\})', cool_text, re.DOTALL)
+                if m:
+                    try:
+                        dec = json.loads(m.group(1))
+                        cool_text = dec.get("parameters", {}).get("text", cool_text)
+                    except Exception:
+                        pass
+                
+                # Dispatch as terminal summary
+                await self.execute_dispatch(cool_text, "Pinky (Summary)", shutdown_event=shutdown_event, is_internal=True)
+            except Exception as e:
+                logging.error(f"[HUB] Grounding Gate failed: {e}")

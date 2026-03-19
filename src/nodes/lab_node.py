@@ -191,23 +191,45 @@ async def triage_response(raw_text: str) -> str:
 @mcp.tool()
 async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
     """
-    [FEAT-184/154] The Sentient Sentinel: Performs dynamic situational triage.
-    Determines INTENT, VIBE (expert domain), and provides coordination HINTS.
+    [FEAT-184/154/230] The Sentient Sentinel: Performs dynamic situational triage.
+    Determines INTENT, VIBE (expert domain), and provides scalar importance metrics.
     """
 
     system_override = (
-        "ROLE: Situational Triage.\n"
-        "TASK: Respond with a single line using this EXACT format:\n"
-        "INTENT|DOMAIN|SITUATION|HINTS\n"
-        "EXAMPLE: STRATEGIC|exp_tlm|Archive Extraction|Focus on technical blocks.\n"
-        "RULES: 1. No JSON. 2. No markdown. 3. Pick ONE domain: exp_tlm, exp_bkm, exp_for, standard.\n"
+        "ROLE: Situational Auditor.\n"
+        "TASK: Analyze the query and provide a high-fidelity scalar triage.\n"
+        "FORMAT: Return ONLY a JSON object with this schema:\n"
+        "{\n"
+        "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL\",\n"
+        "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\",\n"
+        "  \"casual\": 0.0-1.0,\n"
+        "  \"intrigue\": 0.0-1.0,\n"
+        "  \"importance\": 0.0-1.0,\n"
+        "  \"situation\": \"Short description\",\n"
+        "  \"hints\": \"Coordination guidance\"\n"
+        "}\n"
+        "RULE: Scalar values must be grounded in query complexity and directness.\n"
+        f"Context Density: {turn_density:.2f}\n"
         f"Analyze: {query}"
     )
     
-    response = await node.generate_response(query, system_override=system_override, max_tokens=150, disable_tools=True)
+    response = await node.generate_response(query, system_override=system_override, max_tokens=250, disable_tools=True)
+    
     # [FEAT-131] Robust JSON extraction
     match = re.search(r'(\{.*\})', response, re.DOTALL)
-    return match.group(1) if match else json.dumps({"intent": "STRATEGIC", "domain": "standard", "situation": "[UNKNOWN]", "hints": "Proceed with caution."})
+    if match:
+        return match.group(1)
+    
+    # Fallback for parsing errors
+    return json.dumps({
+        "intent": "STRATEGIC", 
+        "domain": "standard", 
+        "casual": 0.5,
+        "intrigue": 0.5,
+        "importance": 0.5,
+        "situation": "[UNKNOWN]", 
+        "hints": "Proceed with caution."
+    })
 
 
 @mcp.tool()
