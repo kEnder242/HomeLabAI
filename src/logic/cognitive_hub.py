@@ -346,204 +346,199 @@ class CognitiveHub:
             except Exception as e:
                 logging.error(f"[HUB] Archivist failed: {e}")
 
-        if not is_casual:
+        if triage_data.get("intent") != "CASUAL":
             selected_expert = await self._route_expert_domain(query)
-
-        if is_casual and not is_extraction and not mic_active and retry_count == 0:
-            if "pinky" in self.residents:
-                # [FEAT-222] Direct Pinky turn for casual input
-                res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": f"[SITUATION: {current_situation}] {vibe_hints}"})
-                await self.execute_dispatch(res.content[0].text, "Pinky", shutdown_event=shutdown_event)
-                return True
         else:
-            pinky_intuition = ""
-            shadow_intuition = ""
+            selected_expert = triage_data.get("domain", "standard")
+
+        # [FEAT-231] Baseline Fuel established before parallel spark
+        fuel = float(triage_data.get("importance", 0.5))
+
+        pinky_intuition = ""
+        shadow_intuition = ""
+        
+        # [FEAT-184] Uncertainty Gate (Amygdala Reflex)
+        uncertainty = float(triage_data.get("uncertainty", 0.0))
+        if uncertainty > 0.7:
+            await self.broadcast({
+                "brain": "Detecting cognitive dissonance... requesting clarification turns. Poit!",
+                "brain_source": "Pinky (Reflex)",
+                "channel": "insight",
+                "is_internal": False,
+                "final": False
+            })
+
+        # [FEAT-229] Parallel Local Fan-out: Pinky & Shadow Spark Simultaneously
+        pinky_task = None
+        shadow_task = None
+        
+        if "pinky" in self.residents and retry_count == 0:
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": self.get_oracle_signal("Pinky"),
+                "brain_source": "Pinky",
+                "final": False
+            })
+            # Stage 1: Pinky (Persona/Triage)
+            pinky_task = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
+                "query": query, 
+                "context": f"[SITUATION: {current_situation}] {vibe_hints}"
+            }))
+
+        if "brain" in self.residents and brain_is_remote and retry_count == 0:
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": "Initiating local technical intuition...",
+                "brain_source": "Shadow",
+                "final": False
+            })
+            # [FEAT-231] Scalar Verbosity Directive
+            v_hint = "Be laconic." if fuel < 0.4 else "Provide moderate depth."
             
-            # [FEAT-184] Uncertainty Gate (Amygdala Reflex)
-            uncertainty = float(triage_data.get("uncertainty", 0.0))
-            if uncertainty > 0.7:
-                await self.broadcast({
-                    "brain": "Detecting cognitive dissonance... requesting clarification turns. Poit!",
-                    "brain_source": "Pinky (Reflex)",
-                    "channel": "insight",
-                    "is_internal": False,
-                    "final": False
-                })
+            # Stage 2: Shadow Brain (Technical Intuition)
+            shadow_task = asyncio.create_task(self.residents["brain"].call_tool("shallow_think", {
+                "task": query, 
+                "context": f"Triage: [PENDING]\nTruth: {historical_context}\nDirective: {v_hint}"
+            }))
 
-            # [FEAT-229] Parallel Local Fan-out: Pinky & Shadow Spark Simultaneously
-            pinky_task = None
-            shadow_task = None
+        # Await local results
+        if pinky_task or shadow_task:
+            tasks = []
+            if pinky_task:
+                tasks.append(pinky_task)
+            if shadow_task:
+                tasks.append(shadow_task)
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 1. Process Pinky result (Persona always ascends)
+        if pinky_task and not pinky_task.exception():
+            res = pinky_task.result()
+            pinky_intuition = res.content[0].text
+            await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
             
-            if "pinky" in self.residents and retry_count == 0:
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": self.get_oracle_signal("Pinky"),
-                    "brain_source": "Pinky",
-                    "final": False
-                })
-                # Stage 1: Pinky (Persona/Triage)
-                pinky_task = asyncio.create_task(self.residents["pinky"].call_tool("facilitate", {
-                    "query": query, 
-                    "context": f"[SITUATION: {current_situation}] {vibe_hints}"
-                }))
+            # [FEAT-230] Pinky intuition can "Add Fuel" to the relay
+            if any(k in pinky_intuition.lower() for k in ["trace", "log", "error", "driver", "silicon"]):
+                fuel = min(1.0, fuel + 0.3)
+                logging.info(f"[HUB] Pinky boosted Fuel: {fuel:.2f}")
 
-            if "brain" in self.residents and brain_is_remote and retry_count == 0:
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": "Initiating local technical intuition...",
-                    "brain_source": "Shadow",
-                    "final": False
-                })
-                # Stage 2: Shadow Brain (Technical Intuition)
-                # Note: Shadow starts without Pinky's result to minimize latency
-                shadow_task = asyncio.create_task(self.residents["brain"].call_tool("shallow_think", {
-                    "task": query, 
-                    "context": f"Triage: [PENDING]\nTruth: {historical_context}"
-                }))
-
-            # Await local results
-            if pinky_task or shadow_task:
-                tasks = []
-                if pinky_task:
-                    tasks.append(pinky_task)
-                if shadow_task:
-                    tasks.append(shadow_task)
-                await asyncio.gather(*tasks, return_exceptions=True)
-
-            # 1. Process Pinky result (Persona always ascends)
-            fuel = float(triage_data.get("importance", 0.5))
+        # 2. Process Shadow result (Speculative Promotion)
+        if shadow_task and not shadow_task.exception():
+            s_res = shadow_task.result()
+            shadow_intuition = s_res.content[0].text
             
-            if pinky_task and not pinky_task.exception():
-                res = pinky_task.result()
-                pinky_intuition = res.content[0].text
-                await self.execute_dispatch(pinky_intuition, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
-                
-                # [FEAT-230] Pinky intuition can "Add Fuel" to the relay
-                # If Pinky is verbose or uses technical keywords, boost fuel
-                if any(k in pinky_intuition.lower() for k in ["trace", "log", "error", "driver", "silicon"]):
-                    fuel = min(1.0, fuel + 0.3)
-                    logging.info(f"[HUB] Pinky boosted Fuel: {fuel:.2f}")
-
-            # 2. Process Shadow result (Speculative Promotion)
-            if shadow_task and not shadow_task.exception():
-                s_res = shadow_task.result()
-                shadow_intuition = s_res.content[0].text
-                
-                # [FEAT-229] The Promotion Gate
-                # Only dispatch Shadow intuition to the UI if Fuel is sufficient
-                if fuel > 0.4:
-                    await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
-                else:
-                    logging.info(f"[HUB] Shadow intuition discarded (Fuel: {fuel:.2f}).")
-
-            # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
-            if self.brain_online and "brain" in self.residents:
-                oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
-                oracle_signal = self.get_oracle_signal(oracle_cat)
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": oracle_signal,
-                    "brain_source": "Brain",
-                    "final": False
-                })
-                
-                hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
-                shadow_tag = f"\n\n[SHADOW_INTUITION]: {shadow_intuition}" if shadow_intuition else ""
-                truth_tag = f"\n\n[ARCHIVAL_TRUTH]: {historical_context}" if historical_context else ""
-                
-                history_tag = ""
-                if self.resonant_history:
-                    history_content = "\n".join(self.resonant_history[-3:])
-                    history_tag = f"\n\n[RESONANT_HISTORY]:\n{history_content}"
-                
-                if pinky_intuition:
-                    self.resonant_history.append(f"- {pinky_intuition}")
-                    if len(self.resonant_history) > 10:
-                        self.resonant_history.pop(0)
-
-                tool_allowlist = ["ask_brain", "reply_to_user"]
-                archival_map_context = ""
-                if selected_expert in ["exp_for", "exp_tlm"] or is_extraction:
-                    tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map", "read_chronological_excerpts"])
-                    if self.semantic_map:
-                        strat = len(self.semantic_map.get("strategic_layer", []))
-                        themes = list(self.semantic_map.get("analytical_layer", {}).keys())
-                        archival_map_context = f"\n[ARCHIVAL_TOPOGRAPHY]: Archive contains {strat} Diamond anchors themes: {themes}."
-
-                metadata = {
-                    "expert_adapter": selected_expert,
-                    "behavioral_guidance": getattr(self, "current_vibe_guidance", ""),
-                    "pinky_hearing": pinky_intuition,
-                    "shadow_intuition": shadow_intuition,
-                    "archival_truth": historical_context,
-                    "resonant_history": self.resonant_history[-3:],
-                    "tool_allowlist": tool_allowlist,
-                    "sources": historical_sources
-                }
-                
-                # Execute Sovereignty turn with mandatory completion
-                res_deep = await self.monitor_task_with_tics(
-                    self.residents["brain"].call_tool("deep_think", {
-                        "task": f"{query}{hearing_tag}{shadow_tag}{truth_tag}{history_tag}{archival_map_context}", 
-                        "metadata": metadata
-                    })
-                )
-                result_text = res_deep.content[0].text
-
-                # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
-                if not is_extraction:
-                    if not self.auditor and "pinky" in self.residents:
-                        self.auditor = CognitiveAudit(self.residents["pinky"])
-                    
-                    is_valid = True
-                    if self.auditor:
-                        # Judge technical consistency
-                        is_valid = await self.auditor.audit_technical_truth(query, result_text, vibe_hints)
-                    
-                    if not is_valid:
-                        if retry_count == 1:
-                            # [FEAT-179] The Hallway Protocol (Agentic-R)
-                            logging.warning(f"[FEAT-179] Audit FAILED. Triggering Hallway Protocol for: {query}")
-                            await self.broadcast({
-                                "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
-                                "brain_source": "Pinky (Forensic)",
-                                "channel": "insight",
-                                "is_internal": True
-                            })
-                            try:
-                                scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-                                proc = await asyncio.create_subprocess_exec(sys.executable, scan_script, "--keyword", query, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                                await proc.communicate()
-                            except Exception as e:
-                                logging.error(f"[HALLWAY] Scan execution failed: {e}")
-                            return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
-                        
-                        # [FEAT-173] Strategic Pivot: Recursive retry with Audit failure in context
-                        logging.warning("[HUB] [FEAT-173] Strategic Pivot triggered by Auditor.")
-                        return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
-
-                await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
-
-                # [FEAT-227] The Grounding Gate: Post-Synthesis Persona Summary
-                await self.evaluate_grounding("Brain", result_text, fuel, shutdown_event)
+            # [FEAT-229] The Promotion Gate (Threshold: 0.2)
+            if fuel > 0.2:
+                await self.execute_dispatch(shadow_intuition, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
             else:
-                # [SOVEREIGN GATE] Forbidden to failover if this is a high-fidelity extraction
-                if is_extraction:
-                    await self.execute_dispatch("❌ Sovereign offline. Archive extraction forbidden in failover mode.", "Brain (Error)", shutdown_event=shutdown_event)
-                    return True
+                logging.info(f"[HUB] Shadow intuition discarded (Fuel: {fuel:.2f}).")
 
-                # Standard failover for casual/strategic
-                failover_text = ""
-                if shadow_intuition:
-                     failover_text = await self.execute_dispatch(shadow_intuition, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
-                elif "pinky" in self.residents:
-                     # Final fallback to Pinky
-                     res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[FAILOVER]: {query}", "context": ""})
-                     failover_text = await self.execute_dispatch(res.content[0].text, "Brain (Failover)", shutdown_event=shutdown_event)
+        # [FEAT-207] Tricameral Flow Stage 3: Sovereign Brain (Deep Synthesis)
+        # Only trigger Sovereign if Fuel is high (Threshold: 0.6)
+        if self.brain_online and "brain" in self.residents and fuel > 0.6:
+            oracle_cat = "RETRIEVING" if historical_context else "HANDSHAKE"
+            oracle_signal = self.get_oracle_signal(oracle_cat)
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": oracle_signal,
+                "brain_source": "Brain",
+                "final": False
+            })
+            
+            hearing_tag = f"\n\n[PINKY_HEARING]: {pinky_intuition}" if pinky_intuition else ""
+            shadow_tag = f"\n\n[SHADOW_INTUITION]: {shadow_intuition}" if shadow_intuition else ""
+            truth_tag = f"\n\n[ARCHIVAL_TRUTH]: {historical_context}" if historical_context else ""
+            
+            history_tag = ""
+            if self.resonant_history:
+                history_content = "\n".join(self.resonant_history[-3:])
+                history_tag = f"\n\n[RESONANT_HISTORY]:\n{history_content}"
+            
+            if pinky_intuition:
+                self.resonant_history.append(f"- {pinky_intuition}")
+                if len(self.resonant_history) > 10:
+                    self.resonant_history.pop(0)
+
+            tool_allowlist = ["ask_brain", "reply_to_user"]
+            archival_map_context = ""
+            if selected_expert in ["exp_for", "exp_tlm"] or is_extraction:
+                tool_allowlist.extend(["list_cabinet", "read_document", "peek_strategic_map", "read_chronological_excerpts"])
+                if self.semantic_map:
+                    strat = len(self.semantic_map.get("strategic_layer", []))
+                    themes = list(self.semantic_map.get("analytical_layer", {}).keys())
+                    archival_map_context = f"\n[ARCHIVAL_TOPOGRAPHY]: Archive contains {strat} Diamond anchors themes: {themes}."
+
+            metadata = {
+                "expert_adapter": selected_expert,
+                "behavioral_guidance": getattr(self, "current_vibe_guidance", ""),
+                "pinky_hearing": pinky_intuition,
+                "shadow_intuition": shadow_intuition,
+                "archival_truth": historical_context,
+                "resonant_history": self.resonant_history[-3:],
+                "tool_allowlist": tool_allowlist,
+                "sources": historical_sources,
+                "verbosity_directive": "Provide full-spectrum exhaustive synthesis." if fuel > 0.8 else "Provide moderate technical depth."
+            }
+            
+            # Execute Sovereignty turn with mandatory completion
+            res_deep = await self.monitor_task_with_tics(
+                self.residents["brain"].call_tool("deep_think", {
+                    "task": f"{query}{hearing_tag}{shadow_tag}{truth_tag}{history_tag}{archival_map_context}", 
+                    "metadata": metadata
+                })
+            )
+            result_text = res_deep.content[0].text
+
+            # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
+            if not is_extraction:
+                if not self.auditor and "pinky" in self.residents:
+                    self.auditor = CognitiveAudit(self.residents["pinky"])
                 
-                # [FEAT-227] Grounding for failover technical outputs
-                if failover_text:
-                    await self.evaluate_grounding("Shadow", failover_text, fuel, shutdown_event)
+                is_valid = True
+                if self.auditor:
+                    # Judge technical consistency
+                    is_valid = await self.auditor.audit_technical_truth(query, result_text, vibe_hints)
+                
+                if not is_valid:
+                    if retry_count == 1:
+                        # [FEAT-179] The Hallway Protocol (Agentic-R)
+                        logging.warning(f"[FEAT-179] Audit FAILED. Triggering Hallway Protocol for: {query}")
+                        await self.broadcast({
+                            "brain": "Expert pivot insufficient... performing deep archival harvest. Poit!",
+                            "brain_source": "Pinky (Forensic)",
+                            "channel": "insight",
+                            "is_internal": True,
+                            "final": True
+                        })
+                        try:
+                            scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
+                            proc = await asyncio.create_subprocess_exec(sys.executable, scan_script, "--keyword", query, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                            await proc.communicate()
+                        except Exception as e:
+                            logging.error(f"[HALLWAY] Scan execution failed: {e}")
+                        return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+                    
+                    # [FEAT-173] Strategic Pivot: Recursive retry with Audit failure in context
+                    logging.warning("[HUB] [FEAT-173] Strategic Pivot triggered by Auditor.")
+                    return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+
+            await self.execute_dispatch(result_text, "Brain (Result)", sources=historical_sources, shutdown_event=shutdown_event)
+
+            # [FEAT-227] The Grounding Gate: Post-Synthesis Persona Summary
+            await self.evaluate_grounding("Brain", result_text, fuel, shutdown_event)
+        else:
+            # [SOVEREIGN GATE] Forbidden to failover if this is a high-fidelity extraction
+            if is_extraction:
+                await self.execute_dispatch("❌ Sovereign offline or Fuel insufficient for archive extraction.", "Brain (Error)", shutdown_event=shutdown_event, final=True)
+                return True
+
+            # Terminal turns for non-strategic queries (Fuel <= 0.6)
+            if fuel <= 0.6:
+                logging.info(f"[HUB] Strategic relay terminal at Stage 2 (Fuel: {fuel:.2f}).")
+                # Shadow grounding if Shadow spoke but Brain did not
+                if shadow_intuition and fuel > 0.2:
+                    await self.evaluate_grounding("Shadow", shadow_intuition, fuel, shutdown_event)
+
+        return True
 
         return True
 
