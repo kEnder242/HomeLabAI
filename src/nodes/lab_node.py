@@ -193,6 +193,7 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
     """
     [FEAT-184/154/230] The Sentient Sentinel: Performs dynamic situational triage.
     Determines INTENT, VIBE (expert domain), and provides scalar importance metrics.
+    [FEAT-231] Intent Steerage: Adjusts Fuel based on direct address and tool keywords.
     """
 
     system_override = (
@@ -200,7 +201,7 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
         "TASK: Analyze the query and provide a high-fidelity scalar triage.\n"
         "FORMAT: Return ONLY a JSON object with this schema:\n"
         "{\n"
-        "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL\",\n"
+        "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL | OPERATIONAL\",\n"
         "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\",\n"
         "  \"casual\": 0.0-1.0,\n"
         "  \"intrigue\": 0.0-1.0,\n"
@@ -208,7 +209,12 @@ async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
         "  \"situation\": \"Short description\",\n"
         "  \"hints\": \"Coordination guidance\"\n"
         "}\n"
-        "RULE: Scalar values must be grounded in query complexity and directness.\n"
+        "STEERAGE RULES:\n"
+        "1. If user addresses 'Brain', importance must be >= 0.7.\n"
+        "2. If user addresses 'Pinky', casual should be high and importance < 0.5.\n"
+        "3. If keywords like 'close', 'restart', 'neuralyzer' appear, intent is OPERATIONAL.\n"
+        "4. If query relates to technical history or specific years, importance must be >= 0.6.\n"
+        "5. Scalar values must be grounded in query complexity.\n"
         f"Context Density: {turn_density:.2f}\n"
         f"Analyze: {query}"
     )
