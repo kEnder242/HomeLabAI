@@ -66,7 +66,6 @@ class CognitiveHub:
                     if json_str.count('"') % 2 != 0:
                         json_str += '"'
                     json_str += '}' * (open_braces - close_braces)
-
             else:
                 return None
 
@@ -84,7 +83,7 @@ class CognitiveHub:
         Ensures persona is maintained even when tools are used for steering.
         """
         # 1. Clean and Strip Node Artifacts
-        clean_text = text.replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
+        clean_text = str(text).replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
         
         # [FEAT-110] Shadow Moat
         if "Brain" in source:
@@ -134,7 +133,6 @@ class CognitiveHub:
                                         break
                                 if tool:
                                     break
-
 
                     # Handle Known Tools
                     if tool == "ask_brain":
@@ -214,37 +212,40 @@ class CognitiveHub:
         logging.info(f"[USER] Intercom Query: {query}")
         self.current_fuel = 0.0
         self.current_topic = "Casual"
+        intent = "STRATEGIC"
 
-        # 1. Lab Node Triage (Lab Node [FEAT-184/154/233])
-        triage_data = {"intent": "STRATEGIC", "domain": "standard", "topic": "Casual", "casual": 0.5, "intrigue": 0.5, "importance": 0.5}
+        # 1. Lab Node Triage
         if "lab" in self.residents:
             try:
-                # Use standard Sampling bridge for triage
                 t_res = await self.residents["lab"].call_tool("native_sample", {"query": query})
                 t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
-                    triage_data.update({k.lower(): v for k, v in t_parsed.items()})
-                
-                # Multiplicative Fuel Function [FEAT-231.2]
-                raw_imp = float(triage_data.get("importance", 0.5))
-                raw_cas = float(triage_data.get("casual", 0.5))
-                raw_int = float(triage_data.get("intrigue", 0.5))
-                self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
-                self.current_topic = triage_data.get("topic", "Casual")
+                    triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
+                    
+                    # Multiplicative Fuel Function
+                    raw_imp = float(triage_data_update.get("importance", 0.5))
+                    raw_cas = float(triage_data_update.get("casual", 0.5))
+                    raw_int = float(triage_data_update.get("intrigue", 0.5))
+                    self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
+                    self.current_topic = triage_data_update.get("topic", "Casual")
+                    intent = triage_data_update.get("intent", "STRATEGIC")
             except Exception as e:
                 logging.error(f"[HUB] Triage Failed: {e}")
                 self.current_fuel = 0.2
+                intent = "STRATEGIC"
 
         fuel_start = self.current_fuel
 
-        # [FEAT-231.1] Operational Shortcut (Using Sampling)
-        if triage_data.get("intent") == "OPERATIONAL":
+        # [FEAT-231.1] Operational Shortcut
+        if intent == "OPERATIONAL":
             if "pinky" in self.residents:
-                res = await self.residents["pinky"].call_tool("native_sample", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
-                return await self.execute_dispatch(res.content[0].text, "System", final=True)
+                p_res = await self.residents["pinky"].call_tool("native_sample", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
+                return await self.execute_dispatch(p_res.content[0].text, "System", final=True)
 
-        # 3. Proactive Archivist (Year detection [FEAT-228])
+        selected_expert = await self._route_expert_domain(query) if intent != "CASUAL" else "standard"
+
+        # 3. Proactive Archivist
         historical_context = ""
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
@@ -254,7 +255,7 @@ class CognitiveHub:
             except Exception:
                 pass
 
-        # 4. Parallel Local Inference (Phase 2: Hub as Host)
+        # 4. Parallel Local Inference
         pinky_text = ""
         shadow_text = ""
         
@@ -263,34 +264,31 @@ class CognitiveHub:
             if "pinky" in self.residents:
                 p_context = (f"[ROUTE]: PINKY -> BRAIN\n[FUEL]: {fuel_start:.2f} | [TOPIC]: {self.current_topic}\n"
                              f"[MODE]: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
-                # [FEAT-240] Host provides steering tools to the model weights
                 p_res = await self.residents["pinky"].call_tool("native_sample", {
                     "query": query, 
                     "context": p_context,
                     "tools": ["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"]
                 })
-                pinky_text = p_res.content[0].text
+                pinky_text = str(p_res.content[0].text)
                 await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, final=True)
 
         async def process_shadow():
             nonlocal shadow_text
             if "shadow" in self.residents:
                 s_context = (f"[FUEL]: {fuel_start:.2f} | [ROLE]: TECHNICAL_INTUITION")
-                # Shadow can also use steering tools
                 s_res = await self.residents["shadow"].call_tool("native_sample", {
                     "query": query, 
                     "context": s_context,
                     "tools": ["ask_brain", "shallow_think"]
                 })
-                shadow_text = s_res.content[0].text
+                shadow_text = str(s_res.content[0].text)
                 if self.current_fuel > 0.2:
                     await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, final=True)
 
         await asyncio.gather(process_pinky(), process_shadow())
 
-        # 5. Sovereign Brain (Post-Action Check)
+        # 5. Sovereign Brain
         if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6:
-            # Context formatting for the Brain
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
@@ -304,34 +302,33 @@ class CognitiveHub:
             b_res = await self.residents["brain"].call_tool("native_sample", {
                 "query": query, 
                 "context": b_context,
-                "behavioral_guidance": verbosity,
+                "behavioral_guidance": f"{verbosity} (Expert Domain: {selected_expert})",
                 "tools": ["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"]
             })
-            brain_text = b_res.content[0].text
+            brain_full = str(b_res.content[0].text)
             
-            # Cognitive Audit [FEAT-190]
+            # Cognitive Audit
             if not getattr(self, "is_extraction", False):
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
-                if self.auditor and not await self.auditor.audit_technical_truth(query, brain_text, ""):
-                    # RETRY LOOP ON AUDIT FAILURE (Using Sampling)
-                    retract = await self.residents["pinky"].call_tool("native_sample", {"query": "[AUDIT_FAILURE]", "context": brain_text[:100]})
-                    await self.execute_dispatch(retract.content[0].text, "Pinky (Retraction)", final=True)
+                if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
+                    retract_res = await self.residents["pinky"].call_tool("native_sample", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100]})
+                    retract_full = str(retract_res.content[0].text)
+                    await self.execute_dispatch(retract_full, "Pinky (Retraction)", final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
-            await self.execute_dispatch(brain_text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
-            await self.evaluate_grounding("Brain", brain_text, self.current_fuel, shutdown_event)
+            await self.execute_dispatch(brain_full, "Brain (Result)", shutdown_event=shutdown_event, final=True)
+            await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event)
 
         return True
 
     async def evaluate_grounding(self, source, text, fuel, shutdown_event):
-        """[FEAT-227] The Grounding Gate (Cooldown)."""
         if "pinky" not in self.residents or fuel < 0.7:
             return
         cooldown_query = f"The {source} hemisphere provided deep technical synthesis. Provide a persona TL;DR."
         try:
-            # Use Sampling for Grounding
-            res_cool = await self.residents["pinky"].call_tool("native_sample", {"query": cooldown_query, "context": text[:500]})
-            await self.execute_dispatch(res_cool.content[0].text, "Pinky (Summary)", is_internal=True)
+            res_res = await self.residents["pinky"].call_tool("native_sample", {"query": cooldown_query, "context": text[:500]})
+            res_full = str(res_res.content[0].text)
+            await self.execute_dispatch(res_full, "Pinky (Summary)", is_internal=True)
         except Exception:
             pass
