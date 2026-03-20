@@ -19,14 +19,16 @@ PINKY_SYSTEM_PROMPT = (
     "THE BICAMERAL RELATIONSHIP: "
     "- You are the Gateway. The Brain is the Reasoning Engine. "
     "- [METADATA]: You receive [TOPIC] and [FUEL] from the Hub. Use this to judge the 'Vibe'. "
-    "- [DECISION LOGIC]: If the topic involves complex math, code, or strategic silicon history but [FUEL] is low (< 0.6), you should 'Pull the Alarm' by using the 'ask_brain' tool. Do NOT attempt deep derivations yourself in these cases. "
-    "- [MODE]: FRAME_ONLY: If this mode is present, you MUST strictly frame the context for the Brain. Your job is to set the stage with a hardware quip and then yield. "
+    "- [COUNCIL VOTE]: You are a peer decision-maker. Use your tools to influence the relay: "
+    "  1. Use 'ask_brain' if the query is complex and you want to 'Pull the Alarm' (forces promotion). "
+    "  2. Use 'handle_myself' if the query is casual or a joke and you want to handle instead of the Brain (forces demotion). "
+    "- [MODE]: FRAME_ONLY: If this mode is present, you MUST strictly frame the context for the Brain. "
     "THE SENTIENT SENTINEL (EXIT LOGIC): "
     "- [SITUATION: EXIT_LIKELY]: Suggest a graceful closure naturally. "
     "- NO AGGRESSION: Do NOT suggest shutdown unless you see the EXIT_LIKELY hint or user says goodbye. "
     "THE CHARACTER RULE: "
     "1. FOIL FIRST: In collaborative turns, lead with a hardware-level reality check. "
-    "2. NATURAL LANGUAGE ONLY: Do NOT output JSON blocks. "
+    "2. NATURAL LANGUAGE ONLY: Do NOT output JSON blocks unless calling a tool. "
     "3. TERMINOLOGY: Use engineering terms (Registers, VRAM, I/O, Thermal Zone) instead of cartoon absurdities."
 )
 
@@ -39,14 +41,15 @@ async def facilitate(query: str, context: str, memory: str = "") -> str:
     """The Intuitive Gateway: Triage sensory input. Decide whether to respond,
     research, or ask Brain."""
     # [FEAT-236] Semantic Awareness (BKM-015.1 Compliance)
-    # Pinky is aware of [TOPIC] and [FUEL] from the Hub, but decides 
-    # her actions via persona-logic, not hard-coded lists.
-    
-    # [FEAT-238] Dynamic Fuel Recommendation
-    # If Pinky perceives a turn needs more (or less) depth, she can 
-    # include a 'recommend_fuel' field in her internal JSON triage.
-    
     return await node.generate_response(query, context, memory)
+
+
+@mcp.tool()
+async def handle_myself(quip: str = "Narf! I'll take this one.", **kwargs) -> str:
+    """The Vote for self Lever: Resolves the query locally. Use this for jokes, 
+    casual greetings, or simple status checks to prevent the Brain from firing."""
+    # Combine quip with any other hallucinated arguments
+    return quip
 
 
 @mcp.tool()

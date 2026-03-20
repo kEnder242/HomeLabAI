@@ -54,10 +54,19 @@ class CognitiveHub:
         if match:
             json_str = match.group(1)
         else:
-            # Salvage truncated JSON
-            if "{" in clean:
-                json_str = clean[clean.find("{"):] + '\n  "error": "truncated"\n}'
+            # [HARDENING] Salvage truncated JSON tool calls
+            if '{"tool":' in clean:
+                # Find the last valid-ish start and append necessary closings
+                start_idx = clean.find('{"tool":')
+                json_str = clean[start_idx:]
+                # Count braces
+                open_braces = json_str.count('{')
+                close_braces = json_str.count('}')
+                if open_braces > close_braces:
+                    json_str += '}' * (open_braces - close_braces)
             else:
+                return None
+
                 return None
 
         # 3. Structural Sanitization
@@ -103,12 +112,17 @@ class CognitiveHub:
                     tool = data.get("tool")
                     params = data.get("parameters", {})
                     
-                    # [FEAT-238] Dynamic Fuel Calibration
-                    # If a node recommends a fuel shift, apply it to the Hub state
-                    if "recommend_fuel" in data:
-                        new_fuel = float(data["recommend_fuel"])
-                        logging.info(f"[HUB] Mid-Relay Fuel Calibration: {self.current_fuel:.2f} -> {new_fuel:.2f} (Source: {source})")
-                        self.current_fuel = new_fuel
+                    # [FEAT-238] Council of Hemispheres (Peer Vote)
+                    # Nodes can override the Lab Node's initial fuel estimate via tools
+                    if tool == "ask_brain":
+                        logging.info(f"[HUB] Council Vote: PROMOTING turn via 'ask_brain' (Source: {source})")
+                        self.current_fuel = 1.0
+                    elif tool == "handle_myself":
+                        logging.info(f"[HUB] Council Vote: Voting self turn via 'handle_myself' (Source: {source})")
+                        self.current_fuel = 0.0
+                        # handle_myself is a local terminal tool, we return the quip directly
+                        quip = params.get("quip", "Narf! I've got this.")
+                        return await self._dispatch_plain_text(quip, source, is_internal, final=final)
 
                     # [FEAT-237] Loop-Breaker
                     primary_entry_points = {
@@ -319,7 +333,7 @@ class CognitiveHub:
         if triage_data.get("intent") == "OPERATIONAL":
             logging.info("[HUB] Operational Shortcut triggered.")
             if "pinky" in self.residents:
-                res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}"})
+                res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
                 return await self.execute_dispatch(res.content[0].text, "System", shutdown_event=shutdown_event, final=True)
 
         if triage_data.get("intent") != "CASUAL":
