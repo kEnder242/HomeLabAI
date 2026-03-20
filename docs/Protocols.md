@@ -234,5 +234,33 @@
 **Why:** Rigid mapping causes "Logic Drift" when new tools are added. The agent must rely on semantic "Vibes" to select its cognitive loadout.
 **The Rule:** No `.py` logic block may map a domain to a tool or adapter via a switch/case or list-matching. All behavioral mapping must be retrieved via vector similarity from the `behavioral_dna` collection.
 **Trigger:** Every `CognitiveHub` dispatch must first perform a "Vibe Check" against the neural archive.
-**Scars:** Previous hardcoded `if "rapl" in query` logic failed to capture "What's the power draw?" which lacks the keyword but carries the vibe.
+
+---
+
+## BKM-016: The Resonant Planning Pattern
+**Role: [SPRINT] - Planning & Execution Protocol**
+
+> [!IMPORTANT]
+> **PURPOSE:** To ensure transparent, iterative, and high-fidelity project evolution through collaborative planning and surgical execution.
+
+### 1. Document Architecture
+*   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_X.md`.
+*   **Structure**: Every task MUST include a **How** (the technical implementation path) and a **Why** (the strategic rationale).
+*   **Pointers**: Conductor-level plans (`conductor/tracks/<track_id>/plan.md`) must contain explicit pointers to the Master Sprint Plan and any relevant forensic audits or BKMs.
+
+### 2. The Planning Phase (The "Greenlight" Gate)
+*   **The Wait**: The Agent is FORBIDDEN from beginning implementation until the User provides a "Greenlight" or "Buy-in" on the proposed Sprint Plan.
+*   **Strategic Inquiry**: Use the Planning Phase to brainstorm "Traps," waffling risks (e.g., hardcoding vs. BKM-015.1), and lost requirements from previous sessions.
+
+### 3. Iterative Append Protocol (History over Overwrites)
+*   **Immutability of Early Phases**: Do NOT re-write or summarize existing phases of an active sprint plan to "save space."
+*   **Append Revisions**: New requirements, course corrections, or missed tasks discovered mid-sprint must be appended as new **Phases** at the end of the document.
+*   **Rationale Report**: Every set of appended phases must include a **Forensic Rationale** section explaining the "Why" behind the mid-sprint pivot.
+
+### 4. Execution & Validation
+*   **Look First**: Before creating new tools or scripts, the Agent MUST consult `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md` and reuse existing diagnostic infrastructure.
+*   **Surgical Gating**: Every edit must be followed by `ruff check` (linting) to prevent testing "bad code."
+*   **Conductor Delegation**: For complex or high-volume tasks, the Agent should use the Conductor track to delegate work to sub-agents, preserving the primary context window for strategic orchestration.
+
+---
 
