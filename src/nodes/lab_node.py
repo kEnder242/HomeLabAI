@@ -34,8 +34,13 @@ mcp = node.mcp
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 SEMANTIC_MAP_FILE = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
 
-# NOTE: triage_situational_vibe and triage_response wrappers removed.
-# Node now speaks natively via BicameralNode.run() sampling bridge.
+@mcp.tool()
+async def close_lab() -> str:
+    """The Master Switch: Gracefully shuts down the Mind."""
+    return json.dumps({
+        "status": "shutdown",
+        "message": "Acme Lab is closing. Goodnight."
+    })
 
 @mcp.tool()
 async def generate_bkm(topic: str, category: str = "validation") -> str:

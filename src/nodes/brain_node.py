@@ -19,8 +19,20 @@ BRAIN_SYSTEM_PROMPT = (
 node = BicameralNode("Brain", BRAIN_SYSTEM_PROMPT)
 mcp = node.mcp
 
-# NOTE: deep_think and shallow_think wrappers removed.
-# Node now speaks natively via BicameralNode.run() sampling bridge.
+@mcp.tool()
+async def shallow_think(task: str, context: str = "") -> str:
+    """Fast Reflex: Provide a short, immediate response for simple strategic queries."""
+    shallow_prompt = (
+        "You are The Brain. Fast mode. Reply in < 15 words. "
+        "IDENTITY: High-authority technical strategist. "
+        "Style: Precise and laconic. "
+        "Acknowledge with a brief insight or conclusion."
+    )
+    # Return full string block
+    full_response = ""
+    async for token in node.generate_response(task, context, system_override=shallow_prompt, max_tokens=100):
+        full_response += token
+    return full_response
 
 @mcp.tool()
 async def peek_strategic_map() -> str:

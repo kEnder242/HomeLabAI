@@ -2,6 +2,7 @@ import aiohttp
 import json
 import os
 import logging
+import time
 from liger_kernel.transformers import (
     apply_liger_kernel_to_mistral,
     apply_liger_kernel_to_qwen2,
@@ -30,7 +31,8 @@ class BicameralNode:
         self._last_brain_prime = 0
         self.brain_online = True
         self._engine_cache = None
-        self._probe_ttl_success = 3600  # 60 Minutes [FEAT-206]
+        self._last_probe = 0
+        self._probe_ttl_success = 300  # 5 Minutes [FEAT-206]
         self._probe_ttl_failure = 15   # 15 Seconds [FEAT-206]
 
         # Load configs
@@ -49,7 +51,6 @@ class BicameralNode:
             """
             The standard MCP Sampling bridge. Bypasses wrappers to talk to the model weights.
             """
-            # If the Hub provides tools, we inject them into the guidance
             system_override = self.system_prompt
             if behavioral_guidance:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
@@ -58,7 +59,11 @@ class BicameralNode:
                 tool_desc = "\n".join([f"- {t}" for t in tools])
                 system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
             
-            return await self.generate_response(query, context, system_override=system_override)
+            # [FEAT-233] Internal Streaming: Exhaust the generator and return the block
+            full_response = ""
+            async for token in self.generate_response(query, context, system_override=system_override):
+                full_response += token
+            return full_response
 
     def _patch_model(self, model_id):
         """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
@@ -101,10 +106,11 @@ class BicameralNode:
                     logging.warning(f"[{self.name}] Tier {env_mod} resolved to {m} but NOT FOUND on host.")
 
             if available_models:
-                if env_mod in available_models:
-                    return env_mod
+                for am in available_models:
+                    if env_mod in am:
+                        return am
                 if engine_type == "VLLM" and env_mod and (env_mod.startswith("/") or "unified-base" in available_models):
-                    return available_models[0]
+                    return "unified-base" if "unified-base" in available_models else available_models[0]
                 logging.warning(f"[{self.name}] Environment model {env_mod} NOT FOUND on host. Forcing fallback.")
             else:
                 return env_mod
@@ -115,11 +121,19 @@ class BicameralNode:
                 if p in available_models:
                     return p
 
+        if "unified-base" in available_models:
+            return "unified-base"
+
         medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
         return medium or "llama3.2:3b"
 
     async def ping_engine(self, force=False):
-        """[FEAT-192] Checks if the backend engine is responsive."""
+        """[FEAT-192] Checks if the backend engine is responsive with TTL throttling."""
+        if not force and self._engine_cache:
+            ttl = self._probe_ttl_failure if self._engine_cache.get("type") == "NONE" else self._probe_ttl_success
+            if (time.time() - self._last_probe < ttl):
+                return True, "Cached"
+
         engine_type = "VLLM" if self.primary_host == "localhost" else "OLLAMA"
         base_url = f"http://{self.primary_host}:8088" if engine_type == "VLLM" else f"http://{self.primary_host}:11434"
         models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
@@ -128,6 +142,8 @@ class BicameralNode:
             async with aiohttp.ClientSession() as session:
                 async with session.get(models_url, timeout=5) as r:
                     if r.status != 200:
+                        self._engine_cache = {"type": "NONE"}
+                        self._last_probe = time.time()
                         return False, f"Engine {engine_type} unreachable (Status {r.status})"
                     data = await r.json()
                     
@@ -139,21 +155,27 @@ class BicameralNode:
                     
                     target = self._resolve_best_model(available, engine_type)
                     self._engine_cache = {"url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", "model": target, "type": engine_type}
+                    self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
         except Exception as e:
+            self._engine_cache = {"type": "NONE"}
+            self._last_probe = time.time()
             return False, f"Connection failed: {e}"
 
     async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False):
-        """Standard interface for LLM calls across the bicameral mind."""
-        if not self._engine_cache:
+        """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
+        if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
             if not ok:
-                return f"Error: {msg}"
+                yield f"Error: {msg}"
+                return
 
         engine = self._engine_cache
+        if engine.get("type") == "NONE":
+            yield "Error: No engine online."
+            return
+
         system_prompt = system_override or self.system_prompt
-        
-        # [FEAT-203] Injected context formatting
         if context:
             system_prompt += f"\n\n[SITUATIONAL_CONTEXT]:\n{context}"
 
@@ -162,35 +184,36 @@ class BicameralNode:
                 "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
                 "max_tokens": max_tokens,
-                "temperature": 0.2
+                "temperature": 0.2,
+                "stream": True
             }
-            # Multi-LoRA support [FEAT-145]
             if self.lora_name:
                 payload["model"] = self.lora_name
         else:
             payload = {
                 "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
-                "stream": False,
+                "stream": True,
                 "options": {"temperature": 0.2, "num_predict": max_tokens}
             }
 
         self._mirror_trace("send", payload, url=engine["url"], metadata=metadata)
 
+        full_response = ""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(engine["url"], json=payload, timeout=120) as r:
-                    data = await r.json()
-                    if engine["type"] == "VLLM":
-                        response = data["choices"][0]["message"]["content"]
-                    else:
-                        response = data["message"]["content"]
-                    
-                    self._mirror_trace("recv", response)
-                    return response
+            if engine["type"] == "VLLM":
+                async for token in self._stream_vllm(engine["url"], payload):
+                    full_response += token
+                    yield token
+            else:
+                async for token in self._stream_ollama(engine["url"], payload):
+                    full_response += token
+                    yield token
+            
+            self._mirror_trace("recv", full_response)
         except Exception as e:
             logging.error(f"[{self.name}] Generation failed: {e}")
-            return f"Egad! Logic failure: {e}"
+            yield f"Egad! Logic failure: {e}"
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
@@ -233,25 +256,14 @@ class BicameralNode:
     def _mirror_trace(self, phase, data, url=None, metadata=None):
         """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
         try:
-            # Absolute path hardening for trace logs
-            lab_root = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            )
+            lab_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             log_dir = os.path.join(lab_root, "logs")
             os.makedirs(log_dir, exist_ok=True)
-
             log_path = os.path.join(log_dir, f"trace_{self.name}.json")
-
             mode = "w" if phase == "send" else "a"
-            entry = {
-                "phase": phase,
-                "timestamp": time.time(),
-                "data": data,
-                "metadata": metadata,
-            }
+            entry = {"phase": phase, "timestamp": time.time(), "data": data, "metadata": metadata}
             if url:
                 entry["url"] = url
-
             with open(log_path, mode) as f:
                 f.write(json.dumps(entry, indent=2) + "\n")
         except Exception:
