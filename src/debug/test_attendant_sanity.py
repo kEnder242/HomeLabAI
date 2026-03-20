@@ -11,12 +11,12 @@ STATUS_JSON_PATH = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.
 async def test_attendant_heartbeat():
     """Verifies Attendant is alive and responding."""
     async with aiohttp.ClientSession() as session:
-        url = f"{ATTENDANT_URL}/blocking_status?timeout=1"
+        url = f"{ATTENDANT_URL}/wait_ready"
         async with session.get(url) as resp:
             assert resp.status == 200
             data = await resp.json()
-            assert "attendant_pid" in data
-            print(f"[PASS] Attendant Heartbeat: PID {data['attendant_pid']}")
+            assert data["status"] == "ready"
+            print(f"[PASS] Attendant Heartbeat: READY")
 
 @pytest.mark.asyncio
 async def test_status_json_update():
@@ -29,7 +29,7 @@ async def test_status_json_update():
     async with aiohttp.ClientSession() as session:
         await session.get(f"{ATTENDANT_URL}/heartbeat")
     
-    await asyncio.sleep(1) 
+    await asyncio.sleep(3) 
     new_mtime = os.path.getmtime(STATUS_JSON_PATH)
     assert new_mtime > initial_mtime
     

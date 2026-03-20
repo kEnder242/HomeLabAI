@@ -1,64 +1,81 @@
 import asyncio
 import json
-import websockets
-import time
+import logging
+import sys
+import os
+
+# Paths
+_SELF_DIR = os.path.dirname(os.path.abspath(__file__))
+_SRC_DIR = os.path.dirname(_SELF_DIR)
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+from logic.cognitive_hub import CognitiveHub
+
+# Mock Objects
+class MockNode:
+    def __init__(self, name):
+        self.name = name
+    async def create_message(self, **kwargs):
+        async def mock_generator():
+            tokens = [f"[{self.name}] ", "Token 1, ", "Token 2, ", "Final."]
+            for t in tokens:
+                await asyncio.sleep(0.1) # Simulate network/inference latency
+                yield t
+        return mock_generator()
+    
+    async def call_tool(self, tool, params):
+        if tool == "native_sample":
+            return type('obj', (object,), {'content': [type('obj', (object,), {'text': '{"intent": "STRATEGIC", "importance": 0.8, "casual": 0.1, "intrigue": 0.9, "topic": "Testing"} '})]})
+        return None
 
 async def test_waterfall_spark():
-    """
-    [FEAT-233] Waterfall Spark Test:
-    Verifies that the Hub sparks the Pinky/Shadow relay IMMEDIATELY upon
-    parsing the 'intent' field, without waiting for the full JSON object.
-    """
-    uri = "ws://localhost:8765"
-    query = "[ME] Analyze the 580 driver logs for thermal anomalies."
+    print("--- [TEST] Waterfall Spark & Handshake Tic ---")
     
-    print(f"[TEST] Connecting to {uri}...")
-    try:
-        async with websockets.connect(uri) as ws:
-            # 1. Wait for Hub Ready
-            while True:
-                msg = await ws.recv()
-                data = json.loads(msg)
-                if data.get("state") == "ready":
-                    break
-            
-            print(f"[TEST] Hub Ready. Sending Query: {query}")
-            start_time = time.time()
-            await ws.send(json.dumps({"type": "text_input", "content": query}))
-            
-            first_crosstalk_time = None
-            nodes_responded = set()
-            
-            # 2. Monitor for Early Spark
-            async for msg in ws:
-                data = json.loads(msg)
-                m_type = data.get("type")
-                source = data.get("brain_source", "System")
-                
-                if m_type == "crosstalk":
-                    if not first_crosstalk_time:
-                        first_crosstalk_time = time.time()
-                        delay = first_crosstalk_time - start_time
-                        print(f"[SUCCESS] Early Spark detected at {delay:.2f}s (Node: {source})")
-                    
-                    nodes_responded.add(source)
-                
-                # If we see any final text from Pinky, the test is effectively passing
-                if data.get("final") and "Pinky" in source:
-                    print(f"[SUCCESS] Pinky finalized her turn.")
-                    break
-                
-                if time.time() - start_time > 30:
-                    print("[FAILURE] Timeout waiting for Waterfall Spark.")
-                    break
-            
-            if len(nodes_responded) >= 2:
-                print(f"✅ WATERFALL VERIFIED: {nodes_responded} sparked in parallel.")
-            else:
-                print(f"❌ WATERFALL FAILED: Only {nodes_responded} responded.")
+    broadcasts = []
+    async def mock_broadcast(msg):
+        broadcasts.append(msg)
+        if msg.get("type") == "crosstalk":
+            print(f"  [WS] Crosstalk: {msg.get('brain')}")
+        else:
+            print(f"  [WS] Dispatch: {msg.get('brain')} ({msg.get('brain_source')})")
 
-    except Exception as e:
-        print(f"Error: {e}")
+    residents = {
+        "lab": MockNode("Lab"),
+        "pinky": MockNode("Pinky"),
+        "shadow": MockNode("Shadow"),
+        "brain": MockNode("Brain")
+    }
+
+    hub = CognitiveHub(
+        residents=residents,
+        broadcast_callback=mock_broadcast,
+        sensory_manager=None,
+        brain_online_callback=True,
+        get_oracle_signal_callback=lambda x: "Oracle Signal",
+        monitor_task_with_tics_callback=None
+    )
+    hub.is_extraction = True # Disable audit for mock test
+
+    print("[STEP 1] Processing High-Fuel Query...")
+    start_time = asyncio.get_event_loop().time()
+    await hub.process_query("Test high fuel waterfall", trigger_briefing_callback=None)
+    end_time = asyncio.get_event_loop().time()
+    
+    total_duration = end_time - start_time
+    print(f"[STEP 2] Turn Complete in {total_duration:.2f}s")
+
+    # Verify Handshake Tics
+    tics = [b for b in broadcasts if b.get("type") == "crosstalk"]
+    assert len(tics) >= 3, f"Expected at least 3 handshake tics, got {len(tics)}"
+    print("[PASS] Handshake Tics verified.")
+
+    # Verify Sequential Pop (Paragraph Pop)
+    dispatches = [b for b in broadcasts if b.get("brain_source") in ["Pinky (Triage)", "Brain (Intuition)", "Brain (Result)"]]
+    assert len(dispatches) == 3
+    print("[PASS] Paragraph Pop buffering verified.")
+
+    print("--- [RESULT] Waterfall Logic is RESONANT ---")
 
 if __name__ == "__main__":
     asyncio.run(test_waterfall_spark())

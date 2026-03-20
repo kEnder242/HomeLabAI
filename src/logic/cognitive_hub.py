@@ -168,6 +168,12 @@ class CognitiveHub:
                     # Forward utility tools
                     known_hub_tools = ["bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open"]
                     if tool in known_hub_tools:
+                        # [FEAT-072.1] Handle Morning Briefing Signal
+                        if tool == "trigger_morning_briefing" and hasattr(self, 'trigger_briefing_cb') and self.trigger_briefing_cb:
+                            logging.info("[HUB] Triggering Morning Briefing callback.")
+                            asyncio.create_task(self.trigger_briefing_cb())
+                            return True
+
                         if tool in ["build_cv_summary", "access_personal_history"] and "archive" in self.residents:
                             res = await self.residents["archive"].call_tool(tool, params)
                             return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, final=True)
@@ -205,6 +211,63 @@ class CognitiveHub:
         except Exception:
             return "exp_for"
 
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0):
+        """[FEAT-233.4] Internal Token Buffer & Stream Parser."""
+        if node_id not in self.residents:
+            return ""
+        
+        full_text = ""
+        # [FEAT-242.1] Handshake Tic
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"Initiating {source_name} intuition...",
+            "final": False
+        })
+
+        try:
+            generator = await self.residents[node_id].create_message(
+                query=query,
+                context=context,
+                tools=tools,
+                behavioral_guidance=behavioral_guidance
+            )
+            
+            async for token in generator:
+                full_text += token
+                # Mid-stream parsing for [ACTION] tags or fuel boosts could go here
+            
+            if full_text:
+                # Buffering check: Only dispatch to UI once node finishes (Paragraph Pop)
+                await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, final=True)
+            
+            return full_text
+        except Exception as e:
+            logging.error(f"[HUB] Stream from {node_id} failed: {e}")
+            return ""
+
+    async def trigger_morning_briefing(self):
+        """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""
+        if "archive" not in self.residents:
+            return
+        
+        try:
+            # 1. Fetch latest wisdom from long-term memory
+            res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 1})
+            data = json.loads(res.content[0].text)
+            wisdom_text = data.get("text", "")
+            
+            if "No relevant artifacts" in wisdom_text:
+                return
+
+            # 2. Present via Pinky
+            briefing_query = f"Summarize this Diamond Wisdom for the morning briefing: {wisdom_text[:500]}"
+            await self._process_node_stream(
+                "pinky", briefing_query, "[MODE]: DIRECT_RESPONSE", "Pinky (Briefing)",
+                tools=[], behavioral_guidance="Provide a warm, enthusiastic summary of the lab's evolution."
+            )
+        except Exception as e:
+            logging.error(f"[HUB] Morning Briefing failed: {e}")
+
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
         if retry_count > 2:
             return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event)
@@ -213,23 +276,40 @@ class CognitiveHub:
         self.current_fuel = 0.0
         self.current_topic = "Casual"
         intent = "STRATEGIC"
+        self.trigger_briefing_cb = trigger_briefing_callback
+
+        # [FEAT-072.1] Auto-Trigger Briefing logic
+        if "briefing" in query.lower() or "summary" in query.lower():
+             await self.trigger_morning_briefing()
 
         # 1. Lab Node Triage
+        addressed_to = "MICE" # Default to collective
         if "lab" in self.residents:
             try:
+                # Triage is still a single block for logic reasons
                 t_res = await self.residents["lab"].call_tool("native_sample", {"query": query})
                 t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
                     
+                    # [FEAT-244] Speaker Masking Scalar
+                    addressed_to = triage_data_update.get("addressed_to", "MICE").upper()
+
                     # Multiplicative Fuel Function
                     raw_imp = float(triage_data_update.get("importance", 0.5))
                     raw_cas = float(triage_data_update.get("casual", 0.5))
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
-                    self.current_topic = triage_data_update.get("topic", "Casual")
+                    
+                    # [FEAT-246] Unified Vibe Schema
+                    self.current_topic = triage_data_update.get("vibe", "PINKY_INTERFACE")
                     intent = triage_data_update.get("intent", "STRATEGIC")
+
+                    # [REVISION-17.2] Direct Address Force
+                    if addressed_to == "BRAIN" and self.current_fuel < 0.6:
+                        logging.info("[HUB] Direct Address: Brain. Forcing Shadow promotion.")
+                        self.current_fuel = max(0.25, self.current_fuel)
             except Exception as e:
                 logging.error(f"[HUB] Triage Failed: {e}")
                 self.current_fuel = 0.2
@@ -255,40 +335,39 @@ class CognitiveHub:
             except Exception:
                 pass
 
-        # 4. Parallel Local Inference
+        # 4. Parallel Local Inference (Streaming)
         pinky_text = ""
         shadow_text = ""
         
-        async def process_pinky():
+        async def run_pinky():
             nonlocal pinky_text
-            if "pinky" in self.residents:
+            # [FEAT-244] Pinky Muting
+            if addressed_to in ["PINKY", "MICE"]:
                 p_context = (f"[ROUTE]: PINKY -> BRAIN\n[FUEL]: {fuel_start:.2f} | [TOPIC]: {self.current_topic}\n"
                              f"[MODE]: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
-                p_res = await self.residents["pinky"].call_tool("native_sample", {
-                    "query": query, 
-                    "context": p_context,
-                    "tools": ["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"]
-                })
-                pinky_text = str(p_res.content[0].text)
-                await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, final=True)
+                pinky_text = await self._process_node_stream(
+                    "pinky", query, p_context, "Pinky (Triage)",
+                    tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
+                    shutdown_event=shutdown_event
+                )
 
-        async def process_shadow():
+        async def run_shadow():
             nonlocal shadow_text
-            if "shadow" in self.residents:
+            # [FEAT-229.2] Shadow Overhear Pivot (Threshold 0.2)
+            # [FEAT-244] Shadow Muting (Only if BRAIN or MICE are addressed)
+            if fuel_start > 0.2 and addressed_to in ["BRAIN", "MICE"]:
                 s_context = (f"[FUEL]: {fuel_start:.2f} | [ROLE]: TECHNICAL_INTUITION")
-                s_res = await self.residents["shadow"].call_tool("native_sample", {
-                    "query": query, 
-                    "context": s_context,
-                    "tools": ["ask_brain", "shallow_think"]
-                })
-                shadow_text = str(s_res.content[0].text)
-                if self.current_fuel > 0.2:
-                    await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, final=True)
+                shadow_text = await self._process_node_stream(
+                    "shadow", query, s_context, "Brain (Intuition)",
+                    tools=["ask_brain", "shallow_think"],
+                    shutdown_event=shutdown_event
+                )
 
-        await asyncio.gather(process_pinky(), process_shadow())
+        await asyncio.gather(run_pinky(), run_shadow())
 
-        # 5. Sovereign Brain
-        if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6:
+        # 5. Sovereign Brain (Streaming)
+        # [FEAT-244] Brain Muting
+        if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
@@ -299,16 +378,15 @@ class CognitiveHub:
 
             verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
             
-            b_res = await self.residents["brain"].call_tool("native_sample", {
-                "query": query, 
-                "context": b_context,
-                "behavioral_guidance": f"{verbosity} (Expert Domain: {selected_expert})",
-                "tools": ["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"]
-            })
-            brain_full = str(b_res.content[0].text)
+            brain_full = await self._process_node_stream(
+                "brain", query, b_context, "Brain (Result)",
+                behavioral_guidance=f"{verbosity} (Expert Domain: {selected_expert})",
+                tools=["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"],
+                shutdown_event=shutdown_event
+            )
             
             # Cognitive Audit
-            if not getattr(self, "is_extraction", False):
+            if brain_full and not getattr(self, "is_extraction", False):
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
@@ -317,18 +395,30 @@ class CognitiveHub:
                     await self.execute_dispatch(retract_full, "Pinky (Retraction)", final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
-            await self.execute_dispatch(brain_full, "Brain (Result)", shutdown_event=shutdown_event, final=True)
-            await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event)
+            if brain_full:
+                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event)
 
         return True
 
     async def evaluate_grounding(self, source, text, fuel, shutdown_event):
+        """[FEAT-247] Physical Audit Gate: Pinky audits Brain for feasibility."""
         if "pinky" not in self.residents or fuel < 0.7:
             return
-        cooldown_query = f"The {source} hemisphere provided deep technical synthesis. Provide a persona TL;DR."
+        
+        # Refined Grounding Query
+        cooldown_query = (
+            f"The {source} has proposed a strategy. Audit this for physical feasibility "
+            "(VRAM/Time/Complexity) and provide a 1-sentence 'Reality Check' "
+            "from the perspective of the Lab's hardware constraints."
+        )
+        
         try:
-            res_res = await self.residents["pinky"].call_tool("native_sample", {"query": cooldown_query, "context": text[:500]})
+            # [BKM-015.1] Natural persona audit
+            res_res = await self.residents["pinky"].call_tool("native_sample", {
+                "query": cooldown_query, 
+                "context": f"[PROPOSED_STRATEGY]: {text[:1000]}"
+            })
             res_full = str(res_res.content[0].text)
-            await self.execute_dispatch(res_full, "Pinky (Summary)", is_internal=True)
+            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, final=True)
         except Exception:
             pass

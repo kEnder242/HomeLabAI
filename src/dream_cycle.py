@@ -56,22 +56,31 @@ async def remote_brain_think(prompt, context):
 
 async def audit_synthesis(summary, context):
     """
-    [FEAT-191] Judicial Feedback Loop: Uses peer-node auditing
-    to verify 'Diamond Wisdom' quality before storage.
+    [BKM-028] Blind Audit Rule: Uses Pinky (Local) to audit the Brain (Remote).
+    Ensures peer-based verification without single-node bias.
     """
     from infra.cognitive_audit import CognitiveAudit
+    import aiohttp
     
-    # We use a mock node wrapper for the auditor to call the remote brain
-    class AuditorProxy:
+    # Forced Local Auditor Proxy (Pinky)
+    class PinkyAuditorProxy:
         async def call_tool(self, name, params):
-            # The Auditor library expects a node.call_tool interface
-            # We wrap remote_brain_think to satisfy this
-            res = await remote_brain_think(params["task"], "AUDIT_MODE")
-            class MockRes:
-                def __init__(self, t): self.content = [type('obj', (object,), {'text': t})]
-            return MockRes(res)
+            # [FEAT-240] Direct use of sampling bridge for audit
+            payload = {
+                "model": "llama-3.2-3b-awq",
+                "prompt": f"[TASK]: {params['query']}\n\n[CONTEXT]: {params.get('context', '')}",
+                "stream": False,
+                "options": {"num_predict": 128, "temperature": 0.1}
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(PINKY_URL, json=payload, timeout=30) as resp:
+                    data = await resp.json()
+                    res_text = data.get("response", "FAIL")
+                    class MockRes:
+                        def __init__(self, t): self.content = [type('obj', (object,), {'text': t})]
+                    return MockRes(res_text)
 
-    auditor = CognitiveAudit(AuditorProxy())
+    auditor = CognitiveAudit(PinkyAuditorProxy())
     constraints = "Technical precision, no roleplay, no conversational filler, high-density synthesis."
     
     is_valid = await auditor.audit_technical_truth(
