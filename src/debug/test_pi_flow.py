@@ -27,7 +27,7 @@ async def test_pi_to_21_digits_resonant_flow():
                 await asyncio.sleep(0.5)
 
             # 2. Query
-            query = "What is the value of pi to exactly 21 digits? I need the technical truth."
+            query = "[ME] What is the value of pi to exactly 21 digits? I need the technical truth."
             await ws.send(json.dumps({"type": "text_input", "content": query}))
 
             # 3. Collect
@@ -45,7 +45,7 @@ async def test_pi_to_21_digits_resonant_flow():
                     if not text: continue
 
                     # Flexible Source Detection
-                    if "Pinky" in source and ("Intuition" in source or "Result" in source):
+                    if "Pinky" in source and ("Intuition" in source or "Result" in source or "Triage" in source):
                         print(f"  [SYNERGY] Pinky Intuition received: {text[:30]}...")
                         found_intuition = True
                     

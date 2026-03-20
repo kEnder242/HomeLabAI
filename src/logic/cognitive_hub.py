@@ -307,9 +307,12 @@ class CognitiveHub:
                     intent = triage_data_update.get("intent", "STRATEGIC")
 
                     # [REVISION-17.2] Direct Address Force
-                    if addressed_to == "BRAIN" and self.current_fuel < 0.6:
-                        logging.info("[HUB] Direct Address: Brain. Forcing Shadow promotion.")
-                        self.current_fuel = max(0.25, self.current_fuel)
+                    if addressed_to == "BRAIN":
+                        logging.info("[HUB] Direct Address: Brain. Forcing Sovereign promotion.")
+                        self.current_fuel = max(0.65, self.current_fuel)
+                    elif addressed_to == "PINKY" and self.current_fuel > 0.2:
+                        logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
+                        self.current_fuel = min(0.15, self.current_fuel)
             except Exception as e:
                 logging.error(f"[HUB] Triage Failed: {e}")
                 self.current_fuel = 0.2
