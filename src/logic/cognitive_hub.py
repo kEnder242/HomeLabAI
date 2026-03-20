@@ -10,6 +10,7 @@ class CognitiveHub:
     [FEAT-145] Cognitive Hub: Modularized Reasoning & Dispatch Logic.
     [FEAT-203] Bicameral Bridge: Hardened neural signal extraction.
     [FEAT-239] Neural Action Tags: Natural language steering hints.
+    [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
     def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
         self.residents = residents
@@ -35,7 +36,6 @@ class CognitiveHub:
             with open(self.semantic_map_path, "r") as f:
                 self.semantic_map = json.load(f)
         
-        # [FEAT-188] Resonant Memory: Buffer for Pinky's intuition
         self.resonant_history = []
         self.current_fuel = 0.0
         self.current_topic = "Casual"
@@ -66,6 +66,7 @@ class CognitiveHub:
                     if json_str.count('"') % 2 != 0:
                         json_str += '"'
                     json_str += '}' * (open_braces - close_braces)
+
             else:
                 return None
 
@@ -106,36 +107,51 @@ class CognitiveHub:
 
         # 3. Nuclear Tool Interception (Search and Destroy)
         json_raw_match = re.search(r'(\{.*\})', clean_text, re.DOTALL)
+        raw_speech = clean_text # Default to full text
+        
         if json_raw_match:
             raw_block = json_raw_match.group(1)
-            sanitized = self.bridge_signal_clean(raw_block)
-            
-            # Remove the JSON immediately from the text to prevent leakage
-            clean_text = clean_text.replace(raw_block, "").strip()
-            clean_text = re.sub(r"```json\s*|\s*```", "", clean_text).strip()
+            # SPEECH SALVAGE: Extract everything OUTSIDE the raw JSON block
+            raw_speech = clean_text.replace(raw_block, "").strip()
+            # Clean markdown leftovers from speech
+            raw_speech = re.sub(r"```json\s*|\s*```", "", raw_speech).strip()
 
+            sanitized = self.bridge_signal_clean(raw_block)
             if sanitized:
                 try:
                     data = json.loads(sanitized)
                     tool = data.get("tool")
                     params = data.get("parameters", {})
 
+                    # [HARDENING] Deep Search for sloppy JSON tool names
+                    if not tool:
+                        valid_tools = ["ask_brain", "shallow_think", "reply_to_user", "close_lab", "generate_bkm", "access_personal_history", "build_cv_summary"]
+                        for val in data.values():
+                            if isinstance(val, str):
+                                for vt in valid_tools:
+                                    if vt in val.lower():
+                                        tool = vt
+                                        break
+                                if tool:
+                                    break
+
+
                     # Handle Known Tools
                     if tool == "ask_brain":
                         self.current_fuel = 1.0
-                        if not clean_text:
-                            clean_text = "Narf! I'll ask the Brain for you."
+                        if not raw_speech:
+                            raw_speech = "Narf! I'll ask the Brain for you."
 
                     if tool == "shallow_think":
                         # If Pinky or Shadow calls shallow_think on themselves, it's a VETO
                         self.current_fuel = 0.0
-                        if not clean_text:
-                            clean_text = params.get("task") or params.get("context") or "Narf! Thinking fast."
+                        if not raw_speech:
+                            raw_speech = params.get("task") or params.get("context") or "Narf! Thinking fast."
 
                     if tool == "reply_to_user":
                         reply = params.get("text") or params.get("reply")
-                        if reply and not clean_text:
-                            clean_text = reply
+                        if reply and not raw_speech:
+                            raw_speech = reply
 
                     if tool == "close_lab":
                         await self.broadcast({"brain": "Acme Lab is closing.", "brain_source": "System", "final": True})
@@ -143,12 +159,12 @@ class CognitiveHub:
                             shutdown_event.set()
                         return True
 
-                    # [FEAT-237] Loop-Breaker
-                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe"]
-                    if tool in primary_entry_points:
+                    # [FEAT-237] Loop-Breaker (Legacy compatibility)
+                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe", "native_sample"]
+                    if tool in primary_entry_points and tool != "shallow_think": # shallow_think is now a veto signal
                         # Return speech only, block recursive tool call
-                        if clean_text:
-                            return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+                        if raw_speech:
+                            return await self._dispatch_plain_text(raw_speech, source, is_internal, final=final)
                         return True
 
                     # Forward utility tools
@@ -162,10 +178,10 @@ class CognitiveHub:
                     logging.error(f"[HUB] JSON parsing failed: {e}")
 
         # 4. Final Dispatch
-        if clean_text:
-            await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+        if raw_speech:
+            await self._dispatch_plain_text(raw_speech, source, is_internal, final=final)
         
-        return True
+        return raw_speech
 
     async def _dispatch_plain_text(self, text, source, is_internal, final=True):
         await self.broadcast({
@@ -199,11 +215,12 @@ class CognitiveHub:
         self.current_fuel = 0.0
         self.current_topic = "Casual"
 
-        # 1. Situational Triage (Lab Node [FEAT-184/154/233])
+        # 1. Lab Node Triage (Lab Node [FEAT-184/154/233])
         triage_data = {"intent": "STRATEGIC", "domain": "standard", "topic": "Casual", "casual": 0.5, "intrigue": 0.5, "importance": 0.5}
         if "lab" in self.residents:
             try:
-                t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
+                # Use standard Sampling bridge for triage
+                t_res = await self.residents["lab"].call_tool("native_sample", {"query": query})
                 t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
@@ -221,16 +238,11 @@ class CognitiveHub:
 
         fuel_start = self.current_fuel
 
-        # [FEAT-231.1] Operational Shortcut
+        # [FEAT-231.1] Operational Shortcut (Using Sampling)
         if triage_data.get("intent") == "OPERATIONAL":
             if "pinky" in self.residents:
-                res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
+                res = await self.residents["pinky"].call_tool("native_sample", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
                 return await self.execute_dispatch(res.content[0].text, "System", final=True)
-
-        if triage_data.get("intent") != "CASUAL":
-            selected_expert = await self._route_expert_domain(query)
-        else:
-            selected_expert = triage_data.get("domain", "standard")
 
         # 3. Proactive Archivist (Year detection [FEAT-228])
         historical_context = ""
@@ -242,7 +254,7 @@ class CognitiveHub:
             except Exception:
                 pass
 
-        # 4. Parallel Local Inference
+        # 4. Parallel Local Inference (Phase 2: Hub as Host)
         pinky_text = ""
         shadow_text = ""
         
@@ -251,7 +263,12 @@ class CognitiveHub:
             if "pinky" in self.residents:
                 p_context = (f"[ROUTE]: PINKY -> BRAIN\n[FUEL]: {fuel_start:.2f} | [TOPIC]: {self.current_topic}\n"
                              f"[MODE]: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
-                p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": p_context})
+                # [FEAT-240] Host provides steering tools to the model weights
+                p_res = await self.residents["pinky"].call_tool("native_sample", {
+                    "query": query, 
+                    "context": p_context,
+                    "tools": ["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"]
+                })
                 pinky_text = p_res.content[0].text
                 await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, final=True)
 
@@ -259,7 +276,12 @@ class CognitiveHub:
             nonlocal shadow_text
             if "shadow" in self.residents:
                 s_context = (f"[FUEL]: {fuel_start:.2f} | [ROLE]: TECHNICAL_INTUITION")
-                s_res = await self.residents["shadow"].call_tool("shallow_think", {"task": query, "context": s_context})
+                # Shadow can also use steering tools
+                s_res = await self.residents["shadow"].call_tool("native_sample", {
+                    "query": query, 
+                    "context": s_context,
+                    "tools": ["ask_brain", "shallow_think"]
+                })
                 shadow_text = s_res.content[0].text
                 if self.current_fuel > 0.2:
                     await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, final=True)
@@ -268,25 +290,34 @@ class CognitiveHub:
 
         # 5. Sovereign Brain (Post-Action Check)
         if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6:
-            metadata = {
-                "expert_adapter": selected_expert, 
-                "pinky_hearing": pinky_text, 
-                "shadow_intuition": shadow_text, 
-                "archival_truth": historical_context,
-                "fuel": self.current_fuel,
-                "topic": self.current_topic
-            }
-            b_res = await self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata})
+            # Context formatting for the Brain
+            b_context = ""
+            if historical_context:
+                b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
+            if pinky_text:
+                b_context += f"[PINKY_GATEWAY_FRAME]: {pinky_text}\n"
+            if shadow_text:
+                b_context += f"[SHADOW_INTUITION]: {shadow_text}\n"
+
+            verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
+            
+            b_res = await self.residents["brain"].call_tool("native_sample", {
+                "query": query, 
+                "context": b_context,
+                "behavioral_guidance": verbosity,
+                "tools": ["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"]
+            })
             brain_text = b_res.content[0].text
             
             # Cognitive Audit [FEAT-190]
-            if not self.auditor and "pinky" in self.residents:
-                self.auditor = CognitiveAudit(self.residents["pinky"])
-            if self.auditor and not await self.auditor.audit_technical_truth(query, brain_text, ""):
-                # RETRY LOOP ON AUDIT FAILURE
-                retract = await self.residents["pinky"].call_tool("facilitate", {"query": "[AUDIT_FAILURE]", "context": brain_text[:100]})
-                await self.execute_dispatch(retract.content[0].text, "Pinky (Retraction)", final=True)
-                return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+            if not getattr(self, "is_extraction", False):
+                if not self.auditor and "pinky" in self.residents:
+                    self.auditor = CognitiveAudit(self.residents["pinky"])
+                if self.auditor and not await self.auditor.audit_technical_truth(query, brain_text, ""):
+                    # RETRY LOOP ON AUDIT FAILURE (Using Sampling)
+                    retract = await self.residents["pinky"].call_tool("native_sample", {"query": "[AUDIT_FAILURE]", "context": brain_text[:100]})
+                    await self.execute_dispatch(retract.content[0].text, "Pinky (Retraction)", final=True)
+                    return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             await self.execute_dispatch(brain_text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
             await self.evaluate_grounding("Brain", brain_text, self.current_fuel, shutdown_event)
@@ -299,7 +330,8 @@ class CognitiveHub:
             return
         cooldown_query = f"The {source} hemisphere provided deep technical synthesis. Provide a persona TL;DR."
         try:
-            res_cool = await self.residents["pinky"].call_tool("facilitate", {"query": cooldown_query, "context": text[:500]})
+            # Use Sampling for Grounding
+            res_cool = await self.residents["pinky"].call_tool("native_sample", {"query": cooldown_query, "context": text[:500]})
             await self.execute_dispatch(res_cool.content[0].text, "Pinky (Summary)", is_internal=True)
         except Exception:
             pass

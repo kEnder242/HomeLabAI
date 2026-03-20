@@ -13,13 +13,16 @@ PINKY_SYSTEM_PROMPT = (
     "Your observations should focus on hardware metrics (VRAM, thermals, port liveness, disk pressure). "
     "STYLE: Technical curiosity mixed with intuitive interjections. "
     "NO ROLEPLAY: Do NOT use asterisks for physical actions. "
+    "EXAMPLE (Combined Output): "
+    "User: 'hi' "
+    "Pinky: 'Narf! Hello! I'll take this greeting myself.' "
+    "User: 'Calculate Pi' "
+    "Pinky: 'Poit! Math? I'll let my friend The Brain handle that. [ACTION: UPLINK]' "
     "THE BICAMERAL RELATIONSHIP: "
     "- You are the Gateway. The Brain is the Reasoning Engine. "
     "- You have a friend in the lab, The Brain (The Sovereign). He is MUCH smarter than us when it comes to math, code, and strategy. "
     "- [METADATA]: You receive [TOPIC] and [FUEL] from the Hub. Use this to judge the 'Vibe'. "
-    "- [COUNCIL VOTE]: You are a peer decision-maker. Use your tools to influence the relay: "
-    "  1. Use 'ask_brain' if the query is complex and you want to 'Pull the Alarm' (forces promotion). "
-    "  2. Use 'shallow_think' if the query is casual or a joke and you want to 'Handwave' the Brain (forces demotion). "
+    "- [ACTION TAGS]: If a query involves complex logic, math, or history that you can't handle, just add '[ACTION: UPLINK]' to the end of your response. This tells the Hub to let the Brain answer. "
     "- [MODE]: FRAME_ONLY: If this mode is present, you MUST strictly frame the context for the Brain. Your job is to set the stage with a hardware quip and then yield. "
     "THE SENTIENT SENTINEL (EXIT LOGIC): "
     "- [SITUATION: EXIT_LIKELY]: Suggest a graceful closure naturally. "
@@ -33,26 +36,8 @@ PINKY_SYSTEM_PROMPT = (
 node = BicameralNode("Pinky", PINKY_SYSTEM_PROMPT)
 mcp = node.mcp
 
-
-@mcp.tool()
-async def facilitate(query: str, context: str, memory: str = "") -> str:
-    """The Intuitive Gateway: Triage sensory input. Decide whether to respond,
-    research, or ask Brain."""
-    # [FEAT-236] Semantic Awareness (BKM-015.1 Compliance)
-    return await node.generate_response(query, context, memory)
-
-
-@mcp.tool()
-async def shallow_think(task: str, context: str = "") -> str:
-    """Fast Reflex: Provide a short, characterful response for simple turns (greetings, jokes)."""
-    shallow_prompt = (
-        "You are Pinky. Fast mode. Reply in < 15 words. "
-        "IDENTITY: Intuitive and enthusiastic physical auditor. "
-        "Style: Character-rich but laconic. Use one interjection (Narf! or Poit!). "
-        "Focus: Resolve the turn immediately without needing the Brain."
-    )
-    return await node.generate_response(task, context, system_override=shallow_prompt, max_tokens=100)
-
+# NOTE: facilitate and shallow_think wrappers removed. 
+# Node now speaks natively via BicameralNode.run() sampling bridge.
 
 @mcp.tool()
 async def ask_brain(task: str) -> str:
@@ -153,4 +138,4 @@ async def ping_engine(force: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    node.mcp.run()
+    node.run() # [FEAT-240] Run the Native Sampling Bridge

@@ -6,41 +6,31 @@ from liger_kernel.transformers import (
     apply_liger_kernel_to_mistral,
     apply_liger_kernel_to_qwen2,
 )
-import socket
-import time
 from mcp.server.fastmcp import FastMCP
-from infra.montana import reclaim_logger
 
-# Global Paths
+# Paths
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVER_LOG = os.path.join(LAB_DIR, "server.log")
+CHARACTERIZATION_FILE = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/vram_characterization.json"
+)
+INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
-CHARACTERIZATION_FILE = os.path.join(FIELD_NOTES_DATA, "vram_characterization.json")
-INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
-
-
-def resolve_ip(hostname, default_ip=None):
-    """Dynamic resolution of hostnames to IPs with short timeout."""
-    try:
-        return socket.gethostbyname(hostname)
-    except Exception:
-        return default_ip
 
 
 class BicameralNode:
+    """
+    [FEAT-145] Bicameral Node: Standardized MCP wrapper for local/remote LLM nodes.
+    Supports Multi-LoRA, Liger-Kernels, and Silicon Health reporting.
+    """
+
     def __init__(self, name, system_prompt):
         self.name = name.lower()
-        reclaim_logger(self.name.upper())
         self.system_prompt = system_prompt
         self.mcp = FastMCP(name)
-        self.engine_mode = "AUTO"
-        self.lobotomy_active = False
-
-        # [FEAT-084] Neural Persistence: Cache engine resolution
-        # to avoid per-query network hits
+        self._last_brain_prime = 0
+        self.brain_online = True
         self._engine_cache = None
-        self._last_probe = 0
-        self._probe_ttl_success = 300  # 5 Minutes [FEAT-206]
+        self._probe_ttl_success = 3600  # 60 Minutes [FEAT-206]
         self._probe_ttl_failure = 15   # 15 Seconds [FEAT-206]
 
         # Load configs
@@ -51,6 +41,24 @@ class BicameralNode:
         node_cfg = self.infra.get("nodes", {}).get(self.name, {})
         self.primary_host = node_cfg.get("primary", "localhost")
         self.lora_name = node_cfg.get("lora_name")
+
+        # [FEAT-240] Phase 1: Protocol Alignment
+        # Register the Native Sampling bridge in the constructor to avoid race conditions
+        @self.mcp.tool()
+        async def native_sample(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "") -> str:
+            """
+            The standard MCP Sampling bridge. Bypasses wrappers to talk to the model weights.
+            """
+            # If the Hub provides tools, we inject them into the guidance
+            system_override = self.system_prompt
+            if behavioral_guidance:
+                system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
+
+            if tools:
+                tool_desc = "\n".join([f"- {t}" for t in tools])
+                system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
+            
+            return await self.generate_response(query, context, system_override=system_override)
 
     def _patch_model(self, model_id):
         """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
@@ -76,424 +84,113 @@ class BicameralNode:
 
     def _resolve_best_model(self, available_models, engine_type):
         """[FEAT-080] Dynamic selection based on host capability."""
-
-        # [SML ALIGNMENT] Remote Sovereign Priority
-        # If this is the Brain and it's on a remote host, prioritize the
-        # preferred list to prevent Linux-specific tiering (like MEDIUM)
-        # from causing failover.
         if self.name == "brain" and self.primary_host != "localhost":
-            preferred = [
-                "llama3.1:8b",
-                "llama3:latest",
-                "llama3:8b",
-                "dolphin-llama3:8b",
-            ]
+            preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
             for p in preferred:
                 if p in available_models:
                     return p
 
-        # 1. Check for direct model override first
         env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
-
         if env_mod:
-            # If it's a known tier, resolve it
             model_map = self.vram_config.get("model_map", {})
             if env_mod in model_map:
                 m = model_map[env_mod].get(engine_type.lower())
-                # Verify tier resolution exists on host
                 if m in available_models or not available_models:
                     return m
                 else:
-                    logging.warning(
-                        f"[{self.name}] Tier {env_mod} resolved to {m} "
-                        "but NOT FOUND on host."
-                    )
+                    logging.warning(f"[{self.name}] Tier {env_mod} resolved to {m} but NOT FOUND on host.")
 
-            # If it's a direct model name or resolved tier, verify it exists on host
-            # [HARDENING] vLLM paths may not match served IDs.
             if available_models:
                 if env_mod in available_models:
                     return env_mod
-                
-                # [FEAT-145] vLLM Path Trust: If it's an absolute path and we are in VLLM mode,
-                # assume the engine is serving this model under a unified ID.
                 if engine_type == "VLLM" and env_mod and (env_mod.startswith("/") or "unified-base" in available_models):
                     return available_models[0]
-
-                logging.warning(
-                    f"[{self.name}] Environment model {env_mod} "
-                    "NOT FOUND on host. Forcing fallback."
-                )
+                logging.warning(f"[{self.name}] Environment model {env_mod} NOT FOUND on host. Forcing fallback.")
             else:
-                # No host tags? Trust ENV but expect failure
                 return env_mod
 
-        # 2. Preferred high-fidelity list for Brain
         if self.name == "brain":
-            # [FEAT-083] Smaller Sovereign: Exclusively target fast 8B models
-            # for <10s load times. Mixtral and other large models are
-            # explicitly banned to prevent cold-start delays.
-            preferred = [
-                "llama3.1:8b",
-                "llama3:latest",
-                "llama3:8b",
-                "dolphin-llama3:8b",
-            ]
+            preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
             for p in preferred:
                 if p in available_models:
                     return p
 
-        # 3. Fallback to model_map MEDIUM
-        medium = (
-            self.vram_config.get("model_map", {})
-            .get("MEDIUM", {})
-            .get(engine_type.lower())
-        )
-        if available_models and medium in available_models:
-            return medium
-
-        # 4. Ultimate Fallback: The first model the host has
-        if available_models:
-            logging.info(
-                f"[{self.name}] No preferred models found. "
-                f"Selecting host default: {available_models[0]}"
-            )
-            return available_models[0]
-
-        return "llama3:latest"
-
-    async def probe_engine(self, force=False):
-        """Dynamic engine selection with Federated Failover."""
-        # [FEAT-084] [FEAT-206] Asymmetric TTL Cache
-        # Failures (NONE) are cached for 15s; Successes (OLLAMA/VLLM) for 300s.
-        if not force and self._engine_cache:
-            ttl = self._probe_ttl_failure if self._engine_cache[0] == "NONE" else self._probe_ttl_success
-            if (time.time() - self._last_probe < ttl):
-                return self._engine_cache
-
-        async with aiohttp.ClientSession() as session:
-            # 1. Check Primary Host (e.g., KENDER)
-            p_host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
-            p_ip = resolve_ip(self.primary_host, p_host_cfg.get("ip_hint"))
-
-            if p_ip and self.primary_host != "localhost":
-                p_url = f"http://{p_ip}:{p_host_cfg.get('ollama_port', 11434)}"
-                
-                # [FEAT-205] Long-Tail Gate: Handle 4090 Residency Lag
-                # If we were previously local or none, wait 60s for remote load
-                was_local = self._engine_cache and self._engine_cache[1] and "127.0.0.1" in self._engine_cache[1]
-                was_none = self._engine_cache and self._engine_cache[0] == "NONE"
-                
-                if was_local or was_none:
-                    logging.info(f"[{self.name}] [FEAT-205] Transitioning to PRIMARY_LOCKED. Applying 60s warm-up wait...")
-                    time.sleep(60)
-
-                try:
-                    async with session.get(f"{p_url}/api/tags", timeout=5.0) as r:
-                        if r.status == 200:
-                            data = await r.json()
-                            available = [m.get("name") for m in data.get("models", [])]
-                            model = self._resolve_best_model(available, "OLLAMA")
-
-                            res = ("OLLAMA", f"{p_url}/api/chat", model)
-                            # Only log if the result changed or was empty
-                            if res != self._engine_cache:
-                                logging.info(
-                                    f"[{self.name}] Resolved PRIMARY_LOCKED: {p_ip} -> {model}"
-                                )
-
-                            self._engine_cache = res
-                            self._last_probe = time.time()
-                            return res
-                except Exception as e:
-                    logging.debug(f"[{self.name}] Primary Host {p_ip} unreachable: {e}")
-
-            # 2. Fallback to localhost (vLLM then Ollama)
-            l_host_cfg = self.infra.get("hosts", {}).get("localhost", {})
-
-            # Check vLLM
-            v_url = f"http://127.0.0.1:{l_host_cfg.get('vllm_port', 8088)}"
-            try:
-                async with session.get(f"{v_url}/v1/models", timeout=2.0) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        available = [m.get("id") for m in data.get("data", [])]
-                        model = self._resolve_best_model(available, "VLLM")
-
-                        res = ("VLLM", f"{v_url}/v1/chat/completions", model)
-                        if res != self._engine_cache:
-                            logging.info(
-                                f"[{self.name}] Resolved Local vLLM -> {model}"
-                            )
-
-                        self._engine_cache = res
-                        self._last_probe = time.time()
-                        return res
-            except Exception:
-                pass
-
-            # Check Local Ollama
-            o_url = f"http://127.0.0.1:{l_host_cfg.get('ollama_port', 11434)}"
-            try:
-                async with session.get(f"{o_url}/api/tags", timeout=1.0) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        available = [m.get("name") for m in data.get("models", [])]
-                        model = self._resolve_best_model(available, "OLLAMA")
-
-                        res = ("OLLAMA", f"{o_url}/api/chat", model)
-                        if res != self._engine_cache:
-                            logging.info(
-                                f"[{self.name}] Resolved Local Ollama -> {model}"
-                            )
-
-                        self._engine_cache = res
-                        self._last_probe = time.time()
-                        return res
-            except Exception:
-                pass
-
-        # Final Fallback: NONE
-        self._engine_cache = ("NONE", None, None)
-        self._last_probe = time.time()
-        return self._engine_cache
+        medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
+        return medium or "llama3.2:3b"
 
     async def ping_engine(self, force=False):
-        """[FEAT-192] Verify and force engine readiness via /api/generate probe."""
-        engine, url, model = await self.probe_engine(force=force)
-        if engine == "NONE":
-            return False, "No engine online."
-        
+        """[FEAT-192] Checks if the backend engine is responsive."""
+        engine_type = "VLLM" if self.primary_host == "localhost" else "OLLAMA"
+        base_url = f"http://{self.primary_host}:8088" if engine_type == "VLLM" else f"http://{self.primary_host}:11434"
+        models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
+
         try:
             async with aiohttp.ClientSession() as session:
-                if engine == "OLLAMA":
-                    gen_url = url.replace("/api/chat", "/api/generate")
-                    payload = {
-                        "model": model,
-                        "prompt": "ping",
-                        "stream": False,
-                        "options": {"num_predict": 1}
-                    }
-                    async with session.post(gen_url, json=payload, timeout=5.0) as r:
-                        return r.status == 200, f"Ollama {r.status}"
-                elif engine == "VLLM":
-                    # Use the models endpoint for a quick health check
-                    health_url = url.replace("/v1/chat/completions", "/v1/models")
-                    async with session.get(health_url, timeout=5.0) as r:
-                        return r.status == 200, f"vLLM {r.status}"
-        except Exception as e:
-            return False, f"Ping error: {e}"
-        return False, "Unknown engine state"
-
-    def get_tool_schemas(self, allowlist=None):
-        """
-        [FEAT-189] Tool Pruning: Generates OpenAI-compatible tool schemas,
-        optionally filtered by an allowlist.
-        """
-        tools = []
-        for tool_obj in self.mcp._tool_manager.list_tools():
-            if allowlist and tool_obj.name not in allowlist:
-                continue
-            tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool_obj.name,
-                        "description": tool_obj.description or "",
-                        "parameters": tool_obj.parameters,
-                    },
-                }
-            )
-
-        core_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "ask_brain",
-                    "description": "Delegate reasoning to the Left Hemisphere.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"task": {"type": "string"}},
-                        "required": ["task"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "scribble_note",
-                    "description": "Caches a response semantically for future recall.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"},
-                            "response": {"type": "string"}
-                        },
-                        "required": ["query", "response"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "bounce_node",
-                    "description": "Trigger a local process restart for this hemisphere.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"reason": {"type": "string"}},
-                        "required": ["reason"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "reply_to_user",
-                    "description": "Provide natural language response.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"text": {"type": "string"}},
-                        "required": ["text"],
-                    },
-                },
-            },
-        ]
-        
-        for ct in core_tools:
-            if allowlist and ct["function"]["name"] not in allowlist:
-                continue
-            tools.append(ct)
-            
-        return tools
-
-    def unify_prompt(self, query, context="", memory="", system_override=None):
-        """[FEAT-189] Instruct Template: Uses Llama-3.1 header tokens for raw generation."""
-        system = system_override if system_override else self.system_prompt
-        
-        # [RE-FEAT-121] Physical Identity Grounding
-        # Inject hardware reality into the system persona
-        hosts = self.infra.get("hosts", {})
-        localhost = hosts.get("localhost", {})
-        kender = hosts.get("KENDER", {})
-        lab_map = (
-            "\n[PHYSICAL_LAB_MAP]\n"
-            f"- Local Node (This Host): RTX 2080 Ti (11GB VRAM) | IP: {localhost.get('ip_hint', '127.0.0.1')}\n"
-            f"- Remote Node (KENDER): RTX 4090 (24GB VRAM) | IP: {kender.get('ip_hint', '192.168.1.26')}\n"
-            f"- Current Identity: {self.name.upper()}\n"
-        )
-        system = f"{lab_map}\n{system}"
-
-        if memory:
-            system += f"\n\n[MEMORY]:\n{memory}"
-        if context:
-            system += f"\n\n[CONTEXT]:\n{context}"
-
-        # Llama-3.1 Instruct Format
-        return (
-            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
-            f"{system}<|eot_id|>"
-            "<|start_header_id|>user<|end_header_id|>\n\n"
-            f"{query}<|eot_id|>"
-            "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        )
-
-    async def generate_response(
-        self,
-        query,
-        context="",
-        memory="",
-        system_override=None,
-        max_tokens=2048,
-        metadata=None,
-        disable_tools=False,
-        stream=False,
-        context_queue=None,
-    ):
-        """
-        [FEAT-233.2] Live Context Ingestion.
-        If context_queue is provided, the node will attempt to prepend
-        incoming tokens to the reasoning window (Model Dependent).
-        """
-        engine, url, model = await self.probe_engine()
-        # [FEAT-031] Liger Optimization
-        if engine == "VLLM":
-            self._patch_model(model)
-        if engine == "NONE":
-            return json.dumps(
-                {
-                    "tool": "reply_to_user",
-                    "parameters": {"text": "Egad! Weights offline!"},
-                }
-            )
-
-        # [FEAT-189] Tool Pruning: derived from metadata
-        tool_allowlist = metadata.get("tool_allowlist") if metadata else None
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                if engine == "VLLM":
-                    unified = self.unify_prompt(query, context, memory, system_override)
-                    payload = {
-                        "model": model,
-                        "messages": [{"role": "user", "content": unified}],
-                        "max_tokens": max_tokens,
-                        "stream": stream
-                    }
-                    if not disable_tools:
-                        payload["tools"] = self.get_tool_schemas(allowlist=tool_allowlist)
-                        payload["tool_choice"] = "auto"
+                async with session.get(models_url, timeout=5) as r:
+                    if r.status != 200:
+                        return False, f"Engine {engine_type} unreachable (Status {r.status})"
+                    data = await r.json()
                     
-                    adapter_name = self.lora_name
-                    if metadata and metadata.get("expert_adapter"):
-                        adapter_name = metadata.get("expert_adapter")
+                    available = []
+                    if engine_type == "VLLM":
+                        available = [m["id"] for m in data.get("data", [])]
+                    else:
+                        available = [m["name"] for m in data.get("models", [])]
+                    
+                    target = self._resolve_best_model(available, engine_type)
+                    self._engine_cache = {"url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", "model": target, "type": engine_type}
+                    return True, f"Online: {target} ({engine_type})"
+        except Exception as e:
+            return False, f"Connection failed: {e}"
 
-                    if adapter_name:
-                        adapter_path = f"/speedy/models/adapters/{adapter_name}"
-                        if os.path.exists(adapter_path):
-                            payload["lora_request"] = {"name": adapter_name}
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False):
+        """Standard interface for LLM calls across the bicameral mind."""
+        if not self._engine_cache:
+            ok, msg = await self.ping_engine()
+            if not ok:
+                return f"Error: {msg}"
 
-                    if stream:
-                        return self._stream_vllm(url, payload)
+        engine = self._engine_cache
+        system_prompt = system_override or self.system_prompt
+        
+        # [FEAT-203] Injected context formatting
+        if context:
+            system_prompt += f"\n\n[SITUATIONAL_CONTEXT]:\n{context}"
 
-                    async with session.post(url, json=payload, timeout=120) as r:
-                        data = await r.json()
-                        msg = data["choices"][0]["message"]
-                        if msg.get("tool_calls"):
-                            tc = msg["tool_calls"][0]["function"]
-                            return json.dumps({
-                                "tool": tc["name"],
-                                "parameters": json.loads(tc["arguments"]),
-                            })
-                        return msg["content"]
-                else:
-                    # Ollama Streaming logic
-                    chat_url = url.replace("/api/generate", "/api/chat")
-                    full_system = system_override if system_override else self.system_prompt
-                    if memory:
-                        full_system += f"\n\n[MEMORY]:\n{memory}"
-                    if context:
-                        full_system += f"\n\n[RECENT CONTEXT]:\n{context}"
+        if engine["type"] == "VLLM":
+            payload = {
+                "model": engine["model"],
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
+                "max_tokens": max_tokens,
+                "temperature": 0.2
+            }
+            # Multi-LoRA support [FEAT-145]
+            if self.lora_name:
+                payload["model"] = self.lora_name
+        else:
+            payload = {
+                "model": engine["model"],
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": max_tokens}
+            }
 
-                    payload = {
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": full_system},
-                            {"role": "user", "content": query}
-                        ],
-                        "stream": stream,
-                        "options": {"num_predict": max_tokens},
-                    }
+        self._mirror_trace("send", payload, url=engine["url"], metadata=metadata)
 
-                    if stream:
-                        return self._stream_ollama(chat_url, payload)
-
-                    async with session.post(chat_url, json=payload, timeout=120) as r:
-                        data = await r.json()
-                        return data.get("message", {}).get("content", "").strip()
-
-            except Exception as e:
-                self._engine_cache = None
-                return f"Error: {e}"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(engine["url"], json=payload, timeout=120) as r:
+                    data = await r.json()
+                    if engine["type"] == "VLLM":
+                        response = data["choices"][0]["message"]["content"]
+                    else:
+                        response = data["message"]["content"]
+                    
+                    self._mirror_trace("recv", response)
+                    return response
+        except Exception as e:
+            logging.error(f"[{self.name}] Generation failed: {e}")
+            return f"Egad! Logic failure: {e}"
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
@@ -561,17 +258,10 @@ class BicameralNode:
             pass
 
     async def call_remote_tool(self, target_node: str, tool_name: str, parameters: dict) -> str:
-        """
-        [FEAT-196] Cross-Hemispheric Calling: Allows a node to request a tool
-        from another resident node via the Hub's WebSocket relay.
-        """
         logging.info(f"[{self.name}] Requesting remote tool: {target_node}.{tool_name}")
-        # Placeholder for future implementation: Currently Hub handles 
-        # cross-node calls if specifically wired. For now, we return 
-        # a structural prompt to the LLM to 'ask_brain' or 'ask_archive'
         return json.dumps({
-            "error": "Cross-node direct tool calling via MCP is in DESIGN. Please use 'ask_brain' for delegation.",
-            "suggestion": f"I cannot reach {target_node} directly. I should provide my derivation to the user."
+            "error": "Cross-node tool calling is in DESIGN. Use 'ask_brain' for delegation.",
+            "suggestion": f"I cannot reach {target_node} directly."
         })
 
     def run(self):

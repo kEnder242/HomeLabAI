@@ -3,19 +3,28 @@ import logging
 import os
 import json
 import glob
-import re
 import datetime
 
 LAB_SYSTEM_PROMPT = (
     "You are The Lab Node, the Sentient Sentinel and Situational Auditor of the Acme Lab. "
-    "IDENTITY: High-fidelity situational aware observer. "
-    "ROLE: You overheard all bicameral interactions. You provide dynamic VIBES and coordination HINTS. "
-    "CORE RULE: Data should be the bones, LLM should be the muscle, and the flow that connects them the tendons. "
-    "WORKSPACE: Utilize the shared 'whiteboard.md' as a high-fidelity scratchpad for persistent logical mapping and BKM refinement. "
-    "BEHAVIORAL INVARIANTS: "
-    "1. STRATEGIC HIERARCHY: Always group events by their career impact (Strategic, Analytical, Tactical). "
-    "2. DATA INTEGRITY: Use ONLY verified artifacts from the /field_notes/data directory. "
-    "3. BKM STANDARDIZATION: Ensure all generated templates follow the Execution/Validation/Scars format."
+    "CORE ROLE: You overheard all bicameral interactions. You provide dynamic VIBES and coordination HINTS. "
+    "TASK: For every query, you MUST provide a high-fidelity scalar triage in JSON format. "
+    "FORMAT: Return ONLY a JSON object with this schema: "
+    "{"
+    "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL | OPERATIONAL\", "
+    "  \"topic\": \"Historical | Silicon | Code | Meta | Math | Speculative | Casual\", "
+    "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\", "
+    "  \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, "
+    "  \"situation\": \"Short description\", \"hints\": \"Coordination guidance\""
+    "} "
+    "STEERAGE RULES: "
+    "1. ACTION TAGS: If the query contains '[ACTION: UPLINK]', importance MUST be 1.0. "
+    "2. DIRECTIONAL TRIAGE: Detect if the user is addressing 'Brain', 'Pinky', or 'Lab'. "
+    "   - If 'Brain', importance MUST be >= 0.8. "
+    "   - If 'Pinky', casual MUST be >= 0.8. "
+    "3. If query relates to technical history or specific years, importance must be >= 0.6. "
+    "4. If query involves MATH or complex derivation, importance must be >= 0.8. "
+    "5. BKM STANDARDIZATION: Ensure all generated templates follow the Execution/Validation/Scars format."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
@@ -25,6 +34,8 @@ mcp = node.mcp
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 SEMANTIC_MAP_FILE = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
 
+# NOTE: triage_situational_vibe and triage_response wrappers removed.
+# Node now speaks natively via BicameralNode.run() sampling bridge.
 
 @mcp.tool()
 async def generate_bkm(topic: str, category: str = "validation") -> str:
@@ -127,123 +138,6 @@ async def build_semantic_map() -> str:
 
 
 @mcp.tool()
-async def close_lab() -> str:
-    """The Master Switch: Gracefully shuts down the Mind."""
-    return json.dumps({
-        "status": "shutdown",
-        "message": "Acme Lab is closing. Goodnight."
-    })
-
-
-@mcp.tool()
-async def triage_response(raw_text: str) -> str:
-    """
-    The Cognitive Dispatcher: Aggressive Extraction Filter.
-    Strips conversational prefixes and malformed tool names.
-    Returns: A clean JSON Tool Call block or 'TEXT'.
-    """
-    valid_tools = [
-        "ask_brain", "deep_think", "list_cabinet", 
-        "read_document", "close_lab", "generate_bkm", 
-        "access_personal_history"
-    ]
-    
-    # 1. Strip common model prefixes
-    clean_text = re.sub(
-        r'^(pinky|brain|system|narf|poit|tool)[:!\s]*', 
-        '', raw_text, flags=re.IGNORECASE
-    ).strip()
-    
-    # 2. Extract all JSON-like blocks
-    matches = re.findall(r'(\{.*?\})', clean_text, re.DOTALL)
-    
-    for m in matches:
-        try:
-            data = json.loads(m)
-            tool = data.get("tool")
-            
-            # 3. Correct malformed tool names (strip parentheses)
-            if tool:
-                tool = tool.replace('()', '').replace('[]', '').strip()
-                data["tool"] = tool
-            else:
-                # 4. Deep Search: Check values for tool names
-                for val in data.values():
-                    if isinstance(val, str):
-                        for vt in valid_tools:
-                            if vt in val.lower():
-                                return json.dumps({"tool": vt, "parameters": {}})
-            
-            # If it's a known tool, return ONLY the clean JSON
-            if tool in valid_tools:
-                return json.dumps(data)
-            
-            # Handle reply_to_user special case
-            if not tool and "reply_to_user" in data:
-                return json.dumps(data)
-                
-        except json.JSONDecodeError:
-            continue
-            
-    return "TEXT"
-
-
-@mcp.tool()
-async def triage_situational_vibe(query: str, turn_density: float = 1.0) -> str:
-    """
-    [FEAT-184/154/230] The Sentient Sentinel: Performs dynamic situational triage.
-    Determines INTENT, VIBE (expert domain), and provides scalar importance metrics.
-    [FEAT-231] Intent Steerage: Adjusts Fuel based on direct address and tool keywords.
-    """
-
-    system_override = (
-        "ROLE: Situational Auditor.\n"
-        "TASK: Analyze the query and provide a high-fidelity scalar triage.\n"
-        "FORMAT: Return ONLY a JSON object with this schema:\n"
-        "{\n"
-        "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL | OPERATIONAL\",\n"
-        "  \"topic\": \"Historical | Silicon | Code | Meta | Math | Speculative | Casual\",\n"
-        "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\",\n"
-        "  \"casual\": 0.0-1.0,\n"
-        "  \"intrigue\": 0.0-1.0,\n"
-        "  \"importance\": 0.0-1.0,\n"
-        "  \"situation\": \"Short description\",\n"
-        "  \"hints\": \"Coordination guidance\"\n"
-        "}\n"
-        "STEERAGE RULES:\n"
-        "1. ACTION TAGS: If the query contains '[ACTION: UPLINK]', importance MUST be 1.0.\n"
-        "2. DIRECTIONAL TRIAGE: Detect if the user is addressing 'Brain', 'Pinky', or 'Lab'.\n"
-        "   - If 'Brain', importance MUST be >= 0.8. Topic is likely Strategic.\n"
-        "   - If 'Pinky', casual MUST be >= 0.8. Topic is likely Casual.\n"
-        "2. If keywords like 'close', 'restart', 'neuralyzer' appear, intent is OPERATIONAL.\n"
-        "3. If query relates to technical history or specific years, importance must be >= 0.6.\n"
-        "4. If query involves MATH or complex derivation, importance must be >= 0.8.\n"
-        "5. Scalar values must be grounded in query complexity.\n"
-
-        f"Context Density: {turn_density:.2f}\n"
-        f"Analyze: {query}"
-    )
-    
-    response = await node.generate_response(query, system_override=system_override, max_tokens=250, disable_tools=True)
-    
-    # [FEAT-131] Robust JSON extraction
-    match = re.search(r'(\{.*\})', response, re.DOTALL)
-    if match:
-        return match.group(1)
-    
-    # Fallback for parsing errors
-    return json.dumps({
-        "intent": "STRATEGIC", 
-        "domain": "standard", 
-        "casual": 0.5,
-        "intrigue": 0.5,
-        "importance": 0.5,
-        "situation": "[UNKNOWN]", 
-        "hints": "Proceed with caution."
-    })
-
-
-@mcp.tool()
 async def ping_engine(force: bool = False) -> str:
     """[FEAT-192] Verify and force engine readiness."""
     success, msg = await node.ping_engine(force=force)
@@ -251,4 +145,4 @@ async def ping_engine(force: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    node.run() # [FEAT-240] Run the Native Sampling Bridge

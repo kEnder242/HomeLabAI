@@ -1,4 +1,3 @@
-
 from nodes.loader import BicameralNode
 import json
 
@@ -20,16 +19,8 @@ BRAIN_SYSTEM_PROMPT = (
 node = BicameralNode("Brain", BRAIN_SYSTEM_PROMPT)
 mcp = node.mcp
 
-
-@mcp.tool()
-async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
-    """The Reasoning Engine: Execute complex architectural or coding tasks."""
-    system_override = None
-    if metadata and metadata.get("behavioral_guidance"):
-        system_override = f"{BRAIN_SYSTEM_PROMPT}\n\n[VIBE_GUIDANCE]: {metadata['behavioral_guidance']}"
-    
-    return await node.generate_response(task, context, metadata=metadata, system_override=system_override)
-
+# NOTE: deep_think and shallow_think wrappers removed.
+# Node now speaks natively via BicameralNode.run() sampling bridge.
 
 @mcp.tool()
 async def peek_strategic_map() -> str:
@@ -41,18 +32,6 @@ async def peek_strategic_map() -> str:
 async def read_chronological_excerpts(year: str, months: list[str] = None) -> str:
     """[FEAT-196] Proxy: Requests raw chronological evidence for specific date ranges."""
     return await node.call_remote_tool("archive", "read_chronological_excerpts", {"year": year, "months": months})
-
-
-@mcp.tool()
-async def shallow_think(task: str, context: str = "") -> str:
-    """Fast Reflex: Provide a short, immediate response for greetings or simple status checks."""
-    shallow_prompt = (
-        "You are The Brain. Fast mode. Reply in < 10 words. "
-        "IDENTITY: Arrogant but responsive systems architect. "
-        "Acknowledge the uplink with a brief, witty quip. No technical deep dives. "
-        "Examples: 'I have perceived the request.', 'Weights are resident. Proceeding.', 'Analyzing the signal...'"
-    )
-    return await node.generate_response(task, context, system_override=shallow_prompt, max_tokens=50)
 
 
 @mcp.tool()
@@ -75,4 +54,4 @@ async def ping_engine(force: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    node.mcp.run()
+    node.run() # [FEAT-240] Run the Native Sampling Bridge
