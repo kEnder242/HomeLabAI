@@ -10,7 +10,7 @@ from liger_kernel.transformers import (
 from mcp.server.fastmcp import FastMCP
 
 # Paths
-LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CHARACTERIZATION_FILE = os.path.expanduser(
     "~/Dev_Lab/Portfolio_Dev/field_notes/data/vram_characterization.json"
 )
@@ -64,6 +64,21 @@ class BicameralNode:
             async for token in self.generate_response(query, context, system_override=system_override):
                 full_response += token
             return full_response
+
+    async def create_message(self, query: str, context: str = "", tools: list = None, behavioral_guidance: str = ""):
+        """
+        [FEAT-240.2] Native Sampling Bridge (Streaming).
+        Returns an async generator of tokens.
+        """
+        system_override = self.system_prompt
+        if behavioral_guidance:
+            system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
+
+        if tools:
+            tool_desc = "\n".join([f"- {t}" for t in tools])
+            system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
+        
+        return self.generate_response(query, context, system_override=system_override)
 
     def _patch_model(self, model_id):
         """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
