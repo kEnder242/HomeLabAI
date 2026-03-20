@@ -8,7 +8,8 @@ from infra.cognitive_audit import CognitiveAudit
 class CognitiveHub:
     """
     [FEAT-145] Cognitive Hub: Modularized Reasoning & Dispatch Logic.
-    [FEAT-203] Bicameral Bridge: Hardened neural signal extraction and parallel gate protection.
+    [FEAT-203] Bicameral Bridge: Hardened neural signal extraction.
+    [FEAT-239] Neural Action Tags: Natural language steering hints.
     """
     def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
         self.residents = residents
@@ -36,7 +37,8 @@ class CognitiveHub:
         
         # [FEAT-188] Resonant Memory: Buffer for Pinky's intuition
         self.resonant_history = []
-        self.auditor = None
+        self.current_fuel = 0.0
+        self.current_topic = "Casual"
 
     def bridge_signal_clean(self, text):
         """
@@ -47,220 +49,123 @@ class CognitiveHub:
             return None
 
         # 1. Strip markdown blocks
-        clean = re.sub(r"```json\s*|\s*```", "", text)
+        clean = re.sub(r"```json\s*|\s*```", "", text).strip()
 
-        # 2. Find innermost { } block to handle double braces and conversational chatter
+        # 2. Find innermost { } block
         match = re.search(r'(\{.*\})', clean, re.DOTALL)
         if match:
             json_str = match.group(1)
         else:
             # [HARDENING] Salvage truncated JSON tool calls
             if '{"tool":' in clean:
-                # Find the last valid-ish start and append necessary closings
                 start_idx = clean.find('{"tool":')
                 json_str = clean[start_idx:]
-                # Count braces
                 open_braces = json_str.count('{')
                 close_braces = json_str.count('}')
                 if open_braces > close_braces:
+                    if json_str.count('"') % 2 != 0:
+                        json_str += '"'
                     json_str += '}' * (open_braces - close_braces)
             else:
-                return None
-
                 return None
 
         # 3. Structural Sanitization
         json_str = json_str.replace("{{", "{").replace("}}", "}")
         json_str = json_str.replace("'", '"')
         json_str = json_str.replace("True", "true").replace("False", "false")
-
-        # 4. Domain Multi-Pick Correction: "domain": "a", "b", ... -> "domain": "a"
-        json_str = re.sub(r'("domain":\s*"[^"]+")((?:,\s*"[^"]+")+)(?=\s*,|\s*\})', r'\1', json_str)
-        # Clean up trailing commas
-        json_str = re.sub(r',\s*\}', r'\n}', json_str)
+        json_str = json_str.replace('"::', '":')
 
         return json_str
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, sources=None, final=True):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, final=True):
         """
-        Standardizes the dispatch of reasoning results to the user.
-        [FEAT-203] Uses Bicameral Bridge signal cleaning.
-        [FEAT-229] Support 'final' flag for speculative yielding.
+        [FEAT-238.1] Combined Dispatch: Persona Speech + Tool Action.
+        Ensures persona is maintained even when tools are used for steering.
         """
-        logging.info(f"[DEBUG] Dispatch: source='{source}' final={final} text='{text[:30]}...'")
-        
-        # 1. Clean the text (Remove potential LoRA or node artifacts)
+        # 1. Clean and Strip Node Artifacts
         clean_text = text.replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
         
-        # [FEAT-110] Shadow Moat: Persona Isolation
+        # [FEAT-110] Shadow Moat
         if "Brain" in source:
             pinky_isms = ["narf", "poit", "zort", "egad", "trotro"]
             for ism in pinky_isms:
                 clean_text = re.sub(rf'\b{ism}\b', '', clean_text, flags=re.IGNORECASE).strip()
             clean_text = clean_text.replace("  ", " ").replace(" .", ".").replace(" ,", ",")
 
-        # 2. Extract Tool Calls (Nuclear Gate)
-        json_block = self.bridge_signal_clean(clean_text)
+        # 2. Extract Action Tags [FEAT-239]
+        action_match = re.search(r'\[ACTION:\s*([^\]]+)\]', clean_text, re.IGNORECASE)
+        if action_match:
+            action = action_match.group(1).upper().strip()
+            clean_text = clean_text.replace(action_match.group(0), "").strip()
+            if action == "UPLINK":
+                logging.info(f"[HUB] Action Tag: UPLINK via {source}. Boosting Fuel.")
+                self.current_fuel = 1.0
+            elif action == "THINK MORE":
+                logging.info(f"[HUB] Action Tag: THINK MORE via {source}. Boosting Fuel.")
+                self.current_fuel = min(1.0, self.current_fuel + 0.3)
 
-        if json_block:
-            try:
-                # Validation gate: must contain "tool" or a known Hub key
-                if '"tool"' not in json_block and '"reply_to_user"' not in json_block and '"facilitate"' not in json_block and '"name"' not in json_block:
-                    pass # Not a tool call
-                else:
-                    data = json.loads(json_block)
+        # 3. Nuclear Tool Interception (Search and Destroy)
+        json_raw_match = re.search(r'(\{.*\})', clean_text, re.DOTALL)
+        if json_raw_match:
+            raw_block = json_raw_match.group(1)
+            sanitized = self.bridge_signal_clean(raw_block)
+            
+            # Remove the JSON immediately from the text to prevent leakage
+            clean_text = clean_text.replace(raw_block, "").strip()
+            clean_text = re.sub(r"```json\s*|\s*```", "", clean_text).strip()
+
+            if sanitized:
+                try:
+                    data = json.loads(sanitized)
                     tool = data.get("tool")
                     params = data.get("parameters", {})
-                    
-                    # [FEAT-238] Council of Hemispheres (Peer Vote)
-                    # Nodes can override the Lab Node's initial fuel estimate via tools
+
+                    # Handle Known Tools
                     if tool == "ask_brain":
-                        logging.info(f"[HUB] Council Vote: PROMOTING turn via 'ask_brain' (Source: {source})")
                         self.current_fuel = 1.0
-                    elif tool == "handle_myself":
-                        logging.info(f"[HUB] Council Vote: Voting self turn via 'handle_myself' (Source: {source})")
+                        if not clean_text:
+                            clean_text = "Narf! I'll ask the Brain for you."
+
+                    if tool == "shallow_think":
+                        # If Pinky or Shadow calls shallow_think on themselves, it's a VETO
                         self.current_fuel = 0.0
-                        # handle_myself is a local terminal tool, we return the quip directly
-                        quip = params.get("quip", "Narf! I've got this.")
-                        return await self._dispatch_plain_text(quip, source, is_internal, final=final)
+                        if not clean_text:
+                            clean_text = params.get("task") or params.get("context") or "Narf! Thinking fast."
 
-                    # [FEAT-237] Loop-Breaker
-                    primary_entry_points = {
-                        "pinky": "facilitate",
-                        "shadow": "shallow_think",
-                        "brain": "deep_think",
-                        "lab": "triage_situational_vibe"
-                    }
-                    t_name = source.split("(")[0].strip().lower()
-                    if t_name in primary_entry_points and tool == primary_entry_points[t_name]:
-                        logging.warning(f"[HUB] Loop Detected: {source} tried to call its own entry point '{tool}'. Blocking.")
-                        fallback_msg = f"Narf! I almost caught myself in a loop there. I should just tell you directly: {json.dumps(params)}"
-                        return await self._dispatch_plain_text(fallback_msg, f"{source} (Fallback)", is_internal, final=final)
-
-                    if not tool:
-                        if "reply_to_user" in data:
-                            tool = "reply_to_user"
-                            params = {"text": data["reply_to_user"]}
-                        else:
-                            return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+                    if tool == "reply_to_user":
+                        reply = params.get("text") or params.get("reply")
+                        if reply and not clean_text:
+                            clean_text = reply
 
                     if tool == "close_lab":
-                        logging.warning(f"[HUB] SHUTDOWN requested by {source}.")
-                        await self.broadcast({
-                            "brain": "Acme Lab is closing. Goodnight.",
-                            "brain_source": "System",
-                            "channel": "chat",
-                            "final": True,
-                            "reset_session": True
-                        })
+                        await self.broadcast({"brain": "Acme Lab is closing.", "brain_source": "System", "final": True})
                         if shutdown_event:
                             shutdown_event.set()
                         return True
 
-                    # [RE-FEAT-145] Ghost Tool Sentry
-                    available_tools = []
-                    t_name = source.split("(")[0].strip().lower()
-                    if t_name in self.residents:
-                        try:
-                            tool_resp = await self.residents[t_name].list_tools()
-                            available_tools = [t.name for t in tool_resp.tools]
-                        except Exception:
-                            available_tools = []
+                    # [FEAT-237] Loop-Breaker
+                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe"]
+                    if tool in primary_entry_points:
+                        # Return speech only, block recursive tool call
+                        if clean_text:
+                            return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+                        return True
 
-                    known_hub_tools = ["reply_to_user", "ask_brain", "bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open"]
-                    
-                    if tool not in available_tools and tool not in known_hub_tools:
-                        logging.warning(f"[HUB] Hallucination Detected: {source} tried to use '{tool}'. Applying Neural Shock.")
-                        if original_query and retry_count < 2:
-                            shock_query = f"[SYSTEM_SHOCK]: You attempted to use tool '{tool}' which is INVALID. Use only provided tools. Re-think your approach.\n\nOriginal Query: {original_query}"
-                            return await self.process_query(shock_query, shutdown_event=shutdown_event, retry_count=retry_count + 1)
-                        
-                        hallucination_msg = f"Egad! I tried to use '{tool}', but my circuits don't support it yet. Narf!"
-                        return await self.execute_dispatch(hallucination_msg, "Pinky (System)", shutdown_event=shutdown_event, final=True)
-
-                    if tool in ["build_cv_summary", "access_personal_history"]:
-                        if "archive" in self.residents:
+                    # Forward utility tools
+                    known_hub_tools = ["bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open"]
+                    if tool in known_hub_tools:
+                        if tool in ["build_cv_summary", "access_personal_history"] and "archive" in self.residents:
                             res = await self.residents["archive"].call_tool(tool, params)
                             return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, final=True)
-                        else:
-                            return await self.execute_dispatch("Archive Node is offline.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
 
-                    if tool == "bounce_node":
-                        reason = params.get("reason", "No reason provided.")
-                        await self.broadcast({
-                            "brain": f"Hemisphere reset initiated: {reason}",
-                            "brain_source": "System",
-                            "channel": "chat",
-                            "final": True
-                        })
-                        if t_name in self.residents:
-                            try:
-                                res = await self.residents[t_name].call_tool("ping_engine", {"force": True})
-                                r_data = json.loads(res.content[0].text)
-                                msg = f"Reset complete. Success: {r_data.get('success')}. Detail: {r_data.get('message')}"
-                                return await self.execute_dispatch(msg, f"{t_name.upper()} (System)", shutdown_event=shutdown_event, final=True)
-                            except Exception as e:
-                                return await self.execute_dispatch(f"Reset failed: {e}", f"{t_name.upper()} (System)", shutdown_event=shutdown_event, final=True)
-                        return True
+                except Exception as e:
+                    logging.error(f"[HUB] JSON parsing failed: {e}")
 
-                    if tool == "trigger_morning_briefing":
-                        if hasattr(self, '_trigger_briefing'):
-                            await self._trigger_briefing()
-                            return True
-                        return await self.execute_dispatch("Briefing logic unreachable.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
-
-                    if tool == "select_file":
-                        fname = params.get("filename")
-                        await self.broadcast({"type": "file_content_request", "filename": fname})
-                        return True
-
-                    if tool == "notify_file_open":
-                        return True
-
-                    if tool == "ask_brain":
-                        task = params.get("task", "")
-                        await self.broadcast({
-                            "brain": self.get_oracle_signal("Brain"),
-                            "brain_source": "The Brain (Synthesizing...)",
-                            "channel": "insight",
-                            "final": False
-                        })
-                        if "brain" in self.residents:
-                            metadata = {"expert_adapter": "exp_for"}
-                            b_res = await self.monitor_task_with_tics(
-                                self.residents["brain"].call_tool("deep_think", {"task": task, "metadata": metadata})
-                            )
-                            return await self.execute_dispatch(b_res.content[0].text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
-                        else:
-                            return await self.execute_dispatch("Strategic Sovereign is offline.", "Pinky (System)", shutdown_event=shutdown_event, final=True)
-
-                    if tool == "reply_to_user":
-                        reply = params.get("text", "Egad! Empty reply.")
-                        await self.broadcast({
-                            "brain": reply,
-                            "brain_source": source,
-                            "channel": "chat",
-                            "final": True
-                        })
-                        return True
-
-                    logging.info(f"[HUB] Forwarding tool {tool} back to {source}")
-                    await self.broadcast({
-                        "brain": clean_text,
-                        "brain_source": source.replace("Result", "").strip(),
-                        "channel": "insight",
-                        "final": True
-                    })
-                    return True
-
-            except json.JSONDecodeError as e:
-                logging.error(f"[HUB] Bridge Signal Extraction Failed: {e} | Raw: {clean_text[:50]}")
-                return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
-            except Exception as e:
-                logging.error(f"[HUB] Tool Dispatch Error: {e}")
-                return await self.execute_dispatch(f"Error executing tool: {e}", "Pinky (System)", shutdown_event=shutdown_event, final=True)
-
-        return await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+        # 4. Final Dispatch
+        if clean_text:
+            await self._dispatch_plain_text(clean_text, source, is_internal, final=final)
+        
+        return True
 
     async def _dispatch_plain_text(self, text, source, is_internal, final=True):
         await self.broadcast({
@@ -269,79 +174,65 @@ class CognitiveHub:
             "channel": "chat",
             "is_internal": is_internal,
             "final": final,
-            "topic": getattr(self, "current_topic", "Casual"),
-            "fuel": getattr(self, "current_fuel", 0.0)
+            "topic": self.current_topic,
+            "fuel": self.current_fuel
         })
         return text
 
     async def _route_expert_domain(self, query, interjection=""):
+        """[FEAT-184] Vibe-based adapter selection."""
         try:
             if 'archive' not in self.residents:
                 return "exp_for"
             vibe_res = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
-            vibe_json = vibe_res.content[0].text if hasattr(vibe_res, 'content') else str(vibe_res)
+            vibe_json = vibe_res.content[0].text
             vibe_data = json.loads(vibe_json)
-            adapter = vibe_data.get("adapter", "exp_for")
-            self.current_vibe_guidance = vibe_data.get("guidance", "")
-            return adapter
-        except Exception as e:
-            logging.error(f"[HUB] Vibe Check Failed: {e}")
+            return vibe_data.get("adapter", "exp_for")
+        except Exception:
             return "exp_for"
 
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
         if retry_count > 2:
-            logging.warning("[HUB] Max retries reached. Surrendering to base model.")
-            return await self.execute_dispatch("Egad! Even the experts are stumped. Proceeding with caution.", "Pinky (System)", shutdown_event=shutdown_event)
+            return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event)
 
-        if trigger_briefing_callback:
-            self._trigger_briefing = trigger_briefing_callback
+        logging.info(f"[USER] Intercom Query: {query}")
+        self.current_fuel = 0.0
+        self.current_topic = "Casual"
 
-        logging.info(f"[USER] Intercom Query: {query} (Retry: {retry_count}, Density: {turn_density:.2f})")
-        
         # 1. Situational Triage (Lab Node [FEAT-184/154/233])
         triage_data = {"intent": "STRATEGIC", "domain": "standard", "topic": "Casual", "casual": 0.5, "intrigue": 0.5, "importance": 0.5}
-        
         if "lab" in self.residents:
             try:
-                # [FEAT-233] Situational Triage (Standard Call)
                 t_res = await self.residents["lab"].call_tool("triage_situational_vibe", {"query": query, "turn_density": turn_density})
-                full_t_json = t_res.content[0].text
-                
-                t_clean = self.bridge_signal_clean(full_t_json)
+                t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
                     triage_data.update({k.lower(): v for k, v in t_parsed.items()})
                 
-                # [FEAT-231.2] Multiplicative Fuel Function
-                raw_importance = float(triage_data.get("importance", 0.5))
-                raw_casual = float(triage_data.get("casual", 0.5))
-                raw_intrigue = float(triage_data.get("intrigue", 0.5))
-                self.current_fuel = ((1.0 - raw_casual) * (raw_intrigue + raw_importance)) / 2.0
+                # Multiplicative Fuel Function [FEAT-231.2]
+                raw_imp = float(triage_data.get("importance", 0.5))
+                raw_cas = float(triage_data.get("casual", 0.5))
+                raw_int = float(triage_data.get("intrigue", 0.5))
+                self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
                 self.current_topic = triage_data.get("topic", "Casual")
-
-                logging.info(f"[HUB] Scalar Triage: Intent={triage_data.get('intent')} Topic={self.current_topic} Fuel={self.current_fuel:.2f}")
             except Exception as e:
-                logging.error(f"[HUB] Lab Node Triage Failed: {e}. Falling back.")
-                self.current_topic = "Casual"
+                logging.error(f"[HUB] Triage Failed: {e}")
                 self.current_fuel = 0.2
-                if len(query.split()) < 4 or any(k in query.lower() for k in ["hello", "hi", "hey", "narf", "poit"]):
-                    triage_data["intent"] = "CASUAL"
-        
-        fuel = self.current_fuel
-        
+
+        fuel_start = self.current_fuel
+
         # [FEAT-231.1] Operational Shortcut
         if triage_data.get("intent") == "OPERATIONAL":
-            logging.info("[HUB] Operational Shortcut triggered.")
             if "pinky" in self.residents:
                 res = await self.residents["pinky"].call_tool("facilitate", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
-                return await self.execute_dispatch(res.content[0].text, "System", shutdown_event=shutdown_event, final=True)
+                return await self.execute_dispatch(res.content[0].text, "System", final=True)
 
         if triage_data.get("intent") != "CASUAL":
             selected_expert = await self._route_expert_domain(query)
         else:
             selected_expert = triage_data.get("domain", "standard")
 
-        # 3. Proactive Archivist (RAG context)
+        # 3. Proactive Archivist (Year detection [FEAT-228])
         historical_context = ""
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
@@ -351,48 +242,31 @@ class CognitiveHub:
             except Exception:
                 pass
 
+        # 4. Parallel Local Inference
         pinky_text = ""
         shadow_text = ""
         
-        # [FEAT-233] The Parallel Handshake (Parallelized Local Inference)
-        # [FEAT-236] Relay Route Awareness: Injecting situational metadata
         async def process_pinky():
             nonlocal pinky_text
             if "pinky" in self.residents:
-                # [FEAT-236] Role: Gateway. Awareness: Fuel/Route.
-                p_context = (
-                    "[ROUTE]: GATEWAY -> SHADOW" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
-                    f"[FUEL]: {fuel:.2f} | [TOPIC]: {self.current_topic}\n"
-                    f"[MODE]: " + ("FRAME_ONLY" if fuel > 0.6 else "DIRECT_RESPONSE")
-                )
+                p_context = (f"[ROUTE]: PINKY -> BRAIN\n[FUEL]: {fuel_start:.2f} | [TOPIC]: {self.current_topic}\n"
+                             f"[MODE]: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
                 p_res = await self.residents["pinky"].call_tool("facilitate", {"query": query, "context": p_context})
                 pinky_text = p_res.content[0].text
-                # Final Promotion (adds to persistent history)
-                await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, is_internal=False, final=True)
+                await self.execute_dispatch(pinky_text, "Pinky (Triage)", shutdown_event=shutdown_event, final=True)
 
         async def process_shadow():
             nonlocal shadow_text
             if "shadow" in self.residents:
-                # [FEAT-236] Role: Archivist. Awareness: Fuel/Context.
-                s_context = (
-                    "[ROUTE]: GATEWAY -> ARCHIVIST" + (" -> BRAIN" if fuel > 0.6 else "") + "\n"
-                    f"[FUEL]: {fuel:.2f} | [MODE]: " + ("FRAME_ONLY" if fuel > 0.6 else "DIRECT_RESPONSE") + "\n"
-                    f"[ROLE]: TECHNICAL_INTUITION | Triage: {triage_data.get('intent')}"
-                )
-                s_res = await self.residents["shadow"].call_tool("shallow_think", {
-                    "task": query, 
-                    "context": s_context
-                })
+                s_context = (f"[FUEL]: {fuel_start:.2f} | [ROLE]: TECHNICAL_INTUITION")
+                s_res = await self.residents["shadow"].call_tool("shallow_think", {"task": query, "context": s_context})
                 shadow_text = s_res.content[0].text
-                
-                # Final Promotion
-                if fuel > 0.2:
-                    await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, is_internal=False, final=True)
+                if self.current_fuel > 0.2:
+                    await self.execute_dispatch(shadow_text, "Brain (Intuition)", shutdown_event=shutdown_event, final=True)
 
         await asyncio.gather(process_pinky(), process_shadow())
 
-        # [FEAT-207] Stage 3: Sovereign Brain
-        # [FEAT-238] Use the potentially updated self.current_fuel
+        # 5. Sovereign Brain (Post-Action Check)
         if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6:
             metadata = {
                 "expert_adapter": selected_expert, 
@@ -400,76 +274,32 @@ class CognitiveHub:
                 "shadow_intuition": shadow_text, 
                 "archival_truth": historical_context,
                 "fuel": self.current_fuel,
-                "topic": self.current_topic,
-                "verbosity_directive": "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
+                "topic": self.current_topic
             }
-            
-            # [FEAT-190] The Judge: Cognitive Audit of Sovereign Output
             b_res = await self.residents["brain"].call_tool("deep_think", {"task": query, "metadata": metadata})
             brain_text = b_res.content[0].text
             
-            # Perform Audit on final text
-            if not getattr(self, "is_extraction", False):
-                if not self.auditor and "pinky" in self.residents:
-                    self.auditor = CognitiveAudit(self.residents["pinky"])
-                
-                if self.auditor:
-                    is_valid = await self.auditor.audit_technical_truth(query, brain_text, "")
-                    if not is_valid:
-                        # [FEAT-231.3] Verbal Retraction
-                        if "pinky" in self.residents:
-                            retract_res = await self.residents["pinky"].call_tool("facilitate", {
-                                "query": "[AUDIT_FAILURE]: The Sovereign output failed technical validation.",
-                                "context": f"Failure: {brain_text[:200]}..."
-                            })
-                            await self.execute_dispatch(retract_res.content[0].text, "Pinky (Retraction)", shutdown_event=shutdown_event, is_internal=False, final=True)
-                        return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
+            # Cognitive Audit [FEAT-190]
+            if not self.auditor and "pinky" in self.residents:
+                self.auditor = CognitiveAudit(self.residents["pinky"])
+            if self.auditor and not await self.auditor.audit_technical_truth(query, brain_text, ""):
+                # RETRY LOOP ON AUDIT FAILURE
+                retract = await self.residents["pinky"].call_tool("facilitate", {"query": "[AUDIT_FAILURE]", "context": brain_text[:100]})
+                await self.execute_dispatch(retract.content[0].text, "Pinky (Retraction)", final=True)
+                return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             await self.execute_dispatch(brain_text, "Brain (Result)", shutdown_event=shutdown_event, final=True)
-            await self.evaluate_grounding("Brain", brain_text, fuel, shutdown_event)
+            await self.evaluate_grounding("Brain", brain_text, self.current_fuel, shutdown_event)
 
         return True
 
     async def evaluate_grounding(self, source, text, fuel, shutdown_event):
-        """
-        [FEAT-227] The Grounding Gate (Cooldown).
-        Restores character balance after verbose or high-stakes technical synthesis.
-        """
-        if "pinky" not in self.residents:
+        """[FEAT-227] The Grounding Gate (Cooldown)."""
+        if "pinky" not in self.residents or fuel < 0.7:
             return
-
-        # Importance calculation using scalar Fuel and length
-        importance = fuel
-        if len(text) > 800:
-            importance = min(1.0, importance + 0.2)
-        
-        if importance > 0.7:
-            logging.info(f"[HUB] Grounding Gate triggered for {source} (Importance: {importance:.2f}).")
-            
-            cooldown_query = (
-                f"The {source} hemisphere just provided a deep technical response. "
-                "1. Provide a 1-sentence persona-driven summary (TL;DR). "
-                "2. Probabilistically add a 'Pondering' challenge (Are you pondering what I'm pondering?) if you see a technical edge case."
-            )
-            
-            try:
-                # Cooldown turns are terminal and do not re-trigger the relay
-                res_cool = await self.residents["pinky"].call_tool("facilitate", {
-                    "query": cooldown_query, 
-                    "context": f"Technical Output: {text}"
-                })
-                cool_text = res_cool.content[0].text
-                
-                # Robust JSON extraction
-                m = re.search(r'(\{.*\})', cool_text, re.DOTALL)
-                if m:
-                    try:
-                        dec = json.loads(m.group(1))
-                        cool_text = dec.get("parameters", {}).get("text", cool_text)
-                    except Exception:
-                        pass
-                
-                # Dispatch as terminal summary
-                await self.execute_dispatch(cool_text, "Pinky (Summary)", shutdown_event=shutdown_event, is_internal=True)
-            except Exception as e:
-                logging.error(f"[HUB] Grounding Gate failed: {e}")
+        cooldown_query = f"The {source} hemisphere provided deep technical synthesis. Provide a persona TL;DR."
+        try:
+            res_cool = await self.residents["pinky"].call_tool("facilitate", {"query": cooldown_query, "context": text[:500]})
+            await self.execute_dispatch(res_cool.content[0].text, "Pinky (Summary)", is_internal=True)
+        except Exception:
+            pass
