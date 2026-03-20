@@ -252,11 +252,12 @@ class AcmeLab:
                 # 2. PROBE: Single-token generation to verify availability
                 # [FEAT-085] Intelligent Keep-Alive: Only perform heavy priming if connected
                 # or if the Brain was previously offline, OR IF FORCED (Handshake).
+                # [FEAT-171] Set to 4m (240s) to stay under Ollama's 5m unload timer
                 should_prime = (
                     force
                     or not self.brain_online
                     or (
-                        time.time() - self._last_brain_prime > 120
+                        time.time() - self._last_brain_prime > 240
                         and self.connected_clients
                     )
                 )
@@ -317,8 +318,8 @@ class AcmeLab:
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
-                # If no clients, wait patiently
-                await self.check_brain_health()
+                # [FEAT-171] Silence Sovereign on disconnect
+                pass
 
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
