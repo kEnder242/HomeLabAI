@@ -261,13 +261,18 @@ class LabAttendantV3:
         logger.info(f"[IGNITION] Hub process spawned with PID: {lab_process.pid} (Immunity: {_BOOT_HASH})")
         return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode}"}
 
+    async def _deferred_cleanup(self, status_message):
+        """[FEAT-248] Helper to run cleanup in background so REST response can complete."""
+        await asyncio.sleep(0.5) # allow HTTP response to flush to client
+        await self.cleanup_silicon()
+        await self.update_status_json(status_message)
+
     async def mcp_stop(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "stop")
         self.log_event("Shutdown: Manual signal received.")
-        await self.cleanup_silicon()
-        await self.update_status_json("OFFLINE (Manual Stop)")
-        return {"status": "success", "message": "Lab stopped."}
+        asyncio.create_task(self._deferred_cleanup("OFFLINE (Manual Stop)"))
+        return {"status": "success", "message": "Lab stopping..."}
 
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
@@ -276,9 +281,8 @@ class LabAttendantV3:
         self.log_event("Quiesce: Lab locked for maintenance.", severity="WARNING")
         with open(MAINTENANCE_LOCK, "w") as f:
             f.write(datetime.datetime.now().isoformat())
-        await self.cleanup_silicon()
-        await self.update_status_json("MAINTENANCE MODE (Locked)")
-        return {"status": "locked", "message": "Lab frozen. Watchdog passive."}
+        asyncio.create_task(self._deferred_cleanup("MAINTENANCE MODE (Locked)"))
+        return {"status": "locked", "message": "Lab freezing. Watchdog passive."}
 
     async def mcp_ignition(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
