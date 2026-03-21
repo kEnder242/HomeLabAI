@@ -626,7 +626,7 @@ class AcmeLab:
                         
                         # [FEAT-227] Atomic Anchor Gate: Strictly ignore input without [ME] prefix
                         if not query.startswith("[ME]"):
-                            logging.warning(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
+                            logging.debug(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
                             continue
 
                         self.last_activity = time.time()
