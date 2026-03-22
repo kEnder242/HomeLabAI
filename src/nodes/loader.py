@@ -233,26 +233,41 @@ class BicameralNode:
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=120) as r:
-                async for line in r.content:
-                    if line:
-                        decoded = line.decode('utf-8').strip()
-                        if decoded.startswith("data: "):
-                            if "[DONE]" in decoded:
-                                break
-                            try:
-                                data = json.loads(decoded[6:])
-                                token = data["choices"][0]["delta"].get("content", "")
-                                if token:
-                                    yield token
-                            except Exception:
-                                continue
+            try:
+                async with session.post(url, json=payload, timeout=120) as r:
+                    if r.status != 200:
+                        err = await r.text()
+                        logging.error(f"[{self.name}] vLLM Error {r.status}: {err}")
+                        yield f"Error: vLLM returned {r.status}"
+                        return
+
+                    async for line in r.content:
+                        if line:
+                            decoded = line.decode('utf-8').strip()
+                            if decoded.startswith("data: "):
+                                if "[DONE]" in decoded:
+                                    break
+                                try:
+                                    data = json.loads(decoded[6:])
+                                    token = data["choices"][0]["delta"].get("content", "")
+                                    if token:
+                                        yield token
+                                except Exception:
+                                    continue
+            except Exception as e:
+                logging.error(f"[{self.name}] vLLM Connection failed: {e}")
+                yield f"Error: vLLM connection failed: {e}" 
 
     async def _stream_ollama(self, url, payload):
         """[FEAT-233] Ollama token generator."""
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(url, json=payload, timeout=120) as r:
+                    if r.status != 200:
+                        err = await r.text()
+                        logging.error(f"[{self.name}] Ollama Error {r.status}: {err}")
+                        yield f"Error: Ollama returned {r.status}"
+                        return
                     async for line in r.content:
                         if line:
                             try:
