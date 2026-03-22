@@ -47,6 +47,7 @@ ATTENDANT_PORT = 9999
 lab_process = None
 current_lab_mode = "OFFLINE"
 current_model = None
+is_hibernating = False
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
@@ -195,16 +196,23 @@ class LabAttendantV3:
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("GET", "heartbeat")
         vitals = await self._get_current_vitals()
+        
+        # [FEAT-249.1] Report Hibernation Status: Engines OFFLINE while Hub is ONLINE
+        if vitals.get("brain") == "OFFLINE" and is_hibernating:
+            vitals["mode"] = "HIBERNATING"
+            
         vitals["fingerprint"] = get_fingerprint()
         vitals["timestamp"] = datetime.datetime.now().isoformat()
         return vitals
 
-    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
+    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode})
+            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only})
         
-        global current_lab_mode, current_model, lab_process
-        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode})")
+        global current_lab_mode, current_model, lab_process, is_hibernating
+        is_hibernating = False
+        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
+        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
         
         self.refresh_vram_config() # Reload latest model mappings
         
@@ -219,7 +227,12 @@ class LabAttendantV3:
         current_lab_mode = engine
         current_model = target_model
         
-        await self.cleanup_silicon()
+        # [FEAT-250] Surgical Ignition: Spare the Hub if requested
+        if engine_only:
+            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"])
+        else:
+            await self.cleanup_silicon()
+
         self.ready_event.clear()
         self.trace_monitor.refresh_marks()
         
@@ -280,6 +293,9 @@ class LabAttendantV3:
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate")
         
+        global is_hibernating, current_lab_mode
+        is_hibernating = True
+        current_lab_mode = "HIBERNATING"
         logger.warning("[HUB] Hibernation signal received. Unloading local engines...")
         self.log_event("Hibernation: Unloading weights.")
         
@@ -565,7 +581,8 @@ class LabAttendantV3:
         model = data.get("model", "MEDIUM")
         disable_ear = data.get("disable_ear", True)
         op_mode = data.get("op_mode", "SERVICE_UNATTENDED")
-        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode))
+        engine_only = data.get("engine_only", False)
+        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode, engine_only=engine_only))
     async def handle_stop_rest(self, r):
         return web.json_response(await self.mcp_stop())
     async def handle_hibernate_rest(self, r):
