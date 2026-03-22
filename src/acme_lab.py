@@ -98,7 +98,6 @@ class AcmeLab:
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         reclaim_logger(role)
         self.set_proc_title()
-        self.set_proc_title()
 
     def set_proc_title(self):
         """[FEAT-122] Kernel-Level Visibility: Renames process in ps/htop."""
@@ -935,90 +934,77 @@ class AcmeLab:
         if not disable_ear:
             await self.sensory.load()
 
-        while True:
-            # [FEAT-149] The SML/Unity Persistence Loop
-            # Allows the Lab to "Bounce" (re-initialize residents) on shutdown signals.
-            self.shutdown_event.clear()
-            self.residents = {}
-            self.status = "BOOTING"
+        # [FEAT-149] THE HUB BOUNCE LOOP PURGED
+        # Redundant restart logic removed. Authority centralized in Lab Attendant.
+        self.shutdown_event.clear()
+        self.residents = {}
+        self.status = "BOOTING"
 
-            app = web.Application()
-            # [FEAT-199] CORS Support for browser Intercom
-            cors = aiohttp_cors.setup(app, defaults={
-                "*": aiohttp_cors.ResourceOptions(
-                    allow_credentials=True,
-                    expose_headers="*",
-                    allow_headers="*",
-                )
-            })
-            # [FEAT-222] Unified Origin: Support both root and /hub path
-            for path in ["/", "/hub"]:
-                route = app.router.add_get(path, self.client_handler)
-                cors.add(route)
-                
-            for path in ["/heartbeat", "/hub/heartbeat"]:
-                hb_route = app.router.add_get(path, self.heartbeat_handler)
-                cors.add(hb_route)
-            runner = web.AppRunner(app)
-            await runner.setup()
-            # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
-            site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
+        app = web.Application()
+        # [FEAT-199] CORS Support for browser Intercom
+        cors = aiohttp_cors.setup(app, defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True,
+                expose_headers="*",
+                allow_headers="*",
+            )
+        })
+        # [FEAT-222] Unified Origin: Support both root and /hub path
+        for path in ["/", "/hub"]:
+            route = app.router.add_get(path, self.client_handler)
+            cors.add(route)
+            
+        for path in ["/heartbeat", "/hub/heartbeat"]:
+            hb_route = app.router.add_get(path, self.heartbeat_handler)
+            cors.add(hb_route)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
+        site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
 
-            try:
-                async with AsyncExitStack() as stack:
-                    await site.start()
-                    logging.info(f"[BOOT] Server on {PORT}")
-                    await self.boot_residents(stack)
+        try:
+            async with AsyncExitStack() as stack:
+                await site.start()
+                logging.info(f"[BOOT] Server on {PORT}")
+                await self.boot_residents(stack)
 
-                    # [FEAT-145] Cognitive Delegation: Update hub with live residents
-                    self.cognitive.residents = self.residents
+                # [FEAT-145] Cognitive Delegation: Update hub with live residents
+                self.cognitive.residents = self.residents
 
-                    # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
-                    if trigger_task:
-                        logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
-                        if trigger_task == "recruiter":
-                            import recruiter
+                # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
+                if trigger_task:
+                    logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
+                    if trigger_task == "recruiter":
+                        import recruiter
 
+                        asyncio.create_task(
+                            recruiter.run_recruiter_task(
+                                self.residents.get("archive"),
+                                self.residents.get("brain"),
+                                self.residents.get("browser"),
+                            )
+                        )
+                    elif trigger_task == "lab":
+                        if "lab" in self.residents:
                             asyncio.create_task(
-                                recruiter.run_recruiter_task(
-                                    self.residents.get("archive"),
-                                    self.residents.get("brain"),
-                                    self.residents.get("browser"),
+                                self.residents["lab"].call_tool(
+                                    name="build_semantic_map"
                                 )
                             )
-                        elif trigger_task == "lab":
-                            if "lab" in self.residents:
-                                asyncio.create_task(
-                                    self.residents["lab"].call_tool(
-                                        name="build_semantic_map"
-                                    )
-                                )
 
-                    asyncio.create_task(self.reflex_loop())
-                    asyncio.create_task(
-                        self.scheduled_tasks_loop()
-                    )  # [FEAT-049] Alarm Clock
-                    
-                    await self.shutdown_event.wait()
-                    logging.info("[SHUTDOWN] Event received. Cleaning up residents...")
-            except Exception as e:
-                logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
-                if self.mode != "SERVICE_UNATTENDED":
-                    break
-                await asyncio.sleep(5.0) # Backoff before retry
-            finally:
-                # MANDATORY: Full Silicon Scrub
-                # AsyncExitStack handles the closing of residents automatically here
-                await runner.cleanup()
-                logging.info("[SHUTDOWN] Cycle cleanup complete. Port 8765 released.")
-
-            # Exit logic for co-pilot/debug modes
-            if self.mode != "SERVICE_UNATTENDED":
-                logging.info(f"[SHUTDOWN] Mode '{self.mode}' is terminal. Exiting.")
-                break
-            
-            logging.info(f"[BOUNCE] Mode '{self.mode}' active. Restarting Lab in 2 seconds...")
-            await asyncio.sleep(2.0)
+                asyncio.create_task(self.reflex_loop())
+                asyncio.create_task(
+                    self.scheduled_tasks_loop()
+                )  # [FEAT-049] Alarm Clock
+                
+                await self.shutdown_event.wait()
+                logging.info("[SHUTDOWN] Event received. Cleaning up residents...")
+        except Exception as e:
+            logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
+        finally:
+            # MANDATORY: Full Silicon Scrub
+            await runner.cleanup()
+            logging.info("[SHUTDOWN] Cycle cleanup complete. Port 8765 released.")
 
 
 if __name__ == "__main__":

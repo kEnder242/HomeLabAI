@@ -539,7 +539,14 @@ class LabAttendantV3:
             f.seek(0, os.SEEK_END)
             while True:
                 if not lab_process or lab_process.poll() is not None:
-                    logger.warning("[WATCHDOG] Lab process ended. Terminating log monitor.")
+                    logger.warning("[WATCHDOG] Lab process ended.")
+                    # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
+                    if current_lab_mode == "SERVICE_UNATTENDED":
+                        logger.info("[WATCHDOG] Unattended mode active. Triggering recovery in 5s...")
+                        async def _tactical_recovery():
+                            await asyncio.sleep(5)
+                            await self.mcp_start(engine=current_lab_mode, engine_only=True)
+                        asyncio.create_task(_tactical_recovery())
                     break
                 
                 line = f.readline()
