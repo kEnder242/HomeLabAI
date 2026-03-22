@@ -225,16 +225,29 @@ class CognitiveHub:
         })
 
         try:
-            generator = await self.residents[node_id].create_message(
-                query=query,
-                context=context,
-                tools=tools,
-                behavioral_guidance=behavioral_guidance
-            )
-            
-            async for token in generator:
-                full_text += token
-                # Mid-stream parsing for [ACTION] tags or fuel boosts could go here
+            # [FEAT-248] Hardened Stream Bridge with 30s timeout and Fallback
+            async with asyncio.timeout(30):
+                node = self.residents[node_id]
+                # Fallback: standard MCP sessions don't have create_message; use native_sample tool
+                if hasattr(node, "create_message"):
+                    generator = await node.create_message(
+                        query=query,
+                        context=context,
+                        tools=tools,
+                        behavioral_guidance=behavioral_guidance
+                    )
+                    async for token in generator:
+                        full_text += token
+                else:
+                    # [FEAT-240] Standard MCP Path: Use the native_sample tool
+                    # Note: This is currently buffered until true MCP streaming is implemented
+                    res = await node.call_tool("native_sample", {
+                        "query": query,
+                        "context": context,
+                        "tools": tools,
+                        "behavioral_guidance": behavioral_guidance
+                    })
+                    full_text = str(res.content[0].text)
             
             if full_text:
                 # Buffering check: Only dispatch to UI once node finishes (Paragraph Pop)

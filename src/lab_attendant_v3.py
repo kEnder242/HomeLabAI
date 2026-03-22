@@ -661,6 +661,14 @@ async def run_bilingual():
         asyncio.create_task(attendant.vram_watchdog_loop())
         asyncio.create_task(attendant.pulse_loop())
         
+        # [FEAT-136] Cold Hub Ignition: Proactively open the foyer foyer for the Handshake Spark
+        logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
+        # Ensure we respect the environment defaults (VLLM/MEDIUM)
+        engine = os.environ.get("LAB_MODE", "OLLAMA")
+        model = os.environ.get("LAB_MODEL", "MEDIUM")
+        # Note: In this context, engine_only=True means 'Just start the Hub'.
+        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True))
+
         # If in a TTY, also allow local tools, otherwise just wait
         if sys.stdin.isatty():
             await mcp.run_stdio_async()
