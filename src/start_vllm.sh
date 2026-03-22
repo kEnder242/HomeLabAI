@@ -33,6 +33,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
+    --use-v1=0 \
     $VLLM_EXTRA_ARGS \
     > vllm_server.log 2>&1 &
 
