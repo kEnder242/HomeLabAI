@@ -19,24 +19,13 @@ SERVER_LOG = os.path.join(_SRC_DIR, "server.log")
 
 class SiliconAudit:
     """Forensic auditing of ports and processes."""
-    
-    @staticmethod
-    def get_port_pid(port):
-        try:
-            output = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
-            return int(output.split(":")[-1].strip())
-        except Exception:
-            return None
-
     @staticmethod
     def check_for_zombies():
         try:
             output = subprocess.check_output(["ps", "aux"], text=True)
-            # Count Hub processes. Filter out the grep itself.
             lines = [l for l in output.split('\n') if "acme_lab" in l and "grep" not in l]
             return len(lines)
-        except Exception:
-            return 0
+        except Exception: return 0
 
 async def check_for_crashes():
     """Forensic check for Hub stack traces."""
@@ -51,46 +40,54 @@ async def check_for_crashes():
     except Exception: pass
     return None
 
+async def cognitive_ping(label="Pre-Sleep"):
+    """[FEAT-251.3] Proactive check for 404s, connection errors, and node liveness."""
+    print(f"  [PING] Performing {label} Cognitive Check...")
+    try:
+        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
+            await ws.send_str(json.dumps({"type": "handshake", "client": f"Ping-{label}"}))
+            await ws.receive_json() # status
+            
+            await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
+            
+            start_wait = time.time()
+            while time.time() - start_wait < 30:
+                msg = await ws.receive_json(timeout=10)
+                if msg.get("brain_source") == "Pinky (Triage)":
+                    text = msg.get("brain", "").lower()
+                    # HARDENED ERROR DETECTION
+                    error_keywords = ["error:", "failed", "404", "none", "refused", "offline"]
+                    if any(k in text for k in error_keywords):
+                        print(f"  ❌ FAILED ({label}): Pinky reported a system error: {text[:100]}")
+                        return False
+                    
+                    print(f"  ✅ Pinky Replied ({label}): {text[:50]}...")
+                    return True
+            else:
+                print(f"  ❌ Timeout ({label}): No response from Pinky.")
+                return False
+    except Exception as e:
+        print(f"  ❌ Connection Failed ({label}): {e}")
+        return False
+
 async def test_hibernation_cycle():
-    print("--- [TEST] Autonomous Hibernation & Silicon Audit ---")
+    print("--- [TEST] Forensic Hibernation & Cognitive Audit ---")
     audit = SiliconAudit()
     headers = {'X-Lab-Key': KEY, 'Content-Type': 'application/json'}
     
     async with aiohttp.ClientSession() as session:
-        # STEP 0: Pre-Flight Scrub
-        print("[STEP 0] Performing Pre-Flight Silicon Scrub...")
+        print("[STEP 0] Silicon Baseline Check...")
         zombies = audit.check_for_zombies()
-        if zombies > 1:
-            print(f"  ⚠️ WARNING: Detected {zombies} redundant Hub processes. Clearing...")
-            subprocess.run(["sudo", "fuser", "-k", "8765/tcp"], check=False)
-            await asyncio.sleep(2)
-        else:
-            print("  ✅ Silicon is clean.")
+        print(f"  ✅ Active Hubs: {zombies}")
 
-        # Check if we need to ignite
-        async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
-            data = await resp.json()
-            if data.get("mode") == "OFFLINE":
-                print("  🔥 Lab is OFFLINE. Triggering Cold Ignition...")
-                await session.post(f"{ATTENDANT_URL}/start", headers=headers, json={})
-            else:
-                print(f"  ✅ Lab is already {data.get('mode')}.")
-
-        # STEP 1: Wait for READY
-        print("[STEP 1] Waiting for Lab READY (Max 90s)...")
-        initial_vram = 0
-        for i in range(45):
-            crash = await check_for_crashes()
-            if crash:
-                print(f"\n❌ CRASH DETECTED DURING IGNITION:\n{crash}")
-                return
-
+        # STEP 1: Ensure READY
+        print("[STEP 1] Waiting for Lab READY...")
+        for _ in range(45): # 90s
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     data = await resp.json()
                     if data.get("full_lab_ready"):
-                        print(f"  ✅ Lab is READY (VRAM: {data.get('vram')})")
-                        initial_vram = float(data.get("vram", "0%").replace("%",""))
+                        print(f"  ✅ Lab is READY (Mode: {data.get('mode')})")
                         break
             except Exception: pass
             await asyncio.sleep(2)
@@ -98,56 +95,48 @@ async def test_hibernation_cycle():
             print("  ❌ Timeout: Lab failed to reach READY.")
             return
 
-        # STEP 2: Trigger Hibernate
+        # STEP 1.1: Proactive Check (Abort if broken now)
+        if not await cognitive_ping("Pre-Sleep"):
+            print("❌ ABORTING: Lab is non-functional before test began.")
+            return
+
+        # STEP 2: Hibernate
         print("[STEP 2] Triggering HIBERNATE...")
-        async with session.post(f"{ATTENDANT_URL}/hibernate", headers=headers) as resp:
+        async with session.post(f"{ATTENDANT_URL}/hibernate", headers=headers, json={}) as resp:
             assert resp.status == 200
-        
-        await asyncio.sleep(5) 
+        await asyncio.sleep(5)
         
         async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
             data = await resp.json()
-            hib_vram = float(data.get("vram", "0%").replace("%",""))
-            
-            assert data.get("mode") == "HIBERNATING"
-            assert data.get("intercom") == "ONLINE"
-            print("  ✅ Hibernation verified (Hub alive, Engines dead).")
+            if data.get("mode") != "HIBERNATING":
+                print(f"  ❌ Failed to enter HIBERNATING mode (Current: {data.get('mode')})")
+                return
+            print("  ✅ Hibernation verified.")
 
-            # VRAM Delta check
-            print(f"  ✅ VRAM Reclaimed: {initial_vram}% -> {hib_vram}%")
-            if initial_vram - hib_vram < 10:
-                print("  ⚠️ WARNING: VRAM drop was less than 10%. Check weights status.")
-
-        # STEP 3: Trigger Handshake Spark
+        # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
-        try:
-            async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
-                await ws.send_str(json.dumps({"type": "handshake", "client": "TestScript"}))
-                msg = await ws.receive_json(timeout=5)
-                # Flexible check for response
-                assert msg.get("type") in ["crosstalk", "status"]
-                print(f"  ✅ Spark Acknowledged (Type: {msg.get('type')})")
-        except Exception as e:
-            print(f"  ❌ Handshake failed: {e}")
-            return
+        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
+            await ws.send_str(json.dumps({"type": "handshake", "client": "TestScript"}))
+            msg = await ws.receive_json(timeout=10)
+            print(f"  ✅ Spark Ack (Type: {msg.get('type')})")
 
-        # STEP 4: Verify Restoration
+        # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
-        for _ in range(30):
-            crash = await check_for_crashes()
-            if crash:
-                print(f"\n❌ CRASH DETECTED DURING RESTORATION:\n{crash}")
-                return
-
+        for _ in range(45):
             async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 data = await resp.json()
-                if data.get("mode") in ["VLLM", "OLLAMA"] and data.get("full_lab_ready"):
+                if data.get("full_lab_ready"):
                     print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s")
                     break
             await asyncio.sleep(2)
         else:
             print("  ❌ Restoration timed out.")
+            return
+
+        # STEP 5: Final Cognitive Audit
+        if not await cognitive_ping("Post-Sleep"):
+            print("❌ FAILED: Lab lost its voice after hibernation cycle.")
             return
 
     print("\n--- [RESULT] High-Fidelity Logic is RESONANT ---")

@@ -390,8 +390,8 @@ class AcmeLab:
             now = datetime.datetime.now()
             today = now.date()
 
-            # Trigger Logic: 1 AM Window OR 4 AM - 6 AM Catch-up
-            is_window = (now.hour == 1) or (now.hour >= 4 and now.hour < 6)
+            # [DEBUG] Alarm disabled to resolve restoration deadlocks
+            is_window = False
 
             if self.last_induction_date != today and is_window:
                 logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")

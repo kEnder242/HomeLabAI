@@ -248,14 +248,17 @@ class LabAttendantV3:
         env = {k: str(v) for k, v in env.items() if v is not None}
         
         if engine == "VLLM":
-            # [SPR-13.0] Verified Stable Config from characterization.json
-            env["NCCL_P2P_DISABLE"] = "1"
-            env["NCCL_SOCKET_IFNAME"] = "lo"
-            env["VLLM_ATTENTION_BACKEND"] = backend
-            # VLLM_EXTRA_ARGS must include the backend flag as the env var is ignored in 0.17
-            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4"
+            # [SPR-13.0] Back-to-Basics: Pass parameters to start_vllm.sh via environment
+            env["VLLM_GPU_UTIL"] = str(utilization)
             
-            logger.info(f"[VLLM] Igniting Sovereign Node: {target_model} (Util: {utilization}, Backend: {backend})")
+            # [FEAT-030] Unity Pattern: Build LoRA module string
+            lora_modules = tier_config.get("lora_modules", [])
+            lora_args = "--lora-modules " + " ".join(lora_modules) if lora_modules else ""
+            
+            # Inject into EXTRA_ARGS for the script to consume
+            env["VLLM_EXTRA_ARGS"] = f"{lora_args}"
+            
+            logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition: {engine}/{target_model} (Mode: {op_mode})")
             subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR)
             await self._wait_for_vllm()
@@ -434,17 +437,22 @@ class LabAttendantV3:
                         pid_str = line.split(":")[1].strip()
                         for p in pid_str.split():
                             p_int = int(p)
-                            if self._is_immune(p_int): continue
+                            # [FEAT-119.1] Physical Override: If you hold 8765, you are NEVER immune to a restart
+                            if port != 8765 and self._is_immune(p_int): continue
                             pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
                 pass
 
         # 2. Name-Based Discovery
-        check_targets = targets or ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
+        # [FEAT-119] Hardened targets including camouflaged engine cores
+        check_targets = targets or ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama", "enginecore"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
+                # Check both name and cmdline, strictly case-insensitive
+                proc_name = str(proc.info["name"] or "").lower()
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
-                if any(t in cmdline for t in check_targets):
+                
+                if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
                     if self._is_immune(proc.info["pid"]): continue
                     pgids_to_kill.add(os.getpgid(proc.info["pid"]))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
