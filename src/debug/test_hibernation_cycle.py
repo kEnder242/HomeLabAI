@@ -82,12 +82,15 @@ async def test_hibernation_cycle():
 
         # STEP 1: Ensure READY
         print("[STEP 1] Waiting for Lab READY...")
+        initial_vram = 0.0
         for _ in range(45): # 90s
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     data = await resp.json()
                     if data.get("full_lab_ready"):
-                        print(f"  ✅ Lab is READY (Mode: {data.get('mode')})")
+                        vram_str = data.get("vram", "0%").replace("%","")
+                        initial_vram = float(vram_str)
+                        print(f"  ✅ Lab is READY (Mode: {data.get('mode')}, VRAM: {initial_vram}%)")
                         break
             except Exception: pass
             await asyncio.sleep(2)
@@ -111,7 +114,11 @@ async def test_hibernation_cycle():
             if data.get("mode") != "HIBERNATING":
                 print(f"  ❌ Failed to enter HIBERNATING mode (Current: {data.get('mode')})")
                 return
-            print("  ✅ Hibernation verified.")
+            
+            hib_vram = float(data.get("vram", "0%").replace("%",""))
+            print(f"  ✅ Hibernation verified. VRAM: {initial_vram}% -> {hib_vram}%")
+            if initial_vram - hib_vram < 10:
+                print("  ⚠️ WARNING: VRAM drop was less than 10%. Weight unload may have stalled.")
 
         # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
@@ -123,11 +130,12 @@ async def test_hibernation_cycle():
         # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
-        for _ in range(45):
+        for _ in range(60): # 120s
             async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 data = await resp.json()
                 if data.get("full_lab_ready"):
-                    print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s")
+                    restore_vram = float(data.get("vram", "0%").replace("%",""))
+                    print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s (VRAM: {restore_vram}%)")
                     break
             await asyncio.sleep(2)
         else:

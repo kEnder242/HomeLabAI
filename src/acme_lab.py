@@ -281,9 +281,9 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
             await asyncio.sleep(10.0)
-            # [FEAT-249] VRAM Hibernation Logic
+            # [FEAT-249.2] Hardened VRAM Hibernation Logic (10m idle gate)
             idle_time = time.time() - self.last_activity
-            is_hibernating = (not self.connected_clients and idle_time > 300)
+            is_hibernating = (not self.connected_clients and idle_time > 600)
 
             if self.connected_clients:
                 await self.broadcast(
@@ -582,6 +582,8 @@ class AcmeLab:
                         # [STABILITY] Do NOT spark if we are already in the boot sequence
                         if not self.brain_online and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
+                            # [FEAT-249.2] Reset activity timer to prevent immediate re-hibernation
+                            self.last_activity = time.time()
                             logging.info("[HUB] Handshake detected. Sparking engine reload...")
                             await ws.send_str(json.dumps({
                                 "type": "crosstalk",
