@@ -113,6 +113,7 @@ class LabAttendantV3:
         self.register_route("POST", "/ignition", self.handle_ignition_rest)
         self.register_route("POST", "/refresh", self.handle_ignition_rest)
         self.register_route("POST", "/train", self.handle_train_rest)
+        self.register_route("POST", "/hibernate", self.handle_hibernate_rest)
         self.register_route("POST", "/hard_reset", self.handle_stop_rest)
         self.register_route("GET", "/heartbeat", self.handle_heartbeat_rest)
         self.register_route("GET", "/ping", self.handle_ping_rest)
@@ -274,6 +275,26 @@ class LabAttendantV3:
         asyncio.create_task(self._deferred_cleanup("OFFLINE (Manual Stop)"))
         return {"status": "success", "message": "Lab stopping..."}
 
+    async def mcp_hibernate(self):
+        """[FEAT-249] Selective engine unload while keeping Hub alive."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "hibernate")
+        
+        logger.warning("[HUB] Hibernation signal received. Unloading local engines...")
+        self.log_event("Hibernation: Unloading weights.")
+        
+        # Selective Assassin: Only kill engines (8088/11434) and their binaries
+        async def _run_selective_cleanup():
+            await asyncio.sleep(0.5)
+            await self.cleanup_silicon(
+                ports=[8088, 11434], 
+                targets=["vllm", "ollama"]
+            )
+            await self.update_status_json("HIBERNATING (VRAM Free)")
+            
+        asyncio.create_task(_run_selective_cleanup())
+        return {"status": "success", "message": "Hibernation initiated."}
+
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "quiesce")
@@ -382,13 +403,14 @@ class LabAttendantV3:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    async def cleanup_silicon(self):
+    async def cleanup_silicon(self, ports=None, targets=None):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID with Immunity."""
         pgids_to_kill = set()
         my_pgid = os.getpgid(os.getpid())
         
         # 1. Port-Based Discovery
-        for port in [8088, 8765]:
+        check_ports = ports or [8088, 8765]
+        for port in check_ports:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
                 for line in res.split("\n"):
@@ -402,11 +424,11 @@ class LabAttendantV3:
                 pass
 
         # 2. Name-Based Discovery
-        targets = ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
+        check_targets = targets or ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
-                if any(t in cmdline for t in targets):
+                if any(t in cmdline for t in check_targets):
                     if self._is_immune(proc.info["pid"]): continue
                     pgids_to_kill.add(os.getpgid(proc.info["pid"]))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -546,6 +568,8 @@ class LabAttendantV3:
         return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode))
     async def handle_stop_rest(self, r):
         return web.json_response(await self.mcp_stop())
+    async def handle_hibernate_rest(self, r):
+        return web.json_response(await self.mcp_hibernate())
     async def handle_quiesce_rest(self, r):
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):

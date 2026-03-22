@@ -309,7 +309,7 @@ class AcmeLab:
                     async def hibernate():
                         async with aiohttp.ClientSession() as session:
                             headers = {'X-Lab-Key': 'c48e0b32'}
-                            await session.post("http://localhost:9999/stop", headers=headers)
+                            await session.post("http://localhost:9999/hibernate", headers=headers)
                     asyncio.create_task(hibernate())
                     self.brain_online = False # Mark offline while sleeping
 
