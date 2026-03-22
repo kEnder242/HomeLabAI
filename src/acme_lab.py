@@ -36,6 +36,7 @@ NIGHTLY_DIALOGUE_FILE = os.path.join(
 )
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
+MAINTENANCE_LOCK = os.path.join(WORKSPACE_DIR, "field_notes/data/maintenance.lock")
 
 
 def resolve_brain_url():
@@ -388,6 +389,12 @@ class AcmeLab:
 
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
+            # Add this check immediately
+            if os.path.exists(MAINTENANCE_LOCK):
+                logging.debug("[ALARM] System quiesced. Skipping cycle.")
+                await asyncio.sleep(30)
+                continue
+
             today = now.date()
 
             # [DEBUG] Alarm disabled to resolve restoration deadlocks
