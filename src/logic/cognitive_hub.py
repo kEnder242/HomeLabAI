@@ -370,10 +370,13 @@ class CognitiveHub:
 
         async def run_shadow():
             nonlocal shadow_text
-            # [FEAT-229.2] Shadow Overhear Pivot (Threshold 0.2)
-            # [FEAT-244] Shadow Muting (Only if BRAIN or MICE are addressed)
-            if fuel_start > 0.2 and addressed_to in ["BRAIN", "MICE"]:
-                s_context = (f"<system_state>\nFUEL: {fuel_start:.2f} | ROLE: TECHNICAL_INTUITION\n</system_state>")
+            # [FEAT-249.4] Shadow Failover: Lower threshold and promote role if brain is offline
+            brain_online = self.brain_online()
+            threshold = 0.0 if not brain_online else 0.2
+            role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
+            
+            if fuel_start > threshold and addressed_to in ["BRAIN", "MICE"]:
+                s_context = (f"<system_state>\nFUEL: {fuel_start:.2f} | ROLE: {role}\n</system_state>")
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
                     tools=["ask_brain", "shallow_think"],
@@ -385,7 +388,13 @@ class CognitiveHub:
 
         # 5. Sovereign Brain (Streaming)
         # [FEAT-244] Brain Muting
-        if self.brain_online and "brain" in self.residents and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
+        # [FEAT-249.5] Shadow Fallback: If brain is offline, allow Shadow to handle the deep reasoning
+        can_run_brain = self.brain_online() and "brain" in self.residents
+        
+        if (can_run_brain or not self.brain_online()) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
+            target_node = "brain" if can_run_brain else "shadow"
+            source_label = "Brain (Result)" if can_run_brain else "Shadow (Failover)"
+            
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
@@ -394,10 +403,14 @@ class CognitiveHub:
             if shadow_text:
                 b_context += f"[SHADOW_INTUITION]: {shadow_text}\n"
 
-            verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
+            # [FEAT-249.5] Shadow Fallback: Force exhaustive synthesis if brain is offline
+            if not can_run_brain and target_node == "shadow":
+                verbosity = "Provide full-spectrum exhaustive synthesis."
+            else:
+                verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
             
             brain_full = await self._process_node_stream(
-                "brain", query, b_context, "Brain (Result)",
+                target_node, query, b_context, source_label,
                 behavioral_guidance=f"{verbosity} (Expert Domain: {selected_expert})",
                 tools=["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"],
                 shutdown_event=shutdown_event

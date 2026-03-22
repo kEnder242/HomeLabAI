@@ -50,6 +50,7 @@ current_lab_mode = "OFFLINE"
 current_model = None
 is_hibernating = False
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
+_CURRENT_SESSION_TOKEN = _BOOT_HASH
 
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
 reclaim_logger(role="ATTENDANT")
@@ -90,8 +91,9 @@ async def key_middleware(request, handler):
     expected_key = get_style_key()
     provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
 
-    if provided_key != expected_key:
-        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected: {expected_key}) from {request.remote}")
+    # [FEAT-252] Dynamic Auth: Allow either the STYLE_HASH or the current SESSION_TOKEN
+    if provided_key not in [expected_key, _CURRENT_SESSION_TOKEN]:
+        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected Style: {expected_key} or Session: {_CURRENT_SESSION_TOKEN}) from {request.remote}")
         return web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
     
     return await handler(request)
@@ -210,9 +212,9 @@ class LabAttendantV3:
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only})
         
-        global current_lab_mode, current_model, lab_process, is_hibernating
+        global current_lab_mode, current_model, lab_process, is_hibernating, _CURRENT_SESSION_TOKEN
         is_hibernating = False
-        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
+        _CURRENT_SESSION_TOKEN = uuid.uuid4().hex[:8]
         logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
         
         self.refresh_vram_config() # Reload latest model mappings
@@ -230,7 +232,7 @@ class LabAttendantV3:
         
         # [FEAT-250] Surgical Ignition: Spare the Hub if requested
         if engine_only:
-            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"])
+            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"], ignore_immunity=True)
         else:
             await self.cleanup_silicon()
 
@@ -240,7 +242,7 @@ class LabAttendantV3:
         env = os.environ.copy()
         env["LAB_MODE"] = str(engine)
         # [FEAT-220] Silicon Handshake: Inject Immunity Token into all spawned families
-        env["LAB_IMMUNITY_TOKEN"] = str(_BOOT_HASH)
+        env["LAB_IMMUNITY_TOKEN"] = str(_CURRENT_SESSION_TOKEN)
         
         if disable_ear:
             env["DISABLE_EAR"] = "1"
@@ -325,8 +327,19 @@ class LabAttendantV3:
             await asyncio.sleep(0.5)
             await self.cleanup_silicon(
                 ports=[8088, 11434], 
-                targets=["vllm", "ollama"]
+                targets=["vllm", "ollama"],
+                ignore_immunity=True
             )
+            # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
+            for i in range(10):
+                used, total = await self._get_vram_info()
+                if used < 2000:
+                    logger.info(f"[HIBERNATE] VRAM reclamation verified at {used}MB.")
+                    break
+                await asyncio.sleep(1)
+            else:
+                logger.warning("[HIBERNATE] Timeout waiting for VRAM drop. Proceeding anyway.")
+            
             await self.update_status_json("HIBERNATING (VRAM Free)")
             
         asyncio.create_task(_run_selective_cleanup())
@@ -440,7 +453,7 @@ class LabAttendantV3:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    async def cleanup_silicon(self, ports=None, targets=None):
+    async def cleanup_silicon(self, ports=None, targets=None, ignore_immunity=False):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID with Immunity."""
         pgids_to_kill = set()
         my_pgid = os.getpgid(os.getpid())
@@ -456,10 +469,22 @@ class LabAttendantV3:
                         for p in pid_str.split():
                             p_int = int(p)
                             # [FEAT-119.1] Physical Override: If you hold 8765, you are NEVER immune to a restart
-                            if port != 8765 and self._is_immune(p_int): continue
+                            if not ignore_immunity and port != 8765 and self._is_immune(p_int): continue
                             pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
                 pass
+
+        # [FEAT-119.2] Hardware-First Assassin: nvidia-smi PID extraction
+        try:
+            smi = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader"], text=True)
+            for line in smi.strip().split("\n"):
+                if not line: continue
+                pid, name = line.split(",")
+                p_int = int(pid.strip())
+                if any(t in name.lower() for t in ["vllm", "ollama", "python"]) and (ignore_immunity or not self._is_immune(p_int)):
+                    pgids_to_kill.add(os.getpgid(p_int))
+        except Exception:
+            pass
 
         # 2. Name-Based Discovery
         # [FEAT-119] Hardened targets including camouflaged engine cores
@@ -471,7 +496,7 @@ class LabAttendantV3:
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 
                 if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
-                    if self._is_immune(proc.info["pid"]): continue
+                    if not ignore_immunity and self._is_immune(proc.info["pid"]): continue
                     pgids_to_kill.add(os.getpgid(proc.info["pid"]))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
@@ -490,12 +515,13 @@ class LabAttendantV3:
     def _is_immune(self, pid):
         """[FEAT-220] Checks if a process carries the current Diplomatic Immunity token."""
         try:
-            if pid == os.getpid(): return True
+            if pid == os.getpid():
+                return True
             proc = psutil.Process(pid)
             # Check environment for the current boot hash
             env = proc.environ()
             token = env.get("LAB_IMMUNITY_TOKEN")
-            if token == _BOOT_HASH:
+            if token == _CURRENT_SESSION_TOKEN:
                 logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
                 return True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -588,7 +614,21 @@ class LabAttendantV3:
 
     async def _wait_for_vllm(self, timeout=120):
         start_t = time.time()
+        # [FEAT-251.2] Forensic Wait: Early crash detection
+        vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
+        
         while time.time() - start_t < timeout:
+            # Check for crashes in log
+            if os.path.exists(vllm_log):
+                try:
+                    with open(vllm_log, "r") as f:
+                        # Read last 20 lines
+                        lines = f.readlines()[-20:]
+                        if any("Traceback" in l or "ValueError:" in l or "RuntimeError:" in l for l in lines):
+                            logger.error("[VLLM] Fatal startup crash detected in logs. Aborting wait.")
+                            return False
+                except Exception: pass
+
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get("http://localhost:8088/v1/models", timeout=1.0) as r:
@@ -676,7 +716,7 @@ async def lab_wait_ready(timeout: int = 60):
 async def run_bilingual():
     # [FEAT-219] Silicon Handshake: Role-Based Execution
     role = os.environ.get("LAB_ATTENDANT_ROLE")
-    is_tool = not sys.stdin.isatty()
+    not sys.stdin.isatty()
     
     if role == "MASTER":
         # Full Master Mode: REST API + Pulse + Watchdog

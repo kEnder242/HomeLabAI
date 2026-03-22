@@ -118,7 +118,8 @@ async def test_hibernation_cycle():
             hib_vram = float(data.get("vram", "0%").replace("%",""))
             print(f"  ✅ Hibernation verified. VRAM: {initial_vram}% -> {hib_vram}%")
             if initial_vram - hib_vram < 10:
-                print("  ⚠️ WARNING: VRAM drop was less than 10%. Weight unload may have stalled.")
+                print(f"  ❌ FAILED: VRAM drop was only {initial_vram - hib_vram:.1f}%. Weights failed to unload.")
+                return
 
         # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
