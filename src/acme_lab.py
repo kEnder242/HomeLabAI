@@ -219,70 +219,59 @@ class AcmeLab:
         return task.result()
 
     async def check_brain_health(self, force=False):
-        """Hardened Health Check: Perform a single-token generation probe."""
-        try:
-            # [FEAT-087] Dynamic Resolution: Re-check URL on every health probe
-            target_url = resolve_brain_url()
+        """[REVISION-17.5] Tiered Discovery: Port Check -> Presence-Gated Heavy Probe."""
+        now = time.time()
+        
+        # Initialize sticky tracking if missing
+        if not hasattr(self, "_last_brain_fail"): self._last_brain_fail = 0
+        if not hasattr(self, "_last_brain_ping"): self._last_brain_ping = 0
 
+        # [BKM-026] 60s Failure Penalty Box
+        if not force and not self.brain_online and (now - self._last_brain_fail < 60):
+            return
+
+        try:
+            target_url = resolve_brain_url()
             async with aiohttp.ClientSession() as session:
-                # 1. First check if endpoint is reachable and get available models
+                # Tier 1: Light API Check (Status only)
                 async with session.get(target_url, timeout=1.5) as r:
-                    if r.status != 200:
+                    is_reachable = r.status == 200
+                    if not is_reachable:
+                        if self.brain_online: logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
                         self.brain_online = False
+                        self._last_brain_fail = now
                         return
+                    
                     data = await r.json()
                     models = [m.get("name") for m in data.get("models", [])]
                     if not models:
                         self.brain_online = False
                         return
+                    
+                    self.brain_online = True # API is at least talking
 
-                    # [STABILITY] Prioritize 8B class models for speed
-                    preferred = [
-                        "llama3.1:8b",
-                        "llama3:latest",
-                        "llama3:8b",
-                        "dolphin-llama3:8b",
-                    ]
-                    probe_model = models[0]  # Default
-                    for p in preferred:
-                        if p in models:
-                            probe_model = p
-                            break
-
-                # 2. PROBE: Single-token generation to verify availability
-                # [FEAT-085] Intelligent Keep-Alive: Only perform heavy priming if connected
-                # or if the Brain was previously offline, OR IF FORCED (Handshake).
-                # [FEAT-171] Set to 4m (240s) to stay under Ollama's 5m unload timer
-                should_prime = (
-                    force
-                    or not self.brain_online
-                    or (
-                        time.time() - self._last_brain_prime > 240
-                        and self.connected_clients
+                    # Tier 2: Heavy Prime (GPU Wake)
+                    # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
+                    should_prime = force or (
+                        self.connected_clients > 0 
+                        and (now - self._last_brain_prime > 240)
                     )
-                )
 
-                if should_prime:
-                    p_url = target_url.replace("/api/tags", "/api/generate")
-                    payload = {
-                        "model": probe_model,
-                        "prompt": "ping",
-                        "stream": False,
-                        "options": {"num_predict": 1},
-                    }
-                    timeout = 15 if not self.brain_online or force else 5
-                    async with session.post(p_url, json=payload, timeout=timeout) as r:
-                        is_ok = r.status == 200
-                        if is_ok:
-                            if not self.brain_online or force:
-                                logging.info(
-                                    f"[HEALTH] Strategic Sovereign PRIMED: {probe_model} (Force={force})"
-                                )
-                            self._last_brain_prime = time.time()
-                        self.brain_online = is_ok
-                else:
-                    # Light heartbeat only
-                    self.brain_online = True
+                    if should_prime:
+                        probe_model = models[0]
+                        preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b"]
+                        for p in preferred:
+                            if p in models:
+                                probe_model = p
+                                break
+
+                        p_url = target_url.replace("/api/tags", "/api/generate")
+                        payload = {"model": probe_model, "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+                        
+                        async with session.post(p_url, json=payload, timeout=10) as pr:
+                            if pr.status == 200:
+                                logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model} (Force={force})")
+                                self._last_brain_prime = now
         except Exception as e:
             logging.debug(f"[HEALTH] Brain probe failed: {e}")
             self.brain_online = False
