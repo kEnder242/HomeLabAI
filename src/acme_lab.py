@@ -580,8 +580,9 @@ class AcmeLab:
                     m_type = data.get("type")
                     if m_type == "handshake":
                         # [FEAT-249] Handshake Ignition Spark
-                        # If the engine is reported OFFLINE, trigger a proactive start
-                        if not self.brain_online:
+                        # [STABILITY] Do NOT spark if we are already in the boot sequence
+                        if not self.brain_online and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
+                            self._spark_active = True
                             logging.info("[HUB] Handshake detected. Sparking engine reload...")
                             await ws.send_str(json.dumps({
                                 "type": "crosstalk",
@@ -590,10 +591,16 @@ class AcmeLab:
                             }))
                             # Trigger non-blocking start via REST
                             async def spark_reload():
-                                async with aiohttp.ClientSession() as session:
-                                    # Use {} for default engine/model
-                                    headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
-                                    await session.post("http://localhost:9999/start", headers=headers, json={})
+                                try:
+                                    async with aiohttp.ClientSession() as session:
+                                        headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
+                                        # [FEAT-250] Use engine_only=True to spare the Hub
+                                        await session.post("http://localhost:9999/start", headers=headers, json={"engine_only": True})
+                                finally:
+                                    # Reset spark lock after 30s to allow future hibernations to wake
+                                    await asyncio.sleep(30)
+                                    self._spark_active = False
+                                    
                             asyncio.create_task(spark_reload())
 
                         # [FEAT-087] Intelligent Handshake Priming
