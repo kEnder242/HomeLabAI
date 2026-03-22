@@ -282,33 +282,36 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
             await asyncio.sleep(10.0)
+            # [FEAT-249] VRAM Hibernation Logic
+            idle_time = time.time() - self.last_activity
+            is_hibernating = (not self.connected_clients and idle_time > 300)
+
             if self.connected_clients:
                 await self.broadcast(
                     {
                         "type": "status",
                         "state": "ready" if self.status == "READY" else "booting",
                         "brain_online": self.brain_online,
+                        "hibernating": False
                     }
                 )
                 # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
-                idle_time = time.time() - self.last_activity
                 if idle_time > 60:
-                    # [FEAT-047] Reflex Tics: Occasionally bubble up a character tic
-                    # Very low probability for background noise
                     if not self.is_user_typing() and random.random() < 0.05:
-                        await self.broadcast(
-                            {
-                                "type": "crosstalk",
-                                "brain": random.choice(tics),
-                                "brain_source": "Pinky",
-                            }
-                        )
+                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
 
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
-                # [FEAT-171] Silence Sovereign on disconnect
-                pass
+                if is_hibernating and self.brain_online:
+                    logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
+                    # Trigger non-blocking stop via REST
+                    async def hibernate():
+                        async with aiohttp.ClientSession() as session:
+                            headers = {'X-Lab-Key': 'c48e0b32'}
+                            await session.post("http://localhost:9999/stop", headers=headers)
+                    asyncio.create_task(hibernate())
+                    self.brain_online = False # Mark offline while sleeping
 
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
@@ -576,16 +579,24 @@ class AcmeLab:
                     data = json.loads(message.data)
                     m_type = data.get("type")
                     if m_type == "handshake":
-                        # [FEAT-087] Intelligent Handshake Priming: FORCE model loading
-                        await ws.send_str(
-                            json.dumps(
-                                {
-                                    "brain": "Priming Brain...",
-                                    "brain_source": "System",
-                                    "channel": "insight",
-                                }
-                            )
-                        )
+                        # [FEAT-249] Handshake Ignition Spark
+                        # If the engine is reported OFFLINE, trigger a proactive start
+                        if not self.brain_online:
+                            logging.info("[HUB] Handshake detected. Sparking engine reload...")
+                            await ws.send_str(json.dumps({
+                                "type": "crosstalk",
+                                "brain": "Narf! Waking up the local neurons...",
+                                "final": False
+                            }))
+                            # Trigger non-blocking start via REST
+                            async def spark_reload():
+                                async with aiohttp.ClientSession() as session:
+                                    # Use {} for default engine/model
+                                    headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
+                                    await session.post("http://localhost:9999/start", headers=headers, json={})
+                            asyncio.create_task(spark_reload())
+
+                        # [FEAT-087] Intelligent Handshake Priming
                         asyncio.create_task(self.check_brain_health(force=True))
 
                         if "archive" in self.residents:
