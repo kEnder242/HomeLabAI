@@ -1,5 +1,6 @@
 import os
 import subprocess
+import socket
 import json
 import asyncio
 import datetime
@@ -248,20 +249,37 @@ class LabAttendantV3:
         env = {k: str(v) for k, v in env.items() if v is not None}
         
         if engine == "VLLM":
-            # [SPR-13.0] Back-to-Basics: Pass parameters to start_vllm.sh via environment
-            env["VLLM_GPU_UTIL"] = str(utilization)
+            # [SPR-13.0] Verified Stable Config
+            env["NCCL_P2P_DISABLE"] = "1"
+            env["NCCL_SOCKET_IFNAME"] = "lo"
+            env["VLLM_ATTENTION_BACKEND"] = str(backend)
             
             # [FEAT-030] Unity Pattern: Build LoRA module string
             lora_modules = tier_config.get("lora_modules", [])
             lora_args = "--lora-modules " + " ".join(lora_modules) if lora_modules else ""
             
-            # Inject into EXTRA_ARGS for the script to consume
-            env["VLLM_EXTRA_ARGS"] = f"{lora_args}"
+            # Context Constraint from characterization
+            max_len = tier_config.get("max_model_len", 8192)
+            
+            # [BKM] Consolidate into EXTRA_ARGS for the script to consume
+            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4 --max-model-len {max_len} {lora_args}"
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition: {engine}/{target_model} (Mode: {op_mode})")
             subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR)
             await self._wait_for_vllm()
+
+        # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running
+        # We check for port 8765 liveness to see if we should spare the foyer
+        hub_active = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                hub_active = s.connect_ex(("localhost", 8765)) == 0
+        except Exception: pass
+
+        if engine_only and hub_active:
+            logger.info("[IGNITION] Surgical Spark complete. Foyer spared.")
+            return {"status": "success", "message": "Engines sparked. Hub spared."}
 
         # Start Hub
         cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]

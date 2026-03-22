@@ -115,7 +115,7 @@ class BicameralNode:
             model_map = self.vram_config.get("model_map", {})
             if env_mod in model_map:
                 m = model_map[env_mod].get(engine_type.lower())
-                if m in available_models or not available_models:
+                if m in available_models or not available_models or (engine_type == "VLLM" and m.startswith("/")):
                     return m
                 else:
                     logging.warning(f"[{self.name}] Tier {env_mod} resolved to {m} but NOT FOUND on host.")
