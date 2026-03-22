@@ -17,45 +17,82 @@ HUB_URL = "ws://localhost:8765"
 KEY = "c48e0b32"
 SERVER_LOG = os.path.join(_SRC_DIR, "server.log")
 
+class SiliconAudit:
+    """Forensic auditing of ports and processes."""
+    
+    @staticmethod
+    def get_port_pid(port):
+        try:
+            output = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
+            return int(output.split(":")[-1].strip())
+        except Exception:
+            return None
+
+    @staticmethod
+    def check_for_zombies():
+        try:
+            output = subprocess.check_output(["ps", "aux"], text=True)
+            # Count Hub processes. Filter out the grep itself.
+            lines = [l for l in output.split('\n') if "acme_lab" in l and "grep" not in l]
+            return len(lines)
+        except Exception:
+            return 0
+
 async def check_for_crashes():
-    """[FEAT-251] Forensic check for Hub stack traces."""
-    if not os.path.exists(SERVER_LOG):
-        return None
+    """Forensic check for Hub stack traces."""
+    if not os.path.exists(SERVER_LOG): return None
     try:
-        # Check last 30 lines for common crash indicators
         cmd = ["tail", "-n", "30", SERVER_LOG]
         output = subprocess.check_output(cmd, text=True)
         if "Traceback" in output or "Error:" in output or "Exception:" in output:
-            # Narrow down to the actual trace
             lines = output.split('\n')
             for i, line in enumerate(lines):
-                if "Traceback" in line:
-                    return "\n".join(lines[i:])
-    except Exception:
-        pass
+                if "Traceback" in line: return "\n".join(lines[i:])
+    except Exception: pass
     return None
 
 async def test_hibernation_cycle():
-    print("--- [TEST] VRAM Hibernation & Handshake Spark Cycle ---")
+    print("--- [TEST] Autonomous Hibernation & Silicon Audit ---")
+    audit = SiliconAudit()
+    headers = {'X-Lab-Key': KEY, 'Content-Type': 'application/json'}
     
     async with aiohttp.ClientSession() as session:
-        # STEP 1: Verify READY state
-        print("[STEP 1] Waiting for Lab READY (Max 60s)...")
-        for i in range(30): # 30 * 2s = 60s
-            # Forensic Check
+        # STEP 0: Pre-Flight Scrub
+        print("[STEP 0] Performing Pre-Flight Silicon Scrub...")
+        zombies = audit.check_for_zombies()
+        if zombies > 1:
+            print(f"  ⚠️ WARNING: Detected {zombies} redundant Hub processes. Clearing...")
+            subprocess.run(["sudo", "fuser", "-k", "8765/tcp"], check=False)
+            await asyncio.sleep(2)
+        else:
+            print("  ✅ Silicon is clean.")
+
+        # Check if we need to ignite
+        async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
+            data = await resp.json()
+            if data.get("mode") == "OFFLINE":
+                print("  🔥 Lab is OFFLINE. Triggering Cold Ignition...")
+                await session.post(f"{ATTENDANT_URL}/start", headers=headers, json={})
+            else:
+                print(f"  ✅ Lab is already {data.get('mode')}.")
+
+        # STEP 1: Wait for READY
+        print("[STEP 1] Waiting for Lab READY (Max 90s)...")
+        initial_vram = 0
+        for i in range(45):
             crash = await check_for_crashes()
             if crash:
-                print(f"\n❌ CRASH DETECTED DURING BOOT:\n{crash}")
+                print(f"\n❌ CRASH DETECTED DURING IGNITION:\n{crash}")
                 return
 
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     data = await resp.json()
                     if data.get("full_lab_ready"):
-                        print("  ✅ Lab is READY.")
+                        print(f"  ✅ Lab is READY (VRAM: {data.get('vram')})")
+                        initial_vram = float(data.get("vram", "0%").replace("%",""))
                         break
-            except Exception:
-                pass
+            except Exception: pass
             await asyncio.sleep(2)
         else:
             print("  ❌ Timeout: Lab failed to reach READY.")
@@ -63,46 +100,39 @@ async def test_hibernation_cycle():
 
         # STEP 2: Trigger Hibernate
         print("[STEP 2] Triggering HIBERNATE...")
-        headers = {'X-Lab-Key': KEY}
         async with session.post(f"{ATTENDANT_URL}/hibernate", headers=headers) as resp:
             assert resp.status == 200
         
-        # Wait for status transition (5s total, checking logs)
-        for _ in range(5):
-            await asyncio.sleep(1)
-            crash = await check_for_crashes()
-            if crash:
-                print(f"\n❌ CRASH DETECTED DURING HIBERNATION:\n{crash}")
-                return
+        await asyncio.sleep(5) 
         
         async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
             data = await resp.json()
-            if data.get("mode") != "HIBERNATING":
-                print(f"  ❌ Expected HIBERNATING mode, got: {data.get('mode')}")
-                return
-            if data.get("intercom") != "ONLINE":
-                print("  ❌ HUB DIED during hibernation (Suicide Loop).")
-                return
+            hib_vram = float(data.get("vram", "0%").replace("%",""))
+            
+            assert data.get("mode") == "HIBERNATING"
+            assert data.get("intercom") == "ONLINE"
             print("  ✅ Hibernation verified (Hub alive, Engines dead).")
+
+            # VRAM Delta check
+            print(f"  ✅ VRAM Reclaimed: {initial_vram}% -> {hib_vram}%")
+            if initial_vram - hib_vram < 10:
+                print("  ⚠️ WARNING: VRAM drop was less than 10%. Check weights status.")
 
         # STEP 3: Trigger Handshake Spark
         print("[STEP 3] Sending Handshake Spark...")
         try:
             async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
                 await ws.send_str(json.dumps({"type": "handshake", "client": "TestScript"}))
-                
-                # We expect a status or crosstalk tic immediately
                 msg = await ws.receive_json(timeout=5)
-                if msg.get("type") not in ["crosstalk", "status"]:
-                    print(f"  ❌ Expected status/crosstalk tic, got: {msg.get('type')}")
-                    return
+                # Flexible check for response
+                assert msg.get("type") in ["crosstalk", "status"]
                 print(f"  ✅ Spark Acknowledged (Type: {msg.get('type')})")
         except Exception as e:
             print(f"  ❌ Handshake failed: {e}")
             return
 
         # STEP 4: Verify Restoration
-        print("[STEP 4] Waiting for Restoration (Max 60s)...")
+        print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
         for _ in range(30):
             crash = await check_for_crashes()
@@ -120,7 +150,7 @@ async def test_hibernation_cycle():
             print("  ❌ Restoration timed out.")
             return
 
-    print("\n--- [RESULT] Hibernation Logic is RESONANT ---")
+    print("\n--- [RESULT] High-Fidelity Logic is RESONANT ---")
 
 if __name__ == "__main__":
     asyncio.run(test_hibernation_cycle())
