@@ -25,6 +25,16 @@ class BicameralNode:
     """
 
     def __init__(self, name, system_prompt):
+        # [FEAT-253] Dynamic Role Discovery: Support --role override for shadow failover
+        import sys
+        if "--role" in sys.argv:
+            try:
+                idx = sys.argv.index("--role")
+                if idx + 1 < len(sys.argv):
+                    name = sys.argv[idx + 1]
+            except ValueError:
+                pass
+
         self.name = name.lower()
         self.system_prompt = system_prompt
         self.mcp = FastMCP(name)
