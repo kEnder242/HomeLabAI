@@ -629,10 +629,28 @@ class AcmeLab:
                                             if r.status == 200:
                                                 # [FEAT-259.4] Physical Guard: Wait for nodes to verify
                                                 logging.info("[HUB] Spark Success. Synchronizing nodes...")
-                                                await asyncio.sleep(15) # Warm-up window
+                                                # Wait for the Engine to report readiness before pinging
+                                                engine_ready = False
+                                                for _ in range(60): # 120s timeout
+                                                    try:
+                                                        async with session.get("http://localhost:8088/v1/models", timeout=2) as ready_req:
+                                                            if ready_req.status == 200:
+                                                                engine_ready = True
+                                                                logging.info("[HUB] Spark Larynx Gate OPEN. Finalizing node pings...")
+                                                                break
+                                                    except Exception:
+                                                        pass
+                                                    await asyncio.sleep(2)
+                                                
+                                                if not engine_ready:
+                                                    logging.warning("[HUB] Spark Larynx Gate TIMEOUT. Proceeding cautiously.")
+                                                
                                                 for name, client in self.residents.items():
                                                     if hasattr(client, "ping_engine"):
                                                         await client.ping_engine(force=True)
+                                                        
+                                                # [FEAT-256.3] Resignal Attendant Watchdog
+                                                logging.info("[READY] Lab is Open.")
                                 except Exception as e:
                                     logging.error(f"[HUB] Spark reload failed: {e}")
                                 finally:
@@ -819,6 +837,10 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
+        # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
+        while getattr(self, "_spark_active", False):
+            await asyncio.sleep(1)
+            
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
 
@@ -1022,18 +1044,27 @@ class AcmeLab:
                 await site.start()
                 logging.info(f"[BOOT] Server on {PORT}")
                 
-                # [FEAT-233.5] The Larynx Gate: Verify engine readiness via Attendant before booting residents
-                logging.info("[BOOT] Larynx Gate: Waiting for Master Attendant to report engine readiness...")
+                # [FEAT-233.5] The Larynx Gate: Verify engine readiness before booting residents
+                logging.info("[BOOT] Larynx Gate: Waiting for Engine (vLLM) to come online...")
                 try:
                     async with aiohttp.ClientSession() as session:
-                        # [BKM-018] Direct REST probe to the resident service
-                        async with session.get("http://localhost:9999/wait_ready?timeout=180", timeout=200) as r:
-                            if r.status == 200:
-                                logging.info("[BOOT] Larynx Gate OPEN: Engine is ready. Initiating residents...")
-                            else:
-                                logging.warning(f"[BOOT] Larynx Gate TIMEOUT: Status {r.status}. Proceeding with best-effort boot.")
+                        engine_ready = False
+                        for _ in range(60): # 120s timeout
+                            try:
+                                async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
+                                    if r.status == 200:
+                                        engine_ready = True
+                                        break
+                            except Exception:
+                                pass
+                            await asyncio.sleep(2)
+                            
+                        if engine_ready:
+                            logging.info("[BOOT] Larynx Gate OPEN: Engine is ready. Initiating residents...")
+                        else:
+                            logging.warning("[BOOT] Larynx Gate TIMEOUT: Engine not responding. Proceeding with best-effort boot.")
                 except Exception as e:
-                    logging.error(f"[BOOT] Larynx Gate FAILURE: Could not reach Attendant: {e}. Proceeding cautiously.")
+                    logging.error(f"[BOOT] Larynx Gate FAILURE: {e}")
 
                 await self.boot_residents(stack)
 

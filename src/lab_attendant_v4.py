@@ -363,14 +363,15 @@ class LabAttendantV4:
         async def _run_selective_cleanup():
             await asyncio.sleep(0.5)
             reaped_count = 0
-            for proc in psutil.process_iter(["pid", "name", "environ"]):
+            for proc in psutil.process_iter(["pid", "name", "environ", "cmdline"]):
                 try:
-                    token = proc.info["environ"].get("LAB_IMMUNITY_TOKEN")
+                    env = proc.info.get("environ") or {}
+                    token = env.get("LAB_IMMUNITY_TOKEN")
                     if token == _CURRENT_SESSION_TOKEN:
-                        name = str(proc.info["name"] or "").lower()
+                        cmdline = " ".join(proc.info.get("cmdline") or []).lower()
                         # [FEAT-259] SPARE/REAP Logic: AI Engines die, Mind stays alive.
                         # Also check port 8765 to ensure the Hub is NEVER reaped
-                        is_engine = any(t in name for t in ["vllm", "ollama", "enginecore"])
+                        is_engine = any(t in cmdline for t in ["vllm", "ollama", "enginecore"])
                         if is_engine:
                             pgid = os.getpgid(proc.info["pid"])
                             if pgid != os.getpgid(os.getpid()): # Safety
