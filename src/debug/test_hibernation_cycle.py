@@ -47,26 +47,36 @@ async def cognitive_ping(label="Pre-Sleep"):
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(HUB_URL) as ws:
                 await ws.send_str(json.dumps({"type": "handshake", "client": f"Ping-{label}"}))
-            await ws.receive_json() # status
-            
-            await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
-            
-            start_wait = time.time()
-            while time.time() - start_wait < 30:
-                msg = await ws.receive_json(timeout=10)
-                if msg.get("brain_source") == "Pinky (Triage)":
-                    text = msg.get("brain", "").lower()
-                    # HARDENED ERROR DETECTION
-                    error_keywords = ["error:", "failed", "404", "none", "refused", "offline"]
-                    if any(k in text for k in error_keywords):
-                        print(f"  ❌ FAILED ({label}): Pinky reported a system error: {text[:100]}")
-                        return False
-                    
-                    print(f"  ✅ Pinky Replied ({label}): {text[:50]}...")
-                    return True
-            else:
-                print(f"  ❌ Timeout ({label}): No response from Pinky.")
-                return False
+                await ws.receive_json() # status
+                
+                await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
+                
+                start_wait = time.time()
+                while time.time() - start_wait < 180:
+                    try:
+                        msg = await ws.receive_json(timeout=10)
+                        # DEBUG: Print all received messages
+                        print(f"    [DEBUG] Received: {msg.get('type', 'UNKNOWN')} from {msg.get('brain_source', 'None')} (Final: {msg.get('final')})")
+                        if "Pinky" in msg.get("brain_source", "") and msg.get("final"):
+                            text = msg.get("brain", "").lower()
+                            # HARDENED ERROR DETECTION
+                            error_keywords = ["error:", "failed", "404", "none", "refused", "offline"]
+                            if any(k in text for k in error_keywords):
+                                print(f"  ❌ FAILED ({label}): Pinky reported a system error: {text[:100]}")
+                                return False
+                            
+                            print(f"  ✅ Pinky Replied ({label}): {text[:50]}...")
+                            return True
+                    except asyncio.TimeoutError:
+                        continue
+                    except TypeError as e:
+                        if "WSMsgType.CLOSE" in str(e) or "257" in str(e):
+                            print(f"  ❌ FAILED ({label}): WebSocket closed by server.")
+                            return False
+                        raise
+                else:
+                    print(f"  ❌ Timeout ({label}): No response from Pinky.")
+                    return False
     except Exception as e:
         print(f"  ❌ Connection Failed ({label}): {e}")
         return False
