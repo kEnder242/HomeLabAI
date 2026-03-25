@@ -846,12 +846,10 @@ async def run_bilingual():
         # Proxy Mode: Tool execution forwards to the Master
         os.environ["LAB_ATTENDANT_ROLE"] = "PROXY" 
         
-        # If in a TTY, run interactively, otherwise just stay alive for the CLI
-        if sys.stdin.isatty():
-            await mcp.run_stdio_async()
-        else:
-            logger.info("[BOOT] Proxy node resident (Background mode).")
-            await asyncio.Event().wait()
+        # [FIX] Always run the stdio transport when spawned as an MCP server.
+        # The isatty check was blocking the Gemini CLI from discovering tools.
+        logger.info("[BOOT] Proxy node starting MCP stdio transport...")
+        await mcp.run_stdio_async()
 
 if __name__ == "__main__":
     asyncio.run(run_bilingual())

@@ -86,4 +86,5 @@ async def safe_scalpel(target_file: str, old_string: str, new_string: str, descr
     return f"{status_msg}\n\n✨ File is lint-clean."
 
 if __name__ == "__main__":
-    mcp.run()
+    import asyncio
+    asyncio.run(mcp.run_stdio_async())
