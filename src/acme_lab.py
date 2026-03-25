@@ -847,6 +847,11 @@ class AcmeLab:
                 )
                 await session.initialize()
                 
+                # [FEAT-256] Staggered Ignition: 3s delay to prevent Handshake Storms
+                if name != nodes[0][0]:
+                    logging.info(f"[BOOT] Staggering ignition for {name.upper()} (3s delay)...")
+                    await asyncio.sleep(3.0)
+
                 # [FEAT-165] Resident Handshake Gate: Verify engine link before proceeding
                 try:
                     # Probe the node's internal engine cache/connection
