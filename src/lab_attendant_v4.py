@@ -519,8 +519,10 @@ class LabAttendantV3:
                         pid_str = line.split(":")[1].strip()
                         for p in pid_str.split():
                             p_int = int(p)
-                            # [FEAT-119.1] Physical Override: If you hold 8765, you are NEVER immune to a restart
-                            if not ignore_immunity and port != 8765 and self._is_immune(p_int):
+                            # [FEAT-119.1] Physical Override: Port 8765 (Hub) is NEVER reaped during a surgical reload
+                            if port == 8765:
+                                continue
+                            if not ignore_immunity and self._is_immune(p_int):
                                 continue
                             pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
