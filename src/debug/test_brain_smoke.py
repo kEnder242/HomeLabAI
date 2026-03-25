@@ -29,10 +29,15 @@ async def test_brain_smoke():
                 
                 start_wait = time.time()
                 received_response = False
-                while time.time() - start_wait < 60: # 60s timeout for engine response
+                while time.time() - start_wait < 120: # 120s timeout for engine response
                     try:
                         msg = await ws.receive_json(timeout=1)
                         
+                        # Handle the 'Warming' crosstalk
+                        if msg.get("type") == "crosstalk" and "warming" in msg.get("brain", "").lower():
+                            print("  [WAIT] Larynx is warming... Narf!")
+                            continue
+
                         # We are looking for the final result from either Brain or Shadow (Failover)
                         source = msg.get("brain_source", "")
                         if source in ["Brain (Result)", "Shadow (Failover)", "Shadow (Intuition)"]:

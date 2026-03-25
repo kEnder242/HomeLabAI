@@ -97,6 +97,7 @@ class AcmeLab:
         self._disconnect_task = None # [FEAT-171] Idle timer task
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
+        self.current_processing_task = None
         reclaim_logger(role)
         self.set_proc_title()
 
@@ -134,7 +135,7 @@ class AcmeLab:
             except Exception:
                 self.connected_clients.remove(ws)
 
-    async def trigger_morning_briefing(self, ws=None):
+    async def trigger_morning_briefing(self):
         """[FEAT-072] Briefs the user on recent nightly dialogue."""
         import logging
 
@@ -151,10 +152,7 @@ class AcmeLab:
                     "brain_source": "Pinky (Reviewer)",
                     "channel": "chat",
                 }
-                if ws:
-                    await ws.send_str(json.dumps(msg))
-                else:
-                    await self.broadcast(msg)
+                await self.broadcast(msg)
             except Exception as e:
                 logging.error(f"[BRIEF] Failed to trigger briefing: {e}")
 
@@ -499,9 +497,65 @@ class AcmeLab:
         return any(k in text_low for k in casual_indicators)
 
     async def heartbeat_handler(self, request):
-        """[FEAT-219] Silicon Handshake: Public-read heartbeat."""
+        """[FEAT-259.7] Dynamic Readiness: Verify nodes before reporting READY."""
         import datetime
-        return web.json_response({"status": "online", "mode": self.mode, "timestamp": datetime.datetime.now().isoformat()})
+        
+        # Calculate full readiness by probing resident engine links
+        node_status = {}
+        full_ready = True
+        if not self.residents:
+            full_ready = False
+        else:
+            for name, client in self.residents.items():
+                if hasattr(client, "engine_online"):
+                    online = client.engine_online
+                    node_status[name] = "ONLINE" if online else "OFFLINE"
+                    if not online and name != "pinky": # Pinky is interface-only
+                        full_ready = False
+        
+        return web.json_response({
+            "status": "READY" if (full_ready and self.status == "READY") else "BOOTING",
+            "mode": self.mode,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "nodes": node_status
+        })
+
+    async def ear_poller_loop(self):
+        """[FEAT-259.1] Global Sentinel: Single sensory loop for all clients."""
+        interrupt_keys = ["wait", "stop", "hold on", "shut up"]
+        logging.info("[SENSORY] Global Ear Poller active.")
+        
+        while not self.shutdown_event.is_set():
+            try:
+                # [FEAT-259.2] Sensory Guard: Ensure manager is ready before polling
+                if not getattr(self, "sensory", None):
+                    await asyncio.sleep(1)
+                    continue
+
+                query = self.sensory.check_turn_end()
+                if query:
+                    # BARGE-IN LOGIC
+                    if self.current_processing_task and any(
+                        k in query.lower() for k in interrupt_keys
+                    ):
+                        logging.info(f"[BARGE-IN] Interrupt: '{query}'. Cancelling.")
+                        self.current_processing_task.cancel()
+                        await self.broadcast({
+                            "brain": "Stopping... Narf!",
+                            "brain_source": "Pinky",
+                        })
+                        self.current_processing_task = None
+
+                    if query and (not self.current_processing_task or self.current_processing_task.done()):
+                        tagged_query = f"[ME] {query}"
+                        await self.broadcast({"type": "final", "text": tagged_query})
+                        self.current_processing_task = asyncio.create_task(
+                            self.process_query(tagged_query)
+                        )
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logging.error(f"[HUB] Global Ear Poller failure: {e}")
+                await asyncio.sleep(1)
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
@@ -517,7 +571,6 @@ class AcmeLab:
                 pass
 
         await self.manage_session_lock(active=True)
-        current_processing_task = None
 
         try:
             await ws.send_str(
@@ -545,44 +598,7 @@ class AcmeLab:
                 )
             )
 
-            async def ear_poller():
-                nonlocal current_processing_task
-                try:
-                    while not ws.closed:
-                        query = self.sensory.check_turn_end()
-                        if query:
-                            # BARGE-IN LOGIC
-                            interrupt_keys = ["wait", "stop", "hold on", "shut up"]
-                        if current_processing_task and any(
-                            k in query.lower() for k in interrupt_keys
-                        ):
-                            logging.info(
-                                f"[BARGE-IN] Interrupt: '{query}'. Cancelling."
-                            )
-                            current_processing_task.cancel()
-                            await self.broadcast(
-                                {
-                                    "brain": "Stopping... Narf!",
-                                    "brain_source": "Pinky",
-                                }
-                            )
-                            current_processing_task = None
 
-                        if (
-                            not current_processing_task
-                            or current_processing_task.done()
-                        ):
-                            # [FEAT-227] Implement Atomic Anchor for voice input
-                            tagged_query = f"[ME] {query}"
-                            await self.broadcast({"type": "final", "text": tagged_query})
-                            current_processing_task = asyncio.create_task(
-                                self.process_query(tagged_query, ws)
-                            )
-                    await asyncio.sleep(0.1)
-                except Exception as e:
-                    logging.error(f"[HUB] Ear Poller background failure: {e}")
-
-            asyncio.create_task(ear_poller())
             async for message in ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(message.data)
@@ -607,12 +623,21 @@ class AcmeLab:
                                         headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
                                         # [FEAT-250] Use engine_only=True to spare the Hub
                                         # [FEAT-249.6] Snap-to-Life: Always attempt to restore VLLM
-                                        await session.post("http://localhost:9999/start", 
+                                        async with session.post("http://localhost:9999/start", 
                                                          headers=headers, 
-                                                         json={"engine": "VLLM", "model": "MEDIUM", "engine_only": True})
+                                                         json={"engine": "VLLM", "model": "MEDIUM", "engine_only": True}) as r:
+                                            if r.status == 200:
+                                                # [FEAT-259.4] Physical Guard: Wait for nodes to verify
+                                                logging.info("[HUB] Spark Success. Synchronizing nodes...")
+                                                await asyncio.sleep(15) # Warm-up window
+                                                for name, client in self.residents.items():
+                                                    if hasattr(client, "ping_engine"):
+                                                        await client.ping_engine(force=True)
+                                except Exception as e:
+                                    logging.error(f"[HUB] Spark reload failed: {e}")
                                 finally:
-                                    # Reset spark lock after 30s to allow future hibernations to wake
-                                    await asyncio.sleep(30)
+                                    # Reset spark lock after 10s (now that we verified manually)
+                                    await asyncio.sleep(10)
                                     self._spark_active = False
                                     
                             asyncio.create_task(spark_reload())
@@ -652,12 +677,12 @@ class AcmeLab:
 
                         self.last_activity = time.time()
                         if (
-                            current_processing_task
-                            and not current_processing_task.done()
+                            self.current_processing_task
+                            and not self.current_processing_task.done()
                         ):
-                            current_processing_task.cancel()
-                        current_processing_task = asyncio.create_task(
-                            self.process_query(query, ws)
+                            self.current_processing_task.cancel()
+                        self.current_processing_task = asyncio.create_task(
+                            self.process_query(query)
                         )
                     elif m_type == "workspace_save":
                         asyncio.create_task(
@@ -710,7 +735,7 @@ class AcmeLab:
 
                         if (
                             any(k in text.lower() for k in strat_keys)
-                            and not current_processing_task
+                            and not self.current_processing_task
                             and not is_text_casual
                         ):
                             logging.info(f"[SHADOW] Intent detected: {text}")
@@ -792,7 +817,7 @@ class AcmeLab:
             return "[SITUATION: EXIT_LIKELY]"
         return ""
 
-    async def process_query(self, query, websocket):
+    async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
@@ -802,7 +827,7 @@ class AcmeLab:
             mic_active=self.mic_active, 
             shutdown_event=self.shutdown_event,
             exit_hint=exit_hint,
-            trigger_briefing_callback=lambda: self.trigger_morning_briefing(websocket),
+            trigger_briefing_callback=self.trigger_morning_briefing,
             turn_density=self.turn_density
         )
 
@@ -818,10 +843,10 @@ class AcmeLab:
         s_dir = os.path.dirname(os.path.abspath(__file__))
         n_dir = os.path.join(s_dir, "nodes")
         nodes = [
+            ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("archive", os.path.join(n_dir, "archive_node.py")),
             ("brain", os.path.join(n_dir, "brain_node.py")),
             ("shadow", os.path.join(n_dir, "brain_node.py")),
-            ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("lab", os.path.join(n_dir, "lab_node.py")),
             ("thinking", os.path.join(n_dir, "thinking_node.py")),
             ("browser", os.path.join(n_dir, "browser_node.py")),
@@ -850,28 +875,35 @@ class AcmeLab:
                 )
                 await session.initialize()
                 
-                # [FEAT-256] Staggered Ignition: 3s delay to prevent Handshake Storms
+                # [FEAT-256] Staggered Ignition: 5s delay for physical stability
                 if name != nodes[0][0]:
-                    logging.info(f"[BOOT] Staggering ignition for {name.upper()} (3s delay)...")
-                    await asyncio.sleep(3.0)
+                    logging.info(f"[BOOT] Staggering ignition for {name.upper()} (5s delay)...")
+                    await asyncio.sleep(5.0)
 
-                # [FEAT-165] Resident Handshake Gate: Verify engine link before proceeding
-                try:
-                    # Probe the node's internal engine cache/connection
-                    # Most nodes have a way to check this or we can fire a dummy tool call
-                    await asyncio.wait_for(session.list_tools(), timeout=10.0)
-                    self.residents[name] = session
-                    logging.info(f"[BOOT] {name.upper()} online and verified.")
-                except Exception as e:
-                    logging.error(f"[BOOT] {name.upper()} failed engine handshake: {e}")
-                    # We don't block boot, but we log the failure clearly
-                    self.residents[name] = session
+                # [FEAT-165] Resident Handshake Gate: Verify engine link in background
+                if name == "pinky":
+                    logging.info("[BOOT] PINKY (Interface) verified without engine probe.")
+                elif hasattr(session, "ping_engine"):
+                    # [FEAT-259.6] Asynchronous Verify: Don't block the boot queue for stutters
+                    async def verify_node(n, s):
+                        ok, msg = await s.ping_engine()
+                        if ok:
+                            logging.info(f"[BOOT] {n.upper()} online and verified.")
+                        else:
+                            logging.warning(f"[BOOT] {n.upper()} verification stutter: {msg}")
+                    
+                    asyncio.create_task(verify_node(name, session))
+
+                # Finalize node residency
+                self.residents[name] = session
 
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
 
         self.status = "READY"
         logging.info("[READY] Lab is Open.")
+        # [FEAT-259.1] Global Sentinel Ignition: Single ear poller for all clients
+        asyncio.create_task(self.ear_poller_loop())
         sys.stderr.flush()  # Ensure signal is written to the log file
         await self.broadcast(
             {

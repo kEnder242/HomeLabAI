@@ -199,13 +199,22 @@ class BicameralNode:
         except Exception as e:
             # [FEAT-255.3] Handshake Resilience: Tolerate ZMQ/Transfer errors during boot
             err_msg = str(e).lower()
-            if any(k in err_msg for k in ["transfer", "reset", "disconnected", "incomplete"]):
-                logging.warning(f"[{self.name}] Larynx is warming... (Handshake Retry: {e})")
-                return False, "Warming Up"
+            if any(k in err_msg for k in ["transfer", "reset", "disconnected", "incomplete", "refused", "eof"]):
+                # [FEAT-255.6] Exponential Backoff: Give the larynx time to clear its throat
+                wait_time = getattr(self, "_handshake_backoff", 2)
+                logging.warning(f"[{self.name}] Larynx is warming... (Retrying in {wait_time}s: {e})")
+                await asyncio.sleep(wait_time)
+                self._handshake_backoff = min(wait_time * 2, 10) # Cap at 10s
+                return False, "WARMING"
+            
+            self._handshake_backoff = 2 # Reset on fatal error
 
-            # [FEAT-255.4] Reactive Discovery: Clear cache on error to force re-resolution
+            # [FEAT-255.4] Reactive Discovery: Flush session and cache on error
             self._engine_cache = None
             self._last_probe = 0 
+            if hasattr(self, "_session") and self._session:
+                await self._session.close()
+                self._session = None
             return False, f"Connection failed: {e}"
 
     async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False):
@@ -213,7 +222,10 @@ class BicameralNode:
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
             if not ok:
-                yield f"Error: {msg}"
+                if msg == "WARMING":
+                    yield "[SYSTEM]: Larynx is warming... Narf!"
+                else:
+                    yield f"Error: {msg}"
                 return
 
         engine = self._engine_cache

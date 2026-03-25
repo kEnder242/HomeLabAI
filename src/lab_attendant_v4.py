@@ -106,7 +106,7 @@ async def cors_middleware(request, handler):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key'
     return response
 
-class LabAttendantV3:
+class LabAttendantV4:
     def __init__(self):
         self.app = web.Application(middlewares=[cors_middleware, key_middleware])
         
@@ -359,14 +359,29 @@ class LabAttendantV3:
         logger.warning("[HUB] Hibernation signal received. Unloading local engines...")
         self.log_event("Hibernation: Unloading weights.")
         
-        # Selective Assassin: Only kill engines (8088/11434) and their binaries
+        # [FEAT-259] The Butler Pattern: Surgical session-based reaping
         async def _run_selective_cleanup():
             await asyncio.sleep(0.5)
-            await self.cleanup_silicon(
-                ports=[8088, 11434], 
-                targets=["vllm", "ollama"],
-                ignore_immunity=True
-            )
+            reaped_count = 0
+            for proc in psutil.process_iter(["pid", "name", "environ"]):
+                try:
+                    token = proc.info["environ"].get("LAB_IMMUNITY_TOKEN")
+                    if token == _CURRENT_SESSION_TOKEN:
+                        name = str(proc.info["name"] or "").lower()
+                        # [FEAT-259] SPARE/REAP Logic: AI Engines die, Mind stays alive.
+                        # Also check port 8765 to ensure the Hub is NEVER reaped
+                        is_engine = any(t in name for t in ["vllm", "ollama", "enginecore"])
+                        if is_engine:
+                            pgid = os.getpgid(proc.info["pid"])
+                            if pgid != os.getpgid(os.getpid()): # Safety
+                                os.killpg(pgid, signal.SIGKILL)
+                                reaped_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+                    continue
+            
+            if reaped_count > 0:
+                logger.info(f"[BUTLER] Successfully reaped {reaped_count} session engine processes.")
+            
             # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
             for i in range(10):
                 used, total = await self._get_vram_info()
@@ -486,14 +501,27 @@ class LabAttendantV3:
         # [FEAT-251.2] Forensic Wait: Catch Hub-level crashes early
         while time.time() - start_t < timeout:
             if self.ready_event.is_set():
-                return {"status": "ready", "message": "Lab is Open."}
+                # [FEAT-259.3] Physical Verify: Ensure engine port is actually listening
+                try:
+                    # [REVISION-17.9] Use asyncio.to_thread for blocking socket probe
+                    def probe_port():
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            return s.connect_ex(("localhost", 8088)) == 0
+                    
+                    if await asyncio.to_thread(probe_port):
+                        return {"status": "ready", "message": "Lab is Open."}
+                except Exception: pass
             
             # Check server.log for Hub crashes
             if os.path.exists(SERVER_LOG):
                 try:
-                    with open(SERVER_LOG, "r") as f:
-                        lines = f.readlines()[-20:]
-                        if any("Traceback" in line or "Error:" in line or "Exception:" in line for line in lines):
+                    # [REVISION-17.9] Use asyncio.to_thread for blocking file read
+                    def read_log():
+                        with open(SERVER_LOG, "r") as f:
+                            return f.readlines()[-20:]
+                    
+                    lines = await asyncio.to_thread(read_log)
+                    if any("Traceback" in line or "Error:" in line or "Exception:" in line for line in lines):
                             # Ensure we don't catch the 'Expected Error' during handshake resilience
                             if not any("Larynx is warming" in line for line in lines):
                                 logger.error("[HUB] Fatal startup crash detected in logs. Aborting wait.")
@@ -748,7 +776,7 @@ class LabAttendantV3:
         return web.json_response({"round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK)})
 
 # --- Global Instance and MCP Wrappers ---
-attendant = LabAttendantV3()
+attendant = LabAttendantV4()
 @mcp.tool()
 async def lab_heartbeat():
     return await attendant.mcp_heartbeat()
