@@ -159,8 +159,22 @@ class BicameralNode:
             if (time.time() - self._last_probe < ttl):
                 return True, "Cached"
 
-        engine_type = "VLLM" if self.primary_host == "localhost" else "OLLAMA"
-        base_url = f"http://{self.primary_host}:8088" if engine_type == "VLLM" else f"http://{self.primary_host}:11434"
+        # [FEAT-255.1] Dynamic Registry: Sync engine type with status.json
+        if self.primary_host == "localhost":
+            engine_type = os.environ.get("LAB_MODE", "VLLM")
+            status_path = os.path.join(LAB_DIR, "status.json")
+            if os.path.exists(status_path):
+                try:
+                    with open(status_path, "r") as f:
+                        status = json.load(f)
+                        engine_type = status.get("mode", engine_type)
+                except Exception: pass
+            
+            port = 8088 if engine_type == "VLLM" else 11434
+            base_url = f"http://localhost:{port}"
+        else:
+            engine_type = "OLLAMA"
+            base_url = f"http://{self.primary_host}:11434"
         models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
 
         try:
@@ -183,8 +197,15 @@ class BicameralNode:
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
         except Exception as e:
-            self._engine_cache = {"type": "NONE"}
-            self._last_probe = time.time()
+            # [FEAT-255.3] Handshake Resilience: Tolerate ZMQ/Transfer errors during boot
+            err_msg = str(e).lower()
+            if any(k in err_msg for k in ["transfer", "reset", "disconnected", "incomplete"]):
+                logging.warning(f"[{self.name}] Larynx is warming... (Handshake Retry: {e})")
+                return False, "Warming Up"
+
+            # [FEAT-255.4] Reactive Discovery: Clear cache on error to force re-resolution
+            self._engine_cache = None
+            self._last_probe = 0 
             return False, f"Connection failed: {e}"
 
     async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False):
@@ -201,8 +222,10 @@ class BicameralNode:
             return
 
         system_prompt = system_override or self.system_prompt
+        
+        # [FEAT-254.2] Metadata Displacement: Context shifts from system to user
         if context:
-            system_prompt += f"\n\n[SITUATIONAL_CONTEXT]:\n{context}"
+            query = f"[CONTEXT]:\n{context}\n\n---\n\n{query}"
 
         if engine["type"] == "VLLM":
             payload = {
