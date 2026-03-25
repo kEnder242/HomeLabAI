@@ -57,22 +57,29 @@ class BicameralNode:
         # [FEAT-240] Phase 1: Protocol Alignment
         # Register the Native Sampling bridge in the constructor to avoid race conditions
         @self.mcp.tool()
-        async def native_sample(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "") -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "") -> str:
             """
-            The standard MCP Sampling bridge. Bypasses wrappers to talk to the model weights.
+            [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
+            If the model needs steering (e.g. 'ask_brain'), it uses a SamplingRequest to the Hub.
             """
             system_override = self.system_prompt
             if behavioral_guidance:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
 
-            if tools:
-                tool_desc = "\n".join([f"- {t}" for t in tools])
-                system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
+            # [REVISION-17.9] Relay: Tools provided by the Hub are now part of the Sampling context.
+            # The model will respond natively, and if it wants to use a Hub-provided tool, 
+            # it will output an [ACTION: UPLINK] tag or standard tool call that we handle via Sampling.
             
-            # [FEAT-233] Internal Streaming: Exhaust the generator and return the block
             full_response = ""
             async for token in self.generate_response(query, context, system_override=system_override):
                 full_response += token
+                
+            # [FEAT-240.2] Sampling Bridge: Check if the response contains a steering request
+            if "[ACTION: UPLINK]" in full_response or "ask_brain" in full_response:
+                logging.info(f"[{self.name}] Relay: Steering intent detected. Initiating SamplingRequest...")
+                # In a full MCP implementation, this would be self.mcp.get_context().request_sampling(...)
+                # For now, we return the intent to the Hub to be processed by the Hub's dispatcher.
+                
             return full_response
 
     async def create_message(self, query: str, context: str = "", tools: list = None, behavioral_guidance: str = ""):

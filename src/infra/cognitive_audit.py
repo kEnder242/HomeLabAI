@@ -27,7 +27,7 @@ class CognitiveAudit:
         
         try:
             # [FEAT-240] Use the Native Sampling bridge for peer auditing
-            result = await self.node.call_tool("native_sample", {"query": audit_prompt})
+            result = await self.node.call_tool("think", {"query": audit_prompt})
             decision = result.content[0].text.strip().upper()
             
             logging.info(f"[AUDIT] Decision: {decision}")
@@ -44,7 +44,7 @@ class CognitiveAudit:
             f"Output ONLY 'PASS' or 'FAIL'."
         )
         try:
-            result = await self.node.call_tool("native_sample", {"query": audit_prompt})
+            result = await self.node.call_tool("think", {"query": audit_prompt})
             return "PASS" in result.content[0].text.strip().upper()
         except:
             return False
