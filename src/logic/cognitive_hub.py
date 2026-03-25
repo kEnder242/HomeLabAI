@@ -51,7 +51,7 @@ class CognitiveHub:
         # 1. Strip markdown blocks
         clean = re.sub(r"```json\s*|\s*```", "", text).strip()
 
-        # 2. Find innermost { } block
+        # 2. Greedy Extraction: Find the widest possible { } block
         match = re.search(r'(\{.*\})', clean, re.DOTALL)
         if match:
             json_str = match.group(1)
@@ -327,7 +327,7 @@ class CognitiveHub:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
             except Exception as e:
-                logging.error(f"[HUB] Triage Failed: {e}")
+                logging.error(f"[HUB] Triage Failed: {e} | Raw Text: {t_res.content[0].text[:500]}")
                 self.current_fuel = 0.2
                 intent = "STRATEGIC"
 
@@ -433,7 +433,8 @@ class CognitiveHub:
 
     async def evaluate_grounding(self, source, text, fuel, shutdown_event):
         """[FEAT-247] Physical Audit Gate: Pinky audits Brain for feasibility."""
-        if "pinky" not in self.residents or fuel < 0.7:
+        # [REVISION-17.9] Lower gate to 0.5 to ensure common technical tasks are audited
+        if "pinky" not in self.residents or fuel < 0.5:
             return
         
         # Refined Grounding Query

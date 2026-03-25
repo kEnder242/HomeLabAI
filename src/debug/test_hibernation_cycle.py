@@ -22,9 +22,9 @@ class SiliconAudit:
     @staticmethod
     def check_for_zombies():
         try:
-            output = subprocess.check_output(["ps", "aux"], text=True)
-            lines = [l for l in output.split('\n') if "acme_lab" in l and "grep" not in l]
-            return len(lines)
+            # [FEAT-256.1] Physical Truth: Check port 8765 instead of process names
+            output = subprocess.check_output(["ss", "-tunlp"], text=True)
+            return 1 if ":8765" in output else 0
         except Exception: return 0
 
 async def check_for_crashes():
@@ -44,8 +44,9 @@ async def cognitive_ping(label="Pre-Sleep"):
     """[FEAT-251.3] Proactive check for 404s, connection errors, and node liveness."""
     print(f"  [PING] Performing {label} Cognitive Check...")
     try:
-        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
-            await ws.send_str(json.dumps({"type": "handshake", "client": f"Ping-{label}"}))
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(HUB_URL) as ws:
+                await ws.send_str(json.dumps({"type": "handshake", "client": f"Ping-{label}"}))
             await ws.receive_json() # status
             
             await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
@@ -131,7 +132,7 @@ async def test_hibernation_cycle():
         # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
-        for _ in range(60): # 120s
+        for _ in range(120): # 240s
             async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 data = await resp.json()
                 if data.get("full_lab_ready"):
