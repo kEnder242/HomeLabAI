@@ -1021,6 +1021,20 @@ class AcmeLab:
             async with AsyncExitStack() as stack:
                 await site.start()
                 logging.info(f"[BOOT] Server on {PORT}")
+                
+                # [FEAT-233.5] The Larynx Gate: Verify engine readiness via Attendant before booting residents
+                logging.info("[BOOT] Larynx Gate: Waiting for Master Attendant to report engine readiness...")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        # [BKM-018] Direct REST probe to the resident service
+                        async with session.get("http://localhost:9999/wait_ready?timeout=180", timeout=200) as r:
+                            if r.status == 200:
+                                logging.info("[BOOT] Larynx Gate OPEN: Engine is ready. Initiating residents...")
+                            else:
+                                logging.warning(f"[BOOT] Larynx Gate TIMEOUT: Status {r.status}. Proceeding with best-effort boot.")
+                except Exception as e:
+                    logging.error(f"[BOOT] Larynx Gate FAILURE: Could not reach Attendant: {e}. Proceeding cautiously.")
+
                 await self.boot_residents(stack)
 
                 # [FEAT-145] Cognitive Delegation: Update hub with live residents

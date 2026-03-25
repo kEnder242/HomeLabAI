@@ -550,7 +550,7 @@ class LabAttendantV4:
                             # [FEAT-119.1] Physical Override: Port 8765 (Hub) is NEVER reaped during a surgical reload
                             if port == 8765:
                                 continue
-                            if not ignore_immunity and self._is_immune(p_int):
+                            if not ignore_immunity and not self._is_stale_process(p_int):
                                 continue
                             pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
@@ -565,7 +565,7 @@ class LabAttendantV4:
                 pid, name = line.split(",")
                 p_int = int(pid.strip())
                 # [FEAT-119.3] Precise Targeting: Only kill AI engines and Lab nodes, spare diagnostics
-            if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]) and (ignore_immunity or not self._is_immune(p_int)):
+            if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]) and (ignore_immunity or self._is_stale_process(p_int)):
                     pgids_to_kill.add(os.getpgid(p_int))
         except Exception:
             pass
@@ -580,7 +580,7 @@ class LabAttendantV4:
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 
                 if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
-                    if not ignore_immunity and self._is_immune(proc.info["pid"]):
+                    if not ignore_immunity and not self._is_stale_process(proc.info["pid"]):
                         continue
                     pgids_to_kill.add(os.getpgid(proc.info["pid"]))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -597,18 +597,26 @@ class LabAttendantV4:
         
         await asyncio.sleep(2.0)
 
-    def _is_immune(self, pid):
-        """[FEAT-220] Checks if a process carries the current Diplomatic Immunity token."""
+    def _is_stale_process(self, pid):
+        """[FEAT-220] Checks if a process carries an OLD Diplomatic Immunity token."""
         try:
             if pid == os.getpid():
-                return True
+                return False
             proc = psutil.Process(pid)
             # Check environment for the current boot hash
             env = proc.environ()
             token = env.get("LAB_IMMUNITY_TOKEN")
+            
+            # If token exists but does not match, it's stale (kill it)
+            if token and token != _CURRENT_SESSION_TOKEN:
+                logger.warning(f"[ASSASSIN] Targeting stale process {pid} ({proc.name()}) with token {token}")
+                return True
+                
+            # If no token, or token matches, it's NOT stale (spare it)
             if token == _CURRENT_SESSION_TOKEN:
                 logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
-                return True
+            
+            return False
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
         return False

@@ -158,7 +158,7 @@ class CognitiveHub:
                         return True
 
                     # [FEAT-237] Loop-Breaker (Legacy compatibility)
-                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe", "native_sample"]
+                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe", "think"]
                     if tool in primary_entry_points and tool != "shallow_think": # shallow_think is now a veto signal
                         # Return speech only, block recursive tool call
                         if raw_speech:
@@ -228,26 +228,15 @@ class CognitiveHub:
             # [FEAT-248] Hardened Stream Bridge with 30s timeout and Fallback
             async with asyncio.timeout(30):
                 node = self.residents[node_id]
-                # Fallback: standard MCP sessions don't have create_message; use native_sample tool
-                if hasattr(node, "create_message"):
-                    generator = await node.create_message(
-                        query=query,
-                        context=context,
-                        tools=tools,
-                        behavioral_guidance=behavioral_guidance
-                    )
-                    async for token in generator:
-                        full_text += token
-                else:
-                    # [FEAT-240] Standard MCP Path: Use the native_sample tool
-                    # Note: This is currently buffered until true MCP streaming is implemented
-                    res = await node.call_tool("native_sample", {
-                        "query": query,
-                        "context": context,
-                        "tools": tools,
-                        "behavioral_guidance": behavioral_guidance
-                    })
-                    full_text = str(res.content[0].text)
+                # [FEAT-240.2] Relay Pattern Path: Use the standard 'think' tool
+                # This restores native personas by allowing models to use their weights directly.
+                res = await node.call_tool("think", {
+                    "query": query,
+                    "context": context,
+                    "tools": tools,
+                    "behavioral_guidance": behavioral_guidance
+                })
+                full_text = str(res.content[0].text)
             
             if full_text:
                 # Buffering check: Only dispatch to UI once node finishes (Paragraph Pop)
@@ -300,7 +289,7 @@ class CognitiveHub:
         if "lab" in self.residents:
             try:
                 # Triage is still a single block for logic reasons
-                t_res = await self.residents["lab"].call_tool("native_sample", {"query": query})
+                t_res = await self.residents["lab"].call_tool("think", {"query": query})
                 t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
@@ -336,7 +325,7 @@ class CognitiveHub:
         # [FEAT-231.1] Operational Shortcut
         if intent == "OPERATIONAL":
             if "pinky" in self.residents:
-                p_res = await self.residents["pinky"].call_tool("native_sample", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
+                p_res = await self.residents["pinky"].call_tool("think", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
                 return await self.execute_dispatch(p_res.content[0].text, "System", final=True)
 
         selected_expert = await self._route_expert_domain(query) if intent != "CASUAL" else "standard"
@@ -421,7 +410,7 @@ class CognitiveHub:
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
-                    retract_res = await self.residents["pinky"].call_tool("native_sample", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100]})
+                    retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100]})
                     retract_full = str(retract_res.content[0].text)
                     await self.execute_dispatch(retract_full, "Pinky (Retraction)", final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
@@ -446,7 +435,7 @@ class CognitiveHub:
         
         try:
             # [BKM-015.1] Natural persona audit
-            res_res = await self.residents["pinky"].call_tool("native_sample", {
+            res_res = await self.residents["pinky"].call_tool("think", {
                 "query": cooldown_query, 
                 "context": f"[PROPOSED_STRATEGY]: {text[:1000]}"
             })
