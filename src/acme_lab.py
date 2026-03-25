@@ -875,24 +875,27 @@ class AcmeLab:
                 )
                 await session.initialize()
                 
-                # [FEAT-256] Staggered Ignition: 5s delay for physical stability
-                if name != nodes[0][0]:
-                    logging.info(f"[BOOT] Staggering ignition for {name.upper()} (5s delay)...")
-                    await asyncio.sleep(5.0)
-
-                # [FEAT-165] Resident Handshake Gate: Verify engine link in background
+                # [FEAT-256.2] Self-Pacing Ignition: Wait for SUCCESS before next node
                 if name == "pinky":
-                    logging.info("[BOOT] PINKY (Interface) verified without engine probe.")
+                    logging.info("[BOOT] PINKY (Interface) bypassing engine probe.")
                 elif hasattr(session, "ping_engine"):
-                    # [FEAT-259.6] Asynchronous Verify: Don't block the boot queue for stutters
-                    async def verify_node(n, s):
-                        ok, msg = await s.ping_engine()
+                    logging.info(f"[BOOT] Verifying technical larynx for {name.upper()}...")
+                    start_verify = time.time()
+                    for i in range(20): # 60s total patience
+                        ok, msg = await session.ping_engine()
                         if ok:
-                            logging.info(f"[BOOT] {n.upper()} online and verified.")
-                        else:
-                            logging.warning(f"[BOOT] {n.upper()} verification stutter: {msg}")
-                    
-                    asyncio.create_task(verify_node(name, session))
+                            logging.info(f"[BOOT] {name.upper()} verified in {time.time() - start_verify:.2f}s.")
+                            break
+                        # Catch fatal crashes during wait
+                        if i % 2 == 0: # Check every 6s
+                            if os.path.exists(SERVER_LOG):
+                                with open(SERVER_LOG, "r") as f:
+                                    if "Traceback" in f.read()[-1000:]:
+                                        logging.error(f"[BOOT] FATAL CRASH detected during {name.upper()} verify. Aborting.")
+                                        return
+                        await asyncio.sleep(3.0)
+                    else:
+                        logging.warning(f"[BOOT] {name.upper()} verify timed out. Proceeding cautiously.")
 
                 # Finalize node residency
                 self.residents[name] = session
