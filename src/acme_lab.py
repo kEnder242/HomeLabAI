@@ -603,7 +603,10 @@ class AcmeLab:
                                     async with aiohttp.ClientSession() as session:
                                         headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
                                         # [FEAT-250] Use engine_only=True to spare the Hub
-                                        await session.post("http://localhost:9999/start", headers=headers, json={"engine_only": True})
+                                        # [FEAT-249.6] Snap-to-Life: Always attempt to restore VLLM
+                                        await session.post("http://localhost:9999/start", 
+                                                         headers=headers, 
+                                                         json={"engine": "VLLM", "model": "MEDIUM", "engine_only": True})
                                 finally:
                                     # Reset spark lock after 30s to allow future hibernations to wake
                                     await asyncio.sleep(30)

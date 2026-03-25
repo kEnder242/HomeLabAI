@@ -229,15 +229,43 @@ class LabAttendantV3:
 
         current_lab_mode = engine
         current_model = target_model
+        # [FEAT-255.1] Dynamic Registry: Export state for nodes to consume
+        try:
+            with open(os.path.join(LAB_DIR, "status.json"), "w") as f:
+                json.dump({"mode": engine, "model": target_model, "timestamp": time.time()}, f)
+        except Exception: pass
         
+        # 1. Resolve Required Memory [FEAT-254]
+        used_now, total_vram = await self._get_vram_info()
+        required_mb = int(total_vram * utilization)
+
         # [FEAT-250] Surgical Ignition: Spare the Hub if requested
         if engine_only:
             await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"], ignore_immunity=True)
         else:
             await self.cleanup_silicon()
 
+        # 3. [FEAT-254] The Assassin Audit: Settling Window
+        await asyncio.sleep(5.0)
+        
+        # 4. [FEAT-254.1] The Physical Audit Gate
+        used_post, _ = await self._get_vram_info()
+        free_mb = total_vram - used_post
+        
+        if free_mb < required_mb:
+            msg = f"SILICON_CONGESTION: {free_mb}MB free < {required_mb}MB required."
+            logger.error(f"[IGNITION] {msg}")
+            self.log_event(msg, severity="ERROR")
+            return {
+                "status": "error", 
+                "message": msg,
+                "metrics": {"free": free_mb, "required": required_mb}
+            }
+
         self.ready_event.clear()
         self.trace_monitor.refresh_marks()
+        # [FEAT-255.2] State Clearance: Explicitly reset the Hub's READY signal in the log
+        logger.info("[WATCHDOG] Clearing Hub READY state for engine transition.")
         
         env = os.environ.copy()
         env["LAB_MODE"] = str(engine)
@@ -268,8 +296,12 @@ class LabAttendantV3:
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition: {engine}/{target_model} (Mode: {op_mode})")
-            subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR)
+            subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR, start_new_session=True)
             await self._wait_for_vllm()
+        else:
+            # [SPR-13.0] OLLAMA Fallback
+            logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
+            subprocess.Popen(["ollama", "run", target_model], env=env, start_new_session=True)
 
         # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running
         # We check for port 8765 liveness to see if we should spare the foyer
@@ -277,7 +309,8 @@ class LabAttendantV3:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 hub_active = s.connect_ex(("localhost", 8765)) == 0
-        except Exception: pass
+        except Exception:
+            pass
 
         if engine_only and hub_active:
             logger.info("[IGNITION] Surgical Spark complete. Foyer spared.")
@@ -289,7 +322,7 @@ class LabAttendantV3:
             cmd.append("--disable-ear")
         
         # [FEAT-213] Engine Warm-up Delay
-        await asyncio.sleep(3)
+        await asyncio.sleep(10.0)
         
         with open(SERVER_LOG, "a", buffering=1) as log_f:
             lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=log_f, start_new_session=True)
@@ -469,7 +502,8 @@ class LabAttendantV3:
                         for p in pid_str.split():
                             p_int = int(p)
                             # [FEAT-119.1] Physical Override: If you hold 8765, you are NEVER immune to a restart
-                            if not ignore_immunity and port != 8765 and self._is_immune(p_int): continue
+                            if not ignore_immunity and port != 8765 and self._is_immune(p_int):
+                                continue
                             pgids_to_kill.add(os.getpgid(p_int))
             except Exception:
                 pass
@@ -478,10 +512,12 @@ class LabAttendantV3:
         try:
             smi = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader"], text=True)
             for line in smi.strip().split("\n"):
-                if not line: continue
+                if not line:
+                    continue
                 pid, name = line.split(",")
                 p_int = int(pid.strip())
-                if any(t in name.lower() for t in ["vllm", "ollama", "python"]) and (ignore_immunity or not self._is_immune(p_int)):
+                # [FEAT-119.3] Precise Targeting: Only kill AI engines and Lab nodes, spare diagnostics
+            if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]) and (ignore_immunity or not self._is_immune(p_int)):
                     pgids_to_kill.add(os.getpgid(p_int))
         except Exception:
             pass
@@ -496,7 +532,8 @@ class LabAttendantV3:
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
                 
                 if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
-                    if not ignore_immunity and self._is_immune(proc.info["pid"]): continue
+                    if not ignore_immunity and self._is_immune(proc.info["pid"]):
+                        continue
                     pgids_to_kill.add(os.getpgid(proc.info["pid"]))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
@@ -610,7 +647,11 @@ class LabAttendantV3:
                     self.ready_event.set()
                     logger.info("[WATCHDOG] Lab reported READY signal.")
                     await self.update_status_json("Mind is READY")
-                    return
+                
+                # [FEAT-255.2] Continuous Sentinel: Listen for state resets
+                if "Clearing Hub READY state" in line:
+                    self.ready_event.clear()
+                    logger.warning("[WATCHDOG] Hub READY state cleared for transition.")
 
     async def _wait_for_vllm(self, timeout=120):
         start_t = time.time()
@@ -624,10 +665,11 @@ class LabAttendantV3:
                     with open(vllm_log, "r") as f:
                         # Read last 20 lines
                         lines = f.readlines()[-20:]
-                        if any("Traceback" in l or "ValueError:" in l or "RuntimeError:" in l for l in lines):
+                        if any("Traceback" in line or "ValueError:" in line or "RuntimeError:" in line for line in lines):
                             logger.error("[VLLM] Fatal startup crash detected in logs. Aborting wait.")
                             return False
-                except Exception: pass
+                except Exception:
+                    pass
 
             try:
                 async with aiohttp.ClientSession() as session:
