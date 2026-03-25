@@ -547,11 +547,12 @@ class AcmeLab:
 
             async def ear_poller():
                 nonlocal current_processing_task
-                while not ws.closed:
-                    query = self.sensory.check_turn_end()
-                    if query:
-                        # BARGE-IN LOGIC
-                        interrupt_keys = ["wait", "stop", "hold on", "shut up"]
+                try:
+                    while not ws.closed:
+                        query = self.sensory.check_turn_end()
+                        if query:
+                            # BARGE-IN LOGIC
+                            interrupt_keys = ["wait", "stop", "hold on", "shut up"]
                         if current_processing_task and any(
                             k in query.lower() for k in interrupt_keys
                         ):
@@ -578,6 +579,8 @@ class AcmeLab:
                                 self.process_query(tagged_query, ws)
                             )
                     await asyncio.sleep(0.1)
+                except Exception as e:
+                    logging.error(f"[HUB] Ear Poller background failure: {e}")
 
             asyncio.create_task(ear_poller())
             async for message in ws:

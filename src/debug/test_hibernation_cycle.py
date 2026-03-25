@@ -102,7 +102,7 @@ async def test_hibernation_cycle():
         # STEP 1.1: Proactive Check (Abort if broken now)
         if not await cognitive_ping("Pre-Sleep"):
             print("❌ ABORTING: Lab is non-functional before test began.")
-            return
+            sys.exit(1)
 
         # STEP 2: Hibernate
         print("[STEP 2] Triggering HIBERNATE...")
@@ -114,13 +114,13 @@ async def test_hibernation_cycle():
             data = await resp.json()
             if data.get("mode") != "HIBERNATING":
                 print(f"  ❌ Failed to enter HIBERNATING mode (Current: {data.get('mode')})")
-                return
+                sys.exit(1)
             
             hib_vram = float(data.get("vram", "0%").replace("%",""))
             print(f"  ✅ Hibernation verified. VRAM: {initial_vram}% -> {hib_vram}%")
             if initial_vram - hib_vram < 10:
                 print(f"  ❌ FAILED: VRAM drop was only {initial_vram - hib_vram:.1f}%. Weights failed to unload.")
-                return
+                sys.exit(1)
 
         # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
@@ -142,12 +142,12 @@ async def test_hibernation_cycle():
             await asyncio.sleep(2)
         else:
             print("  ❌ Restoration timed out.")
-            return
+            sys.exit(1)
 
         # STEP 5: Final Cognitive Audit
         if not await cognitive_ping("Post-Sleep"):
             print("❌ FAILED: Lab lost its voice after hibernation cycle.")
-            return
+            sys.exit(1)
 
     print("\n--- [RESULT] High-Fidelity Logic is RESONANT ---")
 
