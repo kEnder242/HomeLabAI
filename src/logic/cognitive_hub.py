@@ -221,37 +221,38 @@ class CognitiveHub:
         except Exception:
             return "exp_for"
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False):
         """[FEAT-233.4] Internal Token Buffer & Stream Parser."""
         if node_id not in self.residents:
             return ""
         
         full_text = ""
-        # [FEAT-242.1] Handshake Tic
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"Initiating {source_name} intuition...",
-            "brain_source": source_name,
-            "final": False
-        })
+        # [FEAT-242.1] Handshake Tic (Only if not internal)
+        if not is_internal:
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"Initiating {source_name} intuition...",
+                "brain_source": source_name,
+                "final": False
+            })
 
         try:
             # [FEAT-248] Hardened Stream Bridge with 30s timeout and Fallback
             async with asyncio.timeout(30):
                 node = self.residents[node_id]
                 # [FEAT-240.2] Relay Pattern Path: Use the standard 'think' tool
-                # This restores native personas by allowing models to use their weights directly.
                 res = await node.call_tool("think", {
                     "query": query,
                     "context": context,
                     "tools": tools,
-                    "behavioral_guidance": behavioral_guidance
+                    "behavioral_guidance": behavioral_guidance,
+                    "internal": is_internal # Suppress out-of-band streaming
                 })
                 full_text = str(res.content[0].text)
             
             if full_text:
-                # Buffering check: Only dispatch to UI once node finishes (Paragraph Pop)
-                await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, final=True)
+                # Buffering check: Only dispatch to UI once node finishes
+                await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, final=True)
             
             return full_text
         except Exception as e:
@@ -358,17 +359,18 @@ class CognitiveHub:
         
         async def run_pinky():
             nonlocal pinky_text
-            # [FEAT-244] Pinky Muting
-            if addressed_to in ["PINKY", "MICE"]:
-                # [FEAT-254.2] Metadata Displacement: Use clean, header-free context
-                p_context = (f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
-                             f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
-                pinky_text = await self._process_node_stream(
-                    "pinky", query, p_context, "Pinky (Triage)",
-                    tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
-                    behavioral_guidance="Standard brevity. Focus on natural interaction.",
-                    shutdown_event=shutdown_event
-                )
+            # [FEAT-244] Pinky Muting logic: Always run for context, but hide from UI if not addressed
+            mute_pinky = addressed_to not in ["PINKY", "MICE"]
+            
+            p_context = (f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
+                         f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
+            pinky_text = await self._process_node_stream(
+                "pinky", query, p_context, "Pinky (Triage)",
+                tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
+                behavioral_guidance="Standard brevity. Focus on natural interaction.",
+                shutdown_event=shutdown_event,
+                is_internal=mute_pinky
+            )
 
         async def run_shadow():
             nonlocal shadow_text
@@ -377,14 +379,17 @@ class CognitiveHub:
             threshold = 0.0 if not brain_online else 0.2
             role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
             
-            if fuel_start > threshold and addressed_to in ["BRAIN", "MICE"]:
-                # [FEAT-254.2] Metadata Displacement: Use clean, header-free context
+            # Muting logic: Hide from UI if not addressed
+            mute_shadow = addressed_to not in ["BRAIN", "MICE"]
+            
+            if fuel_start > threshold:
                 s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}"
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
                     tools=["ask_brain", "shallow_think"],
                     behavioral_guidance="Provide immediate technical intuition.",
-                    shutdown_event=shutdown_event
+                    shutdown_event=shutdown_event,
+                    is_internal=mute_shadow
                 )
 
         await asyncio.gather(run_pinky(), run_shadow())
