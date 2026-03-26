@@ -520,6 +520,18 @@ class AcmeLab:
             "nodes": node_status
         })
 
+    async def handle_stream_ingest(self, request):
+        """[FEAT-233.2] Live Hearing Pipe: Ingests tokens from nodes and broadcasts them."""
+        try:
+            data = await request.json()
+            # Broadcast directly to WebSocket clients
+            # This allows nodes to stream tokens out-of-band while the Hub waits for the full block
+            await self.broadcast(data)
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            logging.error(f"[HUB] Stream ingest failure: {e}")
+            return web.json_response({"status": "error"}, status=400)
+
     async def ear_poller_loop(self):
         """[FEAT-259.1] Global Sentinel: Single sensory loop for all clients."""
         interrupt_keys = ["wait", "stop", "hold on", "shut up"]
@@ -1034,6 +1046,11 @@ class AcmeLab:
         for path in ["/heartbeat", "/hub/heartbeat"]:
             hb_route = app.router.add_get(path, self.heartbeat_handler)
             cors.add(hb_route)
+
+        # [FEAT-233.2] Live Hearing Pipe: Out-of-band token ingestion
+        stream_route = app.router.add_post("/stream_ingest", self.handle_stream_ingest)
+        cors.add(stream_route)
+
         runner = web.AppRunner(app)
         await runner.setup()
         # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT

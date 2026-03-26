@@ -7,7 +7,7 @@
         },
         "shadow": {
             "primary": "localhost",
-            "lora_name": "shadow_brain_v2"
+            "lora_name": null
         },
         "pinky": {
             "primary": "localhost",

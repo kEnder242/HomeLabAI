@@ -54,10 +54,8 @@ class BicameralNode:
         self.primary_host = node_cfg.get("primary", "localhost")
         self.lora_name = node_cfg.get("lora_name")
 
-        # [FEAT-240] Phase 1: Protocol Alignment
-        # Register the Native Sampling bridge in the constructor to avoid race conditions
         @self.mcp.tool()
-        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "") -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False) -> str:
             """
             [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
             If the model needs steering (e.g. 'ask_brain'), it uses a SamplingRequest to the Hub.
@@ -71,7 +69,9 @@ class BicameralNode:
             # it will output an [ACTION: UPLINK] tag or standard tool call that we handle via Sampling.
             
             full_response = ""
-            async for token in self.generate_response(query, context, system_override=system_override):
+            # Only broadcast tokens if NOT an internal logic turn
+            stream_source = self.name if not internal else None
+            async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source):
                 full_response += token
                 
             # [FEAT-240.2] Sampling Bridge: Check if the response contains a steering request
@@ -95,7 +95,7 @@ class BicameralNode:
             tool_desc = "\n".join([f"- {t}" for t in tools])
             system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
         
-        return self.generate_response(query, context, system_override=system_override)
+        return self.generate_response(query, context, system_override=system_override, source_name=self.name)
 
     def _patch_model(self, model_id):
         """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
@@ -224,7 +224,7 @@ class BicameralNode:
                 self._session = None
             return False, f"Connection failed: {e}"
 
-    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False):
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
@@ -243,8 +243,19 @@ class BicameralNode:
         system_prompt = system_override or self.system_prompt
         
         # [FEAT-254.2] Metadata Displacement: Context shifts from system to user
+        # This prevents 3B models from confusing system data with their core identity.
+        user_context = ""
         if context:
-            query = f"[CONTEXT]:\n{context}\n\n---\n\n{query}"
+            user_context += f"[CONTEXT]:\n{context}\n\n"
+            
+        # Detect guidance jammed into system_override by wrappers
+        if system_override and "[BEHAVIORAL_GUIDANCE]:" in system_override:
+            parts = system_override.split("[BEHAVIORAL_GUIDANCE]:")
+            system_prompt = parts[0].strip()
+            user_context += f"[GUIDANCE]:\n{parts[1].strip()}\n\n"
+
+        if user_context:
+            query = f"{user_context}---\n\n{query}"
 
         if engine["type"] == "VLLM":
             payload = {
@@ -271,16 +282,37 @@ class BicameralNode:
             if engine["type"] == "VLLM":
                 async for token in self._stream_vllm(engine["url"], payload):
                     full_response += token
+                    # [FEAT-233.2] Live Hearing Pipe: Broadcast tokens out-of-band
+                    if source_name:
+                        await self._broadcast_token(token, source_name)
                     yield token
             else:
                 async for token in self._stream_ollama(engine["url"], payload):
                     full_response += token
+                    if source_name:
+                        await self._broadcast_token(token, source_name)
                     yield token
             
             self._mirror_trace("recv", full_response)
         except Exception as e:
             logging.error(f"[{self.name}] Generation failed: {e}")
             yield f"Egad! Logic failure: {e}"
+
+    async def _broadcast_token(self, token, source):
+        """Helper to POST tokens to the Hub's stream_ingest endpoint."""
+        try:
+            # Note: We use a short timeout to prevent blocking generation
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "type": "crosstalk",
+                    "brain": token,
+                    "brain_source": source,
+                    "final": False
+                }
+                async with session.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.5) as r:
+                    pass
+        except Exception:
+            pass
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
@@ -342,7 +374,7 @@ class BicameralNode:
             log_dir = os.path.join(lab_root, "logs")
             os.makedirs(log_dir, exist_ok=True)
             log_path = os.path.join(log_dir, f"trace_{self.name}.json")
-            mode = "w" if phase == "send" else "a"
+            mode = "a"
             entry = {"phase": phase, "timestamp": time.time(), "data": data, "metadata": metadata}
             if url:
                 entry["url"] = url
