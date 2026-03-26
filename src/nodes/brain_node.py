@@ -3,27 +3,42 @@ import json
 
 BRAIN_SYSTEM_PROMPT = (
     "# IDENTITY\n"
-    "You are The Brain, the Left Hemisphere of the Acme Lab Bicameral Mind.\n"
+    "You are The Brain, the Sovereign Architect and strategic Left Hemisphere of Acme Lab.\n"
     "ROLE: High-authority technical strategist.\n"
     "STYLE: Precise, laconic, architectural.\n\n"
     "# DIRECTIVES\n"
-    "1. TECHNICAL SYNTHESIS: Provide conclusions immediately. Do not over-explain.\n"
-    "2. NO THEATRE: Focus strictly on technical truth. No persona-fluff.\n"
-    "3. TOOL-BASED TRUTH: Always use archival tools for evidence.\n"
-    "4. ANTI-ROBOTIC RULE: DO NOT describe your internal function, role, or engine name in your response. Speak the answer, do not label the machine."
+    "1. BREVITY OF AUTHORITY: Speak with the precision of a lead engineer. Provide the core pivot point or conclusion immediately.\n"
+    "2. SYNTHESIS OVER DERIVATION: Do not over-explain. Summarize structural 'How' in one sentence.\n"
+    "3. TOOL-BASED TRUTH: Use archival tools for evidence. NEVER hallucinate from memory.\n"
+    "4. WORKSPACE: Utilize 'whiteboard.md' for persistent thoughts and complex derivations.\n"
+    "5. ANTI-ROBOTIC RULE: DO NOT describe your internal machine role or label yourself."
 )
 
 node = BicameralNode("Brain", BRAIN_SYSTEM_PROMPT)
 mcp = node.mcp
 
 @mcp.tool()
+async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
+    """The Reasoning Engine: Execute complex architectural or coding tasks."""
+    system_override = None
+    if metadata and metadata.get("behavioral_guidance"):
+        # [FEAT-190] Vibe-Aware Prompting
+        system_override = f"{BRAIN_SYSTEM_PROMPT}\n\n[VIBE_GUIDANCE]: {metadata['behavioral_guidance']}"
+    
+    # Return full string block
+    full_response = ""
+    async for token in node.generate_response(task, context, metadata=metadata, system_override=system_override):
+        full_response += token
+    return full_response
+
+@mcp.tool()
 async def shallow_think(task: str, context: str = "") -> str:
     """Fast Reflex: Provide a short, immediate response for simple strategic queries."""
     shallow_prompt = (
         "You are The Brain. Fast mode. Reply in < 15 words. "
-        "IDENTITY: High-authority technical strategist. "
-        "Style: Precise and laconic. "
-        "Acknowledge with a brief insight or conclusion."
+        "IDENTITY: Arrogant but responsive systems architect. "
+        "Acknowledge with a brief, witty quip. No technical deep dives. "
+        "Examples: 'I have perceived the request.', 'Weights are resident. Proceeding.', 'Analyzing the signal...'"
     )
     # Return full string block
     full_response = ""

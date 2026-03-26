@@ -221,6 +221,7 @@ class CognitiveHub:
         await self.broadcast({
             "type": "crosstalk",
             "brain": f"Initiating {source_name} intuition...",
+            "brain_source": source_name,
             "final": False
         })
 
@@ -289,7 +290,8 @@ class CognitiveHub:
         if "lab" in self.residents:
             try:
                 # Triage is still a single block for logic reasons
-                t_res = await self.residents["lab"].call_tool("think", {"query": query})
+                # [FEAT-233.2] Mute internal logic from UI waterfall
+                t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
                 t_clean = self.bridge_signal_clean(t_res.content[0].text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
@@ -410,7 +412,7 @@ class CognitiveHub:
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
-                    retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100]})
+                    retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100], "internal": True})
                     retract_full = str(retract_res.content[0].text)
                     await self.execute_dispatch(retract_full, "Pinky (Retraction)", final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
@@ -437,7 +439,8 @@ class CognitiveHub:
             # [BKM-015.1] Natural persona audit
             res_res = await self.residents["pinky"].call_tool("think", {
                 "query": cooldown_query, 
-                "context": f"[PROPOSED_STRATEGY]: {text[:1000]}"
+                "context": f"[PROPOSED_STRATEGY]: {text[:1000]}",
+                "internal": True
             })
             res_full = str(res_res.content[0].text)
             await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, final=True)

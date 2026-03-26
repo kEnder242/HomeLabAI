@@ -44,7 +44,7 @@ class CognitiveAudit:
             f"Output ONLY 'PASS' or 'FAIL'."
         )
         try:
-            result = await self.node.call_tool("think", {"query": audit_prompt})
+            result = await self.node.call_tool("think", {"query": audit_prompt, "internal": True})
             return "PASS" in result.content[0].text.strip().upper()
         except:
             return False
