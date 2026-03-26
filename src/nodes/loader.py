@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import time
+import socket
 from liger_kernel.transformers import (
     apply_liger_kernel_to_mistral,
     apply_liger_kernel_to_qwen2,
@@ -159,6 +160,23 @@ class BicameralNode:
         medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
         return medium or "llama3.2:3b"
 
+    def _resolve_primary_host(self):
+        """[FEAT-255.7] Dynamic Resolution: Maps hostname to IP with infra.json fallback."""
+        if self.primary_host == "localhost":
+            return "127.0.0.1"
+        
+        if self.primary_host == "KENDER":
+            # [HARDENING] Direct IP bypass for known Windows host
+            return "192.168.1.26"
+
+        try:
+            # Try dynamic DNS resolution
+            return socket.gethostbyname(self.primary_host)
+        except Exception:
+            # Fallback to ip_hint from infrastructure.json
+            host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
+            return host_cfg.get("ip_hint", self.primary_host)
+
     async def ping_engine(self, force=False):
         """[FEAT-192] Checks if the backend engine is responsive with TTL throttling."""
         if not force and self._engine_cache:
@@ -167,6 +185,8 @@ class BicameralNode:
                 return True, "Cached"
 
         # [FEAT-255.1] Dynamic Registry: Sync engine type with status.json
+        resolved_ip = self._resolve_primary_host()
+        
         if self.primary_host == "localhost":
             engine_type = os.environ.get("LAB_MODE", "VLLM")
             status_path = os.path.join(LAB_DIR, "status.json")
@@ -178,10 +198,11 @@ class BicameralNode:
                 except Exception: pass
             
             port = 8088 if engine_type == "VLLM" else 11434
-            base_url = f"http://localhost:{port}"
+            base_url = f"http://{resolved_ip}:{port}"
         else:
             engine_type = "OLLAMA"
-            base_url = f"http://{self.primary_host}:11434"
+            base_url = f"http://{resolved_ip}:11434"
+        
         models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
 
         try:
