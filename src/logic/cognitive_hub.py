@@ -350,12 +350,13 @@ class CognitiveHub:
             nonlocal pinky_text
             # [FEAT-244] Pinky Muting
             if addressed_to in ["PINKY", "MICE"]:
-                p_context = (f"<system_state>\nROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
-                             f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE") + "\n</system_state>")
+                # [FEAT-254.2] Metadata Displacement: Use clean, header-free context
+                p_context = (f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
+                             f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
                 pinky_text = await self._process_node_stream(
                     "pinky", query, p_context, "Pinky (Triage)",
                     tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
-                    behavioral_guidance="DO NOT repeat system_state metadata in your response.",
+                    behavioral_guidance="Standard brevity. Focus on natural interaction.",
                     shutdown_event=shutdown_event
                 )
 
@@ -367,11 +368,12 @@ class CognitiveHub:
             role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
             
             if fuel_start > threshold and addressed_to in ["BRAIN", "MICE"]:
-                s_context = (f"<system_state>\nFUEL: {fuel_start:.2f} | ROLE: {role}\n</system_state>")
+                # [FEAT-254.2] Metadata Displacement: Use clean, header-free context
+                s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}"
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
                     tools=["ask_brain", "shallow_think"],
-                    behavioral_guidance="DO NOT repeat system_state metadata in your response.",
+                    behavioral_guidance="Provide immediate technical intuition.",
                     shutdown_event=shutdown_event
                 )
 

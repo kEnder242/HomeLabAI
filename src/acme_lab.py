@@ -589,6 +589,9 @@ class AcmeLab:
 
         await self.manage_session_lock(active=True)
 
+        # [FEAT-085] Snap-to-Life: Prime the Sovereign Brain on connect
+        asyncio.create_task(self.check_brain_health(force=True))
+
         try:
             await ws.send_str(
                 json.dumps(
