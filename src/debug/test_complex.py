@@ -33,8 +33,9 @@ async def test_complex_waterfall():
                                 print(f"  🌊 Token Stream [{source}]: {content.strip()}")
                         else:
                             print(f"\n✅ FINAL RESPONSE [{source}]:\n{content[:500]}...")
-                            if found_tokens > 0:
-                                print(f"\n✨ SUCCESS: Verified {found_tokens} incremental tokens received via Waterfall.")
+                            if "Result" in source or "Failover" in source:
+                                if found_tokens > 0:
+                                    print(f"\n✨ SUCCESS: Verified {found_tokens} incremental tokens received via Waterfall.")
                                 return
                 except asyncio.TimeoutError:
                     continue
