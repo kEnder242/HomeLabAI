@@ -304,7 +304,7 @@ class BicameralNode:
             # Note: We use a short timeout to prevent blocking generation
             async with aiohttp.ClientSession() as session:
                 payload = {
-                    "type": "crosstalk",
+                    "type": "brain",
                     "brain": token,
                     "brain_source": source,
                     "final": False
