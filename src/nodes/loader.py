@@ -282,15 +282,10 @@ class BicameralNode:
             if engine["type"] == "VLLM":
                 async for token in self._stream_vllm(engine["url"], payload):
                     full_response += token
-                    # [FEAT-233.2] Live Hearing Pipe: Broadcast tokens out-of-band
-                    if source_name:
-                        await self._broadcast_token(token, source_name)
                     yield token
             else:
                 async for token in self._stream_ollama(engine["url"], payload):
                     full_response += token
-                    if source_name:
-                        await self._broadcast_token(token, source_name)
                     yield token
             
             self._mirror_trace("recv", full_response)
