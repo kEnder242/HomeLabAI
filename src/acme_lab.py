@@ -232,21 +232,26 @@ class AcmeLab:
             target_url = resolve_brain_url()
             async with aiohttp.ClientSession() as session:
                 # Tier 1: Light API Check (Status only)
-                async with session.get(target_url, timeout=1.5) as r:
-                    is_reachable = r.status == 200
-                    if not is_reachable:
-                        if self.brain_online: logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
-                        self.brain_online = False
-                        self._last_brain_fail = now
-                        return
-                    
-                    data = await r.json()
-                    models = [m.get("name") for m in data.get("models", [])]
-                    if not models:
-                        self.brain_online = False
-                        return
-                    
-                    self.brain_online = True # API is at least talking
+                try:
+                    async with session.get(target_url, timeout=2.0) as r:
+                        is_reachable = r.status == 200
+                        if not is_reachable:
+                            if self.brain_online: logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
+                            self.brain_online = False
+                            self._last_brain_fail = now
+                            return
+                        
+                        data = await r.json()
+                        models = [m.get("name") for m in data.get("models", [])]
+                        if not models:
+                            self.brain_online = False
+                            return
+                        
+                        self.brain_online = True # API is at least talking
+                except Exception:
+                    self.brain_online = False
+                    self._last_brain_fail = now
+                    return
 
                     # Tier 2: Heavy Prime (GPU Wake)
                     # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
