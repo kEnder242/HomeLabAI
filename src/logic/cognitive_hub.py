@@ -43,7 +43,7 @@ class CognitiveHub:
     def bridge_signal_clean(self, text):
         """
         [FEAT-203] Bicameral Bridge Signal Cleaning Utility.
-        Robustly extracts and sanitizes JSON from 3B model outputs.
+        [FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output.
         """
         if "{" not in text:
             return None
@@ -51,25 +51,35 @@ class CognitiveHub:
         # 1. Strip markdown blocks
         clean = re.sub(r"```json\s*|\s*```", "", text).strip()
 
-        # 2. Greedy Extraction: Find the widest possible { } block
-        match = re.search(r'(\{.*\})', clean, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-        else:
-            # [HARDENING] Salvage truncated JSON tool calls
-            if '{"tool":' in clean:
-                start_idx = clean.find('{"tool":')
-                json_str = clean[start_idx:]
-                open_braces = json_str.count('{')
-                close_braces = json_str.count('}')
-                if open_braces > close_braces:
-                    if json_str.count('"') % 2 != 0:
-                        json_str += '"'
-                    json_str += '}' * (open_braces - close_braces)
+        # 2. Extract JSON blocks
+        # [HARDENING] Find all balanced { } blocks and try to parse the first one
+        json_blocks = []
+        stack = 0
+        start_idx = -1
+        
+        for i, char in enumerate(clean):
+            if char == '{':
+                if stack == 0:
+                    start_idx = i
+                stack += 1
+            elif char == '}':
+                stack -= 1
+                if stack == 0 and start_idx != -1:
+                    json_blocks.append(clean[start_idx:i+1])
+                    start_idx = -1
+
+        if not json_blocks:
+            # Fallback to greedy if balance logic fails
+            match = re.search(r'(\{.*\})', clean, re.DOTALL)
+            if match:
+                json_blocks = [match.group(1)]
             else:
                 return None
 
-        # 3. Structural Sanitization
+        # 3. Process the first block
+        json_str = json_blocks[0]
+        
+        # [FEAT-220.2] Structural Sanitization
         json_str = json_str.replace("{{", "{").replace("}}", "}")
         json_str = json_str.replace("'", '"')
         json_str = json_str.replace("True", "true").replace("False", "false")
