@@ -267,13 +267,15 @@ class BicameralNode:
         # This prevents 3B models from confusing system data with their core identity.
         user_context = ""
         if context:
-            user_context += f"[CONTEXT]:\n{context}\n\n"
+            # [MASKING] Wrap internal metrics in markers that imply "Silent Context"
+            masked_context = context.replace("FUEL:", "Resonance:").replace("ROUTE:", "Flow:")
+            user_context += f"[SYSTEM_DESIGN_STANCE]:\n{masked_context}\n\n"
             
         # Detect guidance jammed into system_override by wrappers
         if system_override and "[BEHAVIORAL_GUIDANCE]:" in system_override:
             parts = system_override.split("[BEHAVIORAL_GUIDANCE]:")
             system_prompt = parts[0].strip()
-            user_context += f"[GUIDANCE]:\n{parts[1].strip()}\n\n"
+            user_context += f"[GUIDANCE_FRAME]:\n{parts[1].strip()}\n\n"
 
         if user_context:
             query = f"{user_context}---\n\n{query}"
