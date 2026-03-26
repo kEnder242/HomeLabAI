@@ -267,9 +267,24 @@ class BicameralNode:
         # This prevents 3B models from confusing system data with their core identity.
         user_context = ""
         if context:
-            # [MASKING] Wrap internal metrics in markers that imply "Silent Context"
-            masked_context = context.replace("FUEL:", "Resonance:").replace("ROUTE:", "Flow:")
-            user_context += f"[SYSTEM_DESIGN_STANCE]:\n{masked_context}\n\n"
+            # [MASKING] Convert technical metrics into qualitative design stances
+            # This prevents the model from citing "Fuel: 0.80" in its response.
+            masked = context
+            try:
+                # Extract numerical fuel if present
+                import re
+                fuel_match = re.search(r"FUEL: ([\d\.]+)", context)
+                if fuel_match:
+                    f_val = float(fuel_match.group(1))
+                    stance = "Surface"
+                    if f_val > 0.3: stance = "Standard"
+                    if f_val > 0.6: stance = "Deep"
+                    if f_val > 0.8: stance = "Sovereign"
+                    masked = masked.replace(fuel_match.group(0), f"Resonance: {stance}")
+            except Exception: pass
+            
+            masked = masked.replace("ROUTE:", "Flow:").replace("ROLE:", "Identity:")
+            user_context += f"[SYSTEM_DESIGN_STANCE]:\n{masked}\n\n"
             
         # Detect guidance jammed into system_override by wrappers
         if system_override and "[BEHAVIORAL_GUIDANCE]:" in system_override:
