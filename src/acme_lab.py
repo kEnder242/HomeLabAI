@@ -67,7 +67,7 @@ def resolve_brain_url():
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
         self.mode = mode
-        self.afk_timeout = afk_timeout
+        self.idle_gate = afk_timeout or 300 # [FEAT-249] Mandatory 5m idle gate for live system
         self.role = role
         self.status = "INIT"
         self.connected_clients: Set[web.WebSocketResponse] = set()
@@ -292,7 +292,7 @@ class AcmeLab:
 
             # [FORENSIC] Characterize idle needs
             if not self.connected_clients and self.status == "READY":
-                logging.info(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
+                logging.debug(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
 
             if self.connected_clients:
                 await self.broadcast(

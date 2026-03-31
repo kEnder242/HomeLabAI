@@ -50,7 +50,6 @@ current_lab_mode = "OFFLINE"
 current_model = None
 is_hibernating = False
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
-_CURRENT_SESSION_TOKEN = _BOOT_HASH
 
 # [BKM-002] Montana Protocol: Aggressive Logger Authority
 reclaim_logger(role="ATTENDANT")
@@ -92,8 +91,8 @@ async def key_middleware(request, handler):
     provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
 
     # [FEAT-252] Dynamic Auth: Allow either the STYLE_HASH or the current SESSION_TOKEN
-    if provided_key not in [expected_key, _CURRENT_SESSION_TOKEN]:
-        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected Style: {expected_key} or Session: {_CURRENT_SESSION_TOKEN}) from {request.remote}")
+    if provided_key not in [expected_key, attendant.session_token]:
+        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected Style: {expected_key} or Session: {attendant.session_token}) from {request.remote}")
         return web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
     
     return await handler(request)
@@ -129,6 +128,7 @@ class LabAttendantV4:
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
         self.ready_event = asyncio.Event()
         self.current_reason = "INIT"
+        self.session_token = uuid.uuid4().hex[:8] # [FEAT-220] Stable Session Token
         self.vram_config = {}
         self.refresh_vram_config()
 
@@ -216,9 +216,13 @@ class LabAttendantV4:
 
     async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only, "reason": reason})
-        
-        global current_lab_mode, current_model, lab_process, is_hibernating, _CURRENT_SESSION_TOKEN
+            return await self._proxy_request("POST", "start", {
+                "engine": engine, "model": model, "disable_ear": disable_ear, 
+                "op_mode": op_mode, "engine_only": engine_only, "reason": reason
+            })
+
+        global current_lab_mode, current_model, lab_process, is_hibernating
+
         
         if os.path.exists(MAINTENANCE_LOCK):
             logger.warning("[IGNITION] Aborting start: MAINTENANCE_LOCK detected.")
@@ -226,8 +230,8 @@ class LabAttendantV4:
 
         is_hibernating = False
         self.current_reason = reason
-        _CURRENT_SESSION_TOKEN = uuid.uuid4().hex[:8]
-        logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
+        logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode})")
+
         
         self.refresh_vram_config() # Reload latest model mappings
         
@@ -241,16 +245,18 @@ class LabAttendantV4:
 
         current_lab_mode = op_mode
         current_model = target_model
-        # [FEAT-255.1] Dynamic Registry: Export state for nodes to consume
+        # [FEAT-255.1] Export state with Reason
         try:
             with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
                 json.dump({
                     "mode": engine, 
                     "model": target_model, 
                     "reason": reason,
+                    "session": self.session_token,
                     "timestamp": time.time()
                 }, f)
         except Exception: pass
+
         
         # [FEAT-259.2] Fast STUB: Skip physical silicon gates for logic testing
         if engine == "STUB":
@@ -298,7 +304,7 @@ class LabAttendantV4:
         env = os.environ.copy()
         env["LAB_MODE"] = str(engine)
         # [FEAT-220] Silicon Handshake: Inject Immunity Token into all spawned families
-        env["LAB_IMMUNITY_TOKEN"] = str(_CURRENT_SESSION_TOKEN)
+        env["LAB_IMMUNITY_TOKEN"] = str(self.session_token)
         
         if disable_ear:
             env["DISABLE_EAR"] = "1"
@@ -657,7 +663,7 @@ class LabAttendantV4:
             if pid == os.getpid(): return False
             proc = psutil.Process(pid)
             token = proc.environ().get("LAB_IMMUNITY_TOKEN")
-            return token == _CURRENT_SESSION_TOKEN
+            return token == self.session_token
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
 
@@ -672,7 +678,7 @@ class LabAttendantV4:
             token = env.get("LAB_IMMUNITY_TOKEN")
             
             # If token matches the current session, it is IMMUNE (SPARE)
-            if token == _CURRENT_SESSION_TOKEN:
+            if token == self.session_token:
                 logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
                 return False
                 
@@ -715,6 +721,7 @@ class LabAttendantV4:
             "vram": vram_pct,
             "full_lab_ready": self.ready_event.is_set(),
             "reason": self.current_reason,
+            "session": self.session_token,
             "boot_hash": _BOOT_HASH
         }
 
@@ -861,7 +868,7 @@ class LabAttendantV4:
 
     async def handle_shutdown(self, app):
         """[CLEAN_RESTART] Ensures the Lab reaps its OWN session upon exit."""
-        logger.warning(f"[SHUTDOWN] Service termination detected (Session: {_CURRENT_SESSION_TOKEN}). Reaping session silicon...")
+        logger.warning(f"[SHUTDOWN] Service termination detected (Session: {self.session_token}). Reaping session silicon...")
         # Dual-Phase Cleanup:
         # 1. Kill session-owned processes by token
         # 2. Specifically target session ports
