@@ -645,10 +645,12 @@ class AcmeLab:
                                     async with aiohttp.ClientSession() as session:
                                         headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
                                         # [FEAT-250] Use engine_only=True to spare the Hub
+                                        # [STABILITY] Explicitly request the current lab mode's engine
+                                        target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
                                         async with session.post("http://localhost:9999/start", 
                                                          headers=headers, 
                                                          json={
-                                                             "engine": "VLLM", 
+                                                             "engine": target_engine, 
                                                              "model": "MEDIUM", 
                                                              "engine_only": True,
                                                              "op_mode": "SERVICE_UNATTENDED"
