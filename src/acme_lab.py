@@ -284,7 +284,7 @@ class AcmeLab:
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
-            await asyncio.sleep(10.0)
+            await asyncio.sleep(30.0)
             # [FEAT-249.2] Hardened VRAM Hibernation Logic (5m idle gate)
             idle_time = time.time() - self.last_activity
             is_hibernating = (not self.connected_clients and idle_time > 300)
@@ -308,6 +308,7 @@ class AcmeLab:
             else:
                 if is_hibernating and self.status == "READY":
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
+                    self.status = "HIBERNATING"
                     # Trigger non-blocking stop via REST
                     async def hibernate():
                         async with aiohttp.ClientSession() as session:
