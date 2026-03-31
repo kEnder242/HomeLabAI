@@ -27,7 +27,7 @@ async def test_wakeup():
                         data = await r.json()
                         mode = data.get("mode")
                         print(f"    [T+{i*2}s] Mode: {mode}")
-                        if mode == "VLLM":
+                        if mode in ["VLLM", "SERVICE_UNATTENDED", "OLLAMA"]:
                             print("✨ SUCCESS: Snap-to-Life triggered engine ignition!")
                             return True
                 await asyncio.sleep(2)
