@@ -626,30 +626,37 @@ class AcmeLab:
                     m_type = data.get("type")
                     if m_type == "handshake":
                         # [FEAT-249] Handshake Ignition Spark
-                        # [STABILITY] Do NOT spark if we are already in the boot sequence
-                        if not self.brain_online and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
+                        # [FEAT-249.6] Snap-to-Life: Proactively check physical engine link
+                        vllm_reachable = False
+                        try:
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get("http://localhost:8088/v1/models", timeout=1) as r:
+                                    vllm_reachable = (r.status == 200)
+                        except Exception: pass
+
+                        if not vllm_reachable and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
-                            # [FEAT-249.2] Reset activity timer to prevent immediate re-hibernation
                             self.last_activity = time.time()
-                            logging.info("[HUB] Handshake detected. Sparking engine reload...")
-                            await ws.send_str(json.dumps({
-                                "type": "crosstalk",
-                                "brain": "Narf! Waking up the local neurons...",
-                                "final": False
-                            }))
+                            logging.warning("[HUB] Handshake detected but Engine is OFFLINE. Sparking restoration...")
+                            
                             # Trigger non-blocking start via REST
                             async def spark_reload():
                                 try:
                                     async with aiohttp.ClientSession() as session:
                                         headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
                                         # [FEAT-250] Use engine_only=True to spare the Hub
-                                        # [FEAT-249.6] Snap-to-Life: Always attempt to restore VLLM
                                         async with session.post("http://localhost:9999/start", 
                                                          headers=headers, 
-                                                         json={"engine": "VLLM", "model": "MEDIUM", "engine_only": True}) as r:
+                                                         json={
+                                                             "engine": "VLLM", 
+                                                             "model": "MEDIUM", 
+                                                             "engine_only": True,
+                                                             "op_mode": "SERVICE_UNATTENDED"
+                                                         }) as r:
                                             if r.status == 200:
                                                 # [FEAT-259.4] Physical Guard: Wait for nodes to verify
                                                 logging.info("[HUB] Spark Success. Synchronizing nodes...")
+
                                                 # Wait for the Engine to report readiness before pinging
                                                 engine_ready = False
                                                 for _ in range(60): # 120s timeout
@@ -662,16 +669,23 @@ class AcmeLab:
                                                     except Exception:
                                                         pass
                                                     await asyncio.sleep(2)
-                                                
+
                                                 if not engine_ready:
                                                     logging.warning("[HUB] Spark Larynx Gate TIMEOUT. Proceeding cautiously.")
-                                                
+
                                                 for name, client in self.residents.items():
                                                     if hasattr(client, "ping_engine"):
                                                         await client.ping_engine(force=True)
-                                                        
+
                                                 # [FEAT-256.3] Resignal Attendant Watchdog
                                                 logging.info("[READY] Lab is Open.")
+                                                self.brain_online = True
+                                                await self.broadcast({
+                                                    "brain": "Strategic Sovereignty: ONLINE",
+                                                    "brain_source": "System",
+                                                    "channel": "insight"
+                                                })
+
                                 except Exception as e:
                                     logging.error(f"[HUB] Spark reload failed: {e}")
                                 finally:
@@ -1037,7 +1051,17 @@ class AcmeLab:
         self.shutdown_event.clear()
         self.residents = {}
         self.status = "BOOTING"
-
+        # [FEAT-249.6] Engine Awareness: Proactively check if we are in a lobby or ready state
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:8088/v1/models", timeout=1) as r:
+                    if r.status == 200:
+                        self.status = "READY"
+                    else:
+                        self.status = "LOBBY"
+        except Exception:
+            self.status = "LOBBY"
+            
         app = web.Application()
         # [FEAT-199] CORS Support for browser Intercom
         cors = aiohttp_cors.setup(app, defaults={
