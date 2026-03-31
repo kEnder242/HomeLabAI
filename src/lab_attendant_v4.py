@@ -120,6 +120,7 @@ class LabAttendantV4:
         self.register_route("POST", "/hibernate", self.handle_hibernate_rest)
         self.register_route("POST", "/hard_reset", self.handle_stop_rest)
         self.register_route("GET", "/heartbeat", self.handle_heartbeat_rest)
+        self.register_route("GET", "/status", self.handle_heartbeat_rest) # [FIX] Alias for backward compatibility
         self.register_route("GET", "/ping", self.handle_ping_rest)
         self.register_route("GET", "/wait_ready", self.handle_wait_ready_rest)
         self.register_route("GET", "/logs", self.handle_logs_rest)
@@ -217,6 +218,11 @@ class LabAttendantV4:
             return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only})
         
         global current_lab_mode, current_model, lab_process, is_hibernating, _CURRENT_SESSION_TOKEN
+        
+        if os.path.exists(MAINTENANCE_LOCK):
+            logger.warning("[IGNITION] Aborting start: MAINTENANCE_LOCK detected.")
+            return {"status": "error", "message": "Maintenance lock active."}
+
         is_hibernating = False
         _CURRENT_SESSION_TOKEN = uuid.uuid4().hex[:8]
         logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
@@ -231,7 +237,7 @@ class LabAttendantV4:
         utilization = tier_config.get("gpu_memory_utilization", 0.4)
         backend = tier_config.get("attention_backend", "TRITON_ATTN")
 
-        current_lab_mode = engine
+        current_lab_mode = op_mode
         current_model = target_model
         # [FEAT-255.1] Dynamic Registry: Export state for nodes to consume
         try:
@@ -684,6 +690,11 @@ class LabAttendantV4:
             # Seek to end initially to only catch new signals
             f.seek(0, os.SEEK_END)
             while True:
+                # [FEAT-259.1] Hibernation Awareness: Skip auto-restart if manually hibernated or in maintenance
+                if is_hibernating or os.path.exists(MAINTENANCE_LOCK):
+                    await asyncio.sleep(5)
+                    continue
+
                 if not lab_process or lab_process.poll() is not None:
                     logger.warning("[WATCHDOG] Lab process ended.")
                     # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services

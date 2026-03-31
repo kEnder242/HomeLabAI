@@ -285,9 +285,9 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
             await asyncio.sleep(10.0)
-            # [FEAT-249.2] Hardened VRAM Hibernation Logic (10m idle gate)
+            # [FEAT-249.2] Hardened VRAM Hibernation Logic (5m idle gate)
             idle_time = time.time() - self.last_activity
-            is_hibernating = (not self.connected_clients and idle_time > 600)
+            is_hibernating = (not self.connected_clients and idle_time > 300)
 
             if self.connected_clients:
                 await self.broadcast(
@@ -306,7 +306,7 @@ class AcmeLab:
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
-                if is_hibernating and self.brain_online:
+                if is_hibernating and self.status == "READY":
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
                     # Trigger non-blocking stop via REST
                     async def hibernate():
