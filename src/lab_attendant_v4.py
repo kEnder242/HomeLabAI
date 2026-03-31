@@ -128,6 +128,7 @@ class LabAttendantV4:
         
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
         self.ready_event = asyncio.Event()
+        self.current_reason = "INIT"
         self.vram_config = {}
         self.refresh_vram_config()
 
@@ -224,6 +225,7 @@ class LabAttendantV4:
             return {"status": "error", "message": "Maintenance lock active."}
 
         is_hibernating = False
+        self.current_reason = reason
         _CURRENT_SESSION_TOKEN = uuid.uuid4().hex[:8]
         logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
         
@@ -265,8 +267,9 @@ class LabAttendantV4:
         required_mb = int(total_vram * utilization)
 
         # [FEAT-250] Surgical Ignition: Spare the Hub if requested
+        # 2. Cleanup: Clear orphans from required ports
         if engine_only:
-            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"], ignore_immunity=True)
+            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"])
         else:
             await self.cleanup_silicon()
 
@@ -320,20 +323,31 @@ class LabAttendantV4:
             env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4 --max-model-len {max_len} {lora_args}"
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
-            self.log_event(f"Ignition: {engine}/{target_model} (Mode: {op_mode})")
+            self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
             subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR, start_new_session=True)
             await self._wait_for_vllm()
-        else:
+        elif engine == "OLLAMA":
             # [SPR-13.0] OLLAMA Fallback
             logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
+            self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
             subprocess.Popen(["ollama", "run", target_model], env=env, start_new_session=True)
+        elif engine == "STUB":
+            self.log_event(f"Ignition [{reason.upper()}]: STUB (Mode: {op_mode})")
+            # No physical subprocess needed for STUB engine
+            pass
 
-        # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running
-        # We check for port 8765 liveness to see if we should spare the foyer
+        # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running AND immune
         hub_active = False
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                hub_active = s.connect_ex(("localhost", 8765)) == 0
+            res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
+            if ":" in res:
+                pid = int(res.split(":")[1].strip().split()[0])
+                if self._is_current_session_process(pid):
+                    hub_active = True
+                else:
+                    logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    await asyncio.sleep(1.0)
         except Exception:
             pass
 
@@ -342,12 +356,13 @@ class LabAttendantV4:
             return {"status": "success", "message": "Engines sparked. Hub spared."}
 
         # Start Hub
+        logger.info(f"[IGNITION] [{reason.upper()}] Igniting Hub foyer...")
         cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
         if disable_ear:
             cmd.append("--disable-ear")
         
-        # [FEAT-213] Engine Warm-up Delay
-        await asyncio.sleep(10.0)
+        # [FEAT-213] Engine Warm-up Delay (Reduced for speed)
+        await asyncio.sleep(2.0)
         
         with open(SERVER_LOG, "a", buffering=1) as log_f:
             lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=log_f, start_new_session=True)
@@ -429,9 +444,9 @@ class LabAttendantV4:
         asyncio.create_task(self._deferred_cleanup("MAINTENANCE MODE (Locked)"))
         return {"status": "locked", "message": "Lab freezing. Watchdog passive."}
 
-    async def mcp_ignition(self):
+    async def mcp_ignition(self, reason: str = "MANUAL_IGNITION"):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "ignition")
+            return await self._proxy_request("POST", "ignition", {"reason": reason})
         
         # [FEAT-213] Re-Ignition must clear the maintenance lock first
         if os.path.exists(MAINTENANCE_LOCK):
@@ -443,7 +458,7 @@ class LabAttendantV4:
         model = os.environ.get("LAB_MODEL", "MEDIUM")
         disable_ear = os.environ.get("DISABLE_EAR") == "1"
         
-        return await self.mcp_start(engine, model, disable_ear, "SERVICE_UNATTENDED")
+        return await self.mcp_start(engine, model, disable_ear, "SERVICE_UNATTENDED", reason=reason)
 
     async def mcp_train_adapter(self, adapter_name: str, steps: int = 60):
         """[FEAT-213/218] Autonomous VRAM Handover for Sequenced Batch Forging."""
@@ -554,13 +569,13 @@ class LabAttendantV4:
             
         return {"status": "timeout", "message": f"Lab failed to reach READY within {timeout}s"}
 
-    async def cleanup_silicon(self, ports=None, targets=None, ignore_immunity=False):
+    async def cleanup_silicon(self, ports=None, targets=None, ignore_immunity=False, reap_hub=False, only_current=False):
         """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID with Immunity."""
         pgids_to_kill = set()
         my_pgid = os.getpgid(os.getpid())
         
         # 1. Port-Based Discovery
-        check_ports = ports or [8088, 8765]
+        check_ports = ports or [8088, 11434, 8765]
         for port in check_ports:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
@@ -569,9 +584,17 @@ class LabAttendantV4:
                         pid_str = line.split(":")[1].strip()
                         for p in pid_str.split():
                             p_int = int(p)
-                            # [FEAT-119.1] Physical Override: Port 8765 (Hub) is NEVER reaped during a surgical reload
-                            if port == 8765:
+                            # [FEAT-119.1] Physical Override: Port 8765 (Hub) is spared UNLESS reap_hub is True
+                            if port == 8765 and not reap_hub:
                                 continue
+                            
+                            # [SESSION AWARENESS] Target logic
+                            is_mine = self._is_current_session_process(p_int)
+                            
+                            if only_current:
+                                if is_mine: pgids_to_kill.add(os.getpgid(p_int))
+                                continue
+
                             if not ignore_immunity and not self._is_stale_process(p_int):
                                 continue
                             pgids_to_kill.add(os.getpgid(p_int))
@@ -586,25 +609,34 @@ class LabAttendantV4:
                     continue
                 pid, name = line.split(",")
                 p_int = int(pid.strip())
-                # [FEAT-119.3] Precise Targeting: Only kill AI engines and Lab nodes, spare diagnostics
-            if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]) and (ignore_immunity or self._is_stale_process(p_int)):
-                    pgids_to_kill.add(os.getpgid(p_int))
+                is_mine = self._is_current_session_process(p_int)
+                
+                # [FEAT-119.3] Precise Targeting
+                if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]):
+                    if only_current:
+                        if is_mine: pgids_to_kill.add(os.getpgid(p_int))
+                        continue
+                    if ignore_immunity or self._is_stale_process(p_int):
+                        pgids_to_kill.add(os.getpgid(p_int))
         except Exception:
             pass
 
         # 2. Name-Based Discovery
-        # [FEAT-119] Hardened targets including camouflaged engine cores
         check_targets = targets or ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama", "enginecore"]
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                # Check both name and cmdline, strictly case-insensitive
                 proc_name = str(proc.info["name"] or "").lower()
                 cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                pid = proc.info["pid"]
                 
                 if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
-                    if not ignore_immunity and not self._is_stale_process(proc.info["pid"]):
+                    is_mine = self._is_current_session_process(pid)
+                    if only_current:
+                        if is_mine: pgids_to_kill.add(os.getpgid(pid))
                         continue
-                    pgids_to_kill.add(os.getpgid(proc.info["pid"]))
+                    if not ignore_immunity and not self._is_stale_process(pid):
+                        continue
+                    pgids_to_kill.add(os.getpgid(pid))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -612,15 +644,25 @@ class LabAttendantV4:
             # Final Safety Catch: Never kill our own group
             pgids_to_kill.discard(my_pgid)
             if pgids_to_kill:
-                logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} process groups: {pgids_to_kill}")
+                logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} session process groups: {pgids_to_kill}")
                 for pgid in pgids_to_kill:
                     with contextlib.suppress(Exception):
                         os.killpg(pgid, signal.SIGKILL)
         
         await asyncio.sleep(2.0)
 
+    def _is_current_session_process(self, pid):
+        """Returns True if the process carries the current session token."""
+        try:
+            if pid == os.getpid(): return False
+            proc = psutil.Process(pid)
+            token = proc.environ().get("LAB_IMMUNITY_TOKEN")
+            return token == _CURRENT_SESSION_TOKEN
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+
     def _is_stale_process(self, pid):
-        """[FEAT-220] Checks if a process carries an OLD Diplomatic Immunity token."""
+        """[FEAT-220] Checks if a process carries an OLD or MISSING Diplomatic Immunity token."""
         try:
             if pid == os.getpid():
                 return False
@@ -629,16 +671,19 @@ class LabAttendantV4:
             env = proc.environ()
             token = env.get("LAB_IMMUNITY_TOKEN")
             
-            # If token exists but does not match, it's stale (kill it)
-            if token and token != _CURRENT_SESSION_TOKEN:
-                logger.warning(f"[ASSASSIN] Targeting stale process {pid} ({proc.name()}) with token {token}")
-                return True
-                
-            # If no token, or token matches, it's NOT stale (spare it)
+            # If token matches the current session, it is IMMUNE (SPARE)
             if token == _CURRENT_SESSION_TOKEN:
                 logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
+                return False
+                
+            # If token is different, or token is missing, it is STALE (KILL)
+            # This ensures we clean up "orphans" from previous manual runs or crashes
+            if token:
+                logger.warning(f"[ASSASSIN] Targeting stale process {pid} ({proc.name()}) with old token {token}")
+            else:
+                logger.warning(f"[ASSASSIN] Targeting non-immune orphan process {pid} ({proc.name()})")
             
-            return False
+            return True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
         return False
@@ -669,6 +714,7 @@ class LabAttendantV4:
             "brain": "ONLINE" if engine_running else "OFFLINE",
             "vram": vram_pct,
             "full_lab_ready": self.ready_event.is_set(),
+            "reason": self.current_reason,
             "boot_hash": _BOOT_HASH
         }
 
@@ -717,7 +763,7 @@ class LabAttendantV4:
                         logger.info("[WATCHDOG] Unattended mode active. Triggering recovery in 5s...")
                         async def _tactical_recovery():
                             await asyncio.sleep(5)
-                            await self.mcp_start(engine=current_lab_mode, engine_only=True)
+                            await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=True, reason="RECOVERY")
                         asyncio.create_task(_tactical_recovery())
                     break
                 
@@ -780,7 +826,8 @@ class LabAttendantV4:
         disable_ear = data.get("disable_ear", True)
         op_mode = data.get("op_mode", "SERVICE_UNATTENDED")
         engine_only = data.get("engine_only", False)
-        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode, engine_only=engine_only))
+        reason = data.get("reason", "REST_API_START")
+        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode, engine_only=engine_only, reason=reason))
     async def handle_stop_rest(self, r):
         return web.json_response(await self.mcp_stop())
     async def handle_hibernate_rest(self, r):
@@ -788,7 +835,9 @@ class LabAttendantV4:
     async def handle_quiesce_rest(self, r):
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):
-        return web.json_response(await self.mcp_ignition())
+        data = await r.json() if r.has_body else {}
+        reason = data.get("reason", "REST_API_IGNITION")
+        return web.json_response(await self.mcp_ignition(reason=reason))
     async def handle_train_rest(self, r):
         data = await r.json()
         return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
@@ -809,6 +858,14 @@ class LabAttendantV4:
         return web.Response(status=404)
     async def handle_mutex_rest(self, r):
         return web.json_response({"round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK)})
+
+    async def handle_shutdown(self, app):
+        """[CLEAN_RESTART] Ensures the Lab reaps its OWN session upon exit."""
+        logger.warning(f"[SHUTDOWN] Service termination detected (Session: {_CURRENT_SESSION_TOKEN}). Reaping session silicon...")
+        # Dual-Phase Cleanup:
+        # 1. Kill session-owned processes by token
+        # 2. Specifically target session ports
+        await self.cleanup_silicon(only_current=True, reap_hub=True)
 
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV4()
@@ -857,6 +914,7 @@ async def run_bilingual():
     
     if role == "MASTER":
         # Full Master Mode: REST API + Pulse + Watchdog
+        attendant.app.on_shutdown.append(attendant.handle_shutdown)
         runner = web.AppRunner(attendant.app)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
@@ -864,13 +922,13 @@ async def run_bilingual():
         asyncio.create_task(attendant.vram_watchdog_loop())
         asyncio.create_task(attendant.pulse_loop())
         
-        # [FEAT-136] Cold Hub Ignition: Proactively open the foyer foyer for the Handshake Spark
+        # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
         logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
-        # Ensure we respect the environment defaults (VLLM/MEDIUM)
-        engine = os.environ.get("LAB_MODE", "OLLAMA")
+        # Support STUB mode for rapid testing via environment
+        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "OLLAMA")
         model = os.environ.get("LAB_MODEL", "MEDIUM")
         # Note: In this context, engine_only=True means 'Just start the Hub'.
-        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True))
+        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True, reason="SAFE_PILOT"))
 
         # If in a TTY, also allow local tools, otherwise just wait
         if sys.stdin.isatty():
