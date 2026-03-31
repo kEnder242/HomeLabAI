@@ -98,6 +98,7 @@ class AcmeLab:
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         self.current_processing_task = None
+        self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
         reclaim_logger(role)
         self.set_proc_title()
 
@@ -285,9 +286,13 @@ class AcmeLab:
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
             await asyncio.sleep(30.0)
-            # [FEAT-249.2] Hardened VRAM Hibernation Logic (5m idle gate)
+            # [FEAT-249.2] Hardened VRAM Hibernation Logic (Configurable gate)
             idle_time = time.time() - self.last_activity
-            is_hibernating = (not self.connected_clients and idle_time > 300)
+            is_hibernating = (not self.connected_clients and idle_time > self.idle_gate)
+
+            # [FORENSIC] Characterize idle needs
+            if not self.connected_clients and self.status == "READY":
+                logging.info(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
 
             if self.connected_clients:
                 await self.broadcast(
@@ -626,6 +631,8 @@ class AcmeLab:
                     m_type = data.get("type")
                     if m_type == "handshake":
                         # [FEAT-249] Handshake Ignition Spark
+                        client_id = data.get("client", "anonymous")
+                        
                         # [FEAT-249.6] Snap-to-Life: Proactively check physical engine link
                         vllm_reachable = False
                         try:
@@ -634,10 +641,13 @@ class AcmeLab:
                                     vllm_reachable = (r.status == 200)
                         except Exception: pass
 
-                        if not vllm_reachable and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
+                        # [GATE] Only 'intercom' clients trigger ignition
+                        can_spark = client_id == "intercom"
+                        
+                        if not vllm_reachable and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
                             self.last_activity = time.time()
-                            logging.warning("[HUB] Handshake detected but Engine is OFFLINE. Sparking restoration...")
+                            logging.warning(f"[HUB] Handshake [{client_id}] detected. Sparking restoration...")
                             
                             # Trigger non-blocking start via REST
                             async def spark_reload():
@@ -653,7 +663,8 @@ class AcmeLab:
                                                              "engine": target_engine, 
                                                              "model": "MEDIUM", 
                                                              "engine_only": True,
-                                                             "op_mode": "SERVICE_UNATTENDED"
+                                                             "op_mode": "SERVICE_UNATTENDED",
+                                                             "reason": f"HANDSHAKE_{client_id.upper()}"
                                                          }) as r:
                                             if r.status == 200:
                                                 # [FEAT-259.4] Physical Guard: Wait for nodes to verify
