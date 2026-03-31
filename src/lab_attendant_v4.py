@@ -213,9 +213,9 @@ class LabAttendantV4:
         vitals["timestamp"] = datetime.datetime.now().isoformat()
         return vitals
 
-    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False):
+    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only})
+            return await self._proxy_request("POST", "start", {"engine": engine, "model": model, "disable_ear": disable_ear, "op_mode": op_mode, "engine_only": engine_only, "reason": reason})
         
         global current_lab_mode, current_model, lab_process, is_hibernating, _CURRENT_SESSION_TOKEN
         
@@ -225,7 +225,7 @@ class LabAttendantV4:
 
         is_hibernating = False
         _CURRENT_SESSION_TOKEN = uuid.uuid4().hex[:8]
-        logger.info(f"[IGNITION] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
+        logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode}, EngineOnly: {engine_only})")
         
         self.refresh_vram_config() # Reload latest model mappings
         
@@ -241,10 +241,25 @@ class LabAttendantV4:
         current_model = target_model
         # [FEAT-255.1] Dynamic Registry: Export state for nodes to consume
         try:
-            with open(os.path.join(LAB_DIR, "status.json"), "w") as f:
-                json.dump({"mode": engine, "model": target_model, "timestamp": time.time()}, f)
+            with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
+                json.dump({
+                    "mode": engine, 
+                    "model": target_model, 
+                    "reason": reason,
+                    "timestamp": time.time()
+                }, f)
         except Exception: pass
         
+        # [FEAT-259.2] Fast STUB: Skip physical silicon gates for logic testing
+        if engine == "STUB":
+            logger.info("[IGNITION] STUB mode active. Bypassing physical gates.")
+            self.ready_event.set() # Instant Ready
+            if not engine_only:
+                # Still spawn Hub foyer if requested
+                pass # Spawning logic below will handle it
+            else:
+                return {"status": "success", "message": "STUB engine sparked."}
+
         # 1. Resolve Required Memory [FEAT-254]
         used_now, total_vram = await self._get_vram_info()
         required_mb = int(total_vram * utilization)

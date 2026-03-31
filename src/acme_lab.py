@@ -1078,7 +1078,7 @@ class AcmeLab:
             route = app.router.add_get(path, self.client_handler)
             cors.add(route)
             
-        for path in ["/heartbeat", "/hub/heartbeat"]:
+        for path in ["/heartbeat", "/hub/heartbeat", "/status", "/hub/status"]:
             hb_route = app.router.add_get(path, self.heartbeat_handler)
             cors.add(hb_route)
 
