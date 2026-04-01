@@ -243,6 +243,20 @@ class LabAttendantV4:
         utilization = tier_config.get("gpu_memory_utilization", 0.4)
         backend = tier_config.get("attention_backend", "TRITON_ATTN")
 
+        # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
+        if current_lab_mode == "HIBERNATING" and engine == "VLLM":
+            logger.info(f"[IGNITION] [{reason.upper()}] Fast Wake triggered for hibernating vLLM.")
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post("http://localhost:8088/wake_up", timeout=5.0) as r:
+                        if r.status == 200:
+                            current_lab_mode = op_mode
+                            self.ready_event.set()
+                            logger.info("[WAKE] vLLM successfully woken from sleep.")
+                            return {"status": "success", "message": "vLLM woken from sleep mode."}
+            except Exception as e:
+                logger.warning(f"[WAKE] Fast-wake failed, proceeding with full ignition: {e}")
+
         current_lab_mode = op_mode
         current_model = target_model
         # [FEAT-255.1] Export state with Reason
@@ -275,9 +289,9 @@ class LabAttendantV4:
         # [FEAT-250] Surgical Ignition: Spare the Hub if requested
         # 2. Cleanup: Clear orphans from required ports
         if engine_only:
-            await self.cleanup_silicon(ports=[8088, 11434], targets=["vllm", "ollama"])
+            await self.cleanup_silicon(mode="ORPHANS")
         else:
-            await self.cleanup_silicon()
+            await self.cleanup_silicon(mode="ORPHANS")
 
         # 3. [FEAT-254] The Assassin Audit: Settling Window
         await asyncio.sleep(5.0)
@@ -317,6 +331,7 @@ class LabAttendantV4:
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
             env["VLLM_ATTENTION_BACKEND"] = str(backend)
+            env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Sleep Mode
             
             # [FEAT-030] Unity Pattern: Build LoRA module string
             lora_modules = tier_config.get("lora_modules", [])
@@ -326,7 +341,8 @@ class LabAttendantV4:
             max_len = tier_config.get("max_model_len", 8192)
             
             # [BKM] Consolidate into EXTRA_ARGS for the script to consume
-            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4 --max-model-len {max_len} {lora_args}"
+            # [FEAT-262] Adding --enable-sleep-mode
+            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4 --max-model-len {max_len} --enable-sleep-mode {lora_args}"
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
@@ -391,52 +407,63 @@ class LabAttendantV4:
         return {"status": "success", "message": "Lab stopping..."}
 
     async def mcp_hibernate(self):
-        """[FEAT-249] Selective engine unload while keeping Hub alive."""
+        """[FEAT-249] Selective engine unload (Sleep) while keeping Hub alive."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate")
         
         global is_hibernating, current_lab_mode
         is_hibernating = True
         current_lab_mode = "HIBERNATING"
-        logger.warning("[HUB] Hibernation signal received. Unloading local engines...")
-        self.log_event("Hibernation: Unloading weights.")
         
-        # [FEAT-259] The Butler Pattern: Surgical session-based reaping
+        # [FEAT-262] vLLM Sleep Mode (Fast Path)
+        engine = os.environ.get("LAB_MODE", "OLLAMA")
+        if engine == "VLLM":
+            logger.warning("[HUB] Transitioning vLLM to Sleep Mode (Level 1)...")
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post("http://localhost:8088/sleep?level=1", timeout=5.0) as r:
+                        if r.status == 200:
+                            self.log_event("Hibernation: vLLM weights offloaded to CPU.")
+                            logger.info("[SLEEP] vLLM successfully entered sleep mode.")
+                            await self.update_status_json("Mind is SLEEPING (VRAM Free)")
+                            return {"status": "success", "message": "vLLM entered sleep mode."}
+            except Exception as e:
+                logger.error(f"[SLEEP] Fast-path failed, falling back to reap: {e}")
+
+        # Fallback: [FEAT-259] The Butler Pattern (Kill-to-Hibernate)
+        logger.warning("[HUB] Hibernation signal received. Unloading local engines via Reap...")
+        self.log_event("Hibernation: Unloading weights via Reap.")
+        
         async def _run_selective_cleanup():
             await asyncio.sleep(0.5)
+            # Use the new signature-aware cleanup but spare the Hub
+            await self.cleanup_silicon(mode="SESSION") 
+            # Note: SESSION mode reaps Hub by token, but for Hibernation we usually want Hub to stay.
+            # So I'll manually call a selective version or adjust cleanup_silicon.
+            # Let's just do a manual session reap for engines only.
             reaped_count = 0
             for proc in psutil.process_iter(["pid", "name", "environ", "cmdline"]):
                 try:
-                    env = proc.info.get("environ") or {}
-                    token = env.get("LAB_IMMUNITY_TOKEN")
-                    if token == _CURRENT_SESSION_TOKEN:
-                        cmdline = " ".join(proc.info.get("cmdline") or []).lower()
-                        # [FEAT-259] SPARE/REAP Logic: AI Engines die, Mind stays alive.
-                        # Also check port 8765 to ensure the Hub is NEVER reaped
-                        is_engine = any(t in cmdline for t in ["vllm", "ollama", "enginecore"])
-                        if is_engine:
-                            pgid = os.getpgid(proc.info["pid"])
-                            if pgid != os.getpgid(os.getpid()): # Safety
-                                os.killpg(pgid, signal.SIGKILL)
-                                reaped_count += 1
-                except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
-                    continue
+                    token = proc.info.get("environ", {}).get("LAB_IMMUNITY_TOKEN")
+                    if token == self.session_token:
+                        cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                        if any(t in cmdline for t in ["vllm", "ollama", "enginecore"]):
+                            os.killpg(os.getpgid(proc.info["pid"]), signal.SIGKILL)
+                            reaped_count += 1
+                except Exception: continue
             
             if reaped_count > 0:
                 logger.info(f"[BUTLER] Successfully reaped {reaped_count} session engine processes.")
             
             # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
             for i in range(10):
-                used, total = await self._get_vram_info()
+                used, _ = await self._get_vram_info()
                 if used < 2000:
                     logger.info(f"[HIBERNATE] VRAM reclamation verified at {used}MB.")
                     break
-                await asyncio.sleep(1)
-            else:
-                logger.warning("[HIBERNATE] Timeout waiting for VRAM drop. Proceeding anyway.")
-            
+                await asyncio.sleep(2)
             await self.update_status_json("HIBERNATING (VRAM Free)")
-            
+
         asyncio.create_task(_run_selective_cleanup())
         return {"status": "success", "message": "Hibernation initiated."}
 
@@ -575,82 +602,64 @@ class LabAttendantV4:
             
         return {"status": "timeout", "message": f"Lab failed to reach READY within {timeout}s"}
 
-    async def cleanup_silicon(self, ports=None, targets=None, ignore_immunity=False, reap_hub=False, only_current=False):
-        """[FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles by PGID with Immunity."""
+    async def cleanup_silicon(self, mode="ORPHANS"):
+        """
+        [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
+        Modes:
+          - ORPHANS: Kill anything on Lab ports/names that LACKS the current session token. (Ignition)
+          - SESSION: Kill Engines by signature and Hub by current token. (Shutdown)
+        """
         pgids_to_kill = set()
         my_pgid = os.getpgid(os.getpid())
         
-        # 1. Port-Based Discovery
-        check_ports = ports or [8088, 11434, 8765]
-        for port in check_ports:
+        # 1. Target Definition
+        ports = [8088, 11434, 8765]
+        targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
+        
+        # 2. Port-Based Discovery
+        for port in ports:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
                 for line in res.split("\n"):
                     if ":" in line:
-                        pid_str = line.split(":")[1].strip()
-                        for p in pid_str.split():
+                        pids = line.split(":")[1].strip().split()
+                        for p in pids:
                             p_int = int(p)
-                            # [FEAT-119.1] Physical Override: Port 8765 (Hub) is spared UNLESS reap_hub is True
-                            if port == 8765 and not reap_hub:
-                                continue
-                            
-                            # [SESSION AWARENESS] Target logic
                             is_mine = self._is_current_session_process(p_int)
                             
-                            if only_current:
-                                if is_mine: pgids_to_kill.add(os.getpgid(p_int))
-                                continue
+                            if mode == "SESSION":
+                                # Shutdown: Kill engines by port, Hub only if it's mine
+                                if port == 8765:
+                                    if is_mine: pgids_to_kill.add(os.getpgid(p_int))
+                                else:
+                                    pgids_to_kill.add(os.getpgid(p_int)) # Kill all engines
+                            else:
+                                # Ignition: Kill only if NOT mine (Orphans)
+                                if not is_mine: pgids_to_kill.add(os.getpgid(p_int))
+            except Exception: pass
 
-                            if not ignore_immunity and not self._is_stale_process(p_int):
-                                continue
-                            pgids_to_kill.add(os.getpgid(p_int))
-            except Exception:
-                pass
-
-        # [FEAT-119.2] Hardware-First Assassin: nvidia-smi PID extraction
-        try:
-            smi = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader"], text=True)
-            for line in smi.strip().split("\n"):
-                if not line:
-                    continue
-                pid, name = line.split(",")
-                p_int = int(pid.strip())
-                is_mine = self._is_current_session_process(p_int)
-                
-                # [FEAT-119.3] Precise Targeting
-                if any(t in name.lower() for t in ["vllm", "ollama", "acme_lab", "node.py"]):
-                    if only_current:
-                        if is_mine: pgids_to_kill.add(os.getpgid(p_int))
-                        continue
-                    if ignore_immunity or self._is_stale_process(p_int):
-                        pgids_to_kill.add(os.getpgid(p_int))
-        except Exception:
-            pass
-
-        # 2. Name-Based Discovery
-        check_targets = targets or ["acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py", "vllm", "ollama", "enginecore"]
+        # 3. Name-Based Discovery (For token-blind EngineCores)
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                proc_name = str(proc.info["name"] or "").lower()
-                cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                p_name = str(proc.info["name"] or "").lower()
+                cmd = " ".join(proc.info["cmdline"] or []).lower()
                 pid = proc.info["pid"]
+                is_mine = self._is_current_session_process(pid)
+                is_engine = any(t in cmd or t in p_name for t in ["vllm", "ollama", "enginecore"])
                 
-                if any(t in cmdline for t in check_targets) or any(t in proc_name for t in check_targets):
-                    is_mine = self._is_current_session_process(pid)
-                    if only_current:
-                        if is_mine: pgids_to_kill.add(os.getpgid(pid))
-                        continue
-                    if not ignore_immunity and not self._is_stale_process(pid):
-                        continue
-                    pgids_to_kill.add(os.getpgid(pid))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                if mode == "SESSION":
+                    if is_engine: pgids_to_kill.add(os.getpgid(pid))
+                    elif is_mine: pgids_to_kill.add(os.getpgid(pid))
+                else:
+                    # Ignition: Kill orphans matching our names
+                    if any(t in cmd or t in p_name for t in targets) and not is_mine:
+                        pgids_to_kill.add(os.getpgid(pid))
+            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
 
         if pgids_to_kill:
-            # Final Safety Catch: Never kill our own group
             pgids_to_kill.discard(my_pgid)
             if pgids_to_kill:
-                logger.warning(f"[ASSASSIN] Purging {len(pgids_to_kill)} session process groups: {pgids_to_kill}")
+                logger.warning(f"[ASSASSIN] [{mode}] Purging process groups: {pgids_to_kill}")
                 for pgid in pgids_to_kill:
                     with contextlib.suppress(Exception):
                         os.killpg(pgid, signal.SIGKILL)
@@ -869,10 +878,8 @@ class LabAttendantV4:
     async def handle_shutdown(self, app):
         """[CLEAN_RESTART] Ensures the Lab reaps its OWN session upon exit."""
         logger.warning(f"[SHUTDOWN] Service termination detected (Session: {self.session_token}). Reaping session silicon...")
-        # Dual-Phase Cleanup:
-        # 1. Kill session-owned processes by token
-        # 2. Specifically target session ports
-        await self.cleanup_silicon(only_current=True, reap_hub=True)
+        # Reaps all engines by name/port and the Hub by token
+        await self.cleanup_silicon(mode="SESSION")
 
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV4()
