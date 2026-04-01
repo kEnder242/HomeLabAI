@@ -316,12 +316,27 @@ class AcmeLab:
                     self.status = "HIBERNATING"
                     # Trigger non-blocking stop via REST
                     async def hibernate():
-                        async with aiohttp.ClientSession() as session:
-                            headers = {'X-Lab-Key': 'c48e0b32'}
-                            await session.post("http://localhost:9999/hibernate", headers=headers)
+                        try:
+                            import hashlib
+                            style_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/style.css")
+                            expected_key = "missing"
+                            if os.path.exists(style_path):
+                                with open(style_path, "rb") as f:
+                                    expected_key = hashlib.md5(f.read()).hexdigest()[:8]
+                            
+                            async with aiohttp.ClientSession() as session:
+                                headers = {'X-Lab-Key': expected_key}
+                                async with session.post("http://localhost:9999/hibernate", headers=headers, timeout=5) as resp:
+                                    if resp.status != 200:
+                                        res_text = await resp.text()
+                                        logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
+                                    else:
+                                        logging.info("[HUB] Hibernation signal accepted by Attendant.")
+                        except Exception as e:
+                            logging.error(f"[HUB] Hibernation request error: {e}")
+                    
                     asyncio.create_task(hibernate())
                     self.brain_online = False # Mark offline while sleeping
-
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
         logging.info("[ALARM] Initiating Full Induction Cycle...")

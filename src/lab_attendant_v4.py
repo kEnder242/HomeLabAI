@@ -423,14 +423,15 @@ class LabAttendantV4:
             async def _tactical_sleep():
                 try:
                     async with aiohttp.ClientSession() as session:
-                        # [FIX] Strict timeout to prevent management deadlock
-                        async with session.post("http://localhost:8088/sleep?level=1", timeout=10.0) as r:
+                        # [FIX] Level 2 for full weight offloading (VRAM Free)
+                        async with session.post("http://localhost:8088/sleep?level=2", timeout=10.0) as r:
                             if r.status == 200:
-                                self.log_event("Hibernation: vLLM weights offloaded to CPU.")
-                                logger.info("[SLEEP] vLLM successfully entered sleep mode.")
+                                logger.warning("[SLEEP] vLLM successfully offloaded weights to CPU. VRAM Reclaimed.")
                                 await self.update_status_json("HIBERNATING (VRAM Free)")
                             else:
-                                logger.error(f"[SLEEP] vLLM rejected sleep: {r.status}")
+                                logger.error(f"[SLEEP] vLLM rejected sleep level 2: {r.status}")
+                                # Fallback to hard-reap if level 2 is unsupported
+                                await self.cleanup_silicon(mode="SESSION")
                 except Exception as e:
                     logger.error(f"[SLEEP] vLLM sleep signal failed: {e}")
                     # Fallback to hard-reap if the REST API is dead
