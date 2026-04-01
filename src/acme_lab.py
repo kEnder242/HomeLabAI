@@ -643,11 +643,12 @@ class AcmeLab:
 
                         # [GATE] Only 'intercom' clients trigger ignition
                         can_spark = client_id == "intercom"
+                        needs_wake = not vllm_reachable or self.status == "HIBERNATING"
                         
-                        if not vllm_reachable and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
+                        if needs_wake and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
                             self.last_activity = time.time()
-                            logging.warning(f"[HUB] Handshake [{client_id}] detected. Sparking restoration...")
+                            logging.warning(f"[HUB] Handshake [{client_id}] detected. Sparking restoration (Needs Wake: {needs_wake})...")
                             
                             # Trigger non-blocking start via REST
                             async def spark_reload():
