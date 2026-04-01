@@ -419,16 +419,25 @@ class LabAttendantV4:
         engine = os.environ.get("LAB_MODE", "OLLAMA")
         if engine == "VLLM":
             logger.warning("[HUB] Transitioning vLLM to Sleep Mode (Level 1)...")
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post("http://localhost:8088/sleep?level=1", timeout=5.0) as r:
-                        if r.status == 200:
-                            self.log_event("Hibernation: vLLM weights offloaded to CPU.")
-                            logger.info("[SLEEP] vLLM successfully entered sleep mode.")
-                            await self.update_status_json("Mind is SLEEPING (VRAM Free)")
-                            return {"status": "success", "message": "vLLM entered sleep mode."}
-            except Exception as e:
-                logger.error(f"[SLEEP] Fast-path failed, falling back to reap: {e}")
+            
+            async def _tactical_sleep():
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        # [FIX] Strict timeout to prevent management deadlock
+                        async with session.post("http://localhost:8088/sleep?level=1", timeout=10.0) as r:
+                            if r.status == 200:
+                                self.log_event("Hibernation: vLLM weights offloaded to CPU.")
+                                logger.info("[SLEEP] vLLM successfully entered sleep mode.")
+                                await self.update_status_json("HIBERNATING (VRAM Free)")
+                            else:
+                                logger.error(f"[SLEEP] vLLM rejected sleep: {r.status}")
+                except Exception as e:
+                    logger.error(f"[SLEEP] vLLM sleep signal failed: {e}")
+                    # Fallback to hard-reap if the REST API is dead
+                    await self.cleanup_silicon(mode="SESSION")
+            
+            asyncio.create_task(_tactical_sleep())
+            return {"status": "success", "message": "vLLM sleep signal dispatched."}
 
         # Fallback: [FEAT-259] The Butler Pattern (Kill-to-Hibernate)
         logger.warning("[HUB] Hibernation signal received. Unloading local engines via Reap...")
@@ -627,6 +636,7 @@ class LabAttendantV4:
                             p_int = int(p)
                             is_mine = self._is_current_session_process(p_int)
                             
+                            # [FEAT-119.1] Physical Override: Sparing logic
                             if mode == "SESSION":
                                 # Shutdown: Kill engines by port, Hub only if it's mine
                                 if port == 8765:
@@ -634,8 +644,10 @@ class LabAttendantV4:
                                 else:
                                     pgids_to_kill.add(os.getpgid(p_int)) # Kill all engines
                             else:
-                                # Ignition: Kill only if NOT mine (Orphans)
-                                if not is_mine: pgids_to_kill.add(os.getpgid(p_int))
+                                # Ignition (ORPHANS): Kill ONLY if NOT mine.
+                                # This ensures the Hub foyer that just called us survives.
+                                if not is_mine:
+                                    pgids_to_kill.add(os.getpgid(p_int))
             except Exception: pass
 
         # 3. Name-Based Discovery (For token-blind EngineCores)
