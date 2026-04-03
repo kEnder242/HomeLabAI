@@ -879,11 +879,23 @@ class LabAttendantV4:
     async def handle_ping_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
     async def handle_wait_ready_rest(self, r):
-        try:
-            await asyncio.wait_for(self.ready_event.wait(), timeout=int(r.query.get("timeout", 60)))
-            return web.json_response({"status": "ready"})
-        except Exception:
-            return web.json_response({"status": "timeout"}, status=408)
+        """[FEAT-265] Blocks until the Lab reports READY or crashes."""
+        timeout = int(r.query.get("timeout", 180)) # Default to 180s for vLLM weights
+        start_t = time.time()
+
+        while time.time() - start_t < timeout:
+            if self.ready_event.is_set():
+                return web.json_response({"status": "ready"})
+
+            # [FEAT-265.4] Crash Awareness: Return immediately if process dies
+            if lab_process and lab_process.poll() is not None:
+                logger.error("[API] wait_ready aborted: Lab process has terminated.")
+                return web.json_response({"status": "crashed", "message": "Lab process terminated during boot."}, status=500)
+
+            await asyncio.sleep(1.0)
+
+        return web.json_response({"status": "timeout", "message": "Lab failed to reach READY state in time."}, status=408)
+
     async def handle_logs_rest(self, r):
         if os.path.exists(SERVER_LOG):
             with open(SERVER_LOG, "r") as f:

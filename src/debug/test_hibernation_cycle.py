@@ -14,7 +14,16 @@ if _SRC_DIR not in sys.path:
 
 ATTENDANT_URL = "http://localhost:9999"
 HUB_URL = "ws://localhost:8765"
-KEY = "c48e0b32"
+STYLE_CSS = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/style.css")
+
+def get_style_key():
+    import hashlib
+    if not os.path.exists(STYLE_CSS):
+        return "missing"
+    with open(STYLE_CSS, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()[:8]
+
+KEY = get_style_key()
 SERVER_LOG = os.path.join(_SRC_DIR, "server.log")
 
 class SiliconAudit:
@@ -43,11 +52,18 @@ async def check_for_crashes():
 async def cognitive_ping(label="Pre-Sleep"):
     """[FEAT-251.3] Proactive check for 404s, connection errors, and node liveness."""
     print(f"  [PING] Performing {label} Cognitive Check...")
+    # Use intercom for Post-Sleep to trigger spark, but TestScript for pre-sleep baseline
+    client_id = "intercom" if "Post" in label else "TestScript"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(HUB_URL) as ws:
-                await ws.send_str(json.dumps({"type": "handshake", "client": f"Ping-{label}"}))
-                await ws.receive_json() # status
+                await ws.send_str(json.dumps({"type": "handshake", "client": client_id}))
+                
+                # Consume initial status messages (establishing anchors -> open)
+                for _ in range(3):
+                    msg = await ws.receive_json(timeout=10)
+                    if msg.get("message") == "Lab foyer is open." or msg.get("full_lab_ready"):
+                        break
                 
                 await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
                 

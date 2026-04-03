@@ -74,6 +74,22 @@ def resolve_brain_url():
     return "http://localhost:11434/api/tags"
 
 
+async def verify_engine_liveness():
+    """[FEAT-265.7] Checks if the vLLM engine actually has weights loaded."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
+                if r.status != 200: return False
+                data = await r.json()
+                # vLLM /v1/models returns data: [{id: ...}]
+                models = [m.get("id") for m in data.get("data", [])]
+                # If weights are offloaded (Level 2), the model list is usually empty
+                # or missing the primary 3B weight set.
+                return any("llama-3.2-3b" in str(m).lower() for m in models)
+    except Exception:
+        return False
+
+
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
         self.mode = mode
@@ -311,6 +327,7 @@ class AcmeLab:
                         "type": "status",
                         "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, ready
                         "brain_online": self.brain_online,
+                        "full_lab_ready": self.brain_online and self.status == "READY", # [FEAT-265.6]
                         "hibernating": (self.status == "HIBERNATING")
                     }
                 )
@@ -692,17 +709,12 @@ class AcmeLab:
                         # [FEAT-249] Handshake Ignition Spark
                         client_id = data.get("client", "anonymous")
                         
-                        # [FEAT-249.6] Snap-to-Life: Proactively check physical engine link
-                        vllm_reachable = False
-                        try:
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get("http://localhost:8088/v1/models", timeout=1) as r:
-                                    vllm_reachable = (r.status == 200)
-                        except Exception: pass
+                        # [FEAT-249.6/265.7] Snap-to-Life: Robust model-aware liveness check
+                        vllm_warm = await verify_engine_liveness()
 
                         # [GATE] Only 'intercom' clients trigger ignition
                         can_spark = client_id == "intercom"
-                        needs_wake = not vllm_reachable or self.status == "HIBERNATING"
+                        needs_wake = not vllm_warm or self.status == "HIBERNATING"
                         
                         if needs_wake and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
@@ -730,39 +742,35 @@ class AcmeLab:
                                                              "reason": f"HANDSHAKE_{client_id.upper()}"
                                                          }) as r:
                                             if r.status == 200:
-                                                # [FEAT-259.4] Physical Guard: Wait for nodes to verify
-                                                logging.info("[HUB] Spark Success. Synchronizing nodes...")
+                                                logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
 
-                                                # Wait for the Engine to report readiness before pinging
-                                                warm = False
-                                                for _ in range(60): # 120s timeout
-                                                    try:
-                                                        async with session.get("http://localhost:8088/v1/models", timeout=2) as ready_req:
-                                                            if ready_req.status == 200:
-                                                                warm = True
-                                                                logging.info("[HUB] Spark Larynx Gate OPEN. Finalizing node pings...")
-                                                                break
-                                                    except Exception:
-                                                        pass
-                                                    await asyncio.sleep(2)
+                                                # [FEAT-265.5] Yield to Authority: Wait for Attendant to confirm silicon is READY
+                                                try:
+                                                    async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
+                                                        if ready_req.status == 200:
+                                                            logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
+                                                            
+                                                            for name, client in self.residents.items():
+                                                                if hasattr(client, "ping_engine"):
+                                                                    await client.ping_engine(force=True)
 
-                                                if not warm:
-                                                    logging.warning("[HUB] Spark Larynx Gate TIMEOUT. Proceeding cautiously.")
-
-                                                for name, client in self.residents.items():
-                                                    if hasattr(client, "ping_engine"):
-                                                        await client.ping_engine(force=True)
-
-                                                # [FEAT-256.3] Resignal Attendant Watchdog
-                                                logging.info("[READY] Lab is Open.")
-                                                self.brain_online = True
-                                                self.status = "READY"
-                                                self.engine_ready.set() # Unblock handshakes
-                                                await self.broadcast({
-                                                    "brain": "Strategic Sovereignty: ONLINE",
-                                                    "brain_source": "System",
-                                                    "channel": "insight"
-                                                })
+                                                            self.brain_online = True
+                                                            self.status = "READY"
+                                                            self.engine_ready.set()
+                                                            await self.broadcast({
+                                                                "brain": "Strategic Sovereignty: ONLINE",
+                                                                "brain_source": "System",
+                                                                "channel": "insight"
+                                                            })
+                                                        else:
+                                                            res = await ready_req.json()
+                                                            logging.error(f"[HUB] Attendant readiness failure: {res.get('status')} - {res.get('message')}")
+                                                            self.status = "READY" # Force fallback
+                                                            self.engine_ready.set()
+                                                except Exception as e:
+                                                    logging.error(f"[HUB] Wait-Ready request failed: {e}")
+                                                    self.status = "READY"
+                                                    self.engine_ready.set()
 
                                 except Exception as e:
                                     logging.error(f"[HUB] Spark reload failed: {e}")
@@ -776,17 +784,26 @@ class AcmeLab:
                             asyncio.create_task(spark_reload())
                         else:
                             # [FEAT-265] If already waking or warm, ensure event is set
-                            if vllm_reachable:
+                            if vllm_warm:
                                 self.engine_ready.set()
 
                         # [FEAT-265] Mandatory wait for engine readiness before responding
                         if self.status == "WAKING":
                             try:
-                                await asyncio.wait_for(self.engine_ready.wait(), timeout=65)
+                                await asyncio.wait_for(self.engine_ready.wait(), timeout=185) # Encapsulate 180s load
                             except asyncio.TimeoutError:
                                 logging.error("[HUB] Handshake TIMEOUT: Engine failed to warm in time.")
 
                         # [FEAT-087] Intelligent Handshake Priming
+                        asyncio.create_task(self.check_brain_health(force=True))
+
+                        # Broadcase definitive foyer status only after gate
+                        await ws.send_str(json.dumps({
+                            "type": "status",
+                            "state": self.status.lower(),
+                            "message": "Lab foyer is open." if self.status == "READY" else "Lab is establishing anchors...",
+                            "full_lab_ready": self.brain_online and self.status == "READY"
+                        }))
                         asyncio.create_task(self.check_brain_health(force=True))
 
                         if "archive" in self.residents:
