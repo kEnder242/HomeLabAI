@@ -894,8 +894,9 @@ class AcmeLab:
                     text = self.sensory.process_binary_chunk(message.data)
                     if text:
                         self.last_activity = time.time()
+                        # [FEAT-233.2] Live Hearing Pipe: Broadcast as 'hearing' for real-time UI
                         await self.broadcast(
-                            {"text": text, "type": "transcription"}
+                            {"text": text, "type": "hearing"}
                         )
                         # SHADOW DISPATCH: Proactive Brain Engagement
                         strat_keys = [
