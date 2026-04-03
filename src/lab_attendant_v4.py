@@ -92,7 +92,10 @@ async def key_middleware(request, handler):
 
     # [FEAT-252] Dynamic Auth: Allow either the STYLE_HASH or the current SESSION_TOKEN
     if provided_key not in [expected_key, attendant.session_token]:
-        logger.warning(f"[SECURITY] Invalid Key: {provided_key} (Expected Style: {expected_key} or Session: {attendant.session_token}) from {request.remote}")
+        # [FEAT-267] Header-Dump for Debugging Cloudflare/CORS issues
+        forwarded = request.headers.get("X-Forwarded-For", "Direct")
+        ua = request.headers.get("User-Agent", "Unknown")
+        logger.warning(f"[SECURITY] 401 Unauthorized: {request.method} {request.path} | Key: {provided_key} | IP: {request.remote} | Fwd: {forwarded} | UA: {ua}")
         return web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
     
     return await handler(request)
@@ -744,6 +747,7 @@ class LabAttendantV4:
             "full_lab_ready": self.ready_event.is_set(),
             "reason": self.current_reason,
             "session": self.session_token,
+            "style_key": get_style_key(),
             "boot_hash": _BOOT_HASH
         }
 
