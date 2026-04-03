@@ -52,8 +52,8 @@ async def check_for_crashes():
 async def cognitive_ping(label="Pre-Sleep"):
     """[FEAT-251.3] Proactive check for 404s, connection errors, and node liveness."""
     print(f"  [PING] Performing {label} Cognitive Check...")
-    # Use intercom for Post-Sleep to trigger spark, but TestScript for pre-sleep baseline
-    client_id = "intercom" if "Post" in label else "TestScript"
+    # Always use intercom to ensure wake-up if baseline starts while hibernating
+    client_id = "intercom"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(HUB_URL) as ws:
