@@ -37,6 +37,16 @@ NIGHTLY_DIALOGUE_FILE = os.path.join(
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 MAINTENANCE_LOCK = os.path.join(WORKSPACE_DIR, "field_notes/data/maintenance.lock")
+STYLE_CSS = os.path.join(WORKSPACE_DIR, "field_notes/style.css")
+
+
+def get_style_key():
+    """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
+    import hashlib
+    if not os.path.exists(STYLE_CSS):
+        return "missing"
+    with open(STYLE_CSS, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()[:8]
 
 
 def resolve_brain_url():
@@ -98,6 +108,7 @@ class AcmeLab:
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         self.current_processing_task = None
+        self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
         self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
         reclaim_logger(role)
         self.set_proc_title()
@@ -298,9 +309,9 @@ class AcmeLab:
                 await self.broadcast(
                     {
                         "type": "status",
-                        "state": "ready" if self.status == "READY" else "booting",
+                        "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, ready
                         "brain_online": self.brain_online,
-                        "hibernating": False
+                        "hibernating": (self.status == "HIBERNATING")
                     }
                 )
                 # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
@@ -317,12 +328,8 @@ class AcmeLab:
                     # Trigger non-blocking stop via REST
                     async def hibernate():
                         try:
-                            import hashlib
-                            style_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/style.css")
-                            expected_key = "missing"
-                            if os.path.exists(style_path):
-                                with open(style_path, "rb") as f:
-                                    expected_key = hashlib.md5(f.read()).hexdigest()[:8]
+                            # [FEAT-267] Use dynamic key for REST authorization
+                            expected_key = get_style_key()
                             
                             async with aiohttp.ClientSession() as session:
                                 headers = {'X-Lab-Key': expected_key}
@@ -407,29 +414,66 @@ class AcmeLab:
         logging.info("[ALARM] Full Induction Cycle Complete.")
 
     async def scheduled_tasks_loop(self):
-        """The Alarm Clock: Executes the induction cycle once per day."""
+        """[FEAT-266] The Alarm Clock: Executes induction and periodic background tasks."""
         import datetime
         logging.info("[ALARM] Scheduled Tasks loop active.")
+        
+        last_nibble_time = 0
+        trigger_file = os.path.expanduser("~/trigger_nightly")
 
         while not self.shutdown_event.is_set():
             now = datetime.datetime.now()
-            # Add this check immediately
-            if os.path.exists(MAINTENANCE_LOCK):
-                logging.debug("[ALARM] System quiesced. Skipping cycle.")
-                await asyncio.sleep(30)
-                continue
-
             today = now.date()
 
-            # [DEBUG] Alarm disabled to resolve restoration deadlocks
-            is_window = False
+            # [FEAT-136] Quiescence Awareness
+            if os.path.exists(MAINTENANCE_LOCK):
+                logging.debug("[ALARM] System quiesced. Skipping cycle.")
+                await asyncio.sleep(60)
+                continue
 
-            if self.last_induction_date != today and is_window:
-                logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")
+            # 1. Periodic Nibble (Artifact Scanning)
+            # Run every 10 minutes, silent on "Nothing to do"
+            if time.time() - last_nibble_time > 600:
+                try:
+                    nibbler = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/nibble_v2.py")
+                    if os.path.exists(nibbler):
+                        # Call nibbler once to process any pending items
+                        # It handles its own load-checking via Prometheus
+                        proc = await asyncio.create_subprocess_exec(
+                            sys.executable, nibbler, "--one-turn",
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                        )
+                        stdout, stderr = await proc.communicate()
+                        if proc.returncode == 0 and b"Processed" in stdout:
+                            logging.info(f"[ALARM] Nibbler action taken: {stdout.decode().strip()}")
+                        elif proc.returncode != 0:
+                            logging.error(f"[ALARM] Nibbler failed: {stderr.decode().strip()}")
+                except Exception as e:
+                    logging.error(f"[ALARM] Nibble trigger failed: {e}")
+                last_nibble_time = time.time()
+
+            # 2. Daily Induction Window (02:00 - 04:00)
+            is_window = (2 <= now.hour < 4)
+            is_triggered = os.path.exists(trigger_file)
+
+            if is_triggered:
+                logging.warning(f"[ALARM] Manual trigger detected ({trigger_file}). Initiating cycle...")
+                try: os.remove(trigger_file)
+                except Exception: pass
                 await self.run_full_induction_cycle()
                 self.last_induction_date = today
-
-            await asyncio.sleep(30)
+            elif is_window:
+                if self.last_induction_date != today:
+                    logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")
+                    await self.run_full_induction_cycle()
+                    self.last_induction_date = today
+                else:
+                    # [FEAT-266] Tiered Visibility: Heartbeat WARNING for nightly window
+                    # Only log once an hour while in the window
+                    if now.minute == 0:
+                        logging.warning(f"[ALARM] Nightly window active for {today}. Status: Already Completed.")
+            
+            await asyncio.sleep(60)
 
     async def manage_session_lock(self, active: bool):
         """[FEAT-171-RECOVER] Lifecycle Matrix Restoration: Gem 2 alignment."""
@@ -662,6 +706,8 @@ class AcmeLab:
                         
                         if needs_wake and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
                             self._spark_active = True
+                            self.status = "WAKING" # [FEAT-265] Transition to WAKING
+                            self.engine_ready.clear() # Block handshakes until warm
                             self.last_activity = time.time()
                             logging.warning(f"[HUB] Handshake [{client_id}] detected. Sparking restoration (Needs Wake: {needs_wake})...")
                             
@@ -669,9 +715,10 @@ class AcmeLab:
                             async def spark_reload():
                                 try:
                                     async with aiohttp.ClientSession() as session:
-                                        headers = {'X-Lab-Key': 'c48e0b32', 'Content-Type': 'application/json'}
+                                        # [FEAT-267] Use dynamic key for REST authorization
+                                        key = get_style_key()
+                                        headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
                                         # [FEAT-250] Use engine_only=True to spare the Hub
-                                        # [STABILITY] Explicitly request the current lab mode's engine
                                         target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
                                         async with session.post("http://localhost:9999/start", 
                                                          headers=headers, 
@@ -687,19 +734,19 @@ class AcmeLab:
                                                 logging.info("[HUB] Spark Success. Synchronizing nodes...")
 
                                                 # Wait for the Engine to report readiness before pinging
-                                                engine_ready = False
+                                                warm = False
                                                 for _ in range(60): # 120s timeout
                                                     try:
                                                         async with session.get("http://localhost:8088/v1/models", timeout=2) as ready_req:
                                                             if ready_req.status == 200:
-                                                                engine_ready = True
+                                                                warm = True
                                                                 logging.info("[HUB] Spark Larynx Gate OPEN. Finalizing node pings...")
                                                                 break
                                                     except Exception:
                                                         pass
                                                     await asyncio.sleep(2)
 
-                                                if not engine_ready:
+                                                if not warm:
                                                     logging.warning("[HUB] Spark Larynx Gate TIMEOUT. Proceeding cautiously.")
 
                                                 for name, client in self.residents.items():
@@ -709,6 +756,8 @@ class AcmeLab:
                                                 # [FEAT-256.3] Resignal Attendant Watchdog
                                                 logging.info("[READY] Lab is Open.")
                                                 self.brain_online = True
+                                                self.status = "READY"
+                                                self.engine_ready.set() # Unblock handshakes
                                                 await self.broadcast({
                                                     "brain": "Strategic Sovereignty: ONLINE",
                                                     "brain_source": "System",
@@ -717,12 +766,25 @@ class AcmeLab:
 
                                 except Exception as e:
                                     logging.error(f"[HUB] Spark reload failed: {e}")
+                                    self.status = "READY" # Fallback
+                                    self.engine_ready.set()
                                 finally:
-                                    # Reset spark lock after 10s (now that we verified manually)
+                                    # Reset spark lock after 10s
                                     await asyncio.sleep(10)
                                     self._spark_active = False
                                     
                             asyncio.create_task(spark_reload())
+                        else:
+                            # [FEAT-265] If already waking or warm, ensure event is set
+                            if vllm_reachable:
+                                self.engine_ready.set()
+
+                        # [FEAT-265] Mandatory wait for engine readiness before responding
+                        if self.status == "WAKING":
+                            try:
+                                await asyncio.wait_for(self.engine_ready.wait(), timeout=65)
+                            except asyncio.TimeoutError:
+                                logging.error("[HUB] Handshake TIMEOUT: Engine failed to warm in time.")
 
                         # [FEAT-087] Intelligent Handshake Priming
                         asyncio.create_task(self.check_brain_health(force=True))
