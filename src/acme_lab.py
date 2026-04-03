@@ -307,6 +307,71 @@ class AcmeLab:
             logging.debug(f"[HEALTH] Brain probe failed: {e}")
             self.brain_online = False
 
+    async def spark_restoration(self, client_id="system"):
+        """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
+        if getattr(self, "_spark_active", False) or self.status == "BOOTING":
+            return
+            
+        self._spark_active = True
+        self.status = "WAKING"
+        self.engine_ready.clear()
+        self.last_activity = time.time()
+        logging.warning(f"[HUB] Sparking restoration (Trigger: {client_id})...")
+        
+        # [FEAT-265.8] Parallel Priming: Fire Brain probe immediately while engine loads
+        asyncio.create_task(self.check_brain_health(force=True))
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                key = get_style_key()
+                headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
+                target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
+                async with session.post("http://localhost:9999/start", 
+                                 headers=headers, 
+                                 json={
+                                     "engine": target_engine, 
+                                     "model": "MEDIUM", 
+                                     "engine_only": True,
+                                     "op_mode": "SERVICE_UNATTENDED",
+                                     "reason": f"RESTORE_{client_id.upper()}"
+                                 }) as r:
+                    if r.status == 200:
+                        logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
+
+                        # Yield to Authority: Wait for Attendant to confirm silicon is READY
+                        try:
+                            async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
+                                if ready_req.status == 200:
+                                    logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
+                                    for name, client in self.residents.items():
+                                        if hasattr(client, "ping_engine"):
+                                            await client.ping_engine(force=True)
+
+                                    self.brain_online = True
+                                    self.status = "READY"
+                                    self.engine_ready.set()
+                                    await self.broadcast({
+                                        "brain": "Strategic Sovereignty: ONLINE",
+                                        "brain_source": "System",
+                                        "channel": "insight"
+                                    })
+                                else:
+                                    res = await ready_req.json()
+                                    logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
+                                    self.status = "READY"
+                                    self.engine_ready.set()
+                        except Exception as e:
+                            logging.error(f"[HUB] Wait-Ready request failed: {e}")
+                            self.status = "READY"
+                            self.engine_ready.set()
+        except Exception as e:
+            logging.error(f"[HUB] Spark reload failed: {e}")
+            self.status = "READY"
+            self.engine_ready.set()
+        finally:
+            await asyncio.sleep(10)
+            self._spark_active = False
+
     async def reflex_loop(self):
         """Background maintenance and status updates."""
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
@@ -474,6 +539,12 @@ class AcmeLab:
             is_triggered = os.path.exists(trigger_file)
 
             if is_triggered:
+                # [FEAT-266] Wake-for-Work: Ensure Lab is active before manual trigger
+                if self.status == "HIBERNATING":
+                    logging.warning("[ALARM] Manual trigger detected while hibernating. Awakening...")
+                    await self.spark_restoration("alarm_manual")
+                    await self.engine_ready.wait()
+
                 logging.warning(f"[ALARM] Manual trigger detected ({trigger_file}). Initiating cycle...")
                 try: os.remove(trigger_file)
                 except Exception: pass
@@ -481,6 +552,12 @@ class AcmeLab:
                 self.last_induction_date = today
             elif is_window:
                 if self.last_induction_date != today:
+                    # [FEAT-266] Wake-for-Work: Ensure Lab is active before nightly window
+                    if self.status == "HIBERNATING":
+                        logging.warning("[ALARM] Nightly window reached while hibernating. Awakening...")
+                        await self.spark_restoration("alarm_nightly")
+                        await self.engine_ready.wait()
+
                     logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")
                     await self.run_full_induction_cycle()
                     self.last_induction_date = today
@@ -716,72 +793,8 @@ class AcmeLab:
                         can_spark = client_id == "intercom"
                         needs_wake = not vllm_warm or self.status == "HIBERNATING"
                         
-                        if needs_wake and can_spark and not getattr(self, "_spark_active", False) and self.status != "BOOTING":
-                            self._spark_active = True
-                            self.status = "WAKING" # [FEAT-265] Transition to WAKING
-                            self.engine_ready.clear() # Block handshakes until warm
-                            self.last_activity = time.time()
-                            logging.warning(f"[HUB] Handshake [{client_id}] detected. Sparking restoration (Needs Wake: {needs_wake})...")
-                            
-                            # Trigger non-blocking start via REST
-                            async def spark_reload():
-                                try:
-                                    async with aiohttp.ClientSession() as session:
-                                        # [FEAT-267] Use dynamic key for REST authorization
-                                        key = get_style_key()
-                                        headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
-                                        # [FEAT-250] Use engine_only=True to spare the Hub
-                                        target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
-                                        async with session.post("http://localhost:9999/start", 
-                                                         headers=headers, 
-                                                         json={
-                                                             "engine": target_engine, 
-                                                             "model": "MEDIUM", 
-                                                             "engine_only": True,
-                                                             "op_mode": "SERVICE_UNATTENDED",
-                                                             "reason": f"HANDSHAKE_{client_id.upper()}"
-                                                         }) as r:
-                                            if r.status == 200:
-                                                logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
-
-                                                # [FEAT-265.5] Yield to Authority: Wait for Attendant to confirm silicon is READY
-                                                try:
-                                                    async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
-                                                        if ready_req.status == 200:
-                                                            logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
-                                                            
-                                                            for name, client in self.residents.items():
-                                                                if hasattr(client, "ping_engine"):
-                                                                    await client.ping_engine(force=True)
-
-                                                            self.brain_online = True
-                                                            self.status = "READY"
-                                                            self.engine_ready.set()
-                                                            await self.broadcast({
-                                                                "brain": "Strategic Sovereignty: ONLINE",
-                                                                "brain_source": "System",
-                                                                "channel": "insight"
-                                                            })
-                                                        else:
-                                                            res = await ready_req.json()
-                                                            logging.error(f"[HUB] Attendant readiness failure: {res.get('status')} - {res.get('message')}")
-                                                            self.status = "READY" # Force fallback
-                                                            self.engine_ready.set()
-                                                except Exception as e:
-                                                    logging.error(f"[HUB] Wait-Ready request failed: {e}")
-                                                    self.status = "READY"
-                                                    self.engine_ready.set()
-
-                                except Exception as e:
-                                    logging.error(f"[HUB] Spark reload failed: {e}")
-                                    self.status = "READY" # Fallback
-                                    self.engine_ready.set()
-                                finally:
-                                    # Reset spark lock after 10s
-                                    await asyncio.sleep(10)
-                                    self._spark_active = False
-                                    
-                            asyncio.create_task(spark_reload())
+                        if needs_wake and can_spark and self.status != "BOOTING":
+                            asyncio.create_task(self.spark_restoration(client_id))
                         else:
                             # [FEAT-265] If already waking or warm, ensure event is set
                             if vllm_warm:
@@ -794,8 +807,9 @@ class AcmeLab:
                             except asyncio.TimeoutError:
                                 logging.error("[HUB] Handshake TIMEOUT: Engine failed to warm in time.")
 
-                        # [FEAT-087] Intelligent Handshake Priming
-                        asyncio.create_task(self.check_brain_health(force=True))
+                        # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
+                        if self.status == "READY":
+                            asyncio.create_task(self.check_brain_health(force=False))
 
                         # Broadcase definitive foyer status only after gate
                         await ws.send_str(json.dumps({
@@ -804,7 +818,6 @@ class AcmeLab:
                             "message": "Lab foyer is open." if self.status == "READY" else "Lab is establishing anchors...",
                             "full_lab_ready": self.brain_online and self.status == "READY"
                         }))
-                        asyncio.create_task(self.check_brain_health(force=True))
 
                         if "archive" in self.residents:
                             try:
