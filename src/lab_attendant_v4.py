@@ -81,7 +81,7 @@ async def key_middleware(request, handler):
     """[FEAT-219] Silicon Handshake: Validates the Lab Key (Query or Header)."""
     # Allow OPTIONS for CORS
     if request.method == "OPTIONS":
-        return await handler(request)
+        return web.Response(status=200)
         
     # Heartbeat and Ping are public-read for the dashboard
     if any(request.path.endswith(p) for p in ["/heartbeat", "/ping", "/mutex", "/wait_ready"]):
