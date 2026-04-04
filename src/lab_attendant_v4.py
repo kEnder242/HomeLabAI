@@ -12,7 +12,6 @@ from aiohttp import web
 import time
 import uuid
 import sys
-import contextlib
 import signal
 from mcp.server.fastmcp import FastMCP
 from infra.montana import reclaim_logger
@@ -29,6 +28,7 @@ if _SELF_DIR not in sys.path:
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
+DATA_DIR = os.path.join(LAB_DIR, "data") # [FIX] Added missing DATA_DIR definition
 SERVER_LOG = f"{LAB_DIR}/server.log"
 ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
 STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
@@ -72,6 +72,29 @@ def get_git_commit():
 
 def get_fingerprint(role="ATTENDANT"):
     return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
+
+# --- Global Singleton Lock ---
+def check_singleton():
+    lock_file = "/tmp/lab_attendant.lock"
+    try:
+        if os.path.exists(lock_file):
+            with open(lock_file, "r") as f:
+                pid_str = f.read().strip()
+                if pid_str:
+                    pid = int(pid_str)
+                    if psutil.pid_exists(pid):
+                        print(f"[FATAL] Lab Attendant already running as PID {pid}. Aborting.")
+                        sys.exit(0)
+    except Exception:
+        pass
+
+    # Atomic Reclaim
+    try:
+        with open(lock_file + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace(lock_file + ".tmp", lock_file)
+    except Exception as e:
+        print(f"[ERROR] Failed to establish singleton lock: {e}")
 
 # --- FastMCP Server ---
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
@@ -272,7 +295,8 @@ class LabAttendantV4:
                     "session": self.session_token,
                     "timestamp": time.time()
                 }, f)
-        except Exception: pass
+        except Exception:
+            pass
 
         
         # [FEAT-259.2] Fast STUB: Skip physical silicon gates for logic testing
@@ -463,7 +487,8 @@ class LabAttendantV4:
                         if any(t in cmdline for t in ["vllm", "ollama", "enginecore"]):
                             os.killpg(os.getpgid(proc.info["pid"]), signal.SIGKILL)
                             reaped_count += 1
-                except Exception: continue
+                except Exception:
+                    continue
             
             if reaped_count > 0:
                 logger.info(f"[BUTLER] Successfully reaped {reaped_count} session engine processes.")
@@ -593,7 +618,8 @@ class LabAttendantV4:
                     
                     if await asyncio.to_thread(probe_port):
                         return {"status": "ready", "message": "Lab is Open."}
-                except Exception: pass
+                except Exception:
+                    pass
             
             # Check server.log for Hub crashes
             if os.path.exists(SERVER_LOG):
@@ -609,7 +635,8 @@ class LabAttendantV4:
                             if not any("Larynx is warming" in line for line in lines):
                                 logger.error("[HUB] Fatal startup crash detected in logs. Aborting wait.")
                                 return {"status": "error", "message": "Fatal Hub crash detected in logs."}
-                except Exception: pass
+                except Exception:
+                    pass
 
             await asyncio.sleep(2)
             
@@ -619,17 +646,43 @@ class LabAttendantV4:
         """
         [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
         Modes:
-          - ORPHANS: Kill anything on Lab ports/names that LACKS the current session token. (Ignition)
-          - SESSION: Kill Engines by signature and Hub by current token. (Shutdown)
+          - ORPHANS: Kill anything on Lab ports/names that LACKS the current session token or agent signal.
+          - SESSION: Kill Engines by signature and Hub by current token.
         """
-        pgids_to_kill = set()
-        my_pgid = os.getpgid(os.getpid())
+        immune_pgids = {os.getpgid(os.getpid())}
+        target_pgids = set()
         
-        # 1. Target Definition
+        # 1. First Pass: Discovery and Immunity Mapping
         ports = [8088, 11434, 8765]
         targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
-        
-        # 2. Port-Based Discovery
+
+        # Collect all candidates
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                pid = proc.info["pid"]
+                pgid = os.getpgid(pid)
+                p_name = str(proc.info["name"] or "").lower()
+                cmd = " ".join(proc.info["cmdline"] or []).lower()
+                
+                # [FEAT-119.2] Agentic & Session Immunity check
+                is_immune = False
+                try:
+                    env = proc.environ()
+                    if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
+                        is_immune = True
+                    if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                        is_immune = True
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    pass
+
+                if is_immune:
+                    immune_pgids.add(pgid)
+                elif any(t in cmd or t in p_name for t in targets):
+                    target_pgids.add(pgid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
+                continue
+
+        # 2. Second Pass: Port-Based Discovery (Add to targets)
         for port in ports:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
@@ -637,58 +690,45 @@ class LabAttendantV4:
                     if ":" in line:
                         pids = line.split(":")[1].strip().split()
                         for p in pids:
-                            p_int = int(p)
-                            is_mine = self._is_current_session_process(p_int)
-                            
-                            # [FEAT-119.1] Physical Override: Sparing logic
-                            if mode == "SESSION":
-                                # Shutdown: Kill engines by port, Hub only if it's mine
-                                if port == 8765:
-                                    if is_mine: pgids_to_kill.add(os.getpgid(p_int))
-                                else:
-                                    pgids_to_kill.add(os.getpgid(p_int)) # Kill all engines
-                            else:
-                                # Ignition (ORPHANS): Kill ONLY if NOT mine.
-                                # This ensures the Hub foyer that just called us survives.
-                                if not is_mine:
-                                    pgids_to_kill.add(os.getpgid(p_int))
-            except Exception: pass
+                            try:
+                                pgid = os.getpgid(int(p))
+                                if pgid not in immune_pgids:
+                                    target_pgids.add(pgid)
+                            except Exception:
+                                pass
+            except Exception:
+                                pass
 
-        # 3. Name-Based Discovery (For token-blind EngineCores)
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            try:
-                p_name = str(proc.info["name"] or "").lower()
-                cmd = " ".join(proc.info["cmdline"] or []).lower()
-                pid = proc.info["pid"]
-                is_mine = self._is_current_session_process(pid)
-                is_engine = any(t in cmd or t in p_name for t in ["vllm", "ollama", "enginecore"])
-                
-                if mode == "SESSION":
-                    if is_engine: pgids_to_kill.add(os.getpgid(pid))
-                    elif is_mine: pgids_to_kill.add(os.getpgid(pid))
-                else:
-                    # Ignition: Kill orphans matching our names
-                    if any(t in cmd or t in p_name for t in targets) and not is_mine:
-                        pgids_to_kill.add(os.getpgid(pid))
-            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
-
-        if pgids_to_kill:
-            pgids_to_kill.discard(my_pgid)
-            if pgids_to_kill:
-                logger.warning(f"[ASSASSIN] [{mode}] Purging process groups: {pgids_to_kill}")
-                for pgid in pgids_to_kill:
-                    with contextlib.suppress(Exception):
-                        os.killpg(pgid, signal.SIGKILL)
+        # 3. Execution: Purge only non-immune targets
+        final_kill_list = target_pgids - immune_pgids
+        if final_kill_list:
+            logger.warning(f"[ASSASSIN] [{mode}] Purging non-immune process groups: {final_kill_list}")
+            for pgid in final_kill_list:
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                except Exception:
+                                pass
         
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(1.0)
 
     def _is_current_session_process(self, pid):
-        """Returns True if the process carries the current session token."""
+        """Returns True if the process carries the current session token or Gemini CLI signal."""
         try:
-            if pid == os.getpid(): return False
+            if pid == os.getpid():
+                return False
             proc = psutil.Process(pid)
-            token = proc.environ().get("LAB_IMMUNITY_TOKEN")
-            return token == self.session_token
+            env = proc.environ()
+            
+            # 1. Session Token Immunity
+            token = env.get("LAB_IMMUNITY_TOKEN")
+            if token == self.session_token:
+                return True
+                
+            # 2. [FEAT-119.2] Agentic Immunity: Spare processes spawned by the Gemini CLI
+            if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                return True
+                
+            return False
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
 
@@ -941,8 +981,9 @@ async def lab_wait_ready(timeout: int = 120):
         for i in range(10): # 20s initial probe
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://localhost:9999/heartbeat", timeout=2) as r:
-                        if r.status == 200: break
+                    async with session.get("http://localhost:9999/heartbeat", timeout=2) as r:
+                        if r.status == 200:
+                            break
             except Exception:
                 await asyncio.sleep(2)
         else:
@@ -952,6 +993,7 @@ async def lab_wait_ready(timeout: int = 120):
 
 async def run_bilingual():
     # [FEAT-219] Silicon Handshake: Role-Based Execution
+    check_singleton()
     role = os.environ.get("LAB_ATTENDANT_ROLE")
     not sys.stdin.isatty()
     
