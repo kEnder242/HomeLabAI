@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import psutil
 import random
 import socket
 import sys
@@ -24,7 +25,7 @@ from logic.cognitive_hub import CognitiveHub
 # Configuration
 PORT = 8765
 PYTHON_PATH = sys.executable
-VERSION = "3.8.1"  # Force-priming and Witty Preamble
+VERSION = "3.8.2"  # singleton_lock and engine_probe
 ATTENDANT_PORT = 9999
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -75,9 +76,10 @@ def resolve_brain_url():
 
 
 async def verify_engine_liveness():
-    """[FEAT-265.7] Checks if the vLLM engine actually has weights loaded."""
+    """[FEAT-265.7] Checks if the vLLM engine actually has weights loaded and is responding."""
     try:
         async with aiohttp.ClientSession() as session:
+            # 1. Port Check
             async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
                 if r.status != 200: return False
                 data = await r.json()
@@ -85,17 +87,52 @@ async def verify_engine_liveness():
                 models = [m.get("id") for m in data.get("data", [])]
                 # If weights are offloaded (Level 2), the model list is usually empty
                 # or missing the primary 3B weight set.
-                return any("llama-3.2-3b" in str(m).lower() for m in models)
+                if not any("llama-3.2-3b" in str(m).lower() for m in models):
+                    return False
+            
+            # 2. [FEAT-265.9] Functional Probe: Minimal inference check
+            # This prevents the "Nominal but garbage" failure state
+            # Note: We use a very low temperature and 1 token to keep it fast.
+            probe_payload = {
+                "model": "llama-3.2-3b-awq", 
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1,
+                "temperature": 0.0
+            }
+            async with session.post("http://localhost:8088/v1/chat/completions", json=probe_payload, timeout=5) as p:
+                return p.status == 200
     except Exception:
         return False
 
 
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
+        # [SINGLETON] Ensure only one instance of AcmeLab runs
+        self._lock_file = "/tmp/acme_lab.lock"
+        try:
+            self._lock_fd = os.open(self._lock_file, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+        except OSError:
+            # Check if process is actually alive
+            try:
+                with open(self._lock_file, "r") as f:
+                    old_pid = int(f.read().strip())
+                if psutil.pid_exists(old_pid):
+                    print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.")
+                    sys.exit(0) # Exit cleanly to avoid service churn
+            except Exception:
+                pass
+            # Force-reclaim if stale
+            self._lock_fd = os.open(self._lock_file, os.O_CREAT | os.O_RDWR)
+        
+        with os.fdopen(self._lock_fd, 'w') as f:
+            f.write(str(os.getpid()))
+
         self.mode = mode
         self.idle_gate = afk_timeout or 300 # [FEAT-249] Mandatory 5m idle gate for live system
         self.role = role
         self.status = "INIT"
+        self._spark_active = False # [FIX] Ensure flag is initialized early
+        self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
         self.exit_stack = AsyncExitStack()
@@ -358,16 +395,14 @@ class AcmeLab:
                                 else:
                                     res = await ready_req.json()
                                     logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
-                                    self.status = "READY"
-                                    self.engine_ready.set()
+                                    self.status = "ERROR"
+                                    # We don't set engine_ready event, letting handshakes timeout or fail
                         except Exception as e:
                             logging.error(f"[HUB] Wait-Ready request failed: {e}")
-                            self.status = "READY"
-                            self.engine_ready.set()
+                            self.status = "ERROR"
         except Exception as e:
             logging.error(f"[HUB] Spark reload failed: {e}")
-            self.status = "READY"
-            self.engine_ready.set()
+            self.status = "ERROR"
         finally:
             await asyncio.sleep(10)
             self._spark_active = False
@@ -785,20 +820,28 @@ class AcmeLab:
                     if m_type == "handshake":
                         # [FEAT-249] Handshake Ignition Spark
                         client_id = data.get("client", "anonymous")
-                        
+
                         # [FEAT-249.6/265.7] Snap-to-Life: Robust model-aware liveness check
                         vllm_warm = await verify_engine_liveness()
 
                         # [GATE] Only 'intercom' clients trigger ignition
                         can_spark = client_id == "intercom"
-                        needs_wake = not vllm_warm or self.status == "HIBERNATING"
-                        
-                        if needs_wake and can_spark and self.status != "BOOTING":
-                            asyncio.create_task(self.spark_restoration(client_id))
-                        else:
-                            # [FEAT-265] If already waking or warm, ensure event is set
-                            if vllm_warm:
-                                self.engine_ready.set()
+                        needs_wake = not vllm_warm or self.status in ["HIBERNATING", "ERROR"]
+
+                        if needs_wake and can_spark and self.status not in ["BOOTING", "WAKING"]:
+                            # [FIX] Handshake Lock: Prevent rapid double-sparking for same client
+                            if client_id not in self._handshake_lock:
+                                self._handshake_lock.add(client_id)
+                                asyncio.create_task(self.spark_restoration(client_id))
+                                # Release lock after a safety window (30s)
+                                async def _release():
+                                    await asyncio.sleep(30)
+                                    self._handshake_lock.discard(client_id)
+                                asyncio.create_task(_release())
+                        elif vllm_warm:
+                            # [FEAT-265] If warm, ensure READY state
+                            self.status = "READY"
+                            self.engine_ready.set()
 
                         # [FEAT-265] Mandatory wait for engine readiness before responding
                         if self.status == "WAKING":
@@ -806,19 +849,23 @@ class AcmeLab:
                                 await asyncio.wait_for(self.engine_ready.wait(), timeout=185) # Encapsulate 180s load
                             except asyncio.TimeoutError:
                                 logging.error("[HUB] Handshake TIMEOUT: Engine failed to warm in time.")
+                                self.status = "ERROR"
 
                         # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
                         if self.status == "READY":
                             asyncio.create_task(self.check_brain_health(force=False))
 
                         # Broadcase definitive foyer status only after gate
+                        state_msg = "Lab foyer is open." if self.status == "READY" else "Lab is establishing anchors..."
+                        if self.status == "ERROR":
+                            state_msg = "Lab is unstable. Check silicon logs."
+
                         await ws.send_str(json.dumps({
                             "type": "status",
                             "state": self.status.lower(),
-                            "message": "Lab foyer is open." if self.status == "READY" else "Lab is establishing anchors...",
+                            "message": state_msg,
                             "full_lab_ready": self.brain_online and self.status == "READY"
                         }))
-
                         if "archive" in self.residents:
                             try:
                                 res = await self.residents["archive"].call_tool(
