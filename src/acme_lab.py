@@ -178,8 +178,15 @@ class AcmeLab:
             sys.argv[0] = title
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
     async def broadcast(self, message_dict):
-        if self.shutdown_event.is_set():
+        """[FEAT-221] Safe broadcast with dead-socket pruning and server-side logging."""
+        if self.shutdown_event.is_set() or not self.connected_clients:
             return
+
+        # [FIX] Server-side traceability for all broadcasts (including quips)
+        m_type = message_dict.get("type", "chat")
+        m_content = message_dict.get("brain") or message_dict.get("message") or "EMPTY_CONTENT"
+        m_source = message_dict.get("brain_source", "System")
+        logging.info(f"[BROADCAST] [{m_type.upper()}] ({m_source}): {m_content}")
 
         # [FEAT-227] Session Reset: Wipe history on explicit request
         if message_dict.get("reset_session"):
@@ -194,11 +201,20 @@ class AcmeLab:
                 self.message_history.append(message_dict)
                 self.message_history = self.message_history[-20:] # Keep last 20
 
+        msg_str = json.dumps(message_dict)
+        dead_clients = set()
         for ws in list(self.connected_clients):
             try:
-                await ws.send_str(json.dumps(message_dict))
-            except Exception:
-                self.connected_clients.remove(ws)
+                if not ws.closed:
+                    await ws.send_str(msg_str)
+                else:
+                    dead_clients.add(ws)
+            except Exception as e:
+                logging.debug(f"[HUB] Broadcast failure to client: {e}")
+                dead_clients.add(ws)
+        
+        for dead in dead_clients:
+            self.connected_clients.discard(dead)
 
     async def trigger_morning_briefing(self):
         """[FEAT-072] Briefs the user on recent nightly dialogue."""
@@ -301,7 +317,13 @@ class AcmeLab:
                     async with session.get(target_url, timeout=2.0) as r:
                         is_reachable = r.status == 200
                         if not is_reachable:
-                            if self.brain_online: logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
+                            if self.brain_online: 
+                                logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
+                                await self.broadcast({
+                                    "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
+                                    "brain_source": "System",
+                                    "channel": "insight"
+                                })
                             self.brain_online = False
                             self._last_brain_fail = now
                             return
@@ -312,8 +334,22 @@ class AcmeLab:
                             self.brain_online = False
                             return
                         
+                        # [FIX] Distinguish between transition and stable state
+                        if not self.brain_online:
+                            logging.info("[BRAIN] Strategic Sovereignty: PRIMARY (Online)")
+                            await self.broadcast({
+                                "brain": "Strategic Sovereignty: PRIMARY",
+                                "brain_source": "System",
+                                "channel": "insight"
+                            })
                         self.brain_online = True # API is at least talking
                 except Exception:
+                    if self.brain_online:
+                        await self.broadcast({
+                            "brain": "Strategic Sovereignty: SHADOW (Connection Lost)",
+                            "brain_source": "System",
+                            "channel": "insight"
+                        })
                     self.brain_online = False
                     self._last_brain_fail = now
                     return
@@ -1048,14 +1084,26 @@ class AcmeLab:
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
 
-        return await self.cognitive.process_query(
-            query, 
-            mic_active=self.mic_active, 
-            shutdown_event=self.shutdown_event,
-            exit_hint=exit_hint,
-            trigger_briefing_callback=self.trigger_morning_briefing,
-            turn_density=self.turn_density
-        )
+        self.status = "WORKING"
+        await self.broadcast({"type": "status", "state": "working", "message": "🧠 THINKING..."})
+        
+        try:
+            res = await self.cognitive.process_query(
+                query, 
+                mic_active=self.mic_active, 
+                shutdown_event=self.shutdown_event,
+                exit_hint=exit_hint,
+                trigger_briefing_callback=self.trigger_morning_briefing,
+                turn_density=self.turn_density
+            )
+            self.status = "READY"
+            await self.broadcast({"type": "status", "state": "ready", "message": "Mind is READY."})
+            return res
+        except Exception as e:
+            self.status = "ERROR"
+            logging.error(f"[HUB] Query processing failed: {e}")
+            await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
+            raise
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task."""

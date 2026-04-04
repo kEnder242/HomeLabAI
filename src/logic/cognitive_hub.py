@@ -39,6 +39,7 @@ class CognitiveHub:
         self.resonant_history = []
         self.current_fuel = 0.0
         self.current_topic = "Casual"
+        self.triage_failures = 0 # [FEAT-270] Track consecutive failures
 
     def bridge_signal_clean(self, text):
         """
@@ -303,9 +304,20 @@ class CognitiveHub:
                 # Triage is still a single block for logic reasons
                 # [FEAT-233.2] Mute internal logic from UI waterfall
                 t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
-                t_clean = self.bridge_signal_clean(t_res.content[0].text)
+                raw_t_text = str(t_res.content[0].text)
+                
+                # [FEAT-270.1] Gibberish Detector
+                # If more than 20% of text is non-alphanumeric or contains many non-ASCII chars
+                non_alnum = len(re.sub(r'[a-zA-Z0-9\s.,?!]', '', raw_t_text))
+                if (len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.3) or "\x00" in raw_t_text:
+                    logging.error(f"[HUB] Gibberish detected from Lab Node: {raw_t_text[:100]}")
+                    self.triage_failures += 1
+                    raise ValueError("SILICON_LOBOTOMY: Model is outputting garbage.")
+
+                t_clean = self.bridge_signal_clean(raw_t_text)
                 if t_clean:
                     t_parsed = json.loads(t_clean)
+                    self.triage_failures = 0 # [FIX] Reset on successful parse
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
                     
                     # [FEAT-244] Speaker Masking Scalar
@@ -328,8 +340,17 @@ class CognitiveHub:
                     elif addressed_to == "PINKY" and self.current_fuel > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
+                else:
+                    self.triage_failures += 1
+                    raise ValueError("TRIAGE_PARSE_FAILURE")
+
             except Exception as e:
-                logging.error(f"[HUB] Triage Failed: {e} | Raw Text: {t_res.content[0].text[:500]}")
+                logging.error(f"[HUB] Triage Failed ({self.triage_failures}/3): {e}")
+                if self.triage_failures >= 3:
+                    await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
+                    # Signal fatal error to acme_lab which will exit and be restarted by systemd/watchdog
+                    os._exit(1) # [NUCLEAR] Force exit to trigger systemd ExecStopPost and fresh start
+                
                 self.current_fuel = 0.2
                 intent = "STRATEGIC"
 
