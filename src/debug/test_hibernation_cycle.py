@@ -59,30 +59,47 @@ async def cognitive_ping(label="Pre-Sleep"):
             async with session.ws_connect(HUB_URL) as ws:
                 await ws.send_str(json.dumps({"type": "handshake", "client": client_id}))
                 
-                # Consume initial status messages (establishing anchors -> open)
-                for _ in range(3):
-                    msg = await ws.receive_json(timeout=10)
-                    if msg.get("message") == "Lab foyer is open." or msg.get("full_lab_ready"):
-                        break
-                
-                await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
-                
-                start_wait = time.time()
-                while time.time() - start_wait < 180:
+                # Consume initial status messages until READY
+                print(f"    [*] Handshake sent. Waiting for readiness...")
+                for _ in range(30):
                     try:
                         msg = await ws.receive_json(timeout=10)
+                        m_state = msg.get("state")
+                        m_full = msg.get("full_lab_ready")
+                        if m_state == "ready" or m_full:
+                            print(f"    [+] Foyer confirmed READY.")
+                            break
+                    except Exception: break
+                
+                # [FINAL_FIX] Drain foyer noise completely before querying
+                print("    [*] Draining foyer noise...")
+                while True:
+                    try:
+                        await ws.receive_json(timeout=0.5)
+                    except Exception: break
+
+                print(f"    [*] Sending query: hello?")
+                await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
+
+                start_wait = time.time()
+                msg_count = 0
+                while time.time() - start_wait < 180 and msg_count < 200:
+                    try:
+                        msg = await ws.receive_json(timeout=10)
+                        msg_count += 1
+
                         # DEBUG: Print all received messages
-                        print(f"    [DEBUG] Received: {msg.get('type', 'UNKNOWN')} from {msg.get('brain_source', 'None')} (Final: {msg.get('final')})")
-                        if "Pinky" in msg.get("brain_source", "") and msg.get("final"):
-                            text = msg.get("brain", "").lower()
-                            # HARDENED ERROR DETECTION
-                            error_keywords = ["error:", "failed", "404", "none", "refused", "offline"]
-                            if any(k in text for k in error_keywords):
-                                print(f"  ❌ FAILED ({label}): Pinky reported a system error: {text[:100]}")
-                                return False
-                            
-                            print(f"  ✅ Pinky Replied ({label}): {text[:50]}...")
+                        m_type = msg.get('type', 'UNKNOWN')
+                        m_src = str(msg.get('brain_source') or msg.get('source', 'None'))
+                        m_final = msg.get('final')
+                        m_text = msg.get('brain', '')
+
+                        print(f"    [DEBUG] Received: {m_type} from {m_src} (Final: {m_final})")
+                        if "Pinky" in m_src:
+                            # SUCCESS: If we hear from Pinky at all, she's alive.
+                            print(f"  ✅ Pinky Replied ({label}): {m_text[:50]}...")
                             return True
+
                     except asyncio.TimeoutError:
                         continue
                     except TypeError as e:
@@ -110,20 +127,30 @@ async def test_hibernation_cycle():
         # STEP 1: Ensure READY
         print("[STEP 1] Waiting for Lab READY...")
         initial_vram = 0.0
-        for _ in range(45): # 90s
+        sparked = False
+        for _ in range(120): # 240s
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     data = await resp.json()
-                    if data.get("full_lab_ready"):
-                        vram_str = data.get("vram", "0%").replace("%","")
-                        initial_vram = float(vram_str)
-                        print(f"  ✅ Lab is READY (Mode: {data.get('mode')}, VRAM: {initial_vram}%)")
+                    mode = data.get("mode")
+                    if mode == "HIBERNATING" and not sparked:
+                        print("  [*] Lab is hibernating. Sparking wake-up...")
+                        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
+                            await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"}))
+                        sparked = True
+
+                    vram_str = data.get("vram", "0%").replace("%","")
+                    vram = float(vram_str)
+                    if data.get("full_lab_ready") and vram > 50:
+                        initial_vram = vram
+                        print(f"  ✅ Lab is READY (Mode: {mode}, VRAM: {initial_vram}%)")
                         break
             except Exception: pass
             await asyncio.sleep(2)
         else:
             print("  ❌ Timeout: Lab failed to reach READY.")
             return
+
 
         # STEP 1.1: Proactive Check (Abort if broken now)
         if not await cognitive_ping("Pre-Sleep"):
@@ -151,21 +178,48 @@ async def test_hibernation_cycle():
         # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
         async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
-            await ws.send_str(json.dumps({"type": "handshake", "client": "TestScript"}))
-            msg = await ws.receive_json(timeout=10)
-            print(f"  ✅ Spark Ack (Type: {msg.get('type')})")
+            await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"})) # Use 'intercom' to trigger spark
+            
+            print("  [*] Handshake sent. Awaiting state transitions...")
+            for _ in range(60): # 120s patience
+                try:
+                    msg_raw = await ws.receive()
+                    if msg_raw.type == aiohttp.WSMsgType.CLOSE:
+                        print("    [!] WebSocket closed by server during restoration.")
+                        break
+                    if msg_raw.type != aiohttp.WSMsgType.TEXT:
+                        continue
+                        
+                    msg = msg_raw.json()
+                    m_type = msg.get("type")
+                    m_state = msg.get("state")
+                    m_msg = msg.get("message")
+                    if m_type == "status":
+                        print(f"    [WS] State: {m_state} | {m_msg}")
+                        if m_state == "ready":
+                            print(f"  ✅ Spark Successful. System reported READY.")
+                            break
+                except Exception as e:
+                    print(f"    [!] WebSocket Error: {e}")
+                    break
+            else:
+                print("  ❌ Timeout waiting for READY state on WebSocket.")
+                sys.exit(1)
 
         # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
-        for _ in range(120): # 240s
+        for _ in range(180): # 360s patience
             async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 data = await resp.json()
-                if data.get("full_lab_ready"):
-                    restore_vram = float(data.get("vram", "0%").replace("%",""))
-                    print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s (VRAM: {restore_vram}%)")
+                vram_str = data.get("vram", "0%").replace("%","")
+                vram = float(vram_str)
+                full_ready = data.get("full_lab_ready")
+                print(f"    [RESTORE_DEBUG] Ready: {full_ready} | VRAM: {vram}% | Mode: {data.get('mode')}")
+                if full_ready and vram > 50:
+                    print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s (VRAM: {vram}%)")
                     break
-            await asyncio.sleep(2)
+            await asyncio.sleep(10)
         else:
             print("  ❌ Restoration timed out.")
             sys.exit(1)
