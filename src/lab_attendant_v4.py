@@ -262,9 +262,21 @@ class LabAttendantV4:
                 "engine": engine, "model": model, "disable_ear": disable_ear, 
                 "op_mode": op_mode, "engine_only": engine_only, "reason": reason
             })
-        logger.info(f"[{self.session_token}] [IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode})")
-
         
+        # [FEAT-119.4] Non-Destructive Restoration
+        # If we are only starting engines, we MUST NOT purge port 8765.
+        logger.info(f"[{self.session_token}] [IGNITION] [{reason.upper()}] Starting {model} via {engine} (EngineOnly: {engine_only})")
+        
+        if not engine_only:
+            await self.cleanup_silicon(mode="ORPHANS")
+        else:
+            # Selective Cleanup: Only purge engine ports to avoid self-reaping
+            for port in [8088, 11434]:
+                try:
+                    subprocess.run(["sudo", "fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
+                except Exception: pass
+            await asyncio.sleep(1.0)
+
         self.refresh_vram_config() # Reload latest model mappings
         
         # Resolve model path and config from map
@@ -461,22 +473,26 @@ class LabAttendantV4:
             async def _tactical_sleep():
                 try:
                     async with aiohttp.ClientSession() as session:
-                        # [FIX] Level 2 for full weight offloading (VRAM Free)
-                        async with session.post("http://localhost:8088/sleep?level=2", timeout=10.0) as r:
+                        # Attempt graceful offload first
+                        async with session.post("http://localhost:8088/sleep?level=2", timeout=5.0) as r:
                             if r.status == 200:
-                                logger.warning("[SLEEP] vLLM successfully offloaded weights to CPU. VRAM Reclaimed.")
-                                await self.update_status_json("HIBERNATING (VRAM Free)")
-                            else:
-                                logger.error(f"[SLEEP] vLLM rejected sleep level 2: {r.status}")
-                                # Fallback to selective reap (Engine only, SPARE Hub)
-                                await self.cleanup_silicon(mode="ORPHANS")
-                except Exception as e:
-                    logger.error(f"[SLEEP] vLLM sleep signal failed: {e}")
-                    # Fallback to selective reap (Engine only, SPARE Hub)
-                    await self.cleanup_silicon(mode="ORPHANS")
+                                # Wait briefly for drop
+                                for _ in range(5):
+                                    used, _ = await self._get_vram_info()
+                                    if used < 3000: return True
+                                    await asyncio.sleep(1)
+                except Exception: pass
+                
+                # [NUCLEAR FALLBACK] Graceful failed or too slow. Kill engine.
+                logger.warning("[SLEEP] Graceful offload failed. Reaping engine process groups.")
+                await self.cleanup_silicon(mode="SESSION") # Uses the hardened signature-aware reaper
+                return True
             
-            asyncio.create_task(_tactical_sleep())
-            return {"status": "success", "message": "vLLM sleep signal dispatched."}
+            await _tactical_sleep()
+            is_hibernating = True
+            current_lab_mode = "HIBERNATING"
+            await self.update_status_json("HIBERNATING (VRAM Free)")
+            return {"status": "success", "message": "VRAM reclaimed via sleep or reap."}
 
         # Fallback: [FEAT-259] The Butler Pattern (Kill-to-Hibernate)
         logger.warning("[HUB] Hibernation signal received. Unloading local engines via Reap...")
@@ -623,19 +639,15 @@ class LabAttendantV4:
             # Only probe if the engine process has had time to start
             if time.time() - start_t > 5:
                 try:
+                    # [FIX] VRAM-Aware Readiness: Weights must be loaded
+                    used, total = await self._get_vram_info()
+                    vram_pct = (used / total * 100) if total > 0 else 0
+                    
                     async with aiohttp.ClientSession() as session:
-                        # [FIX] Use completions endpoint instead of chat/completions 
-                        # to support engines that only enable legacy generation.
-                        probe_payload = {
-                            "model": "unified-base", # Match the served model name
-                            "prompt": "ping",
-                            "max_tokens": 1,
-                            "temperature": 0.0
-                        }
-                        async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=5) as p:
-                            if p.status == 200:
-                                logger.info(f"[WATCHDOG] Silicon functional after {int(time.time()-start_t)}s.")
-                                return {"status": "init", "message": "Lab is functional."}
+                        async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
+                            if r.status == 200 and vram_pct > 50:
+                                logger.info(f"[{self.session_token}] [WATCHDOG] Silicon operational after {int(time.time()-start_t)}s (VRAM: {vram_pct:.1f}%)")
+                                return {"status": "init", "message": "Lab is operational."}
                 except Exception:
                     pass
             
@@ -681,27 +693,44 @@ class LabAttendantV4:
         targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
 
         # 2. First Pass: Handshake Discovery (Title-based)
-        for proc in psutil.process_iter(["pid", "name", "cmdline", "environ"]):
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "environ", "create_time"]):
             try:
                 pid = proc.info["pid"]
                 pgid = os.getpgid(pid)
-                p_name = str(proc.info["name"] or "").lower()
                 cmd = " ".join(proc.info["cmdline"] or []).lower()
+                p_name = str(proc.info["name"] or "").lower()
                 
-                # [FEAT-220] Silicon Handshake: Check process title for the session token
-                # Format: [HUB:f5e8f53] or [PINKY:f5e8f53]
+                # [FEAT-275] Grace Window: Spare processes less than 10s old
+                if (time.time() - proc.info["create_time"]) < 10.0:
+                    immune_pgids.add(pgid)
+                    continue
+
+                # [FEAT-220] Silicon Handshake: Search for token in title/cmdline/env
                 is_immune = False
-                if f":{self.session_token}]" in p_name or f":{self.session_token}]" in cmd:
+                if f"{self.session_token}" in cmd or f"{self.session_token}" in p_name:
                     is_immune = True
-                
-                # Agentic Immunity (Env-based for transient CLI scripts)
-                env = proc.info["environ"] or {}
-                if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                # Format: [HUB:f5e8f53] or [PINKY:f5e8f53]
+                elif "[HUB:" in p_name:
                     is_immune = True
+                else:
+                    try:
+                        env = proc.info["environ"] or {}
+                        if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
+                            is_immune = True
+                    except Exception: pass
 
                 if is_immune:
                     immune_pgids.add(pgid)
-                elif any(t in cmd or t in p_name for t in targets):
+                    continue
+                
+                # Agentic Immunity (Env-based)
+                env = proc.info["environ"] or {}
+                if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                    immune_pgids.add(pgid)
+                    continue
+
+                # Identify potential targets
+                if any(t in cmd or t in p_name for t in targets):
                     target_pgids.add(pgid)
             except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
                 continue
@@ -719,20 +748,35 @@ class LabAttendantV4:
                         for p in pids:
                             try:
                                 pgid = os.getpgid(int(p))
-                                target_pgids.add(pgid)
+                                # [FIX] Add to kill list if it's an engine port OR not immune
+                                if port != 8765 or pgid not in immune_pgids:
+                                    target_pgids.add(pgid)
                             except Exception: pass
             except Exception: pass
 
         # 4. Final Purge Logic
-        is_hub_alive = 8765 in active_ports or len(immune_pgids) > 1
-        if mode == "ORPHANS" and is_hub_alive:
-            logger.info(f"[{self.session_token}] [ASSASSIN] Handshake confirmed. Skipping orphan purge.")
+        # [FEAT-119.3] Restoration Silence: We skip the orphan purge if we are actively WAKING.
+        # This prevents the Attendant from reaping nodes that the Hub just spawned.
+        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason == "SAFE_PILOT")
+        if mode == "ORPHANS" and (is_igniting or current_lab_mode == "HIBERNATING"):
+            logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window. Skipping orphan purge.")
             return
 
-        # Purge only if NOT immune
         final_kill_list = target_pgids - immune_pgids
+
+        # [FIX] Explicitly verify if an immune Hub is currently listening on 8765
+        # This prevents the "Ghost Hub" block while protecting the real foyer.
+        hub_immune = False
+        try:
+            res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
+            if ":" in res:
+                pids = res.split(":")[1].strip().split()
+                if pids and int(pids[0]) in [proc.pid for proc in psutil.process_iter() if os.getpgid(proc.pid) in immune_pgids]:
+                    hub_immune = True
+        except Exception: pass
+
         if final_kill_list:
-            logger.warning(f"[{self.session_token}] [ASSASSIN] Purging non-immune groups: {final_kill_list}")
+            logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
             for pgid in final_kill_list:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
@@ -789,6 +833,7 @@ class LabAttendantV4:
         return False
 
     async def _get_current_vitals(self):
+        """[FEAT-276] Silicon Pulse with Deep Forensic Telemetry."""
         foyer_up = False
         engine_up = False
         engine_vocal = False
@@ -817,13 +862,16 @@ class LabAttendantV4:
                         async with session.post(f"http://localhost:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
                             if p.status == 200:
                                 engine_vocal = True
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        logger.debug(f"[PROBE] Cognitive check failed: {e}")
+        except Exception as e:
+            logger.debug(f"[PROBE] Physical check failed: {e}")
 
         used_mb, total_mb = await self._get_vram_info()
         vram_pct = f"{(used_mb / total_mb * 100):.1f}%" if total_mb > 0 else "0.0%"
+        
+        # [FEAT-276] Persistent VRAM Telemetry
+        logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
 
         return {
             "attendant_pid": os.getpid(),
@@ -842,16 +890,20 @@ class LabAttendantV4:
 
     async def _get_vram_info(self):
         """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
-        # 1. Primary Path: pynvml (Persistent)
-        if _NVML_ACTIVE:
-            try:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                return int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
-            except Exception:
-                pass
+        # 1. Primary Path: pynvml (Fresh Probe)
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            used, total = int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+            pynvml.nvmlShutdown()
+            return used, total
+        except Exception:
+            try: pynvml.nvmlShutdown()
+            except Exception: pass
 
-        # 2. Fallback Path: nvidia-smi (More reliable during driver churn)
+        # 2. Fallback Path: nvidia-smi
         try:
             res = subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"],
@@ -867,8 +919,8 @@ class LabAttendantV4:
     async def update_status_json(self, msg=None):
         vitals = await self._get_current_vitals()
         live_data = {
-            "status": "ONLINE" if vitals["intercom"] == "ONLINE" else "OFFLINE",
-            "message": msg or ("READY" if vitals["full_lab_ready"] else "BOOTING"),
+            "status": "ONLINE" if vitals.get("foyer_up") else "OFFLINE",
+            "message": msg or ("OPERATIONAL" if vitals.get("operational") else "INIT"),
             "timestamp": datetime.datetime.now().isoformat(),
             "vitals": vitals
         }
