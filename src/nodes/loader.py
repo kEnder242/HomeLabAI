@@ -36,6 +36,22 @@ class BicameralNode:
             except ValueError:
                 pass
 
+        # [FEAT-220] Silicon Handshake: Consume session token and tag process title
+        self.session_token = "LOCAL_ONLY"
+        if "--session" in sys.argv:
+            try:
+                idx = sys.argv.index("--session")
+                if idx + 1 < len(sys.argv):
+                    self.session_token = sys.argv[idx + 1]
+            except ValueError: pass
+            
+        title = f"[{name.upper()}:{self.session_token}]"
+        try:
+            import setproctitle
+            setproctitle.setproctitle(title)
+        except ImportError:
+            sys.argv[0] = title
+
         self.name = name.lower()
         self.system_prompt = system_prompt
         self.mcp = FastMCP(name)

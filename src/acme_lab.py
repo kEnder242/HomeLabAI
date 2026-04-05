@@ -106,7 +106,7 @@ async def verify_engine_liveness():
 
 
 class AcmeLab:
-    def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=300, role="HUB"):
+    def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=600, role="HUB"):
         # [SINGLETON] Ensure only one instance of AcmeLab runs
         self._lock_file = "/tmp/acme_lab.lock"
         try:
@@ -131,6 +131,16 @@ class AcmeLab:
         self.idle_gate = afk_timeout or 600 # [FEAT-249] Increased to 10m for stability
         self.role = role
         self.status = "INIT"
+        
+        # [FEAT-220] Silicon Handshake: Tag process title for immunity discovery
+        self.session_token = uuid.uuid4().hex[:8]
+        title = f"[{self.role}:{self.session_token}]"
+        try:
+            import setproctitle
+            setproctitle.setproctitle(title)
+        except ImportError:
+            sys.argv[0] = title
+
         self._spark_active = False # [FIX] Ensure flag is initialized early
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
@@ -1153,6 +1163,10 @@ class AcmeLab:
             try:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
+                
+                # [FEAT-220] Silicon Handshake: Resident nodes inherit session tag in their title
+                # We pass the token via a specialized arg that the node will consume to set its title
+                node_args = [path, "--role", name.upper(), "--session", self.session_token]
 
                 # [FIX] vLLM legacy removed to allow clean Ollama/Generic fallback
                 env["USE_BRAIN_VLLM"] = "0"
@@ -1160,7 +1174,7 @@ class AcmeLab:
                 env["PINKY_MODEL"] = os.environ.get("PINKY_MODEL", "MEDIUM")
 
                 params = StdioServerParameters(
-                    command=PYTHON_PATH, args=[path, "--role", name.upper()], env=env
+                    command=PYTHON_PATH, args=node_args, env=env
                 )
                 cl_stack = await stack.enter_async_context(stdio_client(params))
                 session = await stack.enter_async_context(
@@ -1192,6 +1206,13 @@ class AcmeLab:
 
                 # Finalize node residency
                 self.residents[name] = session
+                
+                # [FEAT-220] Inject immunity for resident nodes to prevent self-reaping
+                try:
+                    node_pgid = os.getpgid(cl_stack[0].pid)
+                    # We can't easily push this to the Attendant, but we can log it
+                    logging.debug(f"[BOOT] Node {name.upper()} immunity PGID: {node_pgid}")
+                except Exception: pass
 
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
