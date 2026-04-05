@@ -671,9 +671,7 @@ class LabAttendantV4:
     async def cleanup_silicon(self, mode="ORPHANS"):
         """
         [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
-        Modes:
-          - ORPHANS: Kill anything on Lab ports/names that LACKS the current session token or agent signal.
-          - SESSION: Kill Engines by signature and Hub by current token.
+        Handshake Protocol: Processes tagged with [TOKEN] in their title are immune.
         """
         immune_pgids = {os.getpgid(os.getpid())}
         target_pgids = set()
@@ -682,21 +680,29 @@ class LabAttendantV4:
         ports = [8088, 11434, 8765]
         targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
 
-        # 2. First Pass: Immunity & Name-Based Discovery
-        for proc in psutil.process_iter(["pid", "name", "environ", "cmdline"]):
+        # 2. First Pass: Handshake Discovery (Title-based)
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "environ"]):
             try:
                 pid = proc.info["pid"]
-                env = proc.info["environ"] or {}
-                cmd = " ".join(proc.info["cmdline"] or []).lower()
+                pgid = os.getpgid(pid)
                 p_name = str(proc.info["name"] or "").lower()
+                cmd = " ".join(proc.info["cmdline"] or []).lower()
                 
-                # Check for immunity signals
-                if env.get("LAB_IMMUNITY_TOKEN") == self.session_token or env.get("GEMINI_CLI_IMMUNITY") == "1":
-                    immune_pgids.add(os.getpgid(pid))
+                # [FEAT-220] Silicon Handshake: Check process title for the session token
+                # Format: [HUB:f5e8f53] or [PINKY:f5e8f53]
+                is_immune = False
+                if f":{self.session_token}]" in p_name or f":{self.session_token}]" in cmd:
+                    is_immune = True
                 
-                # Check for target names
-                if any(t in cmd or t in p_name for t in targets):
-                    target_pgids.add(os.getpgid(pid))
+                # Agentic Immunity (Env-based for transient CLI scripts)
+                env = proc.info["environ"] or {}
+                if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                    is_immune = True
+
+                if is_immune:
+                    immune_pgids.add(pgid)
+                elif any(t in cmd or t in p_name for t in targets):
+                    target_pgids.add(pgid)
             except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
                 continue
 
@@ -720,13 +726,13 @@ class LabAttendantV4:
         # 4. Final Purge Logic
         is_hub_alive = 8765 in active_ports or len(immune_pgids) > 1
         if mode == "ORPHANS" and is_hub_alive:
-            logger.info(f"[ASSASSIN] Skipping purge: Immune Hub or agent detected ({len(immune_pgids)-1}).")
+            logger.info(f"[{self.session_token}] [ASSASSIN] Handshake confirmed. Skipping orphan purge.")
             return
 
         # Purge only if NOT immune
         final_kill_list = target_pgids - immune_pgids
         if final_kill_list:
-            logger.warning(f"[ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
+            logger.warning(f"[{self.session_token}] [ASSASSIN] Purging non-immune groups: {final_kill_list}")
             for pgid in final_kill_list:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
