@@ -191,7 +191,7 @@ class LabAttendantV4:
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 "source": "LabAttendant",
                 "severity": severity,
-                "message": message
+                "message": f"[{self.session_token}] {message}"
             }
             data = []
             if os.path.exists(PAGER_ACTIVITY_FILE):
@@ -262,7 +262,7 @@ class LabAttendantV4:
                 "engine": engine, "model": model, "disable_ear": disable_ear, 
                 "op_mode": op_mode, "engine_only": engine_only, "reason": reason
             })
-        logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode})")
+        logger.info(f"[{self.session_token}] [IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode})")
 
         
         self.refresh_vram_config() # Reload latest model mappings
@@ -396,13 +396,18 @@ class LabAttendantV4:
         try:
             res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
             if ":" in res:
-                pid = int(res.split(":")[1].strip().split()[0])
-                if self._is_current_session_process(pid):
-                    hub_active = True
-                else:
-                    logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
-                    os.killpg(os.getpgid(pid), signal.SIGKILL)
-                    await asyncio.sleep(1.0)
+                pids = res.split(":")[1].strip().split()
+                if pids:
+                    pid = int(pids[0])
+                    if self._is_current_session_process(pid):
+                        hub_active = True
+                        logger.info(f"[IGNITION] Immune Hub detected on PID {pid}. Sparing.")
+                    else:
+                        logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
+                        try:
+                            os.killpg(os.getpgid(pid), signal.SIGKILL)
+                        except Exception: pass
+                        await asyncio.sleep(1.0)
         except Exception:
             pass
 
@@ -463,12 +468,12 @@ class LabAttendantV4:
                                 await self.update_status_json("HIBERNATING (VRAM Free)")
                             else:
                                 logger.error(f"[SLEEP] vLLM rejected sleep level 2: {r.status}")
-                                # Fallback to hard-reap if level 2 is unsupported
-                                await self.cleanup_silicon(mode="SESSION")
+                                # Fallback to selective reap (Engine only, SPARE Hub)
+                                await self.cleanup_silicon(mode="ORPHANS")
                 except Exception as e:
                     logger.error(f"[SLEEP] vLLM sleep signal failed: {e}")
-                    # Fallback to hard-reap if the REST API is dead
-                    await self.cleanup_silicon(mode="SESSION")
+                    # Fallback to selective reap (Engine only, SPARE Hub)
+                    await self.cleanup_silicon(mode="ORPHANS")
             
             asyncio.create_task(_tactical_sleep())
             return {"status": "success", "message": "vLLM sleep signal dispatched."}
@@ -630,7 +635,7 @@ class LabAttendantV4:
                         async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=5) as p:
                             if p.status == 200:
                                 logger.info(f"[WATCHDOG] Silicon functional after {int(time.time()-start_t)}s.")
-                                return {"status": "ready", "message": "Lab is functional."}
+                                return {"status": "init", "message": "Lab is functional."}
                 except Exception:
                     pass
             
@@ -673,37 +678,29 @@ class LabAttendantV4:
         immune_pgids = {os.getpgid(os.getpid())}
         target_pgids = set()
         
-        # 1. First Pass: Discovery and Immunity Mapping
+        # 1. Target Definition
         ports = [8088, 11434, 8765]
         targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
 
-        # Collect all candidates
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        # 2. First Pass: Immunity & Name-Based Discovery
+        for proc in psutil.process_iter(["pid", "name", "environ", "cmdline"]):
             try:
                 pid = proc.info["pid"]
-                pgid = os.getpgid(pid)
-                p_name = str(proc.info["name"] or "").lower()
+                env = proc.info["environ"] or {}
                 cmd = " ".join(proc.info["cmdline"] or []).lower()
+                p_name = str(proc.info["name"] or "").lower()
                 
-                # [FEAT-119.2] Agentic & Session Immunity check
-                is_immune = False
-                try:
-                    env = proc.environ()
-                    if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
-                        is_immune = True
-                    if env.get("GEMINI_CLI_IMMUNITY") == "1":
-                        is_immune = True
-                except (psutil.AccessDenied, psutil.NoSuchProcess):
-                    pass
-
-                if is_immune:
-                    immune_pgids.add(pgid)
-                elif any(t in cmd or t in p_name for t in targets):
-                    target_pgids.add(pgid)
+                # Check for immunity signals
+                if env.get("LAB_IMMUNITY_TOKEN") == self.session_token or env.get("GEMINI_CLI_IMMUNITY") == "1":
+                    immune_pgids.add(os.getpgid(pid))
+                
+                # Check for target names
+                if any(t in cmd or t in p_name for t in targets):
+                    target_pgids.add(os.getpgid(pid))
             except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
                 continue
 
-        # 2. Second Pass: Port-Based Discovery (Add to targets)
+        # 3. Second Pass: Port-Based Discovery
         active_ports = set()
         for port in ports:
             try:
@@ -716,31 +713,25 @@ class LabAttendantV4:
                         for p in pids:
                             try:
                                 pgid = os.getpgid(int(p))
-                                if pgid not in immune_pgids:
-                                    target_pgids.add(pgid)
-                            except Exception:
-                                pass
-            except Exception:
-                                pass
+                                target_pgids.add(pgid)
+                            except Exception: pass
+            except Exception: pass
 
-        # 3. Execution: Purge only non-immune targets
-        final_kill_list = target_pgids - immune_pgids
-
-        # [HARDENING] If we already have an immune process carrying our session token, 
-        # do NOT perform an orphan purge. This prevents self-reaping during overlaps.
-        # We also specifically spare the Hub if it's already running.
+        # 4. Final Purge Logic
         is_hub_alive = 8765 in active_ports or len(immune_pgids) > 1
         if mode == "ORPHANS" and is_hub_alive:
-            logger.info(f"[ASSASSIN] Hub foyer or immune process detected. Skipping orphan purge.")
+            logger.info(f"[ASSASSIN] Skipping purge: Immune Hub or agent detected ({len(immune_pgids)-1}).")
             return
 
+        # Purge only if NOT immune
+        final_kill_list = target_pgids - immune_pgids
         if final_kill_list:
-            logger.warning(f"[ASSASSIN] [{mode}] Purging non-immune process groups: {final_kill_list}")
+            logger.warning(f"[ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
             for pgid in final_kill_list:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
-                except Exception:
-                    pass
+                except Exception: pass
+        
         await asyncio.sleep(1.0)
 
     def _is_current_session_process(self, pid):
@@ -792,17 +783,36 @@ class LabAttendantV4:
         return False
 
     async def _get_current_vitals(self):
-        lab_server_running = False
-        engine_running = False
+        foyer_up = False
+        engine_up = False
+        engine_vocal = False
+        
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8765/heartbeat", timeout=2.0) as r:
+                # 1. Physical Probe (Ports)
+                async with session.get("http://localhost:8765/heartbeat", timeout=1.0) as r:
                     if r.status == 200:
-                        lab_server_running = True
+                        foyer_up = True
+                
                 port = 8088 if current_lab_mode == "VLLM" else 11434
-                async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=2.0) as r:
+                async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=1.0) as r:
                     if r.status == 200:
-                        engine_running = True
+                        engine_up = True
+                
+                # 2. Cognitive Probe (Functional)
+                if engine_up:
+                    probe_payload = {
+                        "model": "unified-base",
+                        "prompt": "ping",
+                        "max_tokens": 1,
+                        "temperature": 0.0
+                    }
+                    try:
+                        async with session.post(f"http://localhost:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
+                            if p.status == 200:
+                                engine_vocal = True
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -813,10 +823,11 @@ class LabAttendantV4:
             "attendant_pid": os.getpid(),
             "mode": current_lab_mode,
             "model": current_model,
-            "intercom": "ONLINE" if lab_server_running else "OFFLINE",
-            "brain": "ONLINE" if engine_running else "OFFLINE",
+            "foyer_up": foyer_up,
+            "engine_up": engine_up,
+            "engine_vocal": engine_vocal,
             "vram": vram_pct,
-            "full_lab_ready": lab_server_running and engine_running and not is_hibernating,
+            "operational": foyer_up and engine_vocal and not is_hibernating,
             "reason": self.current_reason,
             "session": self.session_token,
             "style_key": get_style_key(),

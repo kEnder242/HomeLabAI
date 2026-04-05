@@ -199,7 +199,8 @@ class AcmeLab:
         message_dict["brain"] = m_content
         message_dict["brain_source"] = m_source
 
-        logging.info(f"[BROADCAST] [{m_type.upper()}] ({m_source}): {m_content}")
+        # [FEAT-274] Token Traceability: Log the current session generation
+        logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content}")
 
         # [FEAT-227] Session Reset: Wipe history on explicit request
         if message_dict.get("reset_session"):
@@ -413,6 +414,7 @@ class AcmeLab:
         asyncio.create_task(self.check_brain_health(force=True))
 
         async def _run_ignition():
+            await asyncio.sleep(5) # [FIX] Settle window for Attendant watchdog
             try:
                 async with aiohttp.ClientSession() as session:
                     key = get_style_key()
@@ -1286,15 +1288,23 @@ class AcmeLab:
         # Redundant restart logic removed. Authority centralized in Lab Attendant.
         self.shutdown_event.clear()
         self.residents = {}
-        self.status = "BOOTING"
-        # [FEAT-249.6] Engine Awareness: Proactively check if we are in a lobby or ready state
+        self.status = "INIT" # [REFACTOR] Foyer is Up, but logic is pending
+        
+        # [FEAT-249.6] Engine Awareness: Proactively check if we are vocal
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8088/v1/models", timeout=1) as r:
+                # 1. Functional Probe (The Gold Standard)
+                probe_payload = {
+                    "model": "unified-base",
+                    "prompt": "ping",
+                    "max_tokens": 1,
+                    "temperature": 0.0
+                }
+                async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=1) as r:
                     if r.status == 200:
-                        self.status = "READY"
+                        self.status = "INIT" # Port is active, but we stay in INIT until nodes sync
                     else:
-                        self.status = "LOBBY"
+                        self.status = "LOBBY" # Engine exists but not talking
         except Exception:
             self.status = "LOBBY"
             
@@ -1331,28 +1341,36 @@ class AcmeLab:
                 logging.info(f"[BOOT] Server on {PORT}")
                 
                 # [FEAT-233.5] The Larynx Gate: Verify engine readiness before booting residents
-                logging.info("[BOOT] Larynx Gate: Waiting for Engine (vLLM) to come online...")
+                logging.info("[BOOT] Larynx Gate: Waiting for Engine (VOCAL) to come online...")
                 try:
                     async with aiohttp.ClientSession() as session:
-                        engine_ready = False
+                        engine_vocal = False
+                        probe_payload = {
+                            "model": "unified-base",
+                            "prompt": "ping",
+                            "max_tokens": 1,
+                            "temperature": 0.0
+                        }
                         for _ in range(60): # 120s timeout
                             try:
-                                async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
+                                async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=2) as r:
                                     if r.status == 200:
-                                        engine_ready = True
+                                        engine_vocal = True
                                         break
                             except Exception:
                                 pass
                             await asyncio.sleep(2)
                             
-                        if engine_ready:
-                            logging.info("[BOOT] Larynx Gate OPEN: Engine is ready. Initiating residents...")
+                        if engine_vocal:
+                            logging.info("[BOOT] Larynx Gate OPEN: Engine is VOCAL. Initiating residents...")
+                            # [FIX] Only boot if engine is actually talking
+                            await self.boot_residents(stack)
                         else:
-                            logging.warning("[BOOT] Larynx Gate TIMEOUT: Engine not responding. Proceeding with best-effort boot.")
+                            logging.warning("[BOOT] Larynx Gate TIMEOUT: Engine not vocal. Proceeding with best-effort boot.")
+                            await self.boot_residents(stack)
                 except Exception as e:
                     logging.error(f"[BOOT] Larynx Gate FAILURE: {e}")
-
-                await self.boot_residents(stack)
+                    await self.boot_residents(stack)
 
                 # [FEAT-145] Cognitive Delegation: Update hub with live residents
                 self.cognitive.residents = self.residents
