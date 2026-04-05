@@ -274,7 +274,8 @@ class LabAttendantV4:
             for port in [8088, 11434]:
                 try:
                     subprocess.run(["sudo", "fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
-                except Exception: pass
+                except Exception:
+                    pass
             await asyncio.sleep(1.0)
 
         self.refresh_vram_config() # Reload latest model mappings
@@ -319,24 +320,22 @@ class LabAttendantV4:
         
         # [FEAT-259.2] Fast STUB: Skip physical silicon gates for logic testing
         if engine == "STUB":
-            logger.info("[IGNITION] STUB mode active. Bypassing physical gates.")
+            logger.info(f"[{self.session_token}] [IGNITION] STUB mode active. Bypassing physical gates.")
+            current_lab_mode = "STUB" # [FIX] Ensure mode is updated for vitals
             self.ready_event.set() # Instant Ready
-            if not engine_only:
-                # Still spawn Hub foyer if requested
-                pass # Spawning logic below will handle it
-            else:
+            if engine_only:
                 return {"status": "success", "message": "STUB engine sparked."}
 
         # 1. Resolve Required Memory [FEAT-254]
         used_now, total_vram = await self._get_vram_info()
         required_mb = int(total_vram * utilization)
-
-        # [FEAT-250] Surgical Ignition: Spare the Hub if requested
-        # 2. Cleanup: Clear orphans from required ports
-        if engine_only:
-            await self.cleanup_silicon(mode="ORPHANS")
-        else:
-            await self.cleanup_silicon(mode="ORPHANS")
+        
+        # [FIX] VRAM Guard: Skip if in STUB mode
+        if engine != "STUB" and (total_vram - used_now) < required_mb:
+            msg = f"SILICON_CONGESTION: {total_vram - used_now}MB free < {required_mb}MB required."
+            logger.error(f"[{self.session_token}] {msg}")
+            self.log_event(msg, severity="ERROR")
+            return {"status": "error", "message": msg, "metrics": {"free": total_vram - used_now, "required": required_mb}}
 
         # 3. [FEAT-254] The Assassin Audit: Settling Window
         await asyncio.sleep(5.0)
@@ -418,7 +417,8 @@ class LabAttendantV4:
                         logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
                         try:
                             os.killpg(os.getpgid(pid), signal.SIGKILL)
-                        except Exception: pass
+                        except Exception:
+                            pass
                         await asyncio.sleep(1.0)
         except Exception:
             pass
@@ -457,80 +457,47 @@ class LabAttendantV4:
         return {"status": "success", "message": "Lab stopping..."}
 
     async def mcp_hibernate(self):
-        """[FEAT-249] Selective engine unload (Sleep) while keeping Hub alive."""
+        """[FEAT-249] Selective engine unload (Sleep) without process termination."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate")
         
         global is_hibernating, current_lab_mode
-        is_hibernating = True
-        current_lab_mode = "HIBERNATING"
         
-        # [FEAT-262] vLLM Sleep Mode (Fast Path)
+        # [FEAT-262] vLLM Sleep Mode (Graceful Path)
         engine = os.environ.get("LAB_MODE", "OLLAMA")
         if engine == "VLLM":
-            logger.warning("[HUB] Transitioning vLLM to Sleep Mode (Level 2)...")
+            logger.warning(f"[{self.session_token}] [HUB] Requesting Graceful Sleep (Level 2)...")
             
-            async def _tactical_sleep():
+            async def _graceful_sleep():
                 try:
                     async with aiohttp.ClientSession() as session:
-                        # Attempt graceful offload first
-                        async with session.post("http://localhost:8088/sleep?level=2", timeout=5.0) as r:
+                        async with session.post("http://localhost:8088/sleep?level=2", timeout=10.0) as r:
                             if r.status == 200:
-                                # Wait briefly for drop
-                                for _ in range(5):
+                                # Wait for physical drop evidence
+                                for _ in range(15):
                                     used, _ = await self._get_vram_info()
-                                    if used < 3000: return True
-                                    await asyncio.sleep(1)
-                except Exception: pass
-                
-                # [NUCLEAR FALLBACK] Graceful failed or too slow. Kill engine.
-                logger.warning("[SLEEP] Graceful offload failed. Reaping engine process groups.")
-                await self.cleanup_silicon(mode="SESSION") # Uses the hardened signature-aware reaper
-                return True
+                                    if used < 3000:
+                                        logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed. VRAM reclaimed.")
+                                        return True
+                                    await asyncio.sleep(2)
+                                logger.error(f"[{self.session_token}] [SLEEP] Offload TIMEOUT: VRAM still high.")
+                            else:
+                                logger.error(f"[{self.session_token}] [SLEEP] vLLM rejected sleep: {r.status}")
+                except Exception as e:
+                    logger.error(f"[{self.session_token}] [SLEEP] Sleep signal failed: {e}")
+                return False
             
-            await _tactical_sleep()
+            success = await _graceful_sleep()
             is_hibernating = True
             current_lab_mode = "HIBERNATING"
-            await self.update_status_json("HIBERNATING (VRAM Free)")
-            return {"status": "success", "message": "VRAM reclaimed via sleep or reap."}
+            msg = "HIBERNATING (Graceful)" if success else "HIBERNATING (Stalled/Dirty)"
+            await self.update_status_json(msg)
+            return {"status": "success", "message": msg}
 
-        # Fallback: [FEAT-259] The Butler Pattern (Kill-to-Hibernate)
-        logger.warning("[HUB] Hibernation signal received. Unloading local engines via Reap...")
-        self.log_event("Hibernation: Unloading weights via Reap.")
-        
-        async def _run_selective_cleanup():
-            await asyncio.sleep(0.5)
-            # Use the new signature-aware cleanup but spare the Hub
-            await self.cleanup_silicon(mode="SESSION") 
-            # Note: SESSION mode reaps Hub by token, but for Hibernation we usually want Hub to stay.
-            # So I'll manually call a selective version or adjust cleanup_silicon.
-            # Let's just do a manual session reap for engines only.
-            reaped_count = 0
-            for proc in psutil.process_iter(["pid", "name", "environ", "cmdline"]):
-                try:
-                    token = proc.info.get("environ", {}).get("LAB_IMMUNITY_TOKEN")
-                    if token == self.session_token:
-                        cmdline = " ".join(proc.info["cmdline"] or []).lower()
-                        if any(t in cmdline for t in ["vllm", "ollama", "enginecore"]):
-                            os.killpg(os.getpgid(proc.info["pid"]), signal.SIGKILL)
-                            reaped_count += 1
-                except Exception:
-                    continue
-            
-            if reaped_count > 0:
-                logger.info(f"[BUTLER] Successfully reaped {reaped_count} session engine processes.")
-            
-            # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
-            for i in range(10):
-                used, _ = await self._get_vram_info()
-                if used < 2000:
-                    logger.info(f"[HIBERNATE] VRAM reclamation verified at {used}MB.")
-                    break
-                await asyncio.sleep(2)
-            await self.update_status_json("HIBERNATING (VRAM Free)")
-
-        asyncio.create_task(_run_selective_cleanup())
-        return {"status": "success", "message": "Hibernation initiated."}
+        # Fallback for non-vLLM engines (No-op or soft state change)
+        is_hibernating = True
+        current_lab_mode = "HIBERNATING"
+        return {"status": "success", "message": "Soft hibernation active."}
 
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
@@ -717,7 +684,8 @@ class LabAttendantV4:
                         env = proc.info["environ"] or {}
                         if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
                             is_immune = True
-                    except Exception: pass
+                    except Exception:
+                        pass
 
                 if is_immune:
                     immune_pgids.add(pgid)
@@ -751,8 +719,10 @@ class LabAttendantV4:
                                 # [FIX] Add to kill list if it's an engine port OR not immune
                                 if port != 8765 or pgid not in immune_pgids:
                                     target_pgids.add(pgid)
-                            except Exception: pass
-            except Exception: pass
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
         # 4. Final Purge Logic
         # [FEAT-119.3] Restoration Silence: We skip the orphan purge if we are actively WAKING.
@@ -764,23 +734,23 @@ class LabAttendantV4:
 
         final_kill_list = target_pgids - immune_pgids
 
-        # [FIX] Explicitly verify if an immune Hub is currently listening on 8765
-        # This prevents the "Ghost Hub" block while protecting the real foyer.
-        hub_immune = False
         try:
             res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
             if ":" in res:
                 pids = res.split(":")[1].strip().split()
                 if pids and int(pids[0]) in [proc.pid for proc in psutil.process_iter() if os.getpgid(proc.pid) in immune_pgids]:
-                    hub_immune = True
-        except Exception: pass
+                    # Hub foyer is immune and active
+                    pass
+        except Exception:
+            pass
 
         if final_kill_list:
             logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
             for pgid in final_kill_list:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
-                except Exception: pass
+                except Exception:
+                    pass
         
         await asyncio.sleep(1.0)
 
@@ -859,7 +829,7 @@ class LabAttendantV4:
                         "temperature": 0.0
                     }
                     try:
-                        async with session.post(f"http://localhost:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
+                        async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
                             if p.status == 200:
                                 engine_vocal = True
                     except Exception as e:
@@ -873,15 +843,19 @@ class LabAttendantV4:
         # [FEAT-276] Persistent VRAM Telemetry
         logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
 
+        # [FEAT-265.6] Functional Gate: operational requires a VOCAL engine
+        # STUB mode is always operational by definition
+        is_op = (foyer_up and engine_vocal and not is_hibernating) or (current_lab_mode == "STUB" and foyer_up)
+        
         return {
             "attendant_pid": os.getpid(),
             "mode": current_lab_mode,
             "model": current_model,
             "foyer_up": foyer_up,
-            "engine_up": engine_up,
-            "engine_vocal": engine_vocal,
+            "engine_up": engine_up or current_lab_mode == "STUB",
+            "engine_vocal": engine_vocal or current_lab_mode == "STUB",
             "vram": vram_pct,
-            "operational": foyer_up and engine_vocal and not is_hibernating,
+            "operational": is_op,
             "reason": self.current_reason,
             "session": self.session_token,
             "style_key": get_style_key(),
@@ -900,8 +874,10 @@ class LabAttendantV4:
             pynvml.nvmlShutdown()
             return used, total
         except Exception:
-            try: pynvml.nvmlShutdown()
-            except Exception: pass
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
 
         # 2. Fallback Path: nvidia-smi
         try:

@@ -82,7 +82,8 @@ async def verify_engine_liveness():
         async with aiohttp.ClientSession() as session:
             # 1. Port Check
             async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
-                if r.status != 200: return False
+                if r.status != 200:
+                    return False
                 data = await r.json()
                 # vLLM /v1/models returns data: [{id: ...}]
                 models = [m.get("id") for m in data.get("data", [])]
@@ -223,8 +224,10 @@ class AcmeLab:
             # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
             if message_dict.get("final", True):
                 # [FIX] Schema Enforcement for history
-                if "type" not in message_dict: message_dict["type"] = "chat"
-                if "brain_source" not in message_dict: message_dict["brain_source"] = "System"
+                if "type" not in message_dict:
+                    message_dict["type"] = "chat"
+                if "brain_source" not in message_dict:
+                    message_dict["brain_source"] = "System"
                 
                 self.message_history.append(message_dict)
                 self.message_history = self.message_history[-20:] # Keep last 20
@@ -330,8 +333,10 @@ class AcmeLab:
         now = time.time()
         
         # Initialize sticky tracking if missing
-        if not hasattr(self, "_last_brain_fail"): self._last_brain_fail = 0
-        if not hasattr(self, "_last_brain_ping"): self._last_brain_ping = 0
+        if not hasattr(self, "_last_brain_fail"):
+            self._last_brain_fail = 0
+        if not hasattr(self, "_last_brain_ping"):
+            self._last_brain_ping = 0
 
         # [BKM-026] 60s Failure Penalty Box
         if not force and not self.brain_online and (now - self._last_brain_fail < 60):
@@ -640,8 +645,10 @@ class AcmeLab:
                     await self.engine_ready.wait()
 
                 logging.warning(f"[ALARM] Manual trigger detected ({trigger_file}). Initiating cycle...")
-                try: os.remove(trigger_file)
-                except Exception: pass
+                try:
+                    os.remove(trigger_file)
+                except Exception:
+                    pass
                 await self.run_full_induction_cycle()
                 self.last_induction_date = today
             elif is_window:
@@ -1219,23 +1226,25 @@ class AcmeLab:
                     node_pgid = os.getpgid(cl_stack[0].pid)
                     # We can't easily push this to the Attendant, but we can log it
                     logging.debug(f"[BOOT] Node {name.upper()} immunity PGID: {node_pgid}")
-                except Exception: pass
+                except Exception:
+                    pass
 
             except Exception as e:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
 
-        self.status = "READY"
+        self.status = "OPERATIONAL"
         self.engine_ready.set() # [FIX] Allow waiters to proceed
-        logging.info("[READY] Lab is Open.")
+        logging.info("[OPERATIONAL] Lab is Open.")
         # [FEAT-259.1] Global Sentinel Ignition: Single ear poller for all clients
         asyncio.create_task(self.ear_poller_loop())
         sys.stderr.flush()  # Ensure signal is written to the log file
         await self.broadcast(
             {
                 "type": "status",
-                "message": "Mind is ONLINE. Lab is Open.",
-                "state": "ready",
-                "full_lab_ready": True
+                "message": "Mind is OPERATIONAL. Lab is Open.",
+                "state": "operational",
+                "full_lab_ready": True,
+                "operational": True
             }
         )
         if self.mode == "DEBUG_SMOKE":
