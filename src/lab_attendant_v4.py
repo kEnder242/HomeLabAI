@@ -95,6 +95,15 @@ def check_singleton():
     except Exception as e:
         print(f"[ERROR] Failed to establish singleton lock: {e}")
 
+# --- Silicon Telemetry (NVML) ---
+try:
+    import pynvml
+    pynvml.nvmlInit()
+    _NVML_ACTIVE = True
+except Exception as e:
+    _NVML_ACTIVE = False
+    print(f"[BOOT] NVML Initialization failed (Hardware/Driver missing): {e}")
+
 # --- FastMCP Server ---
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
 
@@ -816,23 +825,21 @@ class LabAttendantV4:
 
     async def _get_vram_info(self):
         """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
-        # 1. Primary Path: pynvml
-        try:
-            import pynvml
-            pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            pynvml.nvmlShutdown()
-            used, total = int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
-            if used > 0: return used, total
-        except Exception:
-            pass
+        # 1. Primary Path: pynvml (Persistent)
+        if _NVML_ACTIVE:
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                return int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+            except Exception:
+                pass
 
-        # 2. Fallback Path: nvidia-smi (More reliable during CUDA driver churn)
+        # 2. Fallback Path: nvidia-smi (More reliable during driver churn)
         try:
             res = subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"],
-                text=True
+                text=True,
+                stderr=subprocess.DEVNULL
             )
             used, total = map(int, res.strip().split(","))
             return used, total
