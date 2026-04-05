@@ -7,6 +7,7 @@ import random
 import socket
 import sys
 import time
+import uuid
 from typing import Dict, Set
 
 from infra.montana import reclaim_logger
@@ -107,6 +108,16 @@ async def verify_engine_liveness():
 
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=600, role="HUB"):
+        # [FEAT-220] Silicon Handshake: Tag process title IMMEDIATELY
+        self.role = role
+        self.session_token = uuid.uuid4().hex[:8]
+        title = f"[{self.role}:{self.session_token}]"
+        try:
+            import setproctitle
+            setproctitle.setproctitle(title)
+        except ImportError:
+            sys.argv[0] = title
+
         # [SINGLETON] Ensure only one instance of AcmeLab runs
         self._lock_file = "/tmp/acme_lab.lock"
         try:
@@ -129,18 +140,7 @@ class AcmeLab:
 
         self.mode = mode
         self.idle_gate = afk_timeout or 600 # [FEAT-249] Increased to 10m for stability
-        self.role = role
         self.status = "INIT"
-        
-        # [FEAT-220] Silicon Handshake: Tag process title for immunity discovery
-        self.session_token = uuid.uuid4().hex[:8]
-        title = f"[{self.role}:{self.session_token}]"
-        try:
-            import setproctitle
-            setproctitle.setproctitle(title)
-        except ImportError:
-            sys.argv[0] = title
-
         self._spark_active = False # [FIX] Ensure flag is initialized early
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
@@ -1135,7 +1135,12 @@ class AcmeLab:
             raise
 
     async def boot_residents(self, stack: AsyncExitStack):
-        """Internal boot sequence: Must remain in unitary task."""
+        """Internal boot sequence: Must remain in unitary task and be idempotent."""
+        if getattr(self, "_residents_booted", False) and self.residents:
+            logging.info("[BOOT] Residents already active. Skipping redundant boot.")
+            return
+            
+        self._residents_booted = True
         await self.broadcast(
             {
                 "type": "status",
@@ -1164,8 +1169,10 @@ class AcmeLab:
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
                 
-                # [FEAT-220] Silicon Handshake: Resident nodes inherit session tag in their title
-                # We pass the token via a specialized arg that the node will consume to set its title
+                # [FEAT-220] Silicon Handshake: Multi-layered immunity
+                # 1. Environment Variable (Fast Discovery)
+                env["LAB_IMMUNITY_TOKEN"] = self.session_token
+                # 2. Process Title (Persistent Marker via --session arg)
                 node_args = [path, "--role", name.upper(), "--session", self.session_token]
 
                 # [FIX] vLLM legacy removed to allow clean Ollama/Generic fallback
@@ -1309,6 +1316,7 @@ class AcmeLab:
         # Redundant restart logic removed. Authority centralized in Lab Attendant.
         self.shutdown_event.clear()
         self.residents = {}
+        self._residents_booted = False # [FIX] Reset for new run
         self.status = "INIT" # [REFACTOR] Foyer is Up, but logic is pending
         
         # [FEAT-249.6] Engine Awareness: Proactively check if we are vocal

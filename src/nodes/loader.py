@@ -33,6 +33,9 @@ class BicameralNode:
                 idx = sys.argv.index("--role")
                 if idx + 1 < len(sys.argv):
                     name = sys.argv[idx + 1]
+                    # [FIX] Pop consumed args to prevent MCP crash
+                    sys.argv.pop(idx + 1)
+                    sys.argv.pop(idx)
             except ValueError:
                 pass
 
@@ -43,6 +46,9 @@ class BicameralNode:
                 idx = sys.argv.index("--session")
                 if idx + 1 < len(sys.argv):
                     self.session_token = sys.argv[idx + 1]
+                    # [FIX] Pop consumed args to prevent MCP crash
+                    sys.argv.pop(idx + 1)
+                    sys.argv.pop(idx)
             except ValueError: pass
             
         title = f"[{name.upper()}:{self.session_token}]"
