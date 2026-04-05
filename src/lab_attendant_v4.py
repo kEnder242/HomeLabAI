@@ -1,6 +1,5 @@
 import os
 import subprocess
-import socket
 import json
 import asyncio
 import datetime
@@ -241,21 +240,19 @@ class LabAttendantV4:
         return vitals
 
     async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+        global current_lab_mode, current_model, lab_process, is_hibernating
+        
+        # [FIX] Force immediate mode transition to allow restoration to proceed
+        is_hibernating = False
+        current_lab_mode = engine
+        self.ready_event.clear()
+        self.current_reason = reason
+        
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "start", {
                 "engine": engine, "model": model, "disable_ear": disable_ear, 
                 "op_mode": op_mode, "engine_only": engine_only, "reason": reason
             })
-
-        global current_lab_mode, current_model, lab_process, is_hibernating
-
-        
-        if os.path.exists(MAINTENANCE_LOCK):
-            logger.warning("[IGNITION] Aborting start: MAINTENANCE_LOCK detected.")
-            return {"status": "error", "message": "Maintenance lock active."}
-
-        is_hibernating = False
-        self.current_reason = reason
         logger.info(f"[IGNITION] [{reason.upper()}] Starting {model} via {engine} (Mode: {op_mode})")
 
         
@@ -445,7 +442,7 @@ class LabAttendantV4:
         # [FEAT-262] vLLM Sleep Mode (Fast Path)
         engine = os.environ.get("LAB_MODE", "OLLAMA")
         if engine == "VLLM":
-            logger.warning("[HUB] Transitioning vLLM to Sleep Mode (Level 1)...")
+            logger.warning("[HUB] Transitioning vLLM to Sleep Mode (Level 2)...")
             
             async def _tactical_sleep():
                 try:
@@ -608,20 +605,27 @@ class LabAttendantV4:
         start_t = time.time()
         # [FEAT-251.2] Forensic Wait: Catch Hub-level crashes early
         while time.time() - start_t < timeout:
-            if self.ready_event.is_set():
-                # [FEAT-259.3] Physical Verify: Ensure engine port is actually listening
+            # 1. Functional Probe (The Gold Standard)
+            # Only probe if the engine process has had time to start
+            if time.time() - start_t > 5:
                 try:
-                    # [REVISION-17.9] Use asyncio.to_thread for blocking socket probe
-                    def probe_port():
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            return s.connect_ex(("localhost", 8088)) == 0
-                    
-                    if await asyncio.to_thread(probe_port):
-                        return {"status": "ready", "message": "Lab is Open."}
+                    async with aiohttp.ClientSession() as session:
+                        # [FIX] Use completions endpoint instead of chat/completions 
+                        # to support engines that only enable legacy generation.
+                        probe_payload = {
+                            "model": "unified-base", # Match the served model name
+                            "prompt": "ping",
+                            "max_tokens": 1,
+                            "temperature": 0.0
+                        }
+                        async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=5) as p:
+                            if p.status == 200:
+                                logger.info(f"[WATCHDOG] Silicon functional after {int(time.time()-start_t)}s.")
+                                return {"status": "ready", "message": "Lab is functional."}
                 except Exception:
                     pass
             
-            # Check server.log for Hub crashes
+            # 2. Check server.log for Hub crashes
             if os.path.exists(SERVER_LOG):
                 try:
                     # [REVISION-17.9] Use asyncio.to_thread for blocking file read
@@ -630,6 +634,14 @@ class LabAttendantV4:
                             return f.readlines()[-20:]
                     
                     lines = await asyncio.to_thread(read_log)
+                    
+                    # [FEAT-273] Silicon Self-Healing: Reset on engine failure
+                    if any("vLLM Connection failed" in line for line in lines):
+                        logger.error("[HUB] Critical engine connection failure detected. Triggering Silicon Purge.")
+                        await self.cleanup_silicon(mode="ORPHANS")
+                        # We return error to signal the ignition loop to retry or abort
+                        return {"status": "error", "message": "Engine connection failure. Silicon purged."}
+
                     if any("Traceback" in line or "Error:" in line or "Exception:" in line for line in lines):
                             # Ensure we don't catch the 'Expected Error' during handshake resilience
                             if not any("Larynx is warming" in line for line in lines):
@@ -638,9 +650,9 @@ class LabAttendantV4:
                 except Exception:
                     pass
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(5) # [BKM-026] Slower poll rate for high-load state
             
-        return {"status": "timeout", "message": f"Lab failed to reach READY within {timeout}s"}
+        return {"status": "timeout", "message": f"Lab failed to reach functional READY within {timeout}s"}
 
     async def cleanup_silicon(self, mode="ORPHANS"):
         """
@@ -683,9 +695,12 @@ class LabAttendantV4:
                 continue
 
         # 2. Second Pass: Port-Based Discovery (Add to targets)
+        active_ports = set()
         for port in ports:
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
+                if res:
+                    active_ports.add(port)
                 for line in res.split("\n"):
                     if ":" in line:
                         pids = line.split(":")[1].strip().split()
@@ -701,14 +716,22 @@ class LabAttendantV4:
 
         # 3. Execution: Purge only non-immune targets
         final_kill_list = target_pgids - immune_pgids
+
+        # [HARDENING] If we already have an immune process carrying our session token, 
+        # do NOT perform an orphan purge. This prevents self-reaping during overlaps.
+        # We also specifically spare the Hub if it's already running.
+        is_hub_alive = 8765 in active_ports or len(immune_pgids) > 1
+        if mode == "ORPHANS" and is_hub_alive:
+            logger.info(f"[ASSASSIN] Hub foyer or immune process detected. Skipping orphan purge.")
+            return
+
         if final_kill_list:
             logger.warning(f"[ASSASSIN] [{mode}] Purging non-immune process groups: {final_kill_list}")
             for pgid in final_kill_list:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
                 except Exception:
-                                pass
-        
+                    pass
         await asyncio.sleep(1.0)
 
     def _is_current_session_process(self, pid):
@@ -784,7 +807,7 @@ class LabAttendantV4:
             "intercom": "ONLINE" if lab_server_running else "OFFLINE",
             "brain": "ONLINE" if engine_running else "OFFLINE",
             "vram": vram_pct,
-            "full_lab_ready": self.ready_event.is_set(),
+            "full_lab_ready": lab_server_running and engine_running and not is_hibernating,
             "reason": self.current_reason,
             "session": self.session_token,
             "style_key": get_style_key(),

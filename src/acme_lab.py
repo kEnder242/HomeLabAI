@@ -94,12 +94,12 @@ async def verify_engine_liveness():
             # This prevents the "Nominal but garbage" failure state
             # Note: We use a very low temperature and 1 token to keep it fast.
             probe_payload = {
-                "model": "llama-3.2-3b-awq", 
-                "messages": [{"role": "user", "content": "ping"}],
+                "model": "unified-base", 
+                "prompt": "ping",
                 "max_tokens": 1,
                 "temperature": 0.0
             }
-            async with session.post("http://localhost:8088/v1/chat/completions", json=probe_payload, timeout=5) as p:
+            async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=5) as p:
                 return p.status == 200
     except Exception:
         return False
@@ -128,7 +128,7 @@ class AcmeLab:
             f.write(str(os.getpid()))
 
         self.mode = mode
-        self.idle_gate = afk_timeout or 300 # [FEAT-249] Mandatory 5m idle gate for live system
+        self.idle_gate = afk_timeout or 600 # [FEAT-249] Increased to 10m for stability
         self.role = role
         self.status = "INIT"
         self._spark_active = False # [FIX] Ensure flag is initialized early
@@ -178,14 +178,27 @@ class AcmeLab:
             sys.argv[0] = title
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
     async def broadcast(self, message_dict):
-        """[FEAT-221] Safe broadcast with dead-socket pruning and server-side logging."""
+        """[FEAT-221] Safe broadcast with dead-socket pruning, schema enforcement, and server-side logging."""
         if self.shutdown_event.is_set() or not self.connected_clients:
             return
 
-        # [FIX] Server-side traceability for all broadcasts (including quips)
+        # [FIX] Schema Enforcement: Ensure type, brain, and brain_source exist
         m_type = message_dict.get("type", "chat")
-        m_content = message_dict.get("brain") or message_dict.get("message") or "EMPTY_CONTENT"
+        m_content = message_dict.get("brain") or message_dict.get("message")
+        
+        if not m_content:
+            if m_type == "status":
+                m_content = f"Lab state changed to {self.status}"
+            else:
+                m_content = "EMPTY_CONTENT"
+                
         m_source = message_dict.get("brain_source", "System")
+        
+        # Back-fill dictionary for clients
+        message_dict["type"] = m_type
+        message_dict["brain"] = m_content
+        message_dict["brain_source"] = m_source
+
         logging.info(f"[BROADCAST] [{m_type.upper()}] ({m_source}): {m_content}")
 
         # [FEAT-227] Session Reset: Wipe history on explicit request
@@ -198,6 +211,10 @@ class AcmeLab:
         else:
             # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
             if message_dict.get("final", True):
+                # [FIX] Schema Enforcement for history
+                if "type" not in message_dict: message_dict["type"] = "chat"
+                if "brain_source" not in message_dict: message_dict["brain_source"] = "System"
+                
                 self.message_history.append(message_dict)
                 self.message_history = self.message_history[-20:] # Keep last 20
 
@@ -382,66 +399,60 @@ class AcmeLab:
 
     async def spark_restoration(self, client_id="system"):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
+        # [GATE] Only block if another spark is ACTIVELY running
         if getattr(self, "_spark_active", False) or self.status == "BOOTING":
             return
             
         self._spark_active = True
         self.status = "WAKING"
-        self.engine_ready.clear()
+        self.engine_ready.clear() # [FIX] Reset state machine early
         self.last_activity = time.time()
         logging.warning(f"[HUB] Sparking restoration (Trigger: {client_id})...")
         
-        # [FEAT-265.8] Parallel Priming: Fire Brain probe immediately while engine loads
+        # [FEAT-265.8] Parallel Priming: Fire Brain probe immediately
         asyncio.create_task(self.check_brain_health(force=True))
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                key = get_style_key()
-                headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
-                target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
-                async with session.post("http://localhost:9999/start", 
-                                 headers=headers, 
-                                 json={
-                                     "engine": target_engine, 
-                                     "model": "MEDIUM", 
-                                     "engine_only": True,
-                                     "op_mode": "SERVICE_UNATTENDED",
-                                     "reason": f"RESTORE_{client_id.upper()}"
-                                 }) as r:
-                    if r.status == 200:
-                        logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
+        async def _run_ignition():
+            try:
+                async with aiohttp.ClientSession() as session:
+                    key = get_style_key()
+                    headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
+                    target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
+                    
+                    async with session.post("http://localhost:9999/start", 
+                                     headers=headers, 
+                                     json={
+                                         "engine": target_engine, 
+                                         "model": "MEDIUM", 
+                                         "engine_only": True,
+                                         "op_mode": "SERVICE_UNATTENDED",
+                                         "reason": f"RESTORE_{client_id.upper()}"
+                                     }) as r:
+                        if r.status == 200:
+                            logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
 
-                        # Yield to Authority: Wait for Attendant to confirm silicon is READY
-                        try:
-                            async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
-                                if ready_req.status == 200:
-                                    logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
-                                    for name, client in self.residents.items():
-                                        if hasattr(client, "ping_engine"):
-                                            await client.ping_engine(force=True)
+                            # Yield to Authority: Wait for Attendant to confirm silicon is READY
+                            try:
+                                async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
+                                    if ready_req.status == 200:
+                                        logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
+                                        # [FEAT-265.8] High-Fidelity Restoration: Re-boot residents
+                                        await self.boot_residents(self.exit_stack)
+                                    else:
+                                        res = await ready_req.json()
+                                        logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
+                                        self.status = "ERROR"
+                            except Exception as e:
+                                logging.error(f"[HUB] Wait-Ready request failed: {e}")
+                                self.status = "ERROR"
+            except Exception as e:
+                logging.error(f"[HUB] Spark reload failed: {e}")
+                self.status = "ERROR"
+            finally:
+                await asyncio.sleep(10)
+                self._spark_active = False
 
-                                    self.brain_online = True
-                                    self.status = "READY"
-                                    self.engine_ready.set()
-                                    await self.broadcast({
-                                        "brain": "Strategic Sovereignty: ONLINE",
-                                        "brain_source": "System",
-                                        "channel": "insight"
-                                    })
-                                else:
-                                    res = await ready_req.json()
-                                    logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
-                                    self.status = "ERROR"
-                                    # We don't set engine_ready event, letting handshakes timeout or fail
-                        except Exception as e:
-                            logging.error(f"[HUB] Wait-Ready request failed: {e}")
-                            self.status = "ERROR"
-        except Exception as e:
-            logging.error(f"[HUB] Spark reload failed: {e}")
-            self.status = "ERROR"
-        finally:
-            await asyncio.sleep(10)
-            self._spark_active = False
+        asyncio.create_task(_run_ignition())
 
     async def reflex_loop(self):
         """Background maintenance and status updates."""
@@ -813,6 +824,9 @@ class AcmeLab:
         # [FEAT-225] Persistence Replay: Send history before current status
         for old_msg in self.message_history:
             try:
+                # [FIX] Ensure historical messages have a source for the test suite
+                if "brain_source" not in old_msg:
+                    old_msg["brain_source"] = "System"
                 await ws.send_str(json.dumps(old_msg))
             except Exception:
                 pass
@@ -821,7 +835,6 @@ class AcmeLab:
 
         # [FEAT-085] Snap-to-Life: Prime the Sovereign Brain on connect
         asyncio.create_task(self.check_brain_health(force=True))
-
         try:
             await ws.send_str(
                 json.dumps(
@@ -833,6 +846,7 @@ class AcmeLab:
                         "disk_commit": get_git_commit(),
                         "state": "ready" if self.status == "READY" else "lobby",
                         "message": "Lab foyer is open.",
+                        "brain_source": "System"
                     }
                 )
             )
@@ -841,6 +855,7 @@ class AcmeLab:
             await ws.send_str(
                 json.dumps(
                     {
+                        "type": "crosstalk",
                         "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'INITIATING...'}",
                         "brain_source": "System",
                         "channel": "insight",
@@ -900,6 +915,7 @@ class AcmeLab:
                             "type": "status",
                             "state": self.status.lower(),
                             "message": state_msg,
+                            "brain_source": "System",
                             "full_lab_ready": self.brain_online and self.status == "READY"
                         }))
                         if "archive" in self.residents:
@@ -910,7 +926,7 @@ class AcmeLab:
                                 if res.content and hasattr(res.content[0], "text"):
                                     files = json.loads(res.content[0].text)
                                     await ws.send_str(
-                                        json.dumps({"type": "cabinet", "files": files})
+                                        json.dumps({"type": "cabinet", "files": files, "brain_source": "System"})
                                     )
                             except Exception as e:
                                 logging.error(f"[HANDSHAKE] Failed: {e}")
@@ -959,6 +975,7 @@ class AcmeLab:
                                         "type": "file_content",
                                         "filename": fn,
                                         "content": res.content[0].text,
+                                        "brain_source": "System"
                                     }
                                 )
                             )
@@ -1178,6 +1195,7 @@ class AcmeLab:
                 logging.error(f"[BOOT] Failed to load {name}: {e}")
 
         self.status = "READY"
+        self.engine_ready.set() # [FIX] Allow waiters to proceed
         logging.info("[READY] Lab is Open.")
         # [FEAT-259.1] Global Sentinel Ignition: Single ear poller for all clients
         asyncio.create_task(self.ear_poller_loop())
@@ -1187,6 +1205,7 @@ class AcmeLab:
                 "type": "status",
                 "message": "Mind is ONLINE. Lab is Open.",
                 "state": "ready",
+                "full_lab_ready": True
             }
         )
         if self.mode == "DEBUG_SMOKE":
