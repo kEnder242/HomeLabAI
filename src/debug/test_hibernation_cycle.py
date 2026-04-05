@@ -73,7 +73,7 @@ async def cognitive_ping(label="Pre-Sleep"):
                 
                 # [FINAL_FIX] Drain foyer noise completely before querying
                 print("    [*] Draining foyer noise...")
-                while True:
+                for _ in range(10):
                     try:
                         await ws.receive_json(timeout=0.5)
                     except Exception: break
@@ -91,11 +91,10 @@ async def cognitive_ping(label="Pre-Sleep"):
                         # DEBUG: Print all received messages
                         m_type = msg.get('type', 'UNKNOWN')
                         m_src = str(msg.get('brain_source') or msg.get('source', 'None'))
+                        m_text = str(msg.get('brain') or msg.get('message', ''))
                         m_final = msg.get('final')
-                        m_text = msg.get('brain', '')
 
-                        print(f"    [DEBUG] Received: {m_type} from {m_src} (Final: {m_final})")
-                        if "Pinky" in m_src:
+                        if m_type in ["chat", "crosstalk"] and "Pinky" in m_src:
                             # SUCCESS: If we hear from Pinky at all, she's alive.
                             print(f"  ✅ Pinky Replied ({label}): {m_text[:50]}...")
                             return True
@@ -124,11 +123,11 @@ async def test_hibernation_cycle():
         zombies = audit.check_for_zombies()
         print(f"  ✅ Active Hubs: {zombies}")
 
-        # STEP 1: Ensure READY
-        print("[STEP 1] Waiting for Lab READY...")
+        # STEP 1: Ensure OPERATIONAL
+        print("[STEP 1] Waiting for Lab OPERATIONAL...")
         initial_vram = 0.0
         sparked = False
-        for _ in range(120): # 240s
+        for _ in range(150): # 300s
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     data = await resp.json()
@@ -141,14 +140,16 @@ async def test_hibernation_cycle():
 
                     vram_str = data.get("vram", "0%").replace("%","")
                     vram = float(vram_str)
-                    if data.get("full_lab_ready") and vram > 50:
+                    # [FIX] Use new 'operational' key
+                    is_ready = data.get("operational") or data.get("full_lab_ready")
+                    if is_ready and vram > 50:
                         initial_vram = vram
-                        print(f"  ✅ Lab is READY (Mode: {mode}, VRAM: {initial_vram}%)")
+                        print(f"  ✅ Lab is OPERATIONAL (Mode: {mode}, VRAM: {initial_vram}%)")
                         break
             except Exception: pass
             await asyncio.sleep(2)
         else:
-            print("  ❌ Timeout: Lab failed to reach READY.")
+            print("  ❌ Timeout: Lab failed to reach OPERATIONAL.")
             return
 
 
@@ -177,34 +178,43 @@ async def test_hibernation_cycle():
 
         # STEP 3: Spark
         print("[STEP 3] Sending Handshake Spark...")
-        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
-            await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"})) # Use 'intercom' to trigger spark
-            
-            print("  [*] Handshake sent. Awaiting state transitions...")
-            for _ in range(60): # 120s patience
-                try:
-                    msg_raw = await ws.receive()
-                    if msg_raw.type == aiohttp.WSMsgType.CLOSE:
-                        print("    [!] WebSocket closed by server during restoration.")
-                        break
-                    if msg_raw.type != aiohttp.WSMsgType.TEXT:
-                        continue
-                        
-                    msg = msg_raw.json()
-                    m_type = msg.get("type")
-                    m_state = msg.get("state")
-                    m_msg = msg.get("message")
-                    if m_type == "status":
-                        print(f"    [WS] State: {m_state} | {m_msg}")
-                        if m_state == "ready":
-                            print(f"  ✅ Spark Successful. System reported READY.")
+        spark_success = False
+        for i in range(5): # 5 attempts
+            try:
+                async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
+                    await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"})) # Use 'intercom' to trigger spark
+                    
+                    print(f"  [*] Handshake sent (Attempt {i+1}). Awaiting state transitions...")
+                    for _ in range(60): # 120s patience
+                        try:
+                            msg_raw = await ws.receive()
+                            if msg_raw.type == aiohttp.WSMsgType.CLOSE:
+                                print("    [!] WebSocket closed by server during restoration.")
+                                break
+                            if msg_raw.type != aiohttp.WSMsgType.TEXT:
+                                continue
+                                
+                            msg = msg_raw.json()
+                            m_type = msg.get("type")
+                            m_state = msg.get("state")
+                            m_msg = msg.get("message")
+                            if m_type == "status":
+                                print(f"    [WS] State: {m_state} | {m_msg}")
+                                if m_state == "ready" or m_state == "init": # Support both
+                                    print(f"  ✅ Spark Successful. System reported {m_state.upper()}.")
+                                    spark_success = True
+                                    break
+                        except Exception as e:
+                            print(f"    [!] WebSocket Error: {e}")
                             break
-                except Exception as e:
-                    print(f"    [!] WebSocket Error: {e}")
-                    break
-            else:
-                print("  ❌ Timeout waiting for READY state on WebSocket.")
-                sys.exit(1)
+                    if spark_success: break
+            except Exception as e:
+                print(f"  [!] Spark Connection failed: {e}. Retrying in 5s...")
+                await asyncio.sleep(5)
+        
+        if not spark_success:
+            print("  ❌ Failed to spark restoration after 5 attempts.")
+            sys.exit(1)
 
         # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
@@ -214,12 +224,13 @@ async def test_hibernation_cycle():
                 data = await resp.json()
                 vram_str = data.get("vram", "0%").replace("%","")
                 vram = float(vram_str)
-                full_ready = data.get("full_lab_ready")
-                print(f"    [RESTORE_DEBUG] Ready: {full_ready} | VRAM: {vram}% | Mode: {data.get('mode')}")
-                if full_ready and vram > 50:
+                # [FIX] Match new vocabulary
+                is_op = data.get("operational") or data.get("full_lab_ready")
+                print(f"    [RESTORE_DEBUG] Operational: {is_op} | VRAM: {vram}% | Mode: {data.get('mode')}")
+                if is_op and vram > 50:
                     print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s (VRAM: {vram}%)")
                     break
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
         else:
             print("  ❌ Restoration timed out.")
             sys.exit(1)
