@@ -816,15 +816,28 @@ class LabAttendantV4:
 
     async def _get_vram_info(self):
         """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
+        # 1. Primary Path: pynvml
         try:
             import pynvml
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             pynvml.nvmlShutdown()
-            return int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+            used, total = int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+            if used > 0: return used, total
+        except Exception:
+            pass
+
+        # 2. Fallback Path: nvidia-smi (More reliable during CUDA driver churn)
+        try:
+            res = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"],
+                text=True
+            )
+            used, total = map(int, res.strip().split(","))
+            return used, total
         except Exception as e:
-            logger.error(f"[VRAM] Failed to probe silicon: {e}")
+            logger.error(f"[VRAM] Total probe failure (NVML & SMI): {e}")
             return 0, 0
 
     async def update_status_json(self, msg=None):
