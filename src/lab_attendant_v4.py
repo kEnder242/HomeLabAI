@@ -268,15 +268,15 @@ class LabAttendantV4:
         logger.info(f"[{self.session_token}] [IGNITION] [{reason.upper()}] Starting {model} via {engine} (EngineOnly: {engine_only})")
         
         if not engine_only:
-            await self.cleanup_silicon(mode="ORPHANS")
+            await self.cleanup_silicon(mode="ORPHANS", engine_only=engine_only)
         else:
             # Selective Cleanup: Only purge engine ports to avoid self-reaping
             for port in [8088, 11434]:
                 try:
                     subprocess.run(["sudo", "fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
+                except Exception: pass
             await asyncio.sleep(1.0)
+
 
         self.refresh_vram_config() # Reload latest model mappings
         
@@ -322,6 +322,7 @@ class LabAttendantV4:
         if engine == "STUB":
             logger.info(f"[{self.session_token}] [IGNITION] STUB mode active. Bypassing physical gates.")
             current_lab_mode = "STUB" # [FIX] Ensure mode is updated for vitals
+            is_hibernating = False
             self.ready_event.set() # Instant Ready
             if engine_only:
                 return {"status": "success", "message": "STUB engine sparked."}
@@ -443,21 +444,28 @@ class LabAttendantV4:
         logger.info(f"[IGNITION] Hub process spawned with PID: {lab_process.pid} (Immunity: {_BOOT_HASH})")
         return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode}"}
 
-    async def _deferred_cleanup(self, status_message):
-        """[FEAT-248] Helper to run cleanup in background so REST response can complete."""
-        await asyncio.sleep(0.5) # allow HTTP response to flush to client
-        await self.cleanup_silicon()
-        await self.update_status_json(status_message)
-
-    async def mcp_stop(self):
+    async def mcp_stop(self, reason="MANUAL"):
+        """[FEAT-119] Atomic Stop: Maintenance Lock -> Silicon Purge."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "stop")
-        self.log_event("Shutdown: Manual signal received.")
-        asyncio.create_task(self._deferred_cleanup("OFFLINE (Manual Stop)"))
-        return {"status": "success", "message": "Lab stopping..."}
+            return await self._proxy_request("POST", "stop", {"reason": reason})
+
+        self.current_reason = reason
+        logger.warning(f"[{self.session_token}] [STOP] Manual stop initiated (Reason: {reason}).")
+
+        # [NUCLEAR RESET] Force immediate and recursive cleanup
+        await self.cleanup_silicon(mode="SESSION")
+
+        global current_lab_mode, is_hibernating
+        current_lab_mode = "OFFLINE"
+        is_hibernating = False
+        self.ready_event.clear()
+
+        await self.update_status_json(f"OFFLINE ({reason})")
+        return {"status": "success", "message": "Lab stopped and silicon scrubbed."}
+
 
     async def mcp_hibernate(self):
-        """[FEAT-249] Selective engine unload (Sleep) without process termination."""
+        """[FEAT-249] Selective engine unload (Sleep) with aggressive fallback."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate")
         
@@ -466,35 +474,42 @@ class LabAttendantV4:
         # [FEAT-262] vLLM Sleep Mode (Graceful Path)
         engine = os.environ.get("LAB_MODE", "OLLAMA")
         if engine == "VLLM":
-            logger.warning(f"[{self.session_token}] [HUB] Requesting Graceful Sleep (Level 2)...")
+            logger.warning(f"[{self.session_token}] [HUB] Requesting Hibernation (vLLM)...")
             
-            async def _graceful_sleep():
+            async def _tactical_sleep():
+                # 1. Attempt graceful offload if engine is alive
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.post("http://localhost:8088/sleep?level=2", timeout=10.0) as r:
-                            if r.status == 200:
-                                # Wait for physical drop evidence
-                                for _ in range(15):
-                                    used, _ = await self._get_vram_info()
-                                    if used < 3000:
-                                        logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed. VRAM reclaimed.")
-                                        return True
-                                    await asyncio.sleep(2)
-                                logger.error(f"[{self.session_token}] [SLEEP] Offload TIMEOUT: VRAM still high.")
-                            else:
-                                logger.error(f"[{self.session_token}] [SLEEP] vLLM rejected sleep: {r.status}")
-                except Exception as e:
-                    logger.error(f"[{self.session_token}] [SLEEP] Sleep signal failed: {e}")
-                return False
+                        async with session.get("http://localhost:8088/v1/models", timeout=2.0) as check:
+                            if check.status == 200:
+                                async with session.post("http://localhost:8088/sleep?level=2", timeout=5.0) as r:
+                                    if r.status == 200:
+                                        # Wait briefly for drop evidence
+                                        for _ in range(10):
+                                            used, _ = await self._get_vram_info()
+                                            if used < 3000:
+                                                logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed.")
+                                                return True
+                                            await asyncio.sleep(2)
+                except Exception: pass
+                
+                # 2. [NUCLEAR FALLBACK] Graceful failed or engine dead. 
+                # Reap engine ports aggressively to force VRAM release.
+                logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload unavailable. Reaping engine ports.")
+                for port in [8088, 11434]:
+                    try:
+                        subprocess.run(["sudo", "/usr/bin/fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
+                    except Exception: pass
+                return True
             
-            success = await _graceful_sleep()
+            success = await _tactical_sleep()
             is_hibernating = True
             current_lab_mode = "HIBERNATING"
-            msg = "HIBERNATING (Graceful)" if success else "HIBERNATING (Stalled/Dirty)"
+            msg = "HIBERNATING (Graceful)" if success else "HIBERNATING (Reaped)"
             await self.update_status_json(msg)
             return {"status": "success", "message": msg}
 
-        # Fallback for non-vLLM engines (No-op or soft state change)
+        # Fallback for non-vLLM engines
         is_hibernating = True
         current_lab_mode = "HIBERNATING"
         return {"status": "success", "message": "Soft hibernation active."}
@@ -594,7 +609,7 @@ class LabAttendantV4:
         self.log_event("Forge: Batch complete. Hub re-ignited.")
         return {"status": "batch_complete", "results": results}
 
-    async def mcp_wait_ready(self, timeout: int = 120):
+    async def mcp_wait_ready(self, timeout: int = 300):
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state with Forensic detection."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("GET", f"wait_ready?timeout={timeout}")
@@ -606,15 +621,14 @@ class LabAttendantV4:
             # Only probe if the engine process has had time to start
             if time.time() - start_t > 5:
                 try:
-                    # [FIX] VRAM-Aware Readiness: Weights must be loaded
+                    # [FIX] VRAM-Aware Readiness: If weights are loaded, we are likely operational.
+                    # This bypasses connection issues with vLLM before it fully initializes its API.
                     used, total = await self._get_vram_info()
                     vram_pct = (used / total * 100) if total > 0 else 0
                     
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get("http://localhost:8088/v1/models", timeout=2) as r:
-                            if r.status == 200 and vram_pct > 50:
-                                logger.info(f"[{self.session_token}] [WATCHDOG] Silicon operational after {int(time.time()-start_t)}s (VRAM: {vram_pct:.1f}%)")
-                                return {"status": "init", "message": "Lab is operational."}
+                    if vram_pct > 50:
+                        logger.info(f"[{self.session_token}] [WATCHDOG] Silicon operational after {int(time.time()-start_t)}s (VRAM: {vram_pct:.1f}%)")
+                        return {"status": "init", "message": "Lab is operational."}
                 except Exception:
                     pass
             
@@ -647,7 +661,7 @@ class LabAttendantV4:
             
         return {"status": "timeout", "message": f"Lab failed to reach functional READY within {timeout}s"}
 
-    async def cleanup_silicon(self, mode="ORPHANS"):
+    async def cleanup_silicon(self, mode="ORPHANS", engine_only=False):
         """
         [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
         Handshake Protocol: Processes tagged with [TOKEN] in their title are immune.
@@ -716,20 +730,33 @@ class LabAttendantV4:
                         for p in pids:
                             try:
                                 pgid = os.getpgid(int(p))
-                                # [FIX] Add to kill list if it's an engine port OR not immune
+                                # Add to kill list if it's an engine port OR not immune
                                 if port != 8765 or pgid not in immune_pgids:
                                     target_pgids.add(pgid)
-                            except Exception:
-                                pass
-            except Exception:
-                pass
+                            except Exception: pass
+            except Exception: pass
 
-        # 4. Final Purge Logic
-        # [FEAT-119.3] Restoration Silence: We skip the orphan purge if we are actively WAKING.
-        # This prevents the Attendant from reaping nodes that the Hub just spawned.
-        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason == "SAFE_PILOT")
-        if mode == "ORPHANS" and (is_igniting or current_lab_mode == "HIBERNATING"):
-            logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window. Skipping orphan purge.")
+        # 4. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
+        # We search ALL user processes for the vLLM/Ollama signature
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                cmd = " ".join(proc.info["cmdline"] or []).lower()
+                p_name = str(proc.info["name"] or "").lower()
+                pid = proc.info["pid"]
+                
+                # Identify rogue engines by signature
+                if any(t in cmd or t in p_name for t in ["vllm", "enginecore", "ollama"]):
+                    pgid = os.getpgid(pid)
+                    if pgid not in immune_pgids:
+                        logger.warning(f"[{self.session_token}] [ASSASSIN] Reaping non-immune engine {pid} ({p_name})")
+                        target_pgids.add(pgid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
+
+        # 5. Final Purge Logic
+        # [FEAT-119.3] Restoration Silence
+        is_igniting = (engine_only or self.current_reason.startswith("RESTORE_") or self.current_reason == "SAFE_PILOT")
+        if mode == "ORPHANS" and is_igniting:
+            logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window ({self.current_reason}). Skipping orphan purge.")
             return
 
         final_kill_list = target_pgids - immune_pgids
@@ -811,14 +838,19 @@ class LabAttendantV4:
         try:
             async with aiohttp.ClientSession() as session:
                 # 1. Physical Probe (Ports)
-                async with session.get("http://localhost:8765/heartbeat", timeout=1.0) as r:
-                    if r.status == 200:
-                        foyer_up = True
+                try:
+                    async with session.get("http://127.0.0.1:8765/heartbeat", timeout=1.0) as r:
+                        if r.status == 200:
+                            foyer_up = True
+                except Exception: pass
                 
                 port = 8088 if current_lab_mode == "VLLM" else 11434
-                async with session.get(f"http://localhost:{port}/v1/models" if port == 8088 else f"http://localhost:{port}/api/tags", timeout=1.0) as r:
-                    if r.status == 200:
-                        engine_up = True
+                try:
+                    # Use 127.0.0.1 explicitly to bypass resolution issues
+                    async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
+                        if r.status == 200:
+                            engine_up = True
+                except Exception: pass
                 
                 # 2. Cognitive Probe (Functional)
                 if engine_up:
@@ -829,7 +861,7 @@ class LabAttendantV4:
                         "temperature": 0.0
                     }
                     try:
-                        async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
+                        async with session.post(f"http://127.0.0.1:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
                             if p.status == 200:
                                 engine_vocal = True
                     except Exception as e:
