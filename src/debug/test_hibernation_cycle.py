@@ -59,18 +59,24 @@ async def cognitive_ping(label="Pre-Sleep"):
             async with session.ws_connect(HUB_URL) as ws:
                 await ws.send_str(json.dumps({"type": "handshake", "client": client_id}))
                 
-                # Consume initial status messages until READY
-                print(f"    [*] Handshake sent. Waiting for readiness...")
+                # Consume initial status messages until OPERATIONAL
+                print(f"    [*] Handshake sent. Waiting for foyer to reach OPERATIONAL...")
+                is_foyer_ready = False
                 for _ in range(30):
                     try:
                         msg = await ws.receive_json(timeout=10)
                         m_state = msg.get("state")
-                        m_full = msg.get("full_lab_ready")
-                        if m_state == "ready" or m_full:
-                            print(f"    [+] Foyer confirmed READY.")
+                        m_full = msg.get("operational") or msg.get("full_lab_ready")
+                        if m_state == "operational" or m_full:
+                            print(f"    [+] Foyer confirmed OPERATIONAL.")
+                            is_foyer_ready = True
                             break
                     except Exception: break
                 
+                if not is_foyer_ready:
+                    print(f"  ❌ FAILED ({label}): Foyer never reached OPERATIONAL state.")
+                    return False
+
                 # [FINAL_FIX] Drain foyer noise completely before querying
                 print("    [*] Draining foyer noise...")
                 for _ in range(10):
@@ -78,7 +84,11 @@ async def cognitive_ping(label="Pre-Sleep"):
                         await ws.receive_json(timeout=0.5)
                     except Exception: break
 
-                print(f"    [*] Sending query: hello?")
+                # [FEAT-259.6] Settle window for reasoning nodes
+                print(f"    [*] Settle window (30s) for reasoning nodes...")
+                await asyncio.sleep(30)
+
+                print(f"    [*] Dispatching query: hello?")
                 await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
 
                 start_wait = time.time()
@@ -119,22 +129,25 @@ async def test_hibernation_cycle():
     headers = {'X-Lab-Key': KEY, 'Content-Type': 'application/json'}
     
     async with aiohttp.ClientSession() as session:
-        # [NEW] Pre-Flight: Ensure environment is clean but Lab is running
-        print("[STEP 0] Silicon Pre-Flight...")
-        try:
-            async with session.get(f"{ATTENDANT_URL}/heartbeat?key={KEY}") as resp:
-                vitals = await resp.json()
-                used_vram = float(vitals.get("vram", "0%").replace("%",""))
-                if used_vram > 90:
-                    print(f"  [!] VRAM Congestion Detected ({used_vram}%). Falling back to STUB mode...")
-                    # [NUCLEAR RESET] Stop first to ensure clean state
-                    await session.post(f"{ATTENDANT_URL}/stop", headers=headers)
-                    await asyncio.sleep(5)
-                    await session.post(f"{ATTENDANT_URL}/start", headers=headers, json={"engine": "STUB", "reason": "STUB_AUDIT"})
-                    print("  [+] STUB ignition dispatched.")
-                    await asyncio.sleep(10)
-        except Exception as e:
-            print(f"  [!] Pre-flight check failed: {e}")
+        # [NEW] [FEAT-259.5] Proactive Pre-Flight
+        print("[STEP 0] Silicon Pre-Flight Audit...")
+        async with session.get(f"{ATTENDANT_URL}/heartbeat?key={KEY}") as resp:
+            vitals = await resp.json()
+            used_vram = float(vitals.get("vram", "0%").replace("%",""))
+            is_op = vitals.get("operational")
+            mode = vitals.get("mode")
+            
+            print(f"  [*] Initial VRAM: {used_vram}% | Operational: {is_op} | Mode: {mode}")
+            
+            # Scenario A: Congested but not operational (Ghost Silicon)
+            if used_vram > 50 and not is_op:
+                print("  [!] GHOST SILICON DETECTED: High VRAM but engine is silent.")
+                print("  [!] Requesting logical QUIESCE to clear process handles...")
+                await session.post(f"{ATTENDANT_URL}/quiesce", headers=headers)
+                await asyncio.sleep(10)
+                print("  [+] Maintenance lock active. Requesting fresh ignition...")
+                await session.post(f"{ATTENDANT_URL}/start", headers=headers, json={"reason": "PRE_FLIGHT_RECOVERY"})
+                await asyncio.sleep(20)
 
         zombies = audit.check_for_zombies()
         print(f"  ✅ Active Hubs: {zombies}")

@@ -448,11 +448,11 @@ class AcmeLab:
                         if r.status == 200:
                             logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
 
-                            # Yield to Authority: Wait for Attendant to confirm silicon is READY
+                            # Yield to Authority: Wait for Attendant to confirm silicon is OPERATIONAL
                             try:
-                                async with session.get(f"http://localhost:9999/wait_ready?timeout=180&key={key}") as ready_req:
+                                async with session.get(f"http://localhost:9999/wait_ready?timeout=300&key={key}") as ready_req:
                                     if ready_req.status == 200:
-                                        logging.info("[HUB] Attendant confirmed READY. Synchronizing residents...")
+                                        logging.info("[HUB] Attendant confirmed OPERATIONAL. Synchronizing residents...")
                                         # [FEAT-265.8] High-Fidelity Restoration: Re-boot residents
                                         await self.boot_residents(self.exit_stack)
                                     else:
@@ -909,8 +909,8 @@ class AcmeLab:
                                     self._handshake_lock.discard(client_id)
                                 asyncio.create_task(_release())
                         elif vllm_warm:
-                            # [FEAT-265] If warm, ensure READY state
-                            self.status = "READY"
+                            # [FEAT-265] If warm, ensure OPERATIONAL state
+                            self.status = "OPERATIONAL"
                             self.engine_ready.set()
 
                         # [FEAT-265] Mandatory wait for engine readiness before responding
@@ -922,7 +922,7 @@ class AcmeLab:
                                 self.status = "ERROR"
 
                         # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
-                        if self.status == "READY":
+                        if self.status == "OPERATIONAL":
                             asyncio.create_task(self.check_brain_health(force=False))
 
                         # Broadcase definitive foyer status only after gate
@@ -1220,33 +1220,28 @@ class AcmeLab:
 
                 # Finalize node residency
                 self.residents[name] = session
-                
-                # [FEAT-220] Inject immunity for resident nodes to prevent self-reaping
-                try:
-                    node_pgid = os.getpgid(cl_stack[0].pid)
-                    # We can't easily push this to the Attendant, but we can log it
-                    logging.debug(f"[BOOT] Node {name.upper()} immunity PGID: {node_pgid}")
-                except Exception:
-                    pass
-
+                logging.info(f"[BOOT] {name.upper()} Node active.")
             except Exception as e:
-                logging.error(f"[BOOT] Failed to load {name}: {e}")
+                logging.error(f"[BOOT] Failed to start {name.upper()} Node: {e}")
 
-        self.status = "OPERATIONAL"
-        self.engine_ready.set() # [FIX] Allow waiters to proceed
-        logging.info("[OPERATIONAL] Lab is Open.")
-        # [FEAT-259.1] Global Sentinel Ignition: Single ear poller for all clients
-        asyncio.create_task(self.ear_poller_loop())
-        sys.stderr.flush()  # Ensure signal is written to the log file
-        await self.broadcast(
-            {
+                self.status = "OPERATIONAL"
+                self.engine_ready.set() # [FIX] Allow waiters to proceed
+                logging.info("[OPERATIONAL] Lab is Open.")
+
+                # [FEAT-259.1] Global Sentinel Ignition
+                asyncio.create_task(self.ear_poller_loop())
+                sys.stderr.flush()
+
+                await self.broadcast(
+                {
                 "type": "status",
                 "message": "Mind is OPERATIONAL. Lab is Open.",
                 "state": "operational",
                 "full_lab_ready": True,
                 "operational": True
-            }
-        )
+                }
+                )
+
         if self.mode == "DEBUG_SMOKE":
             logging.info("[SMOKE] Successful load. Self-terminating.")
             self.shutdown_event.set()
