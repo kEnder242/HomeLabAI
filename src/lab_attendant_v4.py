@@ -305,7 +305,6 @@ class LabAttendantV4:
         
         target_model = tier_config.get("vllm" if engine == "VLLM" else "ollama", model)
         utilization = tier_config.get("gpu_memory_utilization", 0.4)
-        backend = tier_config.get("attention_backend", "TRITON_ATTN")
 
         # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
         if current_lab_mode == "HIBERNATING" and engine == "VLLM":
@@ -391,29 +390,36 @@ class LabAttendantV4:
         env = {k: str(v) for k, v in env.items() if v is not None}
         
         if engine == "VLLM":
-            # [SPR-13.0] Verified Stable Config for 2080 Ti
+            # [SPR-13.0] Verified Stable Config for Turing (RTX 2080 Ti)
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
             env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Sleep Mode
             
-            # [FEAT-030] Unity Pattern: Build LoRA module string
-            lora_modules = tier_config.get("lora_modules", [])
-            lora_args = "--lora-modules " + " ".join(lora_modules) if lora_modules else ""
-            
             # [BKM] Consolidate into EXTRA_ARGS for the script to consume
-            # TRITON_ATTN is the verified stable backend for Turing (7.5) in v0.17.0
-            # [REBOOT_TARGET] 0.5 utilization and 4096 context
-            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --enable-lora --max-loras 4 --max-model-len 4096 --enable-sleep-mode {lora_args}"
+            # [REBOOT_TARGET] Stable Recipe R2: 0.5 util and 4096 context
+            env["VLLM_EXTRA_ARGS"] = "--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --enable-lora --max-loras 4 --max-model-len 4096 --enable-sleep-mode"
             
-            logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
-            self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
-            proc = subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR, start_new_session=True)
-            self.active_pids['engine_pid'] = proc.pid
-            self.active_pids['engine_mode'] = 'VLLM'
-            self._save_ledger()
+            logger.info(f"[VLLM] Igniting Sovereign Node (Recipe R2): {target_model}")
+            self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model}")
             
-            # [FEAT-280] Physical Readiness: Dual-layer wait
-            await self._wait_for_vllm()
+            # [DUMB_IGNITION] Bash script handles the backgrounding. We don't hold the process object.
+            subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], 
+                             env=env, cwd=LAB_DIR, start_new_session=True)
+            
+            # [FEAT-277] Shell-Side PID Tracking
+            await asyncio.sleep(5) # Allow script to write PID
+            try:
+                pid_path = os.path.join(LAB_DIR, "run/vllm.pid")
+                if os.path.exists(pid_path):
+                    with open(pid_path, "r") as f:
+                        self.active_pids['engine_pid'] = int(f.read().strip())
+                        self.active_pids['engine_mode'] = 'VLLM'
+                        self._save_ledger()
+            except Exception:
+                pass
+            
+            # [FEAT-281.2] Cognitive Readiness Gate
+            await self._wait_for_vllm_cognitive()
         elif engine == "OLLAMA":
             # [SPR-13.0] OLLAMA Fallback
             logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
@@ -1090,36 +1096,44 @@ class LabAttendantV4:
                     self.ready_event.clear()
                     logger.warning("[WATCHDOG] Hub READY state cleared for transition.")
 
-    async def _wait_for_vllm(self, timeout=180):
-        """[FEAT-280] Physical Readiness: Dual-layer gating (Port + Log + API)."""
+    async def _wait_for_vllm_cognitive(self, timeout=180):
+        """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
         start_t = time.time()
-        logger.info("[VLLM] Waiting for engine stability (127.0.0.1:8088)...")
+        logger.info("[VLLM] Waiting for cognitive reasoning (127.0.0.1:8088)...")
         vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
         
         while time.time() - start_t < timeout:
-            # Layer 1: Forensic Crash Detection (Read log tail)
+            # forensic check for crashes
             if os.path.exists(vllm_log):
                 try:
                     with open(vllm_log, "r") as f:
                         lines = f.readlines()[-30:]
                         if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]):
-                            logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting wait.")
+                            logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting.")
                             return False
                 except Exception:
                     pass
 
-            # Layer 2: API Readiness (Wait for 200 OK)
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get("http://127.0.0.1:8088/v1/models", timeout=1.0) as r:
+                    # Functional ping (Reasoning Test)
+                    payload = {
+                        "model": "unified-base",
+                        "prompt": "ping",
+                        "max_tokens": 1,
+                        "temperature": 0.0
+                    }
+                    async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=2.0) as r:
                         if r.status == 200:
-                            logger.info(f"[VLLM] Engine is VOCAL and READY after {int(time.time() - start_t)}s.")
-                            return True
+                            res = await r.json()
+                            if "choices" in res:
+                                logger.info(f"[VLLM] Engine is VOCAL and REASONING after {int(time.time() - start_t)}s.")
+                                return True
             except Exception:
                 pass
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
         
-        logger.error(f"[VLLM] Engine failed to reach 200 OK within {timeout}s.")
+        logger.error(f"[VLLM] Engine failed to reason within {timeout}s.")
         return False
 
     async def vram_watchdog_loop(self):
