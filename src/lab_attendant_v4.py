@@ -391,22 +391,19 @@ class LabAttendantV4:
         env = {k: str(v) for k, v in env.items() if v is not None}
         
         if engine == "VLLM":
-            # [SPR-13.0] Verified Stable Config
+            # [SPR-13.0] Verified Stable Config for 2080 Ti
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
-            env["VLLM_ATTENTION_BACKEND"] = str(backend)
             env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Sleep Mode
             
             # [FEAT-030] Unity Pattern: Build LoRA module string
             lora_modules = tier_config.get("lora_modules", [])
             lora_args = "--lora-modules " + " ".join(lora_modules) if lora_modules else ""
             
-            # Context Constraint from characterization
-            max_len = tier_config.get("max_model_len", 8192)
-            
             # [BKM] Consolidate into EXTRA_ARGS for the script to consume
-            # [FEAT-262] Adding --enable-sleep-mode
-            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization {utilization} --enforce-eager --attention-backend {backend} --enable-lora --max-loras 4 --max-model-len {max_len} --enable-sleep-mode {lora_args}"
+            # TRITON_ATTN is the verified stable backend for Turing (7.5) in v0.17.0
+            # [REBOOT_TARGET] 0.5 utilization and 4096 context
+            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --enable-lora --max-loras 4 --max-model-len 4096 --enable-sleep-mode {lora_args}"
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
@@ -414,6 +411,8 @@ class LabAttendantV4:
             self.active_pids['engine_pid'] = proc.pid
             self.active_pids['engine_mode'] = 'VLLM'
             self._save_ledger()
+            
+            # [FEAT-280] Physical Readiness: Dual-layer wait
             await self._wait_for_vllm()
         elif engine == "OLLAMA":
             # [SPR-13.0] OLLAMA Fallback
@@ -1091,32 +1090,36 @@ class LabAttendantV4:
                     self.ready_event.clear()
                     logger.warning("[WATCHDOG] Hub READY state cleared for transition.")
 
-    async def _wait_for_vllm(self, timeout=120):
+    async def _wait_for_vllm(self, timeout=180):
+        """[FEAT-280] Physical Readiness: Dual-layer gating (Port + Log + API)."""
         start_t = time.time()
-        # [FEAT-251.2] Forensic Wait: Early crash detection
+        logger.info("[VLLM] Waiting for engine stability (127.0.0.1:8088)...")
         vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
         
         while time.time() - start_t < timeout:
-            # Check for crashes in log
+            # Layer 1: Forensic Crash Detection (Read log tail)
             if os.path.exists(vllm_log):
                 try:
                     with open(vllm_log, "r") as f:
-                        # Read last 20 lines
-                        lines = f.readlines()[-20:]
-                        if any("Traceback" in line or "ValueError:" in line or "RuntimeError:" in line for line in lines):
-                            logger.error("[VLLM] Fatal startup crash detected in logs. Aborting wait.")
+                        lines = f.readlines()[-30:]
+                        if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]):
+                            logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting wait.")
                             return False
                 except Exception:
                     pass
 
+            # Layer 2: API Readiness (Wait for 200 OK)
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get("http://127.0.0.1:8088/v1/models", timeout=1.0) as r:
                         if r.status == 200:
+                            logger.info(f"[VLLM] Engine is VOCAL and READY after {int(time.time() - start_t)}s.")
                             return True
             except Exception:
                 pass
             await asyncio.sleep(2)
+        
+        logger.error(f"[VLLM] Engine failed to reach 200 OK within {timeout}s.")
         return False
 
     async def vram_watchdog_loop(self):
