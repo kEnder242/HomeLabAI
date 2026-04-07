@@ -521,69 +521,30 @@ class LabAttendantV4:
 
 
     async def mcp_hibernate(self):
-        """[FEAT-249] Selective engine unload (Sleep) with aggressive fallback."""
+        """[FEAT-262] Atomic Hibernation: Deterministic VRAM reclamation via surgical reap."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate")
         
         global is_hibernating, current_lab_mode
+        logger.warning(f"[{self.session_token}] [HIBERNATE] Transitioning to Deep Sleep (Atomic Reap)")
         
-        # [FEAT-262] vLLM Sleep Mode (Graceful Path)
-        engine = os.environ.get("LAB_MODE", "OLLAMA")
-        if engine == "VLLM":
-            logger.warning(f"[{self.session_token}] [HUB] Requesting Hibernation (vLLM)...")
-            
-            async def _tactical_sleep():
-                # 1. Attempt graceful offload if engine is alive
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get("http://127.0.0.1:8088/v1/models", timeout=2.0) as check:
-                            if check.status == 200:
-                                async with session.post("http://127.0.0.1:8088/sleep?level=2", timeout=5.0) as r:
-                                    if r.status == 200:
-                                        # Wait briefly for drop evidence
-                                        for _ in range(10):
-                                            used, _ = await self._get_vram_info()
-                                            if used < 3000:
-                                                logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed.")
-                                                return True
-                                            await asyncio.sleep(2)
-                                    else:
-                                        # [FEAT-279] Hibernation Forensic: Log exact reason for rejection
-                                        err_body = await r.text()
-                                        logger.error(f"[{self.session_token}] [SLEEP] Graceful offload FAILED ({r.status}): {err_body}")
-                except Exception:
-                    pass
-                
-                # 2. [NUCLEAR FALLBACK] Graceful failed or engine dead. 
-                # Reap engine ports aggressively to force VRAM release.
-                logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload unavailable. Reaping engine ports.")
-                # [FEAT-276.4] Absolute Port Reap: Ensure immediate handle release
-                for port in [8088, 11434]:
-                    try:
-                        subprocess.run(["sudo", "/usr/bin/fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
-                    except Exception:
-                        pass
-                
-                # Wait for drop confirmation
-                for _ in range(15):
-                    used, _ = await self._get_vram_info()
-                    if used < 3000:
-                        logger.info(f"[{self.session_token}] [SLEEP] Absolute hibernation verified. VRAM reclaimed.")
-                        return True
-                    await asyncio.sleep(2)
-                return False
-            
-            success = await _tactical_sleep()
-            is_hibernating = True
-            current_lab_mode = "HIBERNATING"
-            msg = "HIBERNATING (Graceful)" if success else "HIBERNATING (Reaped)"
-            await self.update_status_json(msg)
-            return {"status": "success", "message": msg}
-
-        # Fallback for non-vLLM engines
-        is_hibernating = True
+        # 1. [DETERMINISTIC REAP] Reclaim silicon via the Ledger
+        # We revert to the Sprint 16 Gold Standard because /sleep Level 2 is unstable in v0.17.0
+        await self.cleanup_silicon(mode="SESSION", engine_only=True)
+        
+        # 2. Update state
         current_lab_mode = "HIBERNATING"
-        return {"status": "success", "message": "Soft hibernation active."}
+        is_hibernating = True
+        self.ready_event.clear()
+        
+        # 3. Settle window for driver tables (Physical Law)
+        await asyncio.sleep(5.0)
+        
+        used, _ = await self._get_vram_info()
+        logger.info(f"[{self.session_token}] [HIBERNATE] Deep Sleep Active. VRAM Reclaimed: {used}MB")
+        
+        await self.update_status_json("HIBERNATING (Deep)")
+        return {"status": "success", "message": "Deep Sleep Active. VRAM Reclaimed."}
 
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
