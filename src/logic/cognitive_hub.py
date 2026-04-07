@@ -302,9 +302,6 @@ class CognitiveHub:
         addressed_to = "MICE" # Default to collective
         triage_data_update = {} # [FIX] Initialize early
         
-        # [FEAT-276.7] Stabilization Window
-        await asyncio.sleep(5.0)
-        
         if "lab" in self.residents:
             print(f"[TRACE] Triage starting for query: {query[:50]}")
             sys.stdout.flush()

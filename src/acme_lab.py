@@ -1174,7 +1174,10 @@ class AcmeLab:
         for name, path in nodes:
             try:
                 logging.info(f"[BOOT] Synchronizing {name.upper()}...")
-                await asyncio.sleep(5.0) # [BKM] Mandatory settle for physical silicon
+                if name == "lab":
+                    await asyncio.sleep(5.0) # [FEAT-276.7] Engine Settle Window
+                else:
+                    await asyncio.sleep(2.0) # Faster settle for non-reasoning nodes
                 
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
