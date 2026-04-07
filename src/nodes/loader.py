@@ -1,4 +1,5 @@
 import aiohttp
+import asyncio
 import json
 import os
 import logging
@@ -49,7 +50,8 @@ class BicameralNode:
                     # [FIX] Pop consumed args to prevent MCP crash
                     sys.argv.pop(idx + 1)
                     sys.argv.pop(idx)
-            except ValueError: pass
+            except ValueError:
+                pass
             
         title = f"[{name.upper()}:{self.session_token}]"
         try:
@@ -217,7 +219,8 @@ class BicameralNode:
                     with open(status_path, "r") as f:
                         status = json.load(f)
                         engine_type = status.get("mode", engine_type)
-                except Exception: pass
+                except Exception:
+                    pass
             
             port = 8088 if engine_type == "VLLM" else 11434
             base_url = f"http://{resolved_ip}:{port}"
@@ -299,11 +302,15 @@ class BicameralNode:
                 if fuel_match:
                     f_val = float(fuel_match.group(1))
                     stance = "Surface"
-                    if f_val > 0.3: stance = "Standard"
-                    if f_val > 0.6: stance = "Deep"
-                    if f_val > 0.8: stance = "Sovereign"
+                    if f_val > 0.3:
+                        stance = "Standard"
+                    if f_val > 0.6:
+                        stance = "Deep"
+                    if f_val > 0.8:
+                        stance = "Sovereign"
                     masked = masked.replace(fuel_match.group(0), f"Resonance: {stance}")
-            except Exception: pass
+            except Exception:
+                pass
             
             masked = masked.replace("ROUTE:", "Flow:").replace("ROLE:", "Identity:")
             user_context += f"[SYSTEM_DESIGN_STANCE]:\n{masked}\n\n"
@@ -353,18 +360,17 @@ class BicameralNode:
             logging.error(f"[{self.name}] Generation failed: {e}")
             yield f"Egad! Logic failure: {e}"
 
-    async def _broadcast_token(self, token, source):
+    async def _broadcast_token(self, token, source_name):
         """Helper to POST tokens to the Hub's stream_ingest endpoint."""
         try:
             # Note: We use a short timeout to prevent blocking generation
             async with aiohttp.ClientSession() as session:
                 payload = {
-                    "type": "brain",
-                    "brain": token,
-                    "brain_source": source,
+                    "text": token,
+                    "source": source_name,
                     "final": False
                 }
-                async with session.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.5) as r:
+                async with session.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.5):
                     pass
         except Exception:
             pass
