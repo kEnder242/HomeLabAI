@@ -251,11 +251,12 @@ class LabAttendantV4:
     async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         global current_lab_mode, current_model, lab_process, is_hibernating
         
-        # [FIX] Force immediate mode transition to allow restoration to proceed
+        # [FIX] Force immediate state flush to allow restoration to proceed
         is_hibernating = False
-        current_lab_mode = engine
         self.ready_event.clear()
         self.current_reason = reason
+        # We set mode early to ensure heartbeat reflects the TARGET engine immediately
+        current_lab_mode = engine 
         
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "start", {
@@ -274,7 +275,8 @@ class LabAttendantV4:
             for port in [8088, 11434]:
                 try:
                     subprocess.run(["sudo", "fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
-                except Exception: pass
+                except Exception:
+                    pass
             await asyncio.sleep(1.0)
 
 
@@ -428,6 +430,26 @@ class LabAttendantV4:
             logger.info("[IGNITION] Surgical Spark complete. Foyer spared.")
             return {"status": "success", "message": "Engines sparked. Hub spared."}
 
+        # [FEAT-276.5] The Sequencer: Mandatory Engine-First Ignition
+        if engine == "VLLM":
+            logger.info(f"[{self.session_token}] [SEQUENCER] Waiting for Engine API (8088) to stabilize...")
+            engine_ready_port = False
+            for i in range(60): # 120s total wait
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get("http://127.0.0.1:8088/v1/models", timeout=1.0) as r:
+                            if r.status == 200:
+                                engine_ready_port = True
+                                logger.info(f"[{self.session_token}] [SEQUENCER] Engine API confirmed after {i*2}s.")
+                                break
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
+            
+            if not engine_ready_port:
+                logger.error(f"[{self.session_token}] [SEQUENCER] Engine failed to bind port 8088. Aborting foyer spark.")
+                return {"status": "error", "message": "Engine failed to bind port 8088."}
+
         # Start Hub
         logger.info(f"[IGNITION] [{reason.upper()}] Igniting Hub foyer...")
         cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
@@ -491,16 +513,27 @@ class LabAttendantV4:
                                                 logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed.")
                                                 return True
                                             await asyncio.sleep(2)
-                except Exception: pass
+                except Exception:
+                    pass
                 
                 # 2. [NUCLEAR FALLBACK] Graceful failed or engine dead. 
                 # Reap engine ports aggressively to force VRAM release.
                 logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload unavailable. Reaping engine ports.")
+                # [FEAT-276.4] Absolute Port Reap: Ensure immediate handle release
                 for port in [8088, 11434]:
                     try:
                         subprocess.run(["sudo", "/usr/bin/fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
-                    except Exception: pass
-                return True
+                    except Exception:
+                        pass
+                
+                # Wait for drop confirmation
+                for _ in range(15):
+                    used, _ = await self._get_vram_info()
+                    if used < 3000:
+                        logger.info(f"[{self.session_token}] [SLEEP] Absolute hibernation verified. VRAM reclaimed.")
+                        return True
+                    await asyncio.sleep(2)
+                return False
             
             success = await _tactical_sleep()
             is_hibernating = True
@@ -613,51 +646,41 @@ class LabAttendantV4:
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state with Forensic detection."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("GET", f"wait_ready?timeout={timeout}")
-        
+
         start_t = time.time()
-        # [FEAT-251.2] Forensic Wait: Catch Hub-level crashes early
+
+        # [FIX] Immediate check: If already operational, return success
+        vitals = await self._get_current_vitals()
+        if vitals.get("operational"):
+            logger.info(f"[{self.session_token}] [WATCHDOG] Lab already operational. Bypassing wait.")
+            return {"status": "init", "message": "Lab is operational."}
+
+        # [FEAT-251.2] Forensic Wait
         while time.time() - start_t < timeout:
-            # 1. Functional Probe (The Gold Standard)
-            # Only probe if the engine process has had time to start
-            if time.time() - start_t > 5:
-                try:
-                    # [FIX] VRAM-Aware Readiness: If weights are loaded, we are likely operational.
-                    # This bypasses connection issues with vLLM before it fully initializes its API.
-                    used, total = await self._get_vram_info()
-                    vram_pct = (used / total * 100) if total > 0 else 0
-                    
-                    if vram_pct > 50:
-                        logger.info(f"[{self.session_token}] [WATCHDOG] Silicon operational after {int(time.time()-start_t)}s (VRAM: {vram_pct:.1f}%)")
-                        return {"status": "init", "message": "Lab is operational."}
-                except Exception:
-                    pass
+            # 1. Physical/Cognitive Probe
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational"):
+                logger.info(f"[{self.session_token}] [WATCHDOG] Lab reached OPERATIONAL after {int(time.time()-start_t)}s")
+                return {"status": "init", "message": "Lab is operational."}
             
-            # 2. Check server.log for Hub crashes
+            # 2. Check for Hub crashes in log
             if os.path.exists(SERVER_LOG):
                 try:
-                    # [REVISION-17.9] Use asyncio.to_thread for blocking file read
                     def read_log():
                         with open(SERVER_LOG, "r") as f:
-                            return f.readlines()[-20:]
+                            f.seek(0, 2)
+                            if f.tell() > 2000:
+                                f.seek(-2000, 2)
+                            return f.readlines()
                     
                     lines = await asyncio.to_thread(read_log)
-                    
-                    # [FEAT-273] Silicon Self-Healing: Reset on engine failure
-                    if any("vLLM Connection failed" in line for line in lines):
-                        logger.error("[HUB] Critical engine connection failure detected. Triggering Silicon Purge.")
-                        await self.cleanup_silicon(mode="ORPHANS")
-                        # We return error to signal the ignition loop to retry or abort
-                        return {"status": "error", "message": "Engine connection failure. Silicon purged."}
-
-                    if any("Traceback" in line or "Error:" in line or "Exception:" in line for line in lines):
-                            # Ensure we don't catch the 'Expected Error' during handshake resilience
-                            if not any("Larynx is warming" in line for line in lines):
-                                logger.error("[HUB] Fatal startup crash detected in logs. Aborting wait.")
-                                return {"status": "error", "message": "Fatal Hub crash detected in logs."}
+                    if any("Traceback" in line or "SyntaxError" in line for line in lines):
+                        logger.error(f"[{self.session_token}] [WATCHDOG] Hub crash detected in logs.")
+                        return {"status": "crashed", "message": "Hub foyer crashed during ignition."}
                 except Exception:
                     pass
 
-            await asyncio.sleep(5) # [BKM-026] Slower poll rate for high-load state
+            await asyncio.sleep(5)
             
         return {"status": "timeout", "message": f"Lab failed to reach functional READY within {timeout}s"}
 
@@ -733,8 +756,10 @@ class LabAttendantV4:
                                 # Add to kill list if it's an engine port OR not immune
                                 if port != 8765 or pgid not in immune_pgids:
                                     target_pgids.add(pgid)
-                            except Exception: pass
-            except Exception: pass
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
         # 4. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
         # We search ALL user processes for the vLLM/Ollama signature
@@ -750,7 +775,8 @@ class LabAttendantV4:
                     if pgid not in immune_pgids:
                         logger.warning(f"[{self.session_token}] [ASSASSIN] Reaping non-immune engine {pid} ({p_name})")
                         target_pgids.add(pgid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
         # 5. Final Purge Logic
         # [FEAT-119.3] Restoration Silence
@@ -759,17 +785,42 @@ class LabAttendantV4:
             logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window ({self.current_reason}). Skipping orphan purge.")
             return
 
-        final_kill_list = target_pgids - immune_pgids
+        # [FEAT-276.6] Targeted Device Reaper: Surgical release of GPU handles
+        # We query the device users but filter them strictly to avoid killing Xorg/Gnome.
+        if mode == "SESSION" and not is_igniting:
+            logger.info(f"[{self.session_token}] [ASSASSIN] Performing targeted device audit on /dev/nvidia0")
+            try:
+                # Get PIDs using the GPU
+                res = subprocess.check_output(["sudo", "fuser", "/dev/nvidia0"], stderr=subprocess.DEVNULL, text=True)
+                # Output format is usually "/dev/nvidia0:  PID1 PID2..."
+                gpu_pids = res.split(":")[-1].strip().split()
+                
+                for pid_str in gpu_pids:
+                    try:
+                        pid = int(re.sub(r'[^0-9]', '', pid_str))
+                        proc = psutil.Process(pid)
+                        p_name = proc.name().lower()
+                        cmd = " ".join(proc.cmdline() or []).lower()
+                        
+                        # SAFETY GATE: Never kill system/GUI processes
+                        if any(sys_proc in p_name for sys_proc in ["xorg", "gnome", "mutter", "sunshine", "steam"]):
+                            continue
+                            
+                        # TARGET GATE: Is it a Lab process or a known engine?
+                        is_lab = self.session_token in cmd or self.session_token in p_name
+                        is_engine = any(t in cmd or t in p_name for t in ["vllm", "enginecore", "ollama"])
+                        
+                        if is_lab or is_engine:
+                            pgid = os.getpgid(pid)
+                            if pgid not in immune_pgids:
+                                logger.warning(f"[{self.session_token}] [ASSASSIN] Device Reaper targeting {pid} ({p_name})")
+                                target_pgids.add(pgid)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+                        pass
+            except Exception as e:
+                logger.error(f"[{self.session_token}] [ASSASSIN] Device audit failed: {e}")
 
-        try:
-            res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
-            if ":" in res:
-                pids = res.split(":")[1].strip().split()
-                if pids and int(pids[0]) in [proc.pid for proc in psutil.process_iter() if os.getpgid(proc.pid) in immune_pgids]:
-                    # Hub foyer is immune and active
-                    pass
-        except Exception:
-            pass
+        final_kill_list = target_pgids - immune_pgids
 
         if final_kill_list:
             logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
@@ -842,7 +893,8 @@ class LabAttendantV4:
                     async with session.get("http://127.0.0.1:8765/heartbeat", timeout=1.0) as r:
                         if r.status == 200:
                             foyer_up = True
-                except Exception: pass
+                except Exception:
+                    pass
                 
                 port = 8088 if current_lab_mode == "VLLM" else 11434
                 try:
@@ -850,7 +902,8 @@ class LabAttendantV4:
                     async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
                         if r.status == 200:
                             engine_up = True
-                except Exception: pass
+                except Exception:
+                    pass
                 
                 # 2. Cognitive Probe (Functional)
                 if engine_up:
@@ -861,7 +914,7 @@ class LabAttendantV4:
                         "temperature": 0.0
                     }
                     try:
-                        async with session.post(f"http://127.0.0.1:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
+                        async with session.post("http://127.0.0.1:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
                             if p.status == 200:
                                 engine_vocal = True
                     except Exception as e:
@@ -875,9 +928,13 @@ class LabAttendantV4:
         # [FEAT-276] Persistent VRAM Telemetry
         logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
 
-        # [FEAT-265.6] Functional Gate: operational requires a VOCAL engine
-        # STUB mode is always operational by definition
+        # [FEAT-265.6] Functional Gate
+        # [FIX] Bridge the gap during node sync: if engine is vocal during ignition, report as operational.
+        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT")
         is_op = (foyer_up and engine_vocal and not is_hibernating) or (current_lab_mode == "STUB" and foyer_up)
+        
+        if is_igniting and engine_vocal:
+            is_op = True
         
         return {
             "attendant_pid": os.getpid(),

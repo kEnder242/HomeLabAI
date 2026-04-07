@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import os
+import sys
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
@@ -299,23 +300,40 @@ class CognitiveHub:
 
         # 1. Lab Node Triage
         addressed_to = "MICE" # Default to collective
+        triage_data_update = {} # [FIX] Initialize early
         if "lab" in self.residents:
-            try:
-                # Triage is still a single block for logic reasons
-                # [FEAT-233.2] Mute internal logic from UI waterfall
-                t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
-                raw_t_text = str(t_res.content[0].text)
-                
-                # [FEAT-270.1] Gibberish Detector
-                # If more than 20% of text is non-alphanumeric or contains many non-ASCII chars
-                non_alnum = len(re.sub(r'[a-zA-Z0-9\s.,?!]', '', raw_t_text))
-                if (len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.3) or "\x00" in raw_t_text:
-                    logging.error(f"[HUB] Gibberish detected from Lab Node: {raw_t_text[:100]}")
-                    self.triage_failures += 1
-                    raise ValueError("SILICON_LOBOTOMY: Model is outputting garbage.")
+            print(f"[TRACE] Triage starting for query: {query[:50]}")
+            sys.stdout.flush()
+            
+            # [FEAT-270.2] Triage Persistence
+            for triage_attempt in range(3):
+                try:
+                    print(f"[TRACE] Triage Attempt {triage_attempt+1} calling lab node...")
+                    sys.stdout.flush()
+                    
+                    t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
+                    
+                    print(f"[TRACE] Lab Node replied: {repr(t_res)}")
+                    sys.stdout.flush()
 
-                t_clean = self.bridge_signal_clean(raw_t_text)
-                if t_clean:
+                    if not t_res or not t_res.content:
+                        raise ValueError("EMPTY_MCP_RESPONSE")
+
+                    raw_t_text = str(t_res.content[0].text) if hasattr(t_res.content[0], "text") else str(t_res.content[0])
+
+                    
+                    # [FEAT-270.1] Gibberish Detector
+                    non_alnum = len(re.sub(r'[a-zA-Z0-9\s.,?!]', '', raw_t_text))
+                    is_garbage = (len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.4) or "\x00" in raw_t_text
+                    
+                    if is_garbage:
+                        logging.critical(f"[HUB] SILICON LOBOTOMY: Engine is returning garbage. Attempt {triage_attempt+1}")
+                        raise ValueError("SILICON_LOBOTOMY")
+
+                    t_clean = self.bridge_signal_clean(raw_t_text)
+                    if not t_clean:
+                        raise ValueError("TRIAGE_PARSE_FAILURE")
+
                     t_parsed = json.loads(t_clean)
                     self.triage_failures = 0 # [FIX] Reset on successful parse
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
@@ -340,19 +358,21 @@ class CognitiveHub:
                     elif addressed_to == "PINKY" and self.current_fuel > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
-                else:
-                    self.triage_failures += 1
-                    raise ValueError("TRIAGE_PARSE_FAILURE")
-
-            except Exception as e:
-                logging.error(f"[HUB] Triage Failed ({self.triage_failures}/3): {e}")
-                if self.triage_failures >= 3:
-                    await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
-                    # Signal fatal error to acme_lab which will exit and be restarted by systemd/watchdog
-                    os._exit(1) # [NUCLEAR] Force exit to trigger systemd ExecStopPost and fresh start
+                    
+                    break # SUCCESS
                 
-                self.current_fuel = 0.2
-                intent = "STRATEGIC"
+                except Exception as e:
+                    logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
+                    if triage_attempt < 2:
+                        await asyncio.sleep(2.0 * (triage_attempt + 1))
+                    else:
+                        self.triage_failures += 1
+                        if self.triage_failures >= 3:
+                            await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
+                            os._exit(1)
+                        
+                        self.current_fuel = 0.2
+                        intent = "STRATEGIC"
 
         fuel_start = self.current_fuel
 
