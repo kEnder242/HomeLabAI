@@ -7,6 +7,7 @@ import logging
 import psutil
 import aiohttp
 import hashlib
+import re
 from aiohttp import web
 import time
 import uuid
@@ -161,6 +162,8 @@ class LabAttendantV4:
         
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
         self.ready_event = asyncio.Event()
+        self.ledger_path = os.path.join(LAB_DIR, 'run/active_pids.json')
+        self.active_pids = self._load_ledger()
         self.current_reason = "INIT"
         self.session_token = uuid.uuid4().hex[:8] # [FEAT-220] Stable Session Token
         self.vram_config = {}
@@ -218,7 +221,7 @@ class LabAttendantV4:
         """[FEAT-258] Resilient Proxy: Redirects tool calls with automatic retry backoff."""
         key = get_style_key()
         connector = "&" if "?" in endpoint else "?"
-        url = f"http://localhost:{ATTENDANT_PORT}/{endpoint}{connector}key={key}"
+        url = f"http://127.0.0.1:{ATTENDANT_PORT}/{endpoint}{connector}key={key}"
         
         for i in range(retries):
             try:
@@ -233,6 +236,20 @@ class LabAttendantV4:
                 if i == retries - 1:
                     return {"status": "error", "message": f"Proxy connection to Master failed after {retries} attempts: {e}"}
                 await asyncio.sleep(2) # Settling window for Master boot
+
+    def _save_ledger(self):
+        """[FEAT-277] Persist active PIDs to disk."""
+        atomic_write_json(self.ledger_path, self.active_pids)
+
+    def _load_ledger(self):
+        """[FEAT-277] Load active PIDs from disk."""
+        if os.path.exists(self.ledger_path):
+            try:
+                with open(self.ledger_path, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
 
     # --- MCP Tools Implementation ---
     async def mcp_heartbeat(self):
@@ -295,7 +312,7 @@ class LabAttendantV4:
             logger.info(f"[IGNITION] [{reason.upper()}] Fast Wake triggered for hibernating vLLM.")
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post("http://localhost:8088/wake_up", timeout=5.0) as r:
+                    async with session.post("http://127.0.0.1:8088/wake_up", timeout=5.0) as r:
                         if r.status == 200:
                             current_lab_mode = op_mode
                             self.ready_event.set()
@@ -393,13 +410,19 @@ class LabAttendantV4:
             
             logger.info(f"[VLLM] Launching Sovereign Node: {target_model} (Recipe: start_vllm.sh)")
             self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
-            subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR, start_new_session=True)
+            proc = subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], env=env, cwd=LAB_DIR, start_new_session=True)
+            self.active_pids['engine_pid'] = proc.pid
+            self.active_pids['engine_mode'] = 'VLLM'
+            self._save_ledger()
             await self._wait_for_vllm()
         elif engine == "OLLAMA":
             # [SPR-13.0] OLLAMA Fallback
             logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
             self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
-            subprocess.Popen(["ollama", "run", target_model], env=env, start_new_session=True)
+            proc = subprocess.Popen(["ollama", "run", target_model], env=env, start_new_session=True)
+            self.active_pids['engine_pid'] = proc.pid
+            self.active_pids['engine_mode'] = 'OLLAMA'
+            self._save_ledger()
         elif engine == "STUB":
             self.log_event(f"Ignition [{reason.upper()}]: STUB (Mode: {op_mode})")
             # No physical subprocess needed for STUB engine
@@ -461,6 +484,8 @@ class LabAttendantV4:
         
         with open(SERVER_LOG, "a", buffering=1) as log_f:
             lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=log_f, start_new_session=True)
+            self.active_pids['hub_pid'] = lab_process.pid
+            self._save_ledger()
             
         asyncio.create_task(self.log_monitor_loop())
         logger.info(f"[IGNITION] Hub process spawned with PID: {lab_process.pid} (Immunity: {_BOOT_HASH})")
@@ -476,6 +501,10 @@ class LabAttendantV4:
 
         # [NUCLEAR RESET] Force immediate and recursive cleanup
         await self.cleanup_silicon(mode="SESSION")
+
+        # [FEAT-277] Clear Ledger on Stop
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
+        self._save_ledger()
 
         global current_lab_mode, is_hibernating
         current_lab_mode = "OFFLINE"
@@ -502,9 +531,9 @@ class LabAttendantV4:
                 # 1. Attempt graceful offload if engine is alive
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.get("http://localhost:8088/v1/models", timeout=2.0) as check:
+                        async with session.get("http://127.0.0.1:8088/v1/models", timeout=2.0) as check:
                             if check.status == 200:
-                                async with session.post("http://localhost:8088/sleep?level=2", timeout=5.0) as r:
+                                async with session.post("http://127.0.0.1:8088/sleep?level=2", timeout=5.0) as r:
                                     if r.status == 200:
                                         # Wait briefly for drop evidence
                                         for _ in range(10):
@@ -513,6 +542,10 @@ class LabAttendantV4:
                                                 logger.warning(f"[{self.session_token}] [SLEEP] Graceful offload confirmed.")
                                                 return True
                                             await asyncio.sleep(2)
+                                    else:
+                                        # [FEAT-279] Hibernation Forensic: Log exact reason for rejection
+                                        err_body = await r.text()
+                                        logger.error(f"[{self.session_token}] [SLEEP] Graceful offload FAILED ({r.status}): {err_body}")
                 except Exception:
                     pass
                 
@@ -761,7 +794,32 @@ class LabAttendantV4:
             except Exception:
                 pass
 
-        # 4. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
+        # 4. [FEAT-278] VRAM Truth: Correlate VRAM usage to PID Ledger
+        try:
+            # Query PIDs using GPU memory
+            smi_cmd = ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"]
+            smi_out = subprocess.check_output(smi_cmd, text=True, stderr=subprocess.DEVNULL)
+            
+            for line in smi_out.strip().split('\n'):
+                if not line.strip():
+                    continue
+                v_pid_str, v_mem_str = line.split(',')
+                v_pid = int(v_pid_str.strip())
+                v_mem = int(v_mem_str.strip())
+                
+                # If process is using > 1GB and NOT in our ledger, it is an orphan
+                is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
+                
+                if v_mem > 1000 and not is_ours:
+                    logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory orphan {v_pid} ({v_mem}MB)")
+                    try:
+                        target_pgids.add(os.getpgid(v_pid))
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"[ASSASSIN] VRAM Truth audit failed: {e}")
+
+        # 5. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
         # We search ALL user processes for the vLLM/Ollama signature
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
@@ -896,31 +954,29 @@ class LabAttendantV4:
                 except Exception:
                     pass
                 
-                port = 8088 if current_lab_mode == "VLLM" else 11434
-                try:
-                    # Use 127.0.0.1 explicitly to bypass resolution issues
-                    async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
-                        if r.status == 200:
-                            engine_up = True
-                except Exception:
-                    pass
-                
-                # 2. Cognitive Probe (Functional)
-                if engine_up:
-                    probe_payload = {
-                        "model": "unified-base",
-                        "prompt": "ping",
-                        "max_tokens": 1,
-                        "temperature": 0.0
-                    }
+                # 2. Cognitive Probe (Delegated to Hub)
+                if foyer_up:
                     try:
-                        async with session.post("http://127.0.0.1:8088/v1/completions", json=probe_payload, timeout=2.0) as p:
-                            if p.status == 200:
-                                engine_vocal = True
+                        async with session.get("http://127.0.0.1:8765/status", timeout=1.0) as r:
+                            if r.status == 200:
+                                res = await r.json()
+                                # Hub foyer now reports its internal engine health
+                                engine_vocal = res.get("operational", False)
+                                engine_up = res.get("engine_up", engine_up)
                     except Exception as e:
-                        logger.debug(f"[PROBE] Cognitive check failed: {e}")
+                        logger.debug(f"[PROBE] Hub delegation failed: {e}")
+                
+                # 3. Direct Port Probe (Fallback)
+                if not engine_vocal:
+                    port = 8088 if current_lab_mode == "VLLM" else 11434
+                    try:
+                        async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
+                            if r.status == 200:
+                                engine_up = True
+                    except Exception:
+                        pass
         except Exception as e:
-            logger.debug(f"[PROBE] Physical check failed: {e}")
+            logger.debug(f"[PROBE] Overall probe failed: {e}")
 
         used_mb, total_mb = await self._get_vram_info()
         vram_pct = f"{(used_mb / total_mb * 100):.1f}%" if total_mb > 0 else "0.0%"
@@ -929,12 +985,15 @@ class LabAttendantV4:
         logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
 
         # [FEAT-265.6] Functional Gate
-        # [FIX] Bridge the gap during node sync: if engine is vocal during ignition, report as operational.
-        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT")
+        # [FIX] Optimistic Ignition: Bridge the gap during long sequential node sync
+        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION")
+        
+        # We are OP if: (Hub is OP AND Engine is Vocal) OR (Engine is physically UP during ignition)
         is_op = (foyer_up and engine_vocal and not is_hibernating) or (current_lab_mode == "STUB" and foyer_up)
         
-        if is_igniting and engine_vocal:
+        if is_igniting and engine_up:
             is_op = True
+            logger.debug(f"[{self.session_token}] [PROBE] Optimistic ignition active (Engine UP).")
         
         return {
             "attendant_pid": os.getpid(),
@@ -1052,7 +1111,7 @@ class LabAttendantV4:
 
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get("http://localhost:8088/v1/models", timeout=1.0) as r:
+                    async with session.get("http://127.0.0.1:8088/v1/models", timeout=1.0) as r:
                         if r.status == 200:
                             return True
             except Exception:
@@ -1158,7 +1217,7 @@ async def lab_wait_ready(timeout: int = 120):
         for i in range(10): # 20s initial probe
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get("http://localhost:9999/heartbeat", timeout=2) as r:
+                    async with session.get("http://127.0.0.1:9999/heartbeat", timeout=2) as r:
                         if r.status == 200:
                             break
             except Exception:

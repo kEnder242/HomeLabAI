@@ -762,27 +762,21 @@ class AcmeLab:
         return any(k in text_low for k in casual_indicators)
 
     async def heartbeat_handler(self, request):
-        """[FEAT-259.7] Dynamic Readiness: Verify nodes before reporting READY."""
+        """[FEAT-259.7] Non-Blocking Readiness: Report internal state immediately."""
         import datetime
         
-        # Calculate full readiness by probing resident engine links
-        node_status = {}
-        full_ready = True
-        if not self.residents:
-            full_ready = False
-        else:
-            for name, client in self.residents.items():
-                if hasattr(client, "engine_online"):
-                    online = client.engine_online
-                    node_status[name] = "ONLINE" if online else "OFFLINE"
-                    if not online and name != "pinky": # Pinky is interface-only
-                        full_ready = False
+        # [FIX] Return internal state immediately without probing residents
+        # This resolves circular wait during sequential restoration
+        is_ready = self.status == "OPERATIONAL"
         
         return web.json_response({
-            "status": "READY" if (full_ready and self.status == "READY") else "BOOTING",
+            "status": "ONLINE",
+            "state": self.status.lower(),
+            "operational": is_ready,
+            "full_lab_ready": getattr(self, "_residents_booted", False),
             "mode": self.mode,
             "timestamp": datetime.datetime.now().isoformat(),
-            "nodes": node_status
+            "residents": len(self.residents)
         })
 
     async def handle_stream_ingest(self, request):
@@ -1339,41 +1333,9 @@ class AcmeLab:
                 await site.start()
                 logging.info(f"[BOOT] Server on {PORT}")
                 
-                # [FEAT-233.5] The Larynx Gate
-                logging.info("[BOOT] Larynx Gate: Waiting for Engine (VOCAL) to respond...")
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        engine_vocal = False
-                        probe_payload = {
-                            "model": "unified-base",
-                            "prompt": "Reasoning Test: Output ONLY the word SUCCESS in JSON format {\"status\": \"SUCCESS\"}",
-                            "max_tokens": 15,
-                            "temperature": 0.0
-                        }
-                        for i in range(120): # 240s timeout for large models
-                            try:
-                                async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=10) as r:
-                                    if r.status == 200:
-                                        res = await r.json()
-                                        text = res.get("choices", [{}])[0].get("text", "")
-                                        if "SUCCESS" in text.upper():
-                                            engine_vocal = True
-                                            logging.info(f"[BOOT] Larynx Gate OPEN: Engine is VOCAL and REASONING after {i*2}s.")
-                                            break
-                                        else:
-                                            logging.debug(f"[BOOT] Engine vocal but not reasoning correctly: {text[:50]}")
-                            except Exception:
-                                pass
-                            await asyncio.sleep(2)
-
-                            
-                        if not engine_vocal:
-                            logging.error("[BOOT] Larynx Gate TIMEOUT: Engine failed to reason. Booting in LOBBY mode.")
-                        
-                        await self.boot_residents(stack)
-                except Exception as e:
-                    logging.error(f"[BOOT] Larynx Gate FAILURE: {e}")
-                    await self.boot_residents(stack)
+                # [FEAT-233.5] The Larynx Gate (Physical Only): Trust Attendant for Reasoning
+                logging.info("[BOOT] Larynx Gate: Engine physically verified by Attendant.")
+                await self.boot_residents(stack)
 
                 # [FEAT-145] Cognitive Delegation: Update hub with live residents
                 self.cognitive.residents = self.residents

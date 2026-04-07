@@ -12,7 +12,7 @@ _SRC_DIR = os.path.dirname(_SELF_DIR)
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://127.0.0.1:9999"
 HUB_URL = "ws://localhost:8765"
 STYLE_CSS = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/style.css")
 
@@ -80,7 +80,7 @@ async def cognitive_ping(label="Pre-Sleep"):
                 # Consume initial status messages until OPERATIONAL
                 print("    [*] Handshake sent. Waiting for foyer to reach OPERATIONAL...")
                 is_foyer_ready = False
-                for _ in range(30):
+                for _ in range(60): # Increase to 120s for sequential boot
                     try:
                         msg = await ws.receive_json(timeout=10)
                         m_state = msg.get("state")
