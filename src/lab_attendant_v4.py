@@ -393,7 +393,8 @@ class LabAttendantV4:
             # [SPR-13.0] Verified Stable Config for Turing (RTX 2080 Ti)
             env["NCCL_P2P_DISABLE"] = "1"
             env["NCCL_SOCKET_IFNAME"] = "lo"
-            env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Sleep Mode
+            env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Extended Debug Endpoints
+            env["VLLM_USE_V1"] = "0" # [PLACEBO] Maintain legacy alignment
             
             # [BKM] Consolidate into EXTRA_ARGS for the script to consume
             # [REBOOT_TARGET] Stable Recipe R2: 0.5 util and 4096 context
@@ -520,31 +521,56 @@ class LabAttendantV4:
         return {"status": "success", "message": "Lab stopped and silicon scrubbed."}
 
 
-    async def mcp_hibernate(self):
-        """[FEAT-262] Atomic Hibernation: Deterministic VRAM reclamation via surgical reap."""
+    async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT"):
+        """[FEAT-262] Eureka Hibernation: Level 2 offload with Quiet Window protection."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "hibernate")
-        
+            return await self._proxy_request("POST", "hibernate", {"reason": reason})
+
         global is_hibernating, current_lab_mode
-        logger.warning(f"[{self.session_token}] [HIBERNATE] Transitioning to Deep Sleep (Atomic Reap)")
+        logger.warning(f"[{self.session_token}] [HIBERNATE] Transitioning to Deep Sleep (Reason: {reason})")
         
-        # 1. [DETERMINISTIC REAP] Reclaim silicon via the Ledger
-        # We revert to the Sprint 16 Gold Standard because /sleep Level 2 is unstable in v0.17.0
-        await self.cleanup_silicon(mode="SESSION", engine_only=True)
-        
-        # 2. Update state
-        current_lab_mode = "HIBERNATING"
-        is_hibernating = True
+        # 1. [QUIET WINDOW] Suspend pulse loop to prevent API contention during offload
         self.ready_event.clear()
         
-        # 3. Settle window for driver tables (Physical Law)
-        await asyncio.sleep(5.0)
-        
-        used, _ = await self._get_vram_info()
-        logger.info(f"[{self.session_token}] [HIBERNATE] Deep Sleep Active. VRAM Reclaimed: {used}MB")
-        
-        await self.update_status_json("HIBERNATING (Deep)")
-        return {"status": "success", "message": "Deep Sleep Active. VRAM Reclaimed."}
+        # 2. Attempt Level 2 Graceful Offload
+        success = False
+        try:
+            async with aiohttp.ClientSession() as session:
+                # [FEAT-282] Clear prefix cache before offload to reduce payload
+                await session.post("http://127.0.0.1:8088/reset_prefix_cache", timeout=2.0)
+                
+                # Full weight offload (Level 2)
+                async with session.post("http://127.0.0.1:8088/sleep?level=2", timeout=30.0) as r:
+                    if r.status == 200:
+                        logger.warning(f"[{self.session_token}] [SLEEP] vLLM successfully offloaded weights to CPU.")
+                        success = True
+                    else:
+                        err_body = await r.text()
+                        logger.error(f"[{self.session_token}] [SLEEP] Level 2 rejected ({r.status}): {err_body}")
+        except Exception as e:
+            logger.error(f"[{self.session_token}] [SLEEP] Offload signal failed: {e}")
+
+        if success:
+            current_lab_mode = "HIBERNATING"
+            is_hibernating = True
+            # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
+            for i in range(15):
+                used, _ = await self._get_vram_info()
+                if used < 3000:
+                    logger.info(f"[{self.session_token}] [HIBERNATE] VRAM reclamation verified at {used}MB.")
+                    break
+                await asyncio.sleep(2)
+            
+            await self.update_status_json("HIBERNATING (VRAM Free)")
+            return {"status": "success", "message": "Soft hibernation active."}
+        else:
+            # 3. [DETERMINISTIC REAP] Fallback to Sprint 16 Standard
+            logger.warning(f"[{self.session_token}] [HIBERNATE] Graceful failed. Executing Atomic Reap.")
+            await self.cleanup_silicon(mode="SESSION", engine_only=True)
+            current_lab_mode = "HIBERNATING"
+            is_hibernating = True
+            await self.update_status_json("HIBERNATING (Reaped)")
+            return {"status": "success", "message": "Forced hibernation active."}
 
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
