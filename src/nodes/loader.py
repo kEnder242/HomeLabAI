@@ -5,10 +5,6 @@ import os
 import logging
 import time
 import socket
-from liger_kernel.transformers import (
-    apply_liger_kernel_to_mistral,
-    apply_liger_kernel_to_qwen2,
-)
 from mcp.server.fastmcp import FastMCP
 
 # Paths
@@ -59,6 +55,15 @@ class BicameralNode:
             setproctitle.setproctitle(title)
         except ImportError:
             sys.argv[0] = title
+
+        # [FEAT-210] Optimized kernels (Lazy Load)
+        if os.environ.get("DISABLE_EAR") != "1":
+            try:
+                from liger_kernel.transformers import apply_liger_kernel_to_qwen2
+                apply_liger_kernel_to_qwen2()
+                logging.debug(f"[{self.name}] Liger kernels applied.")
+            except Exception as e:
+                logging.warning(f"[{self.name}] Liger application failed: {e}")
 
         self.name = name.lower()
         self.system_prompt = system_prompt
@@ -122,19 +127,6 @@ class BicameralNode:
         
         return self.generate_response(query, context, system_override=system_override, source_name=self.name)
 
-    def _patch_model(self, model_id):
-        """[FEAT-031] Apply fused CUDA kernels for VRAM efficiency."""
-        try:
-            m_id = str(model_id).lower()
-            if "mistral" in m_id or "mixtral" in m_id:
-                logging.info(f"[{self.name}] Applying Liger-Mistral patches.")
-                apply_liger_kernel_to_mistral()
-            elif "qwen" in m_id:
-                logging.info(f"[{self.name}] Applying Liger-Qwen patches.")
-                apply_liger_kernel_to_qwen2()
-        except Exception as e:
-            logging.error(f"[{self.name}] Liger patch failed: {e}")
-
     def _load_json(self, path):
         if os.path.exists(path):
             try:
@@ -185,9 +177,11 @@ class BicameralNode:
         return medium or "llama3.2:3b"
 
     def _resolve_primary_host(self):
-        """[FEAT-255.7] Dynamic Resolution: Maps hostname to IP with infra.json fallback."""
-        if self.primary_host == "localhost":
-            return "127.0.0.1"
+        """[FEAT-255.7] Dynamic Resolution: Forced 127.0.0.1 for local stability."""
+        if self.primary_host in ["localhost", "127.0.0.1", "z87-Linux"]:
+            target = "127.0.0.1"
+            logging.info(f"[{self.name}] Resolved primary host to local: {target}")
+            return target
         
         if self.primary_host == "KENDER":
             # [HARDENING] Direct IP bypass for known Windows host
@@ -195,11 +189,15 @@ class BicameralNode:
 
         try:
             # Try dynamic DNS resolution
-            return socket.gethostbyname(self.primary_host)
+            res = socket.gethostbyname(self.primary_host)
+            logging.info(f"[{self.name}] Resolved {self.primary_host} to: {res}")
+            return res
         except Exception:
             # Fallback to ip_hint from infrastructure.json
             host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
-            return host_cfg.get("ip_hint", self.primary_host)
+            res = host_cfg.get("ip_hint", self.primary_host)
+            logging.warning(f"[{self.name}] DNS resolution failed for {self.primary_host}. Using hint: {res}")
+            return res
 
     async def ping_engine(self, force=False):
         """[FEAT-192] Checks if the backend engine is responsive with TTL throttling."""

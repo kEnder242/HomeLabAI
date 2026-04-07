@@ -43,18 +43,14 @@ class CognitiveHub:
         self.triage_failures = 0 # [FEAT-270] Track consecutive failures
 
     def bridge_signal_clean(self, text):
-        """
-        [FEAT-203] Bicameral Bridge Signal Cleaning Utility.
-        [FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output.
-        """
-        if "{" not in text:
+        """[FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output."""
+        if not text or "{" not in text:
             return None
 
         # 1. Strip markdown blocks
         clean = re.sub(r"```json\s*|\s*```", "", text).strip()
 
-        # 2. Extract JSON blocks
-        # [HARDENING] Find all balanced { } blocks and try to parse the first one
+        # 2. Extract JSON blocks via balanced brace matching
         json_blocks = []
         stack = 0
         start_idx = -1
@@ -71,12 +67,20 @@ class CognitiveHub:
                     start_idx = -1
 
         if not json_blocks:
-            # Fallback to greedy if balance logic fails
+            # Fallback to greedy regex if balance logic fails
             match = re.search(r'(\{.*\})', clean, re.DOTALL)
             if match:
                 json_blocks = [match.group(1)]
             else:
                 return None
+
+        # 3. Parse first block
+        for block in json_blocks:
+            try:
+                return json.loads(block)
+            except Exception:
+                continue
+        return None
 
         # 3. Process the first block
         json_str = json_blocks[0]
@@ -94,6 +98,18 @@ class CognitiveHub:
         [FEAT-238.1] Combined Dispatch: Persona Speech + Tool Action.
         Ensures persona is maintained even when tools are used for steering.
         """
+        if not text:
+            return
+            
+        # [FEAT-072.1] Signal-Based Morning Briefing Uplink
+        if "trigger_morning_briefing" in str(text) and final:
+            if hasattr(self, 'trigger_briefing_cb') and self.trigger_briefing_cb:
+                logging.info("[HUB] Neural Signal detected: trigger_morning_briefing.")
+                asyncio.create_task(self.trigger_briefing_cb())
+                # Strip signal from display text if it's a raw tool call string
+                text = text.replace('{"tool": "trigger_morning_briefing", "parameters": {}}', "").strip()
+                if not text:
+                    return
         # 1. Clean and Strip Node Artifacts
         clean_text = str(text).replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
         
@@ -212,16 +228,18 @@ class CognitiveHub:
         return text
 
     async def _route_expert_domain(self, query, interjection=""):
-        """[FEAT-184] Vibe-based adapter selection."""
+        """[FEAT-184] Vibe-based adapter selection and situational guidance."""
         try:
             if 'archive' not in self.residents:
-                return "exp_for"
+                return {"adapter": "exp_for", "guidance": ""}
             vibe_res = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
-            vibe_json = vibe_res.content[0].text
-            vibe_data = json.loads(vibe_json)
-            return vibe_data.get("adapter", "exp_for")
+            vibe_data = json.loads(vibe_res.content[0].text)
+            return {
+                "adapter": vibe_data.get("adapter", "exp_for"),
+                "guidance": vibe_data.get("guidance", "")
+            }
         except Exception:
-            return "exp_for"
+            return {"adapter": "exp_for", "guidance": ""}
 
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False):
         """[FEAT-233.4] Internal Token Buffer & Stream Parser."""
@@ -294,11 +312,8 @@ class CognitiveHub:
         intent = "STRATEGIC"
         self.trigger_briefing_cb = trigger_briefing_callback
 
-        # [FEAT-072.1] Auto-Trigger Briefing logic
-        if "briefing" in query.lower() or "summary" in query.lower():
-             await self.trigger_morning_briefing()
-
         # 1. Lab Node Triage
+
         addressed_to = "MICE" # Default to collective
         triage_data_update = {} # [FIX] Initialize early
         
@@ -383,7 +398,9 @@ class CognitiveHub:
                 p_res = await self.residents["pinky"].call_tool("think", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
                 return await self.execute_dispatch(p_res.content[0].text, "System", final=True)
 
-        selected_expert = await self._route_expert_domain(query) if intent != "CASUAL" else "standard"
+        selected_vibe = await self._route_expert_domain(query) if intent != "CASUAL" else {"adapter": "standard", "guidance": ""}
+        selected_expert = selected_vibe["adapter"]
+        situational_guidance = selected_vibe["guidance"]
 
         # 3. Proactive Archivist
         historical_context = ""
@@ -409,7 +426,7 @@ class CognitiveHub:
             pinky_text = await self._process_node_stream(
                 "pinky", query, p_context, "Pinky (Triage)",
                 tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
-                behavioral_guidance="Standard brevity. Focus on natural interaction.",
+                behavioral_guidance=situational_guidance or "Standard brevity. Focus on natural interaction.",
                 shutdown_event=shutdown_event,
                 is_internal=mute_pinky
             )
@@ -429,7 +446,7 @@ class CognitiveHub:
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
                     tools=["ask_brain", "shallow_think"],
-                    behavioral_guidance="Provide immediate technical intuition.",
+                    behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
                     is_internal=mute_shadow
                 )

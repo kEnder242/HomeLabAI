@@ -956,21 +956,16 @@ class AcmeLab:
                         )
                     elif m_type == "text_input":
                         query = data.get("content", "")
+                        logging.info(f"[HUB] Query Arrival: {query[:50]} (Length: {len(query)})")
                         
-                        # [FEAT-227] Atomic Anchor Gate: Strictly ignore input without [ME] prefix
+                        # [FEAT-227] Atomic Anchor Gate
                         if not query.startswith("[ME]"):
                             logging.debug(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
                             continue
 
                         self.last_activity = time.time()
-                        if (
-                            self.current_processing_task
-                            and not self.current_processing_task.done()
-                        ):
-                            self.current_processing_task.cancel()
-                        self.current_processing_task = asyncio.create_task(
-                            self.process_query(query)
-                        )
+                        # [FIX] Simplified task management to avoid cancellation deadlocks
+                        asyncio.create_task(self.process_query(query))
                     elif m_type == "workspace_save":
                         asyncio.create_task(
                             self.handle_workspace_save(
@@ -1175,7 +1170,7 @@ class AcmeLab:
             try:
                 logging.info(f"[BOOT] Synchronizing {name.upper()}...")
                 if name == "lab":
-                    await asyncio.sleep(5.0) # [FEAT-276.7] Engine Settle Window
+                    await asyncio.sleep(10.0) # [FEAT-276.7] Extended Engine Settle Window
                 else:
                     await asyncio.sleep(2.0) # Faster settle for non-reasoning nodes
                 
