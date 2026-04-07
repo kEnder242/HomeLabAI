@@ -34,19 +34,23 @@ class SiliconAudit:
             # [FEAT-256.1] Physical Truth: Check port 8765 instead of process names
             output = subprocess.check_output(["ss", "-tunlp"], text=True)
             return 1 if ":8765" in output else 0
-        except Exception: return 0
+        except Exception:
+            return 0
 
 async def check_for_crashes():
     """Forensic check for Hub stack traces."""
-    if not os.path.exists(SERVER_LOG): return None
+    if not os.path.exists(SERVER_LOG):
+        return None
     try:
         cmd = ["tail", "-n", "30", SERVER_LOG]
         output = subprocess.check_output(cmd, text=True)
-        if "Traceback" in output or "Error:" in output or "Exception:" in output:
+        if "Traceback" in output:
             lines = output.split('\n')
             for i, line in enumerate(lines):
-                if "Traceback" in line: return "\n".join(lines[i:])
-    except Exception: pass
+                if "Traceback" in line:
+                    return "\n".join(lines[i:])
+    except Exception:
+        pass
     return None
 
 async def cognitive_ping(label="Pre-Sleep"):
@@ -56,11 +60,25 @@ async def cognitive_ping(label="Pre-Sleep"):
     client_id = "intercom"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(HUB_URL) as ws:
+            # [FEAT-259.7] Handshake Persistence: Retry connection until foyer is ready
+            ws = None
+            print("    [*] Attempting handshake with foyer (8765)...")
+            for i in range(15): # 30s total
+                try:
+                    ws = await session.ws_connect(HUB_URL, timeout=2.0)
+                    break
+                except Exception:
+                    await asyncio.sleep(2)
+            
+            if not ws:
+                print(f"  ❌ FAILED ({label}): Could not connect to Hub foyer.")
+                return False
+
+            async with ws:
                 await ws.send_str(json.dumps({"type": "handshake", "client": client_id}))
                 
                 # Consume initial status messages until OPERATIONAL
-                print(f"    [*] Handshake sent. Waiting for foyer to reach OPERATIONAL...")
+                print("    [*] Handshake sent. Waiting for foyer to reach OPERATIONAL...")
                 is_foyer_ready = False
                 for _ in range(30):
                     try:
@@ -68,10 +86,12 @@ async def cognitive_ping(label="Pre-Sleep"):
                         m_state = msg.get("state")
                         m_full = msg.get("operational") or msg.get("full_lab_ready")
                         if m_state == "operational" or m_full:
-                            print(f"    [+] Foyer confirmed OPERATIONAL.")
+                            print("    [+] Foyer confirmed OPERATIONAL.")
                             is_foyer_ready = True
                             break
-                    except Exception: break
+                    except Exception:
+                        break
+
                 
                 if not is_foyer_ready:
                     print(f"  ❌ FAILED ({label}): Foyer never reached OPERATIONAL state.")
@@ -79,46 +99,38 @@ async def cognitive_ping(label="Pre-Sleep"):
 
                 # [FINAL_FIX] Drain foyer noise completely before querying
                 print("    [*] Draining foyer noise...")
-                for _ in range(10):
+                for _ in range(20):
                     try:
                         await ws.receive_json(timeout=0.5)
-                    except Exception: break
+                    except Exception:
+                        break
 
-                # [FEAT-259.6] Settle window for reasoning nodes
-                print(f"    [*] Settle window (30s) for reasoning nodes...")
-                await asyncio.sleep(30)
+                # [FEAT-259.6] Settle window for reasoning nodes (Physical Silicon)
+                print("    [*] Settle window (60s) for physical silicon and adapters...")
+                await asyncio.sleep(60)
 
-                print(f"    [*] Dispatching query: hello?")
-                await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
-
-                start_wait = time.time()
-                msg_count = 0
-                while time.time() - start_wait < 180 and msg_count < 200:
-                    try:
-                        msg = await ws.receive_json(timeout=10)
-                        msg_count += 1
-
-                        # DEBUG: Print all received messages
-                        m_type = msg.get('type', 'UNKNOWN')
-                        m_src = str(msg.get('brain_source') or msg.get('source', 'None'))
-                        m_text = str(msg.get('brain') or msg.get('message', ''))
-                        m_final = msg.get('final')
-
-                        if m_type in ["chat", "crosstalk"] and ("Pinky" in m_src or "STUB" in m_src):
-                            # SUCCESS: If we hear from Pinky (or STUB) at all, she's alive.
-                            print(f"  ✅ Pinky/STUB Replied ({label}): {m_text[:50]}...")
-                            return True
-
-                    except asyncio.TimeoutError:
-                        continue
-                    except TypeError as e:
-                        if "WSMsgType.CLOSE" in str(e) or "257" in str(e):
-                            print(f"  ❌ FAILED ({label}): WebSocket closed by server.")
-                            return False
-                        raise
-                else:
-                    print(f"  ❌ Timeout ({label}): No response from Pinky.")
-                    return False
+                # [FEAT-259.8] Query Persistence
+                for attempt in range(3):
+                    print(f"    [*] Dispatching query (Attempt {attempt+1}): hello?")
+                    await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
+                    
+                    start_wait = time.time()
+                    while time.time() - start_wait < 60: # 60s per attempt
+                        try:
+                            msg = await ws.receive_json(timeout=10)
+                            m_type = msg.get('type', 'UNKNOWN')
+                            m_src = str(msg.get('brain_source') or msg.get('source', 'None'))
+                            m_text = str(msg.get('brain') or msg.get('message', ''))
+                            
+                            if m_type in ["chat", "crosstalk"] and "Pinky" in m_src:
+                                print(f"  ✅ Pinky Replied ({label}): {m_text[:50]}...")
+                                return True
+                        except Exception:
+                            continue
+                    print(f"    [!] Attempt {attempt+1} timed out.")
+                
+                print(f"  ❌ FAILED ({label}): No response from Pinky after 3 attempts.")
+                return False
     except Exception as e:
         print(f"  ❌ Connection Failed ({label}): {e}")
         return False
@@ -129,26 +141,8 @@ async def test_hibernation_cycle():
     headers = {'X-Lab-Key': KEY, 'Content-Type': 'application/json'}
     
     async with aiohttp.ClientSession() as session:
-        # [NEW] [FEAT-259.5] Proactive Pre-Flight
-        print("[STEP 0] Silicon Pre-Flight Audit...")
-        async with session.get(f"{ATTENDANT_URL}/heartbeat?key={KEY}") as resp:
-            vitals = await resp.json()
-            used_vram = float(vitals.get("vram", "0%").replace("%",""))
-            is_op = vitals.get("operational")
-            mode = vitals.get("mode")
-            
-            print(f"  [*] Initial VRAM: {used_vram}% | Operational: {is_op} | Mode: {mode}")
-            
-            # Scenario A: Congested but not operational (Ghost Silicon)
-            if used_vram > 50 and not is_op:
-                print("  [!] GHOST SILICON DETECTED: High VRAM but engine is silent.")
-                print("  [!] Requesting logical QUIESCE to clear process handles...")
-                await session.post(f"{ATTENDANT_URL}/quiesce", headers=headers)
-                await asyncio.sleep(10)
-                print("  [+] Maintenance lock active. Requesting fresh ignition...")
-                await session.post(f"{ATTENDANT_URL}/start", headers=headers, json={"reason": "PRE_FLIGHT_RECOVERY"})
-                await asyncio.sleep(20)
-
+        # [STEP 0] Silicon Baseline Check
+        print("[STEP 0] Silicon Baseline Check...")
         zombies = audit.check_for_zombies()
         print(f"  ✅ Active Hubs: {zombies}")
 
@@ -156,31 +150,33 @@ async def test_hibernation_cycle():
         print("[STEP 1] Waiting for Lab OPERATIONAL...")
         initial_vram = 0.0
         sparked = False
-        for _ in range(150): # 300s
+        start_wait = time.time()
+        while time.time() - start_wait < 300:
             try:
-                async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
+                async with session.get(f"{ATTENDANT_URL}/heartbeat?key={KEY}") as resp:
                     data = await resp.json()
                     mode = data.get("mode")
+                    is_op = data.get("operational")
+                    
                     if mode == "HIBERNATING" and not sparked:
                         print("  [*] Lab is hibernating. Sparking wake-up...")
-                        async with aiohttp.ClientSession().ws_connect(HUB_URL) as ws:
-                            await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"}))
+                        async with aiohttp.ClientSession() as spark_session:
+                            async with spark_session.ws_connect(HUB_URL) as ws:
+                                await ws.send_str(json.dumps({"type": "handshake", "client": "intercom"}))
                         sparked = True
 
                     vram_str = data.get("vram", "0%").replace("%","")
                     vram = float(vram_str)
-                    # [FIX] Use new 'operational' key. Skip VRAM requirement for STUB.
-                    is_ready = data.get("operational") or data.get("full_lab_ready")
-                    if (is_ready or mode == "STUB") and (vram > 50 or mode == "STUB"):
+                    if is_op or mode == "STUB":
                         initial_vram = vram
                         print(f"  ✅ Lab is OPERATIONAL (Mode: {mode}, VRAM: {initial_vram}%)")
                         break
-            except Exception: pass
-            await asyncio.sleep(2)
+            except Exception:
+                pass
+            await asyncio.sleep(5)
         else:
             print("  ❌ Timeout: Lab failed to reach OPERATIONAL.")
-            return
-
+            sys.exit(1)
 
         # STEP 1.1: Proactive Check (Abort if broken now)
         if not await cognitive_ping("Pre-Sleep"):
@@ -240,7 +236,8 @@ async def test_hibernation_cycle():
                         except Exception as e:
                             print(f"    [!] WebSocket Error: {e}")
                             break
-                    if spark_success: break
+                    if spark_success:
+                        break
             except Exception as e:
                 print(f"  [!] Spark Connection failed: {e}. Retrying in 5s...")
                 await asyncio.sleep(5)

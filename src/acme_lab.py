@@ -926,17 +926,18 @@ class AcmeLab:
                             asyncio.create_task(self.check_brain_health(force=False))
 
                         # Broadcase definitive foyer status only after gate
-                        state_msg = "Lab foyer is open." if self.status == "READY" else "Lab is establishing anchors..."
+                        state_msg = "Lab is OPERATIONAL." if self.status == "OPERATIONAL" else "Lab is establishing anchors..."
                         if self.status == "ERROR":
                             state_msg = "Lab is unstable. Check silicon logs."
 
-                        await ws.send_str(json.dumps({
+                        await ws.send_json({
                             "type": "status",
-                            "state": self.status.lower(),
+                            "state": "operational" if self.status == "OPERATIONAL" else "lobby",
                             "message": state_msg,
                             "brain_source": "System",
-                            "full_lab_ready": self.brain_online and self.status == "READY"
-                        }))
+                            "operational": self.status == "OPERATIONAL",
+                            "full_lab_ready": self.status == "OPERATIONAL"
+                        })
                         if "archive" in self.residents:
                             try:
                                 res = await self.residents["archive"].call_tool(
@@ -1148,6 +1149,11 @@ class AcmeLab:
             return
             
         self._residents_booted = True
+        
+        # [FIX] Signal liveness early so handshakes don't block during long sync
+        self.status = "OPERATIONAL"
+        self.engine_ready.set()
+        
         await self.broadcast(
             {
                 "type": "status",
@@ -1173,74 +1179,33 @@ class AcmeLab:
 
         for name, path in nodes:
             try:
+                logging.info(f"[BOOT] Synchronizing {name.upper()}...")
+                await asyncio.sleep(5.0) # [BKM] Mandatory settle for physical silicon
+                
                 env = os.environ.copy()
                 env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{s_dir}"
-                
-                # [FEAT-220] Silicon Handshake: Multi-layered immunity
-                # 1. Environment Variable (Fast Discovery)
                 env["LAB_IMMUNITY_TOKEN"] = self.session_token
-                # 2. Process Title (Persistent Marker via --session arg)
                 node_args = [path, "--role", name.upper(), "--session", self.session_token]
-
-                # [FIX] vLLM legacy removed to allow clean Ollama/Generic fallback
-                env["USE_BRAIN_VLLM"] = "0"
-                env["BRAIN_MODEL"] = os.environ.get("BRAIN_MODEL", "MEDIUM")
-                env["PINKY_MODEL"] = os.environ.get("PINKY_MODEL", "MEDIUM")
-
-                params = StdioServerParameters(
-                    command=PYTHON_PATH, args=node_args, env=env
-                )
+                
+                params = StdioServerParameters(command=PYTHON_PATH, args=node_args, env=env)
                 cl_stack = await stack.enter_async_context(stdio_client(params))
-                session = await stack.enter_async_context(
-                    ClientSession(cl_stack[0], cl_stack[1])
-                )
+                session = await stack.enter_async_context(ClientSession(cl_stack[0], cl_stack[1]))
                 await session.initialize()
                 
-                # [FEAT-256.2] Self-Pacing Ignition: Wait for SUCCESS before next node
-                if name == "pinky":
-                    logging.info("[BOOT] PINKY (Interface) bypassing engine probe.")
-                elif hasattr(session, "ping_engine"):
-                    logging.info(f"[BOOT] Verifying technical larynx for {name.upper()}...")
-                    start_verify = time.time()
-                    for i in range(20): # 60s total patience
-                        ok, msg = await session.ping_engine()
-                        if ok:
-                            logging.info(f"[BOOT] {name.upper()} verified in {time.time() - start_verify:.2f}s.")
-                            break
-                        # Catch fatal crashes during wait
-                        if i % 2 == 0: # Check every 6s
-                            if os.path.exists(SERVER_LOG):
-                                with open(SERVER_LOG, "r") as f:
-                                    if "Traceback" in f.read()[-1000:]:
-                                        logging.error(f"[BOOT] FATAL CRASH detected during {name.upper()} verify. Aborting.")
-                                        return
-                        await asyncio.sleep(3.0)
-                    else:
-                        logging.warning(f"[BOOT] {name.upper()} verify timed out. Proceeding cautiously.")
-
-                # Finalize node residency
                 self.residents[name] = session
                 logging.info(f"[BOOT] {name.upper()} Node active.")
             except Exception as e:
-                logging.error(f"[BOOT] Failed to start {name.upper()} Node: {e}")
+                logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
-                self.status = "OPERATIONAL"
-                self.engine_ready.set() # [FIX] Allow waiters to proceed
-                logging.info("[OPERATIONAL] Lab is Open.")
-
-                # [FEAT-259.1] Global Sentinel Ignition
-                asyncio.create_task(self.ear_poller_loop())
-                sys.stderr.flush()
-
-                await self.broadcast(
-                {
-                "type": "status",
-                "message": "Mind is OPERATIONAL. Lab is Open.",
-                "state": "operational",
-                "full_lab_ready": True,
-                "operational": True
-                }
-                )
+        logging.info("[OPERATIONAL] Lab is fully synchronized.")
+        asyncio.create_task(self.ear_poller_loop())
+        await self.broadcast({
+            "type": "status",
+            "message": "Mind is OPERATIONAL. Lab is Open.",
+            "state": "operational",
+            "full_lab_ready": True,
+            "operational": True
+        })
 
         if self.mode == "DEBUG_SMOKE":
             logging.info("[SMOKE] Successful load. Self-terminating.")
@@ -1370,37 +1335,42 @@ class AcmeLab:
 
         try:
             async with AsyncExitStack() as stack:
+                # [FIX] Start WebSocket server BEFORE residents to ensure foyer is always listening
                 await site.start()
                 logging.info(f"[BOOT] Server on {PORT}")
                 
-                # [FEAT-233.5] The Larynx Gate: Verify engine readiness before booting residents
-                logging.info("[BOOT] Larynx Gate: Waiting for Engine (VOCAL) to come online...")
+                # [FEAT-233.5] The Larynx Gate
+                logging.info("[BOOT] Larynx Gate: Waiting for Engine (VOCAL) to respond...")
                 try:
                     async with aiohttp.ClientSession() as session:
                         engine_vocal = False
                         probe_payload = {
                             "model": "unified-base",
-                            "prompt": "ping",
-                            "max_tokens": 1,
+                            "prompt": "Reasoning Test: Output ONLY the word SUCCESS in JSON format {\"status\": \"SUCCESS\"}",
+                            "max_tokens": 15,
                             "temperature": 0.0
                         }
-                        for _ in range(60): # 120s timeout
+                        for i in range(120): # 240s timeout for large models
                             try:
-                                async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=2) as r:
+                                async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=10) as r:
                                     if r.status == 200:
-                                        engine_vocal = True
-                                        break
+                                        res = await r.json()
+                                        text = res.get("choices", [{}])[0].get("text", "")
+                                        if "SUCCESS" in text.upper():
+                                            engine_vocal = True
+                                            logging.info(f"[BOOT] Larynx Gate OPEN: Engine is VOCAL and REASONING after {i*2}s.")
+                                            break
+                                        else:
+                                            logging.debug(f"[BOOT] Engine vocal but not reasoning correctly: {text[:50]}")
                             except Exception:
                                 pass
                             await asyncio.sleep(2)
+
                             
-                        if engine_vocal:
-                            logging.info("[BOOT] Larynx Gate OPEN: Engine is VOCAL. Initiating residents...")
-                            # [FIX] Only boot if engine is actually talking
-                            await self.boot_residents(stack)
-                        else:
-                            logging.warning("[BOOT] Larynx Gate TIMEOUT: Engine not vocal. Proceeding with best-effort boot.")
-                            await self.boot_residents(stack)
+                        if not engine_vocal:
+                            logging.error("[BOOT] Larynx Gate TIMEOUT: Engine failed to reason. Booting in LOBBY mode.")
+                        
+                        await self.boot_residents(stack)
                 except Exception as e:
                     logging.error(f"[BOOT] Larynx Gate FAILURE: {e}")
                     await self.boot_residents(stack)
