@@ -991,14 +991,14 @@ class LabAttendantV4:
                     # Cognitive Probe (Functional)
                     if self._engine_state_cache and port == 8088:
                         try:
-                            # [FIX] Use the same prompt that succeeded in manual curl
+                            # [FIX] Use chat endpoint for V1 engine compatibility
                             payload = {
                                 "model": "unified-base", 
-                                "prompt": "Respond with the word SUCCESS.", 
+                                "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
                                 "max_tokens": 10,
                                 "temperature": 0.0
                             }
-                            async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=5.0) as p:
+                            async with session.post("http://127.0.0.1:8088/v1/chat/completions", json=payload, timeout=5.0) as p:
                                 if p.status == 200:
                                     engine_vocal = True
                                     self._vocal_state_cache = True
@@ -1151,12 +1151,12 @@ class LabAttendantV4:
                     # Functional ping (Reasoning Test)
                     payload = {
                         "model": "unified-base",
-                        "prompt": "Respond with the word SUCCESS.",
+                        "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
                         "max_tokens": 10,
                         "temperature": 0.0
                     }
-                    # [FIX] Increase timeout to 10s for first-turn KV cache warmup
-                    async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=10.0) as r:
+                    # [FIX] Use chat endpoint for V1 engine compatibility
+                    async with session.post("http://127.0.0.1:8088/v1/chat/completions", json=payload, timeout=10.0) as r:
                         if r.status == 200:
                             res = await r.json()
                             if "choices" in res:
