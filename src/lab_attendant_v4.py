@@ -213,6 +213,7 @@ class LabAttendantV4:
         """Continuous background vitals pulse for the dashboard."""
         logger.info("[PULSE] Background status cycle active (2s).")
         while True:
+            # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
             await asyncio.sleep(2)
 
@@ -969,11 +970,14 @@ class LabAttendantV4:
                 except Exception:
                     pass
                 
-                # 2. Engine Probes (with TTL to avoid contention)
-                # If we are currently igniting or re-igniting, skip TTL to allow fast state changes
+                # 2. Engine Probes (with TTL and Hibernation Guard)
                 is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION")
                 
-                if is_igniting or (now - self._last_engine_check > 30): # 30s TTL
+                if is_hibernating:
+                    # [FEAT-282.6] Passive Mode: Don't poke the engine if it's supposed to be asleep
+                    engine_up = False
+                    engine_vocal = False
+                elif is_igniting or (now - self._last_engine_check > 30): # 30s TTL
                     # Direct Port Probe (Fallback)
                     port = 8088 if current_lab_mode == "VLLM" else 11434
                     try:
