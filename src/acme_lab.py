@@ -155,6 +155,7 @@ class AcmeLab:
         self.banter_backoff = 0
         self.brain_online = False
         self._last_brain_prime = 0  # [FEAT-085] Keep-alive tracking
+        self._priming_in_progress = False # [FEAT-286.2] Strict Latching
         self.mic_active = False  # [FEAT-025] Amygdala Switch State
         self.sensory = SensoryManager(self.broadcast)
         self.cognitive = CognitiveHub(
@@ -376,10 +377,11 @@ class AcmeLab:
                                 "channel": "insight"
                             })
                         self.brain_online = True # API is at least talking
-                except Exception:
+                except Exception as e:
                     if self.brain_online:
+                        logging.info(f"[HEALTH] KENDER Offline. Entering 60s penalty box. (Error: {e})")
                         await self.broadcast({
-                            "brain": "Strategic Sovereignty: SHADOW (Connection Lost)",
+                            "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
                             "brain_source": "System",
                             "channel": "insight"
                         })
@@ -387,33 +389,60 @@ class AcmeLab:
                     self._last_brain_fail = now
                     return
 
-                    # Tier 2: Heavy Prime (GPU Wake)
-                    # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
-                    # [FEAT-284.2] Restoration Force: Always prime if we are waking up
-                    is_restoring = self.status in ["WAKING", "BOOTING"]
-                    
-                    should_prime = force or is_restoring or (
-                        self.connected_clients > 0 
-                        and (now - self._last_brain_prime > 120)
-                    )
+                # --- Tier 2: Heavy Prime (GPU Wake) ---
+                # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
+                is_restoring = self.status in ["WAKING", "BOOTING"]
+                
+                if self.connected_clients == 0 and not force:
+                    logging.debug("[HEALTH] Heavy Prime Bypassed: No clients connected to foyer.")
+                    return
 
-                    if should_prime:
-                        probe_model = models[0]
-                        preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b"]
-                        for p in preferred:
-                            if p in models:
-                                probe_model = p
-                                break
+                # [FEAT-285] Cooldown Management
+                last_prime_delta = now - getattr(self, "_last_brain_prime", 0)
+                should_prime = force or is_restoring or (last_prime_delta > 120)
+                
+                if not should_prime:
+                    logging.debug(f"[HEALTH] Heavy Prime Bypassed: Cooldown active ({int(last_prime_delta)}s < 120s).")
+                    return
 
-                        p_url = target_url.replace("/api/tags", "/api/generate")
-                        payload = {"model": probe_model, "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
-                        
-                        async with session.post(p_url, json=payload, timeout=10) as pr:
-                            if pr.status == 200:
-                                logging.info(f"[HEALTH] Strategic Sovereign PRIMED: {probe_model} (Force={force})")
-                                self._last_brain_prime = now
+                # [FEAT-286.2] Strict Latching: Only allow one active background prime
+                if self._priming_in_progress:
+                    logging.debug("[HEALTH] Heavy Prime Bypassed: Task already in progress.")
+                    return
+
+                # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
+                probe_model = models[0] if models else "llama3.1:8b" # Fallback to 8B standard
+                preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "gemma2:2b"]
+                for p in preferred:
+                    if p in models:
+                        probe_model = p
+                        break
+                
+                logging.info(f"[HEALTH] Initiating Heavy Prime on KENDER: {probe_model} (Force={force}, Restoring={is_restoring})")
+                
+                p_url = target_url.replace("/api/tags", "/api/generate")
+                payload = {"model": probe_model, "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+                
+                # [BKM] Parallel Execution: Generation probe runs in background to prevent Hub hangs
+                self._priming_in_progress = True
+                async def _bg_prime():
+                    try:
+                        async with aiohttp.ClientSession() as p_session:
+                            async with p_session.post(p_url, json=payload, timeout=30) as pr:
+                                if pr.status == 200:
+                                    logging.info(f"[HEALTH] Strategic Sovereign SUCCESS: {probe_model} is resident in VRAM.")
+                                    self._last_brain_prime = time.time()
+                                else:
+                                    logging.error(f"[HEALTH] Heavy Prime Failed on KENDER ({pr.status})")
+                    except Exception as pe:
+                        logging.error(f"[HEALTH] Heavy Prime Exception (KENDER): {pe}")
+                    finally:
+                        self._priming_in_progress = False
+
+                asyncio.create_task(_bg_prime())
+
         except Exception as e:
-            logging.debug(f"[HEALTH] Brain probe failed: {e}")
+            logging.debug(f"[HEALTH] Overall brain probe failed: {e}")
             self.brain_online = False
 
     async def spark_restoration(self, client_id="system"):
