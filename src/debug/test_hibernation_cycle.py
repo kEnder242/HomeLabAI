@@ -80,9 +80,9 @@ async def cognitive_ping(label="Pre-Sleep"):
                 # Consume initial status messages until OPERATIONAL
                 print("    [*] Handshake sent. Waiting for foyer to reach OPERATIONAL...")
                 is_foyer_ready = False
-                for _ in range(60): # Increase to 120s for sequential boot
+                for _ in range(90): # 180s total for sequential boot
                     try:
-                        msg = await ws.receive_json(timeout=10)
+                        msg = await ws.receive_json(timeout=2)
                         m_state = msg.get("state")
                         m_full = msg.get("operational") or msg.get("full_lab_ready")
                         if m_state == "operational" or m_full:
@@ -90,7 +90,7 @@ async def cognitive_ping(label="Pre-Sleep"):
                             is_foyer_ready = True
                             break
                     except Exception:
-                        break
+                        continue
 
                 
                 if not is_foyer_ready:
