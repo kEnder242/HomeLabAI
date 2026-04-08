@@ -232,13 +232,17 @@ class CognitiveHub:
         try:
             if 'archive' not in self.residents:
                 return {"adapter": "exp_for", "guidance": ""}
-            vibe_res = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
-            vibe_data = json.loads(vibe_res.content[0].text)
-            return {
-                "adapter": vibe_data.get("adapter", "exp_for"),
-                "guidance": vibe_data.get("guidance", "")
-            }
-        except Exception:
+            
+            # [FIX] Strict timeout to prevent triage deadlocks during node hangs
+            async with asyncio.timeout(5.0):
+                vibe_res = await self.residents['archive'].call_tool("query_vibe", {"query_text": query})
+                vibe_data = json.loads(vibe_res.content[0].text)
+                return {
+                    "adapter": vibe_data.get("adapter", "exp_for"),
+                    "guidance": vibe_data.get("guidance", "")
+                }
+        except Exception as e:
+            logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False):

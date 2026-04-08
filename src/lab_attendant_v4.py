@@ -931,11 +931,18 @@ class LabAttendantV4:
         return False
 
     async def _get_current_vitals(self):
-        """[FEAT-276] Silicon Pulse with Deep Forensic Telemetry."""
+        """[FEAT-213] Silicon Health Check: Returns consolidated telemetry."""
         foyer_up = False
         engine_up = False
         engine_vocal = False
         
+        # [FIX] Cache successful probes to prevent socket contention with nodes
+        now = time.time()
+        if not hasattr(self, "_last_engine_check"):
+            self._last_engine_check = 0
+            self._engine_state_cache = False
+            self._vocal_state_cache = False
+
         try:
             async with aiohttp.ClientSession() as session:
                 # 1. Physical Probe (Ports)
@@ -946,30 +953,50 @@ class LabAttendantV4:
                 except Exception:
                     pass
                 
-                # 2. Cognitive Probe (Delegated to Hub)
-                if foyer_up:
-                    try:
-                        async with session.get("http://127.0.0.1:8765/status", timeout=1.0) as r:
-                            if r.status == 200:
-                                res = await r.json()
-                                # Hub foyer now reports its internal engine health
-                                engine_vocal = res.get("operational", False)
-                                engine_up = res.get("engine_up", engine_up)
-                    except Exception as e:
-                        logger.debug(f"[PROBE] Hub delegation failed: {e}")
+                # 2. Engine Probes (with TTL to avoid contention)
+                # If we are currently igniting or re-igniting, skip TTL to allow fast state changes
+                is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION")
                 
-                # 3. Direct Port Probe (Fallback)
-                if not engine_vocal:
+                if is_igniting or (now - self._last_engine_check > 30): # 30s TTL
+                    # Direct Port Probe (Fallback)
                     port = 8088 if current_lab_mode == "VLLM" else 11434
                     try:
                         async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
                             if r.status == 200:
                                 engine_up = True
+                                self._engine_state_cache = True
                     except Exception:
-                        pass
+                        self._engine_state_cache = False
+                    
+                    # Cognitive Probe (Functional)
+                    if self._engine_state_cache and port == 8088:
+                        try:
+                            # [FIX] Use the same prompt that succeeded in manual curl
+                            payload = {
+                                "model": "unified-base", 
+                                "prompt": "Respond with the word SUCCESS.", 
+                                "max_tokens": 10,
+                                "temperature": 0.0
+                            }
+                            async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=5.0) as p:
+                                if p.status == 200:
+                                    engine_vocal = True
+                                    self._vocal_state_cache = True
+                        except Exception:
+                            self._vocal_state_cache = False
+                    
+                    self._last_engine_check = now
+                else:
+                    # Use cache
+                    engine_up = self._engine_state_cache
+                    engine_vocal = self._vocal_state_cache
+
         except Exception as e:
             logger.debug(f"[PROBE] Overall probe failed: {e}")
 
+        # [FIX] Final vocal state must be the union of local and cached to ensure 'is_op' is accurate
+        engine_vocal = engine_vocal or getattr(self, "_vocal_state_cache", False)
+        
         used_mb, total_mb = await self._get_vram_info()
         vram_pct = f"{(used_mb / total_mb * 100):.1f}%" if total_mb > 0 else "0.0%"
         
@@ -1083,10 +1110,13 @@ class LabAttendantV4:
                     self.ready_event.clear()
                     logger.warning("[WATCHDOG] Hub READY state cleared for transition.")
 
-    async def _wait_for_vllm_cognitive(self, timeout=180):
+    async def _wait_for_vllm_cognitive(self, timeout=240):
         """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
         start_t = time.time()
-        logger.info("[VLLM] Waiting for cognitive reasoning (127.0.0.1:8088)...")
+        logger.info("[VLLM] API is UP. Waiting 60s for Triton kernel residence...")
+        await asyncio.sleep(60) # [BKM] Mandatory settle window for 3B AWQ kernels on Turing
+        
+        logger.info("[VLLM] Beginning cognitive reasoning probes (127.0.0.1:8088)...")
         vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
         
         while time.time() - start_t < timeout:
@@ -1106,18 +1136,20 @@ class LabAttendantV4:
                     # Functional ping (Reasoning Test)
                     payload = {
                         "model": "unified-base",
-                        "prompt": "ping",
-                        "max_tokens": 1,
+                        "prompt": "Respond with the word SUCCESS.",
+                        "max_tokens": 10,
                         "temperature": 0.0
                     }
-                    async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=2.0) as r:
+                    # [FIX] Increase timeout to 10s for first-turn KV cache warmup
+                    async with session.post("http://127.0.0.1:8088/v1/completions", json=payload, timeout=10.0) as r:
                         if r.status == 200:
                             res = await r.json()
                             if "choices" in res:
                                 logger.info(f"[VLLM] Engine is VOCAL and REASONING after {int(time.time() - start_t)}s.")
                                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[VLLM] Cognitive probe attempt failed: {e}")
+            
             await asyncio.sleep(5)
         
         logger.error(f"[VLLM] Engine failed to reason within {timeout}s.")

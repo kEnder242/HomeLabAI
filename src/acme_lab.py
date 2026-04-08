@@ -419,6 +419,11 @@ class AcmeLab:
         if getattr(self, "_spark_active", False) or self.status == "BOOTING":
             return
             
+        # [FEAT-282.5] Authority Handover: Yield to Attendant in SERVICE_UNATTENDED mode
+        if self.mode == "SERVICE_UNATTENDED":
+            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to Attendant authority.")
+            return
+
         self._spark_active = True
         self.status = "WAKING"
         self.engine_ready.clear() # [FIX] Reset state machine early
@@ -1163,8 +1168,11 @@ class AcmeLab:
         ]
         
         # [SPR-13.0] Orchestration Test Mode
-        if self.mode == "DEBUG_PINKY":
-            nodes = [("pinky", os.path.join(n_dir, "pinky_node.py"))]
+        if self.mode in ["DEBUG_PINKY", "PINKY_MODE_HIBERNATE", "PINKY_MODE_VOCAL"]:
+            nodes = [
+                ("pinky", os.path.join(n_dir, "pinky_node.py")),
+                ("lab", os.path.join(n_dir, "lab_node.py"))
+            ]
 
         for name, path in nodes:
             try:
@@ -1199,8 +1207,8 @@ class AcmeLab:
             "operational": True
         })
 
-        if self.mode == "DEBUG_SMOKE":
-            logging.info("[SMOKE] Successful load. Self-terminating.")
+        if self.mode in ["DEBUG_SMOKE", "DEBUG_PINKY"]:
+            logging.info(f"[{self.mode}] Successful load. Self-terminating.")
             self.shutdown_event.set()
         elif self.mode == "DEEP_SMOKE":
             logging.info("[DEEP_SMOKE] Starting Cycle of Life verification...")

@@ -56,6 +56,8 @@ class BicameralNode:
         except ImportError:
             sys.argv[0] = title
 
+        self.name = name.lower()
+
         # [FEAT-210] Optimized kernels (Lazy Load)
         if os.environ.get("DISABLE_EAR") != "1":
             try:
@@ -65,7 +67,6 @@ class BicameralNode:
             except Exception as e:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
-        self.name = name.lower()
         self.system_prompt = system_prompt
         self.mcp = FastMCP(name)
         self._last_brain_prime = 0
