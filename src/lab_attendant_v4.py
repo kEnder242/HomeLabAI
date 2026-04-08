@@ -1023,16 +1023,11 @@ class LabAttendantV4:
         # [FEAT-276] Persistent VRAM Telemetry
         logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
 
-        # [FEAT-265.6] Functional Gate
-        # [FIX] Optimistic Ignition: Bridge the gap during long sequential node sync
-        is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION")
-        
-        # We are OP if: (Hub is OP AND Engine is Vocal) OR (Engine is physically UP during ignition)
+        # [FEAT-265.6] Functional Gate: Strict Cognitive Truth
+        # A node is ONLY operational if it is vocal (for VLLM) or physically up (for others)
         is_op = (foyer_up and engine_vocal and not is_hibernating) or (current_lab_mode == "STUB" and foyer_up)
         
-        if is_igniting and engine_up:
-            is_op = True
-            logger.debug(f"[{self.session_token}] [PROBE] Optimistic ignition active (Engine UP).")
+        # [BKM] No optimistic overrides. If the engine isn't vocal, we aren't operational.
         
         return {
             "attendant_pid": os.getpid(),

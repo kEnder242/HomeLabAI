@@ -254,10 +254,14 @@ async def test_hibernation_cycle():
                 data = await resp.json()
                 vram_str = data.get("vram", "0%").replace("%","")
                 vram = float(vram_str)
-                # [FIX] Atomic ignition means is_op triggers BEFORE VRAM rises
-                if is_op:
+                # [FIX] Atomic ignition means is_op triggers only when VOCAL
+                # We also wait for VRAM > 30 to ensure weights are resident
+                if is_op and vram > 30.0:
                     print(f"  ✅ Lab signaled READY in {time.time() - start_t:.2f}s (VRAM: {vram}%)")
                     break
+                else:
+                    if i % 10 == 0:
+                        print(f"    [WAIT] VRAM: {vram}% | Vocal: {data.get('engine_vocal')}")
             await asyncio.sleep(5)
         else:
             print("  ❌ Restoration timed out.")
