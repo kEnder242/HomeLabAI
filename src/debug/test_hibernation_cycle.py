@@ -63,7 +63,7 @@ async def cognitive_ping(label="Pre-Sleep"):
             # [FEAT-259.7] Handshake Persistence: Retry connection until foyer is ready
             ws = None
             print("    [*] Attempting handshake with foyer (8765)...")
-            for i in range(15): # 30s total
+            for i in range(90): # 180s total for sequential boot
                 try:
                     ws = await session.ws_connect(HUB_URL, timeout=2.0)
                     break
@@ -249,8 +249,8 @@ async def test_hibernation_cycle():
         # STEP 4: Wait for Restoration
         print("[STEP 4] Waiting for Restoration...")
         start_t = time.time()
-        for _ in range(180): # 360s patience
-            async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
+        for _ in range(180): # 900s patience
+            async with session.get(f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": KEY}) as resp:
                 data = await resp.json()
                 vram_str = data.get("vram", "0%").replace("%","")
                 vram = float(vram_str)
