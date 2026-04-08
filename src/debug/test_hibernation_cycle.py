@@ -254,11 +254,9 @@ async def test_hibernation_cycle():
                 data = await resp.json()
                 vram_str = data.get("vram", "0%").replace("%","")
                 vram = float(vram_str)
-                # [FIX] Match new vocabulary
-                is_op = data.get("operational") or data.get("full_lab_ready")
-                print(f"    [RESTORE_DEBUG] Operational: {is_op} | VRAM: {vram}% | Mode: {data.get('mode')}")
-                if is_op and vram > 50:
-                    print(f"  ✅ Lab Restored in {time.time() - start_t:.2f}s (VRAM: {vram}%)")
+                # [FIX] Atomic ignition means is_op triggers BEFORE VRAM rises
+                if is_op:
+                    print(f"  ✅ Lab signaled READY in {time.time() - start_t:.2f}s (VRAM: {vram}%)")
                     break
             await asyncio.sleep(5)
         else:

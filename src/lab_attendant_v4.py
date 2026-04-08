@@ -397,8 +397,9 @@ class LabAttendantV4:
             env["VLLM_USE_V1"] = "0" # [PLACEBO] Maintain legacy alignment
             
             # [BKM] Consolidate into EXTRA_ARGS for the script to consume
-            # [REBOOT_TARGET] Stable Recipe R2: 0.5 util and 4096 context
-            env["VLLM_EXTRA_ARGS"] = "--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --enable-lora --max-loras 4 --max-model-len 4096 --enable-sleep-mode"
+            # Stable Recipe R2: 0.5 util and 4096 context with verified LoRA mounts
+            LORA_STR = "--enable-lora --max-loras 4 --lora-modules lab_sentinel_v1=/speedy/models/adapters/lab_sentinel_v1 cli_voice_v1=/speedy/models/adapters/cli_voice_v1 shadow_brain_v2=/speedy/models/adapters/shadow_brain_v2 lab_history_v1=/speedy/models/adapters/lab_history_v1"
+            env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --max-model-len 4096 --enable-sleep-mode {LORA_STR}"
             
             logger.info(f"[VLLM] Igniting Sovereign Node (Recipe R2): {target_model}")
             self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model}")

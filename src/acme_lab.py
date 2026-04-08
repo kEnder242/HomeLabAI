@@ -419,10 +419,18 @@ class AcmeLab:
         if getattr(self, "_spark_active", False) or self.status == "BOOTING":
             return
             
-        # [FEAT-282.5] Authority Handover: Yield to Attendant in SERVICE_UNATTENDED mode
-        if self.mode == "SERVICE_UNATTENDED":
-            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to Attendant authority.")
-            return
+        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
+        # This prevents the Hub from spamming while the 60s Triton window is active.
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=1.0) as r:
+                    if r.status == 200:
+                        data = await r.json()
+                        if data.get("reason") in ["SAFE_PILOT", "MANUAL_IGNITION"] or data.get("current_reason", "").startswith("RESTORE_"):
+                            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
+                            return
+        except Exception:
+            pass
 
         self._spark_active = True
         self.status = "WAKING"
