@@ -389,9 +389,12 @@ class AcmeLab:
 
                     # Tier 2: Heavy Prime (GPU Wake)
                     # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
-                    should_prime = force or (
+                    # [FEAT-284.2] Restoration Force: Always prime if we are waking up
+                    is_restoring = self.status in ["WAKING", "BOOTING"]
+                    
+                    should_prime = force or is_restoring or (
                         self.connected_clients > 0 
-                        and (now - self._last_brain_prime > 240)
+                        and (now - self._last_brain_prime > 120)
                     )
 
                     if should_prime:
@@ -976,6 +979,16 @@ class AcmeLab:
                             logging.debug(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
                             continue
 
+                        # [FEAT-284] Physical Gate: Block input during hibernation/restoration
+                        if self.status in ["LOBBY", "WAKING", "BOOTING"] or not self.engine_ready.is_set():
+                            logging.warning(f"[HUB] Ingestion Blocked: Lab is currently {self.status}.")
+                            await ws.send_str(json.dumps({
+                                "type": "status",
+                                "message": "Lab is still warming its anchors. Please wait for cognitive readiness.",
+                                "state": "lobby"
+                            }))
+                            continue
+
                         self.last_activity = time.time()
                         # [FIX] Simplified task management to avoid cancellation deadlocks
                         asyncio.create_task(self.process_query(query))
@@ -1004,6 +1017,10 @@ class AcmeLab:
                     elif m_type == "user_typing":
                         self.last_typing_event = time.time()
                         self.last_activity = time.time()
+                        # [FEAT-284.3] High-Fidelity Readiness: Prime Brain on first typing activity
+                        if not hasattr(self, "_session_primed") or not self._session_primed:
+                            asyncio.create_task(self.check_brain_health(force=True))
+                            self._session_primed = True
                     elif m_type == "relay_feedback":
                         vote = data.get("vote")
                         topic = data.get("topic")
