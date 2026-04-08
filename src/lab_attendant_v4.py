@@ -523,7 +523,7 @@ class LabAttendantV4:
 
 
     async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT"):
-        """[FEAT-262] Eureka Hibernation: Level 2 offload with Quiet Window protection."""
+        """[FEAT-262] Eureka Hibernation: Level 2 offload with 100% Graceful requirement."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate", {"reason": reason})
 
@@ -537,13 +537,14 @@ class LabAttendantV4:
         success = False
         try:
             async with aiohttp.ClientSession() as session:
-                # [FEAT-282] Clear prefix cache before offload to reduce payload
+                # [FEAT-282] Clear prefix cache before offload
                 await session.post("http://127.0.0.1:8088/reset_prefix_cache", timeout=2.0)
                 
                 # Full weight offload (Level 2)
+                # [BKM] Increased timeout to 30s for Z87 PCIe latency
                 async with session.post("http://127.0.0.1:8088/sleep?level=2", timeout=30.0) as r:
                     if r.status == 200:
-                        logger.warning(f"[{self.session_token}] [SLEEP] vLLM successfully offloaded weights to CPU.")
+                        logger.warning(f"[{self.session_token}] [SLEEP] vLLM accepted Level 2 offload signal.")
                         success = True
                     else:
                         err_body = await r.text()
@@ -554,24 +555,38 @@ class LabAttendantV4:
         if success:
             current_lab_mode = "HIBERNATING"
             is_hibernating = True
-            # [FEAT-249.3] Verified Hibernation: Wait for VRAM drop
-            for i in range(15):
-                used, _ = await self._get_vram_info()
-                if used < 3000:
-                    logger.info(f"[{self.session_token}] [HIBERNATE] VRAM reclamation verified at {used}MB.")
-                    break
-                await asyncio.sleep(2)
             
-            await self.update_status_json("HIBERNATING (VRAM Free)")
+            # 3. [FEAT-249.3] Forensic Monitoring: Wait up to 90s for VRAM drop
+            # weights (~2.3GB) + KV Cache should move to CPU
+            start_vram, _ = await self._get_vram_info()
+            logger.info(f"[HIBERNATE] Monitoring offload curve. Starting VRAM: {start_vram}MB")
+            
+            reclaimed = False
+            for i in range(18): # 90s total
+                await asyncio.sleep(5)
+                used, _ = await self._get_vram_info()
+                logger.info(f"  [*] VRAM Check {i+1}/18: {used}MB")
+                if used < 3500: # Target: Weights unmapped
+                    logger.info(f"[{self.session_token}] [HIBERNATE] VRAM reclamation verified at {used}MB.")
+                    reclaimed = True
+                    break
+            
+            if not reclaimed:
+                logger.warning(f"[{self.session_token}] [HIBERNATE] VRAM STALL: Weights remained in silicon after 90s.")
+            
+            await self.update_status_json("HIBERNATING (VRAM Free)" if reclaimed else "HIBERNATING (STALLED)")
             return {"status": "success", "message": "Soft hibernation active."}
         else:
-            # 3. [DETERMINISTIC REAP] Fallback to Sprint 16 Standard
-            logger.warning(f"[{self.session_token}] [HIBERNATE] Graceful failed. Executing Atomic Reap.")
-            await self.cleanup_silicon(mode="SESSION", engine_only=True)
+            # [MEMORIAL] Deprecated Sprint 16 Atomic Reap
+            # [FEAT-259] The Butler Pattern: Surgical session-based reaping
+            # # We previously killed the engine PGID here to guarantee VRAM reclamation
+            # # This is now DISABLED to preserve the V1 process state.
+            # await self.cleanup_silicon(mode="SESSION", engine_only=True)
+            
             current_lab_mode = "HIBERNATING"
             is_hibernating = True
-            await self.update_status_json("HIBERNATING (Reaped)")
-            return {"status": "success", "message": "Forced hibernation active."}
+            await self.update_status_json("HIBERNATING (SIGNAL_FAILED)")
+            return {"status": "error", "message": "Hibernation signal failed. No reap performed."}
 
     async def mcp_quiesce(self):
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
