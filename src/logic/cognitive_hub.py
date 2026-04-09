@@ -351,9 +351,10 @@ class CognitiveHub:
                     raw_t_text = str(t_res.content[0].text) if hasattr(t_res.content[0], "text") else str(t_res.content[0])
 
                     
-                    # [FEAT-270.1] Gibberish Detector
+                    # [FEAT-270.1] Gibberish Detector: Only reset on ACTUAL model garbage
                     non_alnum = len(re.sub(r'[a-zA-Z0-9\s.,?!]', '', raw_t_text))
-                    is_garbage = (len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.4) or "\x00" in raw_t_text
+                    is_error_msg = "Error:" in raw_t_text or "Connection failed" in raw_t_text
+                    is_garbage = not is_error_msg and ((len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.4) or "\x00" in raw_t_text)
                     
                     if is_garbage:
                         logging.critical(f"[HUB] SILICON LOBOTOMY: Engine is returning garbage. Attempt {triage_attempt+1}")

@@ -418,7 +418,7 @@ class AcmeLab:
 
                 # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
                 probe_model = models[0] if models else "llama3.1:8b" # Fallback to 8B standard
-                preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "gemma2:2b"]
+                preferred = ["llama3.1:8b", "mixtral:8x7b", "gemma2:2b"]
                 for p in preferred:
                     if p in models:
                         probe_model = p
