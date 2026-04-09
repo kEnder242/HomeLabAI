@@ -398,6 +398,9 @@ class BicameralNode:
                                         yield token
                                 except Exception:
                                     continue
+            except aiohttp.ClientPayloadError as pe:
+                logging.error(f"[{self.name}] Payload Error (vLLM Crash?): {pe}")
+                yield f"Error: Engine communication broken ({pe})"
             except Exception as e:
                 logging.error(f"[{self.name}] vLLM Connection failed: {e}")
                 yield f"Error: vLLM connection failed: {e}" 
@@ -423,9 +426,14 @@ class BicameralNode:
                                     break
                             except Exception:
                                 continue
+            except aiohttp.ClientPayloadError as pe:
+                self._engine_cache = None
+                logging.error(f"[{self.name}] Payload Error (Ollama Crash?): {pe}")
+                yield f"Error: Engine communication broken ({pe})"
             except Exception as e:
                 self._engine_cache = None  # [FEAT-084] Clear cache on error
                 logging.error(f"[{self.name}] Stream failed: {e}")
+                yield f"Error: Stream failed: {e}"
 
     def _mirror_trace(self, phase, data, url=None, metadata=None):
         """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
