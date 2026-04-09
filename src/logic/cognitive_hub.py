@@ -4,6 +4,7 @@ import logging
 import re
 import os
 import sys
+import time
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
@@ -13,13 +14,14 @@ class CognitiveHub:
     [FEAT-239] Neural Action Tags: Natural language steering hints.
     [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
-    def __init__(self, residents, broadcast_callback, sensory_manager, brain_online_callback, get_oracle_signal_callback, monitor_task_with_tics_callback):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None):
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
-        self.brain_online = brain_online_callback
-        self.get_oracle_signal = get_oracle_signal_callback
-        self.monitor_task_with_tics = monitor_task_with_tics_callback
+        self.get_vram_status = get_vram_status
+        self.trigger_morning_briefing_cb = trigger_morning_briefing
+        self.monitor_task_with_tics = monitor_task_with_tics
+        self.last_prime_callback = last_prime_callback
         self.auditor = None  # [FEAT-190] The Judge
         
         # [BKM-015] Anchor Migration
@@ -275,6 +277,13 @@ class CognitiveHub:
                 full_text = str(res.content[0].text)
             
             if full_text:
+                # [FEAT-287] Activity Latch: Successful response resets the priming timer
+                if node_id == "brain" or node_id == "shadow":
+                    self.last_activity = time.time()
+                    # We signal back to the main lab instance to update its prime tracking
+                    if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
+                        self.last_prime_callback(time.time())
+                
                 # Buffering check: Only dispatch to UI once node finishes
                 await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, final=True)
             

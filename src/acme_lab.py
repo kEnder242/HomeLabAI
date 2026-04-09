@@ -162,9 +162,10 @@ class AcmeLab:
             self.residents, 
             self.broadcast, 
             self.sensory, 
-            lambda force=False: self.brain_online,
-            self.get_oracle_signal,
-            self.monitor_task_with_tics
+            get_vram_status=lambda force=False: self.brain_online,
+            trigger_morning_briefing=self.trigger_morning_briefing,
+            monitor_task_with_tics=self.monitor_task_with_tics,
+            last_prime_callback=self._update_prime_timer
         )
         self.recent_interactions = []
         self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
@@ -247,6 +248,11 @@ class AcmeLab:
         
         for dead in dead_clients:
             self.connected_clients.discard(dead)
+
+    def _update_prime_timer(self, timestamp):
+        """[FEAT-287] Activity Latch: Resets the priming timer on model response."""
+        self._last_brain_prime = timestamp
+        logging.debug(f"[HEALTH] Prime timer reset via activity: {timestamp}")
 
     async def trigger_morning_briefing(self):
         """[FEAT-072] Briefs the user on recent nightly dialogue."""
