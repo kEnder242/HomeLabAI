@@ -585,7 +585,7 @@ class AcmeLab:
                     self.brain_online = False # Mark offline while sleeping
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
-        logging.info("[ALARM] Initiating Full Induction Cycle...")
+        await self.broadcast({"type": "crosstalk", "brain": "[ALARM] Initiating Full Induction Cycle...", "brain_source": "System"})
         
         # 1. Nightly Dialogue (Fast Local)
         logging.info("[ALARM] Step 1: Nightly Dialogue...")
@@ -650,7 +650,7 @@ class AcmeLab:
                 await self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60})
         except Exception as e:
             logging.error(f"[ALARM] Nightly Forge failed: {e}")
-        logging.info("[ALARM] Full Induction Cycle Complete.")
+        await self.broadcast({"type": "crosstalk", "brain": "[ALARM] Full Induction Cycle Complete.", "brain_source": "System"})
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] The Alarm Clock: Executes induction and periodic background tasks."""
@@ -717,7 +717,7 @@ class AcmeLab:
                         await self.spark_restoration("alarm_nightly")
                         await self.engine_ready.wait()
 
-                    logging.info(f"[ALARM] Triggering daily induction cycle for {today}...")
+                    await self.broadcast({"type": "crosstalk", "brain": f"[ALARM] Triggering daily induction cycle for {today}...", "brain_source": "System"})
                     await self.run_full_induction_cycle()
                     self.last_induction_date = today
                 else:
@@ -867,7 +867,7 @@ class AcmeLab:
                     if self.current_processing_task and any(
                         k in query.lower() for k in interrupt_keys
                     ):
-                        logging.info(f"[BARGE-IN] Interrupt: '{query}'. Cancelling.")
+                        await self.broadcast({"type": "crosstalk", "brain": f"[BARGE-IN] Interrupt: '{query}'. Cancelling.", "brain_source": "System"})
                         self.current_processing_task.cancel()
                         await self.broadcast({
                             "brain": "Stopping... Narf!",
@@ -1288,7 +1288,7 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
-        logging.info("[OPERATIONAL] Lab is fully synchronized.")
+        await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Lab is fully synchronized.", "brain_source": "System"})
         asyncio.create_task(self.ear_poller_loop())
         await self.broadcast({
             "type": "status",
@@ -1360,7 +1360,7 @@ class AcmeLab:
                         "[DEEP_SMOKE] Step 4: Partial success. Response requires manual review."
                     )
 
-                logging.info("[DEEP_SMOKE] Cycle of Life complete.")
+                await self.broadcast({"type": "crosstalk", "brain": "[DEEP_SMOKE] Cycle of Life complete.", "brain_source": "System"})
             except Exception as e:
                 logging.error(f"[DEEP_SMOKE] Verification failed: {e}")
             self.shutdown_event.set()

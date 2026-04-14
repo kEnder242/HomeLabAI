@@ -100,7 +100,7 @@ class CognitiveHub:
         # [FEAT-072.1] Signal-Based Morning Briefing Uplink
         if "trigger_morning_briefing" in str(text) and final:
             if hasattr(self, 'trigger_briefing_cb') and self.trigger_briefing_cb:
-                logging.info("[HUB] Neural Signal detected: trigger_morning_briefing.")
+                await self.broadcast({"type": "crosstalk", "brain": "[HUB] Neural Signal detected: trigger_morning_briefing", "brain_source": "System"})
                 asyncio.create_task(self.trigger_briefing_cb())
                 # Strip signal from display text if it's a raw tool call string
                 text = text.replace('{"tool": "trigger_morning_briefing", "parameters": {}}', "").strip()
@@ -122,10 +122,10 @@ class CognitiveHub:
             action = action_match.group(1).upper().strip()
             clean_text = clean_text.replace(action_match.group(0), "").strip()
             if action == "UPLINK":
-                logging.info(f"[HUB] Action Tag: UPLINK via {source}. Boosting Fuel.")
+                await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Action Tag: UPLINK via {source}", "brain_source": "System"})
                 self.current_fuel = 1.0
             elif action == "THINK MORE":
-                logging.info(f"[HUB] Action Tag: THINK MORE via {source}. Boosting Fuel.")
+                await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Action Tag: THINK MORE via {source}", "brain_source": "System"})
                 self.current_fuel = min(1.0, self.current_fuel + 0.3)
 
         # 3. Nuclear Tool Interception (Search and Destroy)
@@ -330,19 +330,12 @@ class CognitiveHub:
         triage_data_update = {} # [FIX] Initialize early
         
         if "lab" in self.residents:
-            print(f"[TRACE] Triage starting for query: {query[:50]}")
-            sys.stdout.flush()
+            await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Triage starting for query: {query[:30]}...", "brain_source": "System"})
             
             # [FEAT-270.2] Triage Persistence
             for triage_attempt in range(3):
                 try:
-                    print(f"[TRACE] Triage Attempt {triage_attempt+1} calling lab node...")
-                    sys.stdout.flush()
-                    
                     t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
-                    
-                    print(f"[TRACE] Lab Node replied: {repr(t_res)}")
-                    sys.stdout.flush()
 
                     if not t_res or not t_res.content:
                         raise ValueError("EMPTY_MCP_RESPONSE")
@@ -356,7 +349,7 @@ class CognitiveHub:
                     is_garbage = not is_error_msg and ((len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.4) or "\x00" in raw_t_text)
                     
                     if is_garbage:
-                        logging.critical(f"[HUB] SILICON LOBOTOMY: Engine is returning garbage. Attempt {triage_attempt+1}")
+                        await self.broadcast({"type": "crosstalk", "brain": "[HUB] SILICON LOBOTOMY: Engine is returning garbage.", "brain_source": "System"})
                         raise ValueError("SILICON_LOBOTOMY")
 
                     t_clean = self.bridge_signal_clean(raw_t_text)
@@ -393,6 +386,7 @@ class CognitiveHub:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
                     
+                    await self.broadcast({"type": "crosstalk", "brain": "[HUB] Triage successful. Routing logic determined.", "brain_source": "System"})
                     break # SUCCESS
                 
                 except Exception as e:
