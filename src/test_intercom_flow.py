@@ -12,7 +12,7 @@ async def test():
             await asyncio.sleep(2)
 
             # 2. Send query
-            query = "Pinky, are you there? Can you ask The Brain if the integration test passed?"
+            query = "[ME] Pinky, are you there? Can you ask The Brain if the integration test passed?"
             print(f"Sending: {query}")
             await ws.send(json.dumps({"type": "text_input", "content": query}))
 
