@@ -79,21 +79,15 @@ class CognitiveHub:
         # 3. Parse first block
         for block in json_blocks:
             try:
+                # [FEAT-220.2] Structural Sanitization
+                block = block.replace("{{", "{").replace("}}", "}")
+                block = block.replace("'", '"')
+                block = block.replace("True", "true").replace("False", "false")
+                block = block.replace('"::', '":')
                 return json.loads(block)
             except Exception:
                 continue
         return None
-
-        # 3. Process the first block
-        json_str = json_blocks[0]
-        
-        # [FEAT-220.2] Structural Sanitization
-        json_str = json_str.replace("{{", "{").replace("}}", "}")
-        json_str = json_str.replace("'", '"')
-        json_str = json_str.replace("True", "true").replace("False", "false")
-        json_str = json_str.replace('"::', '":')
-
-        return json_str
 
     async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, final=True):
         """
@@ -148,7 +142,12 @@ class CognitiveHub:
             sanitized = self.bridge_signal_clean(raw_block)
             if sanitized:
                 try:
-                    data = json.loads(sanitized)
+                    # [FEAT-270.3] Type-Agnostic Triage Parser (ERR-06)
+                    if isinstance(sanitized, dict):
+                        data = sanitized
+                    else:
+                        data = json.loads(sanitized)
+                    
                     tool = data.get("tool")
                     params = data.get("parameters", {})
 
@@ -364,7 +363,12 @@ class CognitiveHub:
                     if not t_clean:
                         raise ValueError("TRIAGE_PARSE_FAILURE")
 
-                    t_parsed = json.loads(t_clean)
+                    # [FEAT-270.3] Type-Agnostic Triage Parser (ERR-06)
+                    if isinstance(t_clean, dict):
+                        t_parsed = t_clean
+                    else:
+                        t_parsed = json.loads(t_clean)
+                        
                     self.triage_failures = 0 # [FIX] Reset on successful parse
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
                     
@@ -448,7 +452,7 @@ class CognitiveHub:
         async def run_shadow():
             nonlocal shadow_text
             # [FEAT-249.4] Shadow Failover: Lower threshold and promote role if brain is offline
-            brain_online = self.brain_online()
+            brain_online = self.get_vram_status()
             threshold = 0.0 if not brain_online else 0.2
             role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
             
@@ -470,9 +474,10 @@ class CognitiveHub:
         # 5. Sovereign Brain (Streaming)
         # [FEAT-244] Brain Muting
         # [FEAT-249.5] Shadow Fallback: If brain is offline, allow Shadow to handle the deep reasoning
-        can_run_brain = self.brain_online() and "brain" in self.residents
+        brain_online = self.get_vram_status()
+        can_run_brain = brain_online and "brain" in self.residents
         
-        if (can_run_brain or not self.brain_online()) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
+        if (can_run_brain or not brain_online) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
             target_node = "brain" if can_run_brain else "shadow"
             source_label = "Brain (Result)" if can_run_brain else "Shadow (Failover)"
             

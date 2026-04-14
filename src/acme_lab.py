@@ -175,6 +175,7 @@ class AcmeLab:
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         self.current_processing_task = None
         self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
+        self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
         self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
         reclaim_logger(role)
         self.set_proc_title()
@@ -338,8 +339,14 @@ class AcmeLab:
     async def check_brain_health(self, force=False):
         """[REVISION-17.5] Tiered Discovery: Port Check -> Presence-Gated Heavy Probe."""
         now = time.time()
-        
+
+        # [FEAT-283.2] Quiescent Deferral: Silence heartbeats during weight-swaps
+        if self.status in ["WAKING", "HIBERNATING"] and not force:
+            logging.debug(f"[HEALTH] Deferring heartbeat (Status: {self.status}) to avoid PCIe collision.")
+            return
+
         # Initialize sticky tracking if missing
+
         if not hasattr(self, "_last_brain_fail"):
             self._last_brain_fail = 0
         if not hasattr(self, "_last_brain_ping"):
@@ -879,6 +886,17 @@ class AcmeLab:
                 logging.error(f"[HUB] Global Ear Poller failure: {e}")
                 await asyncio.sleep(1)
 
+    async def _drain_neural_buffer(self):
+        """[FEAT-283] Drain the neural buffer once the engine is ready."""
+        if self._neural_queue.empty():
+            return
+            
+        logging.info(f"[HUB] Draining Neural Buffer: {self._neural_queue.qsize()} items.")
+        while not self._neural_queue.empty():
+            query = await self._neural_queue.get()
+            asyncio.create_task(self.process_query(query))
+            self._neural_queue.task_done()
+
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
         ws = web.WebSocketResponse()
@@ -969,6 +987,8 @@ class AcmeLab:
                         # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
                         if self.status == "OPERATIONAL":
                             asyncio.create_task(self.check_brain_health(force=False))
+                            # [FEAT-283] Drain buffered queries once ready
+                            asyncio.create_task(self._drain_neural_buffer())
 
                         # Broadcase definitive foyer status only after gate
                         state_msg = "Lab is OPERATIONAL." if self.status == "OPERATIONAL" else "Lab is establishing anchors..."
@@ -1014,14 +1034,25 @@ class AcmeLab:
                             logging.debug(f"[HUB] Ingestion Denied: Missing Atomic Anchor in query: {query[:50]}...")
                             continue
 
-                        # [FEAT-284] Physical Gate: Block input during hibernation/restoration
-                        if self.status in ["LOBBY", "WAKING", "BOOTING"] or not self.engine_ready.is_set():
+                        # [FEAT-284] Physical Gate: Block or Queue input during hibernation/restoration
+                        if self.status in ["LOBBY", "BOOTING"] or not self.engine_ready.is_set():
+                            # If we are WAKING, we can queue [FEAT-283]
+                            if self.status == "WAKING":
+                                logging.info(f"[HUB] WAKING: Queuing query: {query[:50]}")
+                                await self._neural_queue.put(query)
+                                await ws.send_json({
+                                    "type": "status",
+                                    "message": "Lab is warming its anchors. I've queued your request and will process it immediately once I'm ready.",
+                                    "state": "lobby"
+                                })
+                                continue
+                            
                             logging.warning(f"[HUB] Ingestion Blocked: Lab is currently {self.status}.")
-                            await ws.send_str(json.dumps({
+                            await ws.send_json({
                                 "type": "status",
-                                "message": "Lab is still warming its anchors. Please wait for cognitive readiness.",
+                                "message": "Lab is currently offline or booting. Please wait.",
                                 "state": "lobby"
-                            }))
+                            })
                             continue
 
                         self.last_activity = time.time()

@@ -549,6 +549,7 @@ class LabAttendantV4:
                         success = True
                     else:
                         err_body = await r.text()
+                        # [FEAT-283.3] Forensic Hibernation Logging (ERR-09)
                         logger.error(f"[{self.session_token}] [SLEEP] Level 2 rejected ({r.status}): {err_body}")
         except Exception as e:
             logger.error(f"[{self.session_token}] [SLEEP] Offload signal failed: {e}")
@@ -684,7 +685,7 @@ class LabAttendantV4:
         self.log_event("Forge: Batch complete. Hub re-ignited.")
         return {"status": "batch_complete", "results": results}
 
-    async def mcp_wait_ready(self, timeout: int = 300):
+    async def mcp_wait_ready(self, timeout: int = 480):
         """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state with Forensic detection."""
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("GET", f"wait_ready?timeout={timeout}")
@@ -1207,7 +1208,7 @@ class LabAttendantV4:
         return web.json_response(await self.mcp_heartbeat())
     async def handle_wait_ready_rest(self, r):
         """[FEAT-265] Blocks until the Lab reports READY or crashes."""
-        timeout = int(r.query.get("timeout", 180)) # Default to 180s for vLLM weights
+        timeout = int(r.query.get("timeout", 300)) # Default to 300s for vLLM weights
         start_t = time.time()
 
         while time.time() - start_t < timeout:
