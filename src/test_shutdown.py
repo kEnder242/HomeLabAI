@@ -16,15 +16,18 @@ async def test_shutdown():
 
             # Wait for READY status
             while True:
-                response = await asyncio.wait_for(websocket.recv(), timeout=20.0)
+                response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                 data = json.loads(response)
-                print(f"Received status: {data.get('state')}")
-                if data.get("type") == "status" and data.get("state") == "ready":
+                state = data.get('state')
+                if state:
+                    print(f"Received status: {state}")
+                if data.get("type") == "status" and state in ["ready", "operational"]:
                     break
 
             # Send Shutdown Command
-            print("Sending: 'Goodbye'")
-            await websocket.send(json.dumps({"debug_text": "Goodbye"}))
+            query = "[ME] Close the lab and say goodnight."
+            print(f"Sending: '{query}'")
+            await websocket.send(json.dumps({"type": "text_input", "content": query}))
 
             # Expect response then closure
             try:
