@@ -165,9 +165,6 @@
 
 1.  **Service Model**: The Lab Attendant is now a permanent resident service. Direct execution of the orchestration script for hardware control is no longer supported.
 2.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
-
-### 📖 V3 Tool Usage Guide
-
 | Tool | Intent | Physical Action |
 | :--- | :--- | :--- |
 | **`lab_start`** | Primary Ignition | **Atomic Scrub**: Executes a PGID-aware purge of all previous Lab processes before launching the Hub and Engine. **No manual cleanup required.** |
