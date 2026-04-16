@@ -824,7 +824,7 @@ class LabAttendantV4:
         
         # 1. Target Definition
         ports = [8088, 11434, 8765]
-        targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "node.py"]
+        targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py"]
 
         # 2. First Pass: Handshake Discovery (Title-based)
         for proc in psutil.process_iter(["pid", "name", "cmdline", "environ", "create_time"]):
