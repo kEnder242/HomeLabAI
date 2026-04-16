@@ -616,6 +616,12 @@ class LabAttendantV4:
 
     async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT"):
         """[FEAT-262] Eureka Hibernation: Level 2 offload with 100% Graceful requirement."""
+        # [FEAT-265.9] Boot Grace Window: Prevent instant hibernation during first 300s of life
+        uptime = time.time() - self._boot_time
+        if uptime < 300 and reason == "IDLE_TIMEOUT":
+            logger.info(f"[WATCHDOG] Hibernation deferred. Boot grace active ({int(300 - uptime)}s remaining).")
+            return {"status": "deferred", "message": "Boot grace window active."}
+
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "hibernate", {"reason": reason})
 
