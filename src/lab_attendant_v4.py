@@ -127,7 +127,10 @@ async def key_middleware(request, handler):
     provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
 
     # [FEAT-252] Dynamic Auth: Allow either the STYLE_HASH or the current SESSION_TOKEN
-    if provided_key not in [expected_key, attendant.session_token]:
+    attendant_instance = request.app.get('attendant')
+    session_token = attendant_instance.session_token if attendant_instance else None
+    
+    if provided_key not in [expected_key, session_token]:
         # [FEAT-267] Header-Dump for Debugging Cloudflare/CORS issues
         forwarded = request.headers.get("X-Forwarded-For", "Direct")
         ua = request.headers.get("User-Agent", "Unknown")
@@ -147,6 +150,7 @@ async def cors_middleware(request, handler):
 class LabAttendantV4:
     def __init__(self):
         self.app = web.Application(middlewares=[cors_middleware, key_middleware])
+        self.app['attendant'] = self # [FIX] Register for middleware access
         
         # [SERVICE] Control & Monitoring Endpoints (Dual-Registration for Option B)
         self.register_route("POST", "/start", self.handle_start_rest)
@@ -177,7 +181,7 @@ class LabAttendantV4:
         
         # [WD] State Initialization
         self.failure_count = 0
-        self.boot_grace_period = 12 # 120 seconds
+        self.boot_grace_period = 18 # 180 seconds for vLLM weights
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
 
     def register_route(self, method, path, handler):
@@ -291,18 +295,49 @@ class LabAttendantV4:
                 await asyncio.sleep(2) # Settling window for Master boot
 
     def _save_ledger(self):
-        """[FEAT-277] Persist active PIDs to disk."""
-        atomic_write_json(self.ledger_path, self.active_pids)
+        """[FEAT-277] Persist Sovereign Ledger to disk."""
+        ledger = {
+            "authority": {
+                "token": self.session_token,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "boot_hash": _BOOT_HASH
+            },
+            "inventory": self.active_pids
+        }
+        atomic_write_json(self.ledger_path, ledger)
 
     def _load_ledger(self):
-        """[FEAT-277] Load active PIDs from disk."""
+        """[FEAT-277] Load Sovereign Ledger from disk."""
         if os.path.exists(self.ledger_path):
             try:
                 with open(self.ledger_path, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    if "inventory" in data:
+                        return data["inventory"]
+                    return data
             except Exception:
                 pass
-        return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
+        return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+
+    # --- Family Sovereignty ---
+    def sync_family_ledger(self):
+        """[FEAT-220.4] Family Sovereignty: Recursively discovers and authorizes child processes."""
+        new_family = set()
+        # Include current and known PIDs
+        target_pids = [os.getpid(), self.active_pids.get('hub_pid'), self.active_pids.get('engine_pid')]
+        
+        for pid in target_pids:
+            if pid and psutil.pid_exists(pid):
+                new_family.add(pid)
+                try:
+                    proc = psutil.Process(pid)
+                    for child in proc.children(recursive=True):
+                        new_family.add(child.pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        
+        self.active_pids['family'] = list(new_family)
+        self._save_ledger()
 
     # --- MCP Tools Implementation ---
     async def mcp_heartbeat(self):
@@ -960,21 +995,24 @@ class LabAttendantV4:
         await asyncio.sleep(1.0)
 
     def _is_current_session_process(self, pid):
-        """Returns True if the process carries the current session token or Gemini CLI signal."""
+        """Returns True if the process (or its parent) carries the current session token."""
         try:
             if pid == os.getpid():
                 return False
             proc = psutil.Process(pid)
-            env = proc.environ()
             
-            # 1. Session Token Immunity
-            token = env.get("LAB_IMMUNITY_TOKEN")
-            if token == self.session_token:
-                return True
-                
-            # 2. [FEAT-119.2] Agentic Immunity: Spare processes spawned by the Gemini CLI
-            if env.get("GEMINI_CLI_IMMUNITY") == "1":
-                return True
+            # 1. Recursive Search: Check self and parents
+            curr = proc
+            while curr:
+                try:
+                    env = curr.environ()
+                    if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
+                        return True
+                    if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                        return True
+                except Exception:
+                    pass
+                curr = curr.parent()
                 
             return False
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -1008,12 +1046,46 @@ class LabAttendantV4:
         return False
 
     async def scavenge_reality(self):
-        """[FEAT-220.1] Physical Scavenging: Adopts existing engines on boot."""
+        """[FEAT-220.1] Physical Scavenging: Adopts existing engines or reaps stale ones."""
         logger.info("[BOOT] Performing physical scavenging audit...")
+        
+        # 0. System Process Audit: Identify GUI/Core processes to spare
+        self.system_pids = set()
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                p_name = proc.info['name'].lower()
+                if any(x in p_name for x in ["xorg", "gnome", "mutter", "sunshine", "steam", "systemd"]):
+                    self.system_pids.add(proc.info['pid'])
+            except Exception:
+                pass
+
+        # 1. Identity Validation: Check the existing ledger's authority
+        stale_family = []
+        if os.path.exists(self.ledger_path):
+            try:
+                with open(self.ledger_path, 'r') as f:
+                    data = json.load(f)
+                    ledger_token = data.get("authority", {}).get("token")
+                    if ledger_token and ledger_token != self.session_token:
+                        logger.warning(f"[BOOT] Session mismatch! Ledger token {ledger_token} is STALE. Marking family for purge.")
+                        stale_family = data.get("inventory", {}).get("family", [])
+            except Exception:
+                pass
+
+        # 2. Stale Identity Purge [Task 22]
+        if stale_family:
+            logger.warning(f"[BOOT] Purging {len(stale_family)} stale survivors from previous session.")
+            for pid in stale_family:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+            await asyncio.sleep(1.0) # Wait for release
+
         ports = {8088: "VLLM", 11434: "OLLAMA", 8765: "HUB"}
         adopted_count = 0
 
-        # Physical Port Sweep
+        # 3. Physical Port Sweep (Adoption)
         for port, mode in ports.items():
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
@@ -1021,7 +1093,6 @@ class LabAttendantV4:
                     pids = res.split(":")[1].strip().split()
                     for pid_str in pids:
                         pid = int(pid_str)
-                        # [FEAT-220.2] Identity Check: Does the process carry our persistent token?
                         if self._is_current_session_process(pid):
                             logger.info(f"[BOOT] Adopting existing {mode} on PID {pid}.")
                             if mode == "HUB":
@@ -1033,25 +1104,9 @@ class LabAttendantV4:
             except Exception:
                 pass
         
-        # Deep Search: If port sweep found nothing but VRAM is high, search by signature
-        used_mb, _ = await self._get_vram_info()
-        if self.active_pids.get('engine_pid') is None and used_mb > 2000:
-            logger.info("[BOOT] VRAM high but ports quiet. Searching by process signature...")
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                try:
-                    if any(t in " ".join(proc.info["cmdline"] or []).lower() for t in ["vllm", "ollama"]):
-                        if self._is_current_session_process(proc.info["pid"]):
-                            logger.info(f"[BOOT] Signature Match: Adopting {proc.info['name']} on PID {proc.info['pid']}")
-                            self.active_pids['engine_pid'] = proc.info["pid"]
-                            # Default to VLLM if unsure
-                            self.active_pids['engine_mode'] = "VLLM" if "vllm" in proc.info['name'].lower() else "OLLAMA"
-                            adopted_count += 1
-                except Exception:
-                    pass
-
         if adopted_count > 0:
-            logger.info(f"[BOOT] Successfully adopted {adopted_count} existing processes.")
-            self._save_ledger()
+            self.sync_family_ledger() # Recursively authorize the adopted family
+            logger.info(f"[BOOT] Successfully adopted {adopted_count} nodes into the Immunity Ledger.")
             
             # [FEAT-220.3] State Reconstruction
             global current_lab_mode
@@ -1062,7 +1117,6 @@ class LabAttendantV4:
                 logger.info("[BOOT] Lab confirmed OPERATIONAL. Setting READY event.")
                 self.ready_event.set()
             elif vitals.get("engine_up") and not vitals.get("engine_vocal"):
-                # If engine is up but not vocal, we are likely hibernating or still booting
                 global is_hibernating
                 is_hibernating = True
                 logger.warning("[BOOT] Engine present but silent. Reconstructing HIBERNATING state.")
@@ -1235,10 +1289,10 @@ class LabAttendantV4:
                     await asyncio.sleep(1.0)
                     continue
                 
-                if "[READY] Lab is Open" in line:
+                if "[READY] Hub foyer is fully synchronized." in line:
                     self.ready_event.set()
-                    logger.info("[WATCHDOG] Lab reported READY signal.")
-                    await self.update_status_json("Mind is READY")
+                    logger.info("[WATCHDOG] Lab reported OPERATIONAL signal.")
+                    await self.update_status_json("Mind is OPERATIONAL")
                 
                 # [FEAT-255.2] Continuous Sentinel: Listen for state resets
                 if "Clearing Hub READY state" in line:
@@ -1320,20 +1374,32 @@ class LabAttendantV4:
                     continue
                 
                 # Scenario B: Running Ghost (Physical Truth Check)
-                # [FEAT-278] If VRAM is high, verify that the PIDs using it are in our ledger
+                # [FEAT-278] If VRAM is high, verify that the PIDs using it are in our Immunity Ledger
                 if used > 2000:
                     try:
+                        self.sync_family_ledger() # Refresh family tree before auditing
                         smi_out = subprocess.check_output(
                             ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], 
                             text=True, stderr=subprocess.DEVNULL
                         )
                         physical_pids = [int(p.strip()) for p in smi_out.strip().split("\n") if p.strip()]
-                        tracked_pids = [self.active_pids.get("engine_pid"), self.active_pids.get("hub_pid")]
                         
                         orphan_found = False
                         for p_pid in physical_pids:
-                            if p_pid not in tracked_pids:
-                                # We found a process using GPU that we don't own
+                            try:
+                                proc = psutil.Process(p_pid)
+                                ppid = proc.ppid()
+                            except Exception:
+                                ppid = None
+
+                            # [FEAT-220.4] Immunity Check: Is this child in the family ledger or system whitelist?
+                            authorized = (p_pid in self.active_pids.get('family', []) or 
+                                          ppid in self.active_pids.get('family', []) or
+                                          p_pid in getattr(self, "system_pids", []) or
+                                          ppid in getattr(self, "system_pids", []))
+                            
+                            if not authorized:
+                                logger.warning(f"[WATCHDOG] Unrecognized VRAM consumer found: PID {p_pid} (PPID {ppid})")
                                 orphan_found = True
                                 break
                         
@@ -1367,8 +1433,8 @@ class LabAttendantV4:
                     except Exception:
                         self.failure_count += 1
 
-                    if self.failure_count >= 3:
-                        await self._trigger_recovery("Hub Unresponsive (3 cycles)", level=2)
+                    if self.failure_count >= 5:
+                        await self._trigger_recovery("Hub Unresponsive (5 cycles)", level=2)
                         continue
 
                 # 4. Docker Observability Watchdog [v1 Lost Gem]
@@ -1477,7 +1543,7 @@ class LabAttendantV4:
             subprocess.run(["sudo", "fuser", "-k", "8088/tcp", "11434/tcp", "8765/tcp"], stderr=subprocess.DEVNULL)
         
         # [FEAT-277] Ensure ledger is cleared
-        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
         self._save_ledger()
 
 # --- Global Instance and MCP Wrappers ---
@@ -1508,7 +1574,7 @@ async def lab_wait_ready(timeout: int = 120):
     """[FEAT-258.1] Resilient Sentinel: Wait for Hub READY with Master liveness probe."""
     # If we are the PROXY, ensure the Master is actually up before we even try to call the internal wait
     if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-        for i in range(10): # 20s initial probe
+        for i in range(10): # 20s initial_probe
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get("http://127.0.0.1:9999/heartbeat", timeout=2) as r:
@@ -1523,7 +1589,6 @@ async def lab_wait_ready(timeout: int = 120):
 
 async def run_bilingual():
     # [FEAT-219] Silicon Handshake: Role-Based Execution
-    check_singleton()
     role = os.environ.get("LAB_ATTENDANT_ROLE")
     
     if role == "MASTER":
