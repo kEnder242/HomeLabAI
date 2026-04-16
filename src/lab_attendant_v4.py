@@ -1053,22 +1053,8 @@ class LabAttendantV4:
         """[FEAT-220.1] Physical Scavenging: Adopts existing engines or reaps stale ones."""
         logger.info("[BOOT] Performing physical scavenging audit...")
         
-        # 0. System Process Audit: Identify GUI/Core processes to spare
-        self.system_pids = set()
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                p_name = proc.info['name'].lower()
-                p_cmd = " ".join(proc.info['cmdline'] or []).lower()
-                
-                # Broadly spare system and stable engine residents
-                if any(x in p_name or x in p_cmd for x in ["xorg", "gnome", "mutter", "sunshine", "steam", "systemd", "ollama"]):
-                    self.system_pids.add(proc.info['pid'])
-                    # Recursively add children for stable residents like Ollama
-                    if "ollama" in p_name:
-                        for child in proc.children(recursive=True):
-                            self.system_pids.add(child.pid)
-            except Exception:
-                pass
+        # [FEAT-265.6] The Blacklist Law: We only care about what we own
+        BLACKLIST = ["vllm", "enginecore", "ollama", "acme_lab.py", "node.py", "archive_node.py", "pinky_node.py", "brain_node.py"]
 
         # 1. Identity Validation: Check the existing ledger's authority
         stale_family = []
@@ -1359,83 +1345,77 @@ class LabAttendantV4:
         """[SPR-21.0] Multi-Modal State Monitor: Autonomous Triage and Recovery."""
         logger.info("[WATCHDOG] Sovereignty active. Monitoring state transitions.")
         
-        while True:
-            await asyncio.sleep(10)
-            
-            # Gating: Respect Maintenance and Boot Windows
-            if os.path.exists(MAINTENANCE_LOCK):
-                continue
-            if self.boot_grace_period > 0:
-                self.boot_grace_period -= 1
-                continue
+        # [FEAT-265.6] The Blacklist Law: Only manage what we own
+        BLACKLIST = ["vllm", "enginecore", "ollama", "acme_lab.py", "node.py", "archive_node.py", "pinky_node.py", "brain_node.py"]
+        
+        # 0. Internal Immunity
+        attendant_pid = os.getpid()
 
-            try:
-                # 1. Physical VRAM Check [FEAT-036]
-                used, total = await self._get_vram_info()
-                if total > 0:
-                    vram_pct = used / total
-                    if vram_pct > 0.95:
-                        await self._trigger_recovery("Critical VRAM (>95%)", level=2)
-                        continue
-
-                # 2. Ghost Context Detection [FEAT-036] (ERR-09)
-                # Scenario A: Hibernation Failure
-                if is_hibernating and used > 2000:
-                    await self._trigger_recovery("Hibernation Failure (VRAM Stalled)", level=2)
+        try:
+            # 1. Physical VRAM Check [FEAT-036]
+            used, total = await self._get_vram_info()
+            if total > 0:
+                vram_pct = used / total
+                if vram_pct > 0.98: # Extreme threshold only
+                    await self._trigger_recovery("Critical VRAM (>98%)", level=2)
                     continue
-                
-                # Scenario B: Running Ghost (Physical Truth Check)
-                # [FEAT-278] If VRAM is high, verify that the PIDs using it are in our Immunity Ledger
-                if used > 2000:
-                    try:
-                        self.sync_family_ledger() # Refresh family tree before auditing
-                        smi_out = subprocess.check_output(
-                            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], 
-                            text=True, stderr=subprocess.DEVNULL
-                        )
-                        physical_pids = [int(p.strip()) for p in smi_out.strip().split("\n") if p.strip()]
-                        
-                        orphan_found = False
-                        for p_pid in physical_pids:
-                            try:
-                                proc = psutil.Process(p_pid)
-                                ppid = proc.ppid()
-                            except Exception:
-                                ppid = None
 
-                            # [FEAT-220.4] Immunity Check: Is this child in the family ledger or system whitelist?
-                            authorized = (p_pid in self.active_pids.get('family', []) or 
-                                          ppid in self.active_pids.get('family', []) or
-                                          p_pid in getattr(self, "system_pids", []) or
-                                          ppid in getattr(self, "system_pids", []))
-                            
-                            # [FEAT-265.5] Larynx Probe (Port-Bound Check)
-                            # If not authorized by token/family, check if it owns an active engine port
-                            if not authorized:
-                                for port in [8088, 11434]:
-                                    try:
-                                        # Use a subshell to check port ownership without blocking
-                                        res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], text=True, stderr=subprocess.DEVNULL)
-                                        if str(p_pid) in res:
-                                            logger.info(f"[WATCHDOG] Sparing Port-Bound Resident: PID {p_pid} on port {port}")
-                                            authorized = True
-                                            # ADOPT: Add to family ledger immediately
-                                            self.active_pids['family'].append(p_pid)
-                                            self._save_ledger()
-                                            break
-                                    except Exception:
-                                        pass
-
-                            if not authorized:
-                                logger.warning(f"[WATCHDOG] Unrecognized VRAM consumer found: PID {p_pid} (PPID {ppid})")
-                                orphan_found = True
-                                break
-                        
-                        if orphan_found:
-                            await self._trigger_recovery("Physical Ghost (Unrecognized VRAM usage)", level=2)
+            # 2. Blacklist Audit (Physical Truth)
+            # [FEAT-278.2] Cautious Reaping: Only audit known hogs
+            if used > 2000:
+                try:
+                    self.sync_family_ledger()
+                    smi_out = subprocess.check_output(
+                        ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], 
+                        text=True, stderr=subprocess.DEVNULL
+                    )
+                    physical_pids = [int(p.strip()) for p in smi_out.strip().split("\n") if p.strip()]
+                    
+                    orphan_found = False
+                    for p_pid in physical_pids:
+                        if p_pid == attendant_pid:
                             continue
-                    except Exception as e:
-                        logger.error(f"[WATCHDOG] Physical Truth audit failed: {e}")
+
+                        try:
+                            proc = psutil.Process(p_pid)
+                            p_name = proc.name().lower()
+                            p_cmd = " ".join(proc.cmdline() or []).lower()
+                        except Exception:
+                            continue
+
+                        # Is this a process we actually care about?
+                        is_blacklisted = any(x in p_name or x in p_cmd for x in BLACKLIST)
+                        if not is_blacklisted:
+                            continue # IGNORE EVERYTHING ELSE (Xorg, Sunshine, etc.)
+
+                        # [FEAT-220.4] Immunity Check: Is this child in the family ledger?
+                        authorized = (p_pid in self.active_pids.get('family', []) or 
+                                      proc.ppid() in self.active_pids.get('family', []))
+                        
+                        # [FEAT-265.5] Larynx Probe (Port-Bound Check)
+                        if not authorized:
+                            for port in [8088, 11434, 8765]:
+                                try:
+                                    res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], text=True, stderr=subprocess.DEVNULL)
+                                    if str(p_pid) in res:
+                                        logger.info(f"[WATCHDOG] Sparing Port-Bound Resident: {p_name} (PID {p_pid}) on port {port}")
+                                        authorized = True
+                                        self.active_pids['family'].append(p_pid)
+                                        self._save_ledger()
+                                        break
+                                except Exception:
+                                    pass
+
+                        if not authorized:
+                            logger.warning(f"[WATCHDOG] Unrecognized Blacklisted Ghost: {p_name} (PID {p_pid})")
+                            orphan_found = True
+                            break
+                    
+                    if orphan_found:
+                        await self._trigger_recovery("Physical Ghost (Unrecognized Blacklist process)", level=2)
+                        continue
+                except Exception as e:
+                    logger.error(f"[WATCHDOG] Blacklist audit failed: {e}")
 
                 # Scenario C: Zombie/Stuck State Check
                 engine_pid = self.active_pids.get('engine_pid')
