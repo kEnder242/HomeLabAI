@@ -36,4 +36,6 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     $VLLM_EXTRA_ARGS \
     > vllm_server.log 2>&1 &
 
-echo "Sovereign Node launched with PID: $!"
+PID=$!
+echo $PID > run/vllm.pid
+echo "Sovereign Node launched with PID: $PID"

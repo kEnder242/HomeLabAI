@@ -109,9 +109,9 @@ async def verify_engine_liveness():
 
 class AcmeLab:
     def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=600, role="HUB"):
-        # [FEAT-220] Silicon Handshake: Tag process title IMMEDIATELY
+        # [FEAT-220] Silicon Handshake: Adopt Attendant token if present
         self.role = role
-        self.session_token = uuid.uuid4().hex[:8]
+        self.session_token = os.environ.get("LAB_IMMUNITY_TOKEN") or uuid.uuid4().hex[:8]
         title = f"[{self.role}:{self.session_token}]"
         try:
             import setproctitle
@@ -199,13 +199,13 @@ class AcmeLab:
         # [FIX] Schema Enforcement: Ensure type, brain, and brain_source exist
         m_type = message_dict.get("type", "chat")
         m_content = message_dict.get("brain") or message_dict.get("message")
-        
+
         if not m_content:
             if m_type == "status":
-                m_content = f"Lab state changed to {self.status}"
+                # [FEAT-221.3] Silence automated state changes to reduce foyer noise
+                return
             else:
-                m_content = "EMPTY_CONTENT"
-                
+                m_content = "EMPTY_CONTENT"                
         m_source = message_dict.get("brain_source", "System")
         
         # Back-fill dictionary for clients
@@ -544,6 +544,11 @@ class AcmeLab:
                 logging.debug(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
 
             if self.connected_clients:
+                # [FEAT-221.2] Persona Gate: Only banter if the mind is actually active
+                if self.status in ["OPERATIONAL", "READY"]:
+                    if random.random() < 0.1: # 10% chance per tick
+                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
+                
                 await self.broadcast(
                     {
                         "type": "status",
