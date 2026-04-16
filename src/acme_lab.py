@@ -1204,6 +1204,16 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
+        # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation
+        if self.status in ["HIBERNATING", "LOBBY", "INIT"] and not self.engine_ready.is_set():
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived during hibernation. Sparking WAKE signal.")
+            asyncio.create_task(self.spark_restoration("intent"))
+            # Notify user
+            await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. I've queued your request.", "brain_source": "System"})
+            # Buffer the query
+            await self._neural_queue.put(query)
+            return ""
+
         # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
         while getattr(self, "_spark_active", False):
             await asyncio.sleep(1)
@@ -1416,9 +1426,10 @@ class AcmeLab:
                     if r.status == 200:
                         self.status = "INIT" # Port is active, but we stay in INIT until nodes sync
                     else:
-                        self.status = "LOBBY" # Engine exists but not talking
+                        # [FEAT-259.3] Hibernation Awareness: Detect resting state
+                        self.status = "HIBERNATING"
         except Exception:
-            self.status = "LOBBY"
+            self.status = "HIBERNATING"
             
         app = web.Application()
         # [FEAT-199] CORS Support for browser Intercom
