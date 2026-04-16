@@ -1293,11 +1293,12 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
-        await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Lab is fully synchronized.", "brain_source": "System"})
+        await self.broadcast({"type": "crosstalk", "brain": "[READY] Hub foyer is fully synchronized.", "brain_source": "System"})
+        logging.info("[READY] Hub foyer is fully synchronized.")
         asyncio.create_task(self.ear_poller_loop())
         await self.broadcast({
             "type": "status",
-            "message": "Mind is OPERATIONAL. Lab is Open.",
+            "message": "[READY] Hub foyer is fully synchronized.",
             "state": "operational",
             "full_lab_ready": True,
             "operational": True
