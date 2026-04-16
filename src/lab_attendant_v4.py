@@ -28,9 +28,10 @@ if _SELF_DIR not in sys.path:
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-DATA_DIR = os.path.join(LAB_DIR, "data") # [FIX] Added missing DATA_DIR definition
+DATA_DIR = os.path.join(LAB_DIR, "data") 
 SERVER_LOG = f"{LAB_DIR}/server.log"
 ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
+VLLM_SERVER_LOG = f"{LAB_DIR}/vllm_server.log"
 STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
 CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
 INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
@@ -43,6 +44,9 @@ LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
 STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
 ATTENDANT_PORT = 9999
+
+# [FEAT-180] Resilience Metadata
+MONITOR_CONTAINERS = ["field_prometheus", "field_grafana", "field_node_exporter"]
 
 # --- Global State ---
 lab_process = None
@@ -160,14 +164,21 @@ class LabAttendantV4:
         self.register_route("GET", "/logs", self.handle_logs_rest)
         self.register_route("GET", "/mutex", self.handle_mutex_rest)
         
-        self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
+        # [FEAT-151] Forensic Trace Monitor: Added vLLM Server log
+        self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG, VLLM_SERVER_LOG])
         self.ready_event = asyncio.Event()
         self.ledger_path = os.path.join(LAB_DIR, 'run/active_pids.json')
+        self.token_path = os.path.join(LAB_DIR, 'run/session.token')
         self.active_pids = self._load_ledger()
         self.current_reason = "INIT"
-        self.session_token = uuid.uuid4().hex[:8] # [FEAT-220] Stable Session Token
+        self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
         self.vram_config = {}
         self.refresh_vram_config()
+        
+        # [WD] State Initialization
+        self.failure_count = 0
+        self.boot_grace_period = 12 # 120 seconds
+        self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
 
     def register_route(self, method, path, handler):
         """[FEAT-219] Silicon Handshake: Multi-Path Router."""
@@ -186,12 +197,53 @@ class LabAttendantV4:
             except Exception:
                 pass
 
+    def _load_or_create_token(self):
+        """[FEAT-220] Persistent Identity: Survives service restarts."""
+        if os.path.exists(self.token_path):
+            try:
+                with open(self.token_path, "r") as f:
+                    token = f.read().strip()
+                    if token:
+                        logger.info(f"[BOOT] Adopting persistent session token: {token}")
+                        return token
+            except Exception:
+                pass
+        
+        # Fallback to new generation
+        token = uuid.uuid4().hex[:8]
+        try:
+            with open(self.token_path, "w") as f:
+                f.write(token)
+            logger.info(f"[BOOT] Created new persistent session token: {token}")
+        except Exception as e:
+            logger.error(f"[BOOT] Failed to persist token: {e}")
+        return token
+
+    def handle_sigterm(self, sig, frame):
+        """[FEAT-119.5] Synchronous Signal Guard: Blocks exit until silicon is reaped."""
+        logger.warning(f"[SIGNAL] Received Signal {sig}. Executing synchronous silicon purge...")
+        # Use a new loop or the existing one to run the cleanup
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is already running, create a task
+                loop.create_task(self.cleanup_silicon(mode="SESSION"))
+            else:
+                loop.run_until_complete(self.cleanup_silicon(mode="SESSION"))
+        except Exception as e:
+            # Emergency fallback: subshell kill
+            logger.error(f"[SIGNAL] Async purge failed, falling back to emergency reap: {e}")
+            subprocess.run(["sudo", "fuser", "-k", "9999/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
+        
+        logger.warning("[SIGNAL] Purge complete. Exiting.")
+        sys.exit(0)
+
     # --- Pager Helper ---
     def log_event(self, message, severity="INFO"):
         """Appends a milestone event to the interleaved Forensic Ledger."""
         try:
             alert = {
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "source": "LabAttendant",
                 "severity": severity,
                 "message": f"[{self.session_token}] {message}"
@@ -805,29 +857,32 @@ class LabAttendantV4:
                 pass
 
         # 4. [FEAT-278] VRAM Truth: Correlate VRAM usage to PID Ledger
-        try:
-            # Query PIDs using GPU memory
-            smi_cmd = ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"]
-            smi_out = subprocess.check_output(smi_cmd, text=True, stderr=subprocess.DEVNULL)
-            
-            for line in smi_out.strip().split('\n'):
-                if not line.strip():
-                    continue
-                v_pid_str, v_mem_str = line.split(',')
-                v_pid = int(v_pid_str.strip())
-                v_mem = int(v_mem_str.strip())
+        if mode == "SESSION":
+            try:
+                # Query PIDs using GPU memory
+                smi_cmd = ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"]
+                smi_out = subprocess.check_output(smi_cmd, text=True, stderr=subprocess.DEVNULL)
                 
-                # If process is using > 1GB and NOT in our ledger, it is an orphan
-                is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
-                
-                if v_mem > 1000 and not is_ours:
-                    logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory orphan {v_pid} ({v_mem}MB)")
-                    try:
-                        target_pgids.add(os.getpgid(v_pid))
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.error(f"[ASSASSIN] VRAM Truth audit failed: {e}")
+                for line in smi_out.strip().split('\n'):
+                    if not line.strip():
+                        continue
+                    v_pid_str, v_mem_str = line.split(',')
+                    v_pid = int(v_pid_str.strip())
+                    v_mem = int(v_mem_str.strip())
+                    
+                    # If process is using > 1GB and NOT in our ledger, it is an orphan
+                    is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
+                    
+                    if v_mem > 1000 and not is_ours:
+                        logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory orphan {v_pid} ({v_mem}MB)")
+                        try:
+                            # Force individual kill first
+                            os.kill(v_pid, signal.SIGKILL)
+                            target_pgids.add(os.getpgid(v_pid))
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.error(f"[ASSASSIN] VRAM Truth audit failed: {e}")
 
         # 5. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
         # We search ALL user processes for the vLLM/Ollama signature
@@ -842,7 +897,11 @@ class LabAttendantV4:
                     pgid = os.getpgid(pid)
                     if pgid not in immune_pgids:
                         logger.warning(f"[{self.session_token}] [ASSASSIN] Reaping non-immune engine {pid} ({p_name})")
-                        target_pgids.add(pgid)
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                            target_pgids.add(pgid)
+                        except Exception:
+                            pass
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -947,6 +1006,66 @@ class LabAttendantV4:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
         return False
+
+    async def scavenge_reality(self):
+        """[FEAT-220.1] Physical Scavenging: Adopts existing engines on boot."""
+        logger.info("[BOOT] Performing physical scavenging audit...")
+        ports = {8088: "VLLM", 11434: "OLLAMA", 8765: "HUB"}
+        adopted_count = 0
+
+        # Physical Port Sweep
+        for port, mode in ports.items():
+            try:
+                res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
+                if ":" in res:
+                    pids = res.split(":")[1].strip().split()
+                    for pid_str in pids:
+                        pid = int(pid_str)
+                        # [FEAT-220.2] Identity Check: Does the process carry our persistent token?
+                        if self._is_current_session_process(pid):
+                            logger.info(f"[BOOT] Adopting existing {mode} on PID {pid}.")
+                            if mode == "HUB":
+                                self.active_pids['hub_pid'] = pid
+                            else:
+                                self.active_pids['engine_pid'] = pid
+                                self.active_pids['engine_mode'] = mode
+                            adopted_count += 1
+            except Exception:
+                pass
+        
+        # Deep Search: If port sweep found nothing but VRAM is high, search by signature
+        used_mb, _ = await self._get_vram_info()
+        if self.active_pids.get('engine_pid') is None and used_mb > 2000:
+            logger.info("[BOOT] VRAM high but ports quiet. Searching by process signature...")
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                try:
+                    if any(t in " ".join(proc.info["cmdline"] or []).lower() for t in ["vllm", "ollama"]):
+                        if self._is_current_session_process(proc.info["pid"]):
+                            logger.info(f"[BOOT] Signature Match: Adopting {proc.info['name']} on PID {proc.info['pid']}")
+                            self.active_pids['engine_pid'] = proc.info["pid"]
+                            # Default to VLLM if unsure
+                            self.active_pids['engine_mode'] = "VLLM" if "vllm" in proc.info['name'].lower() else "OLLAMA"
+                            adopted_count += 1
+                except Exception:
+                    pass
+
+        if adopted_count > 0:
+            logger.info(f"[BOOT] Successfully adopted {adopted_count} existing processes.")
+            self._save_ledger()
+            
+            # [FEAT-220.3] State Reconstruction
+            global current_lab_mode
+            current_lab_mode = self.active_pids.get('engine_mode', "SERVICE_UNATTENDED")
+            
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational"):
+                logger.info("[BOOT] Lab confirmed OPERATIONAL. Setting READY event.")
+                self.ready_event.set()
+            elif vitals.get("engine_up") and not vitals.get("engine_vocal"):
+                # If engine is up but not vocal, we are likely hibernating or still booting
+                global is_hibernating
+                is_hibernating = True
+                logger.warning("[BOOT] Engine present but silent. Reconstructing HIBERNATING state.")
 
     async def _get_current_vitals(self):
         """[FEAT-213] Silicon Health Check: Returns consolidated telemetry."""
@@ -1172,12 +1291,125 @@ class LabAttendantV4:
         return False
 
     async def vram_watchdog_loop(self):
-        """[FEAT-180] Resilience Ladder: Passive Monitoring."""
+        """[SPR-21.0] Multi-Modal State Monitor: Autonomous Triage and Recovery."""
+        logger.info("[WATCHDOG] Sovereignty active. Monitoring state transitions.")
+        
         while True:
             await asyncio.sleep(10)
+            
+            # Gating: Respect Maintenance and Boot Windows
             if os.path.exists(MAINTENANCE_LOCK):
                 continue
-            pass
+            if self.boot_grace_period > 0:
+                self.boot_grace_period -= 1
+                continue
+
+            try:
+                # 1. Physical VRAM Check [FEAT-036]
+                used, total = await self._get_vram_info()
+                if total > 0:
+                    vram_pct = used / total
+                    if vram_pct > 0.95:
+                        await self._trigger_recovery("Critical VRAM (>95%)", level=2)
+                        continue
+
+                # 2. Ghost Context Detection [FEAT-036] (ERR-09)
+                # Scenario A: Hibernation Failure
+                if is_hibernating and used > 2000:
+                    await self._trigger_recovery("Hibernation Failure (VRAM Stalled)", level=2)
+                    continue
+                
+                # Scenario B: Running Ghost (Physical Truth Check)
+                # [FEAT-278] If VRAM is high, verify that the PIDs using it are in our ledger
+                if used > 2000:
+                    try:
+                        smi_out = subprocess.check_output(
+                            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], 
+                            text=True, stderr=subprocess.DEVNULL
+                        )
+                        physical_pids = [int(p.strip()) for p in smi_out.strip().split("\n") if p.strip()]
+                        tracked_pids = [self.active_pids.get("engine_pid"), self.active_pids.get("hub_pid")]
+                        
+                        orphan_found = False
+                        for p_pid in physical_pids:
+                            if p_pid not in tracked_pids:
+                                # We found a process using GPU that we don't own
+                                orphan_found = True
+                                break
+                        
+                        if orphan_found:
+                            await self._trigger_recovery("Physical Ghost (Unrecognized VRAM usage)", level=2)
+                            continue
+                    except Exception as e:
+                        logger.error(f"[WATCHDOG] Physical Truth audit failed: {e}")
+
+                # Scenario C: Zombie/Stuck State Check
+                engine_pid = self.active_pids.get('engine_pid')
+                if engine_pid and psutil.pid_exists(engine_pid):
+                    proc = psutil.Process(engine_pid)
+                    if proc.status() in [psutil.STATUS_ZOMBIE, psutil.STATUS_DISK_SLEEP]:
+                        await self._trigger_recovery(f"Engine Process {proc.status()}", level=2)
+                        continue
+
+                # 3. Hub Liveness Probe [FEAT-035] (ERR-05)
+                if current_lab_mode != "OFFLINE" and not is_hibernating:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            start_t = time.time()
+                            async with session.get("http://127.0.0.1:8765/heartbeat", timeout=2.0) as r:
+                                latency = time.time() - start_t
+                                if r.status == 200:
+                                    self.failure_count = 0
+                                    if latency > 5.0:
+                                        self.log_event(f"Degraded Heartbeat: {latency:.2f}s", "WARNING")
+                                else:
+                                    self.failure_count += 1
+                    except Exception:
+                        self.failure_count += 1
+
+                    if self.failure_count >= 3:
+                        await self._trigger_recovery("Hub Unresponsive (3 cycles)", level=2)
+                        continue
+
+                # 4. Docker Observability Watchdog [v1 Lost Gem]
+                # [FEAT-180.1] Docker Cooldown: Check every 5 minutes
+                now = time.time()
+                if now - self._last_docker_check > 300:
+                    for container in MONITOR_CONTAINERS:
+                        try:
+                            res = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", container],
+                                                 capture_output=True, text=True, timeout=2)
+                            if "true" not in res.stdout:
+                                logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
+                                subprocess.Popen(["docker", "start", container])
+                                self.log_event(f"Recovered observability container: {container}", "WARNING")
+                        except Exception:
+                            pass
+                    self._last_docker_check = now
+
+            except Exception as e:
+                logger.error(f"[WATCHDOG] Loop Error: {e}")
+
+    async def _trigger_recovery(self, reason, level=1):
+        """Autonomous Recovery Engine with Forensic Log Capture."""
+        logger.critical(f"[WATCHDOG] {reason.upper()} DETECTED. Triggering Level {level} recovery.")
+        
+        # 1. Forensic Capture [FEAT-151]
+        self.trace_monitor.refresh_marks()
+        await asyncio.sleep(2) # Allow log flush for slow PCIe/Disk
+        deltas = self.trace_monitor.capture_delta()
+        snippet = " | ".join(deltas[-10:]).replace('"', "'") if deltas else "No recent log context."
+        
+        # 2. Interleaved Logging
+        self.log_event(f"[WATCHDOG] RECOVERY [{reason}]. Last Words: {snippet}", "CRITICAL")
+        
+        # 3. Reset Sequence
+        if level == 1:
+            await self.mcp_hibernate(reason=f"WD_RECOVERY_{reason}")
+        else:
+            await self.mcp_stop(reason=f"WD_RECOVERY_{reason}")
+            await asyncio.sleep(5)
+            await self.mcp_start(reason="WATCHDOG_AUTO_IGNITION")
 
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
@@ -1235,8 +1467,18 @@ class LabAttendantV4:
     async def handle_shutdown(self, app):
         """[CLEAN_RESTART] Ensures the Lab reaps its OWN session upon exit."""
         logger.warning(f"[SHUTDOWN] Service termination detected (Session: {self.session_token}). Reaping session silicon...")
-        # Reaps all engines by name/port and the Hub by token
-        await self.cleanup_silicon(mode="SESSION")
+        # [FEAT-119.5] Robust Synchronous Guard: Force-reap all engines and Hub
+        try:
+            await self.cleanup_silicon(mode="SESSION")
+            logger.warning("[SHUTDOWN] Silicon reap successful.")
+        except Exception as e:
+            logger.error(f"[SHUTDOWN] Silicon reap failed: {e}")
+            # Final emergency: use fuser
+            subprocess.run(["sudo", "fuser", "-k", "8088/tcp", "11434/tcp", "8765/tcp"], stderr=subprocess.DEVNULL)
+        
+        # [FEAT-277] Ensure ledger is cleared
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
+        self._save_ledger()
 
 # --- Global Instance and MCP Wrappers ---
 attendant = LabAttendantV4()
@@ -1283,7 +1525,6 @@ async def run_bilingual():
     # [FEAT-219] Silicon Handshake: Role-Based Execution
     check_singleton()
     role = os.environ.get("LAB_ATTENDANT_ROLE")
-    not sys.stdin.isatty()
     
     if role == "MASTER":
         # Full Master Mode: REST API + Pulse + Watchdog
@@ -1292,6 +1533,11 @@ async def run_bilingual():
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
         logger.info(f"[BOOT] Lab Attendant V4.1 (Guardian) active on {ATTENDANT_PORT}")
+        
+        # [FEAT-220.1] Physical Adoption
+        logger.info("[BOOT] Initiating state reconstruction...")
+        await attendant.scavenge_reality()
+        
         asyncio.create_task(attendant.vram_watchdog_loop())
         asyncio.create_task(attendant.pulse_loop())
         
