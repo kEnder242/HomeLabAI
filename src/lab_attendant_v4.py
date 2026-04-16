@@ -1296,11 +1296,30 @@ class LabAttendantV4:
     async def _wait_for_vllm_cognitive(self, timeout=240):
         """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
         start_t = time.time()
-        logger.info("[VLLM] API is UP. Waiting 60s for Triton kernel residence...")
-        await asyncio.sleep(60) # [BKM] Mandatory settle window for 3B AWQ kernels on Turing
+        vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
+        
+        logger.info("[VLLM] API is UP. Monitoring vllm_server.log for startup signal...")
+        
+        # [FEAT-265.8] Deterministic Readiness: Wait for vLLM completion string
+        startup_signal_found = False
+        for _ in range(180): # 180s max monitor
+            if os.path.exists(vllm_log):
+                try:
+                    with open(vllm_log, 'r') as f:
+                        # Check last 50 lines for the signal
+                        lines = f.readlines()[-50:]
+                        if any("Application startup complete." in line for line in lines):
+                            logger.info(f"[VLLM] Deterministic startup signal detected after {int(time.time() - start_t)}s.")
+                            startup_signal_found = True
+                            break
+                except Exception:
+                    pass
+            await asyncio.sleep(1.0)
+
+        if not startup_signal_found:
+            logger.warning("[VLLM] Startup signal not found in logs, proceeding with fallback probe.")
         
         logger.info("[VLLM] Beginning cognitive reasoning probes (127.0.0.1:8088)...")
-        vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
         
         while time.time() - start_t < timeout:
             # forensic check for crashes
