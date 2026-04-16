@@ -1293,6 +1293,23 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
+        # [FEAT-265.1] Vocal-Lock Protocol: Final Cognitive Probe
+        logging.info("[BOOT] Larynx Check: Performing final cognitive probe...")
+        try:
+            # We use the 'lab' node (Sentinel) for the liveness check as it is always local
+            if "lab" in self.residents:
+                await self.residents["lab"].call_tool(
+                    name="facilitate",
+                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1}
+                )
+                logging.info("[BOOT] Larynx Check SUCCESS: Engine is vocal.")
+            else:
+                logging.warning("[BOOT] Larynx Check SKIPPED: Lab node not resident.")
+        except Exception as e:
+            logging.error(f"[BOOT] Larynx Check FAILED: {e}")
+            # [FEAT-265.2] Gate status by Larynx success
+            return # Do not log READY or signal OPERATIONAL
+
         await self.broadcast({"type": "crosstalk", "brain": "[READY] Hub foyer is fully synchronized.", "brain_source": "System"})
         logging.info("[READY] Hub foyer is fully synchronized.")
         asyncio.create_task(self.ear_poller_loop())
