@@ -1212,7 +1212,7 @@ class AcmeLab:
         exit_hint = self.get_exit_hint(query)
 
         self.status = "WORKING"
-        await self.broadcast({"type": "status", "state": "working", "message": "🧠 THINKING..."})
+        await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
         
         try:
             res = await self.cognitive.process_query(
@@ -1224,7 +1224,7 @@ class AcmeLab:
                 turn_density=self.turn_density
             )
             self.status = "READY"
-            await self.broadcast({"type": "status", "state": "ready", "message": "Mind is READY."})
+            await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
             return res
         except Exception as e:
             self.status = "ERROR"

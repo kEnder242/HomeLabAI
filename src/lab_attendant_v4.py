@@ -502,8 +502,12 @@ class LabAttendantV4:
                 pid_path = os.path.join(LAB_DIR, "run/vllm.pid")
                 if os.path.exists(pid_path):
                     with open(pid_path, "r") as f:
-                        self.active_pids['engine_pid'] = int(f.read().strip())
+                        vllm_pid = int(f.read().strip())
+                        self.active_pids['engine_pid'] = vllm_pid
                         self.active_pids['engine_mode'] = 'VLLM'
+                        # [FEAT-220.5] Immediate Immunity
+                        if vllm_pid not in self.active_pids.get('family', []):
+                            self.active_pids['family'].append(vllm_pid)
                         self._save_ledger()
             except Exception:
                 pass
@@ -1051,11 +1055,18 @@ class LabAttendantV4:
         
         # 0. System Process Audit: Identify GUI/Core processes to spare
         self.system_pids = set()
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 p_name = proc.info['name'].lower()
-                if any(x in p_name for x in ["xorg", "gnome", "mutter", "sunshine", "steam", "systemd"]):
+                p_cmd = " ".join(proc.info['cmdline'] or []).lower()
+                
+                # Broadly spare system and stable engine residents
+                if any(x in p_name or x in p_cmd for x in ["xorg", "gnome", "mutter", "sunshine", "steam", "systemd", "ollama"]):
                     self.system_pids.add(proc.info['pid'])
+                    # Recursively add children for stable residents like Ollama
+                    if "ollama" in p_name:
+                        for child in proc.children(recursive=True):
+                            self.system_pids.add(child.pid)
             except Exception:
                 pass
 
@@ -1398,6 +1409,23 @@ class LabAttendantV4:
                                           p_pid in getattr(self, "system_pids", []) or
                                           ppid in getattr(self, "system_pids", []))
                             
+                            # [FEAT-265.5] Larynx Probe (Port-Bound Check)
+                            # If not authorized by token/family, check if it owns an active engine port
+                            if not authorized:
+                                for port in [8088, 11434]:
+                                    try:
+                                        # Use a subshell to check port ownership without blocking
+                                        res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], text=True, stderr=subprocess.DEVNULL)
+                                        if str(p_pid) in res:
+                                            logger.info(f"[WATCHDOG] Sparing Port-Bound Resident: PID {p_pid} on port {port}")
+                                            authorized = True
+                                            # ADOPT: Add to family ledger immediately
+                                            self.active_pids['family'].append(p_pid)
+                                            self._save_ledger()
+                                            break
+                                    except Exception:
+                                        pass
+
                             if not authorized:
                                 logger.warning(f"[WATCHDOG] Unrecognized VRAM consumer found: PID {p_pid} (PPID {ppid})")
                                 orphan_found = True
