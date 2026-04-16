@@ -3,7 +3,6 @@ import json
 import logging
 import re
 import os
-import sys
 import time
 from infra.cognitive_audit import CognitiveAudit
 
@@ -127,6 +126,11 @@ class CognitiveHub:
             elif action == "THINK MORE":
                 await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Action Tag: THINK MORE via {source}", "brain_source": "System"})
                 self.current_fuel = min(1.0, self.current_fuel + 0.3)
+            
+            # [FEAT-265.4] Clinical Thoughts: Strip formatting from internal stances
+            for tag in ["TECHNICAL_INTUITION", "SYSTEM_DESIGN_STANCE", "HISTORICAL_TRUTH"]:
+                clean_text = clean_text.replace(f"[{tag}]:", "").strip()
+                clean_text = clean_text.replace(f"{tag}:", "").strip()
 
         # 3. Nuclear Tool Interception (Search and Destroy)
         json_raw_match = re.search(r'(\{.*\})', clean_text, re.DOTALL)
