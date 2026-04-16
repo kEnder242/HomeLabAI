@@ -1,5 +1,26 @@
 {
-  "hub_pid": 287535,
-  "engine_pid": null,
-  "engine_mode": null
+  "authority": {
+    "token": "232700f5",
+    "timestamp": "2026-04-16 15:53:37",
+    "boot_hash": "DA67"
+  },
+  "inventory": {
+    "hub_pid": 358930,
+    "engine_pid": 358682,
+    "engine_mode": "VLLM",
+    "family": [
+      358944,
+      358745,
+      359017,
+      358953,
+      358746,
+      359086,
+      359033,
+      358930,
+      359093,
+      358585,
+      358682,
+      359103
+    ]
+  }
 }
