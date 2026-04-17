@@ -171,11 +171,12 @@ class LabAttendantV4:
         # [FEAT-151] Forensic Trace Monitor: Added vLLM Server log
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG, VLLM_SERVER_LOG])
         self.ready_event = asyncio.Event()
+        self._boot_time = time.time()
         self.ledger_path = os.path.join(LAB_DIR, 'run/active_pids.json')
         self.token_path = os.path.join(LAB_DIR, 'run/session.token')
         self.active_pids = self._load_ledger()
         self.current_reason = "INIT"
-        self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
+        self.session_token = self._load_session_token() # [FEAT-220] Persistent Session Identity
         self.vram_config = {}
         self.refresh_vram_config()
         
