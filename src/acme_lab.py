@@ -108,7 +108,7 @@ async def verify_engine_liveness():
 
 
 class AcmeLab:
-    def __init__(self, mode="SERVICE_UNATTENDED", afk_timeout=600, role="HUB"):
+    def __init__(self, mode="VLLM", afk_timeout=600, role="HUB"):
         # [FEAT-220] Silicon Handshake: Adopt Attendant token if present
         self.role = role
         self.session_token = os.environ.get("LAB_IMMUNITY_TOKEN") or uuid.uuid4().hex[:8]
@@ -483,8 +483,8 @@ class AcmeLab:
         self.last_activity = time.time()
         logging.warning(f"[HUB] Sparking restoration (Trigger: {client_id})...")
         
-        # [FEAT-265.8] Parallel Priming: Fire Brain probe immediately
-        asyncio.create_task(self.check_brain_health(force=True))
+        # [FEAT-265.14] Sovereign Sync: We yield to the Attendant's vLLM path only.
+        # Removed the parallel check_brain_health call to prevent local Ollama priming.
 
         async def _run_ignition():
             await asyncio.sleep(5) # [FIX] Settle window for Attendant watchdog
@@ -1206,7 +1206,8 @@ class AcmeLab:
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation
         if self.status in ["HIBERNATING", "LOBBY", "INIT"] and not self.engine_ready.is_set():
-            logging.warning(f"[HUB] Query '{query[:30]}' arrived during hibernation. Sparking WAKE signal.")
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived during hibernation. Triggering Sovereign vLLM ignition.")
+            # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
             asyncio.create_task(self.spark_restoration("intent"))
             # Notify user
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. I've queued your request.", "brain_source": "System"})
