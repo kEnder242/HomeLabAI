@@ -176,7 +176,7 @@ class LabAttendantV4:
         self.token_path = os.path.join(LAB_DIR, 'run/session.token')
         self.active_pids = self._load_ledger()
         self.current_reason = "INIT"
-        self.session_token = self._load_session_token() # [FEAT-220] Persistent Session Identity
+        self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
         self.vram_config = {}
         self.refresh_vram_config()
         
