@@ -354,9 +354,14 @@ class LabAttendantV4:
         vitals["timestamp"] = datetime.datetime.now().isoformat()
         return vitals
 
-    async def mcp_start(self, engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+    async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         global current_lab_mode, current_model, lab_process, is_hibernating
         
+        # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
+        # We target our known blacklist names to ensure a clean start
+        logger.info(f"[BOOT] Performing Pre-Ignition Deck Clear (Reason: {reason})")
+        await self.cleanup_silicon(mode="GHOSTS")
+
         # [FIX] Force immediate state flush to allow restoration to proceed
         is_hibernating = False
         self.ready_event.clear()
@@ -656,23 +661,25 @@ class LabAttendantV4:
             current_lab_mode = "HIBERNATING"
             is_hibernating = True
             
-            # 3. [FEAT-249.3] Forensic Monitoring: Wait up to 90s for VRAM drop
+            # 3. [FEAT-249.3] Forensic Monitoring: Wait up to 180s for VRAM drop
             # weights (~2.3GB) + KV Cache should move to CPU
             start_vram, _ = await self._get_vram_info()
             logger.info(f"[HIBERNATE] Monitoring offload curve. Starting VRAM: {start_vram}MB")
             
             reclaimed = False
-            for i in range(18): # 90s total
+            for i in range(36): # 180s total (Quiet pulse)
                 await asyncio.sleep(5)
                 used, _ = await self._get_vram_info()
-                logger.info(f"  [*] VRAM Check {i+1}/18: {used}MB")
+                logger.info(f"  [*] VRAM Decay Check {i+1}/36: {used}MB")
                 if used < 3500: # Target: Weights unmapped
                     logger.info(f"[{self.session_token}] [HIBERNATE] VRAM reclamation verified at {used}MB.")
                     reclaimed = True
                     break
             
+            # [FEAT-265.11] Surgical Zombie Reap: If VRAM hasn't decayed, kill the core
             if not reclaimed:
-                logger.warning(f"[{self.session_token}] [HIBERNATE] VRAM STALL: Weights remained in silicon after 90s.")
+                logger.warning(f"[{self.session_token}] [HIBERNATE] VRAM STALL: Weights remained in silicon. Reaping Ghost Core.")
+                await self.cleanup_silicon(mode="GHOSTS", engine_only=True)
             
             await self.update_status_json("HIBERNATING (VRAM Free)" if reclaimed else "HIBERNATING (STALLED)")
             return {"status": "success", "message": "Soft hibernation active."}
@@ -1537,7 +1544,7 @@ class LabAttendantV4:
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
         data = await r.json()
-        engine = data.get("engine", "OLLAMA")
+        engine = data.get("engine", "VLLM")
         model = data.get("model", "MEDIUM")
         disable_ear = data.get("disable_ear", True)
         op_mode = data.get("op_mode", "SERVICE_UNATTENDED")
@@ -1609,7 +1616,7 @@ attendant = LabAttendantV4()
 async def lab_heartbeat():
     return await attendant.mcp_heartbeat()
 @mcp.tool()
-async def lab_start(engine: str = "OLLAMA", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
+async def lab_start(engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
     return await attendant.mcp_start(engine, model, disable_ear, op_mode)
 @mcp.tool()
 async def lab_stop():
@@ -1660,13 +1667,14 @@ async def run_bilingual():
         logger.info("[BOOT] Initiating state reconstruction...")
         await attendant.scavenge_reality()
         
-        asyncio.create_task(attendant.vram_watchdog_loop())
+        # [FEAT-265.12] Quiet Sentry: Background WD loop disabled in favor of Lifecycle Anchors
+        # asyncio.create_task(attendant.vram_watchdog_loop())
         asyncio.create_task(attendant.pulse_loop())
         
         # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
         logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
         # Support STUB mode for rapid testing via environment
-        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "OLLAMA")
+        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "VLLM")
         model = os.environ.get("LAB_MODEL", "MEDIUM")
         # Note: In this context, engine_only=True means 'Just start the Hub'.
         asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True, reason="SAFE_PILOT"))
