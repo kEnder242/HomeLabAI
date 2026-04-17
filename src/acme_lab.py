@@ -569,6 +569,7 @@ class AcmeLab:
                 if is_hibernating and self.status == "READY":
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
                     self.status = "HIBERNATING"
+                    self.engine_ready.clear() # [FEAT-265.15] Readiness Reset: Ensure foyer sparks on next intent
                     # Trigger non-blocking stop via REST
                     async def hibernate():
                         try:
