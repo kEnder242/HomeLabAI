@@ -144,7 +144,7 @@ async def cors_middleware(request, handler):
     response = await handler(request)
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key, LabKey'
     return response
 
 class LabAttendantV4:
@@ -695,7 +695,7 @@ class LabAttendantV4:
         self.log_event("Quiesce: Lab locked for maintenance.", severity="WARNING")
         with open(MAINTENANCE_LOCK, "w") as f:
             f.write(datetime.datetime.now().isoformat())
-        asyncio.create_task(self._deferred_cleanup("MAINTENANCE MODE (Locked)"))
+        asyncio.create_task(self.cleanup_silicon(mode="MAINTENANCE"))
         return {"status": "locked", "message": "Lab freezing. Watchdog passive."}
 
     async def mcp_ignition(self, reason: str = "MANUAL_IGNITION"):
