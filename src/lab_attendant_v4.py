@@ -357,6 +357,10 @@ class LabAttendantV4:
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         global current_lab_mode, current_model, lab_process, is_hibernating
         
+        # [FEAT-265.17] Priority Bypass: Allow intentional wake signals to override initial boot grace
+        if self.boot_grace_period > 0 and self.ready_event.is_set() and not reason.startswith("WAKE_"):
+            return {"status": "error", "message": "Ignition in progress. Please wait."}
+            
         # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
         # We target our known blacklist names to ensure a clean start
         logger.info(f"[BOOT] Performing Pre-Ignition Deck Clear (Reason: {reason})")
@@ -837,7 +841,9 @@ class LabAttendantV4:
         [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
         Handshake Protocol: Processes tagged with [TOKEN] in their title are immune.
         """
-        immune_pgids = {os.getpgid(os.getpid())}
+        # [FEAT-265.18] Shutdown Priority: If we are exiting, NOTHING is immune.
+        is_shutdown = (mode == "SESSION" or mode == "SHUTDOWN")
+        immune_pgids = {os.getpgid(os.getpid())} if not is_shutdown else set()
         target_pgids = set()
         
         # 1. Target Definition
@@ -926,8 +932,8 @@ class LabAttendantV4:
                     # If process is using > 1GB and NOT in our ledger, it is an orphan
                     is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
                     
-                    if v_mem > 1000 and not is_ours:
-                        logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory orphan {v_pid} ({v_mem}MB)")
+                    if v_mem > 1000 and (not is_ours or is_shutdown):
+                        logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory {'family' if is_ours else 'orphan'} {v_pid} ({v_mem}MB)")
                         try:
                             # Force individual kill first
                             os.kill(v_pid, signal.SIGKILL)
@@ -960,7 +966,9 @@ class LabAttendantV4:
 
         # 5. Final Purge Logic
         # [FEAT-119.3] Restoration Silence
-        is_igniting = (engine_only or self.current_reason.startswith("RESTORE_") or self.current_reason == "SAFE_PILOT")
+        is_igniting = (engine_only or self.current_reason.startswith("RESTORE_") or 
+                       self.current_reason.startswith("WAKE_") or 
+                       self.current_reason == "SAFE_PILOT")
         if mode == "ORPHANS" and is_igniting:
             logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window ({self.current_reason}). Skipping orphan purge.")
             return
@@ -1554,7 +1562,12 @@ class LabAttendantV4:
     async def handle_stop_rest(self, r):
         return web.json_response(await self.mcp_stop())
     async def handle_hibernate_rest(self, r):
-        return web.json_response(await self.mcp_hibernate())
+        try:
+            data = await r.json()
+            reason = data.get("reason", "IDLE_TIMEOUT")
+        except Exception:
+            reason = "IDLE_TIMEOUT"
+        return web.json_response(await self.mcp_hibernate(reason=reason))
     async def handle_quiesce_rest(self, r):
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):
