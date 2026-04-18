@@ -1041,7 +1041,8 @@ class AcmeLab:
                             continue
 
                         # [FEAT-284] Physical Gate: Block or Queue input during hibernation/restoration
-                        if self.status in ["LOBBY", "BOOTING"] or not self.engine_ready.is_set():
+                        # [FEAT-265.16] Intent Bypass: Allow [ME] queries to trigger Sovereign Wake
+                        if (self.status in ["LOBBY", "BOOTING", "HIBERNATING"] or not self.engine_ready.is_set()) and not query.startswith("[ME]"):
                             # If we are WAKING, we can queue [FEAT-283]
                             if self.status == "WAKING":
                                 logging.info(f"[HUB] WAKING: Queuing query: {query[:50]}")
@@ -1209,7 +1210,7 @@ class AcmeLab:
         if self.status in ["HIBERNATING", "LOBBY", "INIT"] and not self.engine_ready.is_set():
             logging.warning(f"[HUB] Query '{query[:30]}' arrived during hibernation. Triggering Sovereign vLLM ignition.")
             # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
-            asyncio.create_task(self.spark_restoration("intent"))
+            asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
             # Notify user
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. I've queued your request.", "brain_source": "System"})
             # Buffer the query
