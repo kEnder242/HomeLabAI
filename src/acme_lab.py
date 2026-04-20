@@ -72,7 +72,7 @@ def resolve_brain_url():
 
             return f"http://{ip}:{port}/api/tags"
     except Exception:
-        pass
+        return ""
     return "http://localhost:11434/api/tags"
 
 
@@ -132,7 +132,7 @@ class AcmeLab:
                     print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.")
                     sys.exit(0) # Exit cleanly to avoid service churn
             except Exception:
-                pass
+                return ""
             # Force-reclaim if stale
             self._lock_fd = os.open(self._lock_file, os.O_CREAT | os.O_RDWR)
         
@@ -309,7 +309,7 @@ class AcmeLab:
                             })
                             tic_msg = tic_res.content[0].text
                         except Exception:
-                            pass
+                            return ""
 
                 if not tic_msg:
                     if not self.brain_online:
@@ -409,7 +409,7 @@ class AcmeLab:
                 is_restoring = self.status in ["WAKING", "BOOTING"]
                 
                 if self.connected_clients == 0 and not force:
-                    logging.debug("[HEALTH] Heavy Prime Bypassed: No clients connected to foyer.")
+                    logging.debug("[HEALTH] Heavy Prime Byreturn ""ed: No clients connected to foyer.")
                     return
 
                 # [FEAT-285] Cooldown Management
@@ -417,12 +417,12 @@ class AcmeLab:
                 should_prime = force or is_restoring or (last_prime_delta > 120)
                 
                 if not should_prime:
-                    logging.debug(f"[HEALTH] Heavy Prime Bypassed: Cooldown active ({int(last_prime_delta)}s < 120s).")
+                    logging.debug(f"[HEALTH] Heavy Prime Byreturn ""ed: Cooldown active ({int(last_prime_delta)}s < 120s).")
                     return
 
                 # [FEAT-286.2] Strict Latching: Only allow one active background prime
                 if self._priming_in_progress:
-                    logging.debug("[HEALTH] Heavy Prime Bypassed: Task already in progress.")
+                    logging.debug("[HEALTH] Heavy Prime Byreturn ""ed: Task already in progress.")
                     return
 
                 # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
@@ -481,7 +481,7 @@ class AcmeLab:
                             logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
                             return
         except Exception:
-            pass
+            return ""
 
         self.status = "WAKING"
         self.engine_ready.clear() # [FIX] Reset state machine early
@@ -567,7 +567,7 @@ class AcmeLab:
                                 logging.info("[HUB] Physical Sync: Engine detected UP. Advancing status to WAKING.")
                                 self.status = "WAKING"
             except Exception:
-                pass
+                return ""
 
             # [FEAT-249.2] Hardened VRAM Hibernation Logic (Configurable gate)
             idle_time = time.time() - self.last_activity
@@ -750,7 +750,7 @@ class AcmeLab:
                 try:
                     os.remove(trigger_file)
                 except Exception:
-                    pass
+                    return ""
                 await self.run_full_induction_cycle()
                 self.last_induction_date = today
             elif is_window:
@@ -802,7 +802,7 @@ class AcmeLab:
                 if self.mode != "SERVICE_UNATTENDED":
                     self.shutdown_event.set()
         except asyncio.CancelledError:
-            pass
+            return ""
         finally:
             self._disconnect_task = None
 
@@ -955,7 +955,7 @@ class AcmeLab:
                     old_msg["brain_source"] = "System"
                 await ws.send_str(json.dumps(old_msg))
             except Exception:
-                pass
+                return ""
 
         await self.manage_session_lock(active=True)
 
@@ -1079,10 +1079,10 @@ class AcmeLab:
                             continue
 
                         # [FEAT-284] Physical Gate: Block or Queue input during hibernation/restoration
-                        # [FEAT-265.16] Intent Bypass: Allow [ME] queries to trigger Sovereign Wake
+                        # [FEAT-265.16] Intent Byreturn "": Allow [ME] queries to trigger Sovereign Wake
                         if (self.status in ["LOBBY", "BOOTING", "HIBERNATING"] or not self.engine_ready.is_set()):
                             if query.startswith("[ME]"):
-                                # BRIDGE: Intent queries bypass the gate to trigger WAKE
+                                # BRIDGE: Intent queries byreturn "" the gate to trigger WAKE
                                 logging.info(f"[HUB] Intent detected during {self.status}. Bridging to processing.")
                             elif self.status == "WAKING":
                                 # If we are WAKING, we can queue [FEAT-283]
@@ -1283,7 +1283,7 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
-            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive/error. Triggering Sovereign vLLM ignition.")
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is return ""ive/error. Triggering Sovereign vLLM ignition.")
             # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
             asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
             # Notify user
@@ -1298,18 +1298,21 @@ class AcmeLab:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={request_key}") as ready_req:
                             if ready_req.status == 200:
-                                # Trigger node sync
+                                # [FEAT-265.48] Absolute Resumption: Force fresh node sync
+                                logging.info("[HUB] Resumption verified. Forcing fresh node synchronization.")
+                                self._residents_booted = False
+                                self.residents = {}
                                 await self.boot_residents(self.exit_stack)
                                 self.status = "READY"
                                 await self.broadcast({"type": "chat", "content": "[WAKE] Lab is now vocal and ready for reasoning.", "brain_source": "System"})
                                 await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
                 except Exception:
-                    pass
+                    return ""
             
             # [FEAT-265.47] Task Sovereignty: Manage the background feedback sequence
             if self._wake_task and not self._wake_task.done():
-                logging.info("[HUB] Task Sovereignty: Cancelling orphaned wake task.")
-                self._wake_task.cancel()
+                logging.info("[HUB] Task Sovereignty: Yielding to active wake sequence.")
+                return ""
                 
             self._wake_task = asyncio.create_task(_wait_and_signal())
             return ""
@@ -1321,17 +1324,22 @@ class AcmeLab:
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
 
+        # [FEAT-265.46] Sovereign Gate: Strictly forbid delegation if not vocal
+        # Intent queries wait patiently for the mind to warm (Weights re-load)
+        while getattr(self, "_spark_active", False) or self.status not in ["OPERATIONAL", "READY"]:
+            if query.startswith("[ME]"):
+                 # [FEAT-265.49] Physical Authority: Check if VRAM is back using non-blocking vitals
+                 if hasattr(self, "_last_vitals") and int(self._last_vitals.get("vram_raw", 0)) > 5000:
+                     logging.info("[HUB] Physical Authority: VRAM confirmed resident. Proceeding.")
+                     break
+                     
+                 await asyncio.sleep(2)
+                 continue
+            return ""
+
         self.status = "WORKING"
-        
         # [FEAT-265.48] Absolute State: Serialized Triage
         async with self._triage_lock:
-            # [FEAT-265.46] Sovereign Gate: Strictly forbid delegation if not vocal
-            while getattr(self, "_spark_active", False) or self.status not in ["OPERATIONAL", "READY", "WORKING"]:
-                if query.startswith("[ME]"):
-                     await asyncio.sleep(2)
-                     continue
-                return ""
-
             await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
             
             try:
