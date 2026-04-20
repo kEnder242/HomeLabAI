@@ -176,6 +176,8 @@ class AcmeLab:
         self.current_processing_task = None
         self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
         self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
+        self._wake_task = None # [FEAT-265.47] Task Sovereignty: Track active wake task
+        self._triage_lock = asyncio.Lock() # [FEAT-265.48] Absolute State: Prevent concurrent triage
         self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
         reclaim_logger(role)
         self.set_proc_title()
@@ -337,13 +339,13 @@ class AcmeLab:
         return task.result()
 
     async def check_brain_health(self, force=False):
-        """[REVISION-17.5] Tiered Discovery: Port Check -> Presence-Gated Heavy Probe."""
-        now = time.time()
-
-        # [FEAT-283.2] Quiescent Deferral: Silence heartbeats during weight-swaps
-        if self.status in ["WAKING", "HIBERNATING"] and not force:
-            logging.debug(f"[HEALTH] Deferring heartbeat (Status: {self.status}) to avoid PCIe collision.")
+        """[FEAT-265.31] State-Aware Probe: Suppress heartbeats during ignition to avoid PCIe collision."""
+        # [FEAT-265.36] Strict Sovereignty: 'force' cannot override the ignition window
+        if self.status in ["WAKING", "BOOTING", "INIT", "RECOVERY"]:
+            logging.debug(f"[HEALTH] Sovereignty Gate: Aborting probe during {self.status}.")
             return
+
+        now = time.time()
 
         # Initialize sticky tracking if missing
 
@@ -460,24 +462,27 @@ class AcmeLab:
 
     async def spark_restoration(self, client_id="system"):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
-        # [GATE] Only block if another spark is ACTIVELY running
+        # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
         if getattr(self, "_spark_active", False) or self.status == "BOOTING":
             return
+        self._spark_active = True
             
         # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
-        # This prevents the Hub from spamming while the 60s Triton window is active.
+        # [FEAT-265.26] Sovereign Override: NEVER yield if physically hibernating
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=1.0) as r:
+                async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=1.0) as r:
                     if r.status == 200:
                         data = await r.json()
-                        if data.get("reason") in ["SAFE_PILOT", "MANUAL_IGNITION"] or data.get("current_reason", "").startswith("RESTORE_"):
+                        # Physical truth: If hibernating, we must spark, regardless of reason
+                        if data.get("mode") == "HIBERNATING":
+                            logging.info("[HUB] Sovereign Override: Attendant is HIBERNATING. Reclaiming ignition authority.")
+                        elif data.get("reason") in ["SAFE_PILOT", "MANUAL_IGNITION"] or data.get("current_reason", "").startswith("RESTORE_"):
                             logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
                             return
         except Exception:
             pass
 
-        self._spark_active = True
         self.status = "WAKING"
         self.engine_ready.clear() # [FIX] Reset state machine early
         self.last_activity = time.time()
@@ -486,15 +491,19 @@ class AcmeLab:
         # [FEAT-265.14] Sovereign Sync: We yield to the Attendant's vLLM path only.
         # Removed the parallel check_brain_health call to prevent local Ollama priming.
 
+        # [FEAT-265.21] Key Integrity: Refresh style key immediately before spark
+        # to prevent 401 Unauthorized due to file edits during session
+        current_style_key = get_style_key()
+        
         async def _run_ignition():
             await asyncio.sleep(5) # [FIX] Settle window for Attendant watchdog
             try:
                 async with aiohttp.ClientSession() as session:
-                    key = get_style_key()
+                    key = current_style_key
                     headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
                     target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
                     
-                    async with session.post("http://localhost:9999/start", 
+                    async with session.post("http://127.0.0.1:9999/start", 
                                      headers=headers, 
                                      json={
                                          "engine": target_engine, 
@@ -508,7 +517,7 @@ class AcmeLab:
 
                             # Yield to Authority: Wait for Attendant to confirm silicon is OPERATIONAL
                             try:
-                                async with session.get(f"http://localhost:9999/wait_ready?timeout=300&key={key}") as ready_req:
+                                async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={key}") as ready_req:
                                     if ready_req.status == 200:
                                         logging.info("[HUB] Attendant confirmed OPERATIONAL. Synchronizing residents...")
                                         # [FEAT-265.8] High-Fidelity Restoration: Re-boot residents
@@ -530,11 +539,36 @@ class AcmeLab:
         asyncio.create_task(_run_ignition())
 
     async def reflex_loop(self):
-        """Background maintenance and status updates."""
+        """Background maintenance and status updates grounded in silicon truth."""
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
             # [FEAT-221] Slower tick rate for crosstalk/status
             await asyncio.sleep(30.0)
+            
+            # [FEAT-265.24] Physical Sync: Pull heartbeat from Attendant
+            try:
+                # [FEAT-267] Use dynamic key for REST authorization
+                expected_key = get_style_key()
+                async with aiohttp.ClientSession() as session:
+                    headers = {'X-Lab-Key': expected_key}
+                    async with session.get("http://127.0.0.1:9999/heartbeat", headers=headers, timeout=2.0) as r:
+                        if r.status == 200:
+                            vitals = await r.json()
+                            phys_hibernating = (vitals.get("mode") == "HIBERNATING")
+                            
+                            # Ground truth: If physically hibernating, we MUST be logically hibernating
+                            if phys_hibernating and self.status != "HIBERNATING":
+                                logging.warning("[HUB] Physical Sync: Engine is HIBERNATING. Reverting logical status.")
+                                self.status = "HIBERNATING"
+                                self.engine_ready.clear()
+                            
+                            # Inverse ground truth: If engine is up but we think we are hibernating, we are WAKING
+                            if vitals.get("engine_up") and self.status == "HIBERNATING":
+                                logging.info("[HUB] Physical Sync: Engine detected UP. Advancing status to WAKING.")
+                                self.status = "WAKING"
+            except Exception:
+                pass
+
             # [FEAT-249.2] Hardened VRAM Hibernation Logic (Configurable gate)
             idle_time = time.time() - self.last_activity
             is_hibernating = (not self.connected_clients and idle_time > self.idle_gate)
@@ -578,12 +612,16 @@ class AcmeLab:
                             
                             async with aiohttp.ClientSession() as session:
                                 headers = {'X-Lab-Key': expected_key}
-                                async with session.post("http://localhost:9999/hibernate", headers=headers, timeout=5) as resp:
+                                async with session.post("http://127.0.0.1:9999/hibernate", headers=headers, timeout=5) as resp:
                                     if resp.status != 200:
                                         res_text = await resp.text()
                                         logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
                                     else:
-                                        logging.info("[HUB] Hibernation signal accepted by Attendant.")
+                                        logging.info("[HUB] Hibernation signal accepted by Attendant. Reverting status to HIBERNATING.")
+                                        self.status = "HIBERNATING"
+                                        self.engine_ready.clear()
+                                        self._residents_booted = False
+                                        self.residents = {}
                         except Exception as e:
                             logging.error(f"[HUB] Hibernation request error: {e}")
                     
@@ -1042,9 +1080,12 @@ class AcmeLab:
 
                         # [FEAT-284] Physical Gate: Block or Queue input during hibernation/restoration
                         # [FEAT-265.16] Intent Bypass: Allow [ME] queries to trigger Sovereign Wake
-                        if (self.status in ["LOBBY", "BOOTING", "HIBERNATING"] or not self.engine_ready.is_set()) and not query.startswith("[ME]"):
-                            # If we are WAKING, we can queue [FEAT-283]
-                            if self.status == "WAKING":
+                        if (self.status in ["LOBBY", "BOOTING", "HIBERNATING"] or not self.engine_ready.is_set()):
+                            if query.startswith("[ME]"):
+                                # BRIDGE: Intent queries bypass the gate to trigger WAKE
+                                logging.info(f"[HUB] Intent detected during {self.status}. Bridging to processing.")
+                            elif self.status == "WAKING":
+                                # If we are WAKING, we can queue [FEAT-283]
                                 logging.info(f"[HUB] WAKING: Queuing query: {query[:50]}")
                                 await self._neural_queue.put(query)
                                 await ws.send_json({
@@ -1053,16 +1094,18 @@ class AcmeLab:
                                     "state": "lobby"
                                 })
                                 continue
-                            
-                            logging.warning(f"[HUB] Ingestion Blocked: Lab is currently {self.status}.")
-                            await ws.send_json({
-                                "type": "status",
-                                "message": "Lab is currently offline or booting. Please wait.",
-                                "state": "lobby"
-                            })
-                            continue
+                            else:
+                                logging.warning(f"[HUB] Ingestion Blocked: Lab is currently {self.status}.")
+                                await ws.send_json({
+                                    "type": "status",
+                                    "message": "Lab is currently offline or booting. Please wait.",
+                                    "state": "lobby"
+                                })
+                                continue
 
-                        self.last_activity = time.time()
+                        # [FEAT-265.19] Intent-Aware Idle: Only humans ([ME]) keep the Lab awake
+                        if query.startswith("[ME]"):
+                            self.last_activity = time.time()
                         # [FIX] Simplified task management to avoid cancellation deadlocks
                         asyncio.create_task(self.process_query(query))
                     elif m_type == "workspace_save":
@@ -1180,7 +1223,6 @@ class AcmeLab:
             )
 
         self.last_save_event = time.time()
-        self.last_activity = time.time()
 
     async def update_turn_density(self):
         """[FEAT-154] Sentient Sentinel: Updates density and identifies exit sentiment."""
@@ -1206,15 +1248,70 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
-        # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation
-        if self.status in ["HIBERNATING", "LOBBY", "INIT"] and not self.engine_ready.is_set():
-            logging.warning(f"[HUB] Query '{query[:30]}' arrived during hibernation. Triggering Sovereign vLLM ignition.")
+        # [FEAT-265.45] Sovereign Context: Capture active key to prevent 401 drift
+        request_key = get_style_key()
+        
+        # [FEAT-265.25] Physical Truth Bridge: Check if engine is ACTUALLY responsive
+        # This handles cases where API is UP but weights are offloaded (Level 2 Sleep)
+        engine_vocal = self.engine_ready.is_set()
+        if engine_vocal:
+            # 1. Functional Probe (The Gold Standard)
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.1)
+            if sock.connect_ex(('127.0.0.1', 8088)) != 0:
+                logging.warning("[HUB] Physical Truth: Engine port 8088 is CLOSED.")
+                engine_vocal = False
+            sock.close()
+            
+            if engine_vocal:
+                # 2. Cognitive Probe (Deep Sleep Detection)
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        probe_payload = {"model": "unified-base", "prompt": "ping", "max_tokens": 1}
+                        async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=0.5) as r:
+                            if r.status != 200:
+                                logging.warning(f"[HUB] Functional Truth: Engine returned {r.status}. Clearing cached readiness.")
+                                engine_vocal = False
+                except Exception:
+                    logging.warning("[HUB] Functional Truth: Engine timed out. Clearing cached readiness.")
+                    engine_vocal = False
+            
+            if not engine_vocal:
+                self.engine_ready.clear()
+                self.status = "HIBERNATING"
+
+        # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
+        if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive/error. Triggering Sovereign vLLM ignition.")
             # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
             asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
             # Notify user
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. I've queued your request.", "brain_source": "System"})
             # Buffer the query
             await self._neural_queue.put(query)
+            
+            # [FEAT-265.44] Resumption Feedback: Wait for sync to finish
+            async def _wait_and_signal():
+                try:
+                    # Wait up to 300s for Attendant to signal OPERATIONAL
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={request_key}") as ready_req:
+                            if ready_req.status == 200:
+                                # Trigger node sync
+                                await self.boot_residents(self.exit_stack)
+                                self.status = "READY"
+                                await self.broadcast({"type": "chat", "content": "[WAKE] Lab is now vocal and ready for reasoning.", "brain_source": "System"})
+                                await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
+                except Exception:
+                    pass
+            
+            # [FEAT-265.47] Task Sovereignty: Manage the background feedback sequence
+            if self._wake_task and not self._wake_task.done():
+                logging.info("[HUB] Task Sovereignty: Cancelling orphaned wake task.")
+                self._wake_task.cancel()
+                
+            self._wake_task = asyncio.create_task(_wait_and_signal())
             return ""
 
         # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
@@ -1225,25 +1322,36 @@ class AcmeLab:
         exit_hint = self.get_exit_hint(query)
 
         self.status = "WORKING"
-        await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
         
-        try:
-            res = await self.cognitive.process_query(
-                query, 
-                mic_active=self.mic_active, 
-                shutdown_event=self.shutdown_event,
-                exit_hint=exit_hint,
-                trigger_briefing_callback=self.trigger_morning_briefing,
-                turn_density=self.turn_density
-            )
-            self.status = "READY"
-            await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
-            return res
-        except Exception as e:
-            self.status = "ERROR"
-            logging.error(f"[HUB] Query processing failed: {e}")
-            await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
-            raise
+        # [FEAT-265.48] Absolute State: Serialized Triage
+        async with self._triage_lock:
+            # [FEAT-265.46] Sovereign Gate: Strictly forbid delegation if not vocal
+            while getattr(self, "_spark_active", False) or self.status not in ["OPERATIONAL", "READY", "WORKING"]:
+                if query.startswith("[ME]"):
+                     await asyncio.sleep(2)
+                     continue
+                return ""
+
+            await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
+            
+            try:
+                res = await self.cognitive.process_query(
+                    query, 
+                    mic_active=self.mic_active, 
+                    shutdown_event=self.shutdown_event,
+                    exit_hint=exit_hint,
+                    trigger_briefing_callback=self.trigger_morning_briefing,
+                    turn_density=self.turn_density
+                )
+                if self.status != "HIBERNATING":
+                    self.status = "READY"
+                await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
+                return res
+            except Exception as e:
+                self.status = "ERROR"
+                logging.error(f"[HUB] Query processing failed: {e}")
+                await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
+                raise
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task and be idempotent."""
@@ -1427,7 +1535,8 @@ class AcmeLab:
                 }
                 async with session.post("http://localhost:8088/v1/completions", json=probe_payload, timeout=1) as r:
                     if r.status == 200:
-                        self.status = "INIT" # Port is active, but we stay in INIT until nodes sync
+                        # [FEAT-265.22] State Integrity: Stay in INIT until boot_residents completes
+                        self.status = "INIT"
                     else:
                         # [FEAT-259.3] Hibernation Awareness: Detect resting state
                         self.status = "HIBERNATING"

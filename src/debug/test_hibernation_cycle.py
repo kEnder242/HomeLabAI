@@ -28,22 +28,44 @@ async def get_vram():
     except:
         return 0
 
-async def run_cycle():
+async def run_cycle(iteration):
     key = get_key()
     headers = {"X-Lab-Key": key, "Content-Type": "application/json"}
     
-    print("\n" + "="*50)
+    print(f"\n" + "="*50)
+    print(f"--- ITERATION {iteration}/3 ---")
+    
+    # [FEAT-265.28] Physical Settle: Wait for VOCAL baseline before starting cycle
+    print("[*] STEP 0: Verifying Vocal Baseline...")
+    for _ in range(24): # 120s max
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{ATTENDANT_URL}/status", headers=headers, timeout=1.0) as r:
+                    if r.status == 200:
+                        data = await r.json()
+                        if data.get("engine_up") and data.get("foyer_up"):
+                            print("[+] Lab is ACTIVE and ready for transition.")
+                            break
+        except Exception:
+            pass
+        print("  [*] Waiting for active baseline...")
+        await asyncio.sleep(5)
+
+    # 1. Force Premature Hibernation
     print("[*] STEP 1: Forcing Premature Hibernation...")
     async with aiohttp.ClientSession() as session:
-        # We use a custom reason 'WAKE_TEST' which is NOT 'IDLE_TIMEOUT' 
-        # so the Attendant allows it even during the boot grace period.
-        async with session.post(f"{ATTENDANT_URL}/hibernate", headers=headers, json={"reason": "WAKE_TEST"}) as r:
-            res = await r.json()
-            if res.get("status") == "deferred":
-                print(f"[!] Hibernation deferred: {res.get('message')}. Waiting 30s...")
-                await asyncio.sleep(30)
-                return False
-            print(f"[+] Hibernation signal accepted: {res.get('message')}")
+        for _ in range(12): # 60s max retry
+            async with session.post(f"{ATTENDANT_URL}/hibernate", headers=headers, json={"reason": "WAKE_TEST"}) as r:
+                res = await r.json()
+                if res.get("status") == "deferred":
+                    print(f"  [!] Hibernation deferred: {res.get('message')}. Retrying in 5s...")
+                    await asyncio.sleep(5)
+                    continue
+                print(f"[+] Hibernation signal accepted: {res.get('message')}")
+                break
+        else:
+            print("[-] FAILURE: Hibernation remained deferred for 60s.")
+            return False
 
     print("[*] STEP 2: Waiting for VRAM decay (< 1500MB)...")
     decayed = False
@@ -61,6 +83,25 @@ async def run_cycle():
         return False
 
     print("[*] STEP 3: Triggering Sovereign Wake via Intent...")
+    # [FEAT-265.20] Boot Patience: Wait for Hub Foyer to open
+    foyer_up = False
+    for _ in range(12): # 60s max wait for foyer
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:8765/heartbeat", timeout=1.0) as r:
+                    if r.status == 200:
+                        print("[+] Hub Foyer is OPEN and listening.")
+                        foyer_up = True
+                        break
+        except Exception:
+            pass
+        print("  [*] Waiting for Hub foyer to initialize...")
+        await asyncio.sleep(5)
+    
+    if not foyer_up:
+        print("[-] FAILURE: Hub foyer failed to open.")
+        return False
+
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(HUB_URL) as ws:
             payload = {"type": "text_input", "content": "[ME] Stress test: Wake up!"}
@@ -74,10 +115,14 @@ async def run_cycle():
                     msg = await asyncio.wait_for(ws.receive_json(), timeout=10)
                     if msg.get("type") == "crosstalk" and "warming" in msg.get("brain", "").lower():
                         print("[+] Hub acknowledged intent and sparked Attendant.")
-                    if msg.get("type") == "chat" and "SUCCESS" in str(msg.get("content", "")).upper():
-                        print("[+] SUCCESS: Engine is vocal.")
-                        vocal_received = True
-                        break
+                    if msg.get("type") == "chat" and ("SUCCESS" in str(msg.get("content", "")).upper() or "READY" in str(msg.get("content", "")).upper()):
+                        vram_now = await get_vram()
+                        if vram_now > 5000:
+                            print(f"[+] SUCCESS: Engine is vocal and VRAM is resident ({vram_now}MB).")
+                            vocal_received = True
+                            break
+                        else:
+                            print(f"  [*] Vocal detected, but weights still loading ({vram_now}MB)...")
                 except asyncio.TimeoutError:
                     vram = await get_vram()
                     print(f"  [*] Waiting... Current VRAM: {vram}MB")
@@ -104,8 +149,7 @@ async def main():
     print("[*] Starting Hibernation Iterative Hardening...")
     passes = 0
     for i in range(1, 4): # Run 3 cycles
-        print(f"\n--- ITERATION {i}/3 ---")
-        if await run_cycle():
+        if await run_cycle(i):
             passes += 1
         else:
             print(f"[!] Iteration {i} failed. Breaking for analysis.")
