@@ -383,7 +383,8 @@ class LabAttendantV4:
                 self.active_pids['engine_mode'] = None
                 self._save_ledger()
 
-            # [FEAT-265.17] Priority Bypass: Allow intentional wake signals to override initial boot grace            if self.boot_grace_period > 0 and self.ready_event.is_set() and not reason.startswith("WAKE_"):
+            # [FEAT-265.17] Priority Bypass: Allow intentional wake signals to override initial boot grace
+            if self.boot_grace_period > 0 and self.ready_event.is_set() and not reason.startswith("WAKE_"):
                 return {"status": "error", "message": "Ignition in progress. Please wait."}
 
             # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
@@ -607,31 +608,28 @@ class LabAttendantV4:
 
             # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running AND immune
             hub_active = False
+            is_intentional_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_"))
             try:
                 res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
                 if ":" in res:
-                    pids = res.split(":")[1].strip().split()
+                    pids = re.findall(r'\d+', res.split(":")[1])
                     if pids:
                         pid = int(pids[0])
-                        # [FEAT-265.42] Sovereign Messenger: Shield foyer from reaping during wake
-                        is_intentional_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_"))
-
-                    if self._is_current_session_process(pid) or is_intentional_wake:
-                        hub_active = True
-                        logger.info(f"[IGNITION] Immune Hub detected on PID {pid}. Sparing.")
-                    else:
-                        logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
-                        try:
-                            os.killpg(os.getpgid(pid), signal.SIGKILL)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(1.0)
+                        # [FEAT-220.5] Check family immunity
+                        is_family = pid in self.active_pids.get('family', [])
+                        if self._is_current_session_process(pid) or is_family or is_intentional_wake:
+                            hub_active = True
+                            self.active_pids['hub_pid'] = pid
+                            logger.info(f"[IGNITION] Immune Hub detected on PID {pid} (Reason: {reason}). Sparing.")
+                        else:
+                            logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
+                            try:
+                                os.killpg(os.getpgid(pid), signal.SIGKILL)
+                            except Exception:
+                                pass
+                            await asyncio.sleep(1.0)
             except Exception:
                 pass
-
-            if engine_only and hub_active:
-                logger.info("[IGNITION] Surgical Spark complete. Foyer spared.")
-                return {"status": "success", "message": "Engines sparked. Hub spared."}
 
             # [FEAT-276.5] The Sequencer: Mandatory Engine-First Ignition
             if engine == "VLLM":
@@ -652,6 +650,12 @@ class LabAttendantV4:
                 if not engine_ready_port:
                     logger.error(f"[{self.session_token}] [SEQUENCER] Engine failed to bind port 8088. Aborting foyer spark.")
                     return {"status": "error", "message": "Engine failed to bind port 8088."}
+
+            if hub_active and (engine_only or is_intentional_wake):
+                logger.info(f"[IGNITION] Surgical Spark complete. Foyer already active (Reason: {reason}).")
+                # [FEAT-265.42] Ensure monitor loop is running for adopted Hub
+                asyncio.create_task(self.log_monitor_loop())
+                return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode} (Hub Spared)"}
 
             # Start Hub
             logger.info(f"[IGNITION] [{reason.upper()}] Igniting Hub foyer...")
@@ -1641,7 +1645,7 @@ class LabAttendantV4:
                         continue
 
                 # 3. Hub Liveness Probe [FEAT-035] (ERR-05)
-                if current_lab_mode != "OFFLINE" and not is_hibernating:
+                if current_lab_mode != "OFFLINE" and not is_hibernating and self.boot_grace_period == 0:
                     try:
                         async with aiohttp.ClientSession() as session:
                             start_t = time.time()
@@ -1838,7 +1842,7 @@ async def run_bilingual():
         await attendant.scavenge_reality()
         
         # [FEAT-265.12] Quiet Sentry: Background WD loop disabled in favor of Lifecycle Anchors
-        # asyncio.create_task(attendant.vram_watchdog_loop())
+        asyncio.create_task(attendant.vram_watchdog_loop())
         asyncio.create_task(attendant.pulse_loop())
         
         # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
