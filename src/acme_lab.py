@@ -696,7 +696,7 @@ class AcmeLab:
             else:
                 dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
                 proc = await asyncio.create_subprocess_exec(
-                    sys.executable, dream_script, "300",
+                    sys.executable, dream_script, "100",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 stdout, stderr = await proc.communicate()

@@ -312,16 +312,22 @@ class LabAttendantV4:
 
     def _load_ledger(self):
         """[FEAT-277] Load Sovereign Ledger from disk."""
+        base = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
         if os.path.exists(self.ledger_path):
             try:
                 with open(self.ledger_path, 'r') as f:
                     data = json.load(f)
-                    if "inventory" in data:
-                        return data["inventory"]
-                    return data
+                    inv = data.get("inventory", data)
+                    if isinstance(inv, dict):
+                        # [FEAT-220.6] Schema Hardening: Merge loaded data into base to ensure all keys exist
+                        base.update(inv)
+                        # [FIX] Ensure family is always a list
+                        if not isinstance(base.get('family'), list):
+                            base['family'] = []
+                        return base
             except Exception:
                 pass
-        return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+        return base
 
     def sync_family_ledger(self):
         """[FEAT-220.4] Family Sovereignty: Recursively discovers and authorizes child processes."""
