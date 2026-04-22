@@ -12,6 +12,7 @@ for the refined prompts, creating an instruction-tuning dataset.
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 import websockets
 
@@ -68,9 +69,10 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
     return None
 
 
-async def main(limit=10, mode="voice"):
+async def main(limit=10, mode="voice", order="forward", duration_hours=None):
     """Main synthesis loop."""
-    logging.info(f"Starting Dream Synthesis [Mode: {mode}, Limit: {limit}]...")
+    logging.info(f"Starting Dream Synthesis [Mode: {mode}, Limit: {limit}, Order: {order}]...")
+    start_time_global = time.time()
 
     if not REFINED_PROMPTS.exists():
         logging.error("Refined prompts not found.")
@@ -92,43 +94,62 @@ async def main(limit=10, mode="voice"):
                 except Exception:
                     pass
 
+    # [FEAT-296] Fast-Forward: Load and potentially reverse the queue
+    with open(REFINED_PROMPTS, "r") as f_in:
+        all_lines = f_in.readlines()
+    
+    if order == "reverse":
+        logging.info("[ORDER] Reversing queue to process newest items first.")
+        all_lines.reverse()
+
     count = 0
     async with websockets.connect(BRAIN_NODE_URI) as websocket:
         await websocket.recv()  # Greeting
 
-        with open(REFINED_PROMPTS, "r") as f_in:
-            for line in f_in:
-                if count >= limit:
+        for line in all_lines:
+            # Check constraints
+            if count >= limit:
+                logging.info(f"[LIMIT] Reached item limit ({limit}).")
+                break
+            
+            if duration_hours:
+                elapsed = (time.time() - start_time_global) / 3600
+                if elapsed >= duration_hours:
+                    logging.info(f"[TIME] Reached duration limit ({duration_hours}h).")
                     break
 
-                entry = json.loads(line)
-                prompt = entry.get("prompt")
-                
-                if prompt in seen_prompts:
-                    continue
+            entry = json.loads(line)
+            prompt = entry.get("prompt")
+            
+            if prompt in seen_prompts:
+                continue
 
-                logging.info(f"Dreaming [{mode}] for: {prompt[:50]}...")
-                ideal_response = await generate_dream_response(websocket, prompt, mode=mode)
+            logging.info(f"Dreaming [{mode}] for: {prompt[:50]}...")
+            ideal_response = await generate_dream_response(websocket, prompt, mode=mode)
 
-                if ideal_response:
-                    dataset_entry = {
-                        "instruction": prompt,
-                        "input": "",
-                        "output": ideal_response,
-                    }
-                    with open(target_file, "a") as f_out:
-                        f_out.write(json.dumps(dataset_entry) + "\n")
-                    count += 1
-                    logging.info(f"Synthesized [{count}/{limit}]")
+            if ideal_response:
+                dataset_entry = {
+                    "instruction": prompt,
+                    "input": "",
+                    "output": ideal_response,
+                }
+                with open(target_file, "a") as f_out:
+                    f_out.write(json.dumps(dataset_entry) + "\n")
+                count += 1
+                logging.info(f"Synthesized [{count}/{limit}]")
 
-                await asyncio.sleep(2)  # Short cadence
+            await asyncio.sleep(2)  # Short cadence
 
     logging.info(f"Dream Synthesis [{mode}] Finished.")
 
 
 if __name__ == "__main__":
-    import sys
-
-    limit = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-    mode = sys.argv[2] if len(sys.argv) > 2 else "voice"
-    asyncio.run(main(limit=limit, mode=mode))
+    import argparse
+    parser = argparse.ArgumentParser(description="Acme Lab Dream Voice Synthesis")
+    parser.add_argument("limit", type=int, default=10, help="Item limit")
+    parser.add_argument("mode", default="voice", help="Synthesis mode (voice|sentinel)")
+    parser.add_argument("--order", default="forward", choices=["forward", "reverse"], help="Queue order")
+    parser.add_argument("--hours", type=float, default=None, help="Time limit in hours")
+    
+    args = parser.parse_args()
+    asyncio.run(main(limit=args.limit, mode=args.mode, order=args.order, duration_hours=args.hours))
