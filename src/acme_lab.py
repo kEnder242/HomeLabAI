@@ -409,7 +409,7 @@ class AcmeLab:
                 is_restoring = self.status in ["WAKING", "BOOTING"]
                 
                 if self.connected_clients == 0 and not force:
-                    logging.debug("[HEALTH] Heavy Prime Byreturn ""ed: No clients connected to foyer.")
+                    logging.debug("[HEALTH] Heavy Prime Bypassed: No clients connected to foyer.")
                     return
 
                 # [FEAT-285] Cooldown Management
@@ -417,12 +417,12 @@ class AcmeLab:
                 should_prime = force or is_restoring or (last_prime_delta > 120)
                 
                 if not should_prime:
-                    logging.debug(f"[HEALTH] Heavy Prime Byreturn ""ed: Cooldown active ({int(last_prime_delta)}s < 120s).")
+                    logging.debug(f"[HEALTH] Heavy Prime Bypassed: Cooldown active ({int(last_prime_delta)}s < 120s).")
                     return
 
                 # [FEAT-286.2] Strict Latching: Only allow one active background prime
                 if self._priming_in_progress:
-                    logging.debug("[HEALTH] Heavy Prime Byreturn ""ed: Task already in progress.")
+                    logging.debug("[HEALTH] Heavy Prime Bypassed: Task already in progress.")
                     return
 
                 # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
@@ -554,6 +554,7 @@ class AcmeLab:
                     async with session.get("http://127.0.0.1:9999/heartbeat", headers=headers, timeout=2.0) as r:
                         if r.status == 200:
                             vitals = await r.json()
+                            self._last_vitals = vitals
                             phys_hibernating = (vitals.get("mode") == "HIBERNATING")
                             
                             # Ground truth: If physically hibernating, we MUST be logically hibernating
@@ -751,7 +752,6 @@ class AcmeLab:
                     os.remove(trigger_file)
                 except Exception:
                     return ""
-                await self.run_full_induction_cycle()
                 self.last_induction_date = today
             elif is_window:
                 if self.last_induction_date != today:
@@ -761,9 +761,9 @@ class AcmeLab:
                         await self.spark_restoration("alarm_nightly")
                         await self.engine_ready.wait()
 
+                    self.last_induction_date = today
                     await self.broadcast({"type": "crosstalk", "brain": f"[ALARM] Triggering daily induction cycle for {today}...", "brain_source": "System"})
                     await self.run_full_induction_cycle()
-                    self.last_induction_date = today
                 else:
                     # [FEAT-266] Tiered Visibility: Heartbeat WARNING for nightly window
                     # Only log once an hour while in the window
@@ -1283,7 +1283,7 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
-            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is return ""ive/error. Triggering Sovereign vLLM ignition.")
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive/error. Triggering Sovereign vLLM ignition.")
             # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
             asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
             # Notify user
@@ -1329,7 +1329,7 @@ class AcmeLab:
         while getattr(self, "_spark_active", False) or self.status not in ["OPERATIONAL", "READY"]:
             if query.startswith("[ME]"):
                  # [FEAT-265.49] Physical Authority: Check if VRAM is back using non-blocking vitals
-                 if hasattr(self, "_last_vitals") and int(self._last_vitals.get("vram_raw", 0)) > 5000:
+                 if hasattr(self, "_last_vitals") and int(self._last_vitals.get("vram_mib", 0)) > 5000:
                      logging.info("[HUB] Physical Authority: VRAM confirmed resident. Proceeding.")
                      break
                      

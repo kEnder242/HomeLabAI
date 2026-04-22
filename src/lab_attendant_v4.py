@@ -338,7 +338,8 @@ class LabAttendantV4:
                     proc = psutil.Process(pid)
                     for child in proc.children(recursive=True):
                         new_family.add(child.pid)
-                except Exception: pass
+                except Exception:
+                    pass
         
         # Pass 2: Token-Based Discovery (Identify detached workers)
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -538,7 +539,7 @@ class LabAttendantV4:
                         break
                     await asyncio.sleep(0.5)
                 
-                if not port_free:
+                if not port_free and not (reason.startswith("WAKE_") or reason.startswith("RESTORE_")):
                     logger.error("[IGNITION] Port 8088 remained bound after purge. Aborting.")
                     return {"status": "error", "message": "Physical port 8088 is blocked."}
                 
@@ -962,8 +963,8 @@ class LabAttendantV4:
 
                 is_immune = False
 
-                # [FEAT-265.32] Birthright: Spare foyer script during wake
-                if is_wake and "acme_lab.py" in cmd:
+                # [FEAT-265.32] Birthright: Spare foyer and verification scripts
+                if (is_wake and "acme_lab.py" in cmd) or "test_hibernation_cycle.py" in cmd or "atomic_patcher.py" in cmd:
                     is_immune = True
 
                 # [FEAT-220] Silicon Handshake: Token (case-insensitive) in cmd or name
@@ -1079,7 +1080,8 @@ class LabAttendantV4:
                 stderr=subprocess.DEVNULL, text=True
             )
             for pid_str in smi_out.strip().split("\n"):
-                if not pid_str.strip(): continue
+                if not pid_str.strip():
+                    continue
                 v_pid = int(pid_str.strip())
                 
                 # Identify the family member or orphan
@@ -1359,6 +1361,7 @@ class LabAttendantV4:
             "engine_up": engine_up or current_lab_mode == "STUB",
             "engine_vocal": engine_vocal or current_lab_mode == "STUB",
             "vram": vram_pct,
+            "vram_mib": used_mb,
             "operational": is_op,
             "reason": self.current_reason,
             "session": self.session_token,
