@@ -460,11 +460,17 @@ class AcmeLab:
             logging.debug(f"[HEALTH] Overall brain probe failed: {e}")
             self.brain_online = False
 
-    async def spark_restoration(self, client_id="system"):
+    async def spark_restoration(self, client_id="system", intent="ACTIVE"):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
         # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
         if getattr(self, "_spark_active", False) or self.status == "BOOTING":
             return
+        
+        # [FEAT-291] Passive Guard: Don't spark if the intent is strictly PASSIVE (e.g., status check)
+        # unless we are already in a waking state.
+        if intent == "PASSIVE" and self.status == "HIBERNATING":
+            return
+
         self._spark_active = True
             
         # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
@@ -479,14 +485,17 @@ class AcmeLab:
                             logging.info("[HUB] Sovereign Override: Attendant is HIBERNATING. Reclaiming ignition authority.")
                         elif data.get("reason") in ["SAFE_PILOT", "MANUAL_IGNITION"] or data.get("current_reason", "").startswith("RESTORE_"):
                             logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
+                            self._spark_active = False # Release lock if yielding
                             return
         except Exception:
-            return ""
+            pass
 
         self.status = "WAKING"
         self.engine_ready.clear() # [FIX] Reset state machine early
         self.last_activity = time.time()
-        logging.warning(f"[HUB] Sparking restoration (Trigger: {client_id})...")
+        
+        # [FEAT-294] Forensic Ignition: Log the specific source and intent of the wake event
+        logging.warning(f"[HUB] Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}")
         
         # [FEAT-265.14] Sovereign Sync: We yield to the Attendant's vLLM path only.
         # Removed the parallel check_brain_health call to prevent local Ollama priming.
@@ -674,12 +683,21 @@ class AcmeLab:
         # 5. Nightly Dream Pass (Long-Tail 4090)
         logging.info("[ALARM] Step 5: Nightly Dream Pass...")
         try:
-            dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, dream_script, "300",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            # [FEAT-292] Dream Guard: Prevent redundant processes
+            check_proc = await asyncio.create_subprocess_exec(
+                "pgrep", "-f", "dream_voice.py",
+                stdout=asyncio.subprocess.PIPE
             )
-            await proc.communicate()
+            stdout, _ = await check_proc.communicate()
+            if check_proc.returncode == 0 and len(stdout.strip().split(b"\n")) >= 1:
+                 logging.warning("[ALARM] Dream Pass already in progress. Skipping redundant spawn.")
+            else:
+                dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, dream_script, "300",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
         except Exception as e:
             logging.error(f"[ALARM] Dream Pass failed: {e}")
 
@@ -741,6 +759,9 @@ class AcmeLab:
             is_triggered = os.path.exists(trigger_file)
 
             if is_triggered:
+                # [FEAT-289] Atomic Induction: Mark today as completed IMMEDIATELY to prevent recursive sparks
+                self.last_induction_date = today
+
                 # [FEAT-266] Wake-for-Work: Ensure Lab is active before manual trigger
                 if self.status == "HIBERNATING":
                     logging.warning("[ALARM] Manual trigger detected while hibernating. Awakening...")
@@ -751,17 +772,18 @@ class AcmeLab:
                 try:
                     os.remove(trigger_file)
                 except Exception:
-                    return ""
-                self.last_induction_date = today
+                    pass 
             elif is_window:
                 if self.last_induction_date != today:
+                    # [FEAT-289] Atomic Induction: Mark today as completed IMMEDIATELY
+                    self.last_induction_date = today
+
                     # [FEAT-266] Wake-for-Work: Ensure Lab is active before nightly window
                     if self.status == "HIBERNATING":
                         logging.warning("[ALARM] Nightly window reached while hibernating. Awakening...")
                         await self.spark_restoration("alarm_nightly")
                         await self.engine_ready.wait()
 
-                    self.last_induction_date = today
                     await self.broadcast({"type": "crosstalk", "brain": f"[ALARM] Triggering daily induction cycle for {today}...", "brain_source": "System"})
                     await self.run_full_induction_cycle()
                 else:
