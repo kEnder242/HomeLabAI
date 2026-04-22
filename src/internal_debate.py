@@ -69,7 +69,7 @@ class InternalDebate:
             )
             try:
                 res = await self.pinky.call_tool(
-                    "facilitate",
+                    "think",
                     arguments={"query": pinky_prompt, "context": brain_out},
                 )
                 pinky_out = res.content[0].text
