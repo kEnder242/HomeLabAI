@@ -676,7 +676,9 @@ class AcmeLab:
                 sys.executable, harvest_script,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            await proc.communicate()
+            stdout, stderr = await proc.communicate()
+            if stdout: logging.info(f"[ALARM] Harvest Output: {stdout.decode().strip()}")
+            if stderr: logging.error(f"[ALARM] Harvest Error: {stderr.decode().strip()}")
         except Exception as e:
             logging.error(f"[ALARM] Harvest failed: {e}")
 
@@ -697,7 +699,9 @@ class AcmeLab:
                     sys.executable, dream_script, "300",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                await proc.communicate()
+                stdout, stderr = await proc.communicate()
+                if stdout: logging.info(f"[ALARM] Dream Output: {stdout.decode().strip()}")
+                if stderr: logging.error(f"[ALARM] Dream Error: {stderr.decode().strip()}")
         except Exception as e:
             logging.error(f"[ALARM] Dream Pass failed: {e}")
 
@@ -773,6 +777,8 @@ class AcmeLab:
                     os.remove(trigger_file)
                 except Exception:
                     pass 
+                
+                await self.run_full_induction_cycle()
             elif is_window:
                 if self.last_induction_date != today:
                     # [FEAT-289] Atomic Induction: Mark today as completed IMMEDIATELY
@@ -1450,7 +1456,7 @@ class AcmeLab:
             # We use the 'lab' node (Sentinel) for the liveness check as it is always local
             if "lab" in self.residents:
                 await self.residents["lab"].call_tool(
-                    name="facilitate",
+                    name="think",
                     arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1}
                 )
                 logging.info("[BOOT] Larynx Check SUCCESS: Engine is vocal.")

@@ -58,7 +58,7 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
             text = data.get("brain", "")
 
             # We want the deep derivation from the Brain
-            if "Brain" in source:
+            if "brain" in source.lower():
                 return text
         except asyncio.TimeoutError:
             continue
