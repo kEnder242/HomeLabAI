@@ -21,6 +21,16 @@ WHITEBOARD_DIR = os.path.join(WORKSPACE_DIR, "whiteboard")
 FIELD_NOTES_DIR = os.path.join(WORKSPACE_DIR, "field_notes")
 DATA_DIR = os.path.join(FIELD_NOTES_DIR, "data")
 RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
+STYLE_CSS = os.path.join(FIELD_NOTES_DIR, "style.css")
+SEMANTIC_MAP_FILE = os.path.join(DATA_DIR, "semantic_map.json")
+
+def get_style_key():
+    """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
+    import hashlib
+    if not os.path.exists(STYLE_CSS):
+        return "missing"
+    with open(STYLE_CSS, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()[:8]
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_STREAM = "short_term_stream"
 COLLECTION_WISDOM = "long_term_wisdom"
@@ -497,8 +507,9 @@ async def internal_debate(topic: str, turns: int = 3) -> str:
 async def get_lab_health() -> str:
     """[FEAT-191] Retrieves physical telemetry from the Lab Attendant."""
     try:
+        headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:9999/heartbeat", timeout=2.0) as r:
+            async with session.get("http://localhost:9999/heartbeat", headers=headers, timeout=2.0) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
@@ -511,9 +522,10 @@ async def get_lab_health() -> str:
 async def lab_train_adapter(adapter_name: str, steps: int = 60) -> str:
     """[FEAT-213] Autonomous Forge: Triggers a LoRA training run via the Attendant."""
     try:
+        headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
             payload = {"adapter": adapter_name, "steps": steps}
-            async with session.post("http://localhost:9999/train", json=payload, timeout=3600) as r:
+            async with session.post("http://localhost:9999/train", json=payload, headers=headers, timeout=3600) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
