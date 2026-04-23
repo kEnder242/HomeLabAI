@@ -713,8 +713,11 @@ class AcmeLab:
             logging.info(f"[ALARM] Forging soul components: {target}")
 
             if "archive" in self.residents:
-                # We call the Attendant tool via the Archive node's proxy
-                await self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60})
+                # [FEAT-297] Fire-and-Forget Forge: Don't await the 1-hour training run.
+                # This allows the Hub to finish its cycle and hibernate gracefully
+                # while the Attendant manages the physical silicon lockdown.
+                asyncio.create_task(self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
+                logging.info("[ALARM] Forge signal dispatched. Hub yielding silicon authority.")
         except Exception as e:
             logging.error(f"[ALARM] Nightly Forge failed: {e}")
         await self.broadcast({"type": "crosstalk", "brain": "[ALARM] Full Induction Cycle Complete.", "brain_source": "System"})
