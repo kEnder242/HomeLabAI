@@ -642,30 +642,31 @@ class AcmeLab:
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
                     self.status = "HIBERNATING"
                     self.engine_ready.clear() # [FEAT-265.15] Readiness Reset: Ensure foyer sparks on next intent
-                    # Trigger non-blocking stop via REST
-                    async def hibernate():
-                        try:
-                            # [FEAT-267] Use dynamic key for REST authorization
-                            expected_key = get_style_key()
-                            
-                            async with aiohttp.ClientSession() as session:
-                                headers = {'X-Lab-Key': expected_key}
-                                async with session.post("http://127.0.0.1:9999/hibernate", headers=headers, timeout=5) as resp:
-                                    if resp.status != 200:
-                                        res_text = await resp.text()
-                                        logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
-                                    else:
-                                        logging.info("[HUB] Hibernation signal accepted by Attendant. Reverting status to HIBERNATING.")
-                                        self.status = "HIBERNATING"
-                                        self.engine_ready.clear()
-                                        self._residents_booted = False
-                                        self.residents = {}
-                        except Exception as e:
-                            logging.error(f"[HUB] Hibernation request error: {e}")
-                    
-                    asyncio.create_task(hibernate())
+                    asyncio.create_task(self._hibernate())
                     self.brain_online = False # Mark offline while sleeping
-    async def run_full_induction_cycle(self):
+
+    async def _hibernate(self):
+        """[FEAT-249.7] Centralized Hibernation Logic: Bridges to Attendant REST API."""
+        try:
+            # [FEAT-267] Use dynamic key for REST authorization
+            expected_key = get_style_key()
+            
+            async with aiohttp.ClientSession() as session:
+                headers = {'X-Lab-Key': expected_key}
+                async with session.post("http://127.0.0.1:9999/hibernate", headers=headers, timeout=5) as resp:
+                    if resp.status != 200:
+                        res_text = await resp.text()
+                        logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
+                    else:
+                        logging.info("[HUB] Hibernation signal accepted by Attendant. Reverting status to HIBERNATING.")
+                        self.status = "HIBERNATING"
+                        self.engine_ready.clear()
+                        self._residents_booted = False
+                        self.residents = {}
+        except Exception as e:
+            logging.error(f"[HUB] Hibernation request error: {e}")
+
+    async def run_full_induction_cycle(self, auto_hibernate=False):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
         msg = "[ALARM] Initiating Full Induction Cycle..."
         await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
@@ -769,6 +770,10 @@ class AcmeLab:
             msg_final = "[ALARM] Full Induction Cycle Complete."
             await self.broadcast({"type": "crosstalk", "brain": msg_final, "brain_source": "System"})
             self.trigger_pager(msg_final, severity="info", source="Induction")
+
+            if auto_hibernate:
+                logging.warning("[HUB] Nightly cycle finished with auto-hibernate enabled. Sleeping.")
+                await self._hibernate()
         
         # Dispatch the long-tail grind to the background
         asyncio.create_task(_run_background_induction())
@@ -832,7 +837,7 @@ class AcmeLab:
                 except Exception:
                     pass 
                 
-                await self.run_full_induction_cycle()
+                await self.run_full_induction_cycle(auto_hibernate=False)
             elif is_window:
                 if self.last_induction_date != today:
                     # [FEAT-289] Atomic Induction: Mark today as completed IMMEDIATELY
@@ -845,7 +850,7 @@ class AcmeLab:
                         await self.engine_ready.wait()
 
                     await self.broadcast({"type": "crosstalk", "brain": f"[ALARM] Triggering daily induction cycle for {today}...", "brain_source": "System"})
-                    await self.run_full_induction_cycle()
+                    await self.run_full_induction_cycle(auto_hibernate=True)
                 else:
                     # [FEAT-266] Tiered Visibility: Heartbeat WARNING for nightly window
                     # Only log once an hour while in the window
