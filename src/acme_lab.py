@@ -1507,19 +1507,27 @@ class AcmeLab:
         # [FEAT-265.1] Vocal-Lock Protocol: Final Cognitive Probe
         logging.info("[BOOT] Larynx Check: Performing final cognitive probe...")
         try:
-            # We use the 'lab' node (Sentinel) for the liveness check as it is always local
+            # [FEAT-295] Larynx Hardening: Verify both Sentinel and Sovereign
             if "lab" in self.residents:
                 await self.residents["lab"].call_tool(
                     name="think",
-                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1}
+                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
                 )
-                logging.info("[BOOT] Larynx Check SUCCESS: Engine is vocal.")
-            else:
-                logging.warning("[BOOT] Larynx Check SKIPPED: Lab node not resident.")
+                logging.info("[BOOT] Sentinel Larynx: SUCCESS.")
+            
+            if "brain" in self.residents:
+                # Force a small prime to ensure 4090 is actually vocal
+                await self.residents["brain"].call_tool(
+                    name="think",
+                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
+                )
+                logging.info("[BOOT] Sovereign Larynx: SUCCESS.")
+
+            logging.info("[BOOT] Larynx Check: GLOBAL SUCCESS.")
         except Exception as e:
             logging.error(f"[BOOT] Larynx Check FAILED: {e}")
             # [FEAT-265.2] Gate status by Larynx success
-            return # Do not log READY or signal OPERATIONAL
+            return # Do not log OPERATIONAL if silicon is silent
 
         await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Hub foyer is fully synchronized.", "brain_source": "System"})
         logging.info("[OPERATIONAL] Hub foyer is fully synchronized.")
