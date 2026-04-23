@@ -34,7 +34,7 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
     """Queries the Sovereign for the ideal 'Engineer Voice' or 'Sentinel Decision'."""
     if mode == "sentinel":
         dream_query = (
-            "[SENTINEL_DREAM]: Analyze this user query: '{prompt}'. "
+            "[ME] [SENTINEL_DREAM]: Analyze this user query: '{prompt}'. "
             "Should this be triaged to the high-latency Strategic Brain (RTX 4090) or handled by the low-latency Local Pinky (RTX 2080 Ti)? "
             "Output 'TRIAGE: BRAIN' if complex/strategic/coding, or 'TRIAGE: PINKY' if simple/conversational/status. "
             "Provide a one-sentence technical rationale."
@@ -42,7 +42,7 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
     else:
         # System hint to force the persona
         dream_query = (
-            "[DREAM_PASS]: Act as the Lead Engineer. Provide a concise, professional, "
+            "[ME] [DREAM_PASS]: Act as the Lead Engineer. Provide a concise, professional, "
             f"and technically accurate response to this directive: '{prompt}'"
         )
 
