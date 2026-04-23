@@ -10,6 +10,7 @@ import time
 import uuid
 from typing import Dict, Set
 
+from infra.atomic_io import atomic_write_json
 from infra.montana import reclaim_logger
 import aiohttp
 from aiohttp import web
@@ -40,6 +41,7 @@ ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 MAINTENANCE_LOCK = os.path.join(WORKSPACE_DIR, "field_notes/data/maintenance.lock")
 STYLE_CSS = os.path.join(WORKSPACE_DIR, "field_notes/style.css")
+PAGER_FILE = os.path.join(WORKSPACE_DIR, "field_notes/data/pager_activity.json")
 
 
 def get_style_key():
@@ -248,9 +250,32 @@ class AcmeLab:
             except Exception as e:
                 logging.debug(f"[HUB] Broadcast failure to client: {e}")
                 dead_clients.add(ws)
-        
+
+        # Cleanup
         for dead in dead_clients:
-            self.connected_clients.discard(dead)
+            self.connected_clients.remove(dead)
+
+    def trigger_pager(self, message, severity="INFO", source="System"):
+        """[FEAT-298] Centralized pager trigger for Hub-level forensic logging."""
+        try:
+            entry = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "severity": severity.upper(),
+                "source": source,
+                "message": message
+            }
+            activities = []
+            if os.path.exists(PAGER_FILE):
+                try:
+                    with open(PAGER_FILE, 'r') as f:
+                        activities = json.load(f)
+                except Exception:
+                    pass
+            activities.append(entry)
+            # Keep last 50 for the UI
+            atomic_write_json(PAGER_FILE, activities[-50:])
+        except Exception as e:
+            logging.error(f"[HUB] Pager Trigger Failed: {e}")
 
     def _update_prime_timer(self, timestamp):
         """[FEAT-287] Activity Latch: Resets the priming timer on model response."""
@@ -495,7 +520,9 @@ class AcmeLab:
         self.last_activity = time.time()
         
         # [FEAT-294] Forensic Ignition: Log the specific source and intent of the wake event
-        logging.warning(f"[HUB] Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}")
+        msg = f"Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}"
+        logging.warning(f"[HUB] {msg}")
+        self.trigger_pager(msg, severity="info", source="Hub")
         
         # [FEAT-265.14] Sovereign Sync: We yield to the Attendant's vLLM path only.
         # Removed the parallel check_brain_health call to prevent local Ollama priming.
@@ -529,6 +556,7 @@ class AcmeLab:
                                 async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={key}") as ready_req:
                                     if ready_req.status == 200:
                                         logging.info("[HUB] Attendant confirmed OPERATIONAL. Synchronizing residents...")
+                                        self.trigger_pager(f"Restoration SUCCESS: {client_id}", severity="info", source="Hub")
                                         # [FEAT-265.8] High-Fidelity Restoration: Re-boot residents
                                         await self.boot_residents(self.exit_stack)
                                     else:
@@ -584,21 +612,21 @@ class AcmeLab:
             is_hibernating = (not self.connected_clients and idle_time > self.idle_gate)
 
             # [FORENSIC] Characterize idle needs
-            if not self.connected_clients and self.status == "READY":
+            if not self.connected_clients and self.status == "OPERATIONAL":
                 logging.debug(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
 
             if self.connected_clients:
                 # [FEAT-221.2] Persona Gate: Only banter if the mind is actually active
-                if self.status in ["OPERATIONAL", "READY"]:
+                if self.status == "OPERATIONAL":
                     if random.random() < 0.1: # 10% chance per tick
                         await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
                 
                 await self.broadcast(
                     {
                         "type": "status",
-                        "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, ready
+                        "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, operational
                         "brain_online": self.brain_online,
-                        "full_lab_ready": self.brain_online and self.status == "READY", # [FEAT-265.6]
+                        "full_lab_ready": self.brain_online and self.status == "OPERATIONAL", # [FEAT-265.6]
                         "hibernating": (self.status == "HIBERNATING")
                     }
                 )
@@ -610,7 +638,7 @@ class AcmeLab:
                 # [FEAT-085] Check health inside reflex ONLY if clients are active
                 await self.check_brain_health()
             else:
-                if is_hibernating and self.status == "READY":
+                if is_hibernating and self.status == "OPERATIONAL":
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
                     self.status = "HIBERNATING"
                     self.engine_ready.clear() # [FEAT-265.15] Readiness Reset: Ensure foyer sparks on next intent
@@ -639,10 +667,14 @@ class AcmeLab:
                     self.brain_online = False # Mark offline while sleeping
     async def run_full_induction_cycle(self):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
-        await self.broadcast({"type": "crosstalk", "brain": "[ALARM] Initiating Full Induction Cycle...", "brain_source": "System"})
+        msg = "[ALARM] Initiating Full Induction Cycle..."
+        await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+        self.trigger_pager(msg, severity="info", source="Induction")
         
         # 1. Nightly Dialogue (Fast Local)
         logging.info("[ALARM] Step 1: Nightly Dialogue...")
+        self.trigger_pager("Step 1: Nightly Dialogue...", severity="info", source="Induction")
+        self.last_activity = time.time() # [FIX] Prevent hibernation during turns
         a_node = self.residents.get("archive")
         p_node = self.residents.get("pinky")
         b_node = self.residents.get("brain")
@@ -654,6 +686,8 @@ class AcmeLab:
 
         # 2. Nightly Recruiter (Mixed)
         logging.info("[ALARM] Step 2: Nightly Recruiter...")
+        self.trigger_pager("Step 2: Nightly Recruiter...", severity="info", source="Induction")
+        self.last_activity = time.time()
         br_node = self.residents.get("browser")
         try:
             await recruiter.run_recruiter_task(a_node, b_node, br_node)
@@ -662,65 +696,82 @@ class AcmeLab:
 
         # 3. Hierarchy Refactor (CPU)
         logging.info("[ALARM] Step 3: Hierarchy Refactor...")
+        self.trigger_pager("Step 3: Hierarchy Refactor...", severity="info", source="Induction")
         if "lab" in self.residents:
             try:
                 await self.residents["lab"].call_tool(name="build_semantic_map")
             except Exception as e:
                 logging.error(f"[ALARM] Lab Task failed: {e}")
 
-        # 4. Sequential Harvest (Long-Tail 4090)
-        logging.info("[ALARM] Step 4: Sequential Harvest...")
-        try:
-            harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest_v2.py")
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, harvest_script,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await proc.communicate()
-            if stdout: logging.info(f"[ALARM] Harvest Output: {stdout.decode().strip()}")
-            if stderr: logging.error(f"[ALARM] Harvest Error: {stderr.decode().strip()}")
-        except Exception as e:
-            logging.error(f"[ALARM] Harvest failed: {e}")
-
-        # 5. Nightly Dream Pass (Long-Tail 4090)
-        logging.info("[ALARM] Step 5: Nightly Dream Pass...")
-        try:
-            # [FEAT-292] Dream Guard: Prevent redundant processes
-            check_proc = await asyncio.create_subprocess_exec(
-                "pgrep", "-f", "dream_voice.py",
-                stdout=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await check_proc.communicate()
-            if check_proc.returncode == 0 and len(stdout.strip().split(b"\n")) >= 1:
-                 logging.warning("[ALARM] Dream Pass already in progress. Skipping redundant spawn.")
-            else:
-                dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
+        # [FEAT-299] Pulse Preservation: Run long-tail tasks in background
+        async def _run_background_induction():
+            # 4. Sequential Harvest (Long-Tail 4090)
+            logging.info("[ALARM] Step 4: Sequential Harvest...")
+            self.trigger_pager("Step 4: Sequential Harvest...", severity="info", source="Induction")
+            try:
+                harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest_v2.py")
                 proc = await asyncio.create_subprocess_exec(
-                    sys.executable, dream_script, "100", "voice", "--order", "reverse", "--hours", "2",
+                    sys.executable, harvest_script,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 stdout, stderr = await proc.communicate()
-                if stdout: logging.info(f"[ALARM] Dream Output: {stdout.decode().strip()}")
-                if stderr: logging.error(f"[ALARM] Dream Error: {stderr.decode().strip()}")
-        except Exception as e:
-            logging.error(f"[ALARM] Dream Pass failed: {e}")
+                if stdout:
+                    logging.info(f"[ALARM] Harvest Output: {stdout.decode().strip()}")
+                if stderr:
+                    logging.error(f"[ALARM] Harvest Error: {stderr.decode().strip()}")
+            except Exception as e:
+                logging.error(f"[ALARM] Harvest failed: {e}")
 
-        # 6. Nightly Forge (Autonomous LoRA Weight Induction)
-        logging.info("[ALARM] Step 6: Nightly Forge Turn...")
-        try:
-            # [FEAT-217] Sequenced Batch Forge: Train all three soul components every night
-            target = "lab_history,cli_voice,lab_sentinel"
-            logging.info(f"[ALARM] Forging soul components: {target}")
+            # 5. Nightly Dream Pass (Long-Tail 4090)
+            logging.info("[ALARM] Step 5: Nightly Dream Pass...")
+            self.trigger_pager("Step 5: Nightly Dream Pass...", severity="info", source="Induction")
+            try:
+                # [FEAT-292] Dream Guard: Prevent redundant processes
+                check_proc = await asyncio.create_subprocess_exec(
+                    "pgrep", "-f", "dream_voice.py",
+                    stdout=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await check_proc.communicate()
+                if check_proc.returncode == 0 and len(stdout.strip().split(b"\n")) >= 1:
+                     logging.warning("[ALARM] Dream Pass already in progress. Skipping redundant spawn.")
+                else:
+                    dream_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/dream_voice.py")
+                    # [FEAT-296] Reverse-Order Dream with 2-hour morning window
+                    proc = await asyncio.create_subprocess_exec(
+                        sys.executable, dream_script, "100", "voice", "--order", "reverse", "--hours", "2",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await proc.communicate()
+                    if stdout:
+                        logging.info(f"[ALARM] Dream Output: {stdout.decode().strip()}")
+                    if stderr:
+                        logging.error(f"[ALARM] Dream Error: {stderr.decode().strip()}")
+            except Exception as e:
+                logging.error(f"[ALARM] Dream Pass failed: {e}")
 
-            if "archive" in self.residents:
-                # [FEAT-297] Fire-and-Forget Forge: Don't await the 1-hour training run.
-                # This allows the Hub to finish its cycle and hibernate gracefully
-                # while the Attendant manages the physical silicon lockdown.
-                asyncio.create_task(self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
-                logging.info("[ALARM] Forge signal dispatched. Hub yielding silicon authority.")
-        except Exception as e:
-            logging.error(f"[ALARM] Nightly Forge failed: {e}")
-        await self.broadcast({"type": "crosstalk", "brain": "[ALARM] Full Induction Cycle Complete.", "brain_source": "System"})
+            # 6. Nightly Forge (Autonomous LoRA Weight Induction)
+            logging.info("[ALARM] Step 6: Nightly Forge Turn...")
+            self.trigger_pager("Step 6: Nightly Forge Turn...", severity="info", source="Induction")
+            try:
+                # [FEAT-217] Sequenced Batch Forge: Train all three soul components every night
+                target = "lab_history,cli_voice,lab_sentinel"
+                logging.info(f"[ALARM] Forging soul components: {target}")
+
+                if "archive" in self.residents:
+                    # [FEAT-297] Fire-and-Forget Forge: Dispatched from backgrounder.
+                    # We set Hub status to MAINTENANCE to prevent ghost wake-ups.
+                    self.status = "MAINTENANCE"
+                    await self.residents["archive"].call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60})
+                    logging.info("[ALARM] Forge signal dispatched. Hub yielding silicon authority.")
+            except Exception as e:
+                logging.error(f"[ALARM] Nightly Forge failed: {e}")
+
+            msg_final = "[ALARM] Full Induction Cycle Complete."
+            await self.broadcast({"type": "crosstalk", "brain": msg_final, "brain_source": "System"})
+            self.trigger_pager(msg_final, severity="info", source="Induction")
+        
+        # Dispatch the long-tail grind to the background
+        asyncio.create_task(_run_background_induction())
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] The Alarm Clock: Executes induction and periodic background tasks."""
@@ -1001,7 +1052,7 @@ class AcmeLab:
                         "boot_hash": _BOOT_HASH,
                         "source_commit": _SOURCE_COMMIT,
                         "disk_commit": get_git_commit(),
-                        "state": "ready" if self.status == "READY" else "lobby",
+                        "state": "operational" if self.status == "OPERATIONAL" else "lobby",
                         "message": "Lab foyer is open.",
                         "brain_source": "System"
                     }
@@ -1334,9 +1385,9 @@ class AcmeLab:
                                 self._residents_booted = False
                                 self.residents = {}
                                 await self.boot_residents(self.exit_stack)
-                                self.status = "READY"
+                                self.status = "OPERATIONAL"
                                 await self.broadcast({"type": "chat", "content": "[WAKE] Lab is now vocal and ready for reasoning.", "brain_source": "System"})
-                                await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
+                                await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
                 except Exception:
                     return ""
             
@@ -1357,7 +1408,7 @@ class AcmeLab:
 
         # [FEAT-265.46] Sovereign Gate: Strictly forbid delegation if not vocal
         # Intent queries wait patiently for the mind to warm (Weights re-load)
-        while getattr(self, "_spark_active", False) or self.status not in ["OPERATIONAL", "READY"]:
+        while getattr(self, "_spark_active", False) or self.status != "OPERATIONAL":
             if query.startswith("[ME]"):
                  # [FEAT-265.49] Physical Authority: Check if VRAM is back using non-blocking vitals
                  if hasattr(self, "_last_vitals") and int(self._last_vitals.get("vram_mib", 0)) > 5000:
@@ -1383,8 +1434,8 @@ class AcmeLab:
                     turn_density=self.turn_density
                 )
                 if self.status != "HIBERNATING":
-                    self.status = "READY"
-                await self.broadcast({"type": "crosstalk", "brain": "Mind is READY.", "brain_source": "System"})
+                    self.status = "OPERATIONAL"
+                await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
                 return res
             except Exception as e:
                 self.status = "ERROR"
@@ -1470,12 +1521,12 @@ class AcmeLab:
             # [FEAT-265.2] Gate status by Larynx success
             return # Do not log READY or signal OPERATIONAL
 
-        await self.broadcast({"type": "crosstalk", "brain": "[READY] Hub foyer is fully synchronized.", "brain_source": "System"})
-        logging.info("[READY] Hub foyer is fully synchronized.")
+        await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Hub foyer is fully synchronized.", "brain_source": "System"})
+        logging.info("[OPERATIONAL] Hub foyer is fully synchronized.")
         asyncio.create_task(self.ear_poller_loop())
         await self.broadcast({
             "type": "status",
-            "message": "[READY] Hub foyer is fully synchronized.",
+            "message": "[OPERATIONAL] Hub foyer is fully synchronized.",
             "state": "operational",
             "full_lab_ready": True,
             "operational": True
