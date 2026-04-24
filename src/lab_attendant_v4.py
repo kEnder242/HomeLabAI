@@ -275,6 +275,23 @@ class LabAttendantV4:
         while True:
             # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
+            
+            # [FEAT-180.1] Docker Observability: Check containers every 5 minutes
+            # Melded from legacy watchdog to ensure stack stability.
+            now = time.time()
+            if now - self._last_docker_check > 300:
+                for container in MONITOR_CONTAINERS:
+                    try:
+                        res = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", container],
+                                             capture_output=True, text=True, timeout=2)
+                        if "true" not in res.stdout:
+                            logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
+                            subprocess.Popen(["docker", "start", container])
+                            self.log_event(f"Recovered observability container: {container}", "WARNING")
+                    except Exception:
+                        pass
+                self._last_docker_check = now
+
             await asyncio.sleep(2)
 
     # --- Proxy Helper ---
@@ -1543,181 +1560,6 @@ class LabAttendantV4:
         logger.error(f"[VLLM] Engine failed to reason within {timeout}s.")
         return False
 
-    async def vram_watchdog_loop(self):
-        """[SPR-21.0] Multi-Modal State Monitor: Autonomous Triage and Recovery."""
-        logger.info("[WATCHDOG] Sovereignty active. Monitoring state transitions.")
-        
-        # [FEAT-265.6] The Blacklist Law: Only manage what we own
-        BLACKLIST = ["vllm", "enginecore", "ollama", "acme_lab.py", "node.py", "archive_node.py", "pinky_node.py", "brain_node.py"]
-        
-        # 0. Internal Immunity
-        attendant_pid = os.getpid()
-
-        while True:
-            await asyncio.sleep(10)
-            
-            # Gating: Respect Maintenance and Boot Windows
-            if os.path.exists(MAINTENANCE_LOCK):
-                continue
-            if self.boot_grace_period > 0:
-                self.boot_grace_period -= 1
-                continue
-
-            try:
-                # 1. Physical VRAM Check [FEAT-036]
-                used, total = await self._get_vram_info()
-                if total > 0:
-                    vram_pct = used / total
-                    if vram_pct > 0.98: # Extreme threshold only
-                        await self._trigger_recovery("Critical VRAM (>98%)", level=2)
-                        continue
-
-                # 2. Blacklist Audit (Physical Truth)
-                # [FEAT-278.2] Cautious Reaping: Only audit known hogs
-                if used > 2000:
-                    try:
-                        self.sync_family_ledger()
-                        smi_out = subprocess.check_output(
-                            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], 
-                            text=True, stderr=subprocess.DEVNULL
-                        )
-                        physical_pids = [int(p.strip()) for p in smi_out.strip().split("\n") if p.strip()]
-                        
-                        orphan_found = False
-                        for p_pid in physical_pids:
-                            if p_pid == attendant_pid:
-                                continue
-
-                            try:
-                                proc = psutil.Process(p_pid)
-                                p_name = proc.name().lower()
-                                p_cmd = " ".join(proc.cmdline() or []).lower()
-                            except Exception:
-                                continue
-
-                            # Is this a process we actually care about?
-                            is_blacklisted = any(x in p_name or x in p_cmd for x in BLACKLIST)
-                            if not is_blacklisted:
-                                continue # IGNORE EVERYTHING ELSE (Xorg, Sunshine, etc.)
-
-                            # [FEAT-220.4] Immunity Check: Is this child in the family ledger or carries session token?
-                            authorized = (p_pid in self.active_pids.get('family', []) or 
-                                          self._is_current_session_process(p_pid))
-
-                            # [FEAT-265.7] Refugee Immunity: Check ancestry if not directly authorized
-                            if not authorized:
-                                try:
-                                    for parent in proc.parents():
-                                        if parent.pid in self.active_pids.get('family', []):
-                                            logger.info(f"[WATCHDOG] Granting Refugee Immunity: {p_name} (PID {p_pid}) belongs to parent {parent.pid}")
-                                            authorized = True
-                                            self.active_pids['family'].append(p_pid)
-                                            self._save_ledger()
-                                            break
-                                except Exception:
-                                    pass                            
-                            if authorized:
-                                continue
-
-                            # If not authorized by token/family, check if it owns an active engine port
-                            for port in [8088, 11434, 8765]:
-                                try:
-                                    # Use a subshell to check port ownership without blocking
-                                    res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], text=True, stderr=subprocess.DEVNULL)
-                                    if str(p_pid) in res:
-                                        logger.info(f"[WATCHDOG] Sparing Port-Bound Resident: {p_name} (PID {p_pid}) on port {port}")
-                                        authorized = True
-                                        # ADOPT: Add to family ledger immediately
-                                        self.active_pids['family'].append(p_pid)
-                                        self._save_ledger()
-                                        break
-                                except Exception:
-                                    pass
-
-                            if not authorized:
-                                logger.warning(f"[WATCHDOG] Unrecognized Blacklisted Ghost: {p_name} (PID {p_pid})")
-                                orphan_found = True
-                                break
-                        
-                        if orphan_found:
-                            await self._trigger_recovery("Physical Ghost (Unrecognized Blacklist process)", level=2)
-                            continue
-                    except Exception as e:
-                        logger.error(f"[WATCHDOG] Blacklist audit failed: {e}")
-
-                # Scenario C: Zombie/Stuck State Check
-                engine_pid = self.active_pids.get('engine_pid')
-                if engine_pid and psutil.pid_exists(engine_pid):
-                    proc = psutil.Process(engine_pid)
-                    if proc.status() in [psutil.STATUS_ZOMBIE, psutil.STATUS_DISK_SLEEP]:
-                        await self._trigger_recovery(f"Engine Process {proc.status()}", level=2)
-                        continue
-
-                # 3. Hub Liveness Probe [FEAT-035] (ERR-05)
-                if current_lab_mode != "OFFLINE" and not is_hibernating and self.boot_grace_period == 0:
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            start_t = time.time()
-                            async with session.get("http://127.0.0.1:8765/heartbeat", timeout=2.0) as r:
-                                latency = time.time() - start_t
-                                if r.status == 200:
-                                    self.failure_count = 0
-                                    if latency > 5.0:
-                                        self.log_event(f"Degraded Heartbeat: {latency:.2f}s", "WARNING")
-                                else:
-                                    self.failure_count += 1
-                    except Exception:
-                        self.failure_count += 1
-
-                    if self.failure_count >= 5:
-                        await self._trigger_recovery("Hub Unresponsive (5 cycles)", level=2)
-                        continue
-
-                # 4. Docker Observability Watchdog [v1 Lost Gem]
-                # [FEAT-180.1] Docker Cooldown: Check every 5 minutes
-                now = time.time()
-                if now - self._last_docker_check > 300:
-                    for container in MONITOR_CONTAINERS:
-                        try:
-                            res = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", container],
-                                                 capture_output=True, text=True, timeout=2)
-                            if "true" not in res.stdout:
-                                logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
-                                subprocess.Popen(["docker", "start", container])
-                                self.log_event(f"Recovered observability container: {container}", "WARNING")
-                        except Exception:
-                            pass
-                    self._last_docker_check = now
-
-            except Exception as e:
-                logger.error(f"[WATCHDOG] Loop Error: {e}")
-
-    async def _trigger_recovery(self, reason, level=1):
-        """Autonomous Recovery Engine with Forensic Log Capture."""
-        # [FEAT-265.37] Healing Gate: Suppress recovery if ignition is in progress
-        if self.ignition_lock.locked():
-            logger.info(f"[WATCHDOG] Recovery suppressed: Ignition already active ({reason}).")
-            return
-
-        logger.critical(f"[WATCHDOG] {reason.upper()} DETECTED. Triggering Level {level} recovery.")
-        
-        # 1. Forensic Capture [FEAT-151]
-        self.trace_monitor.refresh_marks()
-        await asyncio.sleep(2) # Allow log flush for slow PCIe/Disk
-        deltas = self.trace_monitor.capture_delta()
-        snippet = " | ".join(deltas[-10:]).replace('"', "'") if deltas else "No recent log context."
-        
-        # 2. Interleaved Logging
-        self.log_event(f"[WATCHDOG] RECOVERY [{reason}]. Last Words: {snippet}", "CRITICAL")
-        
-        # 3. Reset Sequence
-        if level == 1:
-            await self.mcp_hibernate(reason=f"WD_RECOVERY_{reason}")
-        else:
-            await self.mcp_stop(reason=f"WD_RECOVERY_{reason}")
-            await asyncio.sleep(5)
-            await self.mcp_start(reason="WATCHDOG_AUTO_IGNITION")
-
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
         data = await r.json()
@@ -1850,8 +1692,7 @@ async def run_bilingual():
         logger.info("[BOOT] Initiating state reconstruction...")
         await attendant.scavenge_reality()
         
-        # [FEAT-265.12] Quiet Sentry: Background WD loop disabled in favor of Lifecycle Anchors
-        asyncio.create_task(attendant.vram_watchdog_loop())
+        # [FEAT-265.12] Quiet Sentry: Background WD loop decommissioned (Sprint 21 LED Model)
         asyncio.create_task(attendant.pulse_loop())
         
         # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
