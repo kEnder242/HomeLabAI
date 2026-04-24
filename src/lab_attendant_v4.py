@@ -172,8 +172,14 @@ class LabAttendantV4:
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG, VLLM_SERVER_LOG])
         self.ready_event = asyncio.Event()
         self._boot_time = time.time()
-        self.ledger_path = os.path.join(LAB_DIR, 'run/active_pids.json')
-        self.token_path = os.path.join(LAB_DIR, 'run/session.token')
+        
+        # [FIX] Ensure the transient run/ directory exists
+        _run_dir = os.path.join(LAB_DIR, 'run')
+        if not os.path.exists(_run_dir):
+            os.makedirs(_run_dir, exist_ok=True)
+            
+        self.ledger_path = os.path.join(_run_dir, 'active_pids.json')
+        self.token_path = os.path.join(_run_dir, 'session.token')
         self.active_pids = self._load_ledger()
         self.current_reason = "INIT"
         self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
