@@ -32,7 +32,7 @@ async def deep_think(task: str, context: str = "", metadata: dict = None) -> str
     return full_response
 
 @mcp.tool()
-async def shallow_think(task: str, context: str = "") -> str:
+async def think(task: str, context: str = "") -> str:
     """Fast Reflex: Provide a short, immediate response for simple strategic queries."""
     shallow_prompt = (
         "You are The Brain. Fast mode. Reply in < 15 words. "

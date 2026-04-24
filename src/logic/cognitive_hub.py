@@ -157,7 +157,7 @@ class CognitiveHub:
 
                     # [HARDENING] Deep Search for sloppy JSON tool names
                     if not tool:
-                        valid_tools = ["ask_brain", "shallow_think", "reply_to_user", "close_lab", "generate_bkm", "access_personal_history", "build_cv_summary"]
+                        valid_tools = ["ask_brain", "think", "reply_to_user", "close_lab", "generate_bkm", "access_personal_history", "build_cv_summary"]
                         for val in data.values():
                             if isinstance(val, str):
                                 for vt in valid_tools:
@@ -173,11 +173,12 @@ class CognitiveHub:
                         if not raw_speech:
                             raw_speech = "Narf! I'll ask the Brain for you."
 
-                    if tool == "shallow_think":
-                        # If Pinky or Shadow calls shallow_think on themselves, it's a VETO
+                    if tool in ["think"]:
+                        # If Pinky or Shadow calls think on themselves, it's a VETO
+                        # [FEAT-295] Tooling Parity: Unifying think/think as demotion signals
                         self.current_fuel = 0.0
                         if not raw_speech:
-                            raw_speech = params.get("task") or params.get("context") or "Narf! Thinking fast."
+                            raw_speech = params.get("task") or params.get("query") or params.get("context") or "Narf! Thinking fast."
 
                     if tool == "reply_to_user":
                         reply = params.get("text") or params.get("reply")
@@ -191,8 +192,8 @@ class CognitiveHub:
                         return True
 
                     # [FEAT-237] Loop-Breaker (Legacy compatibility)
-                    primary_entry_points = ["facilitate", "shallow_think", "deep_think", "triage_situational_vibe", "think"]
-                    if tool in primary_entry_points and tool != "shallow_think": # shallow_think is now a veto signal
+                    primary_entry_points = ["facilitate", "think", "deep_think", "triage_situational_vibe", "think"]
+                    if tool in primary_entry_points and tool not in ["think"]: # think/think are veto signals
                         # Return speech only, block recursive tool call
                         if raw_speech:
                             return await self._dispatch_plain_text(raw_speech, source, is_internal, final=final)
@@ -441,7 +442,7 @@ class CognitiveHub:
                          f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
             pinky_text = await self._process_node_stream(
                 "pinky", query, p_context, "Pinky (Triage)",
-                tools=["ask_brain", "shallow_think", "vram_vibe_check", "get_lab_health"],
+                tools=["ask_brain", "think", "vram_vibe_check", "get_lab_health"],
                 behavioral_guidance=situational_guidance or "Standard brevity. Focus on natural interaction.",
                 shutdown_event=shutdown_event,
                 is_internal=mute_pinky
@@ -461,7 +462,7 @@ class CognitiveHub:
                 s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}"
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
-                    tools=["ask_brain", "shallow_think"],
+                    tools=["ask_brain", "think"],
                     behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
                     is_internal=mute_shadow
