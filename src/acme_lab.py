@@ -321,20 +321,19 @@ class AcmeLab:
         while not task.done():
             try:
                 # [FEAT-053] Dynamic Shadow Tics: 
-                # Attempt to get a characterful tic from the local 2080 Ti
+                # Attempt to get a characterful tic from the local Sentinel (Lab Node)
+                # We use the Sentinel for speed and residency.
                 tic_msg = None
-                if self.residents.get("brain") and tic_count > 0:
-                    url = resolve_brain_url()
-                    # If we are local (2080 Ti), use it for a fast tic
-                    if url and ("127.0.0.1" in url or "localhost" in url):
-                        try:
-                            tic_res = await self.residents["brain"].call_tool("shallow_think", {
-                                "task": "Provide a 1-sentence cognitive 'tic' or status update (e.g. 'Synthesizing MSR logs...') for the user while the deep-think completes. Be brief and lead-engineer clinical.", 
-                                "context": "[INTERNAL_STATUS_MODE]"
-                            })
+                if self.residents.get("lab") and tic_count > 0:
+                    try:
+                        tic_res = await self.residents["lab"].call_tool("think", {
+                            "query": "[INTERNAL_STATUS_MODE] Provide a 1-sentence cognitive 'tic' or status update for the user while the deep-think completes. Be brief, character-rich, and engineering-clinical.",
+                            "fuel": 0.1
+                        })
+                        if tic_res.content and hasattr(tic_res.content[0], "text"):
                             tic_msg = tic_res.content[0].text
-                        except Exception:
-                            return ""
+                    except Exception as e:
+                        logging.debug(f"[HUB] Dynamic Tic Generation failed: {e}")
 
                 if not tic_msg:
                     if not self.brain_online:
