@@ -4,6 +4,10 @@ import json
 import logging
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from infra.montana import reclaim_logger
+
+# [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
+reclaim_logger(role="BROWSER")
 
 try:
     from nodes.loader import BicameralNode

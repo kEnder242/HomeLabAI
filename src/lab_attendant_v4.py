@@ -191,6 +191,7 @@ class LabAttendantV4:
         self.ignition_lock = asyncio.Lock() # [FEAT-265.30] Ignition Mutex
         self._boot_time = time.time()
         self.failure_count = 0
+        self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
         self.boot_grace_period = 18 # 180 seconds for vLLM weights
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
 
@@ -962,224 +963,50 @@ class LabAttendantV4:
 
     async def cleanup_silicon(self, mode="ORPHANS", engine_only=False):
         """
-        [FEAT-119] Broad-Spectrum Assassin: Reclaim hardware handles.
-        Handshake Protocol: Processes tagged with [TOKEN] in their title are immune.
+        [FEAT-119] Sovereign Assassin: Reclaim hardware handles.
+        LED MODEL: No general scanning. Only reaps based on the explicit PID Ledger.
         """
         # [FEAT-265.18] Shutdown Priority: If we are exiting, NOTHING is immune.
         is_shutdown = (mode == "SESSION" or mode == "SHUTDOWN")
-        # [FEAT-265.27] Protector family: Protect foyer from deck clear during wake
-        is_wake = (self.current_reason.startswith("WAKE_") or self.current_reason.startswith("RESTORE_"))
         
-        immune_pgids = {os.getpgid(os.getpid())} if not is_shutdown else set()
-        target_pgids = set()
+        target_pids = set()
         
-        # 1. Target Definition
-        ports = [8088, 11434, 8765]
-        targets = ["vllm", "ollama", "enginecore", "acme_lab.py", "archive_node.py", "pinky_node.py", "brain_node.py"]
+        # 1. Ledger-Based Target Definition
+        # We only target the specific Hub and Engine PIDs we recorded.
+        if not engine_only:
+            hub_pid = self.active_pids.get('hub_pid')
+            if hub_pid:
+                target_pids.add(hub_pid)
+        
+        engine_pid = self.active_pids.get('engine_pid')
+        if engine_pid:
+            target_pids.add(engine_pid)
+            
+        # Add the authorized family (children) to the kill list
+        for pid in self.active_pids.get('family', []):
+            target_pids.add(pid)
 
-        # 2. First Pass: Handshake Discovery (Title-based)
-        for proc in psutil.process_iter(["pid", "name", "cmdline", "environ", "create_time"]):
-            try:
-                pid = proc.info["pid"]
-                pgid = os.getpgid(pid)
-                cmd = " ".join(proc.info["cmdline"] or []).lower()
-                p_name = str(proc.info["name"] or "").lower()
-                
-                # [FEAT-275] Grace Window: Spare processes less than 10s old
-                if (time.time() - proc.info["create_time"]) < 10.0:
-                    immune_pgids.add(pgid)
-                    continue
-
-                is_immune = False
-
-                # [FEAT-265.32] Birthright: Spare foyer and verification scripts
-                if (is_wake and "acme_lab.py" in cmd) or "test_hibernation_cycle.py" in cmd or "atomic_patcher.py" in cmd:
-                    is_immune = True
-
-                # [FEAT-220] Silicon Handshake: Token (case-insensitive) in cmd or name
-                token_lower = self.session_token.lower()
-                if token_lower in cmd or token_lower in p_name:
-                    is_immune = True
-
-                # Family Prefix checks: [hub:] or [pinky:]
-                if any(x in cmd or x in p_name for x in ["[hub:", "[pinky:"]):
-                    is_immune = True
-
-                if is_immune:
-                    immune_pgids.add(pgid)
-                    continue
-
-                # Identify potential targets
-                if any(t in cmd or t in p_name for t in targets):
-                    target_pgids.add(pgid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
-                continue
-
-        # 3. Second Pass: Port-Based Discovery
-        active_ports = set()
-        for port in ports:
-            try:
-                res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
-                if res:
-                    active_ports.add(port)
-                for line in res.split("\n"):
-                    if ":" in line:
-                        pids = line.split(":")[1].strip().split()
-                        for p in pids:
-                            try:
-                                pgid = os.getpgid(int(p))
-        # [FEAT-265.33] Messenger Shield: Never kill Hub port during ignition
-                                if port == 8765 and not is_shutdown:
-                                    logger.info(f"[{self.session_token}] [ASSASSIN] Shielding active foyer on port 8765 (PGID: {pgid})")
-                                    # [FEAT-265.38] Sovereign PGID: Ensure this group is never reaped
-                                    immune_pgids.add(pgid)
-                                    continue
-
-                                # Add to kill list if it's an engine port OR not immune
-                                if port != 8765 or pgid not in immune_pgids:
-                                    target_pgids.add(pgid)
-                            except Exception:
-                                pass
-            except Exception:
-                pass
-
-        # 4. [FEAT-278] VRAM Truth: Correlate VRAM usage to PID Ledger
-        if mode == "SESSION":
-            try:
-                # Query PIDs using GPU memory
-                smi_cmd = ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"]
-                smi_out = subprocess.check_output(smi_cmd, text=True, stderr=subprocess.DEVNULL)
-                
-                for line in smi_out.strip().split('\n'):
-                    if not line.strip():
-                        continue
-                    v_pid_str, v_mem_str = line.split(',')
-                    v_pid = int(v_pid_str.strip())
-                    v_mem = int(v_mem_str.strip())
-                    
-                    # If process is using > 1GB and NOT in our ledger, it is an orphan
-                    is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
-                    
-                    if v_mem > 1000 and (not is_ours or is_shutdown):
-                        logger.warning(f"[{self.session_token}] [ASSASSIN] VRAM TRUTH: Reaping high-memory {'family' if is_ours else 'orphan'} {v_pid} ({v_mem}MB)")
-                        try:
-                            # Force individual kill first
-                            os.kill(v_pid, signal.SIGKILL)
-                            target_pgids.add(os.getpgid(v_pid))
-                        except Exception:
-                            pass
-            except Exception as e:
-                logger.error(f"[ASSASSIN] VRAM Truth audit failed: {e}")
-
-        # 5. [FEAT-276.1] Signature-Based Discovery (Recursive Scrub)
-        # We search ALL user processes for the vLLM/Ollama signature
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            try:
-                cmd = " ".join(proc.info["cmdline"] or []).lower()
-                p_name = str(proc.info["name"] or "").lower()
-                pid = proc.info["pid"]
-                
-                # Identify rogue engines by signature
-                if any(t in cmd or t in p_name for t in ["vllm", "enginecore", "ollama"]):
-                    pgid = os.getpgid(pid)
-                    if pgid not in immune_pgids:
-                        logger.warning(f"[{self.session_token}] [ASSASSIN] Reaping non-immune engine {pid} ({p_name})")
-                        try:
-                            os.kill(pid, signal.SIGKILL)
-                            target_pgids.add(pgid)
-                        except Exception:
-                            pass
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        # 5. Final Purge Logic
-        # [FEAT-119.3] Restoration Silence
-        is_igniting = (engine_only or self.current_reason.startswith("RESTORE_") or 
-                       self.current_reason.startswith("WAKE_") or 
-                       self.current_reason == "SAFE_PILOT")
-        if mode == "ORPHANS" and is_igniting:
-            logger.info(f"[{self.session_token}] [ASSASSIN] Active ignition window ({self.current_reason}). Skipping orphan purge.")
+        # 2. Final Purge Logic
+        if not target_pids:
+            logger.info("[ASSASSIN] No tracked processes in ledger. Clean slate.")
             return
 
-        # [FEAT-265.41] Absolute Assassin: Physical GPU residency audit
-        # This targets processes like VLLM::EngineCore that hide behind generic binary names
-        try:
-            smi_out = subprocess.check_output(
-                ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
-                stderr=subprocess.DEVNULL, text=True
-            )
-            for pid_str in smi_out.strip().split("\n"):
-                if not pid_str.strip():
-                    continue
-                v_pid = int(pid_str.strip())
-                
-                # Identify the family member or orphan
-                is_ours = (v_pid == self.active_pids.get('engine_pid') or v_pid == self.active_pids.get('hub_pid'))
-                
-                if not is_ours or is_shutdown:
-                    # Check immunity before hammering
-                    try:
-                        p = psutil.Process(v_pid)
-                        cmd = " ".join(p.cmdline()).lower()
-                        p_name = p.name().lower()
-                        
-                        # [FEAT-220] Immunity Check
-                        is_immune = (self.session_token.lower() in cmd or 
-                                     self.session_token.lower() in p_name or 
-                                     "[hub:" in cmd or "[pinky:" in cmd)
-                                     
-                        if not is_immune or is_shutdown:
-                            logger.warning(f"[{self.session_token}] [ASSASSIN] Physical Hammer: Reaping GPU consumer {v_pid}")
-                            os.killpg(os.getpgid(v_pid), signal.SIGKILL)
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.debug(f"[ASSASSIN] Physical audit skipped: {e}")
+        # [FEAT-119.3] Restoration Silence
+        is_igniting = (self.current_reason.startswith("RESTORE_") or 
+                       self.current_reason.startswith("WAKE_") or 
+                       self.current_reason == "SAFE_PILOT")
+                       
+        if mode == "ORPHANS" and is_igniting:
+            logger.info(f"[ASSASSIN] Active ignition window ({self.current_reason}). Skipping purge.")
+            return
 
-        # [FEAT-276.6] Targeted Device Reaper: Surgical release of GPU handles
-        # We query the device users but filter them strictly to avoid killing Xorg/Gnome.
-        if mode == "SESSION" and not is_igniting:
-            logger.info(f"[{self.session_token}] [ASSASSIN] Performing targeted device audit on /dev/nvidia0")
+        logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging tracked ledger processes: {target_pids}")
+        for pid in target_pids:
             try:
-                # Get PIDs using the GPU
-                res = subprocess.check_output(["sudo", "fuser", "/dev/nvidia0"], stderr=subprocess.DEVNULL, text=True)
-                # Output format is usually "/dev/nvidia0:  PID1 PID2..."
-                gpu_pids = res.split(":")[-1].strip().split()
-                
-                for pid_str in gpu_pids:
-                    try:
-                        pid = int(re.sub(r'[^0-9]', '', pid_str))
-                        proc = psutil.Process(pid)
-                        p_name = proc.name().lower()
-                        cmd = " ".join(proc.cmdline() or []).lower()
-                        
-                        # SAFETY GATE: Never kill system/GUI processes
-                        if any(sys_proc in p_name for sys_proc in ["xorg", "gnome", "mutter", "sunshine", "steam"]):
-                            continue
-                            
-                        # TARGET GATE: Is it a Lab process or a known engine?
-                        is_lab = self.session_token in cmd or self.session_token in p_name
-                        is_engine = any(t in cmd or t in p_name for t in ["vllm", "enginecore", "ollama"])
-                        
-                        if is_lab or is_engine:
-                            pgid = os.getpgid(pid)
-                            if pgid not in immune_pgids:
-                                logger.warning(f"[{self.session_token}] [ASSASSIN] Device Reaper targeting {pid} ({p_name})")
-                                target_pgids.add(pgid)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
-                        pass
-            except Exception as e:
-                logger.error(f"[{self.session_token}] [ASSASSIN] Device audit failed: {e}")
-
-        final_kill_list = target_pgids - immune_pgids
-
-        if final_kill_list:
-            logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging non-immune groups: {final_kill_list}")
-            for pgid in final_kill_list:
-                try:
-                    os.killpg(pgid, signal.SIGKILL)
-                except Exception:
-                    pass
+                if psutil.pid_exists(pid):
+                    os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
         
         await asyncio.sleep(1.0)
 
@@ -1480,11 +1307,13 @@ class LabAttendantV4:
                     logger.warning(f"[WATCHDOG] Lab process {target_pid} physically ended.")
                     # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
                     if current_lab_mode == "SERVICE_UNATTENDED":
-                        logger.info("[WATCHDOG] Unattended mode active. Triggering recovery in 5s...")
-                        async def _tactical_recovery():
-                            await asyncio.sleep(5)
+                        self.recovery_attempts += 1
+                        cooldown_secs = 5 + (self.recovery_attempts * 120)
+                        logger.info(f"[WATCHDOG] Unattended mode active. Triggering recovery in {cooldown_secs}s (Attempt {self.recovery_attempts})...")
+                        async def _tactical_recovery(cooldown):
+                            await asyncio.sleep(cooldown)
                             await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=True, reason="RECOVERY")
-                        asyncio.create_task(_tactical_recovery())
+                        asyncio.create_task(_tactical_recovery(cooldown_secs))
                     break
                 
                 line = f.readline()
@@ -1494,7 +1323,8 @@ class LabAttendantV4:
                 
                 if "[READY] Hub foyer is fully synchronized." in line:
                     self.ready_event.set()
-                    logger.info("[WATCHDOG] Lab reported OPERATIONAL signal.")
+                    self.recovery_attempts = 0 # [FEAT-302] Reset cooldown on successful operational state
+                    logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Cooldown reset.")
                     await self.update_status_json("Mind is OPERATIONAL")
                 
                 # [FEAT-255.2] Continuous Sentinel: Listen for state resets
