@@ -1504,8 +1504,19 @@ class LabAttendantV4:
         return web.json_response({"status": "timeout", "message": "Lab failed to reach OPERATIONAL state in time."}, status=408)
 
     async def handle_logs_rest(self, r):
+        target_file = r.query.get('file')
+        if target_file:
+            # [FEAT-309.3] Forensic Log Proxy: Serve specific crash logs
+            # Sanitize: No path traversal
+            safe_name = os.path.basename(target_file)
+            log_path = os.path.join(LAB_DIR, 'logs', safe_name)
+            if os.path.exists(log_path):
+                with open(log_path, 'r') as f:
+                    return web.Response(text=f.read())
+            return web.Response(status=404, text=f'Log {safe_name} not found.')
+            
         if os.path.exists(SERVER_LOG):
-            with open(SERVER_LOG, "r") as f:
+            with open(SERVER_LOG, 'r') as f:
                 return web.Response(text=f.read()[-5000:])
         return web.Response(status=404)
     async def handle_mutex_rest(self, r):
