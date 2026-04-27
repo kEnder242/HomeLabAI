@@ -645,6 +645,30 @@ class AcmeLab:
                     asyncio.create_task(self._hibernate())
                     self.brain_online = False # Mark offline while sleeping
 
+    async def _log_tailer_loop(self):
+        """[FEAT-313.2] Live Engine Logs: Stream vLLM progress to the Intercom."""
+        vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
+        last_pos = 0
+        if os.path.exists(vllm_log):
+            last_pos = os.path.getsize(vllm_log)
+            
+        while True:
+            if self.status in ['WAKING', 'INIT', 'RECOVERY'] and os.path.exists(vllm_log):
+                try:
+                    curr_size = os.path.getsize(vllm_log)
+                    if curr_size > last_pos:
+                        with open(vllm_log, 'r') as f:
+                            f.seek(last_pos)
+                            lines = f.readlines()
+                            last_pos = curr_size
+                            for line in lines:
+                                if any(k in line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL']):
+                                    msg = line.strip().split('] ')[-1] if '] ' in line else line.strip()
+                                    await self.broadcast({'type': 'crosstalk', 'brain': f'[vLLM]: {msg}', 'brain_source': 'System'})
+                except Exception:
+                    pass
+            await asyncio.sleep(1.0)
+
     async def _hibernate(self):
         """[FEAT-249.7] Centralized Hibernation Logic: Bridges to Attendant REST API."""
         try:
@@ -1678,14 +1702,34 @@ class AcmeLab:
             async with AsyncExitStack() as stack:
                 # [FIX] Start WebSocket server BEFORE residents to ensure foyer is always listening
                 await site.start()
-                logging.info(f"[BOOT] Server on {PORT}")
+                logging.info(f'[BOOT] Server on {PORT}')
                 
-                # [FEAT-233.5] The Larynx Gate (Physical Only): Trust Attendant for Reasoning
-                logging.info("[BOOT] Larynx Gate: Engine physically verified by Attendant.")
-                await self.boot_residents(stack)
-
-                # [FEAT-145] Cognitive Delegation: Update hub with live residents
-                self.cognitive.residents = self.residents
+                # [FEAT-313.4] Physical Port Verification: Ensure foyer is bound before backgrounding
+                import subprocess
+                for _ in range(20):
+                    try:
+                        res = subprocess.check_output(['sudo', 'fuser', f'{PORT}/tcp'], stderr=subprocess.DEVNULL)
+                        if res:
+                            logging.info('[BOOT] Foyer physically bound and listening.')
+                            break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+                
+                # [FEAT-313] Non-Blocking Foyer: Spark the residents in the background
+                # This ensures the WebSocket stays open even during long engine loads.
+                async def _background_ignition():
+                    try:
+                        logging.info('[BOOT] Larynx Gate: Engine physically verified by Attendant.')
+                        await self.boot_residents(stack)
+                        # [FEAT-145] Cognitive Delegation: Update hub with live residents
+                        self.cognitive.residents = self.residents
+                        logging.info('[BOOT] Hub residents synchronized in background.')
+                    except Exception as e:
+                        logging.error(f'[BOOT] Background Ignition failed: {e}')
+                
+                asyncio.create_task(_background_ignition())
+                asyncio.create_task(self._log_tailer_loop())
 
                 # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
                 if trigger_task:
