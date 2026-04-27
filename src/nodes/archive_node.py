@@ -460,16 +460,17 @@ async def get_context(query: str, n_results: int = 3) -> str:
                     target_file = None
 
                 if target_file and os.path.exists(os.path.join(DATA_DIR, target_file)):
-                    # [FEAT-117] Bridge to raw JSON truth
+                    # [FEAT-117/306] Bridge to raw JSON truth via explicit anchors
                     full_truths.append(
                         f"[ACQUISITION Source: {target_file}]: "
-                        f"Document anchor: {doc[:100]}..."
+                        f"Document anchor: {doc[:200]}... "
+                        f"Use 'read_document(\"{target_file}\")' to see the physical evidence."
                     )
                     if target_file not in source_files:
                         source_files.append(target_file)
                     continue
 
-            full_truths.append(f"[DISCOVERY]: {doc}")
+            full_truths.append(f"[DISCOVERY Anchor: {ts}]: {doc}")
 
         # [FEAT-120] Return structured JSON for Hub transparency
         return json.dumps(
