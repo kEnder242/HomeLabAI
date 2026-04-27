@@ -1097,6 +1097,35 @@ class LabAttendantV4:
             except Exception:
                 pass
 
+        # [FEAT-310] Physical Truth Scavenging: Reap any high-memory orphans (>1GB)
+        # to ensure silicon room for the engine load. Adheres to [BKM-031].
+        try:
+            smi_out = subprocess.check_output(
+                ['nvidia-smi', '--query-compute-apps=pid,used_memory', '--format=csv,noheader,nounits'],
+                text=True, stderr=subprocess.DEVNULL
+            )
+            SIGNATURES = ['vllm.entrypoints', 'vllm/v1/engine', 'speedy/models/', '8088']
+            for smi_line in smi_out.strip().split('\n'):
+                if not smi_line.strip():
+                    continue
+                v_pid, v_mem = map(int, smi_line.split(','))
+                
+                # If using > 1GB and not our own Attendant
+                if v_mem > 1000 and v_pid != os.getpid():
+                    # Is it a family member we already know?
+                    if not self._is_current_session_process(v_pid):
+                        # [FEAT-310] BLACKLIST FINGERPRINT: Only reap if confirmed vLLM ghost
+                        try:
+                            proc = psutil.Process(v_pid)
+                            cmd = ' '.join(proc.cmdline()).lower()
+                            if any(sig in cmd for sig in SIGNATURES):
+                                logger.warning(f'[BOOT] Confirmed vLLM Ghost detected: PID {v_pid} using {v_mem}MB. Reaping to clear silicon.')
+                                os.kill(v_pid, signal.SIGKILL)
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f'[BOOT] Physical Truth audit failed: {e}')
+
         # 2. Stale Identity Purge [Task 22]
         if stale_family:
             logger.warning(f"[BOOT] Purging {len(stale_family)} stale survivors from previous session.")
