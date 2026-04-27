@@ -467,4 +467,25 @@ class BicameralNode:
         })
 
     def run(self):
-        self.mcp.run()
+        """[FEAT-307] Sanitary Run: Force MCP to use the private RPC pipe."""
+        import sys
+        from mcp.server.stdio import stdio_server
+        from contextlib import redirect_stdout
+        
+        async def _run_clean():
+            # [FEAT-307] CONTROLLED BIFURCATION:
+            # We temporarily restore the clean RPC handle only for the MCP transport.
+            # We must wrap _rpc_out in a TextIOWrapper for stdio_server.
+            import io
+            clean_out = io.TextIOWrapper(self._rpc_out, encoding='utf-8', write_through=True)
+            
+            with redirect_stdout(clean_out):
+                async with stdio_server() as (read_stream, write_stream):
+                    await self.mcp.run_stdio_async(read_stream, write_stream)
+
+        try:
+            asyncio.run(_run_clean())
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            logging.error(f"[LOADER] Sanitary Run crashed: {e}")
