@@ -1,7 +1,11 @@
 import json
 import os
-
 import pynvml
+from infra.montana import reclaim_logger
+
+# [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
+reclaim_logger(role="PINKY")
+
 from nodes.loader import FIELD_NOTES_DATA, BicameralNode
 
 PINKY_SYSTEM_PROMPT = (
