@@ -34,18 +34,18 @@ async def repro_loop():
         # 3. Monitor for 90 seconds
         print("[*] Monitoring for Disconnect Loop (90s window)...")
         start_t = time.time()
+        disconnect_count = 0
         while time.time() - start_t < 90:
-            # Check Attendant State
-            try:
-                hb = requests.get(HB_URL).json()
-                print(f"    [SILICON] State: {hb.get('mode')} | Reason: {hb.get('reason')} | Foyer: {hb.get('foyer_up')}")
-            except: pass
-            
             # Print latest JS logs
             if logs:
-                print(logs[-1])
-                if "Disconnected" in logs[-1]:
-                    print("[!] REPRODUCED: WebSocket disconnected during wake.")
+                latest = logs[-1]
+                print(latest)
+                if "Disconnected" in latest or "failed" in latest:
+                    disconnect_count += 1
+                    if disconnect_count > 2:
+                        print(f"\n[!] FAILURE: Flapping detected ({disconnect_count} events). Lab is unstable.")
+                        await browser.close()
+                        return False
             
             await asyncio.sleep(5)
             

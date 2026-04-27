@@ -662,9 +662,14 @@ class AcmeLab:
                             f.seek(last_pos)
                             lines = f.readlines()
                             last_pos = curr_size
-                            for line in lines:
-                                if any(k in line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL']):
-                                    msg = line.strip().split('] ')[-1] if '] ' in line else line.strip()
+                            import re
+                            # [FEAT-313.6] ANSI Stripper: Clinical log rendering
+                            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                            
+                            for raw_line in lines:
+                                if any(k in raw_line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL']):
+                                    clean_line = ansi_escape.sub('', raw_line)
+                                    msg = clean_line.strip().split('] ')[-1] if '] ' in clean_line else clean_line.strip()
                                     await self.broadcast({'type': 'status', 'message': f'[vLLM]: {msg}', 'state': 'waking'})
                 except Exception:
                     pass
@@ -1393,6 +1398,20 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
+            # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"http://127.0.0.1:9999/status", headers={'X-Lab-Key': request_key}, timeout=1.0) as r:
+                        if r.status == 200:
+                            data = await r.json()
+                            if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
+                                logging.info("[HUB] Yielding restoration trigger to active Attendant session.")
+                                # Still buffer the query
+                                await self._neural_queue.put(query)
+                                return
+            except Exception:
+                pass
+
             logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive/error. Triggering Sovereign vLLM ignition.")
             # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
             asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
