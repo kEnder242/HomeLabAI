@@ -188,9 +188,10 @@
 
 ## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
-1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification).
+1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification). Include verbatim snippets/reports from discussions to anchor the task.
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
-3.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression.
+3.  **Absolute Append**: Do NOT re-write, overwrite, or summarize existing phases of an active sprint plan to 'save space.' New requirements or findings MUST be appended as new phases at the end of the document.
+4.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression. Detail-rich reporting is the standard for intent preservation.
 
 ## BKM-021: [DEPRECATED] The "Wall" Audit
 **Status**: MOVED to **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** as the **Silicon Verification Law**.
@@ -241,7 +242,16 @@
 
 ---
 
-## BKM-016: The Resonant Planning Pattern
+## BKM-029: The 4-Step Heads-Down Implementation Loop
+**Objective**: Ensure surgical precision and validation during deep work cycles.
+
+--- FOR EACH TASK ---
+1.  **Compare**: Contrast active code with the documented goal. Fix any deviations from the original plan immediately to reduce drift.
+2.  **Save**: Commit file edits to Git after each sub-task is completed but **BEFORE** testing.
+3.  **Review**: Execute a `git diff` on the latest commit. Verify that no "Ghost Grafts" or accidental deletions occurred.
+4.  **Validate**: Run the specified diagnostic or test script. Repeat steps 1-4 until the task is complete and passing.
+
+## BKM-030: The Resonant Planning Pattern
 **Role: [SPRINT] - Planning & Execution Protocol**
 
 > [!IMPORTANT]
