@@ -2,15 +2,11 @@ import json
 import logging
 import sys
 from typing import Dict, List, Optional
-
 from mcp.server.fastmcp import FastMCP
+from infra.montana import reclaim_logger
 
-# Logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [THINKING] %(levelname)s - %(message)s',
-    stream=sys.stderr
-)
+# [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
+reclaim_logger(role="THINKING")
 
 mcp = FastMCP("Sequential Thinking")
 

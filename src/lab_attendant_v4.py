@@ -548,30 +548,9 @@ class LabAttendantV4:
             env = {k: str(v) for k, v in env.items() if v is not None}
 
             if engine == "VLLM":
-                # [FEAT-265.10] Absolute Port Protocol: Nuclear clearance of 8088/tcp
-                logger.info("[IGNITION] Absolute Port Protocol: Purging 8088/tcp zombies.")
-                subprocess.run(["sudo", "fuser", "-k", "8088/tcp"], stderr=subprocess.DEVNULL)
-                
-                # [FEAT-265.43] Port-Free Verification: Wait for kernel to release handle
-                port_free = False
-                for i in range(20): # 10s max wait
-                    try:
-                        res = subprocess.check_output(["sudo", "fuser", "8088/tcp"], stderr=subprocess.DEVNULL, text=True)
-                        if res and i > 5:
-                            # [FEAT-265.49] Port Authority: Direct PID kill if fuser -k lagged
-                            pids = res.split(":")[1].strip().split()
-                            for p in pids:
-                                logger.warning(f"[IGNITION] Physical Override: Force killing stubborn port occupant {p}")
-                                subprocess.run(["sudo", "kill", "-9", p], stderr=subprocess.DEVNULL)
-                    except subprocess.CalledProcessError:
-                        logger.info("[IGNITION] Port 8088 is physically clear.")
-                        port_free = True
-                        break
-                    await asyncio.sleep(0.5)
-                
-                if not port_free and not (reason.startswith("WAKE_") or reason.startswith("RESTORE_")):
-                    logger.error("[IGNITION] Port 8088 remained bound after purge. Aborting.")
-                    return {"status": "error", "message": "Physical port 8088 is blocked."}
+                # [FEAT-305] Ledger-Locked Ignition: Rely on Attendant's internal ledger. 
+                # No broad port-based nukes to prevent accidental RDP/Xorg deaths.
+                logger.info("[IGNITION] Verified Ledger State. Proceeding to spark.")
                 
                 # [SPR-13.0] Verified Stable Config for Turing (RTX 2080 Ti)
                 env["NCCL_P2P_DISABLE"] = "1"
@@ -1532,6 +1511,30 @@ async def run_bilingual():
         asyncio.create_task(attendant.pulse_loop())
         
         # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
+        logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
+        # Support STUB mode for rapid testing via environment
+        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "VLLM")
+        model = os.environ.get("LAB_MODEL", "MEDIUM")
+        # Note: In this context, engine_only=True means 'Just start the Hub'.
+        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True, reason="SAFE_PILOT"))
+
+        # If in a TTY, also allow local tools, otherwise just wait
+        if sys.stdin.isatty():
+            await mcp.run_stdio_async()
+        else:
+            await asyncio.Event().wait()
+    else:
+        # Proxy Mode: Tool execution forwards to the Master
+        os.environ["LAB_ATTENDANT_ROLE"] = "PROXY" 
+        
+        # [FIX] Always run the stdio transport when spawned as an MCP server.
+        # The isatty check was blocking the Gemini CLI from discovering tools.
+        logger.info("[BOOT] Proxy node starting MCP stdio transport...")
+        await mcp.run_stdio_async()
+
+if __name__ == "__main__":
+    asyncio.run(run_bilingual())
+he Handshake Spark
         logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
         # Support STUB mode for rapid testing via environment
         engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "VLLM")

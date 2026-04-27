@@ -8,6 +8,11 @@ import chromadb
 import aiohttp
 from chromadb.utils import embedding_functions
 
+from infra.montana import reclaim_logger
+
+# [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
+reclaim_logger(role="ARCHIVE")
+
 try:
     from nodes.loader import BicameralNode
 except ImportError:

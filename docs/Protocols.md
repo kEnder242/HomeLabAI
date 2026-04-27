@@ -234,6 +234,13 @@
 
 ---
 
+6.  **[BKM-031] Ledger-Only Mandate (Anti-Assassin)**:
+    *   **Rule**: The Lab MUST NOT perform broad-spectrum system scans (GPU, Port, or Signature) to identify orphans.
+    *   **Mechanism**: All reaping actions MUST be restricted to the **Explicit PID Ledger**.
+    *   **Philosophy**: Better a VRAM leak than an OS-level assassination. If a process is not in the ledger, it does not exist to the Lab. Never use `fuser -k` or `pkill` on system-wide shared resources.
+
+---
+
 ## BKM-016: The Resonant Planning Pattern
 **Role: [SPRINT] - Planning & Execution Protocol**
 
