@@ -104,8 +104,10 @@ Verifies the transition from raw logs to synthesized "Diamond" wisdom.
 | **Memory Sync** | `src/test_memory_integration.py` | Verifies the end-to-end RAG path (ChromaDB + Embedding Server). |
 | **Cache Check** | `src/test_cache_integration.py` | Verifies semantic cache lookups ("Consult Clipboard"). |
 | **Dedup Check** | `src/test_dedup.py` | Validates semantic de-duplication of archived notes. |
-| **Save Flow** | `src/test_save_flow.py` | Validates the "Strategic Vibe Check" triggered by manual file saves. |
+| **Save Flow** | `src/test_save_flow.py` | Validates the \"Strategic Vibe Check\" triggered by manual file saves. |
+| **Pager Atomic** | `src/debug/test_pager_atomic.py` | [FEAT-298] Verifies BKM-022 atomic swap protocol for the UI forensic ledger. |
 | **Recruiter Match** | `src/test_recruiter.py` | Verifies the nightly job-matching logic against the CV summary. |
+
 
 ---
 
@@ -182,3 +184,5 @@ Surgical tools for the Portfolio_Dev "Face" pipeline. Use these when the Slow Bu
 
 ---
 **Usage**: Before concluding any session, run `src/debug/test_lifecycle_gauntlet.py`, `src/debug/verify_sprint.py`, and the **Physician's Gauntlet** to ensure the core is still standing.
+nding.
+ `src/debug/test_lifecycle_gauntlet.py`, `src/debug/verify_sprint.py`, and the **Physician's Gauntlet** to ensure the core is still standing.
