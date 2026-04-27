@@ -650,7 +650,8 @@ class AcmeLab:
         vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
         last_pos = 0
         if os.path.exists(vllm_log):
-            last_pos = os.path.getsize(vllm_log)
+            # [FEAT-313.2] Back-Scan: Read recent context upon foyer opening
+            last_pos = max(0, os.path.getsize(vllm_log) - 1000)
             
         while True:
             if self.status in ['WAKING', 'INIT', 'RECOVERY'] and os.path.exists(vllm_log):
