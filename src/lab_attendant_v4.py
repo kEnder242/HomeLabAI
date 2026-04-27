@@ -87,7 +87,7 @@ def check_singleton():
                 if pid_str:
                     pid = int(pid_str)
                     if psutil.pid_exists(pid):
-                        print(f"[FATAL] Lab Attendant already running as PID {pid}. Aborting.")
+                        print(f"[FATAL] Lab Attendant already running as PID {pid}. Aborting.", file=sys.stderr)
                         sys.exit(0)
     except Exception:
         pass
@@ -98,7 +98,7 @@ def check_singleton():
             f.write(str(os.getpid()))
         os.replace(lock_file + ".tmp", lock_file)
     except Exception as e:
-        print(f"[ERROR] Failed to establish singleton lock: {e}")
+        print(f"[ERROR] Failed to establish singleton lock: {e}", file=sys.stderr)
 
 # --- Silicon Telemetry (NVML) ---
 try:
@@ -107,7 +107,7 @@ try:
     _NVML_ACTIVE = True
 except Exception as e:
     _NVML_ACTIVE = False
-    print(f"[BOOT] NVML Initialization failed (Hardware/Driver missing): {e}")
+    print(f"[BOOT] NVML Initialization failed (Hardware/Driver missing): {e}", file=sys.stderr)
 
 # --- FastMCP Server ---
 mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
@@ -981,7 +981,7 @@ class LabAttendantV4:
 
             await asyncio.sleep(5)
             
-        return {"status": "timeout", "message": f"Lab failed to reach functional READY within {timeout}s"}
+        return {"status": "timeout", "message": f"Lab failed to reach functional OPERATIONAL within {timeout}s"}
 
     async def cleanup_silicon(self, mode="ORPHANS", engine_only=False):
         """
@@ -1139,7 +1139,7 @@ class LabAttendantV4:
             
             vitals = await self._get_current_vitals()
             if vitals.get("operational"):
-                logger.info("[BOOT] Lab confirmed OPERATIONAL. Setting READY event.")
+                logger.info("[BOOT] Lab confirmed OPERATIONAL. Setting signal.")
                 self.ready_event.set()
             elif vitals.get("engine_up") and not vitals.get("engine_vocal"):
                 global is_hibernating
@@ -1464,7 +1464,7 @@ class LabAttendantV4:
 
             await asyncio.sleep(1.0)
 
-        return web.json_response({"status": "timeout", "message": "Lab failed to reach READY state in time."}, status=408)
+        return web.json_response({"status": "timeout", "message": "Lab failed to reach OPERATIONAL state in time."}, status=408)
 
     async def handle_logs_rest(self, r):
         if os.path.exists(SERVER_LOG):
