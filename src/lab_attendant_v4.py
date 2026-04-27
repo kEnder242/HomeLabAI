@@ -115,32 +115,35 @@ mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "p
 @web.middleware
 async def key_middleware(request, handler):
     """[FEAT-219] Silicon Handshake: Validates the Lab Key (Query or Header)."""
-    # Allow OPTIONS for CORS
-    if request.method == "OPTIONS":
-        return web.Response(status=200)
+    # [FEAT-267] CORS Hardening: Always bypass key check for pre-flight OPTIONS
+    if request.method == 'OPTIONS':
+        resp = web.Response(status=200)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key, LabKey'
+        return resp
         
-    # Heartbeat and Ping are public-read for the dashboard
+    # Public endpoints (Heartbeat, etc.)
     if any(request.path.endswith(p) for p in ["/heartbeat", "/ping", "/mutex", "/wait_ready"]):
-        return await handler(request)
+        response = await handler(request)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
 
     expected_key = get_style_key()
     provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
 
-    # [FEAT-252] Dynamic Auth: Allow either the STYLE_HASH or the current SESSION_TOKEN
     attendant_instance = request.app.get('attendant')
     session_token = attendant_instance.session_token if attendant_instance else None
     
     if provided_key not in [expected_key, session_token]:
-        # [FEAT-267] Header-Dump for Debugging Cloudflare/CORS issues
         forwarded = request.headers.get("X-Forwarded-For", "Direct")
         ua = request.headers.get("User-Agent", "Unknown")
         logger.warning(f"[SECURITY] 401 Unauthorized: {request.method} {request.path} | Key: {provided_key} | IP: {request.remote} | Fwd: {forwarded} | UA: {ua}")
-        return web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
+        resp = web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
     
-    return await handler(request)
-
-@web.middleware
-async def cors_middleware(request, handler):
+    # Authorized endpoints
     response = await handler(request)
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
@@ -149,7 +152,8 @@ async def cors_middleware(request, handler):
 
 class LabAttendantV4:
     def __init__(self):
-        self.app = web.Application(middlewares=[cors_middleware, key_middleware])
+        # [FEAT-267] Unified Middleware: key_middleware now handles OPTIONS directly
+        self.app = web.Application(middlewares=[key_middleware])
         self.app['attendant'] = self # [FIX] Register for middleware access
         
         # [SERVICE] Control & Monitoring Endpoints (Dual-Registration for Option B)
