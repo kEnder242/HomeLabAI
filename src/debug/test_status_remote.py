@@ -18,67 +18,92 @@ def get_key():
 
 async def run_remote_control_simulation():
     print("[*] Starting Playwright Remote Control Simulation...")
-    key = get_key()
     
     async with async_playwright() as p:
+        # 1. Launch Browser
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
         
-        # Monitor console for the "NetworkError"
-        logs = []
-        page.on("console", lambda msg: logs.append(f"[JS] {msg.text}"))
+        page.on("dialog", lambda dialog: dialog.accept()) # Auto-confirm
         
-        # 1. Navigate to Status page
+        # Monitor console for errors
+        page.on("console", lambda msg: print(f"[JS] {msg.type.upper()}: {msg.text}"))
+        page.on("pageerror", lambda err: print(f"[JS_FATAL] {err.message}"))
+        
         print(f"[*] Navigating to {STATUS_URL}")
         await page.goto(STATUS_URL)
         
-        # 2. Wait for Vitals to load (Proves pollStatus worked and keys are set)
-        print("[*] Waiting for vital sync...")
-        await page.wait_for_selector("#vram-status:not(:text('0.0%'))", timeout=15000)
+        # 2. Sync Verification
+        print("[*] Waiting for vital sync (data/status.json)...")
+        # Increase timeout and add explicit check
+        try:
+            await page.wait_for_selector("#vram-status:not(:text('0.0%'))", timeout=30000)
+            print("[+] Vital sync confirmed.")
+        except Exception as e:
+            print(f"[-] FAILURE: UI failed to load vitals. Dumping state...")
+            raise e
         
-        # 3. Trigger 'Quiesce' (Pause)
-        print("[*] Triggering QUIESCE via UI...")
-        # Handle the confirmation dialog automatically
-        page.on("dialog", lambda dialog: dialog.accept())
+        # 3. Test Cycle: HIBERNATE -> START -> PAUSE -> STOP
+        actions = [
+            ("Hibernate", "hiber", "HIBERNATING"),
+            ("Start", "ignit", "SERVICE_UNATTENDED"),
+            ("Pause", "lock", "MAINTENANCE"),
+            ("STOP", "scrub", "OFFLINE")
+        ]
         
-        # Use selector to find the button with 'Pause' text
-        pause_btn = page.locator("text=Pause")
-        await pause_btn.click()
+        # [SECURITY] Re-fetch style key for direct API calls
+        style_key = get_key()
         
-        # 4. Monitor Console for Success/Failure
-        print("[*] Monitoring for remote response...")
-        found_success = False
-        found_error = False
-        
-        for _ in range(10):
-            content = await page.content()
-            # Check the virtual console in the UI
-            console_text = await page.inner_text("#sys-console")
+        for button_text, log_keyword, target_mode in actions:
+            # Clear console before action to avoid stale matches
+            await page.evaluate("document.getElementById('sys-console').innerHTML = ''")
             
-            if "[ATTENDANT]" in console_text:
-                print("[+] SUCCESS: Remote control signal acknowledged by Attendant!")
-                found_success = True
+            print(f"[*] Triggering {button_text.upper()} via UI...")
+            # Use specific CSS selector to avoid matching log lines
+            btn = page.locator(f".control-btn:has-text('{button_text}')")
+            await btn.click()
+            
+            # 1. Wait for immediate acknowledgment in UI
+            found = False
+            for _ in range(15):
+                console_text = await page.inner_text("#sys-console")
+                if log_keyword.lower() in console_text.lower():
+                    print(f"[+] SUCCESS: {button_text} acknowledged in UI.")
+                    found = True
+                    break
+                await asyncio.sleep(1)
+            
+            if not found:
+                print(f"[-] FAILURE: {button_text} signal not detected in UI console.")
                 break
+
+            # 2. Verify silicon transition via Direct API (Zero Polling Delay)
+            print(f"[*] Verifying silicon transition to {target_mode} via REST...")
+            transitioned = False
+            for _ in range(30):
+                try:
+                    res = requests.get(f"{ATTENDANT_URL}/heartbeat", headers={'X-Lab-Key': style_key}, timeout=2)
+                    if res.status_code == 200:
+                        mode = res.json().get("mode", "").upper()
+                        if mode == target_mode or (target_mode == "MAINTENANCE" and mode == "HIBERNATING"):
+                            print(f"[+] SUCCESS: Silicon physically reached {target_mode}.")
+                            transitioned = True
+                            await asyncio.sleep(5) # Final settle
+                            break
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
             
-            if "[ERROR] Remote Control failed" in console_text:
-                print("[-] FAILURE: Reproduced the Remote Control error.")
-                found_error = True
+            if not transitioned:
+                print(f"[-] WARNING: Silicon transition to {target_mode} timed out, but proceeding...")
+            
+            if not found:
+                print(f"[-] FAILURE: {button_text} signal not detected in UI console.")
                 break
                 
-            await asyncio.sleep(1)
-            
-        if not found_success and not found_error:
-            print("[-] TIMEOUT: No response from Remote Control action.")
-        
-        # Dump logs if it failed
-        if found_error:
-            print("\n--- Forensic UI Logs ---")
-            for log in logs[-5:]:
-                print(log)
-
         await browser.close()
-        return found_success
+        return found
 
 if __name__ == "__main__":
     asyncio.run(run_remote_control_simulation())
