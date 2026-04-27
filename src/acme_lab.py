@@ -1741,5 +1741,3 @@ if __name__ == "__main__":
     asyncio.run(
         lab_instance.run(disable_ear=args.disable_ear, trigger_task=args.trigger_task)
     )
-k=args.trigger_task)
-    )

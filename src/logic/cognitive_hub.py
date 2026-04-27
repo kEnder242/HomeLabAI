@@ -419,14 +419,34 @@ class CognitiveHub:
         selected_expert = selected_vibe["adapter"]
         situational_guidance = selected_vibe["guidance"]
 
-        # 3. Proactive Archivist
+        # 3. Proactive Archivist & Topographic Injector
         historical_context = ""
+        
+        # [FEAT-306] Multi-Resolution Trigger
+        is_history_query = (self.current_topic == "PINKY_RECALL" or intent == "RECALL" or 
+                           any(k in query.lower() for k in ["synopsis", "history", "what happened", "montana", "kayak"]))
+        
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
+            target_year = year_match.group(1)
             try:
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
-                historical_context = str(res_context.content[0].text)
-            except Exception:
+                # Stage 1: Fetch Topography (Yearly Summary)
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Strategic Summary for {target_year}", "n_results": 1})
+                t_raw = str(res_context.content[0].text)
+                rag_data = json.loads(t_raw) if t_raw.strip().startswith("{") else {"text": t_raw}
+                historical_context = rag_data.get("text", t_raw)
+                
+                # [FEAT-306.1] Drill-Down Directive: If history query, proactively pull focal evidence
+                if is_history_query:
+                    logging.info(f"[HUB] Deep Memory Gate triggered for {target_year}.")
+                    focal_query = f"Key technical gems and PECI/Montana events in {target_year}"
+                    res_focal = await self.residents["archive"].call_tool("get_context", {"query": focal_query, "n_results": 5})
+                    f_raw = str(res_focal.content[0].text)
+                    f_data = json.loads(f_raw) if f_raw.strip().startswith("{") else {"text": f_raw}
+                    historical_context += "\n\n[FOCAL EVIDENCE]:\n" + f_data.get("text", "")
+                    
+            except Exception as e:
+                logging.error(f"[HUB] Archivist Triage Failed: {e}")
                 pass
 
         # 4. Parallel Local Inference (Streaming)
