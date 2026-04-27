@@ -68,14 +68,6 @@ class BicameralNode:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
         self.system_prompt = system_prompt
-        
-        # [FEAT-307] Sanitary Filter: Foundation Level
-        # We redirect the process-level stdout to stderr to catch all 'Leaks' (torch, etc.)
-        # and preserve a private handle for the FastMCP JSON-RPC transport.
-        import sys
-        self._rpc_out = os.fdopen(sys.stdout.fileno(), 'wb', buffering=0)
-        sys.stdout = sys.stderr # ALL future prints/logs now go to stderr safely.
-
         self.mcp = FastMCP(name)
         self._last_brain_prime = 0
         self.brain_online = True
@@ -110,8 +102,12 @@ class BicameralNode:
             full_response = ""
             # Only broadcast tokens if NOT an internal logic turn
             stream_source = self.name if not internal else None
-            async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source):
-                full_response += token
+            # [FEAT-307] Sanitary Filter: Redirect turn-level noise to stderr
+            import sys
+            from contextlib import redirect_stdout
+            with redirect_stdout(sys.stderr):
+                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source):
+                    full_response += token
                 
             # [FEAT-240.2] Sampling Bridge: Check if the response contains a steering request
             if "[ACTION: UPLINK]" in full_response or "ask_brain" in full_response:
@@ -467,25 +463,4 @@ class BicameralNode:
         })
 
     def run(self):
-        """[FEAT-307] Sanitary Run: Force MCP to use the private RPC pipe."""
-        import sys
-        from mcp.server.stdio import stdio_server
-        from contextlib import redirect_stdout
-        
-        async def _run_clean():
-            # [FEAT-307] CONTROLLED BIFURCATION:
-            # We temporarily restore the clean RPC handle only for the MCP transport.
-            # We must wrap _rpc_out in a TextIOWrapper for stdio_server.
-            import io
-            clean_out = io.TextIOWrapper(self._rpc_out, encoding='utf-8', write_through=True)
-            
-            with redirect_stdout(clean_out):
-                async with stdio_server() as (read_stream, write_stream):
-                    await self.mcp.run_stdio_async(read_stream, write_stream)
-
-        try:
-            asyncio.run(_run_clean())
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            logging.error(f"[LOADER] Sanitary Run crashed: {e}")
+        self.mcp.run()
