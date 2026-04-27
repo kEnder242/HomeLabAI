@@ -497,7 +497,7 @@ class AcmeLab:
 
         self._spark_active = True
             
-        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALOPERATIONAL igniting
+        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
         # [FEAT-265.26] Sovereign Override: NEVER yield if physically hibernating
         try:
             async with aiohttp.ClientSession() as session:
@@ -641,6 +641,7 @@ class AcmeLab:
                     logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
                     self.status = "HIBERNATING"
                     self.engine_ready.clear() # [FEAT-265.15] Readiness Reset: Ensure foyer sparks on next intent
+                    logging.warning("Clearing Hub OPERATIONAL state for engine transition.")
                     asyncio.create_task(self._hibernate())
                     self.brain_online = False # Mark offline while sleeping
 

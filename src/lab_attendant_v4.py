@@ -1300,16 +1300,16 @@ class LabAttendantV4:
                     await asyncio.sleep(1.0)
                     continue
                 
-                if "[READY] Hub foyer is fully synchronized." in line:
+                if "[OPERATIONAL] Hub foyer is fully synchronized." in line:
                     self.ready_event.set()
                     self.recovery_attempts = 0 # [FEAT-302] Reset cooldown on successful operational state
                     logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Cooldown reset.")
                     await self.update_status_json("Mind is OPERATIONAL")
                 
                 # [FEAT-255.2] Continuous Sentinel: Listen for state resets
-                if "Clearing Hub READY state" in line:
+                if "Clearing Hub OPERATIONAL state" in line:
                     self.ready_event.clear()
-                    logger.warning("[WATCHDOG] Hub READY state cleared for transition.")
+                    logger.warning("[WATCHDOG] Hub OPERATIONAL state cleared for transition.")
 
     async def _wait_for_vllm_cognitive(self, timeout=240):
         """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
