@@ -665,7 +665,7 @@ class AcmeLab:
                             for line in lines:
                                 if any(k in line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL']):
                                     msg = line.strip().split('] ')[-1] if '] ' in line else line.strip()
-                                    await self.broadcast({'type': 'crosstalk', 'brain': f'[vLLM]: {msg}', 'brain_source': 'System'})
+                                    await self.broadcast({'type': 'status', 'message': f'[vLLM]: {msg}', 'state': 'waking'})
                 except Exception:
                     pass
             await asyncio.sleep(1.0)
@@ -1722,12 +1722,14 @@ class AcmeLab:
                 async def _background_ignition():
                     try:
                         logging.info('[BOOT] Larynx Gate: Engine physically verified by Attendant.')
+                        # [FEAT-313.5] Resilient Lobby: Don't let resident boot kill the server
                         await self.boot_residents(stack)
-                        # [FEAT-145] Cognitive Delegation: Update hub with live residents
                         self.cognitive.residents = self.residents
-                        logging.info('[BOOT] Hub residents synchronized in background.')
+                        logging.info('[BOOT] Hub residents synchronized. Mind is OPERATIONAL.')
+                        await self.broadcast({'type': 'status', 'message': '⚡ Mind is OPERATIONAL.', 'state': 'operational'})
                     except Exception as e:
                         logging.error(f'[BOOT] Background Ignition failed: {e}')
+                        await self.broadcast({'type': 'status', 'message': f'⚠️ Ignition Stall: {e}', 'state': 'waking'})
                 
                 asyncio.create_task(_background_ignition())
                 asyncio.create_task(self._log_tailer_loop())
