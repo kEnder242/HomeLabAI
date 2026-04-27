@@ -192,7 +192,7 @@ class CognitiveHub:
                         return True
 
                     # [FEAT-237] Loop-Breaker (Legacy compatibility)
-                    primary_entry_points = ["facilitate", "think", "deep_think", "triage_situational_vibe", "think"]
+                    primary_entry_points = ["think", "deep_think", "triage_situational_vibe"]
                     if tool in primary_entry_points and tool not in ["think"]: # think/think are veto signals
                         # Return speech only, block recursive tool call
                         if raw_speech:
