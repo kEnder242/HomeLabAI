@@ -194,6 +194,9 @@ class LabAttendantV4:
         self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
         self.boot_grace_period = 18 # 180 seconds for vLLM weights
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
+        # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
+        vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
+        self._last_vllm_log_size = os.path.getsize(vllm_log) if os.path.exists(vllm_log) else 0
 
     def register_route(self, method, path, handler):
         """[FEAT-219] Silicon Handshake: Multi-Path Router."""
@@ -283,6 +286,46 @@ class LabAttendantV4:
             # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
             
+            # [FEAT-308] Passive Trace Monitor: Continuous Engine Crash Detection
+            # We check the engine log every 2 seconds for fatal tracebacks.
+            vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
+            if os.path.exists(vllm_log):
+                try:
+                    current_size = os.path.getsize(vllm_log)
+                    if current_size < self._last_vllm_log_size:
+                        self._last_vllm_log_size = 0 # Log was rotated or wiped
+                        
+                    if current_size > self._last_vllm_log_size:
+                        with open(vllm_log, 'r') as f:
+                            f.seek(self._last_vllm_log_size)
+                            new_lines = f.readlines()
+                            self._last_vllm_log_size = current_size
+                            
+                            # Check for crash signatures
+                            crash_line = next((line for line in new_lines if any(t in line for t in ['Traceback', 'RuntimeError', 'ValueError:'])), None)
+                            if crash_line:
+                                # 1. Forensic Snip
+                                snip_path = os.path.join(LAB_DIR, f'logs/crash_{int(time.time())}.log')
+                                os.makedirs(os.path.dirname(snip_path), exist_ok=True)
+                                with open(snip_path, 'w') as sf:
+                                    sf.writelines(new_lines[-50:]) # Capture recent context
+                                
+                                logger.critical(f'[WATCHDOG] Fatal engine core crash detected: {crash_line.strip()}')
+                                self.log_event(f'Engine Crash Detected. Evidence saved to {os.path.basename(snip_path)}', 'CRITICAL')
+                                
+                                # 2. Backoff-Aware Recovery
+                                if os.environ.get('LAB_MODE') != 'OFFLINE':
+                                    self.recovery_attempts += 1
+                                    cooldown = 5 + (self.recovery_attempts * 120)
+                                    logger.info(f'[WATCHDOG] Triggering recovery in {cooldown}s (Attempt {self.recovery_attempts})...')
+                                    
+                                    async def _crash_recovery(cd):
+                                        await asyncio.sleep(cd)
+                                        await self.mcp_start(engine=os.environ.get('LAB_MODE', 'VLLM'), engine_only=True, reason='VLLM_CRASH_RECOVERY')
+                                    asyncio.create_task(_crash_recovery(cooldown))
+                except Exception as e:
+                    logger.error(f'[WATCHDOG] Trace monitor error: {e}')
+
             # [FEAT-180.1] Docker Observability: Check containers every 5 minutes
             # Melded from legacy watchdog to ensure stack stability.
             now = time.time()
@@ -945,9 +988,6 @@ class LabAttendantV4:
         [FEAT-119] Sovereign Assassin: Reclaim hardware handles.
         LED MODEL: No general scanning. Only reaps based on the explicit PID Ledger.
         """
-        # [FEAT-265.18] Shutdown Priority: If we are exiting, NOTHING is immune.
-        is_shutdown = (mode == "SESSION" or mode == "SHUTDOWN")
-        
         target_pids = set()
         
         # 1. Ledger-Based Target Definition
