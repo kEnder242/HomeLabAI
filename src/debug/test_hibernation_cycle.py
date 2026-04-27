@@ -115,7 +115,7 @@ async def run_cycle(iteration):
                     msg = await asyncio.wait_for(ws.receive_json(), timeout=10)
                     if msg.get("type") == "crosstalk" and "warming" in msg.get("brain", "").lower():
                         print("[+] Hub acknowledged intent and sparked Attendant.")
-                    if msg.get("type") == "chat" and ("SUCCESS" in str(msg.get("content", "")).upper() or "READY" in str(msg.get("content", "")).upper()):
+                    if msg.get("type") == "chat" and ("SUCCESS" in str(msg.get("content", "")).upper() or "OPERATIONAL" in str(msg.get("content", "")).upper()):
                         vram_now = await get_vram()
                         if vram_now > 5000:
                             print(f"[+] SUCCESS: Engine is vocal and VRAM is resident ({vram_now}MB).")
