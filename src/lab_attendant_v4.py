@@ -1417,7 +1417,7 @@ class LabAttendantV4:
 
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 
-        data = await r.json()
+        data = await r.json() if r.has_body else {}
         engine = data.get("engine", "VLLM")
         model = data.get("model", "MEDIUM")
         disable_ear = data.get("disable_ear", True)
@@ -1429,7 +1429,7 @@ class LabAttendantV4:
         return web.json_response(await self.mcp_stop())
     async def handle_hibernate_rest(self, r):
         try:
-            data = await r.json()
+            data = await r.json() if r.has_body else {}
             reason = data.get("reason", "IDLE_TIMEOUT")
         except Exception:
             reason = "IDLE_TIMEOUT"
@@ -1441,7 +1441,7 @@ class LabAttendantV4:
         reason = data.get("reason", "REST_API_IGNITION")
         return web.json_response(await self.mcp_ignition(reason=reason))
     async def handle_train_rest(self, r):
-        data = await r.json()
+        data = await r.json() if r.has_body else {}
         return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
     async def handle_heartbeat_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
