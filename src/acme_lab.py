@@ -131,7 +131,7 @@ class AcmeLab:
                 with open(self._lock_file, "r") as f:
                     old_pid = int(f.read().strip())
                 if psutil.pid_exists(old_pid):
-                    print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.")
+                    print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.", file=sys.stderr)
                     sys.exit(0) # Exit cleanly to avoid service churn
             except Exception:
                 return ""
