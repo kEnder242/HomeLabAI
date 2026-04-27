@@ -1534,27 +1534,3 @@ async def run_bilingual():
 
 if __name__ == "__main__":
     asyncio.run(run_bilingual())
-he Handshake Spark
-        logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
-        # Support STUB mode for rapid testing via environment
-        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "VLLM")
-        model = os.environ.get("LAB_MODEL", "MEDIUM")
-        # Note: In this context, engine_only=True means 'Just start the Hub'.
-        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True, reason="SAFE_PILOT"))
-
-        # If in a TTY, also allow local tools, otherwise just wait
-        if sys.stdin.isatty():
-            await mcp.run_stdio_async()
-        else:
-            await asyncio.Event().wait()
-    else:
-        # Proxy Mode: Tool execution forwards to the Master
-        os.environ["LAB_ATTENDANT_ROLE"] = "PROXY" 
-        
-        # [FIX] Always run the stdio transport when spawned as an MCP server.
-        # The isatty check was blocking the Gemini CLI from discovering tools.
-        logger.info("[BOOT] Proxy node starting MCP stdio transport...")
-        await mcp.run_stdio_async()
-
-if __name__ == "__main__":
-    asyncio.run(run_bilingual())
