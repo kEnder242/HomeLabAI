@@ -1132,13 +1132,11 @@ class AcmeLab:
                             self.status = "OPERATIONAL"
                             self.engine_ready.set()
 
-                        # [FEAT-265] Mandatory wait for engine readiness before responding
-                        if self.status == "WAKING":
-                            try:
-                                await asyncio.wait_for(self.engine_ready.wait(), timeout=185) # Encapsulate 180s load
-                            except asyncio.TimeoutError:
-                                logging.error("[HUB] Handshake TIMEOUT: Engine failed to warm in time.")
-                                self.status = "ERROR"
+                        # [FEAT-313.5] Persistent Foyer: Non-blocking handshake
+                        # We no longer wait for the engine inside the socket handler.
+                        # The client stays connected and receives live [vLLM] status updates.
+                        if self.status == 'WAKING':
+                            logging.info('[HUB] Client admitted to WAKING lobby.')
 
                         # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
                         if self.status == "OPERATIONAL":
