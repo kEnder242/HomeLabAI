@@ -497,7 +497,7 @@ class AcmeLab:
 
         self._spark_active = True
             
-        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
+        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALOPERATIONAL igniting
         # [FEAT-265.26] Sovereign Override: NEVER yield if physically hibernating
         try:
             async with aiohttp.ClientSession() as session:
@@ -1392,6 +1392,7 @@ class AcmeLab:
                                 self.status = "OPERATIONAL"
                                 await self.broadcast({"type": "chat", "content": "[WAKE] Lab is now vocal and ready for reasoning.", "brain_source": "System"})
                                 await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+
                 except Exception:
                     return ""
             
@@ -1738,4 +1739,6 @@ if __name__ == "__main__":
     lab_instance = AcmeLab(mode=args.mode, afk_timeout=args.afk_timeout, role=args.role)
     asyncio.run(
         lab_instance.run(disable_ear=args.disable_ear, trigger_task=args.trigger_task)
+    )
+k=args.trigger_task)
     )
