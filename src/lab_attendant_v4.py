@@ -639,9 +639,17 @@ class LabAttendantV4:
                 
                 self.active_pids['engine_pid'] = bonded_pid
                 self.active_pids['engine_mode'] = 'VLLM'
-                # [FEAT-220.5] Immediate Immunity
+                # [FEAT-309.2] RECURSIVE LEDGER TRACKING: Record all children of the engine
                 if bonded_pid not in self.active_pids.get('family', []):
                     self.active_pids['family'].append(bonded_pid)
+                try:
+                    parent = psutil.Process(bonded_pid)
+                    for child in parent.children(recursive=True):
+                        if child.pid not in self.active_pids['family']:
+                            logger.info(f'[VLLM] Authorizing child core: PID {child.pid} ({child.name()})')
+                            self.active_pids['family'].append(child.pid)
+                except Exception:
+                    pass
                 self._save_ledger()
 
                 # [FEAT-281.2] Cognitive Readiness Gate
