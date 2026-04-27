@@ -68,6 +68,14 @@ class BicameralNode:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
         self.system_prompt = system_prompt
+        
+        # [FEAT-307] Sanitary Filter: Foundation Level
+        # We redirect the process-level stdout to stderr to catch all 'Leaks' (torch, etc.)
+        # and preserve a private handle for the FastMCP JSON-RPC transport.
+        import sys
+        self._rpc_out = os.fdopen(sys.stdout.fileno(), 'wb', buffering=0)
+        sys.stdout = sys.stderr # ALL future prints/logs now go to stderr safely.
+
         self.mcp = FastMCP(name)
         self._last_brain_prime = 0
         self.brain_online = True
