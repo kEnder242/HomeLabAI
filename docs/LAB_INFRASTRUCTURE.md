@@ -137,10 +137,15 @@
     *   **Function**: Reclaims log visibility from third-party libraries and injects the 4-part fingerprint `[BOOT_HASH : COMMIT : ROLE : PID]` into all streams.
 
 4.  **Validation Checkpoints**:
+    *   **The Settle Window**: 15s mandatory silicon settle during Ignition and Shutdown.
     *   **The Wall**: Pass 333MiB VRAM usage within 20s.
     *   **Residency**: Pass 6000MiB+ VRAM allocation.
     *   **Warmup**: FlashInfer attention warmup must complete (approx 45s).
     *   **Inference**: Verify with "Narf! Ping" completion.
+
+5.  **Reaping Protocol**:
+    *   **Logic**: [FEAT-316.1] SIGTERM -> 2s Settle -> SIGKILL.
+    *   **Goal**: Ensure clean handle release by the NVIDIA kernel driver.
 
 ### LAB-003: The Unity Pattern (Multi-LoRA Residency)
 **Objective**: Optimize multi-agent residency on the 11GB Turing budget.
