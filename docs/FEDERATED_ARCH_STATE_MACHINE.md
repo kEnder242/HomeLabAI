@@ -48,4 +48,19 @@ graph TD
 3.  **Mandatory Interjection**: If the state is `PRIMARY_LOCKED`, the Hub is forbidden from "silence." It must leverage the bicameral intuition (Pinky) to provide immediate feedback.
 
 ---
+
+## 🏛️ Physical Settle Laws [FEAT-316]
+These laws govern the physical transition of silicon handles and ports. They are invariant and override high-level logic.
+
+### 1. The 15s Settle Window
+*   **Context**: Ignition (POST /start) and Shutdown (POST /stop).
+*   **Requirement**: The system **MUST** yield for 15s before/after physical port purging.
+*   **Rationale**: The NVIDIA kernel driver and Linux TCP stack require a non-zero "settling time" to garbage-collect VRAM pointers and release socket handles. Bypassing this window leads to `Errno 111` (Connection Refused) even if no process is visible.
+
+### 2. Polite Reaping Protocol
+*   **Sequence**: `SIGTERM` -> 2s Settle -> `SIGKILL`.
+*   **Requirement**: Always provide the model engine (vLLM/Ollama) a graceful exit signal before physical assassination.
+*   **Goal**: Prevent "Zombie VRAM Pressure" where un-killed child processes hold silicon handles invisible to the parent ledger.
+
+---
 **"A slow truth is better than a fast hallucination."**
