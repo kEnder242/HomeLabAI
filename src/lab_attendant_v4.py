@@ -158,6 +158,7 @@ class LabAttendantV4:
         
         # [SERVICE] Control & Monitoring Endpoints (Dual-Registration for Option B)
         self.register_route("POST", "/start", self.handle_start_rest)
+        self.register_route("POST", "/wake", self.handle_wake_rest)
         self.register_route("POST", "/stop", self.handle_stop_rest)
         self.register_route("POST", "/quiesce", self.handle_quiesce_rest)
         self.register_route("POST", "/ignition", self.handle_ignition_rest)
@@ -468,7 +469,7 @@ class LabAttendantV4:
             # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
             # We target our known blacklist names to ensure a clean start
             logger.info(f"[BOOT] Performing Pre-Ignition Deck Clear (Reason: {reason})")
-            await self.cleanup_silicon(mode="GHOSTS")
+            await self.cleanup_silicon(mode="GHOSTS", engine_only=engine_only)
 
             # [FIX] Force immediate state flush to allow restoration to proceed
             is_hibernating = False
@@ -1148,10 +1149,11 @@ class LabAttendantV4:
                     pass
             await asyncio.sleep(1.0) # Wait for release
 
-        ports = {8088: "VLLM", 11434: "OLLAMA", 8765: "HUB"}
-        adopted_count = 0
-
         # 3. Physical Port Sweep (Adoption)
+        ports = {8088: "VLLM", 11434: "OLLAMA"}
+        if not engine_only:
+            ports[8765] = "HUB"
+            
         for port, mode in ports.items():
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
@@ -1623,6 +1625,7 @@ async def run_bilingual():
         # The isatty check was blocking the Gemini CLI from discovering tools.
         logger.info("[BOOT] Proxy node starting MCP stdio transport...")
         await mcp.run_stdio_async()
+
 
 if __name__ == "__main__":
     asyncio.run(run_bilingual())
