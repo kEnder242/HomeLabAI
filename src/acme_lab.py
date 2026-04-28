@@ -1732,8 +1732,8 @@ class AcmeLab:
 
         runner = web.AppRunner(app)
         await runner.setup()
-        # [FEAT-119] reuse_address=True allows reclaiming port from sockets in TIME_WAIT
-        site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True)
+        # [FEAT-119/317.2] Port Hardening: reuse_address and reuse_port ensure instant recovery
+        site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True, reuse_port=True)
 
         try:
             async with AsyncExitStack() as stack:
