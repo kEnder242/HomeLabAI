@@ -518,6 +518,9 @@ class AcmeLab:
         self.engine_ready.clear() # [FIX] Reset state machine early
         self.last_activity = time.time()
         
+        # [FEAT-317.5] Instant Feedback: Tell the user we are sparking
+        await self.broadcast({'type': 'status', 'message': f'⚡ [IGNITION] Restoration sequence initiated ({client_id}).', 'state': 'waking'})
+        
         # [FEAT-294] Forensic Ignition: Log the specific source and intent of the wake event
         msg = f"Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}"
         logging.warning(f"[HUB] {msg}")
@@ -667,9 +670,19 @@ class AcmeLab:
                             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                             
                             for raw_line in lines:
-                                if any(k in raw_line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL']):
+                                if any(k in raw_line for k in ['Loading weights', 'Application startup', 'Engine core', 'ZMQ', 'VOCAL', 'wake_up', 'sleep', 'throughput', 'Resuming']):
+                                    # [FEAT-313.6] Log Hardening: Strip ANSI escapes and handle encoding
                                     clean_line = ansi_escape.sub('', raw_line)
                                     msg = clean_line.strip().split('] ')[-1] if '] ' in clean_line else clean_line.strip()
+                                    
+                                    # [FEAT-317.5] Throughput Beautification: Keep the console clean but informative
+                                    if 'throughput' in msg:
+                                        # Only broadcast throughput every 10s or so to avoid spam
+                                        if int(time.time()) % 10 == 0:
+                                            msg = 'Engine Status: ' + msg.split('Engine 000: ')[-1]
+                                        else:
+                                            continue
+
                                     await self.broadcast({'type': 'status', 'message': f'[vLLM]: {msg}', 'state': 'waking'})
                 except Exception:
                     pass
