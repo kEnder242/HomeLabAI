@@ -1144,16 +1144,25 @@ class LabAttendantV4:
             logger.warning(f"[BOOT] Purging {len(stale_family)} stale survivors from previous session.")
             for pid in stale_family:
                 try:
-                    os.kill(pid, signal.SIGKILL)
+                    p = psutil.Process(pid)
+                    # [FEAT-316.1] Polite Reaping: SIGTERM -> Wait -> SIGKILL
+                    logger.warning(f"[ASSASSIN] Politley requesting exit for PID {pid} ({p.name()})")
+                    p.terminate()
+
+                    # Wait up to 2s for graceful exit
+                    gone, alive = psutil.wait_procs([p], timeout=2.0)
+                    if alive:
+                        logger.critical(f"[ASSASSIN] Force-killing stubborn survivor: PID {pid}")
+                        p.kill()
                 except Exception:
                     pass
+
             await asyncio.sleep(1.0) # Wait for release
 
         # 3. Physical Port Sweep (Adoption)
-        ports = {8088: "VLLM", 11434: "OLLAMA"}
-        if not engine_only:
-            ports[8765] = "HUB"
-            
+        ports = {8088: "VLLM", 11434: "OLLAMA", 8765: "HUB"}
+        adopted_count = 0
+
         for port, mode in ports.items():
             try:
                 res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
@@ -1488,6 +1497,11 @@ class LabAttendantV4:
         return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
     async def handle_heartbeat_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
+
+    async def handle_wake_rest(self, r):
+        """[FEAT-315] Non-destructive wake: Spark engines but spare Hub."""
+        return web.json_response(await self.mcp_start(engine_only=True, reason="WAKE_INTENT"))
+
     async def handle_ping_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
     async def handle_wait_ready_rest(self, r):
