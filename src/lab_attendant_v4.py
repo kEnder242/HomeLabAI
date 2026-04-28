@@ -347,6 +347,21 @@ class LabAttendantV4:
                         pass
                 self._last_docker_check = now
 
+            # [FEAT-317] Absolute Foyer: Physical Port Verification
+            # If the Lab is not OFFLINE, the Hub foyer MUST be listening.
+            if current_lab_mode != "OFFLINE":
+                # Check Boot Grace Period
+                uptime = time.time() - self._boot_time
+                if uptime > 180: # Wait for foyer to open
+                    import socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(0.5)
+                    if sock.connect_ex(('127.0.0.1', 8765)) != 0:
+                        logger.critical("[WATCHDOG] Physical Foyer FAILURE: Port 8765 is CLOSED. Triggering recovery.")
+                        self.log_event("Physical Foyer Failure. Triggering Recovery.", "CRITICAL")
+                        asyncio.create_task(self.spark_ignition(engine=current_lab_mode, reason="FOYER_PHYSICAL_FAILURE"))
+                    sock.close()
+
             await asyncio.sleep(2)
 
     # --- Proxy Helper ---
