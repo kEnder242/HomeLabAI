@@ -144,7 +144,7 @@ class AcmeLab:
         self.mode = mode
         self.idle_gate = afk_timeout or 600 # [FEAT-249] Increased to 10m for stability
         self.status = "INIT"
-        self._spark_active = False # [FIX] Ensure flag is initialized early
+        self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
@@ -1120,18 +1120,29 @@ class AcmeLab:
 
                         # [GATE] Only 'intercom' clients trigger ignition
                         can_spark = client_id == "intercom"
+                        # [FEAT-314.6] Handshake Sovereignty: Yield to active ignitions
                         needs_wake = not vllm_warm or self.status in ["HIBERNATING", "ERROR"]
+                        if needs_wake and can_spark and self.status not in ["BOOTING", "WAKING"] and not self._spark_active:
+                            # Verify Attendant state before sparking
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=0.5) as r:
+                                        if r.status == 200:
+                                            data = await r.json()
+                                            if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
+                                                logging.info("[HUB] Handshake: Yielding spark to active Attendant session.")
+                                                needs_wake = False
+                            except Exception: pass
 
-                        if needs_wake and can_spark and self.status not in ["BOOTING", "WAKING"]:
-                            # [FIX] Handshake Lock: Prevent rapid double-sparking for same client
-                            if client_id not in self._handshake_lock:
-                                self._handshake_lock.add(client_id)
-                                asyncio.create_task(self.spark_restoration(client_id))
-                                # Release lock after a safety window (30s)
-                                async def _release():
-                                    await asyncio.sleep(30)
-                                    self._handshake_lock.discard(client_id)
-                                asyncio.create_task(_release())
+                            if needs_wake:
+                                if client_id not in self._handshake_lock:
+                                    self._handshake_lock.add(client_id)
+                                    asyncio.create_task(self.spark_restoration(client_id))
+                                    # Release lock after a safety window (30s)
+                                    async def _release():
+                                        await asyncio.sleep(30)
+                                        self._handshake_lock.discard(client_id)
+                                    asyncio.create_task(_release())
                         elif vllm_warm:
                             # [FEAT-265] If warm, ensure OPERATIONAL state
                             self.status = "OPERATIONAL"
@@ -1398,17 +1409,25 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
+            # [FEAT-265.47] Task Sovereignty: Manage the background feedback sequence
+            if self._wake_task and not self._wake_task.done():
+                logging.info("[HUB] Task Sovereignty: Yielding to active wake sequence.")
+                # Buffer and wait
+                await self._neural_queue.put(query)
+                return ""
+
             # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(f"http://127.0.0.1:9999/status", headers={'X-Lab-Key': request_key}, timeout=1.0) as r:
                         if r.status == 200:
                             data = await r.json()
-                            if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
-                                logging.info("[HUB] Yielding restoration trigger to active Attendant session.")
+                            reason = data.get("vitals", {}).get("reason", "")
+                            if reason in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
+                                logging.info(f"[HUB] Yielding restoration trigger to active Attendant session ({reason}).")
                                 # Still buffer the query
                                 await self._neural_queue.put(query)
-                                return
+                                return ""
             except Exception:
                 pass
 
@@ -1744,9 +1763,8 @@ class AcmeLab:
                         self.cognitive.residents = self.residents
                         logging.info('[BOOT] Hub residents synchronized. Mind is OPERATIONAL.')
                         await self.broadcast({'type': 'status', 'message': '⚡ Mind is OPERATIONAL.', 'state': 'operational'})
-                    except Exception as e:
-                        logging.error(f'[BOOT] Background Ignition failed: {e}')
-                        await self.broadcast({'type': 'status', 'message': f'⚠️ Ignition Stall: {e}', 'state': 'waking'})
+                    finally:
+                        self._spark_active = False # Release Boot Lock
                 
                 asyncio.create_task(_background_ignition())
                 asyncio.create_task(self._log_tailer_loop())
