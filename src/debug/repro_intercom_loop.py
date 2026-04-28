@@ -1,55 +1,64 @@
 import asyncio
-from playwright.async_api import async_playwright
 import json
+import websockets
+import os
 import time
 import requests
 
-STATUS_URL = "http://localhost:9001/intercom.html"
-HB_URL = "http://localhost:9999/heartbeat"
+LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
+WS_URL = "ws://127.0.0.1:8765"
+HB_URL = "http://127.0.0.1:9999/heartbeat"
 
-async def repro_loop():
-    print("[#] Starting High-Fidelity Intercom Loop Reproduction...")
+async def repro_collision():
+    print("[#] Starting High-Fidelity Hub Collision Reproduction...")
     
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-        
-        # Capture console for forensic evidence
-        logs = []
-        page.on("console", lambda msg: logs.append(f"[{time.strftime('%H:%M:%S')}] [JS] {msg.text}"))
-        
-        print(f"[*] Navigating to {STATUS_URL}...")
-        await page.goto(STATUS_URL)
-        
-        # 1. Wait for initial connection
-        print("[*] Waiting for WebSocket handshake...")
+    # 1. Trigger Hibernate to ensure clean start
+    style_key = ""
+    try:
+        import hashlib
+        with open("/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css", "rb") as f:
+            style_key = hashlib.md5(f.read()).hexdigest()[:8]
+        requests.post("http://127.0.0.1:9999/hibernate", headers={"X-Lab-Key": style_key}, json={"reason": "REPRO"})
+        print("[+] Lab set to HIBERNATING.")
         await asyncio.sleep(5)
-        
-        # 2. Trigger Wake
-        print("[*] Triggering WAKE query...")
-        await page.fill("#text-input", "Wake up, Brain.")
-        await page.press("#text-input", "Enter")
-        
-        # 3. Monitor for 90 seconds
-        print("[*] Monitoring for Disconnect Loop (90s window)...")
-        start_t = time.time()
-        disconnect_count = 0
-        while time.time() - start_t < 90:
-            # Print latest JS logs
-            if logs:
-                latest = logs[-1]
-                print(latest)
-                if "Disconnected" in latest or "failed" in latest:
-                    disconnect_count += 1
-                    if disconnect_count > 2:
-                        print(f"\n[!] FAILURE: Flapping detected ({disconnect_count} events). Lab is unstable.")
-                        await browser.close()
-                        return False
+    except: pass
+
+    try:
+        async with websockets.connect(WS_URL) as websocket:
+            # Handshake
+            await websocket.send(json.dumps({"type": "handshake", "client": "intercom", "version": "4.5"}))
+            await websocket.recv()
+            print("[+] Connected to Lobby.")
+
+            # 2. Trigger RAPID-FIRE Queries
+            print("[*] Sending RAPID-FIRE wake queries (Collision simulation)...")
+            # First query triggers the ignition
+            await websocket.send(json.dumps({"type": "query", "content": "[ME] Wake up query 1"}))
+            await asyncio.sleep(0.5)
+            # Second query should NOT trigger a second ignition
+            await websocket.send(json.dumps({"type": "query", "content": "[ME] Wake up query 2"}))
             
-            await asyncio.sleep(5)
+            # 3. Monitor for Disconnect
+            print("[*] Monitoring for Hub Murder (60s window)...")
+            start_t = time.time()
+            while time.time() - start_t < 60:
+                try:
+                    msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                    data = json.loads(msg)
+                    if data.get("type") == "crosstalk":
+                        print(f"    [CROSSTALK]: {data.get('brain')}")
+                except asyncio.TimeoutError:
+                    print("    [TIMEOUT] Still waiting...")
+                except websockets.exceptions.ConnectionClosed as e:
+                    print(f"\n[!] REPRODUCED: WebSocket physically closed (Murdered). Code: {e.code}")
+                    print("[+] CONCLUSION: Redundant ignition kills the active Hub.")
+                    return True
             
-        await browser.close()
+            print("\n[-] FAILURE: Hub survived. No collision detected.")
+            return False
+
+    except Exception as e:
+        print(f"[!] Test Error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(repro_loop())
+    asyncio.run(repro_collision())
