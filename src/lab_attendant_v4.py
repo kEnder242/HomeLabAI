@@ -195,9 +195,10 @@ class LabAttendantV4:
         self.ready_event = asyncio.Event()
         self.ignition_lock = asyncio.Lock() # [FEAT-265.30] Ignition Mutex
         self._boot_time = time.time()
+        self._last_ignition_time = 0 # [FEAT-317] Port Stability Window
         self.failure_count = 0
         self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
-        self.boot_grace_period = 18 # 180 seconds for vLLM weights
+        self.boot_grace_period = 90 # 180 seconds for vLLM weights (at 2s pulse)
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
         # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
         vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
@@ -288,6 +289,10 @@ class LabAttendantV4:
         """Continuous background vitals pulse for the dashboard."""
         logger.info("[PULSE] Background status cycle active (2s).")
         while True:
+            # [FEAT-265.17] Decrement boot grace
+            if self.boot_grace_period > 0:
+                self.boot_grace_period -= 1
+
             # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
             
@@ -348,19 +353,21 @@ class LabAttendantV4:
                 self._last_docker_check = now
 
             # [FEAT-317] Absolute Foyer: Physical Port Verification
-            # If the Lab is not OFFLINE, the Hub foyer MUST be listening.
-            if current_lab_mode != "OFFLINE":
-                # Check Boot Grace Period
-                uptime = time.time() - self._boot_time
-                if uptime > 180: # Wait for foyer to open
-                    import socket
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(0.5)
-                    if sock.connect_ex(('127.0.0.1', 8765)) != 0:
-                        logger.critical("[WATCHDOG] Physical Foyer FAILURE: Port 8765 is CLOSED. Triggering recovery.")
-                        self.log_event("Physical Foyer Failure. Triggering Recovery.", "CRITICAL")
-                        asyncio.create_task(self.spark_ignition(engine=current_lab_mode, reason="FOYER_PHYSICAL_FAILURE"))
-                    sock.close()
+            # If the Lab is not OFFLINE and not hibernating, the Hub foyer MUST be listening.
+            if current_lab_mode != "OFFLINE" and not is_hibernating:
+                # We only trigger recovery if we are past the stability window.
+                if time.time() - self._last_ignition_time > 60:
+                    try:
+                        # Use non-blocking socket check
+                        _, writer = await asyncio.wait_for(asyncio.open_connection('127.0.0.1', 8765), timeout=1.0)
+                        writer.close()
+                        await writer.wait_closed()
+                    except Exception:
+                        # Port is closed - Hub is likely dead.
+                        logger.error("[WATCHDOG] Foyer is DEAD (Port 8765 Refused). Triggering Hub recovery...")
+                        self.log_event("Lab Foyer (Hub) died silently. Triggering autonomous recovery.", "CRITICAL")
+                        # [FEAT-315] Resilient Wake: Spare existing engine but restart Hub.
+                        asyncio.create_task(self.mcp_start(engine=current_lab_mode, engine_only=False, reason="FOYER_RECOVERY"))
 
             await asyncio.sleep(2)
 
@@ -468,6 +475,7 @@ class LabAttendantV4:
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         async with self.ignition_lock:
             global current_lab_mode, current_model, lab_process, is_hibernating
+            self._last_ignition_time = time.time() # [FEAT-317] Reset port stability window
 
             # [FEAT-265.44] Ledger Eviction: Clear engine residues before deck clear
             # This ensures the Assassin treats dormant members as orphans to be reaped
@@ -477,8 +485,11 @@ class LabAttendantV4:
                 self.active_pids['engine_mode'] = None
                 self._save_ledger()
 
-            # [FEAT-265.17] Priority Bypass: Allow intentional wake signals to override initial boot grace
-            if self.boot_grace_period > 0 and self.ready_event.is_set() and not reason.startswith("WAKE_"):
+            # [FEAT-265.23] Priority Space: Intentional wakes bypass the congestion gate
+            is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "RECOVERY" or reason == "SAFE_PILOT" or reason == "FOYER_RECOVERY")
+
+            # [FEAT-265.17] Priority Bypass: If we are in the middle of a boot (not ready AND grace > 0), block new starts.
+            if self.boot_grace_period > 0 and not self.ready_event.is_set() and not is_priority_wake:
                 return {"status": "error", "message": "Ignition in progress. Please wait."}
 
             # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
@@ -523,9 +534,6 @@ class LabAttendantV4:
 
             target_model = tier_config.get("vllm" if engine == "VLLM" else "ollama", model)
             utilization = tier_config.get("gpu_memory_utilization", 0.4)
-
-            # [FEAT-265.23] Priority Space: Intentional wakes bypass the congestion gate
-            is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "RECOVERY" or reason == "SAFE_PILOT")
 
             # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
             if current_lab_mode == "HIBERNATING" and engine == "VLLM":
@@ -672,8 +680,9 @@ class LabAttendantV4:
                     pass
                 self._save_ledger()
 
-                # [FEAT-281.2] Cognitive Readiness Gate
-                await self._wait_for_vllm_cognitive()
+                # [FEAT-313] Non-Blocking Ignition: Do not wait for cognitive readiness here.
+                # The Hub will handle an offline engine, and the log_monitor_loop will detect readiness.
+                asyncio.create_task(self._wait_for_vllm_cognitive())
             elif engine == "OLLAMA":
                 # [SPR-13.0] OLLAMA Fallback
                 logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
@@ -712,25 +721,9 @@ class LabAttendantV4:
             except Exception:
                 pass
 
-            # [FEAT-276.5] The Sequencer: Mandatory Engine-First Ignition
+            # [FEAT-276.5] The Sequencer: Non-Blocking Engine-First Ignition
             if engine == "VLLM":
-                logger.info(f"[{self.session_token}] [SEQUENCER] Waiting for Engine API (8088) to stabilize...")
-                engine_ready_port = False
-                for i in range(60): # 120s total wait
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get("http://127.0.0.1:8088/v1/models", timeout=1.0) as r:
-                                if r.status == 200:
-                                    engine_ready_port = True
-                                    logger.info(f"[{self.session_token}] [SEQUENCER] Engine API confirmed after {i*2}s.")
-                                    break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(2)
-
-                if not engine_ready_port:
-                    logger.error(f"[{self.session_token}] [SEQUENCER] Engine failed to bind port 8088. Aborting foyer spark.")
-                    return {"status": "error", "message": "Engine failed to bind port 8088."}
+                logger.info(f"[{self.session_token}] [SEQUENCER] Engine spark initiated. Hub foyer will follow immediately.")
 
             if hub_active and (engine_only or is_intentional_wake):
                 logger.info(f"[IGNITION] Surgical Spark complete. Foyer already active (Reason: {reason}).")
