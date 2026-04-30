@@ -470,6 +470,8 @@ class LabAttendantV4:
             
         vitals["fingerprint"] = get_fingerprint()
         vitals["timestamp"] = datetime.datetime.now().isoformat()
+        # [FEAT-318] Quiescence Telemetry: Expose remaining window in seconds
+        vitals["quiescence_remaining"] = self.boot_grace_period * 2
         return vitals
 
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
