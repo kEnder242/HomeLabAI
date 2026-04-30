@@ -519,7 +519,7 @@ class AcmeLab:
         self.last_activity = time.time()
         
         # [FEAT-317.5] Instant Feedback: Tell the user we are sparking
-        await self.broadcast({'type': 'status', 'message': f'⚡ [IGNITION] Restoration sequence initiated ({client_id}).', 'state': 'waking'})
+        await self.broadcast({'type': 'crosstalk', 'brain': f'⚡ [IGNITION] Restoration sequence initiated ({client_id}).', 'brain_source': 'System'})
         
         # [FEAT-294] Forensic Ignition: Log the specific source and intent of the wake event
         msg = f"Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}"
@@ -686,7 +686,7 @@ class AcmeLab:
                                         else:
                                             continue
 
-                                    await self.broadcast({'type': 'status', 'message': f'[vLLM]: {msg}', 'state': 'waking'})
+                                    await self.broadcast({'type': 'crosstalk', 'brain': f'[vLLM]: {msg}', 'brain_source': 'System'})
                 except Exception:
                     pass
             await asyncio.sleep(1.0)
@@ -1778,7 +1778,7 @@ class AcmeLab:
                         await self.boot_residents(stack)
                         self.cognitive.residents = self.residents
                         logging.info('[BOOT] Hub residents synchronized. Mind is OPERATIONAL.')
-                        await self.broadcast({'type': 'status', 'message': '⚡ Mind is OPERATIONAL.', 'state': 'operational'})
+                        await self.broadcast({'type': 'crosstalk', 'brain': '⚡ Mind is OPERATIONAL.', 'brain_source': 'System'})
                     finally:
                         self._spark_active = False # Release Boot Lock
                 
