@@ -657,9 +657,12 @@ class AcmeLab:
             last_pos = max(0, os.path.getsize(vllm_log) - 1000)
             
         while True:
-            if self.status in ['WAKING', 'INIT', 'RECOVERY'] and os.path.exists(vllm_log):
+            if self.status != "OFFLINE" and os.path.exists(vllm_log):
                 try:
                     curr_size = os.path.getsize(vllm_log)
+                    if curr_size < last_pos:
+                        last_pos = 0 # [FIX] Handle truncation/rotation
+                    
                     if curr_size > last_pos:
                         with open(vllm_log, 'r') as f:
                             f.seek(last_pos)

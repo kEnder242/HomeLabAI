@@ -175,8 +175,6 @@ class LabAttendantV4:
         
         # [FEAT-151] Forensic Trace Monitor: Added vLLM Server log
         self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG, VLLM_SERVER_LOG])
-        self.ready_event = asyncio.Event()
-        self._boot_time = time.time()
         
         # [FIX] Ensure the transient run/ directory exists
         _run_dir = os.path.join(LAB_DIR, 'run')
@@ -185,7 +183,13 @@ class LabAttendantV4:
             
         self.ledger_path = os.path.join(_run_dir, 'active_pids.json')
         self.token_path = os.path.join(_run_dir, 'session.token')
+        
+        # [FEAT-277] PID Ledger Initialization
+        # We load existing ledger but ensure 'family' key exists to prevent KeyError
         self.active_pids = self._load_ledger()
+        if 'family' not in self.active_pids:
+            self.active_pids['family'] = []
+
         self.current_reason = "INIT"
         self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
         self.vram_config = {}
@@ -200,9 +204,11 @@ class LabAttendantV4:
         self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
         self.boot_grace_period = 90 # 180 seconds for vLLM weights (at 2s pulse)
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
+        
         # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
         vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
         self._last_vllm_log_size = os.path.getsize(vllm_log) if os.path.exists(vllm_log) else 0
+
 
     def register_route(self, method, path, handler):
         """[FEAT-219] Silicon Handshake: Multi-Path Router."""
@@ -670,14 +676,15 @@ class LabAttendantV4:
                 self.active_pids['engine_pid'] = bonded_pid
                 self.active_pids['engine_mode'] = 'VLLM'
                 # [FEAT-309.2] RECURSIVE LEDGER TRACKING: Record all children of the engine
-                if bonded_pid not in self.active_pids.get('family', []):
-                    self.active_pids['family'].append(bonded_pid)
+                family = self.active_pids.setdefault('family', [])
+                if bonded_pid not in family:
+                    family.append(bonded_pid)
                 try:
                     parent = psutil.Process(bonded_pid)
                     for child in parent.children(recursive=True):
-                        if child.pid not in self.active_pids['family']:
+                        if child.pid not in family:
                             logger.info(f'[VLLM] Authorizing child core: PID {child.pid} ({child.name()})')
-                            self.active_pids['family'].append(child.pid)
+                            family.append(child.pid)
                 except Exception:
                     pass
                 self._save_ledger()
@@ -1050,6 +1057,14 @@ class LabAttendantV4:
             except Exception:
                 pass
         
+        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
+        if mode in ["STOP", "SESSION", "GHOSTS"]:
+            try:
+                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
+                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
         await asyncio.sleep(1.0)
 
     def _is_current_session_process(self, pid):
