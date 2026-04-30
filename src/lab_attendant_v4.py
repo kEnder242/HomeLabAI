@@ -1072,6 +1072,13 @@ class LabAttendantV4:
         try:
             if pid == os.getpid():
                 return False
+            
+            # [FEAT-305] Ledger Authority: Check direct registration
+            if pid == self.active_pids.get('hub_pid') or pid == self.active_pids.get('engine_pid'):
+                return True
+            if pid in self.active_pids.get('family', []):
+                return True
+
             proc = psutil.Process(pid)
             
             # 1. Recursive Search: Check self and parents
@@ -1401,6 +1408,11 @@ class LabAttendantV4:
 
                 if not foyer_alive:
                     logger.warning(f"[WATCHDOG] Lab process {target_pid} physically ended.")
+                    # [FIX] Yield to New Authority: If another Hub has been spawned, this monitor is obsolete.
+                    if self.active_pids.get('hub_pid') != target_pid:
+                        logger.info(f"[WATCHDOG] Obsolete monitor for PID {target_pid}. Yielding to current authority.")
+                        break
+
                     # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
                     if current_lab_mode == "SERVICE_UNATTENDED":
                         self.recovery_attempts += 1
