@@ -202,6 +202,7 @@ class LabAttendantV4:
         self._last_ignition_time = 0 # [FEAT-317] Port Stability Window
         self.failure_count = 0
         self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
+        self._operational_start_time = 0 # [FEAT-302] Stability Latch
         self.boot_grace_period = 90 # 180 seconds for vLLM weights (at 2s pulse)
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
         
@@ -299,6 +300,12 @@ class LabAttendantV4:
             if self.boot_grace_period > 0:
                 self.boot_grace_period -= 1
 
+            # [FEAT-302] Stability Latch: Reset backoff if stable for >5m
+            if self._operational_start_time and (time.time() - self._operational_start_time > 300):
+                if self.recovery_attempts > 0:
+                    logger.info(f"[WATCHDOG] Silicon Stability Verified ({int(time.time() - self._operational_start_time)}s). Resetting recovery backoff.")
+                    self.recovery_attempts = 0
+
             # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
             
@@ -329,16 +336,9 @@ class LabAttendantV4:
                                 logger.critical(f'[WATCHDOG] Fatal engine core crash detected: {crash_line.strip()}')
                                 self.log_event(f'Engine Crash Detected. Evidence saved to {os.path.basename(snip_path)}', 'CRITICAL')
                                 
-                                # 2. Backoff-Aware Recovery
-                                if os.environ.get('LAB_MODE') != 'OFFLINE':
-                                    self.recovery_attempts += 1
-                                    cooldown = 5 + (self.recovery_attempts * 120)
-                                    logger.info(f'[WATCHDOG] Triggering recovery in {cooldown}s (Attempt {self.recovery_attempts})...')
-                                    
-                                    async def _crash_recovery(cd):
-                                        await asyncio.sleep(cd)
-                                        await self.mcp_start(engine=os.environ.get('LAB_MODE', 'VLLM'), engine_only=True, reason='VLLM_CRASH_RECOVERY')
-                                    asyncio.create_task(_crash_recovery(cooldown))
+                                # 2. Unified Adaptive Recovery
+                                if current_lab_mode != 'OFFLINE':
+                                    asyncio.create_task(self._trigger_adaptive_recovery(reason='VLLM_CRASH_RECOVERY', engine_only=True))
                 except Exception as e:
                     logger.error(f'[WATCHDOG] Trace monitor error: {e}')
 
@@ -372,8 +372,8 @@ class LabAttendantV4:
                         # Port is closed - Hub is likely dead.
                         logger.error("[WATCHDOG] Foyer is DEAD (Port 8765 Refused). Triggering Hub recovery...")
                         self.log_event("Lab Foyer (Hub) died silently. Triggering autonomous recovery.", "CRITICAL")
-                        # [FEAT-315] Resilient Wake: Spare existing engine but restart Hub.
-                        asyncio.create_task(self.mcp_start(engine=current_lab_mode, engine_only=False, reason="FOYER_RECOVERY"))
+                        # [FEAT-302] Unified Adaptive Recovery
+                        asyncio.create_task(self._trigger_adaptive_recovery(reason="FOYER_RECOVERY", engine_only=False))
 
             await asyncio.sleep(2)
 
@@ -479,6 +479,18 @@ class LabAttendantV4:
         # [FEAT-318] Quiescence Telemetry: Expose remaining window in seconds
         vitals["quiescence_remaining"] = self.boot_grace_period * 2
         return vitals
+
+    async def _trigger_adaptive_recovery(self, reason, engine_only=False):
+        """[FEAT-302] Centralized Adaptive Backoff Controller."""
+        self.recovery_attempts += 1
+        cooldown = 5 + (self.recovery_attempts * 120)
+        logger.warning(f"[WATCHDOG] [{reason}] Triggering adaptive recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
+        self.log_event(f"Stability Failure ({reason}). Adaptive recovery active ({cooldown}s).", "WARNING")
+        
+        await asyncio.sleep(cooldown)
+        # Reset operational start time upon recovery trigger
+        self._operational_start_time = 0
+        await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=engine_only, reason=reason)
 
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         async with self.ignition_lock:
@@ -778,6 +790,7 @@ class LabAttendantV4:
             return await self._proxy_request("POST", "stop", {"reason": reason})
 
         self.current_reason = reason
+        self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
         logger.warning(f"[{self.session_token}] [STOP] Manual stop initiated (Reason: {reason}).")
 
         # [NUCLEAR RESET] Force immediate and recursive cleanup
@@ -798,6 +811,7 @@ class LabAttendantV4:
 
     async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT"):
         """[FEAT-262] Eureka Hibernation: Level 2 offload with 100% Graceful requirement."""
+        self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
         # [FEAT-265.35] Mutual Exclusion: No sleep during ignition
         if self.ignition_lock.locked():
             logger.warning(f"[WATCHDOG] Hibernation rejected. Ignition lock is ACTIVE (Reason: {reason}).")
@@ -1415,13 +1429,8 @@ class LabAttendantV4:
 
                     # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
                     if current_lab_mode == "SERVICE_UNATTENDED":
-                        self.recovery_attempts += 1
-                        cooldown_secs = 5 + (self.recovery_attempts * 120)
-                        logger.info(f"[WATCHDOG] Unattended mode active. Triggering recovery in {cooldown_secs}s (Attempt {self.recovery_attempts})...")
-                        async def _tactical_recovery(cooldown):
-                            await asyncio.sleep(cooldown)
-                            await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=True, reason="RECOVERY")
-                        asyncio.create_task(_tactical_recovery(cooldown_secs))
+                        # [FEAT-302] Unified Adaptive Recovery (engine_only=False since process ended)
+                        asyncio.create_task(self._trigger_adaptive_recovery(reason="RECOVERY", engine_only=False))
                     break
                 
                 line = f.readline()
@@ -1431,8 +1440,10 @@ class LabAttendantV4:
                 
                 if "[OPERATIONAL] Hub foyer is fully synchronized." in line:
                     self.ready_event.set()
-                    self.recovery_attempts = 0 # [FEAT-302] Reset cooldown on successful operational state
-                    logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Cooldown reset.")
+                    # [FEAT-302] Stability Latch: Record when we reached operational
+                    if not self._operational_start_time:
+                        self._operational_start_time = time.time()
+                        logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Stability latch armed (300s).")
                     await self.update_status_json("Mind is OPERATIONAL")
                 
                 # [FEAT-255.2] Continuous Sentinel: Listen for state resets
