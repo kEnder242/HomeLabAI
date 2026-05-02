@@ -309,6 +309,16 @@ class LabAttendantV4:
             # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
             await self.update_status_json()
             
+            # [FEAT-318.7] RAM-Aware Watchdog: Prevent system-wide OOM
+            try:
+                mem = psutil.virtual_memory()
+                if mem.percent > 95:
+                    logger.critical(f"[WATCHDOG] CRITICAL RAM EXHAUSTED: {mem.percent}%. Triggering emergency hibernation.")
+                    self.log_event("Critical RAM usage detected (>95%). Emergency hibernation triggered.", "CRITICAL")
+                    asyncio.create_task(self.mcp_hibernate(reason="EMERGENCY_RAM_PRESSURE"))
+            except Exception:
+                pass
+
             # [FEAT-308] Passive Trace Monitor: Continuous Engine Crash Detection
             # We check the engine log every 2 seconds for fatal tracebacks.
             vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
@@ -521,6 +531,11 @@ class LabAttendantV4:
             is_hibernating = False
             self.ready_event.clear()
             self.current_reason = reason
+            
+            # [FEAT-318.6] Sanitary Ignition: Clear the family ledger before sparking
+            # This prevents "Ghost Adoption" of previous session survivors.
+            self.active_pids['family'] = []
+            
             # We set mode early to ensure heartbeat reflects the TARGET engine immediately
             current_lab_mode = engine 
 
@@ -797,7 +812,14 @@ class LabAttendantV4:
         await self.cleanup_silicon(mode="SESSION")
 
         # [FEAT-277] Clear Ledger on Stop
-        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None}
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+        try:
+            if os.path.exists(self.ledger_path):
+                os.remove(self.ledger_path)
+            logger.info("[STOP] Process ledger wiped.")
+        except Exception as e:
+            logger.error(f"[STOP] Failed to wipe ledger: {e}")
+        
         self._save_ledger()
 
         global current_lab_mode, is_hibernating
