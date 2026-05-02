@@ -1068,10 +1068,24 @@ class AcmeLab:
 
     async def _drain_neural_buffer(self):
         """[FEAT-283] Drain the neural buffer once the engine is ready."""
+        # [FIX] Sequence Awareness: Wait for spark sequence to physically finish
+        # This prevents drained queries from being immediately re-queued.
+        while getattr(self, "_spark_active", False):
+            await asyncio.sleep(2)
+
         if self._neural_queue.empty():
             return
             
-        logging.info(f"[HUB] Draining Neural Buffer: {self._neural_queue.qsize()} items.")
+        count = self._neural_queue.qsize()
+        logging.info(f"[HUB] Draining Neural Buffer: {count} items.")
+        
+        # [FEAT-321] Queue Feedback: Notify the user that the wait is over
+        await self.broadcast({
+            "type": "crosstalk", 
+            "brain": f"Anchors established. Processing {count} queued request(s)...", 
+            "brain_source": "System"
+        })
+
         while not self._neural_queue.empty():
             query = await self._neural_queue.get()
             asyncio.create_task(self.process_query(query))
@@ -1542,6 +1556,9 @@ class AcmeLab:
         # [FIX] Signal liveness early so handshakes don't block during long sync
         self.status = "OPERATIONAL"
         self.engine_ready.set()
+
+        # [FEAT-283] Drain buffered queries once ready
+        asyncio.create_task(self._drain_neural_buffer())
         
         await self.broadcast(
             {

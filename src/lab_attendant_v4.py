@@ -202,6 +202,8 @@ class LabAttendantV4:
         self._last_ignition_time = 0 # [FEAT-317] Port Stability Window
         self.failure_count = 0
         self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
+        self._recovery_in_progress = False # [FIX] Recovery Singleton
+        self._active_monitors = set() # [FIX] Monitor Registry
         self._operational_start_time = 0 # [FEAT-302] Stability Latch
         self.boot_grace_period = 90 # 180 seconds for vLLM weights (at 2s pulse)
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
@@ -343,12 +345,10 @@ class LabAttendantV4:
                                 with open(snip_path, 'w') as sf:
                                     sf.writelines(new_lines[-50:]) # Capture recent context
                                 
-                                logger.critical(f'[WATCHDOG] Fatal engine core crash detected: {crash_line.strip()}')
-                                self.log_event(f'Engine Crash Detected. Evidence saved to {os.path.basename(snip_path)}', 'CRITICAL')
-                                
-                                # 2. Unified Adaptive Recovery
-                                if current_lab_mode != 'OFFLINE':
-                                    asyncio.create_task(self._trigger_adaptive_recovery(reason='VLLM_CRASH_RECOVERY', engine_only=True))
+                                # [FIX] Passive Mode: Don't trigger recovery automatically yet (Too aggressive during loading)
+                                logger.error(f"[WATCHDOG] Suspicious signal in engine log: {crash_line.strip()}")
+                                # if current_lab_mode != 'OFFLINE':
+                                #    asyncio.create_task(self._trigger_adaptive_recovery(reason='VLLM_CRASH_RECOVERY', engine_only=True))
                 except Exception as e:
                     logger.error(f'[WATCHDOG] Trace monitor error: {e}')
 
@@ -492,15 +492,30 @@ class LabAttendantV4:
 
     async def _trigger_adaptive_recovery(self, reason, engine_only=False):
         """[FEAT-302] Centralized Adaptive Backoff Controller."""
-        self.recovery_attempts += 1
-        cooldown = 5 + (self.recovery_attempts * 120)
-        logger.warning(f"[WATCHDOG] [{reason}] Triggering adaptive recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
-        self.log_event(f"Stability Failure ({reason}). Adaptive recovery active ({cooldown}s).", "WARNING")
-        
-        await asyncio.sleep(cooldown)
-        # Reset operational start time upon recovery trigger
-        self._operational_start_time = 0
-        await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=engine_only, reason=reason)
+        # [FIX] Recovery Singleton: Prevent parallel backoff tasks
+        if self._recovery_in_progress:
+            logger.info(f"[WATCHDOG] Recovery already in progress. Ignoring redundant trigger: {reason}")
+            return
+            
+        self._recovery_in_progress = True
+        try:
+            self.recovery_attempts += 1
+            cooldown = 5 + (self.recovery_attempts * 120)
+            logger.warning(f"[WATCHDOG] [{reason}] Triggering adaptive recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
+            self.log_event(f"Stability Failure ({reason}). Adaptive recovery active ({cooldown}s).", "WARNING")
+            
+            await asyncio.sleep(cooldown)
+            # [FIX] Intent Awareness: Check if system was taken offline during sleep
+            if current_lab_mode == "OFFLINE" or is_hibernating:
+                logger.info(f"[WATCHDOG] Recovery aborted for {reason}: System is {current_lab_mode} (Hibernating: {is_hibernating})")
+                return
+
+            # Reset operational start time upon recovery trigger
+
+            self._operational_start_time = 0
+            await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=engine_only, reason=reason)
+        finally:
+            self._recovery_in_progress = False
 
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         async with self.ignition_lock:
@@ -1411,67 +1426,75 @@ class LabAttendantV4:
             logger.warning("[WATCHDOG] Log monitor aborted: No hub_pid in ledger.")
             return
 
+        # [FIX] Monitor Registry: Prevent redundant tasks for the same PID
+        if target_pid in self._active_monitors:
+            logger.info(f"[WATCHDOG] Hub {target_pid} is already being monitored. Yielding.")
+            return
+            
+        self._active_monitors.add(target_pid)
         logger.info(f"[WATCHDOG] Monitoring Lab Foyer (PID: {target_pid})...")
         
-        self.ready_event.clear()
-        if not os.path.exists(SERVER_LOG):
-            logger.warning(f"[WATCHDOG] Log file missing: {SERVER_LOG}")
-            return
+        try:
+            self.ready_event.clear()
+            if not os.path.exists(SERVER_LOG):
+                logger.warning(f"[WATCHDOG] Log file missing: {SERVER_LOG}")
+                return
 
-        with open(SERVER_LOG, "r") as f:
-            # Seek to end initially to only catch new signals
-            f.seek(0, os.SEEK_END)
-            while True:
-                # [FIX] Handover: Yield to new monitor if PID has changed in ledger
-                current_ledger_pid = self.active_pids.get('hub_pid')
-                if current_ledger_pid != target_pid:
-                    logger.info(f"[WATCHDOG] Handover: Ledger PID changed to {current_ledger_pid}. Monitor {target_pid} yielding.")
-                    break
-
-                # [FEAT-259.1] Hibernation Awareness: Skip auto-restart if manually hibernated or in maintenance
-                if is_hibernating or os.path.exists(MAINTENANCE_LOCK):
-                    await asyncio.sleep(5)
-                    continue
-
-                # Physical Liveness Check
-                foyer_alive = False
-                try:
-                    p = psutil.Process(target_pid)
-                    if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
-                        foyer_alive = True
-                except Exception:
-                    pass
-
-                if not foyer_alive:
-                    logger.warning(f"[WATCHDOG] Lab process {target_pid} physically ended.")
-                    # [FIX] Yield to New Authority: If another Hub has been spawned, this monitor is obsolete.
-                    if self.active_pids.get('hub_pid') != target_pid:
-                        logger.info(f"[WATCHDOG] Obsolete monitor for PID {target_pid}. Yielding to current authority.")
+            with open(SERVER_LOG, "r") as f:
+                # Seek to end initially to only catch new signals
+                f.seek(0, os.SEEK_END)
+                while True:
+                    # [FIX] Handover: Yield to new monitor if PID has changed in ledger
+                    current_ledger_pid = self.active_pids.get('hub_pid')
+                    if current_ledger_pid != target_pid:
+                        logger.info(f"[WATCHDOG] Handover: Ledger PID changed to {current_ledger_pid}. Monitor {target_pid} yielding.")
                         break
 
-                    # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
-                    if current_lab_mode == "SERVICE_UNATTENDED":
-                        # [FEAT-302] Unified Adaptive Recovery (engine_only=False since process ended)
-                        asyncio.create_task(self._trigger_adaptive_recovery(reason="RECOVERY", engine_only=False))
-                    break
-                
-                line = f.readline()
-                if not line:
-                    await asyncio.sleep(1.0)
-                    continue
-                
-                if "[OPERATIONAL] Hub foyer is fully synchronized." in line:
-                    self.ready_event.set()
-                    # [FEAT-302] Stability Latch: Record when we reached operational
-                    if not self._operational_start_time:
-                        self._operational_start_time = time.time()
-                        logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Stability latch armed (300s).")
-                    await self.update_status_json("Mind is OPERATIONAL")
-                
-                # [FEAT-255.2] Continuous Sentinel: Listen for state resets
-                if "Clearing Hub OPERATIONAL state" in line:
-                    self.ready_event.clear()
-                    logger.warning("[WATCHDOG] Hub OPERATIONAL state cleared for transition.")
+                    # [FEAT-259.1] Hibernation/Offline Awareness: Skip auto-restart if manually stopped
+                    if is_hibernating or current_lab_mode == "OFFLINE" or os.path.exists(MAINTENANCE_LOCK):
+                        await asyncio.sleep(5)
+                        continue
+                    # Physical Liveness Check
+                    foyer_alive = False
+                    try:
+                        p = psutil.Process(target_pid)
+                        if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
+                            foyer_alive = True
+                    except Exception:
+                        pass
+
+                    if not foyer_alive:
+                        logger.warning(f"[WATCHDOG] Lab process {target_pid} physically ended.")
+                        # [FIX] Yield to New Authority: If another Hub has been spawned, this monitor is obsolete.
+                        if self.active_pids.get('hub_pid') != target_pid:
+                            logger.info(f"[WATCHDOG] Obsolete monitor for PID {target_pid}. Yielding to current authority.")
+                            break
+
+                        # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
+                        if current_lab_mode == "SERVICE_UNATTENDED":
+                            # [FEAT-302] Unified Adaptive Recovery (engine_only=False since process ended)
+                            asyncio.create_task(self._trigger_adaptive_recovery(reason="RECOVERY", engine_only=False))
+                        break
+                    
+                    line = f.readline()
+                    if not line:
+                        await asyncio.sleep(1.0)
+                        continue
+                    
+                    if "[OPERATIONAL] Hub foyer is fully synchronized." in line:
+                        self.ready_event.set()
+                        # [FEAT-302] Stability Latch: Record when we reached operational
+                        if not self._operational_start_time:
+                            self._operational_start_time = time.time()
+                            logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Stability latch armed (300s).")
+                        await self.update_status_json("Mind is OPERATIONAL")
+                    
+                    # [FEAT-255.2] Continuous Sentinel: Listen for state resets
+                    if "Clearing Hub OPERATIONAL state" in line:
+                        self.ready_event.clear()
+                        logger.warning("[WATCHDOG] Hub OPERATIONAL state cleared for transition.")
+        finally:
+            self._active_monitors.discard(target_pid)
 
     async def _wait_for_vllm_cognitive(self, timeout=240):
         """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
