@@ -505,10 +505,13 @@ class AcmeLab:
                     if r.status == 200:
                         data = await r.json()
                         # Physical truth: If hibernating, we must spark, regardless of reason
+                        v_reason = data.get("vitals", {}).get("reason", "")
+                        c_reason = data.get("current_reason", "")
+                        
                         if data.get("mode") == "HIBERNATING":
                             logging.info("[HUB] Sovereign Override: Attendant is HIBERNATING. Reclaiming ignition authority.")
-                        elif data.get("reason") in ["SAFE_PILOT", "MANUAL_IGNITION"] or data.get("current_reason", "").startswith("RESTORE_"):
-                            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
+                        elif v_reason in ["SAFE_PILOT", "MANUAL_IGNITION", "RECOVERY", "FOYER_RECOVERY"] or v_reason.startswith("RESTORE_") or c_reason.startswith("RESTORE_"):
+                            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session (Current: {v_reason or c_reason}).")
                             self._spark_active = False # Release lock if yielding
                             return
         except Exception:
@@ -1148,7 +1151,8 @@ class AcmeLab:
                                             if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
                                                 logging.info("[HUB] Handshake: Yielding spark to active Attendant session.")
                                                 needs_wake = False
-                            except Exception: pass
+                            except Exception:
+                                pass
 
                             if needs_wake:
                                 if client_id not in self._handshake_lock:
@@ -1435,7 +1439,7 @@ class AcmeLab:
             # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://127.0.0.1:9999/status", headers={'X-Lab-Key': request_key}, timeout=1.0) as r:
+                    async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': request_key}, timeout=1.0) as r:
                         if r.status == 200:
                             data = await r.json()
                             reason = data.get("vitals", {}).get("reason", "")
@@ -1530,6 +1534,7 @@ class AcmeLab:
         """Internal boot sequence: Must remain in unitary task and be idempotent."""
         if getattr(self, "_residents_booted", False) and self.residents:
             logging.info("[BOOT] Residents already active. Skipping redundant boot.")
+            self.engine_ready.set() # [FIX] Ensure ALARM task doesn't hang
             return
             
         self._residents_booted = True
