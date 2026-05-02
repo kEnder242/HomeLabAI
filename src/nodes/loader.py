@@ -141,8 +141,12 @@ class BicameralNode:
                 pass
         return {}
 
-    def _resolve_best_model(self, available_models, engine_type):
+    def _resolve_best_model(self, available_models, engine_type, running_model=None):
         """[FEAT-080] Dynamic selection based on host capability."""
+        # [FEAT-320] Adaptive Priority: If a model is already running on remote Ollama, use it.
+        if running_model and self.name == "brain" and self.primary_host != "localhost":
+            return running_model
+
         if self.name == "brain" and self.primary_host != "localhost":
             preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
             for p in preferred:
@@ -248,7 +252,22 @@ class BicameralNode:
                     else:
                         available = [m["name"] for m in data.get("models", [])]
                     
-                    target = self._resolve_best_model(available, engine_type)
+                    # [FEAT-320] Adaptive Model Selection: Check what's actually running
+                    running_model = None
+                    if engine_type == "OLLAMA" and self.primary_host != "localhost":
+                        try:
+                            ps_url = f"{base_url}/api/ps"
+                            async with session.get(ps_url, timeout=2) as ps_r:
+                                if ps_r.status == 200:
+                                    ps_data = await ps_r.json()
+                                    models = ps_data.get("models", [])
+                                    if models:
+                                        running_model = models[0].get("name")
+                                        logging.info(f"[{self.name}] Adaptive Link: Adopting active model '{running_model}' on {self.primary_host}")
+                        except Exception:
+                            pass
+
+                    target = self._resolve_best_model(available, engine_type, running_model=running_model)
                     self._engine_cache = {"url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", "model": target, "type": engine_type}
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
