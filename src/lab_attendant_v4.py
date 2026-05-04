@@ -431,12 +431,30 @@ class LabAttendantV4:
                     if isinstance(inv, dict):
                         # [FEAT-220.6] Schema Hardening: Merge loaded data into base to ensure all keys exist
                         base.update(inv)
-                        # [FIX] Ensure family is always a list
-                        if not isinstance(base.get('family'), list):
-                            base['family'] = []
-                        return base
             except Exception:
                 pass
+        
+        # [FIX] Ensure family is always a list
+        if not isinstance(base.get('family'), list):
+            base['family'] = []
+
+        # [FEAT-322] Authority Verification: Verify adopted Hub is actually a Lab process
+        if base.get('hub_pid'):
+            try:
+                proc = psutil.Process(base['hub_pid'])
+                # [FIX] Ownership Check: Only adopt if process belongs to current user
+                if proc.username() != psutil.Process().username():
+                    logger.warning(f"[BOOT] Authority Mismatch: PID {base['hub_pid']} is owned by {proc.username()}. Wiping authority.")
+                    return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+                    
+                cmd = " ".join(proc.cmdline()).lower()
+                if "acme_lab" not in cmd:
+                    logger.warning(f"[BOOT] Stale Hub detected in ledger (PID {base['hub_pid']} is {proc.name()}). Wiping authority.")
+                    return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.warning(f"[BOOT] Stale or Restricted Hub detected (PID {base.get('hub_pid')}). Wiping authority.")
+                return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+                
         return base
 
     def sync_family_ledger(self):
@@ -488,6 +506,9 @@ class LabAttendantV4:
         vitals["timestamp"] = datetime.datetime.now().isoformat()
         # [FEAT-318] Quiescence Telemetry: Expose remaining window in seconds
         vitals["quiescence_remaining"] = self.boot_grace_period * 2
+        # [FEAT-323] Backoff Telemetry: Expose recovery effort
+        vitals["recovery_level"] = self.recovery_attempts
+        vitals["recovery_in_progress"] = self._recovery_in_progress
         return vitals
 
     async def _trigger_adaptive_recovery(self, reason, engine_only=False):
