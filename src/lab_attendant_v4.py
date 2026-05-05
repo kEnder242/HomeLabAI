@@ -370,7 +370,8 @@ class LabAttendantV4:
 
             # [FEAT-317] Absolute Foyer: Physical Port Verification
             # If the Lab is not OFFLINE and not hibernating, the Hub foyer MUST be listening.
-            if current_lab_mode != "OFFLINE" and not is_hibernating:
+            # [FIX] Maintenance Awareness: Skip if maintenance lock is active
+            if current_lab_mode != "OFFLINE" and not is_hibernating and not os.path.exists(MAINTENANCE_LOCK):
                 # We only trigger recovery if we are past the stability window.
                 if time.time() - self._last_ignition_time > 60:
                     try:
@@ -491,6 +492,22 @@ class LabAttendantV4:
         
         self.active_pids['family'] = list(new_family)
         self._save_ledger()
+
+    async def _handshake_graceful_stop(self):
+        """[FEAT-324] Handshake: Attempt to notify the Hub to stop gracefully."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                # We use a short timeout as the Hub should be responsive if alive
+                async with session.post("http://127.0.0.1:8765/stop", timeout=2.0) as r:
+                    if r.status == 200:
+                        logger.info("[HANDSHAKE] Graceful stop signal accepted by Hub.")
+                        # Give the Hub and residents time to de-initialize
+                        await asyncio.sleep(4.0)
+                        return True
+        except Exception:
+            # Silence expected failures if Hub is already dead or unreachable
+            pass
+        return False
 
     # --- MCP Tools Implementation ---
     async def mcp_heartbeat(self):
@@ -844,8 +861,11 @@ class LabAttendantV4:
         self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
         logger.warning(f"[{self.session_token}] [STOP] Manual stop initiated (Reason: {reason}).")
 
-        # [NUCLEAR RESET] Force immediate and recursive cleanup
-        await self.cleanup_silicon(mode="SESSION")
+        # [FEAT-324] Graceful Shutdown Handshake
+        await self._handshake_graceful_stop()
+
+        # [NUCLEAR RESET] Force immediate and recursive cleanup (Fallback/Engine)
+        await self.cleanup_silicon(mode="STOP")
 
         # [FEAT-277] Clear Ledger on Stop
         self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
@@ -949,16 +969,26 @@ class LabAttendantV4:
             return {"status": "error", "message": "Hibernation signal failed. No reap performed."}
 
     async def mcp_quiesce(self):
+        global current_lab_mode, is_hibernating
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "quiesce")
         logger.warning("[QUIESCE] Lockdown initiated. Setting maintenance lock.")
         self.log_event("Quiesce: Lab locked for maintenance.", severity="WARNING")
+        
+        current_lab_mode = "MAINTENANCE"
+        is_hibernating = True
+        
         with open(MAINTENANCE_LOCK, "w") as f:
             f.write(datetime.datetime.now().isoformat())
-        asyncio.create_task(self.cleanup_silicon(mode="MAINTENANCE"))
+
+        # [FEAT-324] Graceful Shutdown Handshake
+        await self._handshake_graceful_stop()
+
+        await self.cleanup_silicon(mode="MAINTENANCE")
         return {"status": "locked", "message": "Lab freezing. Watchdog passive."}
 
     async def mcp_ignition(self, reason: str = "MANUAL_IGNITION"):
+        global is_hibernating
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
             return await self._proxy_request("POST", "ignition", {"reason": reason})
         
@@ -966,6 +996,8 @@ class LabAttendantV4:
         if os.path.exists(MAINTENANCE_LOCK):
             os.remove(MAINTENANCE_LOCK)
             self.log_event("Ignition: Maintenance lock cleared.")
+            
+        is_hibernating = False
             
         # [SPR-13.0] Restoration using current state or defaults
         engine = os.environ.get("LAB_MODE", "OLLAMA")
@@ -1130,7 +1162,7 @@ class LabAttendantV4:
                 pass
         
         # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
-        if mode in ["STOP", "SESSION", "GHOSTS"]:
+        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
             try:
                 subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
                 subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
