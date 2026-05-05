@@ -569,7 +569,8 @@ class LabAttendantV4:
                 self._save_ledger()
 
             # [FEAT-265.23] Priority Space: Intentional wakes bypass the congestion gate
-            is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "RECOVERY" or reason == "SAFE_PILOT" or reason == "FOYER_RECOVERY")
+            is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "SAFE_PILOT")
+            logger.info(f"[IGNITION] [{reason}] Priority Wake: {is_priority_wake} | Engine: {engine}")
 
             # [FEAT-265.17] Priority Bypass: If we are in the middle of a boot (not ready AND grace > 0), block new starts.
             if self.boot_grace_period > 0 and not self.ready_event.is_set() and not is_priority_wake:
@@ -1140,6 +1141,28 @@ class LabAttendantV4:
             target_pids.add(pid)
 
         # 2. Final Purge Logic
+        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
+        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
+            try:
+                # [FEAT-325] Nuclear Port Purge: Ensure engine ports are clear
+                for port in [8088, 11434, 8765]:
+                    for conn in psutil.net_connections(kind='tcp'):
+                        if conn.laddr.port == port and conn.status == 'LISTEN':
+                            if conn.pid is None or conn.pid == os.getpid():
+                                continue # [SAFE] Skip self or unknown
+                            try:
+                                p = psutil.Process(conn.pid)
+                                logger.warning(f"[ASSASSIN] Reaping stubborn port {port} occupant: PID {p.pid} ({p.name()})")
+                                p.kill()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+
+                subprocess.run(["sudo", "fuser", "-k", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
+                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
+                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
+            except Exception as e:
+                logger.error(f"[ASSASSIN] Port purge failed: {e}")
+
         if not target_pids:
             logger.info("[ASSASSIN] No tracked processes in ledger. Clean slate.")
             return
@@ -1158,14 +1181,6 @@ class LabAttendantV4:
             try:
                 if psutil.pid_exists(pid):
                     os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
-        
-        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
-        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
-            try:
-                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
-                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
             except Exception:
                 pass
 
