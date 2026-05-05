@@ -1017,6 +1017,12 @@ class AcmeLab:
             "residents": len(self.residents)
         })
 
+    async def stop_handler(self, request):
+        """[FEAT-324] Graceful Shutdown: Sets the shutdown event and closes the server."""
+        logging.warning("[HUB] Remote STOP signal received via REST. Initiating graceful shutdown...")
+        self.shutdown_event.set()
+        return web.json_response({"status": "stopping", "message": "Shutdown event set."})
+
     async def handle_stream_ingest(self, request):
         """[FEAT-233.2] Live Hearing Pipe: Ingests tokens from nodes and broadcasts them."""
         try:
@@ -1763,6 +1769,10 @@ class AcmeLab:
         for path in ["/heartbeat", "/hub/heartbeat", "/status", "/hub/status"]:
             hb_route = app.router.add_get(path, self.heartbeat_handler)
             cors.add(hb_route)
+
+        # [FEAT-324] Graceful Shutdown: Support remote stop via REST
+        stop_route = app.router.add_post("/stop", self.stop_handler)
+        cors.add(stop_route)
 
         # [FEAT-233.2] Live Hearing Pipe: Out-of-band token ingestion
         stream_route = app.router.add_post("/stream_ingest", self.handle_stream_ingest)
