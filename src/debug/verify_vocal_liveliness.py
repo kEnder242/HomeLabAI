@@ -17,7 +17,7 @@ def get_key():
 
 async def verify_vocal():
     print("[*] Performing Physician's Final Assertion (Cognitive Truth check)...")
-    url = "http://127.0.0.1:8765/hub"
+    url = "http://127.0.0.1:8765/"
     key = get_key()
     
     try:
