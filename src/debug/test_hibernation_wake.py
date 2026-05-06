@@ -2,7 +2,6 @@ import asyncio
 import json
 import requests
 import websockets
-import os
 import time
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"

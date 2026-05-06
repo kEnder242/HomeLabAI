@@ -12,7 +12,7 @@ def get_key():
     try:
         with open(STYLE_CSS, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()[:8]
-    except:
+    except Exception:
         return "none"
 
 async def verify_vocal():
