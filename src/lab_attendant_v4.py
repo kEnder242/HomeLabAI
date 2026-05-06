@@ -314,6 +314,24 @@ class LabAttendantV4:
             # [FEAT-318.7] RAM-Aware Watchdog: Prevent system-wide OOM
             try:
                 mem = psutil.virtual_memory()
+                
+                # [FEAT-330] Physical Governor: Signal-based Throttling
+                mass_scan_pid_file = os.path.join(LAB_DIR, "run/mass_scan.pid")
+                if os.path.exists(mass_scan_pid_file):
+                    try:
+                        with open(mass_scan_pid_file, "r") as f:
+                            pid = int(f.read().strip())
+                        
+                        if mem.percent > 85:
+                            os.kill(pid, signal.SIGUSR1) # PAUSE
+                            logger.warning(f"[GOVERNOR] High RAM ({mem.percent}%). Throttling background workers (PID {pid}).")
+                        elif mem.percent < 70:
+                            os.kill(pid, signal.SIGUSR2) # RESUME
+                    except ProcessLookupError:
+                        os.remove(mass_scan_pid_file) # Stale PID
+                    except Exception as e:
+                        logger.error(f"[GOVERNOR] Throttling failed: {e}")
+
                 if mem.percent > 95:
                     logger.critical(f"[WATCHDOG] CRITICAL RAM EXHAUSTED: {mem.percent}%. Triggering emergency hibernation.")
                     self.log_event("Critical RAM usage detected (>95%). Emergency hibernation triggered.", "CRITICAL")
