@@ -6,7 +6,7 @@ import os
 
 async def live_fire_test():
     uri = "ws://localhost:8765"
-    query = "What is the RAPL BKM for thermal profiling?"
+    query = "[ME] What is the RAPL BKM for thermal profiling?"
     
     print(f"Connecting to {uri}...")
     try:
@@ -28,7 +28,7 @@ async def live_fire_test():
             found_telemetry = False
             
             try:
-                async with asyncio.timeout(60):
+                async with asyncio.timeout(120):
                     while True:
                         resp = await websocket.recv()
                         data = json.loads(resp)

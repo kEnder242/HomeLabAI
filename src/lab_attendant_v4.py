@@ -1573,6 +1573,8 @@ class LabAttendantV4:
                     
                     if "[OPERATIONAL] Hub foyer is fully synchronized." in line or "[OPERATIONAL] Hub foyer successfully woken" in line:
                         self.ready_event.set()
+                        # [FIX] Clear ignition reason once operational to allow 30s TTL to take over
+                        self.current_reason = "IDLE"
                         # [FEAT-302] Stability Latch: Record when we reached operational
                         if not self._operational_start_time:
                             self._operational_start_time = time.time()
