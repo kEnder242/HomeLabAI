@@ -631,6 +631,31 @@ class AcmeLab:
 
             if self.connected_clients:
                 # [FEAT-221.2] Persona Gate: Only banter if the mind is actually active
+                if self.status == "OPERATIONAL":
+                    if random.random() < 0.1: # 10% chance per tick
+                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
+                
+                await self.broadcast(
+                    {
+                        "type": "status",
+                        "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, operational
+                        "brain_online": self.brain_online,
+                        "full_lab_ready": self.brain_online and self.status == "OPERATIONAL", # [FEAT-265.6]
+                        "hibernating": (self.status == "HIBERNATING")
+                    }
+                )
+                # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
+                if idle_time > 60:
+                    if not self.is_user_typing() and random.random() < 0.05:
+                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
+
+                # [FEAT-329] Remote Brain Cool-down: Suspend probes during extended inactivity
+                if is_active or self.status in ["WAKING", "BOOTING"]:
+                    await self.check_brain_health()
+                else:
+                    if self.brain_online:
+                        logging.info("[HEALTH] Remote Brain Cool-down: Suspending probes due to inactivity.")
+                        self.brain_online = False # Mark as passive/cooling
 
     async def _log_tailer_loop(self):
         """[FEAT-313.2] Live Engine Logs: Stream vLLM progress to the Intercom."""

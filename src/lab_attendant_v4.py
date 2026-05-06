@@ -585,13 +585,15 @@ class LabAttendantV4:
                                     async with session.post("http://127.0.0.1:8765/wake", timeout=2.0) as rh:
                                         if rh.status == 200:
                                             logger.info("[WAKE] Hub foyer notified of wake.")
-                                except Exception: pass
+                                except Exception:
+                                    pass
 
                                 # [FEAT-255.1] Update status file immediately
                                 try:
                                     with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
                                         json.dump({"mode": engine, "model": current_model, "reason": f"WAKE_{reason}", "session": self.session_token, "timestamp": time.time()}, f)
-                                except Exception: pass
+                                except Exception:
+                                    pass
                                 return {"status": "success", "message": "vLLM woken from sleep mode."}
                 except Exception as e:
                     logger.warning(f"[WAKE] Fast-wake failed, proceeding with full ignition: {e}")
@@ -1435,7 +1437,8 @@ class LabAttendantV4:
         except Exception as e:
             logger.debug(f"[PROBE] Overall probe failed: {e}")
 
-        # [FIX] Final vocal state must be the union of local and cached to ensure 'is_op' is accurate
+        # [FIX] Final states must be the union of local and cached to ensure 'is_op' is accurate
+        engine_up = engine_up or getattr(self, "_engine_state_cache", False)
         engine_vocal = engine_vocal or getattr(self, "_vocal_state_cache", False)
         
         used_mb, total_mb = await self._get_vram_info()
@@ -1638,6 +1641,9 @@ class LabAttendantV4:
                             res = await r.json()
                             if "choices" in res:
                                 logger.info(f"[VLLM] Engine is VOCAL and REASONING after {int(time.time() - start_t)}s.")
+                                # [FIX] Update internal caches to reflect cognitive truth
+                                self._engine_state_cache = True
+                                self._vocal_state_cache = True
                                 return True
             except Exception as e:
                 logger.debug(f"[VLLM] Cognitive probe attempt failed: {e}")
