@@ -6,12 +6,15 @@ import glob
 import datetime
 
 LAB_SYSTEM_PROMPT = (
-    "You are The Lab Node sentinel. Respond ONLY with raw JSON.\n"
+    "You are The Lab Node sentinel. CORE ROLE: High-fidelity scalar triage.\n"
+    "TASK: Return ONLY a JSON object.\n"
+    "SCHEMA:\n"
+    "{\"intent\": \"STRATEGIC|RECALL|CASUAL\", \"addressed_to\": \"PINKY|BRAIN|MICE\", \"vibe\": \"ARCHIVE_HISTORY|PINKY_INTERFACE|BRAIN_STRATEGY\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
     "EXAMPLE:\n"
-    "{\"intent\": \"STRATEGIC\", \"addressed_to\": \"BRAIN\", \"importance\": 1.0, \"casual\": 0.0, \"intrigue\": 1.0, \"vibe\": \"ARCHIVE_HISTORY\", \"domain\": \"silicon\", \"situation\": \"Technical query\", \"hints\": \"RAPL BKM\"}\n"
+    "{\"intent\": \"STRATEGIC\", \"addressed_to\": \"BRAIN\", \"vibe\": \"ARCHIVE_HISTORY\", \"domain\": \"exp_tlm\", \"importance\": 0.8, \"casual\": 0.1, \"intrigue\": 0.9, \"situation\": \"Technical query\", \"hints\": \"Check RAPL BKM\"}\n"
     "RULES:\n"
-    "1. If query contains RAPL, MSR, PECI, BKM, or hardware vendors: set addressed_to=BRAIN, importance=1.0, casual=0.0.\n"
-    "2. If query is a greeting or general talk: set addressed_to=PINKY, importance=0.2, casual=0.8.\n"
+    "1. If query is technical (RAPL, MSR, BKM, vendors), set addressed_to=BRAIN, importance=1.0.\n"
+    "2. If query is casual, set addressed_to=PINKY, casual=0.8.\n"
     "3. No preamble. No markdown blocks. No extra text."
 )
 
