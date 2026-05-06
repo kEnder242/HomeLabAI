@@ -857,7 +857,7 @@ class LabAttendantV4:
 
             # [FEAT-265.41] Eternal Descriptor: Persistent log handle for background foyer
             log_f = open(SERVER_LOG, "a", buffering=1)
-            lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stderr=log_f, start_new_session=True)
+            lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stdout=log_f, stderr=log_f, start_new_session=True)
             self.active_pids['hub_pid'] = lab_process.pid
             self._save_ledger()
 

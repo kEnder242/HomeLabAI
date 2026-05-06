@@ -1046,6 +1046,9 @@ class AcmeLab:
         """[FEAT-233.2] Live Hearing Pipe: Ingests tokens from nodes and broadcasts them."""
         try:
             data = await request.json()
+            print(f"DEBUG: INGEST from {data.get('brain_source', data.get('source'))}")
+            import sys
+            sys.stdout.flush()
             # Broadcast directly to WebSocket clients
             # This allows nodes to stream tokens out-of-band while the Hub waits for the full block
             await self.broadcast(data)
@@ -1099,29 +1102,33 @@ class AcmeLab:
                 await asyncio.sleep(1)
 
     async def _drain_neural_buffer(self):
-        """[FEAT-283] Drain the neural buffer once the engine is ready."""
-        # [FIX] Sequence Awareness: Wait for spark sequence to physically finish
-        # This prevents drained queries from being immediately re-queued.
-        while getattr(self, "_spark_active", False):
-            await asyncio.sleep(2)
-
-        if self._neural_queue.empty():
-            return
+        """[FEAT-283] Persistent Neural Buffer Drainer."""
+        while not self.shutdown_event.is_set():
+            # Wait for the mind to be vocal
+            await self.engine_ready.wait()
             
-        count = self._neural_queue.qsize()
-        logging.info(f"[HUB] Draining Neural Buffer: {count} items.")
-        
-        # [FEAT-321] Queue Feedback: Notify the user that the wait is over
-        await self.broadcast({
-            "type": "crosstalk", 
-            "brain": f"Anchors established. Processing {count} queued request(s)...", 
-            "brain_source": "System"
-        })
+            # [FIX] Sequence Awareness: Wait for spark sequence to physically finish
+            while getattr(self, "_spark_active", False):
+                await asyncio.sleep(1)
 
-        while not self._neural_queue.empty():
-            query = await self._neural_queue.get()
-            asyncio.create_task(self.process_query(query))
-            self._neural_queue.task_done()
+            if not self._neural_queue.empty():
+                count = self._neural_queue.qsize()
+                logging.info(f"[HUB] Draining Neural Buffer: {count} items.")
+                
+                # [FEAT-321] Queue Feedback
+                await self.broadcast({
+                    "type": "crosstalk", 
+                    "brain": f"Anchors established. Processing {count} queued request(s)...", 
+                    "brain_source": "System"
+                })
+
+                while not self._neural_queue.empty():
+                    query = await self._neural_queue.get()
+                    # Spark processing
+                    asyncio.create_task(self.process_query(query))
+                    self._neural_queue.task_done()
+            
+            await asyncio.sleep(1)
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
@@ -1443,6 +1450,9 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
+        print(f"DEBUG: process_query START: {query[:30]}")
+        import sys
+        sys.stdout.flush()
         # [FEAT-265.45] Sovereign Context: Capture active key to prevent 401 drift
         request_key = get_style_key()
         
@@ -1478,65 +1488,40 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
-            # [FEAT-265.47] Task Sovereignty: Manage the background feedback sequence
-            if self._wake_task and not self._wake_task.done():
-                logging.info("[HUB] Task Sovereignty: Yielding to active wake sequence.")
-                # Buffer and wait
-                await self._neural_queue.put(query)
-                return ""
-
-            # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': request_key}, timeout=1.0) as r:
-                        if r.status == 200:
-                            data = await r.json()
-                            reason = data.get("vitals", {}).get("reason", "")
-                            if reason in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
-                                logging.info(f"[HUB] Yielding restoration trigger to active Attendant session ({reason}).")
-                                # Still buffer the query
-                                await self._neural_queue.put(query)
-                                return ""
-            except Exception:
-                pass
-
-            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive/error. Triggering Sovereign vLLM ignition.")
-            # [FEAT-265.13] Sovereign Wake: Force VLLM ignition via Attendant
-            asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
-            # Notify user
-            await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. I've queued your request.", "brain_source": "System"})
-            # Buffer the query
-            await self._neural_queue.put(query)
-            
-            # [FEAT-265.44] Resumption Feedback: Wait for sync to finish
-            async def _wait_and_signal():
-                try:
-                    # Wait up to 300s for Attendant to signal OPERATIONAL
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={request_key}") as ready_req:
-                            if ready_req.status == 200:
-                                # [FEAT-265.48] Absolute Resumption: Force fresh node sync
-                                logging.info("[HUB] Resumption verified. Forcing fresh node synchronization.")
-                                self._residents_booted = False
-                                self.residents = {}
-                                await self.boot_residents(self.exit_stack)
-                                self.status = "OPERATIONAL"
-                                await self.broadcast({"type": "chat", "content": "[WAKE] Lab is now vocal and ready for reasoning.", "brain_source": "System"})
-                                await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
-
-                except Exception:
-                    return ""
-            
-            # [FEAT-265.47] Task Sovereignty: Manage the background feedback sequence
-            if self._wake_task and not self._wake_task.done():
-                logging.info("[HUB] Task Sovereignty: Yielding to active wake sequence.")
-                return ""
+            # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
+            if not self._wake_task or self._wake_task.done():
+                logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
+                # Spark ignition via Attendant
+                asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
                 
-            self._wake_task = asyncio.create_task(_wait_and_signal())
-            return ""
+                async def _wait_and_signal():
+                    try:
+                        expected_key = get_style_key()
+                        async with aiohttp.ClientSession() as session:
+                            # Wait for Attendant to signal OPERATIONAL
+                            async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
+                                if ready_req.status == 200:
+                                    logging.info("[HUB] Resumption verified. Synchronizing residents...")
+                                    self._residents_booted = False
+                                    await self.boot_residents(self.exit_stack)
+                                    self.status = "OPERATIONAL"
+                                    self.engine_ready.set()
+                                    await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+                    except Exception as e:
+                        logging.error(f"[HUB] Wake sequence failed: {e}")
+                
+                self._wake_task = asyncio.create_task(_wait_and_signal())
+
+            # Notify user and wait for readiness event (Non-blocking)
+            await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
+            
+            # [FIX] Instead of re-queueing (Loop), we wait for the event here
+            logging.info(f"[HUB] Query '{query[:30]}' waiting for engine_ready event...")
+            await self.engine_ready.wait()
+            logging.info(f"[HUB] Query '{query[:30]}' engine is ready. Proceeding.")
 
         # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
-        while getattr(self, "_spark_active", False):
+        while getattr(self, "_spark_active", False) and self.status != "OPERATIONAL":
             await asyncio.sleep(1)
             
         await self.update_turn_density()
@@ -1588,9 +1573,8 @@ class AcmeLab:
             
         self._residents_booted = True
         
-        # [FIX] Signal liveness early so handshakes don't block during long sync
+        # [FIX] Signal logical liveness early so handshakes don't block during long sync
         self.status = "OPERATIONAL"
-        self.engine_ready.set()
 
         # [FEAT-283] Drain buffered queries once ready
         asyncio.create_task(self._drain_neural_buffer())
@@ -1644,6 +1628,10 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
+        # [FIX] Release Spark Lock and signal cognitive readiness after residents are synced
+        self._spark_active = False
+        self.engine_ready.set()
+        
         # [FEAT-265.1] Vocal-Lock Protocol: Final Cognitive Probe
         logging.info("[BOOT] Larynx Check: Performing final cognitive probe...")
         try:
