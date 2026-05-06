@@ -86,7 +86,7 @@ class BicameralNode:
         self.lora_name = node_cfg.get("lora_name")
 
         @self.mcp.tool()
-        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False) -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.0) -> str:
             """
             [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
             Supports real-time token yielding to the Hub for internal waterfall streaming.
@@ -96,16 +96,17 @@ class BicameralNode:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
 
             full_response = ""
-            # [FEAT-233] Internal Waterfall: Broadcast tokens even if 'internal' is True, 
-            # but tag them so the Hub can route them correctly.
-            stream_source = self.name
+            # [FEAT-233] Internal Waterfall: Only broadcast tokens to UI if NOT internal.
+            # Internal turns (Triage/Intuition) are overheard via the Hub's stream_ingest.
+            stream_source = self.name if not internal else None
             
             # [FEAT-307] Sanitary Filter: Redirect turn-level noise to stderr
             # This is critical to prevent logs from breaking the stdio MCP transport.
             import sys
             from contextlib import redirect_stdout
             with redirect_stdout(sys.stderr):
-                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source):
+                # Pass sampling parameters for small model stability
+                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty):
                     full_response += token
                 
             return full_response
@@ -285,7 +286,7 @@ class BicameralNode:
                 self._session = None
             return False, f"Connection failed: {e}"
 
-    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None):
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.0):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
@@ -344,7 +345,8 @@ class BicameralNode:
                 "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
                 "max_tokens": max_tokens,
-                "temperature": 0.2,
+                "temperature": temperature,
+                "repetition_penalty": repetition_penalty,
                 "stream": True
             }
             if self.lora_name:
@@ -354,7 +356,7 @@ class BicameralNode:
                 "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
                 "stream": True,
-                "options": {"temperature": 0.2, "num_predict": max_tokens}
+                "options": {"temperature": temperature, "num_predict": max_tokens, "repeat_penalty": repetition_penalty}
             }
 
         self._mirror_trace("send", payload, url=engine["url"], metadata=metadata)
