@@ -725,6 +725,16 @@ class AcmeLab:
 
     async def run_full_induction_cycle(self, auto_hibernate=False):
         """Executes the Inverted Chain: Fast admin tasks -> Long-tail GPU grind."""
+        # [FEAT-331] Physical Lockdown: Notify Attendant to prevent OOM collisions
+        try:
+            expected_key = get_style_key()
+            async with aiohttp.ClientSession() as session:
+                await session.post(f"http://127.0.0.1:9999/lockdown?key={expected_key}")
+                logging.info("[ALARM] Physical Lockdown initiated via Attendant.")
+        except Exception as e:
+            logging.warning(f"[ALARM] Lockdown handshake failed: {e}")
+
+        self.status = "MAINTENANCE"
         msg = "[ALARM] Initiating Full Induction Cycle..."
         await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
         self.trigger_pager(msg, severity="info", source="Induction")
@@ -828,10 +838,18 @@ class AcmeLab:
             await self.broadcast({"type": "crosstalk", "brain": msg_final, "brain_source": "System"})
             self.trigger_pager(msg_final, severity="info", source="Induction")
 
+            # [FEAT-331] Physical Release: Allow normal Lab operation
+            try:
+                expected_key = get_style_key()
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f"http://127.0.0.1:9999/ignite?key={expected_key}&reason=INDUCTION_COMPLETE")
+                    logging.info("[ALARM] Physical Lockdown released via Attendant.")
+            except Exception as e:
+                logging.warning(f"[ALARM] Release handshake failed: {e}")
+
             if auto_hibernate:
                 logging.warning("[HUB] Nightly cycle finished with auto-hibernate enabled. Sleeping.")
                 await self._hibernate()
-        
         # Dispatch the long-tail grind to the background
         asyncio.create_task(_run_background_induction())
 
@@ -1478,6 +1496,12 @@ class AcmeLab:
             if not engine_vocal:
                 self.engine_ready.clear()
                 self.status = "HIBERNATING"
+
+        # [FEAT-331] Hardened Lockdown: Explicitly block waking during Maintenance/ALARM
+        if self.status == "MAINTENANCE" or os.path.exists(MAINTENANCE_LOCK):
+            msg = "Lab is currently in Maintenance/Dream Cycle. Waking is restricted to protect background synthesis."
+            await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+            return ""
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
