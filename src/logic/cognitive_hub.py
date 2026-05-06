@@ -276,7 +276,7 @@ class CognitiveHub:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
@@ -295,7 +295,9 @@ class CognitiveHub:
             # Real-time overhearing happens via handle_stream_ingest -> on_token
             node = self.residents[node_id]
             res = await node.call_tool("think", {
-                "query": query, "context": context, "tools": tools or [], "behavioral_guidance": behavioral_guidance, "internal": is_internal
+                "query": query, "context": context, "tools": tools or [], 
+                "behavioral_guidance": behavioral_guidance, "internal": is_internal,
+                "temperature": temperature, "repetition_penalty": repetition_penalty
             })
             
             result_text = str(res.content[0].text) if hasattr(res, 'content') else str(res)
@@ -362,9 +364,12 @@ class CognitiveHub:
                 try:
                     await self.broadcast({"type": "status", "state": "triage_start", "message": f"Triage Attempt {triage_attempt+1}...", "brain_source": "System"})
                     # Triage is a blocking call to establish routing
-                    # [FIX] Correct parameter name: is_internal
-                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True)
+                    # [FIX] Use stable sampling for high-fidelity prompt
+                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True, temperature=0.2, repetition_penalty=1.2)
 
+                    print(f"DEBUG: TRIAGE_RAW: {t_text}")
+                    import sys
+                    sys.stdout.flush()
                     logging.info(f"[HUB] Triage Output: {t_text}")
 
                     t_clean = self.bridge_signal_clean(t_text)
@@ -390,15 +395,10 @@ class CognitiveHub:
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
 
-                    # [DEBUG] Force direct file write for fuel tracking
-                    try:
-                        with open("/home/jallred/Dev_Lab/HomeLabAI/logs/fuel_debug.log", "a") as f:
-                            f.write(f"{datetime.datetime.now()} | FUEL: {self.current_fuel:.2f} | Imp: {raw_imp} | Cas: {raw_cas} | Int: {raw_int} | Query: {query[:50]}\n")
-                    except Exception: pass
-
                     logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> FUEL={self.current_fuel:.2f}")
 
                     # [FEAT-246] Unified Vibe Schema
+
                     self.current_topic = triage_data_update.get("vibe", "PINKY_INTERFACE")
                     intent = triage_data_update.get("intent", "STRATEGIC")
 
@@ -411,6 +411,7 @@ class CognitiveHub:
                         self.current_fuel = min(0.15, self.current_fuel)
 
                     await self.broadcast({"type": "status", "state": "triage_complete", "message": "Routing determined.", "brain_source": "System"})
+                    await self.broadcast({"type": "crosstalk", "brain": "[HUB] Triage successful. Routing logic determined.", "brain_source": "System"})
                     break # SUCCESS
 
                 

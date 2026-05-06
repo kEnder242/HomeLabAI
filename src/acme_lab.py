@@ -578,7 +578,6 @@ class AcmeLab:
                 logging.error(f"[HUB] Spark reload failed: {e}")
                 self.status = "ERROR"
             finally:
-                await asyncio.sleep(10)
                 self._spark_active = False
 
         asyncio.create_task(_run_ignition())
@@ -1046,9 +1045,6 @@ class AcmeLab:
         """[FEAT-233.2] Live Hearing Pipe: Ingests tokens from nodes and broadcasts them."""
         try:
             data = await request.json()
-            print(f"DEBUG: INGEST from {data.get('brain_source', data.get('source'))}")
-            import sys
-            sys.stdout.flush()
             # Broadcast directly to WebSocket clients
             # This allows nodes to stream tokens out-of-band while the Hub waits for the full block
             await self.broadcast(data)
@@ -1450,9 +1446,6 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
-        print(f"DEBUG: process_query START: {query[:30]}")
-        import sys
-        sys.stdout.flush()
         # [FEAT-265.45] Sovereign Context: Capture active key to prevent 401 drift
         request_key = get_style_key()
         
@@ -1527,19 +1520,7 @@ class AcmeLab:
         await self.update_turn_density()
         exit_hint = self.get_exit_hint(query)
 
-        # [FEAT-265.46] Sovereign Gate: Strictly forbid delegation if not vocal
-        # Intent queries wait patiently for the mind to warm (Weights re-load)
-        while getattr(self, "_spark_active", False) or self.status != "OPERATIONAL":
-            if query.startswith("[ME]"):
-                 # [FEAT-265.49] Physical Authority: Check if VRAM is back using non-blocking vitals
-                 if hasattr(self, "_last_vitals") and int(self._last_vitals.get("vram_mib", 0)) > 5000:
-                     logging.info("[HUB] Physical Authority: VRAM confirmed resident. Proceeding.")
-                     break
-                     
-                 await asyncio.sleep(2)
-                 continue
-            return ""
-
+        # [FIX] Redundant wait loop removed. _drain_neural_buffer handles readiness.
         self.status = "WORKING"
         # [FEAT-265.48] Absolute State: Serialized Triage
         async with self._triage_lock:
@@ -1575,9 +1556,6 @@ class AcmeLab:
         
         # [FIX] Signal logical liveness early so handshakes don't block during long sync
         self.status = "OPERATIONAL"
-
-        # [FEAT-283] Drain buffered queries once ready
-        asyncio.create_task(self._drain_neural_buffer())
         
         await self.broadcast(
             {
@@ -1631,6 +1609,9 @@ class AcmeLab:
         # [FIX] Release Spark Lock and signal cognitive readiness after residents are synced
         self._spark_active = False
         self.engine_ready.set()
+
+        # [FEAT-283] Drain buffered queries once ready
+        asyncio.create_task(self._drain_neural_buffer())
         
         # [FEAT-265.1] Vocal-Lock Protocol: Final Cognitive Probe
         logging.info("[BOOT] Larynx Check: Performing final cognitive probe...")
