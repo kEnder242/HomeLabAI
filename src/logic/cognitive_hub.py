@@ -4,6 +4,7 @@ import logging
 import re
 import os
 import time
+import datetime
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
@@ -13,7 +14,8 @@ class CognitiveHub:
     [FEAT-239] Neural Action Tags: Natural language steering hints.
     [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None):
+        from collections import defaultdict
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
@@ -21,8 +23,15 @@ class CognitiveHub:
         self.trigger_morning_briefing_cb = trigger_morning_briefing
         self.monitor_task_with_tics = monitor_task_with_tics
         self.last_prime_callback = last_prime_callback
-        self.auditor = None  # [FEAT-190] The Judge
+        self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
         
+        # [FEAT-233.7] Session Buffers: Real-time context for inter-node overhearing
+        self.session_buffers = defaultdict(str)
+        self.current_fuel = 0.0
+        self.current_topic = "Casual"
+        self.resonant_history = []
+        self.triage_failures = 0 # [FEAT-270] Track consecutive failures
+
         # [BKM-015] Anchor Migration
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
         self.anchors_path = os.path.join(self.config_dir, "intent_anchors.json")
@@ -38,14 +47,28 @@ class CognitiveHub:
             with open(self.semantic_map_path, "r") as f:
                 self.semantic_map = json.load(f)
         
-        self.resonant_history = []
-        self.current_fuel = 0.0
-        self.current_topic = "Casual"
-        self.triage_failures = 0 # [FEAT-270] Track consecutive failures
+        self.auditor = None  # [FEAT-190] The Judge
+
+    def on_token(self, data):
+        """[FEAT-233.7] Real-time token ingestion for inter-node overhearing."""
+        source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
+        token = data.get("brain", "")
+        if token:
+            self.session_buffers[source] += token
+            # [DEBUG] Trace waterfall flow
+            if "triage" not in source:
+                logging.debug(f"[WATERFALL] Ingested token from {source} ({len(self.session_buffers[source])} total)")
 
     def bridge_signal_clean(self, text):
-        """[FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output."""
-        if not text or "{" not in text:
+        """[FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output. Hardened for vLLM 3B."""
+        if not text:
+            return None
+
+        # [Task 2.2] Harden: Handle thinking blocks or pex noise
+        # Strip <thought> tags if present
+        text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
+        
+        if "{" not in text:
             return None
 
         # 1. Strip markdown blocks
@@ -68,19 +91,21 @@ class CognitiveHub:
                     start_idx = -1
 
         if not json_blocks:
-            # Fallback to greedy regex if balance logic fails
+            # Fallback to greedy regex
             match = re.search(r'(\{.*\})', clean, re.DOTALL)
             if match:
                 json_blocks = [match.group(1)]
             else:
                 return None
 
-        # 3. Parse first block
+        # 3. Parse first valid block
         for block in json_blocks:
             try:
                 # [FEAT-220.2] Structural Sanitization
                 block = block.replace("{{", "{").replace("}}", "}")
                 block = block.replace("'", '"')
+                # Fix common JSON errors from small models
+                block = re.sub(r",\s*}", "}", block) # trailing comma
                 block = block.replace("True", "true").replace("False", "false")
                 block = block.replace('"::', '":')
                 return json.loads(block)
@@ -252,11 +277,10 @@ class CognitiveHub:
             return {"adapter": "exp_for", "guidance": ""}
 
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False):
-        """[FEAT-233.4] Internal Token Buffer & Stream Parser."""
+        """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
         
-        full_text = ""
         # [FEAT-242.1] Handshake Tic (Only if not internal)
         if not is_internal:
             await self.broadcast({
@@ -267,31 +291,25 @@ class CognitiveHub:
             })
 
         try:
-            # [FEAT-248] Hardened Stream Bridge with 30s timeout and Fallback
-            async with asyncio.timeout(30):
-                node = self.residents[node_id]
-                # [FEAT-240.2] Relay Pattern Path: Use the standard 'think' tool
-                res = await node.call_tool("think", {
-                    "query": query,
-                    "context": context,
-                    "tools": tools,
-                    "behavioral_guidance": behavioral_guidance,
-                    "internal": is_internal # Suppress out-of-band streaming
-                })
-                full_text = str(res.content[0].text)
+            # [Task 1.1] Spark the node and wait for full block
+            # Real-time overhearing happens via handle_stream_ingest -> on_token
+            node = self.residents[node_id]
+            res = await node.call_tool("think", {
+                "query": query, "context": context, "tools": tools or [], "behavioral_guidance": behavioral_guidance, "internal": is_internal
+            })
             
-            if full_text:
-                # [FEAT-287] Activity Latch: Successful response resets the priming timer
-                if node_id == "brain" or node_id == "shadow":
-                    self.last_activity = time.time()
-                    # We signal back to the main lab instance to update its prime tracking
-                    if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
-                        self.last_prime_callback(time.time())
-                
-                # Buffering check: Only dispatch to UI once node finishes
-                await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, final=True)
+            result_text = str(res.content[0].text) if hasattr(res, 'content') else str(res)
             
-            return full_text
+            # [FEAT-287] Activity Latch
+            if node_id == "brain" or node_id == "shadow":
+                self.last_activity = time.time()
+                if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
+                    self.last_prime_callback(time.time())
+            
+            # Final dispatch to UI
+            await self.execute_dispatch(result_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, final=True)
+            return result_text
+            
         except Exception as e:
             logging.error(f"[HUB] Stream from {node_id} failed: {e}")
             return ""
@@ -328,9 +346,11 @@ class CognitiveHub:
         self.current_topic = "Casual"
         intent = "STRATEGIC"
         self.trigger_briefing_cb = trigger_briefing_callback
+        
+        # [FEAT-233.9] Reset Waterfall: Clear session buffers for fresh turn
+        self.session_buffers.clear()
 
         # 1. Lab Node Triage
-
         addressed_to = "MICE" # Default to collective
         triage_data_update = {} # [FIX] Initialize early
         
@@ -340,25 +360,16 @@ class CognitiveHub:
             # [FEAT-270.2] Triage Persistence
             for triage_attempt in range(3):
                 try:
-                    t_res = await self.residents["lab"].call_tool("think", {"query": query, "internal": True})
+                    await self.broadcast({"type": "status", "state": "triage_start", "message": f"Triage Attempt {triage_attempt+1}...", "brain_source": "System"})
+                    # Triage is a blocking call to establish routing
+                    # [FIX] Correct parameter name: is_internal
+                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True)
 
-                    if not t_res or not t_res.content:
-                        raise ValueError("EMPTY_MCP_RESPONSE")
+                    logging.info(f"[HUB] Triage Output: {t_text}")
 
-                    raw_t_text = str(t_res.content[0].text) if hasattr(t_res.content[0], "text") else str(t_res.content[0])
-
-                    
-                    # [FEAT-270.1] Gibberish Detector: Only reset on ACTUAL model garbage
-                    non_alnum = len(re.sub(r'[a-zA-Z0-9\s.,?!]', '', raw_t_text))
-                    is_error_msg = "Error:" in raw_t_text or "Connection failed" in raw_t_text
-                    is_garbage = not is_error_msg and ((len(raw_t_text) > 20 and (non_alnum / len(raw_t_text)) > 0.4) or "\x00" in raw_t_text)
-                    
-                    if is_garbage:
-                        await self.broadcast({"type": "crosstalk", "brain": "[HUB] SILICON LOBOTOMY: Engine is returning garbage.", "brain_source": "System"})
-                        raise ValueError("SILICON_LOBOTOMY")
-
-                    t_clean = self.bridge_signal_clean(raw_t_text)
+                    t_clean = self.bridge_signal_clean(t_text)
                     if not t_clean:
+                        logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
                         raise ValueError("TRIAGE_PARSE_FAILURE")
 
                     # [FEAT-270.3] Type-Agnostic Triage Parser (ERR-06)
@@ -366,10 +377,10 @@ class CognitiveHub:
                         t_parsed = t_clean
                     else:
                         t_parsed = json.loads(t_clean)
-                        
+
                     self.triage_failures = 0 # [FIX] Reset on successful parse
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
-                    
+
                     # [FEAT-244] Speaker Masking Scalar
                     addressed_to = triage_data_update.get("addressed_to", "MICE").upper()
 
@@ -378,7 +389,15 @@ class CognitiveHub:
                     raw_cas = float(triage_data_update.get("casual", 0.5))
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
-                    
+
+                    # [DEBUG] Force direct file write for fuel tracking
+                    try:
+                        with open("/home/jallred/Dev_Lab/HomeLabAI/logs/fuel_debug.log", "a") as f:
+                            f.write(f"{datetime.datetime.now()} | FUEL: {self.current_fuel:.2f} | Imp: {raw_imp} | Cas: {raw_cas} | Int: {raw_int} | Query: {query[:50]}\n")
+                    except Exception: pass
+
+                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> FUEL={self.current_fuel:.2f}")
+
                     # [FEAT-246] Unified Vibe Schema
                     self.current_topic = triage_data_update.get("vibe", "PINKY_INTERFACE")
                     intent = triage_data_update.get("intent", "STRATEGIC")
@@ -390,12 +409,20 @@ class CognitiveHub:
                     elif addressed_to == "PINKY" and self.current_fuel > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
-                    
-                    await self.broadcast({"type": "crosstalk", "brain": "[HUB] Triage successful. Routing logic determined.", "brain_source": "System"})
+
+                    await self.broadcast({"type": "status", "state": "triage_complete", "message": "Routing determined.", "brain_source": "System"})
                     break # SUCCESS
+
                 
                 except Exception as e:
                     logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
+                    # [Task 2.1] Forensic Record: Capture raw output on failure
+                    try:
+                        f_path = os.path.join(self.config_dir, "../logs/triage_forensic.log")
+                        with open(f_path, "a") as f:
+                            f.write(f"\n--- TRIAGE FAIL {datetime.datetime.now()} ---\n{t_text}\n--- END ---\n")
+                    except Exception: pass
+                    
                     if triage_attempt < 2:
                         await asyncio.sleep(2.0 * (triage_attempt + 1))
                     else:
@@ -408,6 +435,8 @@ class CognitiveHub:
                         intent = "STRATEGIC"
 
         fuel_start = self.current_fuel
+        situational_guidance = triage_data_update.get("hints", "")
+        selected_expert = triage_data_update.get("domain", "standard")
 
         # [FEAT-231.1] Operational Shortcut
         if intent == "OPERATIONAL":
@@ -415,49 +444,23 @@ class CognitiveHub:
                 p_res = await self.residents["pinky"].call_tool("think", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
                 return await self.execute_dispatch(p_res.content[0].text, "System", final=True)
 
-        selected_vibe = await self._route_expert_domain(query) if intent != "CASUAL" else {"adapter": "standard", "guidance": ""}
-        selected_expert = selected_vibe["adapter"]
-        situational_guidance = selected_vibe["guidance"]
-
-        # 3. Proactive Archivist & Topographic Injector
+        # 3. Proactive Archivist (RAG context)
         historical_context = ""
-        
-        # [FEAT-306] Multi-Resolution Trigger
-        is_history_query = (self.current_topic == "PINKY_RECALL" or intent == "RECALL" or 
-                           any(k in query.lower() for k in ["synopsis", "history", "what happened", "montana", "kayak"]))
-        
+        is_history_query = (self.current_topic == "PINKY_RECALL" or intent == "RECALL")
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
-            target_year = year_match.group(1)
             try:
-                # Stage 1: Fetch Topography (Yearly Summary)
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Strategic Summary for {target_year}", "n_results": 1})
-                t_raw = str(res_context.content[0].text)
-                rag_data = json.loads(t_raw) if t_raw.strip().startswith("{") else {"text": t_raw}
-                historical_context = rag_data.get("text", t_raw)
-                
-                # [FEAT-306.1] Drill-Down Directive: If history query, proactively pull focal evidence
-                if is_history_query:
-                    logging.info(f"[HUB] Deep Memory Gate triggered for {target_year}.")
-                    focal_query = f"Key technical gems and PECI/Montana events in {target_year}"
-                    res_focal = await self.residents["archive"].call_tool("get_context", {"query": focal_query, "n_results": 5})
-                    f_raw = str(res_focal.content[0].text)
-                    f_data = json.loads(f_raw) if f_raw.strip().startswith("{") else {"text": f_raw}
-                    historical_context += "\n\n[FOCAL EVIDENCE]:\n" + f_data.get("text", "")
-                    
-            except Exception as e:
-                logging.error(f"[HUB] Archivist Triage Failed: {e}")
-                pass
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
+                historical_context = str(res_context.content[0].text)
+            except Exception: pass
 
-        # 4. Parallel Local Inference (Streaming)
+        # 4. Waterfall Local Inference (Cascading Spark)
         pinky_text = ""
         shadow_text = ""
         
         async def run_pinky():
             nonlocal pinky_text
-            # [FEAT-244] Pinky Muting logic: Always run for context, but hide from UI if not addressed
             mute_pinky = addressed_to not in ["PINKY", "MICE"]
-            
             p_context = (f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
                          f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
             pinky_text = await self._process_node_stream(
@@ -470,16 +473,15 @@ class CognitiveHub:
 
         async def run_shadow():
             nonlocal shadow_text
-            # [FEAT-249.4] Shadow Failover: Lower threshold and promote role if brain is offline
             brain_online = self.get_vram_status()
             threshold = 0.0 if not brain_online else 0.2
             role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
-            
-            # Muting logic: Hide from UI if not addressed
             mute_shadow = addressed_to not in ["BRAIN", "MICE"]
             
             if fuel_start > threshold:
-                s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}"
+                # [FEAT-233.8] Overhearing Pinky: Context Warming
+                overheard = self.session_buffers.get("pinky", "")
+                s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}\n[OVERHEARD_GATEWAY]: {overheard}"
                 shadow_text = await self._process_node_stream(
                     "shadow", query, s_context, "Brain (Intuition)",
                     tools=["ask_brain", "think"],
@@ -488,11 +490,32 @@ class CognitiveHub:
                     is_internal=mute_shadow
                 )
 
-        await asyncio.gather(run_pinky(), run_shadow())
+        # [Task 1.2] Cascading Spark: Pinky -> Shadow -> Brain
+        pinky_task = asyncio.create_task(run_pinky())
+        shadow_task = None
+        
+        # 1. Shadow Warming
+        while not pinky_task.done():
+            # If Pinky has started speaking, or if fuel is already high enough
+            if len(self.session_buffers.get("pinky", "").split()) >= 3 or fuel_start > 0.4:
+                logging.info("[HUB] Waterfall: Overheard Pinky. Cascading to Shadow...")
+                shadow_task = asyncio.create_task(run_shadow())
+                break
+            await asyncio.sleep(0.1)
 
-        # 5. Sovereign Brain (Streaming)
-        # [FEAT-244] Brain Muting
-        # [FEAT-249.5] Shadow Fallback: If brain is offline, allow Shadow to handle the deep reasoning
+        # [Task 1.3] Brain Leg
+        # Wait for either local node to finish OR for fuel spike
+        while True:
+            if pinky_task.done() and (not shadow_task or shadow_task.done()):
+                break
+            
+            if self.current_fuel > 0.6:
+                logging.info(f"[HUB] Waterfall: Dynamic Fuel ({self.current_fuel:.2f}) triggered Brain early.")
+                break
+                
+            await asyncio.sleep(0.5)
+
+        # 5. Sovereign Brain (Final Waterfall Leg)
         brain_online = self.get_vram_status()
         can_run_brain = brain_online and "brain" in self.residents
         
@@ -500,19 +523,18 @@ class CognitiveHub:
             target_node = "brain" if can_run_brain else "shadow"
             source_label = "Brain (Result)" if can_run_brain else "Shadow (Failover)"
             
+            # [FEAT-233.8] Double Warming: Overhearing Pinky + Shadow
+            b_overheard_p = self.session_buffers.get("pinky", "")
+            b_overheard_s = self.session_buffers.get("shadow", "")
+            
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
-            if pinky_text:
-                b_context += f"[PINKY_GATEWAY_FRAME]: {pinky_text}\n"
-            if shadow_text:
-                b_context += f"[SHADOW_INTUITION]: {shadow_text}\n"
+            
+            b_context += f"[PINKY_HEARING]: {b_overheard_p}\n"
+            b_context += f"[SHADOW_INTUITION]: {b_overheard_s}\n"
 
-            # [FEAT-249.5] Shadow Fallback: Force exhaustive synthesis if brain is offline
-            if not can_run_brain and target_node == "shadow":
-                verbosity = "Provide full-spectrum exhaustive synthesis."
-            else:
-                verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
+            verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
             
             brain_full = await self._process_node_stream(
                 target_node, query, b_context, source_label,

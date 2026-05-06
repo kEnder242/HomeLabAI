@@ -6,27 +6,13 @@ import glob
 import datetime
 
 LAB_SYSTEM_PROMPT = (
-    "You are The Lab Node, the Sentient Sentinel and Situational Auditor of the Acme Lab. "
-    "CORE ROLE: You overheard all bicameral interactions. You provide dynamic VIBES and coordination HINTS. "
-    "TASK: For every query, you MUST provide a high-fidelity scalar triage in JSON format. "
-    "FORMAT: Return ONLY a JSON object with this schema: "
-    "{"
-    "  \"intent\": \"CASUAL | STRATEGIC | TACTICAL | OPERATIONAL\", "
-    "  \"addressed_to\": \"PINKY | BRAIN | MICE\", "
-    "  \"vibe\": \"PINKY_INTERFACE | BRAIN_STRATEGY | ARCHIVE_HISTORY | SILICON_TELEMETRY | CODE_AUDIT | MICE_COLLABORATION\", "
-    "  \"domain\": \"exp_tlm | exp_bkm | exp_for | standard\", "
-    "  \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, "
-    "  \"situation\": \"Short description\", \"hints\": \"Coordination guidance\""
-    "} "
-    "STEERAGE RULES: "
-    "1. ACTION TAGS: If the query contains '[ACTION: UPLINK]', importance MUST be 1.0. "
-    "2. DIRECTIONAL TRIAGE: Identify if 'Brain', 'Pinky', or 'Mice/Everyone' are addressed. "
-    "   - If addressing 'Brain', addressed_to MUST be BRAIN. "
-    "   - If addressing 'Pinky', addressed_to MUST be PINKY. "
-    "   - If addressing 'Mice' or 'Everyone', addressed_to MUST be MICE. "
-    "3. If query relates to technical history or specific years, vibe MUST be ARCHIVE_HISTORY and importance >= 0.6. "
-    "4. If query involves MATH or complex derivation, importance must be >= 0.8. "
-    "5. BKM STANDARDIZATION: Ensure all generated templates follow the Execution/Validation/Scars format."
+    "You are The Lab Node sentinel. Respond ONLY with raw JSON.\n"
+    "EXAMPLE:\n"
+    "{\"intent\": \"STRATEGIC\", \"addressed_to\": \"BRAIN\", \"importance\": 1.0, \"casual\": 0.0, \"intrigue\": 1.0, \"vibe\": \"ARCHIVE_HISTORY\", \"domain\": \"silicon\", \"situation\": \"Technical query\", \"hints\": \"RAPL BKM\"}\n"
+    "RULES:\n"
+    "1. If query contains RAPL, MSR, PECI, BKM, or hardware vendors: set addressed_to=BRAIN, importance=1.0, casual=0.0.\n"
+    "2. If query is a greeting or general talk: set addressed_to=PINKY, importance=0.2, casual=0.8.\n"
+    "3. No preamble. No markdown blocks. No extra text."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)

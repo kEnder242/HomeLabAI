@@ -148,6 +148,8 @@ class AcmeLab:
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
+        # [FEAT-233.2] Waterfall Queue: Shared buffer for real-time inter-node overhearing
+        self.waterfall_queue = asyncio.Queue()
         self.exit_stack = AsyncExitStack()
         self.shutdown_event = asyncio.Event()
         self.last_activity = time.time()
@@ -167,7 +169,8 @@ class AcmeLab:
             get_vram_status=lambda force=False: self.brain_online,
             trigger_morning_briefing=self.trigger_morning_briefing,
             monitor_task_with_tics=self.monitor_task_with_tics,
-            last_prime_callback=self._update_prime_timer
+            last_prime_callback=self._update_prime_timer,
+            waterfall_queue=self.waterfall_queue
         )
         self.recent_interactions = []
         self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
@@ -1046,6 +1049,13 @@ class AcmeLab:
             # Broadcast directly to WebSocket clients
             # This allows nodes to stream tokens out-of-band while the Hub waits for the full block
             await self.broadcast(data)
+            
+            # [FEAT-233.5] Internal Pipe: Feed the waterfall queue for inter-node overhearing
+            await self.waterfall_queue.put(data)
+            
+            # [FEAT-233.7] Session Buffers: Update real-time context
+            self.cognitive.on_token(data)
+            
             return web.json_response({"status": "ok"})
         except Exception as e:
             logging.error(f"[HUB] Stream ingest failure: {e}")
