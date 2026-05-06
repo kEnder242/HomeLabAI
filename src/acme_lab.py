@@ -588,6 +588,10 @@ class AcmeLab:
             poll_rate = 5.0 if self.status in ["HIBERNATING", "WAKING", "BOOTING"] else 30.0
             await asyncio.sleep(poll_rate)
             
+            # [FEAT-329] Activity-Aware Probing: Track silence for cool-down
+            idle_time = time.time() - self.last_activity
+            is_active = (idle_time < 300) # 5m Activity Window
+
             # [FEAT-265.24] Physical Sync: Pull heartbeat from Attendant
             try:
                 # [FEAT-267] Use dynamic key for REST authorization
@@ -615,44 +619,18 @@ class AcmeLab:
             except Exception:
                 pass
 
-            # [FEAT-249.2] Hardened VRAM Hibernation Logic (Configurable gate)
-            idle_time = time.time() - self.last_activity
-            is_hibernating = (not self.connected_clients and idle_time > self.idle_gate)
+            # [FEAT-249.2] Hardened VRAM Hibernation Logic (Lobby Residency)
+            is_hibernating = (idle_time > self.idle_gate)
 
-            # [FORENSIC] Characterize idle needs
-            if not self.connected_clients and self.status == "OPERATIONAL":
-                logging.debug(f"[IDLE_GAUGE] {int(idle_time)}s/{self.idle_gate}s | Clients: 0 | State: {self.status}")
+            if is_hibernating and self.status == "OPERATIONAL":
+                logging.warning(f"[HUB] VRAM Hibernation triggered ({int(idle_time)}s idle). Unloading local engines...")
+                self.status = "HIBERNATING"
+                self.engine_ready.clear() # [FEAT-265.15] Readiness Reset
+                asyncio.create_task(self._hibernate())
+                self.brain_online = False # Mark offline while sleeping
 
             if self.connected_clients:
                 # [FEAT-221.2] Persona Gate: Only banter if the mind is actually active
-                if self.status == "OPERATIONAL":
-                    if random.random() < 0.1: # 10% chance per tick
-                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
-                
-                await self.broadcast(
-                    {
-                        "type": "status",
-                        "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, operational
-                        "brain_online": self.brain_online,
-                        "full_lab_ready": self.brain_online and self.status == "OPERATIONAL", # [FEAT-265.6]
-                        "hibernating": (self.status == "HIBERNATING")
-                    }
-                )
-                # [FEAT-039] Banter Decay: Slow down reflexes when idle (> 60s)
-                if idle_time > 60:
-                    if not self.is_user_typing() and random.random() < 0.05:
-                        await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
-
-                # [FEAT-085] Check health inside reflex ONLY if clients are active
-                await self.check_brain_health()
-            else:
-                if is_hibernating and self.status == "OPERATIONAL":
-                    logging.warning("[HUB] VRAM Hibernation triggered. Unloading local engines...")
-                    self.status = "HIBERNATING"
-                    self.engine_ready.clear() # [FEAT-265.15] Readiness Reset: Ensure foyer sparks on next intent
-                    logging.warning("Clearing Hub OPERATIONAL state for engine transition.")
-                    asyncio.create_task(self._hibernate())
-                    self.brain_online = False # Mark offline while sleeping
 
     async def _log_tailer_loop(self):
         """[FEAT-313.2] Live Engine Logs: Stream vLLM progress to the Intercom."""
@@ -1112,7 +1090,8 @@ class AcmeLab:
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
-        ws = web.WebSocketResponse()
+        # [FEAT-326] Socket Persistence: 30s heartbeat to keep Cloudflare/proxies alive
+        ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(request)
         self.connected_clients.add(ws)
         
@@ -1124,7 +1103,7 @@ class AcmeLab:
                     old_msg["brain_source"] = "System"
                 await ws.send_str(json.dumps(old_msg))
             except Exception:
-                return ""
+                pass
 
         await self.manage_session_lock(active=True)
 
@@ -1146,17 +1125,19 @@ class AcmeLab:
                 )
             )
             
-            # [FEAT-026] Initial Brain Status Feedback
-            await ws.send_str(
-                json.dumps(
-                    {
-                        "type": "crosstalk",
-                        "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'INITIATING...'}",
-                        "brain_source": "System",
-                        "channel": "insight",
-                    }
+            # [FEAT-328] Sovereignty Debouncing: Only broadcast if not already known
+            if not hasattr(self, "_last_broadcast_sovereignty") or self._last_broadcast_sovereignty != self.brain_online:
+                await ws.send_str(
+                    json.dumps(
+                        {
+                            "type": "crosstalk",
+                            "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'INITIATING...'}",
+                            "brain_source": "System",
+                            "channel": "insight",
+                        }
+                    )
                 )
-            )
+                self._last_broadcast_sovereignty = self.brain_online
 
 
             async for message in ws:
