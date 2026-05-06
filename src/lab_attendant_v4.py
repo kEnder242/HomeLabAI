@@ -205,7 +205,7 @@ class LabAttendantV4:
         self._recovery_in_progress = False # [FIX] Recovery Singleton
         self._active_monitors = set() # [FIX] Monitor Registry
         self._operational_start_time = 0 # [FEAT-302] Stability Latch
-        self.boot_grace_period = 90 # 180 seconds for vLLM weights (at 2s pulse)
+        self.boot_grace_period = 120 # 240 seconds for vLLM weights (at 2s pulse)
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
         
         # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
