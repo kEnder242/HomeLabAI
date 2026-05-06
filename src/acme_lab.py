@@ -142,7 +142,7 @@ class AcmeLab:
             f.write(str(os.getpid()))
 
         self.mode = mode
-        self.idle_gate = afk_timeout or 600 # [FEAT-249] Increased to 10m for stability
+        self.idle_gate = afk_timeout or 1200 # [FEAT-249] Increased to 20m for stabilization
         self.status = "INIT"
         self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
@@ -584,8 +584,9 @@ class AcmeLab:
         """Background maintenance and status updates grounded in silicon truth."""
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while not self.shutdown_event.is_set():
-            # [FEAT-221] Slower tick rate for crosstalk/status
-            await asyncio.sleep(30.0)
+            # [FEAT-318.11] Dynamic Reflex: Poll faster during transitions (5s) or slow during idle (30s)
+            poll_rate = 5.0 if self.status in ["HIBERNATING", "WAKING", "BOOTING"] else 30.0
+            await asyncio.sleep(poll_rate)
             
             # [FEAT-265.24] Physical Sync: Pull heartbeat from Attendant
             try:
@@ -606,11 +607,13 @@ class AcmeLab:
                                 self.engine_ready.clear()
                             
                             # Inverse ground truth: If engine is up but we think we are hibernating, we are WAKING
-                            if vitals.get("engine_up") and self.status == "HIBERNATING":
-                                logging.info("[HUB] Physical Sync: Engine detected UP. Advancing status to WAKING.")
-                                self.status = "WAKING"
+                            if vitals.get("operational") and self.status == "HIBERNATING":
+                                logging.info("[OPERATIONAL] Hub foyer successfully woken from sleep.")
+                                self.status = "OPERATIONAL"
+                                self.engine_ready.set()
+                                self.last_activity = time.time() # [FIX] Reset idle timer
             except Exception:
-                return ""
+                pass
 
             # [FEAT-249.2] Hardened VRAM Hibernation Logic (Configurable gate)
             idle_time = time.time() - self.last_activity
@@ -998,6 +1001,16 @@ class AcmeLab:
             return True
 
         return any(k in text_low for k in casual_indicators)
+
+    async def wake_handler(self, request):
+        """[FEAT-318.12] Immediate Wake: Forced logical state reset."""
+        if self.status == "HIBERNATING":
+            logging.info("[OPERATIONAL] Manual Wake signal received. Synchronizing...")
+            self.status = "OPERATIONAL"
+            self.engine_ready.set()
+            self.last_activity = time.time() # [FIX] Reset idle timer to prevent re-hibernation
+            return web.json_response({"status": "success", "message": "Hub woken."})
+        return web.json_response({"status": "ignored", "message": f"Hub already in state: {self.status}"})
 
     async def heartbeat_handler(self, request):
         """[FEAT-259.7] Non-Blocking Readiness: Report internal state immediately."""
@@ -1769,6 +1782,10 @@ class AcmeLab:
         for path in ["/heartbeat", "/hub/heartbeat", "/status", "/hub/status"]:
             hb_route = app.router.add_get(path, self.heartbeat_handler)
             cors.add(hb_route)
+
+        # [FEAT-318.12] Add Wake Route
+        wake_route = app.router.add_post("/wake", self.wake_handler)
+        cors.add(wake_route)
 
         # [FEAT-324] Graceful Shutdown: Support remote stop via REST
         stop_route = app.router.add_post("/stop", self.stop_handler)

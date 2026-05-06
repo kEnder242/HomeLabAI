@@ -559,14 +559,42 @@ class LabAttendantV4:
         async with self.ignition_lock:
             global current_lab_mode, current_model, lab_process, is_hibernating
             self._last_ignition_time = time.time() # [FEAT-317] Reset port stability window
+            self._last_engine_check = 0 # [FIX] Clear TTL cache for fresh cognitive probe
 
-            # [FEAT-265.44] Ledger Eviction: Clear engine residues before deck clear
-            # This ensures the Assassin treats dormant members as orphans to be reaped
-            if not engine_only:
-                logger.info(f"[IGNITION] [{reason.upper()}] Evicting existing engine from family ledger.")
-                self.active_pids['engine_pid'] = None
-                self.active_pids['engine_mode'] = None
-                self._save_ledger()
+            # [FIX] Redundant Spark Guard: If already vocal, return success immediately
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational") and not reason == "MANUAL_IGNITION":
+                logger.info(f"[IGNITION] [{reason}] Lab is already VOCAL. Skipping redundant spark.")
+                return {"status": "success", "message": "Lab is already operational."}
+
+            # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
+            # We check this FIRST to avoid triggering the Assassin (Deck Clear) on a healthy sleeping process.
+            if current_lab_mode == "HIBERNATING" and engine == "VLLM":
+                logger.info(f"[IGNITION] [{reason.upper()}] Fast Wake triggered for hibernating vLLM.")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post("http://127.0.0.1:8088/wake_up", timeout=5.0) as r:
+                            if r.status == 200:
+                                current_lab_mode = op_mode
+                                is_hibernating = False
+                                self.ready_event.set()
+                                logger.info("[WAKE] vLLM successfully woken from sleep.")
+                                
+                                # [FEAT-318.12] Trigger Hub Wake
+                                try:
+                                    async with session.post("http://127.0.0.1:8765/wake", timeout=2.0) as rh:
+                                        if rh.status == 200:
+                                            logger.info("[WAKE] Hub foyer notified of wake.")
+                                except Exception: pass
+
+                                # [FEAT-255.1] Update status file immediately
+                                try:
+                                    with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
+                                        json.dump({"mode": engine, "model": current_model, "reason": f"WAKE_{reason}", "session": self.session_token, "timestamp": time.time()}, f)
+                                except Exception: pass
+                                return {"status": "success", "message": "vLLM woken from sleep mode."}
+                except Exception as e:
+                    logger.warning(f"[WAKE] Fast-wake failed, proceeding with full ignition: {e}")
 
             # [FEAT-265.23] Priority Space: Intentional wakes bypass the congestion gate
             is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "SAFE_PILOT")
@@ -576,9 +604,18 @@ class LabAttendantV4:
             if self.boot_grace_period > 0 and not self.ready_event.is_set() and not is_priority_wake:
                 return {"status": "error", "message": "Ignition in progress. Please wait."}
 
+            # [FEAT-265.44] Ledger Eviction: Clear engine residues before deck clear
+            # This ensures the Assassin treats dormant members as orphans to be reaped
+            if not engine_only:
+                logger.info(f"[IGNITION] [{reason.upper()}] Evicting existing engine from family ledger.")
+                self.active_pids['engine_pid'] = None
+                self.active_pids['engine_mode'] = None
+                self._save_ledger()
+
             # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
-            # We target our known blacklist names to ensure a clean start
+            # We scavenge physical reality first to adopt survivors or reap confirmed ghosts.
             logger.info(f"[BOOT] Performing Pre-Ignition Deck Clear (Reason: {reason})")
+            await self.scavenge_reality()
             await self.cleanup_silicon(mode="GHOSTS", engine_only=engine_only)
 
             # [FIX] Force immediate state flush to allow restoration to proceed
@@ -623,20 +660,6 @@ class LabAttendantV4:
 
             target_model = tier_config.get("vllm" if engine == "VLLM" else "ollama", model)
             utilization = tier_config.get("gpu_memory_utilization", 0.4)
-
-            # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
-            if current_lab_mode == "HIBERNATING" and engine == "VLLM":
-                logger.info(f"[IGNITION] [{reason.upper()}] Fast Wake triggered for hibernating vLLM.")
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post("http://127.0.0.1:8088/wake_up", timeout=5.0) as r:
-                            if r.status == 200:
-                                current_lab_mode = op_mode
-                                self.ready_event.set()
-                                logger.info("[WAKE] vLLM successfully woken from sleep.")
-                                return {"status": "success", "message": "vLLM woken from sleep mode."}
-                except Exception as e:
-                    logger.warning(f"[WAKE] Fast-wake failed, proceeding with full ignition: {e}")
 
             current_lab_mode = op_mode
             current_model = target_model
@@ -1141,28 +1164,6 @@ class LabAttendantV4:
             target_pids.add(pid)
 
         # 2. Final Purge Logic
-        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
-        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
-            try:
-                # [FEAT-325] Nuclear Port Purge: Ensure engine ports are clear
-                for port in [8088, 11434, 8765]:
-                    for conn in psutil.net_connections(kind='tcp'):
-                        if conn.laddr.port == port and conn.status == 'LISTEN':
-                            if conn.pid is None or conn.pid == os.getpid():
-                                continue # [SAFE] Skip self or unknown
-                            try:
-                                p = psutil.Process(conn.pid)
-                                logger.warning(f"[ASSASSIN] Reaping stubborn port {port} occupant: PID {p.pid} ({p.name()})")
-                                p.kill()
-                            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                pass
-
-                subprocess.run(["sudo", "fuser", "-k", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
-                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
-                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
-            except Exception as e:
-                logger.error(f"[ASSASSIN] Port purge failed: {e}")
-
         if not target_pids:
             logger.info("[ASSASSIN] No tracked processes in ledger. Clean slate.")
             return
@@ -1181,6 +1182,14 @@ class LabAttendantV4:
             try:
                 if psutil.pid_exists(pid):
                     os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
+        
+        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
+        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
+            try:
+                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
+                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
             except Exception:
                 pass
 
@@ -1373,15 +1382,20 @@ class LabAttendantV4:
                     pass
                 
                 # 2. Engine Probes (with TTL and Hibernation Guard)
-                is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION")
+                is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION" or self.current_reason == "DREAM_CYCLE")
+                
+                # [FIX] Force fresh probe if we aren't vocal yet to avoid cache-lag re-ignitions
+                force_probe = is_igniting or not getattr(self, "_vocal_state_cache", False)
                 
                 if is_hibernating:
                     # [FEAT-282.6] Passive Mode: Don't poke the engine if it's supposed to be asleep
                     engine_up = False
                     engine_vocal = False
-                elif is_igniting or (now - self._last_engine_check > 30): # 30s TTL
-                    # Direct Port Probe (Fallback)
-                    port = 8088 if current_lab_mode == "VLLM" else 11434
+                elif force_probe or (now - self._last_engine_check > 30): # 30s TTL
+                    # [FIX] Resolve Engine Type from Ledger or Default
+                    engine_type = self.active_pids.get('engine_mode', "VLLM")
+                    port = 8088 if engine_type == "VLLM" else 11434
+                    
                     try:
                         async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
                             if r.status == 200:
@@ -1404,7 +1418,12 @@ class LabAttendantV4:
                                 if p.status == 200:
                                     engine_vocal = True
                                     self._vocal_state_cache = True
-                        except Exception:
+                                    logger.info("[PROBE] Engine is VOCAL (Cognitive SUCCESS).")
+                                else:
+                                    logger.warning(f"[PROBE] Engine NOT VOCAL (Status {p.status}).")
+                                    self._vocal_state_cache = False
+                        except Exception as e:
+                            logger.debug(f"[PROBE] Cognitive probe exception: {e}")
                             self._vocal_state_cache = False
                     
                     self._last_engine_check = now
@@ -1549,7 +1568,7 @@ class LabAttendantV4:
                         await asyncio.sleep(1.0)
                         continue
                     
-                    if "[OPERATIONAL] Hub foyer is fully synchronized." in line:
+                    if "[OPERATIONAL] Hub foyer is fully synchronized." in line or "[OPERATIONAL] Hub foyer successfully woken" in line:
                         self.ready_event.set()
                         # [FEAT-302] Stability Latch: Record when we reached operational
                         if not self._operational_start_time:
@@ -1661,6 +1680,7 @@ class LabAttendantV4:
 
     async def handle_wake_rest(self, r):
         """[FEAT-315] Non-destructive wake: Spark engines but spare Hub."""
+        self._last_engine_check = 0 # [FIX] Force fresh probe after wake
         return web.json_response(await self.mcp_start(engine_only=True, reason="WAKE_INTENT"))
 
     async def handle_ping_rest(self, r):

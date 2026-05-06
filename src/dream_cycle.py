@@ -37,12 +37,13 @@ async def ensure_engine_ready():
         
         if status.get("operational"):
             logging.info("[DREAM] Lab is already operational.")
-            return True, status.get("vitals", {}).get("model")
+            return True, status.get("model")
 
         # 2. Request Ignition (or Wake)
-        logging.warning(f"[DREAM] Lab is {status.get('status')}. Triggering ignition...")
+        logging.warning(f"[DREAM] Lab is {status.get('mode')}. Triggering ignition...")
         payload = {"engine": "VLLM", "model": "MEDIUM", "reason": "DREAM_CYCLE"}
-        r = requests.post(f"{ATTENDANT_URL}/start", json=payload, headers=HEADERS, timeout=5)
+        # [FIX] Timeout increased to 60s to allow for In-Flight wait
+        r = requests.post(f"{ATTENDANT_URL}/start", json=payload, headers=HEADERS, timeout=60)
         
         if r.status_code != 200:
             logging.error(f"[DREAM] Ignition request failed: {r.text}")
@@ -127,7 +128,9 @@ async def run_dream_cycle():
         logging.error("❌ Lab could not be ignited for Dreaming. Aborting.")
         return
 
-    archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE])
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{BASE_DIR}/src:{env.get('PYTHONPATH', '')}"
+    archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE], env=env)
 
     try:
         async with stdio_client(archive_params) as (ar, aw):

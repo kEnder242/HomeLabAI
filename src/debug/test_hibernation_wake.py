@@ -53,8 +53,8 @@ async def test_hibernation_wake():
             await websocket.send(json.dumps({"type": "handshake", "client": "wake_test", "version": "4.5"}))
             
             # Send Wake Query
-            print("[#] Sending wake query: 'Hello Brain, wake up!'")
-            await websocket.send(json.dumps({"type": "query", "content": "Hello Brain, wake up!"}))
+            print("[#] Sending wake query: '[ME] Hello Brain, wake up!'")
+            await websocket.send(json.dumps({"type": "text_input", "content": "[ME] Hello Brain, wake up!"}))
             
             # 4. Monitor for WAKING -> OPERATIONAL
             start_t = time.time()
