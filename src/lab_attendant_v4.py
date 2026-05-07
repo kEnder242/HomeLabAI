@@ -206,6 +206,7 @@ class LabAttendantV4:
         self._active_monitors = set() # [FIX] Monitor Registry
         self._operational_start_time = 0 # [FEAT-302] Stability Latch
         self.boot_grace_period = 120 # 240 seconds for vLLM weights (at 2s pulse)
+        self._worker_throttled = False # [FEAT-330] State-aware throttling
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
         
         # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
@@ -315,18 +316,21 @@ class LabAttendantV4:
             try:
                 mem = psutil.virtual_memory()
                 
-                # [FEAT-330] Physical Governor: Signal-based Throttling
+                # [FEAT-330] Physical Governor: Signal-based Throttling (Edge-triggered)
                 mass_scan_pid_file = os.path.join(LAB_DIR, "run/mass_scan.pid")
                 if os.path.exists(mass_scan_pid_file):
                     try:
                         with open(mass_scan_pid_file, "r") as f:
                             pid = int(f.read().strip())
                         
-                        if mem.percent > 85:
+                        if mem.percent > 85 and not self._worker_throttled:
                             os.kill(pid, signal.SIGUSR1) # PAUSE
+                            self._worker_throttled = True
                             logger.warning(f"[GOVERNOR] High RAM ({mem.percent}%). Throttling background workers (PID {pid}).")
-                        elif mem.percent < 70:
+                        elif mem.percent < 70 and self._worker_throttled:
                             os.kill(pid, signal.SIGUSR2) # RESUME
+                            self._worker_throttled = False
+                            logger.info(f"[GOVERNOR] RAM stabilized ({mem.percent}%). Resuming background workers.")
                     except ProcessLookupError:
                         os.remove(mass_scan_pid_file) # Stale PID
                     except Exception as e:
