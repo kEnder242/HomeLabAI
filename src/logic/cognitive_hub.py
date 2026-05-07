@@ -349,6 +349,9 @@ class CognitiveHub:
         intent = "STRATEGIC"
         self.trigger_briefing_cb = trigger_briefing_callback
         
+        # [FEAT-330] Internal Muting
+        mute_all = "[INTERNAL]" in query
+
         # [FEAT-233.9] Reset Waterfall: Clear session buffers for fresh turn
         self.session_buffers.clear()
 
@@ -357,19 +360,19 @@ class CognitiveHub:
         triage_data_update = {} # [FIX] Initialize early
         
         if "lab" in self.residents:
-            await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Triage starting for query: {query[:30]}...", "brain_source": "System"})
+            if not mute_all:
+                await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Triage starting for query: {query[:30]}...", "brain_source": "System"})
             
             # [FEAT-270.2] Triage Persistence
             for triage_attempt in range(3):
                 try:
-                    await self.broadcast({"type": "status", "state": "triage_start", "message": f"Triage Attempt {triage_attempt+1}...", "brain_source": "System"})
+                    if not mute_all:
+                        await self.broadcast({"type": "status", "state": "triage_start", "message": f"Triage Attempt {triage_attempt+1}...", "brain_source": "System"})
+                    
                     # Triage is a blocking call to establish routing
                     # [FIX] Use stable sampling for high-fidelity prompt
                     t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True, temperature=0.2, repetition_penalty=1.2)
 
-                    print(f"DEBUG: TRIAGE_RAW: {t_text}")
-                    import sys
-                    sys.stdout.flush()
                     logging.info(f"[HUB] Triage Output: {t_text}")
 
                     t_clean = self.bridge_signal_clean(t_text)
@@ -410,8 +413,9 @@ class CognitiveHub:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_fuel = min(0.15, self.current_fuel)
 
-                    await self.broadcast({"type": "status", "state": "triage_complete", "message": "Routing determined.", "brain_source": "System"})
-                    await self.broadcast({"type": "crosstalk", "brain": "[HUB] Triage successful. Routing logic determined.", "brain_source": "System"})
+                    if not mute_all:
+                        await self.broadcast({"type": "status", "state": "triage_complete", "message": "Routing determined.", "brain_source": "System"})
+                        await self.broadcast({"type": "crosstalk", "brain": "[HUB] Triage successful. Routing logic determined.", "brain_source": "System"})
                     break # SUCCESS
 
                 
