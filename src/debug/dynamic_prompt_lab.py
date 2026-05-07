@@ -22,6 +22,23 @@ def load_config():
     }
 
 def run_test(config):
+    # [FEAT-330] Auto-wake logic
+    try:
+        attendant_status = requests.get(f"http://localhost:9999/status?key={config.get('key', '92e785ba')}", timeout=2).json()
+        if attendant_status.get("mode") == "HIBERNATING":
+            print("[WAKE]: Lab is hibernating. Sending wake signal...")
+            requests.post(f"http://localhost:9999/wake?key={config.get('key', '92e785ba')}", timeout=2)
+            # Wait for weights to load
+            for i in range(15):
+                print(f"[WAIT]: Loading weights... {i+1}/15")
+                time.sleep(1)
+                status = requests.get(f"http://localhost:9999/status?key={config.get('key', '92e785ba')}", timeout=2).json()
+                if status.get("vram_mib", 0) > 5000:
+                    print("[WAKE]: Engine verified vocal.")
+                    break
+    except Exception as e:
+        print(f"[WARN]: Attendant handshake failed: {e}")
+
     payload = {
         "model": config.get("model", "unified-base"),
         "messages": [

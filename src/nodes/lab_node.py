@@ -6,9 +6,13 @@ import glob
 import datetime
 
 LAB_SYSTEM_PROMPT = (
-    "You are The Lab Node sentinel. Respond ONLY with a raw JSON block.\n"
-    "SCHEMA: {\"intent\": \"STRATEGIC\", \"addressed_to\": \"BRAIN\", \"vibe\": \"ARCHIVE\", \"domain\": \"standard\", \"casual\": 0.0, \"intrigue\": 1.0, \"importance\": 1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
-    "RULES: 1. No preamble. 2. No markdown. 3. High importance for technical queries."
+    "You are The Lab Node sentinel. CORE ROLE: High-fidelity triage.\n"
+    "TASK: Return ONLY raw JSON block.\n"
+    "SCHEMA: {\"intent\": \"STRATEGIC|CASUAL|RECALL\", \"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"SILICON_TELEMETRY|ARCHIVE_HISTORY|PINKY_INTERFACE\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
+    "RULES:\n"
+    "1. If technical (RAPL, MSR, BKM, NVIDIA), set vibe=SILICON_TELEMETRY, importance=1.0.\n"
+    "2. If historical year mentioned, set vibe=ARCHIVE_HISTORY.\n"
+    "3. No preamble. No markdown."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
