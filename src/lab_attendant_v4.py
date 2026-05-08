@@ -151,6 +151,44 @@ async def key_middleware(request, handler):
     return response
 
 class LabAttendantV4:
+    def map_physical_memory(self):
+        """[FEAT-334] Passive Physical Auditor: Scans processes and identifies Ghosts."""
+        import psutil
+        accounted = set()
+        if self.active_pids.get('hub_pid'):
+            accounted.add(self.active_pids['hub_pid'])
+        if self.active_pids.get('engine_pid'):
+            accounted.add(self.active_pids['engine_pid'])
+        for pid in self.active_pids.get('family', []):
+            accounted.add(pid)
+
+        mapping = {"accounted": [], "ghosts": []}
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info', 'username']):
+                try:
+                    # Filter for our workspace or typical AI signatures
+                    cmd = " ".join(proc.info['cmdline'] or []).lower()
+                    is_ai_related = any(sig in cmd for sig in ['vllm', 'ollama', 'acme_lab', 'python3'])
+                    
+                    if is_ai_related and proc.info['username'] == psutil.Process().username():
+                        mem_mib = proc.info['memory_info'].rss / (1024 * 1024)
+                        p_data = {
+                            "pid": proc.info['pid'],
+                            "name": proc.info['name'],
+                            "mem_mib": round(mem_mib, 2),
+                            "cmd": cmd[:100]
+                        }
+                        if proc.info['pid'] in accounted:
+                            mapping["accounted"].append(p_data)
+                        else:
+                            mapping["ghosts"].append(p_data)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            logger.error(f"[AUDIT] Memory mapping failed: {e}")
+
+        return mapping
+
     def __init__(self):
         # [FEAT-267] Unified Middleware: key_middleware now handles OPTIONS directly
         self.app = web.Application(middlewares=[key_middleware])
@@ -166,6 +204,9 @@ class LabAttendantV4:
         self.register_route("POST", "/train", self.handle_train_rest)
         self.register_route("POST", "/hibernate", self.handle_hibernate_rest)
         self.register_route("POST", "/hard_reset", self.handle_stop_rest)
+        self.register_route("GET", "/memory_map", self.handle_memory_map_rest)
+        self.register_route("POST", "/reset_cache", self.handle_reset_cache_rest)
+        self.register_route("POST", "/update_prompt", self.handle_update_prompt_rest)
         self.register_route("GET", "/heartbeat", self.handle_heartbeat_rest)
         self.register_route("GET", "/status", self.handle_heartbeat_rest) # [FIX] Alias for backward compatibility
         self.register_route("GET", "/ping", self.handle_ping_rest)
@@ -323,10 +364,15 @@ class LabAttendantV4:
                         with open(mass_scan_pid_file, "r") as f:
                             pid = int(f.read().strip())
                         
-                        if mem.percent > 85 and not self._worker_throttled:
-                            os.kill(pid, signal.SIGUSR1) # PAUSE
-                            self._worker_throttled = True
-                            logger.warning(f"[GOVERNOR] High RAM ({mem.percent}%). Throttling background workers (PID {pid}).")
+                        if mem.percent > 85:
+                            # [FEAT-334] Passive Forensic Audit
+                            m_map = self.map_physical_memory()
+                            logger.warning(f"[GOVERNOR] High RAM ({mem.percent}%). Audit Map: {json.dumps(m_map)}")
+                            
+                            if not self._worker_throttled:
+                                os.kill(pid, signal.SIGUSR1) # PAUSE
+                                self._worker_throttled = True
+                                logger.warning(f"[GOVERNOR] Throttling background workers (PID {pid}).")
                         elif mem.percent < 70 and self._worker_throttled:
                             os.kill(pid, signal.SIGUSR2) # RESUME
                             self._worker_throttled = False
@@ -1488,7 +1534,8 @@ class LabAttendantV4:
             "reason": self.current_reason,
             "session": self.session_token,
             "style_key": get_style_key(),
-            "boot_hash": _BOOT_HASH
+            "boot_hash": _BOOT_HASH,
+            "memory_map": self.map_physical_memory()
         }
 
     async def _get_vram_info(self):
@@ -1707,6 +1754,45 @@ class LabAttendantV4:
         return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
     async def handle_heartbeat_rest(self, r):
         return web.json_response(await self.mcp_heartbeat())
+
+    async def handle_reset_cache_rest(self, r):
+        """[FEAT-333] Force Silicon Reset: Clears GPU and Engine caches."""
+        logger.warning("[REST] Manual Silicon Reset initiated.")
+        import torch
+        torch.cuda.empty_cache()
+        
+        # vLLM prefix cache reset
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post("http://127.0.0.1:8088/reset_prefix_cache", timeout=2.0)
+        except Exception:
+            pass
+            
+        return web.json_response({"status": "success", "message": "GPU and Engine caches cleared."})
+
+    async def handle_update_prompt_rest(self, r):
+        """[FEAT-333] Live Prompt Update: Modifies node prompts without restart."""
+        data = await r.json()
+        node_id = data.get("node")
+        new_prompt = data.get("prompt")
+        
+        if not node_id or not new_prompt:
+            return web.json_response({"status": "error", "message": "Missing node or prompt."}, status=400)
+            
+        logger.warning(f"[REST] Live Prompt Update for {node_id}")
+        # Send to Hub via proxy
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "http://127.0.0.1:8765/hub/config/prompt"
+                await session.post(url, json=data, timeout=5.0)
+        except Exception as e:
+            return web.json_response({"status": "error", "message": f"Hub handshake failed: {e}"}, status=502)
+            
+        return web.json_response({"status": "success", "message": f"Prompt updated for {node_id}."})
+
+    async def handle_memory_map_rest(self, r):
+        """[FEAT-334] Physical Memory Map: Returns ground-truth memory usage."""
+        return web.json_response(self.map_physical_memory())
 
     async def handle_wake_rest(self, r):
         """[FEAT-315] Non-destructive wake: Spark engines but spare Hub."""

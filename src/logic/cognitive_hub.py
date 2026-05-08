@@ -25,6 +25,14 @@ class CognitiveHub:
         self.last_prime_callback = last_prime_callback
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
         
+        # [FEAT-332] Dynamic Streaming Modes
+        self.streaming_config = {
+            "lab": "WATERFALL",
+            "pinky": "WATERFALL",
+            "brain": "WATERFALL",
+            "shadow": "WATERFALL"
+        }
+        
         # [FEAT-233.7] Session Buffers: Real-time context for inter-node overhearing
         self.session_buffers = defaultdict(str)
         self.current_fuel = 0.0
