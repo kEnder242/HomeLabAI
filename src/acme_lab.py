@@ -1025,6 +1025,30 @@ class AcmeLab:
 
         return any(k in text_low for k in casual_indicators)
 
+    async def update_prompt_handler(self, request):
+        """[FEAT-333] Live Prompt Proxy: Updates a resident node's system prompt."""
+        data = await request.json()
+        node_id = data.get("node")
+        new_prompt = data.get("prompt")
+        
+        if node_id in self.residents:
+            self.residents[node_id].system_prompt = new_prompt
+            logging.warning(f"[HUB] Live Prompt Update successful for {node_id}")
+            return web.json_response({"status": "success"})
+        return web.json_response({"status": "error", "message": f"Node {node_id} not found."}, status=404)
+
+    async def update_streaming_handler(self, request):
+        """[FEAT-332] Dynamic Streaming Toggle: Waterfall vs Pooling."""
+        data = await request.json()
+        node_id = data.get("node")
+        mode = data.get("mode", "WATERFALL") # POOLING or WATERFALL
+        
+        if hasattr(self.cognitive, "streaming_config"):
+            self.cognitive.streaming_config[node_id] = mode
+            logging.warning(f"[HUB] Dynamic Mode Shift: {node_id} -> {mode}")
+            return web.json_response({"status": "success"})
+        return web.json_response({"status": "error", "message": "Cognitive engine not ready."}, status=503)
+
     async def wake_handler(self, request):
         """[FEAT-318.12] Immediate Wake: Forced logical state reset."""
         if self.status == "HIBERNATING":
@@ -1063,11 +1087,19 @@ class AcmeLab:
         """[FEAT-233.2] Live Hearing Pipe: Ingests tokens from nodes and broadcasts them."""
         try:
             data = await request.json()
-            # Broadcast directly to WebSocket clients
-            # This allows nodes to stream tokens out-of-band while the Hub waits for the full block
-            await self.broadcast(data)
+            source = str(data.get("brain_source", data.get("source", "unknown"))).lower()
+            
+            # [FEAT-332] Dynamic Transparency: Only broadcast to UI if in WATERFALL mode
+            mode = "WATERFALL"
+            if hasattr(self, "cognitive") and hasattr(self.cognitive, "streaming_config"):
+                mode = self.cognitive.streaming_config.get(source, "WATERFALL")
+            
+            if mode == "WATERFALL":
+                # Broadcast directly to WebSocket clients
+                await self.broadcast(data)
             
             # [FEAT-233.5] Internal Pipe: Feed the waterfall queue for inter-node overhearing
+            # ALWAYS ingest internally for node cross-talk, regardless of UI mode
             await self.waterfall_queue.put(data)
             
             # [FEAT-233.7] Session Buffers: Update real-time context
@@ -1803,6 +1835,10 @@ class AcmeLab:
         # [FEAT-233.2] Live Hearing Pipe: Out-of-band token ingestion
         stream_route = app.router.add_post("/stream_ingest", self.handle_stream_ingest)
         cors.add(stream_route)
+
+        # [FEAT-333] Dynamic Prompt and Streaming
+        app.router.add_post("/hub/config/prompt", self.update_prompt_handler)
+        app.router.add_post("/hub/config/streaming", self.update_streaming_handler)
 
         runner = web.AppRunner(app)
         await runner.setup()
