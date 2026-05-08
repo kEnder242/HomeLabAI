@@ -21,15 +21,14 @@ export VLLM_USE_V1=${VLLM_USE_V1:-0}
 echo "--- vLLM Sovereign Ignition: $MODEL_PATH ---"
 echo "Env: Backend=${VLLM_ATTENTION_BACKEND}, P2P_Disable=${NCCL_P2P_DISABLE}, V1=${VLLM_USE_V1}"
 
-# [FEAT-030] Unity Pattern: Consume VLLM_EXTRA_ARGS from lab_attendant
-# Path Hardening: We assume we are running from HomeLabAI/ or its parent.
+# [FEAT-030] Unity Pattern: Consume dynamic args from lab_attendant
+# We remove hardcoded max-model-len to prevent key duplication errors.
 $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
     --load-format auto \
     --host 0.0.0.0 \
     --port 8088 \
     --served-model-name unified-base \
-    --max-model-len 8192 \
     --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
