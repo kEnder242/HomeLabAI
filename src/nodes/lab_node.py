@@ -15,7 +15,7 @@ LAB_SYSTEM_PROMPT = (
     "3. No preamble. No markdown."
 )
 
-node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
+node = BicameralNode("Lab", LAB_SYSTEM_PROMPT, lora_name=None)
 mcp = node.mcp
 
 # Paths
