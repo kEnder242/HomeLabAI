@@ -1496,9 +1496,6 @@ class AcmeLab:
 
     async def process_query(self, query):
         """[FEAT-145] Cognitive Delegation: Hub now delegates reasoning to the CognitiveHub manager."""
-        # [FEAT-265.45] Sovereign Context: Capture active key to prevent 401 drift
-        request_key = get_style_key()
-        
         # [FEAT-265.25] Physical Truth Bridge: Check if engine is ACTUALLY responsive
         # This handles cases where API is UP but weights are offloaded (Level 2 Sleep)
         engine_vocal = self.engine_ready.is_set()
