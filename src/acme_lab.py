@@ -719,6 +719,17 @@ class AcmeLab:
                         self.status = "HIBERNATING"
                         self.engine_ready.clear()
                         self._residents_booted = False
+                        
+                        # [FEAT-335] Physical Reap: Close MCP contexts and kill resident nodes
+                        try:
+                            # Use a timeout to prevent hanging on zombie nodes
+                            await asyncio.wait_for(self.exit_stack.aclose(), timeout=5.0)
+                            logging.info("[HUB] Resident nodes reaped successfully.")
+                        except Exception as e:
+                            logging.error(f"[HUB] Failed to reap residents: {e}")
+                        
+                        # Prepare fresh stack for next wake
+                        self.exit_stack = AsyncExitStack()
                         self.residents = {}
         except Exception as e:
             logging.error(f"[HUB] Hibernation request error: {e}")
@@ -1551,8 +1562,9 @@ class AcmeLab:
                             async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
                                 if ready_req.status == 200:
                                     logging.info("[HUB] Resumption verified. Synchronizing residents...")
-                                    self._residents_booted = False
-                                    await self.boot_residents(self.exit_stack)
+                                    # [FEAT-335] Race Hardening: Final gate before boot
+                                    if not self._residents_booted:
+                                        await self.boot_residents(self.exit_stack)
                                     self.status = "OPERATIONAL"
                                     self.engine_ready.set()
                                     await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
@@ -1696,6 +1708,10 @@ class AcmeLab:
 
         await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Hub foyer is fully synchronized.", "brain_source": "System"})
         logging.info("[OPERATIONAL] Hub foyer is fully synchronized.")
+        
+        # [FEAT-336] Stability: Reset idle timer upon successful boot
+        self.last_activity = time.time()
+        
         asyncio.create_task(self.ear_poller_loop())
         await self.broadcast({
             "type": "status",
