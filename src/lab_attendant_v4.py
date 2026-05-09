@@ -383,9 +383,16 @@ class LabAttendantV4:
                         logger.error(f"[GOVERNOR] Throttling failed: {e}")
 
                 if mem.percent > 95:
-                    logger.critical(f"[WATCHDOG] CRITICAL RAM EXHAUSTED: {mem.percent}%. Triggering emergency hibernation.")
-                    self.log_event("Critical RAM usage detected (>95%). Emergency hibernation triggered.", "CRITICAL")
-                    asyncio.create_task(self.mcp_hibernate(reason="EMERGENCY_RAM_PRESSURE"))
+                    # [FEAT-336] Informed Governance: Double check VRAM vs RAM
+                    v_used, v_total = await self._get_vram_info()
+                    is_vram_stalled = (v_used / v_total > 0.90) if v_total > 0 else False
+                    
+                    if is_vram_stalled:
+                        logger.critical(f"[WATCHDOG] CRITICAL SILICON EXHAUSTED: RAM {mem.percent}%, VRAM {round(v_used/v_total*100, 1)}%. Emergency hibernation.")
+                        self.log_event("VRAM Exhaustion detected (>90%). Emergency hibernation triggered.", "CRITICAL")
+                        asyncio.create_task(self.mcp_hibernate(reason="EMERGENCY_VRAM_PRESSURE"))
+                    else:
+                        logger.warning(f"[WATCHDOG] System RAM high ({mem.percent}%), but VRAM is nominal ({round(v_used/v_total*100, 1)}%). Monitoring only.")
             except Exception:
                 pass
 
@@ -1530,6 +1537,8 @@ class LabAttendantV4:
             "engine_vocal": engine_vocal or current_lab_mode == "STUB",
             "vram": vram_pct,
             "vram_mib": used_mb,
+            "ram": f"{psutil.virtual_memory().percent:.1f}%",
+            "ram_mib": int(psutil.virtual_memory().used / 1024 / 1024),
             "operational": is_op,
             "reason": self.current_reason,
             "session": self.session_token,
