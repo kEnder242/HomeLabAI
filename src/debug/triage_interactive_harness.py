@@ -109,6 +109,22 @@ def main():
             elif cmd == 'test':
                 query = parts[1] if len(parts) > 1 else "[ME] hello"
                 run_triage(query)
+            elif cmd == 'burst':
+                query = parts[1] if len(parts) > 1 else "[ME] hello"
+                print(f"🔥 Initiating BURST MODE (5 concurrent queries)...")
+                import threading
+                def _burst():
+                    run_triage(query)
+                
+                threads = []
+                for _ in range(5):
+                    t = threading.Thread(target=_burst)
+                    t.start()
+                    threads.append(t)
+                
+                for t in threads:
+                    t.join()
+                print("✅ BURST MODE COMPLETE.")
             else:
                 print("Unknown command.")
         except KeyboardInterrupt:

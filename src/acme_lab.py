@@ -219,6 +219,10 @@ class AcmeLab:
         message_dict["type"] = m_type
         message_dict["brain"] = m_content
         message_dict["brain_source"] = m_source
+        
+        # [FEAT-339] Message De-duplication: Attach unique ID if not present
+        if "msg_id" not in message_dict:
+            message_dict["msg_id"] = uuid.uuid4().hex[:12]
 
         # [FEAT-274] Token Traceability: Log the current session generation
         logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content}")
@@ -1186,9 +1190,11 @@ class AcmeLab:
         # [FEAT-225] Persistence Replay: Send history before current status
         for old_msg in self.message_history:
             try:
-                # [FIX] Ensure historical messages have a source for the test suite
+                # [FIX] Ensure historical messages have a source and ID
                 if "brain_source" not in old_msg:
                     old_msg["brain_source"] = "System"
+                if "msg_id" not in old_msg:
+                    old_msg["msg_id"] = uuid.uuid4().hex[:12]
                 await ws.send_str(json.dumps(old_msg))
             except Exception:
                 pass
@@ -1293,7 +1299,8 @@ class AcmeLab:
                             "message": state_msg,
                             "brain_source": "System",
                             "operational": self.status == "OPERATIONAL",
-                            "full_lab_ready": self.status == "OPERATIONAL"
+                            "full_lab_ready": self.status == "OPERATIONAL",
+                            "msg_id": uuid.uuid4().hex[:12]
                         })
                         if "archive" in self.residents:
                             try:
@@ -1303,7 +1310,12 @@ class AcmeLab:
                                 if res.content and hasattr(res.content[0], "text"):
                                     files = json.loads(res.content[0].text)
                                     await ws.send_str(
-                                        json.dumps({"type": "cabinet", "files": files, "brain_source": "System"})
+                                        json.dumps({
+                                            "type": "cabinet", 
+                                            "files": files, 
+                                            "brain_source": "System",
+                                            "msg_id": uuid.uuid4().hex[:12]
+                                        })
                                     )
                             except Exception as e:
                                 logging.error(f"[HANDSHAKE] Failed: {e}")
@@ -1570,9 +1582,11 @@ class AcmeLab:
 
                                     self.status = "OPERATIONAL"
                                     self.engine_ready.set()
+                                    self._spark_active = False # [FEAT-339] Final Ignition Lock Release
                                     await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
                     except Exception as e:
                         logging.error(f"[HUB] Wake sequence failed: {e}")
+                        self._spark_active = False # Ensure lock is released on error
                 
                 self._wake_task = asyncio.create_task(_wait_and_signal())
 
@@ -1692,8 +1706,8 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[BOOT] Failed to sync {name.upper()}: {e}")
 
-        # [FIX] Release Spark Lock and signal cognitive readiness after residents are synced
-        self._spark_active = False
+        # [FIX] Signal cognitive readiness after residents are synced. 
+        # Spark Lock release now deferred to Larynx Probe completion.
         self.engine_ready.set()
 
         # [FEAT-283] Drain buffered queries once ready
@@ -1904,11 +1918,23 @@ class AcmeLab:
                         logging.info('[BOOT] Larynx Gate: Engine physically verified by Attendant.')
                         # [FEAT-313.5] Resilient Lobby: Don't let resident boot kill the server
                         await self.boot_residents(stack)
+                        
+                        # [FEAT-339] Vocal-Lock Protocol: Verify weights before marking OPERATIONAL
+                        if "lab" in self.residents:
+                            try:
+                                await self.residents["lab"].call_tool(
+                                    name="think",
+                                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
+                                )
+                                logging.info("[BOOT] Larynx Check: SUCCESS.")
+                            except Exception as e:
+                                logging.error(f"[BOOT] Larynx Check FAILED: {e}")
+
                         self.cognitive.residents = self.residents
                         logging.info('[BOOT] Hub residents synchronized. Mind is OPERATIONAL.')
                         await self.broadcast({'type': 'crosstalk', 'brain': '⚡ Mind is OPERATIONAL.', 'brain_source': 'System'})
                     finally:
-                        self._spark_active = False # Release Boot Lock
+                        self._spark_active = False # Release Boot Lock after silicon verification
                 
                 asyncio.create_task(_background_ignition())
                 asyncio.create_task(self._log_tailer_loop())
