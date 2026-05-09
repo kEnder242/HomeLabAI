@@ -718,19 +718,8 @@ class AcmeLab:
                         logging.info("[HUB] Hibernation signal accepted by Attendant. Reverting status to HIBERNATING.")
                         self.status = "HIBERNATING"
                         self.engine_ready.clear()
-                        self._residents_booted = False
-                        
-                        # [FEAT-335] Physical Reap: Close MCP contexts and kill resident nodes
-                        try:
-                            # Use a timeout to prevent hanging on zombie nodes
-                            await asyncio.wait_for(self.exit_stack.aclose(), timeout=5.0)
-                            logging.info("[HUB] Resident nodes reaped successfully.")
-                        except Exception as e:
-                            logging.error(f"[HUB] Failed to reap residents: {e}")
-                        
-                        # Prepare fresh stack for next wake
-                        self.exit_stack = AsyncExitStack()
-                        self.residents = {}
+                        # [FEAT-337] Resident Persistence: We NO LONGER clear residents or close the stack here.
+                        # Subprocesses remain alive and passive in RAM.
         except Exception as e:
             logging.error(f"[HUB] Hibernation request error: {e}")
 
@@ -1562,9 +1551,26 @@ class AcmeLab:
                             async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
                                 if ready_req.status == 200:
                                     logging.info("[HUB] Resumption verified. Synchronizing residents...")
-                                    # [FEAT-335] Race Hardening: Final gate before boot
-                                    if not self._residents_booted:
+                                    # [FEAT-335] Race Hardening & [FEAT-337] Resident Persistence
+                                    residents_healthy = await self._check_resident_health()
+                                    if not self._residents_booted or not residents_healthy:
+                                        if not residents_healthy and self._residents_booted:
+                                            logging.warning("[HUB] Residents found unhealthy during wake. Re-booting.")
+                                            self._residents_booted = False
                                         await self.boot_residents(self.exit_stack)
+                                    
+                                    # [FEAT-337] Warm Wake Larynx Probe: Final silicon verification
+                                    if "lab" in self.residents:
+                                        try:
+                                            # Verifies that the engine (vLLM) has successfully reloaded weights
+                                            await self.residents["lab"].call_tool(
+                                                name="think",
+                                                arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
+                                            )
+                                            logging.info("[HUB] Warm Wake Larynx Check: SUCCESS.")
+                                        except Exception as e:
+                                            logging.error(f"[HUB] Warm Wake Larynx Check FAILED: {e}")
+
                                     self.status = "OPERATIONAL"
                                     self.engine_ready.set()
                                     await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
@@ -1612,6 +1618,21 @@ class AcmeLab:
                 logging.error(f"[HUB] Query processing failed: {e}")
                 await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
                 raise
+
+    async def _check_resident_health(self) -> bool:
+        """[FEAT-337] Resident Persistence: Verifies all node processes are alive and responsive."""
+        if not self.residents or not self._residents_booted:
+            return False
+            
+        try:
+            # list_tools is a standard MCP request handled by the node process itself
+            # It does NOT require the vLLM engine to be vocal.
+            for name, session in self.residents.items():
+                await session.list_tools()
+            return True
+        except Exception as e:
+            logging.warning(f"[HEALTH] Resident health check failed: {e}")
+            return False
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task and be idempotent."""
