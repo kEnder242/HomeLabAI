@@ -128,6 +128,14 @@ class CognitiveHub:
         """
         if not text:
             return
+
+        # [FEAT-339] Triage Loop Brake: Prevent tool-call recursion storms
+        MAX_RECURSION = 5
+        if retry_count >= MAX_RECURSION:
+            msg = f"[ALARM] Max tool recursion reached ({MAX_RECURSION}) for {source}. Aborting loop."
+            logging.warning(msg)
+            await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+            return text
             
         # [FEAT-072.1] Signal-Based Morning Briefing Uplink
         if "trigger_morning_briefing" in str(text) and final:
@@ -243,7 +251,7 @@ class CognitiveHub:
 
                         if tool in ["build_cv_summary", "access_personal_history"] and "archive" in self.residents:
                             res = await self.residents["archive"].call_tool(tool, params)
-                            return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, final=True)
+                            return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, retry_count=retry_count+1, final=True)
 
                 except Exception as e:
                     logging.error(f"[HUB] JSON parsing failed: {e}")
@@ -284,7 +292,7 @@ class CognitiveHub:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0, retry_count=0):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
@@ -317,7 +325,7 @@ class CognitiveHub:
                     self.last_prime_callback(time.time())
             
             # Final dispatch to UI
-            await self.execute_dispatch(result_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, final=True)
+            await self.execute_dispatch(result_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, retry_count=retry_count, final=True)
             return result_text
             
         except Exception as e:
@@ -342,14 +350,15 @@ class CognitiveHub:
             briefing_query = f"Summarize this Diamond Wisdom for the morning briefing: {wisdom_text[:500]}"
             await self._process_node_stream(
                 "pinky", briefing_query, "[MODE]: DIRECT_RESPONSE", "Pinky (Briefing)",
-                tools=[], behavioral_guidance="Provide a warm, enthusiastic summary of the lab's evolution."
+                tools=[], behavioral_guidance="Provide a warm, enthusiastic summary of the lab's evolution.",
+                retry_count=0
             )
         except Exception as e:
             logging.error(f"[HUB] Morning Briefing failed: {e}")
 
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
         if retry_count > 2:
-            return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event)
+            return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event, retry_count=retry_count)
 
         logging.info(f"[USER] Intercom Query: {query}")
         self.current_fuel = 0.0
@@ -379,7 +388,7 @@ class CognitiveHub:
                     
                     # Triage is a blocking call to establish routing
                     # [FIX] Use stable sampling for high-fidelity prompt
-                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True, temperature=0.2, repetition_penalty=1.2)
+                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True, temperature=0.2, repetition_penalty=1.2, retry_count=retry_count)
 
                     logging.info(f"[HUB] Triage Output: {t_text}")
 
@@ -455,7 +464,7 @@ class CognitiveHub:
         if intent == "OPERATIONAL":
             if "pinky" in self.residents:
                 p_res = await self.residents["pinky"].call_tool("think", {"query": f"[SYSTEM_DIRECTIVE]: {query}", "context": "OPERATIONAL_SHORTCUT"})
-                return await self.execute_dispatch(p_res.content[0].text, "System", final=True)
+                return await self.execute_dispatch(p_res.content[0].text, "System", retry_count=retry_count, final=True)
 
         # 3. Proactive Archivist (RAG context)
         historical_context = ""
@@ -481,7 +490,8 @@ class CognitiveHub:
                 tools=["ask_brain", "think", "vram_vibe_check", "get_lab_health"],
                 behavioral_guidance=situational_guidance or "Standard brevity. Focus on natural interaction.",
                 shutdown_event=shutdown_event,
-                is_internal=mute_pinky
+                is_internal=mute_pinky,
+                retry_count=retry_count
             )
 
         async def run_shadow():
@@ -500,7 +510,8 @@ class CognitiveHub:
                     tools=["ask_brain", "think"],
                     behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
-                    is_internal=mute_shadow
+                    is_internal=mute_shadow,
+                    retry_count=retry_count
                 )
 
         # [Task 1.2] Cascading Spark: Pinky -> Shadow -> Brain
@@ -553,7 +564,8 @@ class CognitiveHub:
                 target_node, query, b_context, source_label,
                 behavioral_guidance=f"{verbosity} (Expert Domain: {selected_expert})",
                 tools=["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"],
-                shutdown_event=shutdown_event
+                shutdown_event=shutdown_event,
+                retry_count=retry_count
             )
             
             # Cognitive Audit
@@ -563,15 +575,15 @@ class CognitiveHub:
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
                     retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100], "internal": True})
                     retract_full = str(retract_res.content[0].text)
-                    await self.execute_dispatch(retract_full, "Pinky (Retraction)", final=True)
+                    await self.execute_dispatch(retract_full, "Pinky (Retraction)", retry_count=retry_count+1, final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             if brain_full:
-                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event)
+                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count)
 
         return True
 
-    async def evaluate_grounding(self, source, text, fuel, shutdown_event):
+    async def evaluate_grounding(self, source, text, fuel, shutdown_event, retry_count=0):
         """[FEAT-247] Physical Audit Gate: Pinky audits Brain for feasibility."""
         # [REVISION-17.9] Lower gate to 0.5 to ensure common technical tasks are audited
         if "pinky" not in self.residents or fuel < 0.5:
@@ -592,6 +604,6 @@ class CognitiveHub:
                 "internal": True
             })
             res_full = str(res_res.content[0].text)
-            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, final=True)
+            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, retry_count=retry_count+1, final=True)
         except Exception:
             pass
