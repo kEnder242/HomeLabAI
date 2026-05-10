@@ -254,6 +254,10 @@ class LabAttendantV4:
         vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
         self._last_vllm_log_size = os.path.getsize(vllm_log) if os.path.exists(vllm_log) else 0
 
+        # [FEAT-339] Persistent Telemetry Ledger
+        self.pulse_count = 0 
+        self.telemetry_path = os.path.join(DATA_DIR, "telemetry_ledger.jsonl")
+
 
     def register_route(self, method, path, handler):
         """[FEAT-219] Silicon Handshake: Multi-Path Router."""
@@ -336,10 +340,43 @@ class LabAttendantV4:
             logger.error(f"[PAGER] Failed to log event: {e}")
 
     # --- Pulse Loop ---
+    async def record_telemetry(self):
+        """[FEAT-339] Persistent Telemetry: Logs resource state for historical audit."""
+        try:
+            import datetime
+            mem = psutil.virtual_memory()
+            v_used, v_total = await self._get_vram_info()
+            
+            # Map physical memory to identify hogs
+            m_map = self.map_physical_memory()
+            
+            # Sort accounted by RSS to find top lab hogs
+            top_lab = sorted(m_map.get("accounted", []), key=lambda x: x["mem_mib"], reverse=True)[:3]
+            
+            entry = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "ram_pct": mem.percent,
+                "vram_mib": v_used,
+                "vram_pct": round((v_used / v_total * 100), 1) if v_total > 0 else 0,
+                "mode": current_lab_mode,
+                "top_lab_hogs": top_lab
+            }
+            
+            with open(self.telemetry_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.error(f"[TELEMETRY] Logging failed: {e}")
+
     async def pulse_loop(self):
         """Continuous background vitals pulse for the dashboard."""
         logger.info("[PULSE] Background status cycle active (2s).")
         while True:
+            self.pulse_count += 1
+            
+            # [FEAT-339] Periodic Telemetry Logging (Every 60s at 2s pulse)
+            if self.pulse_count % 30 == 0:
+                await self.record_telemetry()
+
             # [FEAT-265.17] Decrement boot grace
             if self.boot_grace_period > 0:
                 self.boot_grace_period -= 1

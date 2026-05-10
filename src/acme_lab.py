@@ -150,8 +150,8 @@ class AcmeLab:
         self.residents: Dict[str, ClientSession] = {}
         # [FEAT-233.2] Waterfall Queue: Shared buffer for real-time inter-node overhearing
         self.waterfall_queue = asyncio.Queue()
-        self.exit_stack = AsyncExitStack()
         self.shutdown_event = asyncio.Event()
+        self._residents_ready = asyncio.Event() # [FIX] Task-safe boot signal
         self.last_activity = time.time()
         self.last_save_event = 0.0
         self.last_typing_event = 0.0  # [FEAT-052] Typing Awareness
@@ -178,14 +178,23 @@ class AcmeLab:
         self._disconnect_task = None # [FEAT-171] Idle timer task
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
+        self._background_tasks = set() # [FEAT-339] Lifecycle Hardening
         self.current_processing_task = None
         self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
         self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
         self._wake_task = None # [FEAT-265.47] Task Sovereignty: Track active wake task
         self._triage_lock = asyncio.Lock() # [FEAT-265.48] Absolute State: Prevent concurrent triage
         self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
+        self._residents_booted = False # [FEAT-337] Resident Persistence
         reclaim_logger(role)
         self.set_proc_title()
+
+    def _track_task(self, coro):
+        """[FEAT-339] Task Lifecycle: Register and auto-discard background tasks."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     def set_proc_title(self):
         """[FEAT-122] Kernel-Level Visibility: Renames process in ps/htop."""
@@ -312,7 +321,7 @@ class AcmeLab:
 
     async def monitor_task_with_tics(self, coro, delay=2.5):
         """Sends state-aware tics during long reasoning tasks."""
-        task = asyncio.create_task(coro)
+        task = self._track_task(coro)
 
         # Standard character tics as fallback
         base_tics = [
@@ -485,7 +494,7 @@ class AcmeLab:
                     finally:
                         self._priming_in_progress = False
 
-                asyncio.create_task(_bg_prime())
+                self._track_task(_bg_prime())
 
         except Exception as e:
             logging.debug(f"[HEALTH] Overall brain probe failed: {e}")
@@ -584,7 +593,7 @@ class AcmeLab:
             finally:
                 self._spark_active = False
 
-        asyncio.create_task(_run_ignition())
+        self._track_task(_run_ignition())
 
     async def reflex_loop(self):
         """Background maintenance and status updates grounded in silicon truth."""
@@ -632,7 +641,7 @@ class AcmeLab:
                 logging.warning(f"[HUB] VRAM Hibernation triggered ({int(idle_time)}s idle). Unloading local engines...")
                 self.status = "HIBERNATING"
                 self.engine_ready.clear() # [FEAT-265.15] Readiness Reset
-                asyncio.create_task(self._hibernate())
+                self._track_task(self._hibernate())
                 self.brain_online = False # Mark offline while sleeping
 
             if self.connected_clients:
@@ -855,7 +864,7 @@ class AcmeLab:
                 logging.warning("[HUB] Nightly cycle finished with auto-hibernate enabled. Sleeping.")
                 await self._hibernate()
         # Dispatch the long-tail grind to the background
-        asyncio.create_task(_run_background_induction())
+        self._track_task(_run_background_induction())
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] The Alarm Clock: Executes induction and periodic background tasks."""
@@ -954,7 +963,7 @@ class AcmeLab:
                     return
                 if not self._disconnect_task:
                     logging.info(f"[SOCKET] Debug Mode: Starting {self.afk_timeout}s idle timer.")
-                    self._disconnect_task = asyncio.create_task(self._delayed_lock_clear())
+                    self._disconnect_task = self._track_task(self._delayed_lock_clear())
 
     async def _delayed_lock_clear(self):
         """Helper for FEAT-171: Clears the lock after a timeout."""
@@ -1143,7 +1152,7 @@ class AcmeLab:
                     if query and (not self.current_processing_task or self.current_processing_task.done()):
                         tagged_query = f"[ME] {query}"
                         await self.broadcast({"type": "final", "text": tagged_query})
-                        self.current_processing_task = asyncio.create_task(
+                        self.current_processing_task = self._track_task(
                             self.process_query(tagged_query)
                         )
                 await asyncio.sleep(0.1)
@@ -1175,7 +1184,7 @@ class AcmeLab:
                 while not self._neural_queue.empty():
                     query = await self._neural_queue.get()
                     # Spark processing
-                    asyncio.create_task(self.process_query(query))
+                    self._track_task(self.process_query(query))
                     self._neural_queue.task_done()
             
             await asyncio.sleep(1)
@@ -1202,7 +1211,7 @@ class AcmeLab:
         await self.manage_session_lock(active=True)
 
         # [FEAT-085] Snap-to-Life: Prime the Sovereign Brain on connect
-        asyncio.create_task(self.check_brain_health(force=True))
+        self._track_task(self.check_brain_health(force=True))
         try:
             await ws.send_str(
                 json.dumps(
@@ -1265,12 +1274,12 @@ class AcmeLab:
                             if needs_wake:
                                 if client_id not in self._handshake_lock:
                                     self._handshake_lock.add(client_id)
-                                    asyncio.create_task(self.spark_restoration(client_id))
+                                    self._track_task(self.spark_restoration(client_id))
                                     # Release lock after a safety window (30s)
                                     async def _release():
                                         await asyncio.sleep(30)
                                         self._handshake_lock.discard(client_id)
-                                    asyncio.create_task(_release())
+                                    self._track_task(_release())
                         elif vllm_warm:
                             # [FEAT-265] If warm, ensure OPERATIONAL state
                             self.status = "OPERATIONAL"
@@ -1284,9 +1293,9 @@ class AcmeLab:
 
                         # [FEAT-087/265.8] Immediate Prime: Start Brain discovery BEFORE responding
                         if self.status == "OPERATIONAL":
-                            asyncio.create_task(self.check_brain_health(force=False))
+                            self._track_task(self.check_brain_health(force=False))
                             # [FEAT-283] Drain buffered queries once ready
-                            asyncio.create_task(self._drain_neural_buffer())
+                            self._track_task(self._drain_neural_buffer())
 
                         # Broadcase definitive foyer status only after gate
                         state_msg = "Lab is OPERATIONAL." if self.status == "OPERATIONAL" else "Lab is establishing anchors..."
@@ -1367,9 +1376,9 @@ class AcmeLab:
                         if query.startswith("[ME]"):
                             self.last_activity = time.time()
                         # [FIX] Simplified task management to avoid cancellation deadlocks
-                        asyncio.create_task(self.process_query(query))
+                        self._track_task(self.process_query(query))
                     elif m_type == "workspace_save":
-                        asyncio.create_task(
+                        self._track_task(
                             self.handle_workspace_save(
                                 data.get("filename"), data.get("content"), ws
                             )
@@ -1395,7 +1404,7 @@ class AcmeLab:
                         self.last_activity = time.time()
                         # [FEAT-284.3] High-Fidelity Readiness: Prime Brain on first typing activity
                         if not hasattr(self, "_session_primed") or not self._session_primed:
-                            asyncio.create_task(self.check_brain_health(force=True))
+                            self._track_task(self.check_brain_health(force=True))
                             self._session_primed = True
                     elif m_type == "relay_feedback":
                         vote = data.get("vote")
@@ -1550,7 +1559,7 @@ class AcmeLab:
             if not self._wake_task or self._wake_task.done():
                 logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
                 # Spark ignition via Attendant
-                asyncio.create_task(self.spark_restoration("WAKE_INTENT"))
+                self._track_task(self.spark_restoration("WAKE_INTENT"))
                 
                 async def _wait_and_signal():
                     try:
@@ -1563,10 +1572,8 @@ class AcmeLab:
                                     # [FEAT-335] Race Hardening & [FEAT-337] Resident Persistence
                                     residents_healthy = await self._check_resident_health()
                                     if not self._residents_booted or not residents_healthy:
-                                        if not residents_healthy and self._residents_booted:
-                                            logging.warning("[HUB] Residents found unhealthy during wake. Re-booting.")
-                                            self._residents_booted = False
-                                        await self.boot_residents(self.exit_stack)
+                                        logging.error("[HUB] Resident stability failure. Aborting Hub for Attendant recovery.")
+                                        os._exit(1) # [BKM-009] Silicon Scythe
                                     
                                     # [FEAT-337] Warm Wake Larynx Probe: Final silicon verification
                                     if "lab" in self.residents:
@@ -1588,7 +1595,7 @@ class AcmeLab:
                         logging.error(f"[HUB] Wake sequence failed: {e}")
                         self._spark_active = False # Ensure lock is released on error
                 
-                self._wake_task = asyncio.create_task(_wait_and_signal())
+                self._wake_task = self._track_task(_wait_and_signal())
 
             # Notify user and wait for readiness event (Non-blocking)
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
@@ -1644,6 +1651,66 @@ class AcmeLab:
         except Exception as e:
             logging.warning(f"[HEALTH] Resident health check failed: {e}")
             return False
+
+    async def _resident_lifecycle_task(self, trigger_task=None):
+        """[FEAT-339] Lifecycle Hardening: Manages node contexts in a dedicated task."""
+        logging.info("[RESIDENTS] Starting Lifecycle Task...")
+        async with AsyncExitStack() as stack:
+            try:
+                # 1. Boot the residents
+                await self.boot_residents(stack)
+                
+                # [FEAT-339] Vocal-Lock Protocol: Verify weights before marking OPERATIONAL
+                # This ensures the engine is vocal before we release the spark lock.
+                if "lab" in self.residents:
+                    try:
+                        await self.residents["lab"].call_tool(
+                            name="think",
+                            arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
+                        )
+                        logging.info("[RESIDENTS] Larynx Check: SUCCESS.")
+                    except Exception as e:
+                        logging.error(f"[RESIDENTS] Larynx Check FAILED: {e}")
+
+                self.cognitive.residents = self.residents
+                self.status = "OPERATIONAL"
+                self.engine_ready.set()
+                self._spark_active = False # [FEAT-339] Final Ignition Lock Release
+                
+                # 2. Handle initial trigger tasks
+                if trigger_task:
+                    logging.info(f"[BOOT] Executing deferred trigger: {trigger_task}")
+                    if trigger_task == "recruiter":
+                        import recruiter
+                        self._track_task(recruiter.run_recruiter_task(
+                            self.residents.get("archive"),
+                            self.residents.get("brain"),
+                            self.residents.get("browser"),
+                        ))
+                    elif trigger_task == "lab":
+                        if "lab" in self.residents:
+                            self._track_task(self.residents["lab"].call_tool(name="build_semantic_map"))
+
+                self._track_task(self.ear_poller_loop())
+                await self.broadcast({
+                    "type": "status",
+                    "message": "[OPERATIONAL] Hub foyer is fully synchronized.",
+                    "state": "operational",
+                    "full_lab_ready": True,
+                    "vibe": "PINKY_INTERFACE"
+                })
+                logging.info("[OPERATIONAL] Hub foyer is fully synchronized.")
+
+                # 3. Maintain residency until Hub shutdown
+                await self.shutdown_event.wait()
+                logging.info("[RESIDENTS] Hub shutdown signal received. Releasing node contexts...")
+                
+            except Exception as e:
+                logging.error(f"[RESIDENTS] Fatal Lifecycle Error: {e}")
+            finally:
+                self._residents_booted = False
+                self.residents.clear()
+                self._spark_active = False # Release lock on failure
 
     async def boot_residents(self, stack: AsyncExitStack):
         """Internal boot sequence: Must remain in unitary task and be idempotent."""
@@ -1711,7 +1778,7 @@ class AcmeLab:
         self.engine_ready.set()
 
         # [FEAT-283] Drain buffered queries once ready
-        asyncio.create_task(self._drain_neural_buffer())
+        self._track_task(self._drain_neural_buffer())
         
         # [FEAT-265.1] Vocal-Lock Protocol: Final Cognitive Probe
         logging.info("[BOOT] Larynx Check: Performing final cognitive probe...")
@@ -1735,90 +1802,71 @@ class AcmeLab:
             logging.info("[BOOT] Larynx Check: GLOBAL SUCCESS.")
         except Exception as e:
             logging.error(f"[BOOT] Larynx Check FAILED: {e}")
-            # [FEAT-265.2] Gate status by Larynx success
-            return # Do not log OPERATIONAL if silicon is silent
 
-        await self.broadcast({"type": "crosstalk", "brain": "[OPERATIONAL] Hub foyer is fully synchronized.", "brain_source": "System"})
-        logging.info("[OPERATIONAL] Hub foyer is fully synchronized.")
-        
-        # [FEAT-336] Stability: Reset idle timer upon successful boot
-        self.last_activity = time.time()
-        
-        asyncio.create_task(self.ear_poller_loop())
-        await self.broadcast({
-            "type": "status",
-            "message": "[OPERATIONAL] Hub foyer is fully synchronized.",
-            "state": "operational",
-            "full_lab_ready": True,
-            "operational": True
-        })
-
-        if self.mode in ["DEBUG_SMOKE", "DEBUG_PINKY"]:
-            logging.info(f"[{self.mode}] Successful load. Self-terminating.")
-            self.shutdown_event.set()
-        elif self.mode == "DEEP_SMOKE":
-            logging.info("[DEEP_SMOKE] Starting Cycle of Life verification...")
-            try:
-                # 1. Ingest
-                logging.info("[DEEP_SMOKE] Step 1: Ingesting memory...")
-                await self.residents["archive"].call_tool(
-                    "save_interaction",
-                    arguments={
-                        "query": "DEEP_SMOKE_TEST",
-                        "response": "The verification code is 778899",
-                    },
-                )
-                # 2. Reason
-                logging.info("[DEEP_SMOKE] Step 2: Reasoning over memory...")
-                res = await self.residents["brain"].call_tool(
-                    "deep_think",
-                    arguments={
-                        "task": "What is the DEEP_SMOKE_TEST verification code?",
-                        "context": "",
-                    },
-                )
-                if "778899" in res.content[0].text:
-                    logging.info("[DEEP_SMOKE] Step 2 PASSED: Recall verified.")
-                else:
-                    logging.error(
-                        f"[DEEP_SMOKE] Step 2 FAILED: Response was: {res.content[0].text}"
-                    )
-
-                # 3. Dream (Consolidate)
-                logging.info("[DEEP_SMOKE] Step 3: Consolidating memory via Dream...")
-                dump = await self.residents["archive"].call_tool(
-                    "get_stream_dump", arguments={}
-                )
-                data = json.loads(dump.content[0].text)
-                ids = data.get("ids", [])
-                await self.residents["archive"].call_tool(
-                    "dream",
-                    arguments={
-                        "summary": "Deep Smoke Verification: Code 778899 secured.",
-                        "sources": ids,
-                    },
+    async def _run_deep_smoke(self):
+        """[FEAT-339] Verify 'Cycle of Life' in a task-safe manner."""
+        logging.info("[DEEP_SMOKE] Starting Cycle of Life verification...")
+        try:
+            # 1. Ingest
+            logging.info("[DEEP_SMOKE] Step 1: Ingesting memory...")
+            await self.residents["archive"].call_tool(
+                "save_interaction",
+                arguments={
+                    "query": "DEEP_SMOKE_TEST",
+                    "response": "The verification code is 778899",
+                },
+            )
+            # 2. Reason
+            logging.info("[DEEP_SMOKE] Step 2: Reasoning over memory...")
+            res = await self.residents["brain"].call_tool(
+                "deep_think",
+                arguments={
+                    "task": "What is the DEEP_SMOKE_TEST verification code?",
+                    "context": "",
+                },
+            )
+            if "778899" in res.content[0].text:
+                logging.info("[DEEP_SMOKE] Step 2 PASSED: Recall verified.")
+            else:
+                logging.error(
+                    f"[DEEP_SMOKE] Step 2 FAILED: Response was: {res.content[0].text}"
                 )
 
-                # 4. Final Recall
-                logging.info("[DEEP_SMOKE] Step 4: Final recall check...")
-                res_final = await self.residents["brain"].call_tool(
-                    "deep_think",
-                    arguments={
-                        "task": "Recall the deep smoke verification code.",
-                        "context": "",
-                    },
-                )
-                if "778899" in res_final.content[0].text:
-                    logging.info("[DEEP_SMOKE] Step 4 PASSED: Evolution verified.")
-                else:
-                    logging.warning(
-                        "[DEEP_SMOKE] Step 4: Partial success. Response requires manual review."
-                    )
+            # 3. Dream (Consolidate)
+            logging.info("[DEEP_SMOKE] Step 3: Consolidating memory via Dream...")
+            dump = await self.residents["archive"].call_tool(
+                "get_stream_dump", arguments={}
+            )
+            data = json.loads(dump.content[0].text)
+            ids = data.get("ids", [])
+            await self.residents["archive"].call_tool(
+                "dream",
+                arguments={
+                    "summary": "Deep Smoke Verification: Code 778899 secured.",
+                    "sources": ids,
+                },
+            )
 
-                await self.broadcast({"type": "crosstalk", "brain": "[DEEP_SMOKE] Cycle of Life complete.", "brain_source": "System"})
-            except Exception as e:
-                logging.error(f"[DEEP_SMOKE] Verification failed: {e}")
-            self.shutdown_event.set()
+            # 4. Final Recall
+            logging.info("[DEEP_SMOKE] Step 4: Final recall check...")
+            res_final = await self.residents["brain"].call_tool(
+                "deep_think",
+                arguments={
+                    "task": "Recall the deep smoke verification code.",
+                    "context": "",
+                },
+            )
+            if "778899" in res_final.content[0].text:
+                logging.info("[DEEP_SMOKE] Step 4 PASSED: Evolution verified.")
+            else:
+                logging.warning(
+                    "[DEEP_SMOKE] Step 4: Partial success. Response requires manual review."
+                )
+
+            await self.broadcast({"type": "crosstalk", "brain": "[DEEP_SMOKE] Cycle of Life complete.", "brain_source": "System"})
+        except Exception as e:
+            logging.error(f"[DEEP_SMOKE] Verification failed: {e}")
+        self.shutdown_event.set()
 
     async def run(self, disable_ear=False, trigger_task=None):
         logging.info(f"[BOOT] Starting Lab in mode: {self.mode}")
@@ -1894,79 +1942,38 @@ class AcmeLab:
         site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_address=True, reuse_port=True)
 
         try:
-            async with AsyncExitStack() as stack:
-                # [FIX] Start WebSocket server BEFORE residents to ensure foyer is always listening
-                await site.start()
-                logging.info(f'[BOOT] Server on {PORT}')
-                
-                # [FEAT-313.4] Physical Port Verification: Ensure foyer is bound before backgrounding
-                import subprocess
-                for _ in range(20):
-                    try:
-                        res = subprocess.check_output(['sudo', 'fuser', f'{PORT}/tcp'], stderr=subprocess.DEVNULL)
-                        if res:
-                            logging.info('[BOOT] Foyer physically bound and listening.')
-                            break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.5)
-                
-                # [FEAT-313] Non-Blocking Foyer: Spark the residents in the background
-                # This ensures the WebSocket stays open even during long engine loads.
-                async def _background_ignition():
-                    try:
-                        logging.info('[BOOT] Larynx Gate: Engine physically verified by Attendant.')
-                        # [FEAT-313.5] Resilient Lobby: Don't let resident boot kill the server
-                        await self.boot_residents(stack)
-                        
-                        # [FEAT-339] Vocal-Lock Protocol: Verify weights before marking OPERATIONAL
-                        if "lab" in self.residents:
-                            try:
-                                await self.residents["lab"].call_tool(
-                                    name="think",
-                                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
-                                )
-                                logging.info("[BOOT] Larynx Check: SUCCESS.")
-                            except Exception as e:
-                                logging.error(f"[BOOT] Larynx Check FAILED: {e}")
-
-                        self.cognitive.residents = self.residents
-                        logging.info('[BOOT] Hub residents synchronized. Mind is OPERATIONAL.')
-                        await self.broadcast({'type': 'crosstalk', 'brain': '⚡ Mind is OPERATIONAL.', 'brain_source': 'System'})
-                    finally:
-                        self._spark_active = False # Release Boot Lock after silicon verification
-                
-                asyncio.create_task(_background_ignition())
-                asyncio.create_task(self._log_tailer_loop())
-
-                # [FEAT-055] Manual Task Trigger for 'Fast Alarm' testing
-                if trigger_task:
-                    logging.info(f"[BOOT] Manual Task Trigger: {trigger_task}")
-                    if trigger_task == "recruiter":
-                        import recruiter
-
-                        asyncio.create_task(
-                            recruiter.run_recruiter_task(
-                                self.residents.get("archive"),
-                                self.residents.get("brain"),
-                                self.residents.get("browser"),
-                            )
-                        )
-                    elif trigger_task == "lab":
-                        if "lab" in self.residents:
-                            asyncio.create_task(
-                                self.residents["lab"].call_tool(
-                                    name="build_semantic_map"
-                                )
-                            )
-
-                asyncio.create_task(self.reflex_loop())
-                asyncio.create_task(
-                    self.scheduled_tasks_loop()
-                )  # [FEAT-049] Alarm Clock
-                
-                await self.shutdown_event.wait()
-                logging.info("[SHUTDOWN] Event received. Cleaning up residents...")
+            # [FIX] Start WebSocket server BEFORE residents to ensure foyer is always listening
+            await site.start()
+            logging.info(f'[BOOT] Server on {PORT}')
+            
+            # [FEAT-313.4] Physical Port Verification: Ensure foyer is bound before backgrounding
+            import subprocess
+            for _ in range(20):
+                try:
+                    res = subprocess.check_output(['sudo', 'fuser', f'{PORT}/tcp'], stderr=subprocess.DEVNULL)
+                    if res:
+                        logging.info('[BOOT] Foyer physically bound and listening.')
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.5)
+            
+            # [FEAT-339] Lifecycle Hardening: Start dedicated Resident Task
+            self._track_task(self._resident_lifecycle_task(trigger_task=trigger_task))
+            self._track_task(self._log_tailer_loop())
+            self._track_task(self.reflex_loop())
+            self._track_task(self.scheduled_tasks_loop())  # [FEAT-049] Alarm Clock
+            
+            await self.shutdown_event.wait()
+            logging.info("[SHUTDOWN] Event received. Cleaning up residents...")
+            
+            # [FIX] Lifecycle Hardening: Cancel and join background tasks
+            for task in list(self._background_tasks):
+                if not task.done():
+                    task.cancel()
+            if self._background_tasks:
+                await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            logging.info("[SHUTDOWN] Background tasks reaped.")
         except Exception as e:
             logging.error(f"[RUNTIME] Fatal Hub Error: {e}")
         finally:
