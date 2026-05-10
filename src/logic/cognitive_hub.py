@@ -35,6 +35,8 @@ class CognitiveHub:
         
         # [FEAT-233.7] Session Buffers: Real-time context for inter-node overhearing
         self.session_buffers = defaultdict(str)
+        self.consecutive_parse_failures = 0 # [FEAT-339] Triage stability tracker
+        self.lora_enabled = True # [FEAT-339] Global LoRA toggle
         self.current_fuel = 0.0
         self.current_topic = "Casual"
         self.resonant_history = []
@@ -292,7 +294,7 @@ class CognitiveHub:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0, retry_count=0):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
@@ -313,7 +315,8 @@ class CognitiveHub:
             res = await node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": behavioral_guidance, "internal": is_internal,
-                "temperature": temperature, "repetition_penalty": repetition_penalty
+                "temperature": temperature, "repetition_penalty": repetition_penalty,
+                "use_lora": use_lora
             })
             
             result_text = str(res.content[0].text) if hasattr(res, 'content') else str(res)
@@ -351,14 +354,14 @@ class CognitiveHub:
             await self._process_node_stream(
                 "pinky", briefing_query, "[MODE]: DIRECT_RESPONSE", "Pinky (Briefing)",
                 tools=[], behavioral_guidance="Provide a warm, enthusiastic summary of the lab's evolution.",
-                retry_count=0
+                retry_count=0, use_lora=self.lora_enabled
             )
         except Exception as e:
             logging.error(f"[HUB] Morning Briefing failed: {e}")
 
     async def process_query(self, query, mic_active=False, shutdown_event=None, exit_hint="", trigger_briefing_callback=None, retry_count=0, turn_density=1.0):
         if retry_count > 2:
-            return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event, retry_count=retry_count)
+            return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
         logging.info(f"[USER] Intercom Query: {query}")
         self.current_fuel = 0.0
@@ -388,16 +391,29 @@ class CognitiveHub:
                     
                     # Triage is a blocking call to establish routing
                     # [FIX] Use stable sampling for high-fidelity prompt
-                    t_text = await self._process_node_stream("lab", query, "", "Lab (Triage)", is_internal=True, temperature=0.2, repetition_penalty=1.2, retry_count=retry_count)
+                    # [FEAT-339] Support auto-disabling LoRA if silicon is producing gibberish
+                    t_text = await self._process_node_stream(
+                        "lab", query, "", "Lab (Triage)", 
+                        is_internal=True, temperature=0.2, repetition_penalty=1.2, 
+                        retry_count=retry_count, use_lora=self.lora_enabled
+                    )
 
                     logging.info(f"[HUB] Triage Output: {t_text}")
 
                     t_clean = self.bridge_signal_clean(t_text)
                     if not t_clean:
+                        self.consecutive_parse_failures += 1
+                        if self.consecutive_parse_failures >= 3 and self.lora_enabled:
+                            self.lora_enabled = False
+                            msg = "[ALARM] Silicon instability detected (Gibberish). Downshifting to Base Model (No-LoRA)."
+                            logging.error(msg)
+                            await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+
                         logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
                         raise ValueError("TRIAGE_PARSE_FAILURE")
 
-                    # [FEAT-270.3] Type-Agnostic Triage Parser (ERR-06)
+                    self.consecutive_parse_failures = 0 # Reset on success
+                    self.triage_failures = 0 # [FIX] Reset on successful parse
                     if isinstance(t_clean, dict):
                         t_parsed = t_clean
                     else:
@@ -443,7 +459,8 @@ class CognitiveHub:
                         f_path = os.path.join(self.config_dir, "../logs/triage_forensic.log")
                         with open(f_path, "a") as f:
                             f.write(f"\n--- TRIAGE FAIL {datetime.datetime.now()} ---\n{t_text}\n--- END ---\n")
-                    except Exception: pass
+                    except Exception:
+                        pass
                     
                     if triage_attempt < 2:
                         await asyncio.sleep(2.0 * (triage_attempt + 1))
@@ -468,13 +485,13 @@ class CognitiveHub:
 
         # 3. Proactive Archivist (RAG context)
         historical_context = ""
-        is_history_query = (self.current_topic == "PINKY_RECALL" or intent == "RECALL")
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         if year_match and "archive" in self.residents:
             try:
                 res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
                 historical_context = str(res_context.content[0].text)
-            except Exception: pass
+            except Exception:
+                pass
 
         # 4. Waterfall Local Inference (Cascading Spark)
         pinky_text = ""
@@ -491,7 +508,8 @@ class CognitiveHub:
                 behavioral_guidance=situational_guidance or "Standard brevity. Focus on natural interaction.",
                 shutdown_event=shutdown_event,
                 is_internal=mute_pinky,
-                retry_count=retry_count
+                retry_count=retry_count,
+                use_lora=self.lora_enabled
             )
 
         async def run_shadow():
@@ -511,7 +529,8 @@ class CognitiveHub:
                     behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
                     is_internal=mute_shadow,
-                    retry_count=retry_count
+                    retry_count=retry_count,
+                    use_lora=self.lora_enabled
                 )
 
         # [Task 1.2] Cascading Spark: Pinky -> Shadow -> Brain
@@ -565,7 +584,8 @@ class CognitiveHub:
                 behavioral_guidance=f"{verbosity} (Expert Domain: {selected_expert})",
                 tools=["read_chronological_excerpts", "peek_strategic_map", "update_whiteboard"],
                 shutdown_event=shutdown_event,
-                retry_count=retry_count
+                retry_count=retry_count,
+                use_lora=self.lora_enabled
             )
             
             # Cognitive Audit
@@ -579,11 +599,11 @@ class CognitiveHub:
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             if brain_full:
-                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count)
+                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
         return True
 
-    async def evaluate_grounding(self, source, text, fuel, shutdown_event, retry_count=0):
+    async def evaluate_grounding(self, source, text, fuel, shutdown_event, retry_count=0, use_lora=True):
         """[FEAT-247] Physical Audit Gate: Pinky audits Brain for feasibility."""
         # [REVISION-17.9] Lower gate to 0.5 to ensure common technical tasks are audited
         if "pinky" not in self.residents or fuel < 0.5:
@@ -601,7 +621,8 @@ class CognitiveHub:
             res_res = await self.residents["pinky"].call_tool("think", {
                 "query": cooldown_query, 
                 "context": f"[PROPOSED_STRATEGY]: {text[:1000]}",
-                "internal": True
+                "internal": True,
+                "use_lora": use_lora
             })
             res_full = str(res_res.content[0].text)
             await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, retry_count=retry_count+1, final=True)
