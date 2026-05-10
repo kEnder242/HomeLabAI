@@ -688,6 +688,7 @@ class LabAttendantV4:
             self._recovery_in_progress = False
 
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+        self.log_event(f"IGNITION_START ({reason})", "INFO")
         async with self.ignition_lock:
             global current_lab_mode, current_model, lab_process, is_hibernating
             self._last_ignition_time = time.time() # [FEAT-317] Reset port stability window

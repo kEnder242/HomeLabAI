@@ -809,15 +809,20 @@ class AcmeLab:
             self.trigger_pager("Step 4: Sequential Harvest...", severity="info", source="Induction")
             try:
                 harvest_script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/serial_harvest_v2.py")
+                # [FEAT-343] Subprocess Hardening: 20-minute limit
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, harvest_script,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                stdout, stderr = await proc.communicate()
-                if stdout:
-                    logging.info(f"[ALARM] Harvest Output: {stdout.decode().strip()}")
-                if stderr:
-                    logging.error(f"[ALARM] Harvest Error: {stderr.decode().strip()}")
+                try:
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1200)
+                    if stdout:
+                        logging.info(f"[ALARM] Harvest Output: {stdout.decode().strip()}")
+                    if stderr:
+                        logging.error(f"[ALARM] Harvest Error: {stderr.decode().strip()}")
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    logging.error("[ALARM] Harvest TIMEOUT (20m). Silicon reclaimed.")
             except Exception as e:
                 logging.error(f"[ALARM] Harvest failed: {e}")
 
@@ -840,11 +845,16 @@ class AcmeLab:
                         sys.executable, dream_script, "100", "voice", "--order", "reverse", "--hours", "2",
                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                     )
-                    stdout, stderr = await proc.communicate()
-                    if stdout:
-                        logging.info(f"[ALARM] Dream Output: {stdout.decode().strip()}")
-                    if stderr:
-                        logging.error(f"[ALARM] Dream Error: {stderr.decode().strip()}")
+                    try:
+                        # [FEAT-343] Subprocess Hardening: 120-minute limit for full pass
+                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=7200)
+                        if stdout:
+                            logging.info(f"[ALARM] Dream Output: {stdout.decode().strip()}")
+                        if stderr:
+                            logging.error(f"[ALARM] Dream Error: {stderr.decode().strip()}")
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        logging.error("[ALARM] Dream Pass TIMEOUT (2h). Silicon reclaimed.")
             except Exception as e:
                 logging.error(f"[ALARM] Dream Pass failed: {e}")
 
