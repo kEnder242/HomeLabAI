@@ -715,7 +715,7 @@ class AcmeLab:
                     pass
             await asyncio.sleep(1.0)
 
-    async def _hibernate(self):
+    async def _hibernate(self, level=1):
         """[FEAT-249.7] Centralized Hibernation Logic: Bridges to Attendant REST API."""
         try:
             # [FEAT-267] Use dynamic key for REST authorization
@@ -723,12 +723,17 @@ class AcmeLab:
             
             async with aiohttp.ClientSession() as session:
                 headers = {'X-Lab-Key': expected_key}
-                async with session.post("http://127.0.0.1:9999/hibernate", headers=headers, timeout=5) as resp:
+                async with session.post(f"http://127.0.0.1:9999/hibernate?level={level}", headers=headers, timeout=5) as resp:
                     if resp.status != 200:
                         res_text = await resp.text()
                         logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
                     else:
-                        logging.info("[HUB] Hibernation signal accepted by Attendant. Reverting status to HIBERNATING.")
+                        if level >= 3:
+                            logging.info("[HUB] Deep Sleep (H3) accepted. Shutdown sequence initiated.")
+                            self.shutdown_event.set()
+                            return
+
+                        logging.info(f"[HUB] Hibernation (H{level}) signal accepted. Reverting status.")
                         self.status = "HIBERNATING"
                         self.engine_ready.clear()
                         # [FEAT-337] Resident Persistence: We NO LONGER clear residents or close the stack here.
@@ -1377,6 +1382,10 @@ class AcmeLab:
                             self.last_activity = time.time()
                         # [FIX] Simplified task management to avoid cancellation deadlocks
                         self._track_task(self.process_query(query))
+                    elif m_type == "hibernate":
+                        level = int(data.get("level", 1))
+                        logging.info(f"[HUB] Remote hibernation request (Level {level}) from {client_id}")
+                        await self._hibernate(level=level)
                     elif m_type == "workspace_save":
                         self._track_task(
                             self.handle_workspace_save(

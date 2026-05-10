@@ -15,7 +15,7 @@
         },
         "lab": {
             "primary": "localhost",
-            "lora_name": "lab_sentinel_v1"
+            "lora_name": null
         }
     },
     "hosts": {
