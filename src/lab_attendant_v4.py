@@ -638,10 +638,20 @@ class LabAttendantV4:
         # [FEAT-323] Backoff Telemetry: Expose recovery effort
         vitals["recovery_level"] = self.recovery_attempts
         vitals["recovery_in_progress"] = self._recovery_in_progress
+        
+        # [FEAT-341] Ledger Visibility: Last 5 telemetry snapshots
+        try:
+            if os.path.exists(self.telemetry_path):
+                from collections import deque
+                with open(self.telemetry_path, "r") as f:
+                    vitals["telemetry_ledger"] = [json.loads(line) for line in deque(f, 5)]
+        except Exception:
+            pass
+
         return vitals
 
     async def _trigger_adaptive_recovery(self, reason, engine_only=False):
-        """[FEAT-302] Centralized Adaptive Backoff Controller."""
+        """[FEAT-341] Incremental Watchdog: Exponential backoff to handle persistent failures."""
         # [FIX] Recovery Singleton: Prevent parallel backoff tasks
         if self._recovery_in_progress:
             logger.info(f"[WATCHDOG] Recovery already in progress. Ignoring redundant trigger: {reason}")
@@ -650,17 +660,27 @@ class LabAttendantV4:
         self._recovery_in_progress = True
         try:
             self.recovery_attempts += 1
-            cooldown = 5 + (self.recovery_attempts * 120)
-            logger.warning(f"[WATCHDOG] [{reason}] Triggering adaptive recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
-            self.log_event(f"Stability Failure ({reason}). Adaptive recovery active ({cooldown}s).", "WARNING")
+            
+            # [FEAT-341] 1m / 5m / 15m Scale
+            backoff_intervals = [60, 300, 900]
+            idx = min(self.recovery_attempts - 1, len(backoff_intervals) - 1)
+            cooldown = backoff_intervals[idx]
+            
+            logger.warning(f"[WATCHDOG] [{reason}] Triggering incremental recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
+            self.log_event(f"UNEXPECTED_FAILURE ({reason}). Backoff active ({cooldown}s).", "CRITICAL")
             
             await asyncio.sleep(cooldown)
-            # [FIX] Intent Awareness: Check if system was taken offline during sleep
-            if current_lab_mode == "OFFLINE" or is_hibernating:
-                logger.info(f"[WATCHDOG] Recovery aborted for {reason}: System is {current_lab_mode} (Hibernating: {is_hibernating})")
+            
+            # [FEAT-341] Physical Guard: Verify system RAM before recovery
+            mem = psutil.virtual_memory()
+            if mem.percent > 90:
+                logger.error(f"[WATCHDOG] Recovery ABORTED: System RAM critical ({mem.percent}%). Protecting external load.")
                 return
 
-            # Reset operational start time upon recovery trigger
+            # [FIX] Intent Awareness: Check if system was taken offline during sleep
+            if current_lab_mode == "OFFLINE" or is_hibernating:
+                logger.info(f"[WATCHDOG] Recovery aborted: System is {current_lab_mode} (Hibernating: {is_hibernating})")
+                return
 
             self._operational_start_time = 0
             await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=engine_only, reason=reason)
@@ -857,7 +877,7 @@ class LabAttendantV4:
 
                 # [BKM] Consolidate into EXTRA_ARGS for the script to consume
                 # Stable Recipe R2: 0.5 util and 4096 context with verified LoRA mounts
-                LORA_STR = "--enable-lora --max-loras 4 --lora-modules lab_sentinel_v1=/speedy/models/adapters/lab_sentinel_v1 cli_voice_v1=/speedy/models/adapters/cli_voice_v1 shadow_brain_v2=/speedy/models/adapters/shadow_brain_v2 lab_history_v1=/speedy/models/adapters/lab_history_v1"
+                LORA_STR = "--enable-lora --max-loras 4 --lora-modules cli_voice_v1=/speedy/models/adapters/cli_voice_v1 shadow_brain_v2=/speedy/models/adapters/shadow_brain_v2 lab_history_v1=/speedy/models/adapters/lab_history_v1"
                 env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --max-model-len 4096 --enable-sleep-mode {LORA_STR}"
 
                 logger.info(f"[VLLM] Igniting Sovereign Node (Recipe R2): {target_model}")
@@ -998,6 +1018,7 @@ class LabAttendantV4:
         self.current_reason = reason
         self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
         logger.warning(f"[{self.session_token}] [STOP] Manual stop initiated (Reason: {reason}).")
+        self.log_event(f"NOMINAL_SHUTDOWN ({reason})", "INFO")
 
         # [FEAT-324] Graceful Shutdown Handshake
         await self._handshake_graceful_stop()
@@ -1025,8 +1046,13 @@ class LabAttendantV4:
         return {"status": "success", "message": "Lab stopped and silicon scrubbed."}
 
 
-    async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT"):
-        """[FEAT-262] Eureka Hibernation: Level 2 offload with 100% Graceful requirement."""
+    async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT", level: int = 1):
+        """
+        [FEAT-265] Multi-Level Hibernation: Silicon reclamation based on wake-debt.
+        level=1 (H1): Standby. vLLM offloads weights to RAM. Nodes stay resident.
+        level=2 (H2): Lean Sleep. vLLM is stopped. Nodes stay resident. (Reclaims 3.1GB).
+        level=3 (H3): Deep Sleep. vLLM and Hub are stopped. (Reclaims 4.5GB).
+        """
         self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
         # [FEAT-265.35] Mutual Exclusion: No sleep during ignition
         if self.ignition_lock.locked():
@@ -1040,15 +1066,30 @@ class LabAttendantV4:
             return {"status": "deferred", "message": "Boot grace window active."}
 
         if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
-            return await self._proxy_request("POST", "hibernate", {"reason": reason})
+            return await self._proxy_request("POST", "hibernate", {"reason": reason, "level": level})
 
         global is_hibernating, current_lab_mode
-        logger.warning(f"[{self.session_token}] [HIBERNATE] Transitioning to Deep Sleep (Reason: {reason})")
+        logger.warning(f"[{self.session_token}] [HIBERNATE] Level {level} initiated (Reason: {reason})")
         
-        # 1. [QUIET WINDOW] Suspend pulse loop to prevent API contention during offload
+        # 1. Level 3 Handle: Full Deep Sleep (Shutdown but Remote-Ready)
+        if level >= 3:
+            return await self.mcp_stop(reason=f"H3_DEEP_SLEEP:{reason}")
+
+        # 2. Level 2 Handle: Lean Sleep (Kill vLLM, Keep Nodes)
+        if level == 2:
+            # [FEAT-340] Lean Sleep: Stop vLLM Core but leave Foyer up
+            await self.cleanup_silicon(mode="MAINTENANCE", engine_only=True)
+            self.active_pids['engine_pid'] = None
+            self._save_ledger()
+            is_hibernating = True
+            current_lab_mode = "HIBERNATING" # Hub is still up logically
+            await self.update_status_json(f"HIBERNATING (H2-Lean)")
+            return {"status": "success", "message": "vLLM engine reaped. Nodes resident."}
+
+        # 3. Level 1 Handle: Standard Standby (Legacy Level 2)
+        # [QUIET WINDOW] Suspend pulse loop to prevent API contention during offload
         self.ready_event.clear()
         
-        # 2. Attempt Level 2 Graceful Offload
         success = False
         try:
             async with aiohttp.ClientSession() as session:
@@ -1095,16 +1136,9 @@ class LabAttendantV4:
             await self.update_status_json("HIBERNATING (VRAM Free)" if reclaimed else "HIBERNATING (STALLED)")
             return {"status": "success", "message": "Soft hibernation active."}
         else:
-            # [MEMORIAL] Deprecated Sprint 16 Atomic Reap
-            # [FEAT-259] The Butler Pattern: Surgical session-based reaping
-            # # We previously killed the engine PGID here to guarantee VRAM reclamation
-            # # This is now DISABLED to preserve the V1 process state.
-            # await self.cleanup_silicon(mode="SESSION", engine_only=True)
-            
-            current_lab_mode = "HIBERNATING"
-            is_hibernating = True
-            await self.update_status_json("HIBERNATING (SIGNAL_FAILED)")
-            return {"status": "error", "message": "Hibernation signal failed. No reap performed."}
+            # Fallback to H2-Lean if signal fails
+            logger.info("[HIBERNATE] Offload signal failed. Falling back to H2-Lean (Purge).")
+            return await self.mcp_hibernate(reason=f"FALLBACK:{reason}", level=2)
 
     async def mcp_quiesce(self):
         global current_lab_mode, is_hibernating
@@ -1263,19 +1297,27 @@ class LabAttendantV4:
         target_pids = set()
         
         # 1. Ledger-Based Target Definition
-        # We only target the specific Hub and Engine PIDs we recorded.
-        if not engine_only:
-            hub_pid = self.active_pids.get('hub_pid')
+        engine_pid = self.active_pids.get('engine_pid')
+        hub_pid = self.active_pids.get('hub_pid')
+
+        if engine_only:
+            # [FEAT-340] Surgical vLLM Reap: ONLY target engine and its immediate family
+            if engine_pid:
+                target_pids.add(engine_pid)
+                try:
+                    p = psutil.Process(engine_pid)
+                    for child in p.children(recursive=True):
+                        target_pids.add(child.pid)
+                except Exception:
+                    pass
+        else:
+            # Target everything in the ledger (Hub + Engine + All Family)
             if hub_pid:
                 target_pids.add(hub_pid)
-        
-        engine_pid = self.active_pids.get('engine_pid')
-        if engine_pid:
-            target_pids.add(engine_pid)
-            
-        # Add the authorized family (children) to the kill list
-        for pid in self.active_pids.get('family', []):
-            target_pids.add(pid)
+            if engine_pid:
+                target_pids.add(engine_pid)
+            for pid in self.active_pids.get('family', []):
+                target_pids.add(pid)
 
         # 2. Final Purge Logic
         if not target_pids:
@@ -1785,10 +1827,20 @@ class LabAttendantV4:
     async def handle_hibernate_rest(self, r):
         try:
             data = await r.json() if r.has_body else {}
-            reason = data.get("reason", "IDLE_TIMEOUT")
+            reason = data.get("reason", "REST_API_HIBERNATE")
+            level = int(data.get("level", 2))
         except Exception:
-            reason = "IDLE_TIMEOUT"
-        return web.json_response(await self.mcp_hibernate(reason=reason))
+            reason = "REST_API_HIBERNATE"
+            level = 2
+            
+        # Also support query parameters for curl one-liners
+        if 'level' in r.query:
+            try:
+                level = int(r.query['level'])
+            except:
+                pass
+
+        return web.json_response(await self.mcp_hibernate(reason=reason, level=level))
     async def handle_quiesce_rest(self, r):
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):
