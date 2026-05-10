@@ -14,7 +14,7 @@ class CognitiveHub:
     [FEAT-239] Neural Action Tags: Natural language steering hints.
     [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
         from collections import defaultdict
         self.residents = residents
         self.broadcast = broadcast_callback
@@ -24,6 +24,7 @@ class CognitiveHub:
         self.monitor_task_with_tics = monitor_task_with_tics
         self.last_prime_callback = last_prime_callback
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
+        self.hibernate_callback = hibernate_callback
         
         # [FEAT-332] Dynamic Streaming Modes
         self.streaming_config = {
@@ -430,6 +431,16 @@ class CognitiveHub:
                             logging.error(msg)
                             await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
                             await self.broadcast({"type": "status", "state": "downshifted", "message": "SAFETY MODE: LoRA Disabled."})
+
+                        # [FEAT-342] Silicon Scythe: Escalate to H3 reset if base model is screaming
+                        if (self.consecutive_parse_failures >= 5) or (not self.lora_enabled and self.consecutive_parse_failures >= 2):
+                            if self.hibernate_callback:
+                                msg = "[ALARM] Base model corruption detected (Screaming). Triggering H3 Silicon Scythe."
+                                logging.error(msg)
+                                await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+                                await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Silicon."})
+                                # Async trigger to avoid blocking current loop
+                                asyncio.create_task(self.hibernate_callback(level=3))
 
                         logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
                         raise ValueError("TRIAGE_PARSE_FAILURE")
