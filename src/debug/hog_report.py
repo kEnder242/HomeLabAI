@@ -3,50 +3,72 @@ import json
 import os
 
 def get_hog_report():
-    print("=== 🐗 SYSTEM HOG REPORT (Non-Lab Context) ===")
+    print("=== 🐗 SYSTEM RESOURCE BALANCE SHEET ===")
     
     # 1. Total System Vitals
     mem = psutil.virtual_memory()
-    print(f"System RAM: {mem.used / (1024**3):.2f} GiB / {mem.total / (1024**3):.2f} GiB ({mem.percent}%)")
+    total_used_mib = mem.used / (1024 * 1024)
+    print(f"Total Used RAM: {total_used_mib / 1024:.2f} GiB / {mem.total / (1024**3):.2f} GiB ({mem.percent}%)")
     
-    # 2. Identify Non-Lab Hogs
-    # Improved signatures: capture nodes regardless of session ID suffix
-    lab_signatures = ['vllm', 'ollama', 'acme_lab', 'thinking_node', 'pinky_node', 'brain_node', 'shadow_node', 'archive_node', 'lab_node', 'browser_node', 'lab_attendant']
+    # 2. Categories
+    lab_sigs = ['vllm', 'ollama', 'acme_lab', 'thinking_node', 'pinky_node', 'brain_node', 'shadow_node', 'archive_node', 'lab_node', 'browser_node', 'lab_attendant', 'python3']
+    user_sigs = ['steam', 'jellyfin', 'gnome', 'chrome', 'firefox', 'vscode', 'code-server', '.vscode-server', 'sunshine', 'gemini', 'bun', 'node']
+    docker_sigs = ['prometheus', 'grafana', 'loki', 'dcgm-exporter']
     
-    hogs = []
+    summary = {
+        "Lab Controlled": 0.0,
+        "User/Tools": 0.0,
+        "Observability (Docker)": 0.0,
+        "System/Root/Kernel": 0.0
+    }
+    
+    detailed_hogs = []
+
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info', 'username']):
         try:
-            cmd = " ".join(proc.info['cmdline'] or []).lower()
-            # Catch nodes by name or cmdline
-            is_lab = any(sig in cmd for sig in lab_signatures) or any(sig in proc.info['name'].lower() for sig in lab_signatures)
+            pinfo = proc.info
+            cmd = " ".join(pinfo['cmdline'] or "").lower()
+            name = (pinfo['name'] or "").lower()
+            rss = pinfo['memory_info'].rss / (1024 * 1024)
             
-            if not is_lab and proc.info['username'] == psutil.Process().username():
-                mem_mib = proc.info['memory_info'].rss / (1024 * 1024)
-                if mem_mib > 50: # Report processes > 50 MiB
-                    hogs.append({
-                        "pid": proc.info['pid'],
-                        "name": proc.info['name'],
-                        "mem_mib": mem_mib,
-                        "cmd": cmd[:150]
-                    })
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            # Refined Lab Check: Catch bracketed nodes like [ARCHIVE:...]
+            is_lab = any(s.lower() in cmd or s.lower() in name for s in lab_sigs)
+            if not is_lab and (("[" in cmd and ":" in cmd) or ("[" in name and ":" in name)):
+                # High probability of being a lab node fingerprint
+                is_lab = True
+                
+            is_user = any(s.lower() in cmd or s.lower() in name for s in user_sigs)
+            is_docker = any(s.lower() in cmd or s.lower() in name for s in docker_sigs)
+            
+            if is_lab:
+                summary["Lab Controlled"] += rss
+            elif is_docker:
+                summary["Observability (Docker)"] += rss
+            elif is_user:
+                summary["User/Tools"] += rss
+            else:
+                summary["System/Root/Kernel"] += rss
+                
+            if rss > 100:
+                detailed_hogs.append({
+                    "pid": pinfo['pid'],
+                    "name": pinfo['name'],
+                    "rss": rss,
+                    "cat": "LAB" if is_lab else "DOCKER" if is_docker else "USER" if is_user else "SYS"
+                })
+        except: continue
 
-    hogs.sort(key=lambda x: x['mem_mib'], reverse=True)
+    # 3. Output Table
+    print(f"\n{'Category':<25} | {'Memory (MiB)':<12} | {'% of Used':<8}")
+    print("-" * 55)
+    for cat, val in summary.items():
+        pct = (val / total_used_mib) * 100 if total_used_mib > 0 else 0
+        print(f"{cat:<25} | {val:>12.1f} | {pct:>7.1f}%")
     
-    print(f"\nTop Non-Lab Memory Hogs (>50MiB):")
-    for h in hogs[:15]:
-        print(f"  - [{h['name']}] (PID {h['pid']}): {h['mem_mib']:.1f} MiB")
-        print(f"    CMD: {h['cmd']}")
-    
-    # 3. Contextual Audits
-    vscode_total = sum(h['mem_mib'] for h in hogs if 'vscode' in h['cmd'] or 'code-server' in h['cmd'] or '.vscode-server' in h['cmd'])
-    gemini_total = sum(h['mem_mib'] for h in hogs if 'gemini' in h['cmd'] or 'node' in h['cmd'] and 'bin/gemini' in h['cmd'])
-    
-    print(f"\nContextual Totals:")
-    print(f"  - VS Code (Server/Ext): {vscode_total:.1f} MiB")
-    print(f"  - Gemini CLI (Self): {gemini_total:.1f} MiB")
-    print(f"  - Steam / Graphics: {sum(h['mem_mib'] for h in hogs if 'steam' in h['cmd'] or 'gnome' in h['cmd']):.1f} MiB")
+    print(f"\nTop Consumers (>100MiB):")
+    detailed_hogs.sort(key=lambda x: x['rss'], reverse=True)
+    for h in detailed_hogs[:15]:
+        print(f"  - [{h['cat']}] {h['name']} (PID {h['pid']}): {h['rss']:.1f} MiB")
 
 if __name__ == "__main__":
     get_hog_report()
