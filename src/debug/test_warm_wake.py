@@ -20,21 +20,37 @@ async def get_status():
 
 async def get_resident_count():
     """
-    Surgically counts resident node processes by checking command line arguments.
-    Returns (count, names) to verify exactly 7 nodes and zero layering.
+    Surgically counts resident node processes.
+    Matches by command line path or bracketed title fingerprint.
     """
     count = 0
     names = []
-    for proc in psutil.process_iter(['cmdline']):
+    # Known node roles
+    roles = ['PINKY', 'ARCHIVE', 'BRAIN', 'SHADOW', 'LAB', 'BROWSER', 'THINKING']
+
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
-            cmd = proc.info['cmdline']
-            # Match only the actual resident Python nodes
-            if cmd and any("nodes/" in part for part in cmd):
+            cmd = " ".join(proc.info['cmdline'] or [])
+            name = proc.info['name'] or ""
+
+            # Check for path-based match or title-based match
+            is_node = False
+            if "nodes/" in cmd:
+                is_node = True
+            elif any(f"[{role}:" in cmd for role in roles) or any(f"[{role}:" in name for role in roles):
+                is_node = True
+
+            if is_node:
                 count += 1
-                names.append(cmd[-1].split("/")[-1])
+                # Try to extract role for display
+                for role in roles:
+                    if role in cmd or role in name:
+                        names.append(role)
+                        break
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-    return count, names
+    return count, list(set(names))
+
 
 async def trigger_query(query):
     """
