@@ -145,6 +145,7 @@ class AcmeLab:
         self.idle_gate = afk_timeout or 1200 # [FEAT-249] Increased to 20m for stabilization
         self.status = "INIT"
         self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
+        self._ignition_lock = asyncio.Lock() # [FEAT-342] Atomic Ignition Lock
         self._handshake_lock = set() # [FIX] Prevent rapid double-sparking
         self.connected_clients: Set[web.WebSocketResponse] = set()
         self.residents: Dict[str, ClientSession] = {}
@@ -170,7 +171,8 @@ class AcmeLab:
             trigger_morning_briefing=self.trigger_morning_briefing,
             monitor_task_with_tics=self.monitor_task_with_tics,
             last_prime_callback=self._update_prime_timer,
-            waterfall_queue=self.waterfall_queue
+            waterfall_queue=self.waterfall_queue,
+            hibernate_callback=self._hibernate
         )
         self.recent_interactions = []
         self.turn_density = 0.0  # [FEAT-154] Sentient Sentinel
@@ -500,19 +502,25 @@ class AcmeLab:
             logging.debug(f"[HEALTH] Overall brain probe failed: {e}")
             self.brain_online = False
 
-    async def spark_restoration(self, client_id="system", intent="ACTIVE"):
+    async def spark_restoration(self, client_id="system", intent="ACTIVE", skip_lock=False):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
-        # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
-        if getattr(self, "_spark_active", False) or self.status == "BOOTING":
-            return
+        if not skip_lock:
+            # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
+            if getattr(self, "_spark_active", False) or self.status == "BOOTING":
+                return
+            
+            async with self._ignition_lock:
+                # Re-check flag inside lock
+                if getattr(self, "_spark_active", False):
+                    return
+                self._spark_active = True
         
         # [FEAT-291] Passive Guard: Don't spark if the intent is strictly PASSIVE (e.g., status check)
         # unless we are already in a waking state.
         if intent == "PASSIVE" and self.status == "HIBERNATING":
+            self._spark_active = False # Release if guard blocks
             return
 
-        self._spark_active = True
-            
         # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
         # [FEAT-265.26] Sovereign Override: NEVER yield if physically hibernating
         try:
@@ -572,14 +580,19 @@ class AcmeLab:
                         if r.status == 200:
                             logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
 
+                            # [FEAT-342] Safe-Anchor Window: Wait for silicon to stabilize
+                            await asyncio.sleep(3.0) 
+
                             # Yield to Authority: Wait for Attendant to confirm silicon is OPERATIONAL
                             try:
                                 async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={key}") as ready_req:
                                     if ready_req.status == 200:
-                                        logging.info("[HUB] Attendant confirmed OPERATIONAL. Synchronizing residents...")
+                                        logging.info("[HUB] Attendant confirmed OPERATIONAL. Restoring residents...")
                                         self.trigger_pager(f"Restoration SUCCESS: {client_id}", severity="info", source="Hub")
-                                        # [FEAT-265.8] High-Fidelity Restoration: Re-boot residents
-                                        await self.boot_residents(self.exit_stack)
+                                        
+                                        # [FIX] Lifecycle Hardening: Restart the dedicated Resident Task
+                                        # instead of calling boot_residents directly.
+                                        self._track_task(self._resident_lifecycle_task())
                                     else:
                                         res = await ready_req.json()
                                         logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
@@ -1256,39 +1269,46 @@ class AcmeLab:
                         # [FEAT-249] Handshake Ignition Spark
                         client_id = data.get("client", "anonymous")
 
-                        # [FEAT-249.6/265.7] Snap-to-Life: Robust model-aware liveness check
-                        vllm_warm = await verify_engine_liveness()
+                        # [FEAT-339] Atomic Handshake: Gate the entire ignition check
+                        async with self._ignition_lock:
+                            # [FEAT-249.6/265.7] Snap-to-Life: Robust model-aware liveness check
+                            vllm_warm = await verify_engine_liveness()
 
-                        # [GATE] Only 'intercom' clients trigger ignition
-                        can_spark = client_id == "intercom"
-                        # [FEAT-314.6] Handshake Sovereignty: Yield to active ignitions
-                        needs_wake = not vllm_warm or self.status in ["HIBERNATING", "ERROR"]
-                        if needs_wake and can_spark and self.status not in ["BOOTING", "WAKING"] and not self._spark_active:
-                            # Verify Attendant state before sparking
-                            try:
-                                async with aiohttp.ClientSession() as session:
-                                    async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=0.5) as r:
-                                        if r.status == 200:
-                                            data = await r.json()
-                                            if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
-                                                logging.info("[HUB] Handshake: Yielding spark to active Attendant session.")
-                                                needs_wake = False
-                            except Exception:
-                                pass
+                            # [GATE] Only 'intercom' clients trigger ignition
+                            can_spark = client_id == "intercom"
+                            # [FEAT-314.6] Handshake Sovereignty: Yield to active ignitions
+                            needs_wake = not vllm_warm or self.status in ["HIBERNATING", "ERROR"]
+                            
+                            if needs_wake and can_spark and self.status not in ["BOOTING", "WAKING"] and not getattr(self, "_spark_active", False):
+                                # Verify Attendant state before sparking
+                                try:
+                                    async with aiohttp.ClientSession() as session:
+                                        async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=0.5) as r:
+                                            if r.status == 200:
+                                                data = await r.json()
+                                                if data.get("vitals", {}).get("reason") in ["SAFE_PILOT", "RECOVERY", "REST_API_START", "VLLM_CRASH_RECOVERY"]:
+                                                    logging.info("[HUB] Handshake: Yielding spark to active Attendant session.")
+                                                    needs_wake = False
+                                except Exception:
+                                    pass
 
-                            if needs_wake:
-                                if client_id not in self._handshake_lock:
-                                    self._handshake_lock.add(client_id)
-                                    self._track_task(self.spark_restoration(client_id))
-                                    # Release lock after a safety window (30s)
-                                    async def _release():
-                                        await asyncio.sleep(30)
-                                        self._handshake_lock.discard(client_id)
-                                    self._track_task(_release())
-                        elif vllm_warm:
-                            # [FEAT-265] If warm, ensure OPERATIONAL state
-                            self.status = "OPERATIONAL"
-                            self.engine_ready.set()
+                                if needs_wake:
+                                    if client_id not in self._handshake_lock:
+                                        self._handshake_lock.add(client_id)
+                                        # [FIX] Atomic Spark Lock: Set flag immediately inside the mutex
+                                        self._spark_active = True
+                                        self._track_task(self.spark_restoration(client_id, skip_lock=True))
+                                        
+                                        # Release lock after a safety window (30s)
+                                        async def _release():
+                                            await asyncio.sleep(30)
+                                            self._handshake_lock.discard(client_id)
+                                        self._track_task(_release())
+                            elif vllm_warm:
+                                # [FEAT-265] If warm, ensure OPERATIONAL state
+                                self.status = "OPERATIONAL"
+                                self.engine_ready.set()
+                                self._spark_active = False # Release lock if already vocal
 
                         # [FEAT-313.5] Persistent Foyer: Non-blocking handshake
                         # We no longer wait for the engine inside the socket handler.
@@ -1612,7 +1632,14 @@ class AcmeLab:
             # [FIX] Instead of re-queueing (Loop), we wait for the event here
             logging.info(f"[HUB] Query '{query[:30]}' waiting for engine_ready event...")
             await self.engine_ready.wait()
-            logging.info(f"[HUB] Query '{query[:30]}' engine is ready. Proceeding.")
+            
+            # [FEAT-342] Silicon Hardening: Staggered Release
+            # We use the triage_lock to ensure only one query hits the engine at a time
+            # specifically during the critical wake window.
+            async with self._triage_lock:
+                await asyncio.sleep(0.5) 
+                logging.info(f"[HUB] Query '{query[:30]}' engine is ready. Proceeding.")
+                return await self.process_query(query)
 
         # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
         while getattr(self, "_spark_active", False) and self.status != "OPERATIONAL":
