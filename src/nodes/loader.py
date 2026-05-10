@@ -142,43 +142,28 @@ class BicameralNode:
         if running_model and self.name == "brain" and self.primary_host != "localhost":
             return running_model
 
-        if self.name == "brain" and self.primary_host != "localhost":
-            preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
-            for p in preferred:
-                if p in available_models:
-                    return p
-
-        env_mod = os.environ.get(f"{self.name.upper()}_MODEL")
-        if env_mod:
-            model_map = self.vram_config.get("model_map", {})
-            if env_mod in model_map:
-                m = model_map[env_mod].get(engine_type.lower())
-                if m in available_models or not available_models or (engine_type == "VLLM" and m.startswith("/")):
+        # [FEAT-339] Tier Resolution: Default to UNIFIED if no environment override
+        env_mod = os.environ.get(f"{self.name.upper()}_MODEL") or "UNIFIED"
+        
+        model_map = self.vram_config.get("model_map", {})
+        if env_mod in model_map:
+            m = model_map[env_mod].get(engine_type.lower())
+            # Path matching for VLLM
+            if engine_type == "VLLM":
+                if m in available_models or "unified-base" in available_models:
                     return m
-                else:
-                    logging.warning(f"[{self.name}] Tier {env_mod} resolved to {m} but NOT FOUND on host.")
+            elif m in available_models or not available_models:
+                return m
+            
+            logging.warning(f"[{self.name}] Tier {env_mod} ({m}) NOT FOUND on host. Available: {available_models}")
 
-            if available_models:
-                for am in available_models:
-                    if env_mod in am:
-                        return am
-                if engine_type == "VLLM" and env_mod and (env_mod.startswith("/") or "unified-base" in available_models):
-                    return "unified-base" if "unified-base" in available_models else available_models[0]
-                logging.warning(f"[{self.name}] Environment model {env_mod} NOT FOUND on host. Forcing fallback.")
-            else:
-                return env_mod
+        if available_models:
+            # Fallback to serving name if found
+            if "unified-base" in available_models:
+                return "unified-base"
+            return available_models[0]
 
-        if self.name == "brain":
-            preferred = ["llama3.1:8b", "llama3:latest", "llama3:8b", "dolphin-llama3:8b"]
-            for p in preferred:
-                if p in available_models:
-                    return p
-
-        if "unified-base" in available_models:
-            return "unified-base"
-
-        medium = self.vram_config.get("model_map", {}).get("MEDIUM", {}).get(engine_type.lower())
-        return medium or "llama3.2:3b"
+        return "llama3.2:3b"
 
     def _resolve_primary_host(self):
         """[FEAT-255.7] Dynamic Resolution: Forced 127.0.0.1 for local stability."""
@@ -263,6 +248,21 @@ class BicameralNode:
                             pass
 
                     target = self._resolve_best_model(available, engine_type, running_model=running_model)
+                    
+                    # [FEAT-339] Model Alias Resolution: Map paths to short IDs
+                    # If target is a path, try to find a short ID in 'available' that matches the root
+                    if target.startswith("/") and available:
+                        # Exact path match in available models (vLLM sometimes does this)
+                        if target in available:
+                            pass 
+                        else:
+                            # Try to match by basename or served model names
+                            for am in available:
+                                if am == "unified-base" or am in target:
+                                    logging.info(f"[{self.name}] Alias Resolved: {target} -> {am}")
+                                    target = am
+                                    break
+
                     self._engine_cache = {"url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", "model": target, "type": engine_type}
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
