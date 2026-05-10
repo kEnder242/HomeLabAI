@@ -74,6 +74,26 @@ class CognitiveHub:
         if not text:
             return None
 
+        # [FEAT-339] Gibberish Guard: Proactively detect high-entropy or semantic garbage
+        # If the text has extreme repetition or lacks alphanumeric content, flag it.
+        if len(text) > 100:
+            from collections import Counter
+            counts = Counter(text)
+            most_common, count = counts.most_common(1)[0]
+            
+            # Repetition Check (e.g. "!!!!!!!!!!")
+            if count / len(text) > 0.4:
+                logging.warning(f"[GUARD] High-entropy gibberish detected. Repeating char: '{most_common}' ({count} times)")
+                return None
+                
+            # Alphanumeric Density Check (e.g. "oru 使用(menuresponsive...")
+            # Corrupted output often contains a low percentage of standard alphanumeric chars
+            alnum_count = sum(1 for c in text if c.isalnum())
+            alnum_density = alnum_count / len(text)
+            if alnum_density < 0.2:
+                logging.warning(f"[GUARD] Semantic gibberish detected. Alnum density: {alnum_density:.2f}")
+                return None
+
         # [Task 2.2] Harden: Handle thinking blocks or pex noise
         # Strip <thought> tags if present
         text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
@@ -402,12 +422,14 @@ class CognitiveHub:
 
                     t_clean = self.bridge_signal_clean(t_text)
                     if not t_clean:
+                        # [FEAT-339] Gibberish Guard: Downshift MUST happen before exception
                         self.consecutive_parse_failures += 1
                         if self.consecutive_parse_failures >= 3 and self.lora_enabled:
                             self.lora_enabled = False
                             msg = "[ALARM] Silicon instability detected (Gibberish). Downshifting to Base Model (No-LoRA)."
                             logging.error(msg)
                             await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+                            await self.broadcast({"type": "status", "state": "downshifted", "message": "SAFETY MODE: LoRA Disabled."})
 
                         logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
                         raise ValueError("TRIAGE_PARSE_FAILURE")
