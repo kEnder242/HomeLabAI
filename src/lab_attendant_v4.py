@@ -1139,7 +1139,9 @@ class LabAttendantV4:
         else:
             # Fallback to H2-Lean if signal fails
             logger.info("[HIBERNATE] Offload signal failed. Falling back to H2-Lean (Purge).")
-            return await self.mcp_hibernate(reason=f"FALLBACK:{reason}", level=2)
+            # [FIX] Async escalation to avoid blocking current request handler
+            asyncio.create_task(self.mcp_hibernate(reason=f"FALLBACK:{reason}", level=2))
+            return {"status": "success", "message": "Soft hibernation failed. Escalating to Lean Sleep."}
 
     async def mcp_quiesce(self):
         global current_lab_mode, is_hibernating
