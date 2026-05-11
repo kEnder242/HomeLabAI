@@ -84,15 +84,19 @@ class CognitiveHub:
             
             # Repetition Check (e.g. "!!!!!!!!!!")
             if count / len(text) > 0.4:
-                logging.warning(f"[GUARD] High-entropy gibberish detected. Repeating char: '{most_common}' ({count} times)")
+                msg = f"[GIBBERISH] High-entropy detected (Repeating '{most_common}'). Raw: {text[:50]}..."
+                logging.warning(msg)
+                # Broadcast for visibility but don't parse as JSON
+                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
                 return None
                 
             # Alphanumeric Density Check (e.g. "oru 使用(menuresponsive...")
-            # Corrupted output often contains a low percentage of standard alphanumeric chars
             alnum_count = sum(1 for c in text if c.isalnum())
             alnum_density = alnum_count / len(text)
             if alnum_density < 0.2:
-                logging.warning(f"[GUARD] Semantic gibberish detected. Alnum density: {alnum_density:.2f}")
+                msg = f"[GIBBERISH] Semantic garbage detected (Alnum Density: {alnum_density:.2f}). Raw: {text[:50]}..."
+                logging.warning(msg)
+                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
                 return None
 
         # [Task 2.2] Harden: Handle thinking blocks or pex noise

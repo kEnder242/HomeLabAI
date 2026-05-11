@@ -1090,14 +1090,66 @@ class AcmeLab:
             return web.json_response({"status": "success"})
         return web.json_response({"status": "error", "message": "Cognitive engine not ready."}, status=503)
 
+    async def _synchronize_and_probe(self, client_id="system"):
+        """[FEAT-342] Unified Resumption: Verifies physical sanity and resident health after any wake event."""
+        logging.info(f"[HUB] Synchronizing mind (Source: {client_id})...")
+        
+        # 1. Resident Health Check
+        residents_healthy = await self._check_resident_health()
+        if not self._residents_booted or not residents_healthy:
+            logging.error("[HUB] Resident stability failure. Aborting Hub for Attendant recovery.")
+            os._exit(1) # [BKM-009] Silicon Scythe
+
+        # 2. Larynx Probe: Final physical verification
+        if "lab" in self.residents:
+            try:
+                # Verifies that the engine (vLLM) has successfully reloaded weights
+                probe_res = await self.residents["lab"].call_tool(
+                    name="think",
+                    arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
+                )
+                
+                # Verify physical sanity
+                probe_text = ""
+                if hasattr(probe_res, 'content') and probe_res.content:
+                    probe_text = str(probe_res.content[0].text)
+                else:
+                    probe_text = str(probe_res)
+                
+                logging.info(f"[HUB] Larynx Probe captured: '{probe_text[:50]}'")
+                
+                alnum_density = sum(1 for c in probe_text if c.isalnum()) / len(probe_text) if probe_text else 0
+                
+                # Specifically detect the '!!!!' pattern
+                if alnum_density < 0.2 or "!!!!" in probe_text:
+                    msg = f"[ALARM] Larynx Check failed physical sanity (Density: {alnum_density:.2f}). Silicon is Screaming. Triggering H2 Reset."
+                    logging.error(msg)
+                    await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+                    # Self-Heal: Restart engine
+                    await self._hibernate(level=2)
+                    # Trigger fresh spark
+                    asyncio.create_task(self.spark_restoration("system", intent="RECOVERY"))
+                    return False
+
+                logging.info(f"[HUB] Warm Wake Larynx Check: SUCCESS (Density: {alnum_density:.2f}).")
+            except Exception as e:
+                logging.error(f"[HUB] Warm Wake Larynx Check FAILED: {e}")
+                return False
+
+        # 3. Finalize State
+        self.status = "OPERATIONAL"
+        self.engine_ready.set()
+        self._spark_active = False # Release ignition lock
+        await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+        return True
+
     async def wake_handler(self, request):
-        """[FEAT-318.12] Immediate Wake: Forced logical state reset."""
+        """[FEAT-318.12] Immediate Wake: Forced logical state reset with sanity check."""
         if self.status == "HIBERNATING":
             logging.info("[OPERATIONAL] Manual Wake signal received. Synchronizing...")
-            self.status = "OPERATIONAL"
-            self.engine_ready.set()
-            self.last_activity = time.time() # [FIX] Reset idle timer to prevent re-hibernation
-            return web.json_response({"status": "success", "message": "Hub woken."})
+            # Use background task to avoid blocking the HTTP response
+            self._track_task(self._synchronize_and_probe("attendant_signal"))
+            return web.json_response({"status": "success", "message": "Hub synchronization initiated."})
         return web.json_response({"status": "ignored", "message": f"Hub already in state: {self.status}"})
 
     async def heartbeat_handler(self, request):
@@ -1607,29 +1659,13 @@ class AcmeLab:
                             # Wait for Attendant to signal OPERATIONAL
                             async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
                                 if ready_req.status == 200:
-                                    logging.info("[HUB] Resumption verified. Synchronizing residents...")
-                                    # [FEAT-335] Race Hardening & [FEAT-337] Resident Persistence
-                                    residents_healthy = await self._check_resident_health()
-                                    if not self._residents_booted or not residents_healthy:
-                                        logging.error("[HUB] Resident stability failure. Aborting Hub for Attendant recovery.")
-                                        os._exit(1) # [BKM-009] Silicon Scythe
-                                    
-                                    # [FEAT-337] Warm Wake Larynx Probe: Final silicon verification
-                                    if "lab" in self.residents:
-                                        try:
-                                            # Verifies that the engine (vLLM) has successfully reloaded weights
-                                            await self.residents["lab"].call_tool(
-                                                name="think",
-                                                arguments={"query": "[ME] [INTERNAL] Larynx Ping", "fuel": 0.1, "internal": True}
-                                            )
-                                            logging.info("[HUB] Warm Wake Larynx Check: SUCCESS.")
-                                        except Exception as e:
-                                            logging.error(f"[HUB] Warm Wake Larynx Check FAILED: {e}")
-
-                                    self.status = "OPERATIONAL"
-                                    self.engine_ready.set()
-                                    self._spark_active = False # [FEAT-339] Final Ignition Lock Release
-                                    await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+                                    # [FEAT-342] Unified Resumption Sequence
+                                    await self._synchronize_and_probe(client_id)
+                                    return
+                                else:
+                                    res = await ready_req.json()
+                                    logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
+                                    self.status = "ERROR"
                     except Exception as e:
                         logging.error(f"[HUB] Wake sequence failed: {e}")
                         self._spark_active = False # Ensure lock is released on error
