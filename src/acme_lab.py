@@ -717,6 +717,10 @@ class AcmeLab:
                                     
                                     # [FEAT-317.5] Throughput Beautification: Keep the console clean but informative
                                     if 'throughput' in msg:
+                                        # [FIX] Suppress throughput spam once Operational
+                                        if self.status == "OPERATIONAL":
+                                            continue
+                                        
                                         # Only broadcast throughput every 10s or so to avoid spam
                                         if int(time.time()) % 10 == 0:
                                             msg = 'Engine Status: ' + msg.split('Engine 000: ')[-1]
@@ -1660,7 +1664,7 @@ class AcmeLab:
                             async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
                                 if ready_req.status == 200:
                                     # [FEAT-342] Unified Resumption Sequence
-                                    await self._synchronize_and_probe(client_id)
+                                    await self._synchronize_and_probe("WAKE_INTENT")
                                     return
                                 else:
                                     res = await ready_req.json()
@@ -1675,49 +1679,51 @@ class AcmeLab:
             # Notify user and wait for readiness event (Non-blocking)
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
             
-            # [FIX] Instead of re-queueing (Loop), we wait for the event here
+            # [FIX] Wait for event here
             logging.info(f"[HUB] Query '{query[:30]}' waiting for engine_ready event...")
             await self.engine_ready.wait()
             
             # [FEAT-342] Silicon Hardening: Staggered Release
-            # We use the triage_lock to ensure only one query hits the engine at a time
-            # specifically during the critical wake window.
+            # Serialize access to engine after wake
             async with self._triage_lock:
                 await asyncio.sleep(0.5) 
                 logging.info(f"[HUB] Query '{query[:30]}' engine is ready. Proceeding.")
-                return await self.process_query(query)
+                return await self._dispatch_inference(query)
 
         # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
         while getattr(self, "_spark_active", False) and self.status != "OPERATIONAL":
             await asyncio.sleep(1)
             
         await self.update_turn_density()
-        exit_hint = self.get_exit_hint(query)
-
-        # [FIX] Redundant wait loop removed. _drain_neural_buffer handles readiness.
-        self.status = "WORKING"
+        
         # [FEAT-265.48] Absolute State: Serialized Triage
         async with self._triage_lock:
-            await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
-            
-            try:
-                res = await self.cognitive.process_query(
-                    query, 
-                    mic_active=self.mic_active, 
-                    shutdown_event=self.shutdown_event,
-                    exit_hint=exit_hint,
-                    trigger_briefing_callback=self.trigger_morning_briefing,
-                    turn_density=self.turn_density
-                )
-                if self.status != "HIBERNATING":
-                    self.status = "OPERATIONAL"
-                await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
-                return res
-            except Exception as e:
-                self.status = "ERROR"
-                logging.error(f"[HUB] Query processing failed: {e}")
-                await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
-                raise
+            return await self._dispatch_inference(query)
+
+    async def _dispatch_inference(self, query):
+        """Internal inference core: Performs triage and cognitive dispatch under lock."""
+        self.status = "WORKING"
+        exit_hint = self.get_exit_hint(query)
+        await self.broadcast({"type": "crosstalk", "brain": "🧠 THINKING...", "brain_source": "System"})
+        
+        try:
+            res = await self.cognitive.process_query(
+                query, 
+                mic_active=self.mic_active, 
+                shutdown_event=self.shutdown_event,
+                exit_hint=exit_hint,
+                trigger_briefing_callback=self.trigger_morning_briefing,
+                turn_density=self.turn_density
+            )
+            if self.status != "HIBERNATING":
+                self.status = "OPERATIONAL"
+            await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+            return res
+        except Exception as e:
+            self.status = "ERROR"
+            logging.error(f"[HUB] Query processing failed: {e}")
+            await self.broadcast({"type": "status", "state": "error", "message": "Cognitive processing failed."})
+            raise
 
     async def _check_resident_health(self) -> bool:
         """[FEAT-337] Resident Persistence: Verifies all node processes are alive and responsive."""
