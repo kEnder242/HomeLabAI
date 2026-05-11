@@ -12,6 +12,7 @@
     *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active architectural laws and design breadcrumbs.
     *   **Inventory Mandate**: Proactively identify existing "wheels" (tests, diagnostic scripts, and tools) in **[DIAGNOSTIC_RUNDOWN.md](./DIAGNOSTIC_RUNDOWN.md)** and **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)** before suggesting or implementing new code.
     *   **State Snapshot**: Read the last 5 entries in **[00_FEDERATED_STATUS.md](../../Portfolio_Dev/00_FEDERATED_STATUS.md)** to identify the current "Front Line" and active sprint.
+    *   **Updates**: Take time to keep orientation files relevant, but preserve boostrap IMMUTABILITY PROTOCOL as it is a pointer not a orientation file.
 
 ## BKM-002: The Montana Protocol (Logger Awareness)
 **Objective**: Prevent diagnostic blindness when third-party libraries hijack the stream.
@@ -92,7 +93,7 @@
 4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
 5.  **Precision**: When providing multi-line strings, ensure blank lines are **truly empty** (zero spaces) to prevent `W293` whitespace thrashing.
 
-## BKM-026: The Asymmetric Probe Standard
+## BKM-026: The Asymmetric Probe Standard (TODO: This is not a BKM Protocol, it is design and infrastructure - Consider moving parths of this to LAB-XXX and FEAT-XXX)
 **Objective**: Optimize federated failover by differentiating between "Hard Failure" (Offline) and "Soft Latency" (Loading/Processing).
 
 1.  **Discovery Phase**: Use a strict 5s timeout for `/api/tags` to verify the server is alive.
@@ -102,7 +103,7 @@
 3.  **The Wait Mandate**: Once a host is `LOCKED`, the Hub must allow up to 180s for inference to complete before declaring a quality fallback.
 4.  **Airtime Rule**: Any turn exceeding 10s of remote latency **MUST** be interleaved with a Pinky interjection or dynamic tic.
 
-## BKM-027: The Dream Pass Synthesis
+## BKM-027: The Dream Pass Synthesis (TODO: Consider moving this to FEAT-XXX))
 **Objective**: Generate high-fidelity instruction-tuning datasets by utilizing the Sovereign Brain to process raw historical context.
 
 1.  **Instruction Framing**: Use the `[DREAM_PASS]` header to force the Sovereign into a specific persona (e.g., "Lead Engineer").
