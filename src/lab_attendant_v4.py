@@ -448,8 +448,12 @@ class LabAttendantV4:
                             new_lines = f.readlines()
                             self._last_vllm_log_size = current_size
                             
-                            # Check for crash signatures
-                            crash_line = next((line for line in new_lines if any(t in line for t in ['Traceback', 'RuntimeError', 'ValueError:'])), None)
+                            # [FEAT-342] TraceMonitor: Filter nominal vLLM errors
+                            # CancelledError is standard for client disconnects
+                            crash_line = next((line for line in new_lines if 
+                                any(t in line for t in ['Traceback', 'RuntimeError', 'ValueError:']) and 
+                                not any(n in line for n in ['CancelledError', 'GeneratorExit'])
+                            ), None)
                             if crash_line:
                                 # 1. Forensic Snip
                                 snip_path = os.path.join(LAB_DIR, f'logs/crash_{int(time.time())}.log')
@@ -1282,7 +1286,7 @@ class LabAttendantV4:
                             return f.readlines()
                     
                     lines = await asyncio.to_thread(read_log)
-                    if any("Traceback" in line or "SyntaxError" in line for line in lines):
+                    if any(("Traceback" in line or "SyntaxError" in line) and "CancelledError" not in line for line in lines):
                         logger.error(f"[{self.session_token}] [WATCHDOG] Hub crash detected in logs.")
                         return {"status": "crashed", "message": "Hub foyer crashed during ignition."}
                 except Exception:
@@ -1782,7 +1786,8 @@ class LabAttendantV4:
                 try:
                     with open(vllm_log, "r") as f:
                         lines = f.readlines()[-30:]
-                        if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]):
+                        if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]) and \
+                           not any("CancelledError" in line for line in lines):
                             logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting.")
                             return False
                 except Exception:

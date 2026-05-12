@@ -517,10 +517,15 @@ class CognitiveHub:
                     if triage_attempt < 2:
                         await asyncio.sleep(2.0 * (triage_attempt + 1))
                     else:
-                        self.triage_failures += 1
-                        if self.triage_failures >= 3:
-                            await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
-                            os._exit(1)
+                        # [FIX] Task 2.5: Only penalize if NOT a connection error
+                        is_connection_error = "vLLM connection failed" in t_text or "Error:" in t_text
+                        if not is_connection_error:
+                            self.triage_failures += 1
+                            if self.triage_failures >= 3:
+                                await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
+                                os._exit(1)
+                        else:
+                            logging.warning("[HUB] Triage connection error in final attempt. Bypassing lobotomy penalty.")
                         
                         self.current_fuel = 0.2
                         intent = "STRATEGIC"

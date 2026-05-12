@@ -69,11 +69,14 @@ def resolve_brain_url():
             # Dynamic resolution
             try:
                 ip = socket.gethostbyname(primary)
+                logging.debug(f"[RESOLVE] Brain host '{primary}' -> {ip}")
             except Exception:
                 ip = ip_hint
+                logging.debug(f"[RESOLVE] DNS failed for '{primary}'. Using hint: {ip}")
 
             return f"http://{ip}:{port}/api/tags"
-    except Exception:
+    except Exception as e:
+        logging.error(f"[RESOLVE] Failed to resolve Brain URL: {e}")
         return ""
     return "http://localhost:11434/api/tags"
 
@@ -381,9 +384,9 @@ class AcmeLab:
         return task.result()
 
     async def check_brain_health(self, force=False):
-        """[FEAT-265.31] State-Aware Probe: Suppress heartbeats during ignition to avoid PCIe collision."""
-        # [FEAT-265.36] Strict Sovereignty: 'force' cannot override the ignition window
-        if self.status in ["WAKING", "BOOTING", "INIT", "RECOVERY"]:
+        """[FEAT-265.31] State-Aware Probe: Suppress heartbeats only during raw silicon boot."""
+        # [FEAT-344] Sovereign Hardening: Allow probes during WAKING to ensure relay is ready.
+        if self.status in ["BOOTING", "INIT"]:
             logging.debug(f"[HEALTH] Sovereignty Gate: Aborting probe during {self.status}.")
             return
 
