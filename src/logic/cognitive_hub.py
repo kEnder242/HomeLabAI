@@ -104,9 +104,12 @@ class CognitiveHub:
         text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
         
         if "{" not in text:
-            msg = f"[RAW_OUTPUT] Missing JSON anchor. Text: {text[:200]}..."
-            logging.warning(f"[HUB] {msg}")
-            asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
+            # [FIX] Silence [RAW_OUTPUT] for connection errors to reduce UI noise
+            is_connection_error = "vLLM connection failed" in text or "Error:" in text
+            if not is_connection_error:
+                msg = f"[RAW_OUTPUT] Missing JSON anchor. Text: {text[:200]}..."
+                logging.warning(f"[HUB] {msg}")
+                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
             return None
 
         # 1. Strip markdown blocks
