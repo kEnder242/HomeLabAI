@@ -354,11 +354,14 @@ class BicameralNode:
                 payload["model"] = self.lora_name
         else:
             payload = {
-                "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
                 "stream": True,
                 "options": {"temperature": temperature, "num_predict": max_tokens, "repeat_penalty": repetition_penalty}
             }
+            # [FEAT-344] Ollama Niceness: Only send model if explicitly configured.
+            # If null/empty, Ollama uses the currently resident model.
+            if engine.get("model"):
+                payload["model"] = engine["model"]
 
         self._mirror_trace("send", payload, url=engine["url"], metadata=metadata)
 
