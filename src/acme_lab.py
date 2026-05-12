@@ -560,7 +560,7 @@ class AcmeLab:
         # to prevent 401 Unauthorized due to file edits during session
         current_style_key = get_style_key()
         
-        async def _run_ignition():
+        async def _run_ignition(cid):
             await asyncio.sleep(5) # [FIX] Settle window for Attendant watchdog
             try:
                 async with aiohttp.ClientSession() as session:
@@ -575,7 +575,7 @@ class AcmeLab:
                                          "model": "MEDIUM", 
                                          "engine_only": True,
                                          "op_mode": "SERVICE_UNATTENDED",
-                                         "reason": f"RESTORE_{client_id.upper()}"
+                                         "reason": f"RESTORE_{cid.upper()}"
                                      }) as r:
                         if r.status == 200:
                             logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
@@ -588,7 +588,7 @@ class AcmeLab:
                                 async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={key}") as ready_req:
                                     if ready_req.status == 200:
                                         logging.info("[HUB] Attendant confirmed OPERATIONAL. Restoring residents...")
-                                        self.trigger_pager(f"Restoration SUCCESS: {client_id}", severity="info", source="Hub")
+                                        self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
                                         
                                         # [FIX] Lifecycle Hardening: Restart the dedicated Resident Task
                                         # instead of calling boot_residents directly.
@@ -606,7 +606,7 @@ class AcmeLab:
             finally:
                 self._spark_active = False
 
-        self._track_task(_run_ignition())
+        self._track_task(_run_ignition(client_id))
 
     async def reflex_loop(self):
         """Background maintenance and status updates grounded in silicon truth."""
@@ -1124,14 +1124,16 @@ class AcmeLab:
                 
                 alnum_density = sum(1 for c in probe_text if c.isalnum()) / len(probe_text) if probe_text else 0
                 
-                # Specifically detect the '!!!!' pattern
-                if alnum_density < 0.2 or "!!!!" in probe_text:
-                    msg = f"[ALARM] Larynx Check failed physical sanity (Density: {alnum_density:.2f}). Silicon is Screaming. Triggering H2 Reset."
+                # Specifically detect the '!!!!' pattern or connection errors
+                if alnum_density < 0.2 or "!!!!" in probe_text or "Connection failed" in probe_text or "Error:" in probe_text:
+                    msg = f"[ALARM] Larynx Check failed physical sanity (Density: {alnum_density:.2f}, Text: {probe_text[:30]}). Silicon is unreliable. Triggering H2 Reset."
                     logging.error(msg)
                     await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
                     # Self-Heal: Restart engine
                     await self._hibernate(level=2)
-                    # Trigger fresh spark
+                    
+                    # Release lock BEFORE retrying spark
+                    self._spark_active = False 
                     asyncio.create_task(self.spark_restoration("system", intent="RECOVERY"))
                     return False
 

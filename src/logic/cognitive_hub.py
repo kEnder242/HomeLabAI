@@ -104,6 +104,9 @@ class CognitiveHub:
         text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
         
         if "{" not in text:
+            msg = f"[RAW_OUTPUT] Missing JSON anchor. Text: {text[:200]}..."
+            logging.warning(f"[HUB] {msg}")
+            asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
             return None
 
         # 1. Strip markdown blocks
@@ -428,23 +431,29 @@ class CognitiveHub:
                     t_clean = self.bridge_signal_clean(t_text)
                     if not t_clean:
                         # [FEAT-339] Gibberish Guard: Downshift MUST happen before exception
-                        self.consecutive_parse_failures += 1
-                        if self.consecutive_parse_failures >= 3 and self.lora_enabled:
-                            self.lora_enabled = False
-                            msg = "[ALARM] Silicon instability detected (Gibberish). Downshifting to Base Model (No-LoRA)."
-                            logging.error(msg)
-                            await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
-                            await self.broadcast({"type": "status", "state": "downshifted", "message": "SAFETY MODE: LoRA Disabled."})
-
                         # [FEAT-342] Silicon Scythe: Escalate to H3 reset if base model is screaming
-                        if (self.consecutive_parse_failures >= 5) or (not self.lora_enabled and self.consecutive_parse_failures >= 2):
-                            if self.hibernate_callback:
-                                msg = "[ALARM] Base model corruption detected (Screaming). Triggering H3 Silicon Scythe."
+                        # [FIX] Do NOT scythe if it's a connection error (vLLM is just slow)
+                        is_connection_error = "vLLM connection failed" in t_text or "Error:" in t_text
+                        
+                        if not is_connection_error:
+                            self.consecutive_parse_failures += 1
+                            if self.consecutive_parse_failures >= 3 and self.lora_enabled:
+                                self.lora_enabled = False
+                                msg = "[ALARM] Silicon instability detected (Gibberish). Downshifting to Base Model (No-LoRA)."
                                 logging.error(msg)
                                 await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
-                                await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Silicon."})
-                                # Async trigger to avoid blocking current loop
-                                asyncio.create_task(self.hibernate_callback(level=3))
+                                await self.broadcast({"type": "status", "state": "downshifted", "message": "SAFETY MODE: LoRA Disabled."})
+
+                            if (self.consecutive_parse_failures >= 5) or (not self.lora_enabled and self.consecutive_parse_failures >= 2):
+                                if self.hibernate_callback:
+                                    msg = "[ALARM] Base model corruption detected (Screaming). Triggering H3 Silicon Scythe."
+                                    logging.error(msg)
+                                    await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
+                                    await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Silicon."})
+                                    # Async trigger to avoid blocking current loop
+                                    asyncio.create_task(self.hibernate_callback(level=3))
+                        else:
+                            logging.warning("[HUB] Triage yielded connection error. Retrying without scythe penalty.")
 
                         logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
                         raise ValueError("TRIAGE_PARSE_FAILURE")
@@ -466,9 +475,15 @@ class CognitiveHub:
                     raw_imp = float(triage_data_update.get("importance", 0.5))
                     raw_cas = float(triage_data_update.get("casual", 0.5))
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
-                    self.current_fuel = ((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0
-
-                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> FUEL={self.current_fuel:.2f}")
+                    
+                    # [FEAT-344] Fuel Calibration: Strategic Keyword Boost
+                    technical_keywords = ["RTX", "VRAM", "BKM", "SILICON", "TELEMETRY", "LAB", "HUB", "LORA", "FAN", "THERMAL"]
+                    fuel_boost = 0.4 if any(kw in query.upper() for kw in technical_keywords) else 0.0
+                    
+                    self.current_fuel = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0) + fuel_boost
+                    self.current_fuel = min(1.0, self.current_fuel) # Clamp to 1.0
+                    
+                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} Boost={fuel_boost} -> FUEL={self.current_fuel:.2f}")
 
                     # [FEAT-246] Unified Vibe Schema
 
