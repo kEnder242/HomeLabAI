@@ -92,8 +92,25 @@ async def run_cycle(cycle):
     print(f"    [Result] Uber-Cycle {cycle}: {wins}/5 wins.")
     return wins == 5
 
+def get_kender_ip():
+    try:
+        with open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json', 'r') as f:
+            data = json.load(f)
+            return data.get("hosts", {}).get("KENDER", {}).get("ip_hint", "192.168.1.26")
+    except Exception:
+        return "192.168.1.26"
+
+async def check_brain_online():
+    ip = get_kender_ip()
+    try:
+        r = requests.get(f'http://{ip}:11434/api/tags', timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
+
 async def main():
     print("💎 INITIATING THE UBER-5x5 GAUNTLET")
+    print(f"[*] Brain Discovery: {get_kender_ip()} ({'ONLINE' if await check_brain_online() else 'OFFLINE'})")
     print("[*] Goal: Certify Logic, Silicon, and Routing Integrity in a single pass.")
     
     total_wins = 0
