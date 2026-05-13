@@ -1280,32 +1280,38 @@ class AcmeLab:
 
     async def client_handler(self, request):
         from infra.montana import _BOOT_HASH, _SOURCE_COMMIT, get_git_commit
+        # [FEAT-344] Socket ID: Track physical connections for forensic audit
+        socket_id = uuid.uuid4().hex[:6]
+        logging.info(f"[FOYER] New physical connection established: {socket_id} (From: {request.remote})")
+
         # [FEAT-326] Socket Persistence: 30s heartbeat to keep Cloudflare/proxies alive
         ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(request)
         self.connected_clients.add(ws)
         
-        # [FEAT-225] Persistence Replay: Send history before current status
-        for old_msg in self.message_history:
-            try:
-                # [FIX] Ensure historical messages have a source and ID
-                if "brain_source" not in old_msg:
-                    old_msg["brain_source"] = "System"
-                if "msg_id" not in old_msg:
-                    old_msg["msg_id"] = uuid.uuid4().hex[:12]
-                await ws.send_str(json.dumps(old_msg))
-            except Exception:
-                pass
-
-        await self.manage_session_lock(active=True)
-
-        # [FEAT-085] Snap-to-Life: Prime the Sovereign Brain on connect
-        self._track_task(self.check_brain_health(force=True))
         try:
+            # [FEAT-225] Persistence Replay: Send history before current status
+            for old_msg in self.message_history:
+                try:
+                    # [FIX] Ensure historical messages have a source and ID
+                    if "brain_source" not in old_msg:
+                        old_msg["brain_source"] = "System"
+                    if "msg_id" not in old_msg:
+                        old_msg["msg_id"] = uuid.uuid4().hex[:12]
+                    await ws.send_str(json.dumps(old_msg))
+                except Exception:
+                    pass
+
+            await self.manage_session_lock(active=True)
+
+            # [FEAT-085] Snap-to-Life: Prime the Sovereign Brain on connect
+            self._track_task(self.check_brain_health(force=True))
+            
             await ws.send_str(
                 json.dumps(
                     {
                         "type": "status",
+                        "socket_id": socket_id, # [FEAT-344] Visible ID
                         "version": VERSION,
                         "boot_hash": _BOOT_HASH,
                         "source_commit": _SOURCE_COMMIT,
@@ -1546,6 +1552,7 @@ class AcmeLab:
                             )
         finally:
             self.connected_clients.remove(ws)
+            logging.info(f"[FOYER] Physical connection closed: {socket_id}")
             if not self.connected_clients:
                 await self.manage_session_lock(active=False)
             
