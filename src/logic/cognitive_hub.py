@@ -336,6 +336,7 @@ class CognitiveHub:
                 "type": "crosstalk",
                 "brain": f"Initiating {source_name} intuition...",
                 "brain_source": source_name,
+                "is_internal": True, # [FIX] Keep the console clean
                 "final": False
             })
 
@@ -480,7 +481,11 @@ class CognitiveHub:
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     
                     # [FEAT-344] Fuel Calibration: Strategic Keyword Boost
-                    technical_keywords = ["RTX", "VRAM", "BKM", "SILICON", "TELEMETRY", "LAB", "HUB", "LORA", "FAN", "THERMAL"]
+                    # Expanded to include conversational substance triggers
+                    technical_keywords = [
+                        "RTX", "VRAM", "BKM", "SILICON", "TELEMETRY", "LAB", "HUB", "LORA", "FAN", "THERMAL",
+                        "WHO", "TELL", "EXPLAIN", "ANALYZE", "STATUS", "STABILITY", "ARCHITECT", "DOMAIN"
+                    ]
                     fuel_boost = 0.4 if any(kw in query.upper() for kw in technical_keywords) else 0.0
                     
                     self.current_fuel = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0) + fuel_boost

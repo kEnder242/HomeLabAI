@@ -134,15 +134,19 @@ class AcmeLab:
                 with open(self._lock_file, "r") as f:
                     old_pid = int(f.read().strip())
                 if psutil.pid_exists(old_pid):
-                    print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.", file=sys.stderr)
-                    sys.exit(0) # Exit cleanly to avoid service churn
+                    p = psutil.Process(old_pid)
+                    if p.status() != psutil.STATUS_ZOMBIE:
+                        print(f"[FATAL] AcmeLab already running as PID {old_pid}. Aborting.", file=sys.stderr)
+                        sys.exit(0)
+                # Reclaim stale or zombie lock
+                os.remove(self._lock_file)
+                self._lock_fd = os.open(self._lock_file, os.O_CREAT | os.O_EXCL | os.O_RDWR)
             except Exception:
-                return ""
-            # Force-reclaim if stale
-            self._lock_fd = os.open(self._lock_file, os.O_CREAT | os.O_RDWR)
-        
-        with os.fdopen(self._lock_fd, 'w') as f:
-            f.write(str(os.getpid()))
+                # Fallback: force open
+                self._lock_fd = os.open(self._lock_file, os.O_RDWR)
+
+        os.write(self._lock_fd, str(os.getpid()).encode())
+        os.fsync(self._lock_fd)
 
         self.mode = mode
         self.idle_gate = afk_timeout or 1200 # [FEAT-249] Increased to 20m for stabilization
@@ -1312,6 +1316,7 @@ class AcmeLab:
                     {
                         "type": "status",
                         "socket_id": socket_id, # [FEAT-344] Visible ID
+                        "msg_id": uuid.uuid4().hex[:12], # [FIX] Task 2.5: Unique ID for status
                         "version": VERSION,
                         "boot_hash": _BOOT_HASH,
                         "source_commit": _SOURCE_COMMIT,
