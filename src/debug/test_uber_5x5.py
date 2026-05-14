@@ -23,45 +23,48 @@ def get_key():
 async def trigger_query(client_id, query, expected_source=None):
     try:
         async with websockets.connect(HUB_URL) as ws:
-            # 1. JS-Aware Handshake
+            # 1. Handshake and capture SID
             await ws.send(json.dumps({"type": "handshake", "client": "intercom", "version": "3.8.1"}))
             
+            # Wait for initial status to get SID
+            msg = await ws.recv()
+            data = json.loads(msg)
+            sid = data.get("socket_id", "Unknown")
+            print(f"    [Client {client_id}] Socket established: {sid}")
+
             # 2. Impolite Timing: Send immediately
             await ws.send(json.dumps({"type": "text_input", "content": query}))
             
             start_t = time.time()
             vocal_received = False
-            brain_reached = False
             
             while time.time() - start_t < 180:
                 msg = await ws.recv()
                 data = json.loads(msg)
                 
-                # Check for any vocal response
-                if data.get('brain_source') in ['Pinky', 'Shadow', 'Lab', 'Brain (Result)', 'Shadow (Failover)']:
-                    text = str(data.get('brain', ''))
-                    source = data.get('brain_source')
+                source = data.get('brain_source', 'System')
+                text = str(data.get('brain', ''))
+                
+                # Filter out the [RAW_OUTPUT] or System status, look for persona
+                if source not in ['System', 'Lab (Triage)', 'Pinky (Triage)']:
                     
                     if '[GIBBERISH]' in text:
                         print(f"    [Client {client_id}] 🚨 FAIL: Gibberish detected from {source}")
                         return False
                         
-                    # Strategic Source detection
-                    if 'Brain (Result)' in source or 'Shadow (Failover)' in source:
-                        brain_reached = True
-                    
-                    # Win condition: Any sane response
-                    if any(x in text.upper() for x in ['ROGER', 'PINKY', 'ACME', 'POIT', 'NARF', 'ZORT']):
-                        vocal_received = True
-                        
-                    # If we expected a specific source (Brain/Failover), wait for it
-                    if expected_source:
-                        if expected_source in source or (expected_source == "Brain" and "Shadow (Failover)" in source):
-                            print(f"    [Client {client_id}] ✅ UBER-WIN: Reached {source} with sane output.")
+                    # win condition: SUBSTANCE (Long-form)
+                    if len(text) > 200:
+                        print(f"    [Client {client_id}] ✅ SUBSTANCE WIN: {source} sent {len(text)} chars.")
+                        # Check for strategic source if expected
+                        if expected_source and expected_source in source:
+                            print(f"    [Client {client_id}] 💎 UBER-WIN: Strategic target {source} reached.")
                             return True
-                    elif vocal_received:
-                        print(f"    [Client {client_id}] ✅ WIN: Sane vocal from {source}.")
-                        return True
+                        elif not expected_source:
+                            return True
+                    
+                    # Log filler but don't count as win
+                    if any(x in text.upper() for x in ['ROGER', 'PINKY', 'ACME', 'POIT', 'NARF', 'ZORT']):
+                        print(f"    [Client {client_id}] (Filler) {source}: {text[:20]}...")
                         
     except Exception as e:
         print(f"    [Client {client_id}] ❌ ERROR: {e}")
@@ -109,17 +112,21 @@ async def check_brain_online():
         return False
 
 async def main():
-    print("💎 INITIATING THE UBER-5x5 GAUNTLET")
+    print("💎 INITIATING THE SUBSTANCE-HEAVY UBER-5x5 GAUNTLET")
     print(f"[*] Brain Discovery: {get_kender_ip()} ({'ONLINE' if await check_brain_online() else 'OFFLINE'})")
-    print("[*] Goal: Certify Logic, Silicon, and Routing Integrity in a single pass.")
+    print("[*] Strategy: Paragraph-Length Wins (>200 chars).")
     
+    # Substance-Heavy Query for Certification
+    query = "[ME] Analyze the current physical thermal boundaries of the RTX 2080 Ti and explain the multi-level hibernation (H1-H3) strategy."
+
     total_wins = 0
     for i in range(5):
-        if await run_cycle(i + 1):
+        print(f"\n[*] Starting Substance Cycle {i+1}/5...")
+        if await trigger_query(i, query):
             total_wins += 1
-            print(f"--- Uber-Cycle {i+1} Certified ---")
+            print(f"--- Cycle {i+1} Certified ---")
         else:
-            print(f"\n❌ UBER-GAUNTLET FAILED at Cycle {i+1}")
+            print(f"\n❌ SUBSTANCE GAUNTLET FAILED at Cycle {i+1}")
             break
             
     print(f"\n🏆 UBER-CERTIFICATION: {total_wins}/5 Wins.")
