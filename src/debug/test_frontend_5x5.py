@@ -23,10 +23,10 @@ async def trigger_cycle(cycle_id, p_instance):
     print(f"\n[*] Starting Uber-Cycle {cycle_id}/5...")
     key = get_key()
     
-    # 1. Physical Hard Reset (Ensures clean silicon)
-    print("    [Action] Executing Physical Hard Reset via Attendant...")
-    requests.post(f"{ATTENDANT_URL}/hard_reset?key={key}")
-    time.sleep(2) # Settle
+    # 1. Physical H2 Hibernation (Ensures clean silicon but keeps process alive for Wake-on-Intent)
+    print("    [Action] Executing Physical H2 Hibernation via Attendant...")
+    requests.post(f"{ATTENDANT_URL}/hibernate?level=2&key={key}")
+    time.sleep(5) # Settle
 
     # 2. Launch Browser (Rude Timing - while Lab is OFFLINE)
     print("    [Action] Launching Headless Browser (Rude Window)...")
