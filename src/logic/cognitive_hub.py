@@ -450,12 +450,12 @@ class CognitiveHub:
 
                             if (self.consecutive_parse_failures >= 5) or (not self.lora_enabled and self.consecutive_parse_failures >= 2):
                                 if self.hibernate_callback:
-                                    msg = "[ALARM] Base model corruption detected (Screaming). Triggering H3 Silicon Scythe."
+                                    msg = "[ALARM] Base model corruption detected (Screaming). Triggering H2 Silicon Scythe."
                                     logging.error(msg)
                                     await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
                                     await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Silicon."})
-                                    # Async trigger to avoid blocking current loop
-                                    asyncio.create_task(self.hibernate_callback(level=3))
+                                    # [FIX] Task 12.1/12.2: Use level=2 (Lean Sleep) and enable RECOVERY to keep the Lobby alive
+                                    asyncio.create_task(self.hibernate_callback(level=2, recover=True))
                         else:
                             logging.warning("[HUB] Triage yielded connection error. Retrying without scythe penalty.")
 
