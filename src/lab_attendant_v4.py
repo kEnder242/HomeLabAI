@@ -1837,9 +1837,11 @@ class LabAttendantV4:
             data = await r.json() if r.has_body else {}
             reason = data.get("reason", "REST_API_HIBERNATE")
             level = int(data.get("level", 2))
+            recover = str(data.get("recover", "false")).lower() == "true"
         except Exception:
             reason = "REST_API_HIBERNATE"
             level = 2
+            recover = False
             
         # Also support query parameters for curl one-liners
         if 'level' in r.query:
@@ -1847,8 +1849,17 @@ class LabAttendantV4:
                 level = int(r.query['level'])
             except:
                 pass
+        if 'recover' in r.query:
+            recover = r.query['recover'].lower() == "true"
 
-        return web.json_response(await self.mcp_hibernate(reason=reason, level=level))
+        res = await self.mcp_hibernate(reason=reason, level=level)
+        
+        # [FEAT-344] Sovereign Recovery: Immediately schedule a restart if requested
+        if recover:
+            logger.warning(f"[RECOVERY] Hub requested immediate re-ignition after H{level}.")
+            asyncio.create_task(self.mcp_start(reason=f"RECOVERY_H{level}"))
+            
+        return web.json_response(res)
     async def handle_quiesce_rest(self, r):
         return web.json_response(await self.mcp_quiesce())
     async def handle_ignition_rest(self, r):

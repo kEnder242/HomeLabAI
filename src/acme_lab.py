@@ -237,31 +237,28 @@ class AcmeLab:
         message_dict["type"] = m_type
         message_dict["brain"] = m_content
         message_dict["brain_source"] = m_source
+        message_dict["hub_pid"] = os.getpid() # [FEAT-344] Physical signature
         
         # [FEAT-339] Message De-duplication: Attach unique ID if not present
         if "msg_id" not in message_dict:
             message_dict["msg_id"] = uuid.uuid4().hex[:12]
 
         # [FEAT-274] Token Traceability: Log the current session generation
-        logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content}")
+        # Added physical client count for audit
+        logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content[:60]}... (Sockets: {len(self.connected_clients)})")
 
         # [FEAT-227] Session Reset: Wipe history on explicit request
         if message_dict.get("reset_session"):
             logging.info("[HUB] Session Reset triggered. Wiping message history.")
             self.message_history = []
 
-        if message_dict.get("type") == "status":
-            message_dict["version"] = VERSION
-        else:
-            # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
-            if message_dict.get("final", True):
-                # [FIX] Schema Enforcement for history
-                if "type" not in message_dict:
-                    message_dict["type"] = "chat"
-                if "brain_source" not in message_dict:
-                    message_dict["brain_source"] = "System"
-                
-                self.message_history.append(message_dict)
+        # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
+        # [FIX] Historize status/crosstalk so they can be deduped on replay
+        if message_dict.get("final", True) or m_type in ["status", "crosstalk"]:
+            if not any(old.get("msg_id") == message_dict["msg_id"] for old in self.message_history):
+                # [FIX] Deep copy to prevent shared state corruption
+                import copy
+                self.message_history.append(copy.deepcopy(message_dict))
                 self.message_history = self.message_history[-20:] # Keep last 20
 
         msg_str = json.dumps(message_dict)
@@ -661,7 +658,16 @@ class AcmeLab:
                 logging.warning(f"[HUB] VRAM Hibernation triggered ({int(idle_time)}s idle). Unloading local engines...")
                 self.status = "HIBERNATING"
                 self.engine_ready.clear() # [FEAT-265.15] Readiness Reset
-                self._track_task(self._hibernate())
+                
+                # [LAB-001] Read configured H-Level
+                h_level = 2
+                try:
+                    if os.path.exists(INFRA_CONFIG):
+                        with open(INFRA_CONFIG, "r") as f:
+                            h_level = json.load(f).get("vram_hibernation_level", 2)
+                except Exception:
+                    pass
+                self._track_task(self._hibernate(level=h_level))
                 self.brain_online = False # Mark offline while sleeping
 
             if self.connected_clients:
@@ -739,7 +745,7 @@ class AcmeLab:
                     pass
             await asyncio.sleep(1.0)
 
-    async def _hibernate(self, level=1):
+    async def _hibernate(self, level=1, recover=False):
         """[FEAT-249.7] Centralized Hibernation Logic: Bridges to Attendant REST API."""
         try:
             # [FEAT-267] Use dynamic key for REST authorization
@@ -747,7 +753,8 @@ class AcmeLab:
             
             async with aiohttp.ClientSession() as session:
                 headers = {'X-Lab-Key': expected_key}
-                async with session.post(f"http://127.0.0.1:9999/hibernate?level={level}", headers=headers, timeout=5) as resp:
+                url = f"http://127.0.0.1:9999/hibernate?level={level}&recover={'true' if recover else 'false'}"
+                async with session.post(url, headers=headers, timeout=5) as resp:
                     if resp.status != 200:
                         res_text = await resp.text()
                         logging.error(f"[HUB] Hibernation REST failed: {resp.status} - {res_text}")
@@ -1734,7 +1741,7 @@ class AcmeLab:
             )
             if self.status != "HIBERNATING":
                 self.status = "OPERATIONAL"
-            await self.broadcast({"type": "crosstalk", "brain": "Mind is OPERATIONAL.", "brain_source": "System"})
+            # Redundant broadcast removed
             return res
         except Exception as e:
             self.status = "ERROR"
