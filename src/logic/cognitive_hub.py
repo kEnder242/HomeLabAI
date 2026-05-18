@@ -112,34 +112,16 @@ class CognitiveHub:
                 asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
             return None
 
-        # 1. Strip markdown blocks
-        clean = re.sub(r"```json\s*|\s*```", "", text).strip()
-
-        # 2. Extract JSON blocks via balanced brace matching
+        # [FEAT-347] Nuclear JSON Extractor: Greedy match for 3B resilience
+        # This ignores trailing garbage or nested quote collisions
         json_blocks = []
-        stack = 0
-        start_idx = -1
-        
-        for i, char in enumerate(clean):
-            if char == '{':
-                if stack == 0:
-                    start_idx = i
-                stack += 1
-            elif char == '}':
-                stack -= 1
-                if stack == 0 and start_idx != -1:
-                    json_blocks.append(clean[start_idx:i+1])
-                    start_idx = -1
+        match = re.search(r'(\{.*\})', clean, re.DOTALL)
+        if match:
+            json_blocks = [match.group(1)]
+        else:
+            return None
 
-        if not json_blocks:
-            # Fallback to greedy regex
-            match = re.search(r'(\{.*\})', clean, re.DOTALL)
-            if match:
-                json_blocks = [match.group(1)]
-            else:
-                return None
-
-        # 3. Parse first valid block
+        # 3. Parse valid block
         for block in json_blocks:
             try:
                 # [FEAT-220.2] Structural Sanitization
