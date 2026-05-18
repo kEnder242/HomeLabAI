@@ -246,7 +246,7 @@ class LabAttendantV4:
         self._recovery_in_progress = False # [FIX] Recovery Singleton
         self._active_monitors = set() # [FIX] Monitor Registry
         self._operational_start_time = 0 # [FEAT-302] Stability Latch
-        self.boot_grace_period = 120 # 240 seconds for vLLM weights (at 2s pulse)
+        self.boot_grace_period = 180 # 360 seconds for vLLM weights (at 2s pulse)
         self._worker_throttled = False # [FEAT-330] State-aware throttling
         self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
         
@@ -452,7 +452,7 @@ class LabAttendantV4:
                             # CancelledError is standard for client disconnects
                             crash_line = next((line for line in new_lines if 
                                 any(t in line for t in ['Traceback', 'RuntimeError', 'ValueError:']) and 
-                                not any(n in line for n in ['CancelledError', 'GeneratorExit'])
+                                not any(n in line for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError'])
                             ), None)
                             if crash_line:
                                 # 1. Forensic Snip
@@ -1286,7 +1286,7 @@ class LabAttendantV4:
                             return f.readlines()
                     
                     lines = await asyncio.to_thread(read_log)
-                    if any(("Traceback" in line or "SyntaxError" in line) and "CancelledError" not in line for line in lines):
+                    if any(("Traceback" in line or "SyntaxError" in line) and not any(n in line for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError']) for line in lines):
                         logger.error(f"[{self.session_token}] [WATCHDOG] Hub crash detected in logs.")
                         return {"status": "crashed", "message": "Hub foyer crashed during ignition."}
                 except Exception:
@@ -1332,13 +1332,18 @@ class LabAttendantV4:
             return
 
         # [FEAT-119.3] Restoration Silence
+        # [Task 18.3] Spare Hub if in WAKING/BOOTING to prevent Killer Loop
         is_igniting = (self.current_reason.startswith("RESTORE_") or 
                        self.current_reason.startswith("WAKE_") or 
-                       self.current_reason == "SAFE_PILOT")
+                       self.current_reason == "SAFE_PILOT" or
+                       current_lab_mode in ["WAKING", "BOOTING"])
                        
         if mode == "ORPHANS" and is_igniting:
-            logger.info(f"[ASSASSIN] Active ignition window ({self.current_reason}). Skipping purge.")
-            return
+            logger.info(f"[ASSASSIN] Active ignition window ({self.current_reason} / {current_lab_mode}). Skipping Hub purge.")
+            # Remove Hub from targets if igniting
+            if hub_pid in target_pids:
+                target_pids.remove(hub_pid)
+            if not target_pids: return
 
         logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging tracked ledger processes: {target_pids}")
         for pid in target_pids:
@@ -1787,7 +1792,7 @@ class LabAttendantV4:
                     with open(vllm_log, "r") as f:
                         lines = f.readlines()[-30:]
                         if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]) and \
-                           not any("CancelledError" in line for line in lines):
+                           not any(n in line for line in lines for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError']):
                             logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting.")
                             return False
                 except Exception:

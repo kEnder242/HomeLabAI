@@ -57,38 +57,37 @@ async def trigger_cycle(cycle_id, p_instance):
     retry_sent = False
     
     while time.time() - start_t < 400: # 6.5 minute window
-        # Audit the message list
+        # Audit the message list from BOTH consoles
         messages = await page.evaluate("""() => {
-            const bodies = Array.from(document.querySelectorAll('.msg-body'));
-            const sources = Array.from(document.querySelectorAll('.msg-source'));
-            return bodies.map((b, i) => ({
-                text: b.innerText,
-                source: sources[i] ? sources[i].innerText : 'Unknown'
-            }));
+            const allMessages = Array.from(document.querySelectorAll('.message'));
+            return allMessages.map(m => {
+                const body = m.querySelector('.msg-body');
+                const source = m.querySelector('.msg-source');
+                return {
+                    text: body ? body.innerText : '',
+                    source: source ? source.innerText : 'Unknown',
+                    is_system: m.classList.contains('system-msg'),
+                    is_brain: m.parentElement.id === 'insight-console'
+                };
+            });
         }""")
         
         for msg in messages:
             text = msg['text']
             source = msg['source']
+            is_brain_pane = msg['is_brain']
             
-            # [FEAT-344] Recovery Awareness: If we see a reset, wait and re-query
-            if ("H2 Reset" in text or "Restoration sequence" in text) and not retry_sent:
-                print("    [Action] Lab Reset detected in UI. Waiting for recovery...")
-                await asyncio.sleep(60)
-                print("    [Action] Re-sending Strategic Query...")
-                await page.fill("#text-input", query)
-                await page.keyboard.press("Enter")
-                retry_sent = True
-                break
-
-            # Check for Substance Win
-            if len(text) > 100 and ("Brain" in source or "Shadow" in source or "Pinky" in source):
-                print(f"    [🏆] UBER-WIN: Received {len(text)} chars from {source} in UI.")
+            # [Task 18.4] Verify Strategic Routing
+            if len(text) > 100 and ("Brain" in source or "Shadow" in source):
+                if is_brain_pane:
+                    print(f"    [🏆] STRATEGIC WIN: {source} content found in Insight Pane ({len(text)} chars).")
+                else:
+                    print(f"    [⚠️] ROUTING ALERT: {source} content found in Chat Pane (Expected Insight).")
                 
-                # [FEAT-344] Uniqueness Check: Ensure this specific substantive block is unique on the DOM
+                # Deduplication Check
                 repeats = sum(1 for m in messages if m['text'] == text)
                 if repeats > 1:
-                    print(f"    [🚨] FAILURE: Physical duplication detected on DOM! ({repeats} instances found).")
+                    print(f"    [🚨] FAILURE: Physical duplication detected on DOM! ({repeats} instances).")
                     await browser.close()
                     return False
                 

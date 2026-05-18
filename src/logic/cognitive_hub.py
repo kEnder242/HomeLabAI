@@ -401,7 +401,11 @@ class CognitiveHub:
             for triage_attempt in range(3):
                 try:
                     if not mute_all:
-                        await self.broadcast({"type": "status", "state": "triage_start", "message": f"Triage Attempt {triage_attempt+1}...", "brain_source": "System"})
+                        await self.broadcast({
+                            "type": "crosstalk", 
+                            "brain": f"Triage Attempt {triage_attempt+1}...", 
+                            "brain_source": "System"
+                        })
                     
                     # Triage is a blocking call to establish routing
                     # [FIX] Use stable sampling for high-fidelity prompt
