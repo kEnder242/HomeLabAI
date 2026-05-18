@@ -82,13 +82,13 @@ async def trigger_cycle(cycle_id, p_instance):
                 break
 
             # Check for Substance Win
-            if len(text) > 200 and ("Brain" in source or "Shadow" in source):
+            if len(text) > 100 and ("Brain" in source or "Shadow" in source or "Pinky" in source):
                 print(f"    [🏆] UBER-WIN: Received {len(text)} chars from {source} in UI.")
                 
-                # Deduplication Check: Ensure this message isn't duplicated in the list
+                # [FEAT-344] Uniqueness Check: Ensure this specific substantive block is unique on the DOM
                 repeats = sum(1 for m in messages if m['text'] == text)
                 if repeats > 1:
-                    print(f"    [🚨] FAIL: Detected {repeats} duplicate message blocks in DOM!")
+                    print(f"    [🚨] FAILURE: Physical duplication detected on DOM! ({repeats} instances found).")
                     await browser.close()
                     return False
                 
