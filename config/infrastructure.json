@@ -1,4 +1,5 @@
 {
+    "vram_hibernation_level": 2,
     "nodes": {
         "brain": {
             "primary": "KENDER",
