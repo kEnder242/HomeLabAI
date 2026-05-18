@@ -210,6 +210,8 @@
 
 **Why**: To combat the LLM's natural instinct to simplify and summarize complex history. Treating documentation as "Write-Protected DNA" ensures that technical findings are layered rather than replaced, maintaining the "Silicon Scar" pedigree as the primary defense against agentic state-drift and loss of intent.
 
+**Sprint Tasks**: Specifically, sprint task context should be preserved when completing.  We still want to know the 'why' and 'how' context even though they are completed and done.
+
 #### **🏎️ 1. Execution (The Surgical Additive Pass)**
 *   **Step 1**: Target the most granular line-ranges possible for `replace` operations to avoid context-bleed.
 *   **Step 2**: Layer new technical "Wins" directly above or alongside historical "Scars" using an append-only logic.
