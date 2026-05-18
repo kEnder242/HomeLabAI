@@ -1667,7 +1667,8 @@ class AcmeLab:
                 self.status = "HIBERNATING"
 
         # [FEAT-331] Hardened Lockdown: Explicitly block waking during Maintenance/ALARM
-        if self.status == "MAINTENANCE" or os.path.exists(MAINTENANCE_LOCK):
+        is_dream_pass = "[DREAM_PASS]" in query
+        if (self.status == "MAINTENANCE" or os.path.exists(MAINTENANCE_LOCK)) and not is_dream_pass:
             msg = "Lab is currently in Maintenance/Dream Cycle. Waking is restricted to protect background synthesis."
             await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
             return ""
