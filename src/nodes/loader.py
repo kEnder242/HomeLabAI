@@ -107,7 +107,7 @@ class BicameralNode:
             with redirect_stdout(sys.stderr):
                 # Pass sampling parameters for small model stability
                 # [FEAT-339] Use LoRA by default, but allow override for stability
-                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora):
+                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools):
                     full_response += token
                 
             return full_response
@@ -287,7 +287,7 @@ class BicameralNode:
                 self._session = None
             return False, f"Connection failed: {e}"
 
-    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.0, use_lora=True):
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.0, use_lora=True, tools=None):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
@@ -352,6 +352,24 @@ class BicameralNode:
             }
             if self.lora_name and use_lora:
                 payload["model"] = self.lora_name
+                
+            # [Task 19.7.1] Guided JSON Tool Calling (Option B)
+            if tools and not disable_tools:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "tool_call",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "thought": {"type": "string", "description": "Your persona interjection (e.g., Narf!) and thought process."},
+                                "tool_name": {"type": "string", "description": "The name of the tool to use"},
+                                "arguments": {"type": "object", "description": "Arguments for the tool"}
+                            },
+                            "required": ["thought"]
+                        }
+                    }
+                }
         else:
             payload = {
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],

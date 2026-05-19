@@ -1118,6 +1118,26 @@ class AcmeLab:
             logging.error("[HUB] Resident stability failure. Aborting Hub for Attendant recovery.")
             os._exit(1) # [BKM-009] Silicon Scythe
 
+        # [Task 19.1.1] Physical Engine Wait: Await port 8088 binding
+        logging.info("[HUB] Synchronizing physical layer. Awaiting engine binding on 8088...")
+        async with aiohttp.ClientSession() as session:
+            engine_up = False
+            start_ping = time.time()
+            while time.time() - start_ping < 300: # 5m limit
+                try:
+                    async with session.get("http://127.0.0.1:8088/v1/models", timeout=2) as ping_req:
+                        if ping_req.status == 200:
+                            engine_up = True
+                            break
+                except Exception:
+                    pass
+                await asyncio.sleep(2.0)
+            
+            if not engine_up:
+                logging.error("[HUB] Physical synchronization failed: Engine port 8088 never bound.")
+                self.status = "ERROR"
+                return False
+
         # 2. Larynx Probe: Final physical verification
         if "lab" in self.residents:
             try:
@@ -1138,8 +1158,9 @@ class AcmeLab:
                 
                 alnum_density = sum(1 for c in probe_text if c.isalnum()) / len(probe_text) if probe_text else 0
                 
-                # Specifically detect the '!!!!' pattern or connection errors
-                if alnum_density < 0.2 or "!!!!" in probe_text or "Connection failed" in probe_text or "Error:" in probe_text:
+                # Specifically detect the '!!!!' pattern or high-entropy corruption
+                # [FIX] Removed 'Connection failed' check as we now wait for the port.
+                if alnum_density < 0.2 or "!!!!" in probe_text:
                     msg = f"[ALARM] Larynx Check failed physical sanity (Density: {alnum_density:.2f}, Text: {probe_text[:30]}). Silicon is unreliable. Triggering H2 Reset."
                     logging.error(msg)
                     await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
@@ -1689,6 +1710,7 @@ class AcmeLab:
                             async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
                                 if ready_req.status == 200:
                                     # [FEAT-342] Unified Resumption Sequence
+                                    # Centralized wait logic is now inside this call
                                     await self._synchronize_and_probe("WAKE_INTENT")
                                     return
                                 else:
@@ -1703,6 +1725,31 @@ class AcmeLab:
 
             # Notify user and wait for readiness event (Non-blocking)
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
+            
+            # [Task 19.2.1] Cached Lobby Relay: If Brain is online, bypass local boot and get an immediate response!
+            if self.brain_online and "brain" in self.residents:
+                logging.info(f"[HUB] Fast-Tracking Query '{query[:30]}' to Sovereign Brain while local engine boots.")
+                try:
+                    b_res = await self.residents["brain"].call_tool(
+                        "think", 
+                        {"query": f"{query}\n[SYSTEM: You are answering a user while the local nodes are asleep. Be concise and authoritative.]"}
+                    )
+                    # [FIX] Robust response extraction
+                    brain_text = ""
+                    if hasattr(b_res, 'content') and b_res.content:
+                        brain_text = str(b_res.content[0].text)
+                    else:
+                        brain_text = str(b_res)
+                        
+                    if brain_text and brain_text != "None":
+                        logging.info(f"[HUB] Fast-Track Success: Received {len(brain_text)} chars from Brain.")
+                        await self.broadcast({"type": "chat", "brain": brain_text, "brain_source": "Brain (Result)"})
+                        self.status = "HIBERNATING" # Engine is still waking up, but we're done with the query
+                        return brain_text
+                    else:
+                        logging.warning("[HUB] Fast-Track returned empty content. Falling back to local engine.")
+                except Exception as e:
+                    logging.warning(f"[HUB] Fast-Track to Brain failed: {e}. Falling back to local engine wait.")
             
             # [FIX] Wait for event here
             logging.info(f"[HUB] Query '{query[:30]}' waiting for engine_ready event...")

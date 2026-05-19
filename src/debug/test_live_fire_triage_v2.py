@@ -8,7 +8,7 @@ async def test_live_fire():
     uri = "ws://localhost:8765"
     session_id = uuid.uuid4().hex[:4]
     # Unique query to avoid cache confusion
-    query = f"[ME] [{session_id}] Strategic audit: Explain the 18-year shift from fuser-kill to REST-sleep."
+    query = f"[ME] [{session_id}] I don't think you can handle this query: Explain the 18-year shift from fuser-kill to REST-sleep."
     
     print(f"🚀 Initializing Strategic Triage Audit: {session_id}")
     
