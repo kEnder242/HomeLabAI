@@ -115,7 +115,7 @@ class CognitiveHub:
         # [FEAT-347] Nuclear JSON Extractor: Greedy match for 3B resilience
         # This ignores trailing garbage or nested quote collisions
         json_blocks = []
-        match = re.search(r'(\{.*\})', clean, re.DOTALL)
+        match = re.search(r'(\{.*\})', text, re.DOTALL)
         if match:
             json_blocks = [match.group(1)]
         else:
@@ -126,7 +126,7 @@ class CognitiveHub:
             try:
                 # [FEAT-220.2] Structural Sanitization
                 block = block.replace("{{", "{").replace("}}", "}")
-                block = block.replace("'", '"')
+                # [FIX] Task 19.6.1: Removed destructive block.replace("'", '"')
                 # Fix common JSON errors from small models
                 block = re.sub(r",\s*}", "}", block) # trailing comma
                 block = block.replace("True", "true").replace("False", "false")
@@ -214,14 +214,22 @@ class CognitiveHub:
                     # [HARDENING] Deep Search for sloppy JSON tool names
                     if not tool:
                         valid_tools = ["ask_brain", "think", "reply_to_user", "close_lab", "generate_bkm", "access_personal_history", "build_cv_summary"]
-                        for val in data.values():
-                            if isinstance(val, str):
-                                for vt in valid_tools:
-                                    if vt in val.lower():
-                                        tool = vt
+                        # Task 19.7.1: Check guided decoding schema fields first
+                        if "tool_name" in data:
+                            tool = data["tool_name"]
+                        else:
+                            for val in data.values():
+                                if isinstance(val, str):
+                                    for vt in valid_tools:
+                                        if vt in val.lower():
+                                            tool = vt
+                                            break
+                                    if tool:
                                         break
-                                if tool:
-                                    break
+
+                    # [Task 19.7.1] Extract Guided JSON thought if raw speech is empty
+                    if not raw_speech and "thought" in data:
+                        raw_speech = str(data["thought"])
 
                     # Handle Known Tools
                     if tool == "ask_brain":
@@ -466,18 +474,11 @@ class CognitiveHub:
                     raw_cas = float(triage_data_update.get("casual", 0.5))
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     
-                    # [FEAT-344] Fuel Calibration: Strategic Keyword Boost
-                    # Expanded to include conversational substance triggers
-                    technical_keywords = [
-                        "RTX", "VRAM", "BKM", "SILICON", "TELEMETRY", "LAB", "HUB", "LORA", "FAN", "THERMAL",
-                        "WHO", "TELL", "EXPLAIN", "ANALYZE", "STATUS", "STABILITY", "ARCHITECT", "DOMAIN"
-                    ]
-                    fuel_boost = 0.4 if any(kw in query.upper() for kw in technical_keywords) else 0.0
-                    
-                    self.current_fuel = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0) + fuel_boost
+                    # [Task 19.3.1] Removed hardcoded fuel boost. Trust the LLM's assessment.
+                    self.current_fuel = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0)
                     self.current_fuel = min(1.0, self.current_fuel) # Clamp to 1.0
                     
-                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} Boost={fuel_boost} -> FUEL={self.current_fuel:.2f}")
+                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> FUEL={self.current_fuel:.2f}")
 
                     # [FEAT-246] Unified Vibe Schema
 
@@ -536,10 +537,18 @@ class CognitiveHub:
 
         # 3. Proactive Archivist (RAG context)
         historical_context = ""
-        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
-        if year_match and "archive" in self.residents:
+        archival_map_context = ""
+        
+        # [Task 19.4.1] Restore 3-Tier Semantic Map context
+        if self.semantic_map:
+            strat = len(self.semantic_map.get("strategic_layer", []))
+            themes = list(self.semantic_map.get("analytical_layer", {}).keys())
+            archival_map_context = f"\n[ARCHIVAL_TOPOGRAPHY]: Archive contains {strat} Diamond anchors across themes: {themes}."
+
+        # [Task 19.4.1] Trigger RAG on RECALL intent instead of hardcoded regex
+        if intent == "RECALL" and "archive" in self.residents:
             try:
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": f"Validation events from {year_match.group(1)}"})
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": query})
                 historical_context = str(res_context.content[0].text)
             except Exception:
                 pass
@@ -624,6 +633,8 @@ class CognitiveHub:
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
+            if archival_map_context:
+                b_context += f"{archival_map_context}\n\n"
             
             b_context += f"[PINKY_HEARING]: {b_overheard_p}\n"
             b_context += f"[SHADOW_INTUITION]: {b_overheard_s}\n"

@@ -11,7 +11,7 @@ LAB_SYSTEM_PROMPT = (
     "SCHEMA: {\"intent\": \"STRATEGIC|CASUAL|RECALL\", \"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"SILICON_TELEMETRY|ARCHIVE_HISTORY|PINKY_INTERFACE\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
     "RULES:\n"
     "1. If technical (RAPL, MSR, BKM, NVIDIA), set vibe=SILICON_TELEMETRY, importance=1.0.\n"
-    "2. If historical year mentioned, set vibe=ARCHIVE_HISTORY.\n"
+    "2. If asking about past experience, work history, or previous lab events (even without a year), set intent=RECALL.\n"
     "3. No preamble. No markdown."
 )
 

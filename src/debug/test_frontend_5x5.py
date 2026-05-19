@@ -56,6 +56,10 @@ async def trigger_cycle(cycle_id, p_instance):
     success = False
     retry_sent = False
     
+    # [Task 19.9.1] Track if the Brain responds BEFORE the hub is operational
+    brain_responded_time = 0
+    hub_operational_time = 0
+    
     while time.time() - start_t < 400: # 6.5 minute window
         # Audit the message list from BOTH consoles
         messages = await page.evaluate("""() => {
@@ -77,8 +81,14 @@ async def trigger_cycle(cycle_id, p_instance):
             source = msg['source']
             is_brain_pane = msg['is_brain']
             
+            if "[OPERATIONAL] Hub foyer is fully synchronized" in text and hub_operational_time == 0:
+                hub_operational_time = time.time()
+
             # [Task 18.4] Verify Strategic Routing
             if len(text) > 100 and ("Brain" in source or "Shadow" in source):
+                if brain_responded_time == 0:
+                    brain_responded_time = time.time()
+                    
                 if is_brain_pane:
                     print(f"    [🏆] STRATEGIC WIN: {source} content found in Insight Pane ({len(text)} chars).")
                 else:
@@ -90,6 +100,14 @@ async def trigger_cycle(cycle_id, p_instance):
                     print(f"    [🚨] FAILURE: Physical duplication detected on DOM! ({repeats} instances).")
                     await browser.close()
                     return False
+                
+                # [Task 19.9.1] Assert Cached Lobby Relay
+                if hub_operational_time > 0 and hub_operational_time < brain_responded_time:
+                    print(f"    [🚨] FAILURE: Brain responded AFTER Hub was operational. Cached Lobby Relay failed.")
+                    await browser.close()
+                    return False
+                elif hub_operational_time == 0:
+                    print(f"    [⚡] SPEED WIN: Brain responded BEFORE Hub was fully operational! Cached Relay active.")
                 
                 success = True
                 break

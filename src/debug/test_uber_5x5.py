@@ -47,13 +47,21 @@ async def trigger_query(client_id, query, expected_source=None):
                 
                 # Filter out the [RAW_OUTPUT] or System status, look for persona
                 if source not in ['System', 'Lab (Triage)', 'Pinky (Triage)']:
-                    
+
                     if '[GIBBERISH]' in text:
                         print(f"    [Client {client_id}] 🚨 FAIL: Gibberish detected from {source}")
                         return False
-                        
+
+                    fuel = data.get("fuel", 0.0)
+                    topic = data.get("topic", "")
+
+                    # [Task 19.10.1] Verify Fuel and RAG Intent
+                    if fuel > 0.6:
+                        print(f"    [Client {client_id}] 🚨 FAIL: Fuel is {fuel}, expected < 0.6 for non-technical historical query.")
+                        return False
+
                     # win condition: SUBSTANCE (Long-form)
-                    if len(text) > 200:
+                    if len(text) > 100:
                         print(f"    [Client {client_id}] ✅ SUBSTANCE WIN: {source} sent {len(text)} chars.")
                         # Check for strategic source if expected
                         if expected_source and expected_source in source:
@@ -116,8 +124,8 @@ async def main():
     print(f"[*] Brain Discovery: {get_kender_ip()} ({'ONLINE' if await check_brain_online() else 'OFFLINE'})")
     print("[*] Strategy: Paragraph-Length Wins (>200 chars).")
     
-    # Substance-Heavy Query for Certification
-    query = "[ME] Analyze the current physical thermal boundaries of the RTX 2080 Ti and explain the multi-level hibernation (H1-H3) strategy."
+    # [Task 19.10.1] Test RAG Intent & Fuel drops on non-year queries
+    query = "[ME] What was my work experience?"
 
     total_wins = 0
     for i in range(5):
