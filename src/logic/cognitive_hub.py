@@ -14,6 +14,15 @@ class CognitiveHub:
     [FEAT-239] Neural Action Tags: Natural language steering hints.
     [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
+    # [FEAT-351] Physical Bedrock (BKM-015): Shared Identity Preamble
+    # This description describes the Lab topography and inhabitants without hardcoded metrics.
+    # Prepending this to all node calls forces 100% prefix-cache hits for the first 128 tokens.
+    IDENTITY_BEDROCK = (
+        "[LAB_IDENTITY]: Acme Lab (Z87-Linux native). High-fidelity silicon validation environment.\n"
+        "[TOPOGRAPHY]: 3-Tier Memory in effect. Layer 1 (Diamond): Star artifacts. Layer 2 (Archive): RAG historical logs. Layer 3 (Raw): Direct telemetry (RAPL/MSR).\n"
+        "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Shadow (Subconscious - Intuition/Refinement), Brain (Sovereign - Strategic reasoning on 4090).\n"
+    )
+
     def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
         from collections import defaultdict
         self.residents = residents
@@ -136,7 +145,7 @@ class CognitiveHub:
                 continue
         return None
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, final=True):
+    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, final=True, use_lora=True):
         """
         [FEAT-238.1] Combined Dispatch: Persona Speech + Tool Action.
         Ensures persona is maintained even when tools are used for steering.
@@ -331,12 +340,17 @@ class CognitiveHub:
             })
 
         try:
+            # [Task 20.3] Identity Bedrock: Prepend shared identity to every node call
+            # This describes Lab topography and residents (BKM-015 compliant).
+            guidance = self.IDENTITY_BEDROCK
+            if behavioral_guidance:
+                guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
+            
             # [Task 1.1] Spark the node and wait for full block
-            # Real-time overhearing happens via handle_stream_ingest -> on_token
             node = self.residents[node_id]
             res = await node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
-                "behavioral_guidance": behavioral_guidance, "internal": is_internal,
+                "behavioral_guidance": guidance, "internal": is_internal,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora
             })
@@ -388,7 +402,7 @@ class CognitiveHub:
         logging.info(f"[USER] Intercom Query: {query}")
         self.current_fuel = 0.0
         self.current_topic = "Casual"
-        intent = "STRATEGIC"
+        intent = None # [Task 19.4.1] Initialize as None to prevent accidental override
         self.trigger_briefing_cb = trigger_briefing_callback
         
         # [FEAT-330] Internal Muting
@@ -523,7 +537,6 @@ class CognitiveHub:
                             logging.warning("[HUB] Triage connection error in final attempt. Bypassing lobotomy penalty.")
                         
                         self.current_fuel = 0.2
-                        intent = "STRATEGIC"
 
         fuel_start = self.current_fuel
         situational_guidance = triage_data_update.get("hints", "")

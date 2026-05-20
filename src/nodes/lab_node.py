@@ -6,12 +6,12 @@ import glob
 import datetime
 
 LAB_SYSTEM_PROMPT = (
-    "You are The Lab Node sentinel. CORE ROLE: High-fidelity triage.\n"
+    "[NODE_IDENTITY]: High-fidelity triage sentinel.\n"
     "TASK: Return ONLY raw JSON block.\n"
     "SCHEMA: {\"intent\": \"STRATEGIC|CASUAL|RECALL\", \"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"SILICON_TELEMETRY|ARCHIVE_HISTORY|PINKY_INTERFACE\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
     "RULES:\n"
     "1. If technical (RAPL, MSR, BKM, NVIDIA), set vibe=SILICON_TELEMETRY, importance=1.0.\n"
-    "2. If asking about past experience, work history, or previous lab events (even without a year), set intent=RECALL.\n"
+    "2. If asking about ANY past events, work history, or experience (e.g. 'What did I do...', 'My past...', '2018...'), you MUST set intent=RECALL.\n"
     "3. No preamble. No markdown."
 )
 

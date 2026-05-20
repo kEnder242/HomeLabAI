@@ -21,8 +21,12 @@ export VLLM_USE_V1=${VLLM_USE_V1:-0}
 echo "--- vLLM Sovereign Ignition: $MODEL_PATH ---"
 echo "Env: Backend=${VLLM_ATTENTION_BACKEND}, P2P_Disable=${NCCL_P2P_DISABLE}, V1=${VLLM_USE_V1}"
 
-# [FEAT-030] Unity Pattern: Consume dynamic args from lab_attendant
-# We remove hardcoded max-model-len to prevent key duplication errors.
+# [FEAT-352] Standardized Qwen-2.5 Recipe
+# Optimized for Turing (RTX 2080 Ti) with 100% Prefix Caching enabled.
+# Using 'llama_legacy' adapters until Qwen-native LoRAs are trained in Goal 21.
+LORA_LEGACY="/speedy/models/adapters/llama_legacy"
+LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
+
 $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
     --load-format auto \
@@ -30,6 +34,15 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --port 8088 \
     --served-model-name unified-base \
     --trust-remote-code \
+    --gpu-memory-utilization 0.5 \
+    --max-model-len 4096 \
+    --enforce-eager \
+    --attention-backend TRITON_ATTN \
+    --enable-prefix-caching \
+    --enable-lora \
+    --max-loras 7 \
+    --max-cpu-loras 10 \
+    --lora-modules $LORA_MODULES \
     --enable-auto-tool-choice \
     --tool-call-parser llama3_json \
     $VLLM_EXTRA_ARGS \
