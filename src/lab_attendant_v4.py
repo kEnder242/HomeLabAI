@@ -880,12 +880,7 @@ class LabAttendantV4:
                 env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Extended Debug Endpoints
                 env["VLLM_USE_V1"] = "0" # [PLACEBO] Maintain legacy alignment
 
-                # [BKM] Consolidate into EXTRA_ARGS for the script to consume
-                # Stable Recipe R2: 0.5 util and 4096 context with verified LoRA mounts
-                LORA_STR = "--enable-lora --max-loras 4 --lora-modules cli_voice_v1=/speedy/models/adapters/cli_voice_v1 shadow_brain_v2=/speedy/models/adapters/shadow_brain_v2 lab_history_v1=/speedy/models/adapters/lab_history_v1"
-                env["VLLM_EXTRA_ARGS"] = f"--gpu-memory-utilization 0.5 --enforce-eager --attention-backend TRITON_ATTN --max-model-len 4096 --enable-sleep-mode {LORA_STR}"
-
-                logger.info(f"[VLLM] Igniting Sovereign Node (Recipe R2): {target_model}")
+                logger.info(f"[VLLM] Igniting Sovereign Node (Shell-First Strategy): {target_model}")
                 self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model}")
 
                 # [DUMB_IGNITION] Bash script handles the backgrounding. We don't hold the process object.

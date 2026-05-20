@@ -125,7 +125,7 @@ def execute_burn(target_persona, base_model, dataset_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pedigree Burn Orchestrator")
-    parser.add_argument("--base-model", default="unsloth/Llama-3.2-3B-Instruct", help="HuggingFace model ID or local path")
+    parser.add_argument("--base-model", default="unsloth/Qwen2.5-3B-Instruct-bnb-4bit", help="HuggingFace model ID or local path")
     args = parser.parse_args()
 
     # Create adapter dir if missing

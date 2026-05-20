@@ -339,7 +339,8 @@ class BicameralNode:
             user_context += f"[GUIDANCE_FRAME]:\n{parts[1].strip()}\n\n"
 
         if user_context:
-            query = f"{user_context}---\n\n{query}"
+            # [Task 20.5] Append context to end to preserve prefix hash
+            query = f"{query}\n\n---\n[DYNAMIC_CONTEXT]:\n{user_context}"
 
         if engine["type"] == "VLLM":
             payload = {
