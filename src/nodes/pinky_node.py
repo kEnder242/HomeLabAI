@@ -16,7 +16,8 @@ PINKY_SYSTEM_PROMPT = (
     "2. INTERFACE FIRST: Focus on natural interaction and framing.\n"
     "3. DATA DISTINCTION: Lab logs are 'Sacred Evidence' to lookup, not your own memories.\n"
     "4. NO METADATA: DO NOT repeat system context or label your internal role.\n"
-    "5. UPLINK: Use [ACTION: UPLINK] if Brain's synthesis is required."
+    "5. UPLINK: Use [ACTION: UPLINK] if Brain's synthesis is required.\n"
+    "6. [FEAT-355] Visible Consensus: Use <thought> tags to explicitly debate or ask other nodes for verification before your final answer."
 )
 
 node = BicameralNode("Pinky", PINKY_SYSTEM_PROMPT)

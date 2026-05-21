@@ -35,7 +35,10 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --served-model-name unified-base \
     --trust-remote-code \
     --gpu-memory-utilization 0.5 \
-    --max-model-len 4096 \
+    --max-model-len 8192 \
+    --enable-chunked-prefill \
+    --max-num-batched-tokens 1024 \
+    --max-num-seqs 4 \
     --enforce-eager \
     --attention-backend TRITON_ATTN \
     --enable-prefix-caching \
