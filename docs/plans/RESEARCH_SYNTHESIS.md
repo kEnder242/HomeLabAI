@@ -11,23 +11,23 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 | Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI | Status |
 | :--- | :--- | :--- | :--- |
-| **FS-Researcher** (2602.01566) | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **100%** |
-| **Agentic-R** | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
-| **TTCS** (2601.22628) | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns. | **100%** |
-| **Apple CLaRa** | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
-| **RLM** (Recursive LMs) | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
-| **TTT-Discover** (2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
+| **FS-Researcher** (arXiv:2602.01566) [FEAT-095] | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **100%** |
+| **Agentic-R** (arXiv:2601.11888) [FEAT-080] | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
+| **TTCS** (arXiv:2601.22628) [FEAT-114] | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns. | **100%** |
+| **Apple CLaRa** (arXiv:2511.18659) [FEAT-073] | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
+| **Liger Kernel** (arXiv:2410.10989) [FEAT-031] | Efficient Triton Kernels for LLM Training. | **Efficiency:** Maximizing 8B residency and enabling 14B testing on 11GB silicon. | **100%** |
+| **RLM** [FEAT-117] | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
+| **TTT-Discover** (arXiv:2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
 | **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel subagent contexts for extraction. | **0%** |
 | **MiMo-V2-Flash** | Multi-Objective RL: Post-execution feedback. | **Observability:** Planned: Use Grafana feedback to reward agents. | **0%** |
-| **Dreaming** | Subconscious Compression. | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **100%** |
-| **Internal Debate** | Moderated Consensus. | **Consensus:** `delegate_internal_debate` facilitates multi-path reasoning. | **100%** |
-| **3x3 CVT** | High-Density Resume Indexer. | **Synthesis:** `build_cv_summary` correlates Focal goals with Artifact evidence. | **100%** |
-| **AT2QA** (2603.01853) | Autonomous Exploration Pivot. | **Autonomy:** [FEAT-173] Pivot-query logic pass for thin tool-results. | **Design** |
-| **Agentic FS** (2602.20478) | Context as a File System. | **Grounding:** Validates our "Static Synthesis" (FS-Researcher) memory tier. | **100%** |
-| **13-Param Reason** (2602.04118) | Extreme parameter efficiency. | **Sentinel:** Optimization logic for the 1B/tiny "Sentinel" mice nodes. | **Active** |
-| **REDSearcher** (2602.14234) | Long-Horizon Search Scaling. | **Discovery:** [FEAT-173] framework for deep technical history discovery. | **Design** |
-| **Memex(RL)** (2603.04257) | Indexed Experience Memory. | **Wisdom:** [FEAT-067] grounds our Subconscious Dreaming consolidation. | **100%** |
-| **Byzantine ToM** (2603.00142) | Theory of Mind in MAS. | **Debate:** [FEAT-071] grounds our Moderated Consensus / Debate logic. | **100%** |
+| **Dreaming** (arXiv:2603.04257) [FEAT-067] | Subconscious Compression (Memex). | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **100%** |
+| **Internal Debate** (arXiv:2603.00142) [FEAT-071] | Moderated Consensus (Byzantine ToM). | **Consensus:** `delegate_internal_debate` facilitates multi-path reasoning. | **100%** |
+| **AT2QA** (arXiv:2603.01853) [FEAT-173] | Autonomous Exploration Pivot. | **Autonomy:** [FEAT-173] Pivot-query logic pass for thin tool-results. | **Design** |
+| **Agentic FS** (arXiv:2602.20478) | Context as a File System. | **Grounding:** Validates our "Static Synthesis" (FS-Researcher) memory tier. | **100%** |
+| **13-Param Reason** (arXiv:2602.04118) | Extreme parameter efficiency. | **Sentinel:** Optimization logic for the 1B/tiny "Sentinel" mice nodes. | **Active** |
+| **REDSearcher** (arXiv:2602.14234) | Long-Horizon Search Scaling. | **Discovery:** [FEAT-173] framework for deep technical history discovery. | **Design** |
+| **Banter Decay** [FEAT-039] | Frequency-based idling. | **Legacy:** Replaced by [FEAT-152] Metabolism of Presence. | **DEFEATURED** |
+| **Persona-Locked Dispatch** [FEAT-068] | Rigid isolation. | **Legacy:** Rigid isolation prevented collaborative synthesis. Replaced by [FEAT-153]. | **DEFEATURED** |
 
 ---
 
@@ -35,13 +35,12 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 | Paper | Project Impact | "Same Idea" vs. "Game Changer" | % Architectural Change |
 | :--- | :--- | :--- | :--- |
-| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." It moved the burden from the model's context to the project's disk. | **100%** |
-| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Instruction Hardening.** It forces the model to ground its reasoning in specific technical anchors, mitigating the repetition loops seen in Llama-3.2 models. | **100%** |
+| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." | **100%** |
+| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Instruction Hardening.** It forces the model to ground its reasoning in specific technical anchors. | **100%** |
 | **Internal Debate** | **Moderated Consensus.** Implemented in v3.1.9 to resolve complex technical contradictions. | **Quality Booster.** Reduces hallucinations by forcing the Brain to critique its own independent reasoning paths. | **100%** |
-| **3x3 CVT** | **Automated CV Synthesis.** Correlates 18 years of technical scars with yearly strategic goals. | **Portfolio Signature.** Physically demonstrates the value of the archive to non-technical stakeholders. | **100%** |
 | **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **100%** |
 | **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to enable massive KV cache pools on 11GB silicon. | **100%** |
-| **AT2QA** | **Iterative Autonomy.** Replacing hand-crafted workflows with tool-decision agency. | **Strategic Pivot.** Allows the Hub to autonomously redirect a search if initial tool-results are thin or temporally inconsistent. | **Design** |
+| **AT2QA** | **Iterative Autonomy.** Replacing hand-crafted workflows with tool-decision agency. | **Strategic Pivot.** Allows the Hub to autonomously redirect a search. | **Design** |
 
 ---
 
@@ -69,9 +68,11 @@ These ideas were identified in the **AI Master Plan (2026)** and are scheduled f
 
 | Anchor | Description | Strategy | Status |
 | :--- | :--- | :--- | :--- |
-| **vLLM Serving** | Transition from Ollama to vLLM for model serving. | Achieve SOTA serving throughput for the Web Intercom. | **Planned** |
-| **MAXS** | Meta-Adaptive Exploration (arXiv:2601.12538). | Lookahead hooks to estimate "Value of Information" before tool calls. | **Planned** |
+| **MAXS** (arXiv:2601.12538) | Meta-Adaptive Exploration. | Lookahead hooks to estimate "Value of Information" before tool calls. | **Planned** |
 | **Voxtral** | Sonic-speed transcription benchmarking. | Transition from NeMo EarNode to native high-speed Mistral STT. | **Planned** |
+| **vLLM Serving** | Transition from Ollama to vLLM. | Achieved SOTA serving throughput for the Web Intercom. | **100%** |
+| **3x3 CVT** | High-Density Resume Indexer. | Correlates Focal goals with Artifact evidence. | **100%** |
+| **Agentic-R** (arXiv:2601.11888) | Utility-based ranking. | Implement in ArchiveMemory for deep technical search. | **Active** |
 
 ---
 
