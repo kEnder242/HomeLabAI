@@ -46,7 +46,7 @@
 
 1.  **Heads Down Trigger**: Signals the start of an autonomous sprint. The Agent works through the agreed-upon task list (from `ProjectStatus.md` or a specific session goal).
 2.  **AFK Hint**: User says "AFK" or "Coffee Break" to signal they are stepping away. The Agent should check for any queued tasks or proceed autonomously.
-3.  **High-Fidelity Reasoning**: "Heads Down" does NOT mean "Terse Mode." While the Agent should remain silent (no incremental status updates), it MUST still document its internal reasoning, trade-offs, and "Why" in its tool calls and final reports. High verbosity is the standard for intent preservation.
+3.  **High-Fidelity Reasoning**: "Heads Down" does NOT mean "Terse Mode." The Agent should not remain silent and MUST still document its internal reasoning, trade-offs, and "Why" in its tool calls and final reports. High verbosity is the standard for intent preservation.
 4.  **Max Momentum**: The Agent must strive to complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
 6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.

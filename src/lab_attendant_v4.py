@@ -225,6 +225,8 @@ class LabAttendantV4:
         self.ledger_path = os.path.join(_run_dir, 'active_pids.json')
         self.token_path = os.path.join(_run_dir, 'session.token')
         
+        self.event_ledger = [] # [FEAT-363] Initialize before ledger load
+        
         # [FEAT-277] PID Ledger Initialization
         # We load existing ledger but ensure 'family' key exists to prevent KeyError
         self.active_pids = self._load_ledger()
@@ -257,7 +259,6 @@ class LabAttendantV4:
         # [FEAT-339] Persistent Telemetry Ledger
         self.pulse_count = 0 
         self.telemetry_path = os.path.join(DATA_DIR, "telemetry_ledger.jsonl")
-        self.event_ledger = [] # [FEAT-363] In-memory event cache for polling
 
 
     def register_route(self, method, path, handler):
@@ -1103,7 +1104,7 @@ class LabAttendantV4:
             self._save_ledger()
             is_hibernating = True
             current_lab_mode = "HIBERNATING" # Hub is still up logically
-            await self.update_status_json(f"HIBERNATING (H2-Lean)")
+            await self.update_status_json("HIBERNATING (H2-Lean)")
             return {"status": "success", "message": "vLLM engine reaped. Nodes resident."}
 
         # 3. Level 1 Handle: Standard Standby (Legacy Level 2)
@@ -2073,11 +2074,6 @@ async def run_bilingual():
         # The isatty check was blocking the Gemini CLI from discovering tools.
         logger.info("[BOOT] Proxy node starting MCP stdio transport...")
         await mcp.run_stdio_async()
-
-
-if __name__ == "__main__":
-    asyncio.run(run_bilingual())
-cp.run_stdio_async()
 
 
 if __name__ == "__main__":
