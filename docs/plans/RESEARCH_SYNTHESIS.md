@@ -1,6 +1,6 @@
-# RESEARCH_SYNTHESIS.md: Cohesive Implementation Roadmap (v2.0)
-**Date:** Feb 9, 2026
-**Status:** DRAFT (Synthesis of Keep Research & Current Session Insights)
+# RESEARCH_SYNTHESIS.md: Cohesive Implementation Roadmap (v2.1)
+**Date:** May 20, 2026
+**Status:** DRAFT (Standardized Unified Schema)
 
 ## Telescope The Unified Vision
 To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Persistent Memory-First** architecture. We treat the local file system as an external "Long-Term Memory" and use Test-Time Reasoning to maximize the output quality of small local models (Llama-3.2-3B).
@@ -9,25 +9,25 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 
 ## 🔬 Implementation Mapping: Paper-to-Code
 
-| Research Anchor | Core Architecture | Role in `ai_engine.py` / HomeLabAI | Status |
-| :--- | :--- | :--- | :--- |
-| **FS-Researcher** (arXiv:2602.01566) [FEAT-095] | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder. Web Intercom is the Report Writer. | **100%** |
-| **Agentic-R** (arXiv:2601.11888) [FEAT-080] | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` ranks historical context based on keyword utility. | **85%** |
-| **TTCS** (arXiv:2601.22628) [FEAT-114] | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns. | **100%** |
-| **Apple CLaRa** (arXiv:2511.18659) [FEAT-073] | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs into technical abstracts. | **100%** |
-| **Liger Kernel** (arXiv:2410.10989) [FEAT-031] | Efficient Triton Kernels for LLM Training. | **Efficiency:** Maximizing 8B residency and enabling 14B testing on 11GB silicon. | **100%** |
-| **RLM** [FEAT-117] | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` allows Pinky to follow technical breadcrumbs. | **100%** |
-| **TTT-Discover** (arXiv:2601.16175) | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
-| **WideSeek-R1** | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel subagent contexts for extraction. | **0%** |
-| **MiMo-V2-Flash** | Multi-Objective RL: Post-execution feedback. | **Observability:** Planned: Use Grafana feedback to reward agents. | **0%** |
-| **Dreaming** (arXiv:2603.04257) [FEAT-067] | Subconscious Compression (Memex). | **Consolidation:** `dream_cycle.py` moving chat history to Long-Term Wisdom. | **100%** |
-| **Internal Debate** (arXiv:2603.00142) [FEAT-071] | Moderated Consensus (Byzantine ToM). | **Consensus:** `delegate_internal_debate` facilitates multi-path reasoning. | **100%** |
-| **AT2QA** (arXiv:2603.01853) [FEAT-173] | Autonomous Exploration Pivot. | **Autonomy:** [FEAT-173] Pivot-query logic pass for thin tool-results. | **Design** |
-| **Agentic FS** (arXiv:2602.20478) | Context as a File System. | **Grounding:** Validates our "Static Synthesis" (FS-Researcher) memory tier. | **100%** |
-| **13-Param Reason** (arXiv:2602.04118) | Extreme parameter efficiency. | **Sentinel:** Optimization logic for the 1B/tiny "Sentinel" mice nodes. | **Active** |
-| **REDSearcher** (arXiv:2602.14234) | Long-Horizon Search Scaling. | **Discovery:** [FEAT-173] framework for deep technical history discovery. | **Design** |
-| **Banter Decay** [FEAT-039] | Frequency-based idling. | **Legacy:** Replaced by [FEAT-152] Metabolism of Presence. | **DEFEATURED** |
-| **Persona-Locked Dispatch** [FEAT-068] | Rigid isolation. | **Legacy:** Rigid isolation prevented collaborative synthesis. Replaced by [FEAT-153]. | **DEFEATURED** |
+| Research Anchor | ArXiv ID | Theoretical Logic | Lab Implementation [FEAT] | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **FS-Researcher** | 2602.01566 | Dual-Agent: Context Builder + Report Writer | **Foundation:** `nibble.py` is the Context Builder [FEAT-095]. | **100%** |
+| **Agentic-R** | 2601.11888 | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` utility ranking [FEAT-080]. | **85%** |
+| **TTCS** | 2601.22628 | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns [FEAT-114]. | **100%** |
+| **Apple CLaRa** | 2511.18659 | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs [FEAT-073]. | **100%** |
+| **Liger Kernel** | 2410.10989 | Efficient Triton Kernels for LLM Training. | **Efficiency:** Maximizing 8B residency on 11GB silicon [FEAT-031]. | **100%** |
+| **RLM** | N/A | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` logic [FEAT-117]. | **100%** |
+| **TTT-Discover** | 2601.16175 | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | **0%** |
+| **WideSeek-R1** | N/A | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel contexts for extraction. | **0%** |
+| **MiMo-V2-Flash** | N/A | Multi-Objective RL: Post-execution feedback. | **Observability:** Planned: Use Grafana feedback to reward agents. | **0%** |
+| **Dreaming** | 2603.04257 | Subconscious Compression (Memex). | **Consolidation:** `dream_cycle.py` moving logs to Wisdom [FEAT-067]. | **100%** |
+| **Internal Debate** | 2603.00142 | Moderated Consensus (Byzantine ToM). | **Consensus:** `delegate_internal_debate` facilitates reasoning [FEAT-071]. | **100%** |
+| **AT2QA** | 2603.01853 | Autonomous Exploration Pivot. | **Autonomy:** [FEAT-173] Pivot-query logic pass for thin results. | **Design** |
+| **Agentic FS** | 2602.20478 | Context as a File System. | **Grounding:** Validates our "Static Synthesis" architecture. | **100%** |
+| **13-Param Reason** | 2602.04118 | Extreme parameter efficiency. | **Sentinel:** Optimization logic for 1B "Sentinel" mice nodes. | **Active** |
+| **REDSearcher** | 2602.14234 | Long-Horizon Search Scaling. | **Discovery:** framework for deep technical history discovery. | **Design** |
+| **Banter Decay** | N/A | Frequency-based idling. | **Legacy:** Replaced by [FEAT-152] Metabolism of Presence [FEAT-039]. | **DEFEATURED** |
+| **Persona-Locked Dispatch** | N/A | Rigid isolation. | **Legacy:** Rigid isolation prevented collaborative synthesis [FEAT-068]. | **DEFEATURED** |
 
 ---
 
@@ -66,13 +66,13 @@ data/
 ## 🔮 Tabled & Future Exploration
 These ideas were identified in the **AI Master Plan (2026)** and are scheduled for post-Phase 9 development:
 
-| Anchor | Description | Strategy | Status |
+| Research Anchor | ArXiv ID | Strategy | Status |
 | :--- | :--- | :--- | :--- |
-| **MAXS** (arXiv:2601.12538) | Meta-Adaptive Exploration. | Lookahead hooks to estimate "Value of Information" before tool calls. | **Planned** |
-| **Voxtral** | Sonic-speed transcription benchmarking. | Transition from NeMo EarNode to native high-speed Mistral STT. | **Planned** |
-| **vLLM Serving** | Transition from Ollama to vLLM. | Achieved SOTA serving throughput for the Web Intercom. | **100%** |
-| **3x3 CVT** | High-Density Resume Indexer. | Correlates Focal goals with Artifact evidence. | **100%** |
-| **Agentic-R** (arXiv:2601.11888) | Utility-based ranking. | Implement in ArchiveMemory for deep technical search. | **Active** |
+| **MAXS** | 2601.12538 | Lookahead hooks to estimate "Value of Information" before tool calls. | **Planned** |
+| **Voxtral** | N/A | Transition from NeMo EarNode to native high-speed Mistral STT. | **Planned** |
+| **vLLM Serving** | N/A | Achieved SOTA serving throughput for the Web Intercom. | **100%** |
+| **3x3 CVT** | N/A | High-Density Resume Indexer. Correlates Focal goals with Artifact evidence. | **100%** |
+| **Agentic-R** | 2601.11888 | Implement in ArchiveMemory for deep technical search. | **Active** |
 
 ---
 
@@ -84,3 +84,23 @@ To prevent the "Goldmine" from becoming "Sludge":
 
 ---
 *Next Action: Implement the Subconscious Dreaming multi-host batch consolidation and the Report Writer Sidebar.*
+
+---
+
+## 🌌 EPOCH 2: THE COGNITIVE EXPANSION (May 20, 2026)
+*Source: Google Keep Brain Dump (Notes Archive)*
+
+### 💎 THE GEMS: GAME CHANGERS
+*High-impact research that aligns with our Multi-LoRA / 11GB silicon strategy.*
+
+| Research Anchor | ArXiv ID | Theoretical Logic | Lab Implementation [FEAT] | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Thinking to Recall** | 2603.09906 | Uses CoT as a "computational buffer" for factual priming. | Implemented via [FEAT-114] TTCS logic. | **100%** |
+| **AutoHarness** | 2603.03329 | Synthesizing Python guardrails for agent self-verification. | Grounds future [FEAT-353] Verifier Synthesis. | **Planned** |
+| **Stochastic KV Routing** | 2604.22782 | Adaptive depth-wise cache sharing (Apple MLR). | Optimization pattern for [FEAT-031] Liger. | **Active** |
+| **ARIS** | 2605.03042 | Adversarial multi-agent collaboration for research. | Theoretical base for [FEAT-071] Internal Debate. | **100%** |
+| **CodeTracer** | 2604.11641 | Traceable agent states & failure onset localization. | Enhanced [FEAT-151] Forensic Ledger visibility. | **100%** |
+| **PersonaVLM** | 2604.13074 | Proactive memory extraction & response alignment. | Core logic for [FEAT-067] Subconscious Dreaming. | **100%** |
+| **TriAttention** | 2604.04921 | Trigonometric KV compression (10x reduction). | Future optimization for [FEAT-031] VRAM efficiency. | **Active** |
+| **Bonsai-ML** | N/A | High-fidelity fine-tuning for structured reasoning. | Grounds the [FEAT-352] Qwen Pivot strategy. | **Active** |
+| **BKM-015: Bedrock** | N/A | Prefix-cache stability through shared identity strings. | Shared IDENTITY_BEDROCK implementation. | **Live** |
