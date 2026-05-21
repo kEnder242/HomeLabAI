@@ -149,7 +149,7 @@ class AcmeLab:
         os.fsync(self._lock_fd)
 
         self.mode = mode
-        self.idle_gate = afk_timeout or 1200 # [FEAT-249] Increased to 20m for stabilization
+        self.idle_gate = 600 # [FEAT-363] Standardize on 10m window
         self.status = "INIT"
         self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
         self._ignition_lock = asyncio.Lock() # [FEAT-342] Atomic Ignition Lock
@@ -193,7 +193,6 @@ class AcmeLab:
         self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
         self._wake_task = None # [FEAT-265.47] Task Sovereignty: Track active wake task
         self._triage_lock = asyncio.Lock() # [FEAT-265.48] Absolute State: Prevent concurrent triage
-        self.idle_gate = afk_timeout # [FEAT-249] Configurable idle gate
         self._residents_booted = False # [FEAT-337] Resident Persistence
         reclaim_logger(role)
         self.set_proc_title()
@@ -329,6 +328,9 @@ class AcmeLab:
         """Sends state-aware tics during long reasoning tasks."""
         task = self._track_task(coro)
 
+        # [FEAT-365] Configurable Reflexes
+        enabled = self.config.get("enable_reflexes", True)
+
         # Standard character tics as fallback
         base_tics = [
             "Thinking...",
@@ -346,6 +348,12 @@ class AcmeLab:
                 # Attempt to get a characterful tic from the local Sentinel (Lab Node)
                 # We use the Sentinel for speed and residency.
                 tic_msg = None
+                
+                # Check if reflexes are enabled
+                if not enabled:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=current_delay)
+                    continue
+
                 if self.residents.get("lab") and tic_count > 0:
                     try:
                         tic_res = await self.residents["lab"].call_tool("think", {
@@ -598,7 +606,9 @@ class AcmeLab:
                                         async with session.get(f"http://127.0.0.1:9999/heartbeat?key={key}", timeout=1.0) as h_req:
                                             if h_req.status == 200:
                                                 h_data = await h_req.json()
-                                                ledger = h_data.get("event_ledger", [])
+                                                vitals = h_data
+                                                
+                                                ledger = vitals.get("event_ledger", [])
                                                 for ev in ledger:
                                                     ev_id = f"{ev.get('timestamp')}_{ev.get('message')}"
                                                     if ev_id not in seen_events:
@@ -608,6 +618,16 @@ class AcmeLab:
                                                             "brain": f"[SYSTEM] {ev.get('message')}",
                                                             "brain_source": "System"
                                                         })
+                                                
+                                                # [FIX] Warming Deadlock: Recognize SERVICE_UNATTENDED early
+                                                is_vocal = vitals.get("operational")
+                                                is_unattended = self.mode == "SERVICE_UNATTENDED" and vitals.get("engine_up")
+                                                
+                                                if is_vocal or is_unattended:
+                                                    logging.info(f"[HUB] Ignition Success (Vocal: {is_vocal}, Unattended: {is_unattended}). Restoring residents...")
+                                                    self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
+                                                    self._track_task(self._resident_lifecycle_task())
+                                                    return
                                     except Exception:
                                         pass
 
@@ -640,11 +660,24 @@ class AcmeLab:
 
     async def reflex_loop(self):
         """Background maintenance and status updates grounded in silicon truth."""
+        # [FEAT-365] Configurable Reflexes
+        enabled = self.config.get("enable_reflexes", True)
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
+        
         while not self.shutdown_event.is_set():
             # [FEAT-318.11] Dynamic Reflex: Poll faster during transitions (5s) or slow during idle (30s)
             poll_rate = 5.0 if self.status in ["HIBERNATING", "WAKING", "BOOTING"] else 30.0
             await asyncio.sleep(poll_rate)
+            
+            # Skip tics if disabled
+            if not enabled:
+                # [FEAT-365] Logic: We still need to poll physical sync even if vocal tics are off
+                pass
+            else:
+                # [FEAT-052] User typing suppression
+                if self.connected_clients and not self.is_user_typing():
+                    tic_msg = random.choice(tics)
+                    await self.broadcast({"type": "crosstalk", "brain": tic_msg, "brain_source": "Pinky"})
             
             # [FEAT-329] Activity-Aware Probing: Track silence for cool-down
             idle_time = time.time() - self.last_activity
@@ -668,12 +701,15 @@ class AcmeLab:
                                 self.status = "HIBERNATING"
                                 self.engine_ready.clear()
                             
-                            # Inverse ground truth: If engine is up but we think we are hibernating, we are WAKING
-                            if vitals.get("operational") and self.status == "HIBERNATING":
-                                logging.info("[OPERATIONAL] Hub foyer successfully woken from sleep.")
+                            # [FEAT-363] Recognize SERVICE_UNATTENDED transition
+                            is_vocal = vitals.get("operational")
+                            is_unattended = self.mode == "SERVICE_UNATTENDED" and vitals.get("engine_up")
+                            
+                            if (is_vocal or is_unattended) and self.status == "HIBERNATING":
+                                logging.info(f"[OPERATIONAL] Hub foyer successfully woken from sleep (Vocal: {is_vocal}, Unattended: {is_unattended}).")
                                 self.status = "OPERATIONAL"
                                 self.engine_ready.set()
-                                self.last_activity = time.time() # [FIX] Reset idle timer
+                                self.last_activity = time.time()
             except Exception:
                 pass
 
@@ -1760,7 +1796,6 @@ class AcmeLab:
                         "think", 
                         {"query": f"{query}\n[SYSTEM: You are answering a user while the local nodes are asleep. Be concise and authoritative.]"}
                     )
-                    # [FIX] Robust response extraction
                     brain_text = ""
                     if hasattr(b_res, 'content') and b_res.content:
                         brain_text = str(b_res.content[0].text)
@@ -1770,33 +1805,33 @@ class AcmeLab:
                     if brain_text and brain_text != "None":
                         logging.info(f"[HUB] Fast-Track Success: Received {len(brain_text)} chars from Brain.")
                         await self.broadcast({"type": "chat", "brain": brain_text, "brain_source": "Brain (Result)"})
-                        self.status = "HIBERNATING" # Engine is still waking up, but we're done with the query
-                        return brain_text
-                    else:
-                        logging.warning("[HUB] Fast-Track returned empty content. Falling back to local engine.")
+                        # Allow Pinky to ALSO speak (Handshake)
                 except Exception as e:
-                    logging.warning(f"[HUB] Fast-Track to Brain failed: {e}. Falling back to local engine wait.")
+                    logging.warning(f"[HUB] Fast-Track failed: {e}")
             
-            # [FIX] Wait for event here
-            logging.info(f"[HUB] Query '{query[:30]}' waiting for engine_ready event...")
-            await self.engine_ready.wait()
-            
-            # [FEAT-342] Silicon Hardening: Staggered Release
-            # Serialize access to engine after wake
-            async with self._triage_lock:
-                await asyncio.sleep(0.5) 
-                logging.info(f"[HUB] Query '{query[:30]}' engine is ready. Proceeding.")
-                return await self._dispatch_inference(query)
+            # [FEAT-366] Ignition Bypass: Allow Persona presence while engine warms
+            logging.info("[HUB] Ignition Bypass: Allowing Hub delegation for immediate persona response.")
+            # We do NOT return here, but we MUST ensure heavy inference waits later.
 
-        # [FEAT-249.5] Yield to Spark: Wait if engine is actively restarting
-        while getattr(self, "_spark_active", False) and self.status != "OPERATIONAL":
-            await asyncio.sleep(1)
-            
-        await self.update_turn_density()
+        # 4. Hub Delegation [FEAT-145]
+        if self.status == "ERROR":
+            await self.broadcast({"type": "crosstalk", "brain": "Error state detected. Please check logs.", "brain_source": "System"})
+            return ""
+
+        # [FEAT-342] Silicon Hardening: Staggered Release
+        # If engine is NOT vocal yet, we still allow Hub delegation (for the handshake),
+        # but the Hub logic will handle the vLLM connection error gracefully.
         
-        # [FEAT-265.48] Absolute State: Serialized Triage
-        async with self._triage_lock:
-            return await self._dispatch_inference(query)
+        await self.cognitive.process_query(query)
+
+        # After delegation (if it was a handshake turn), if we are still warming, 
+        # we now physically wait for the heavy engine before releasing the turn.
+        if not engine_vocal and query.startswith("[ME]"):
+             logging.info(f"[HUB] Query '{query[:30]}' waiting for physical engine_ready...")
+             await self.engine_ready.wait()
+             logging.info(f"[HUB] Physical engine ready. Staggered release complete.")
+
+        return ""
 
     async def _dispatch_inference(self, query):
         """Internal inference core: Performs triage and cognitive dispatch under lock."""
