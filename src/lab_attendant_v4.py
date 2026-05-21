@@ -257,6 +257,7 @@ class LabAttendantV4:
         # [FEAT-339] Persistent Telemetry Ledger
         self.pulse_count = 0 
         self.telemetry_path = os.path.join(DATA_DIR, "telemetry_ledger.jsonl")
+        self.event_ledger = [] # [FEAT-363] In-memory event cache for polling
 
 
     def register_route(self, method, path, handler):
@@ -327,6 +328,13 @@ class LabAttendantV4:
                 "severity": severity,
                 "message": f"[{self.session_token}] {message}"
             }
+            
+            # [FEAT-363] Track in-memory for Hub polling
+            if hasattr(self, "event_ledger"):
+                self.event_ledger.append(alert)
+                if len(self.event_ledger) > 50:
+                    self.event_ledger = self.event_ledger[-25:]
+
             data = []
             if os.path.exists(PAGER_ACTIVITY_FILE):
                 with open(PAGER_ACTIVITY_FILE, "r") as f:
@@ -643,6 +651,9 @@ class LabAttendantV4:
         vitals["recovery_level"] = self.recovery_attempts
         vitals["recovery_in_progress"] = self._recovery_in_progress
         
+        # [FEAT-363] Expose event ledger for polling
+        vitals["event_ledger"] = self.event_ledger[-3:] if hasattr(self, "event_ledger") else []
+        
         # [FEAT-341] Ledger Visibility: Last 5 telemetry snapshots
         try:
             if os.path.exists(self.telemetry_path):
@@ -828,6 +839,7 @@ class LabAttendantV4:
             # 1. Resolve Required Memory [FEAT-254]
             used_now, total_vram = await self._get_vram_info()
             required_mb = int(total_vram * utilization)
+            self.log_event("Step 1: Required memory verified.", "INFO")
 
             # [FIX] VRAM Guard: Skip if in STUB mode or is priority wake
             if engine != "STUB" and not is_priority_wake and (total_vram - used_now) < required_mb:
@@ -837,7 +849,14 @@ class LabAttendantV4:
                 return {"status": "error", "message": msg, "metrics": {"free": total_vram - used_now, "required": required_mb}}
 
             # 3. [FEAT-254] The Assassin Audit: Settling Window
-            await asyncio.sleep(5.0)
+            # [FEAT-363] Snappy Wake: Reduce window if weights already resident
+            settle_window = 5.0
+            if used_now > 5000: # Heuristic: Weights are already resident (H1)
+                settle_window = 1.0
+                logger.info(f"[IGNITION] Weights resident ({used_now}MB). Using snappy 1s settling window.")
+            
+            await asyncio.sleep(settle_window)
+            self.log_event("Step 2: VRAM settling gate passed.", "INFO")
 
             # 4. [FEAT-254.1] The Physical Audit Gate
             used_post, _ = await self._get_vram_info()
@@ -886,6 +905,7 @@ class LabAttendantV4:
                 # [DUMB_IGNITION] Bash script handles the backgrounding. We don't hold the process object.
                 subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], 
                                  env=env, cwd=LAB_DIR, start_new_session=True)
+                self.log_event("Step 3: Sovereign Engine sparked.", "INFO")
 
                 # [FEAT-277] Shell-Side PID Tracking: Physical Integrity Check
                 logger.info("[VLLM] Awaiting engine PID bonding...")
@@ -2053,6 +2073,11 @@ async def run_bilingual():
         # The isatty check was blocking the Gemini CLI from discovering tools.
         logger.info("[BOOT] Proxy node starting MCP stdio transport...")
         await mcp.run_stdio_async()
+
+
+if __name__ == "__main__":
+    asyncio.run(run_bilingual())
+cp.run_stdio_async()
 
 
 if __name__ == "__main__":

@@ -589,21 +589,47 @@ class AcmeLab:
 
                             # Yield to Authority: Wait for Attendant to confirm silicon is OPERATIONAL
                             try:
-                                async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=300&key={key}") as ready_req:
-                                    if ready_req.status == 200:
-                                        logging.info("[HUB] Attendant confirmed OPERATIONAL. Restoring residents...")
-                                        self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
-                                        
-                                        # [FIX] Lifecycle Hardening: Restart the dedicated Resident Task
-                                        # instead of calling boot_residents directly.
-                                        self._track_task(self._resident_lifecycle_task())
-                                    else:
-                                        res = await ready_req.json()
-                                        logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
-                                        self.status = "ERROR"
+                                # [FEAT-363] Event Polling & Timeout Hardening (300s)
+                                seen_events = set()
+                                wait_start = time.time()
+                                while time.time() - wait_start < 300:
+                                    # 1. Poll Attendant's heartbeat for event ledger
+                                    try:
+                                        async with session.get(f"http://127.0.0.1:9999/heartbeat?key={key}", timeout=1.0) as h_req:
+                                            if h_req.status == 200:
+                                                h_data = await h_req.json()
+                                                ledger = h_data.get("event_ledger", [])
+                                                for ev in ledger:
+                                                    ev_id = f"{ev.get('timestamp')}_{ev.get('message')}"
+                                                    if ev_id not in seen_events:
+                                                        seen_events.add(ev_id)
+                                                        await self.broadcast({
+                                                            "type": "crosstalk",
+                                                            "brain": f"[SYSTEM] {ev.get('message')}",
+                                                            "brain_source": "System"
+                                                        })
+                                    except Exception:
+                                        pass
+
+                                    # 2. Check if OPERATIONAL via short-timeout wait_ready
+                                    try:
+                                        async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=1&key={key}", timeout=2.0) as ready_req:
+                                            if ready_req.status == 200:
+                                                logging.info("[HUB] Attendant confirmed OPERATIONAL. Restoring residents...")
+                                                self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
+                                                self._track_task(self._resident_lifecycle_task())
+                                                return
+                                    except Exception:
+                                        pass
+
+                                    await asyncio.sleep(2.0)
+
+                                logging.error("[HUB] wait_ready timed out after 300s.")
+                                self.status = "ERROR"
                             except Exception as e:
                                 logging.error(f"[HUB] Wait-Ready request failed: {e}")
                                 self.status = "ERROR"
+
             except Exception as e:
                 logging.error(f"[HUB] Spark reload failed: {e}")
                 self.status = "ERROR"

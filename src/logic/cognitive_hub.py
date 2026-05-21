@@ -77,6 +77,16 @@ class CognitiveHub:
         token = data.get("brain", "")
         if token:
             self.session_buffers[source] += token
+            
+            # [FEAT-362] Non-Blocking Waterfall: Stream to user immediately
+            if self.waterfall_queue:
+                try:
+                    self.waterfall_queue.put_nowait(data)
+                except Exception as e:
+                    logging.error(f"[WATERFALL] Queue error: {e}")
+            else:
+                asyncio.create_task(self.broadcast(data))
+                
             # [DEBUG] Trace waterfall flow
             if "triage" not in source:
                 logging.debug(f"[WATERFALL] Ingested token from {source} ({len(self.session_buffers[source])} total)")
@@ -146,7 +156,7 @@ class CognitiveHub:
                 continue
         return None
 
-    async def execute_dispatch(self, text, source, shutdown_event=None, is_internal=False, original_query=None, retry_count=0, final=True, use_lora=True):
+    async def execute_dispatch(self, text, source, shutdown_event=None, original_query=None, retry_count=0, final=True, use_lora=True):
         """
         [FEAT-238.1] Combined Dispatch: Persona Speech + Tool Action.
         Ensures persona is maintained even when tools are used for steering.
@@ -219,6 +229,11 @@ class CognitiveHub:
             raw_speech = clean_text.replace(raw_block, "").strip()
             # Clean markdown leftovers from speech
             raw_speech = re.sub(r"```json\s*|\s*```", "", raw_speech).strip()
+            
+            # [FEAT-361] Speech Salvage: Ensure <thought> tags are preserved even if within JSON match
+            thought_match = re.search(r'(<thought>.*?</thought>)', clean_text, re.DOTALL | re.IGNORECASE)
+            if thought_match and thought_match.group(1) not in raw_speech:
+                raw_speech = (thought_match.group(1) + "\n" + raw_speech).strip()
 
             sanitized = self.bridge_signal_clean(raw_block)
             if sanitized:
@@ -281,7 +296,7 @@ class CognitiveHub:
                     if tool in primary_entry_points and tool not in ["think"]: # think/think are veto signals
                         # Return speech only, block recursive tool call
                         if raw_speech:
-                            return await self._dispatch_plain_text(raw_speech, source, is_internal, final=final)
+                            return await self._dispatch_plain_text(raw_speech, source, final=final)
                         return True
 
                     # Forward utility tools
@@ -302,16 +317,15 @@ class CognitiveHub:
 
         # 4. Final Dispatch
         if raw_speech:
-            await self._dispatch_plain_text(raw_speech, source, is_internal, final=final)
+            await self._dispatch_plain_text(raw_speech, source, final=final)
         
         return raw_speech
 
-    async def _dispatch_plain_text(self, text, source, is_internal, final=True):
+    async def _dispatch_plain_text(self, text, source, final=True):
         await self.broadcast({
             "brain": text,
             "brain_source": source,
             "channel": "chat",
-            "is_internal": is_internal,
             "final": final,
             "topic": self.current_topic,
             "fuel": self.current_fuel
@@ -336,20 +350,18 @@ class CognitiveHub:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, is_internal=False, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
         
-        # [FEAT-242.1] Handshake Tic (Only if not internal)
-        if not is_internal:
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": f"Initiating {source_name} intuition...",
-                "brain_source": source_name,
-                "is_internal": True, # [FIX] Keep the console clean
-                "final": False
-            })
+        # [FEAT-242.1] Handshake Tic
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"Initiating {source_name} intuition...",
+            "brain_source": source_name,
+            "final": False
+        })
 
         try:
             # [Task 20.3] Identity Bedrock: Prepend shared identity to every node call
@@ -362,7 +374,7 @@ class CognitiveHub:
             node = self.residents[node_id]
             res = await node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
-                "behavioral_guidance": guidance, "internal": is_internal,
+                "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora
             })
@@ -376,7 +388,7 @@ class CognitiveHub:
                     self.last_prime_callback(time.time())
             
             # Final dispatch to UI
-            await self.execute_dispatch(result_text, source_name, shutdown_event=shutdown_event, is_internal=is_internal, retry_count=retry_count, final=True)
+            await self.execute_dispatch(result_text, source_name, shutdown_event=shutdown_event, retry_count=retry_count, final=True)
             return result_text
             
         except Exception as e:
@@ -453,7 +465,7 @@ class CognitiveHub:
                     # [FEAT-339] Support auto-disabling LoRA if silicon is producing gibberish
                     t_text = await self._process_node_stream(
                         "lab", query, "", "Lab (Triage)", 
-                        is_internal=True, temperature=0.2, repetition_penalty=1.2, 
+                        temperature=0.2, repetition_penalty=1.2, 
                         retry_count=retry_count, use_lora=self.lora_enabled
                     )
 
@@ -592,15 +604,12 @@ class CognitiveHub:
         
         async def run_pinky():
             nonlocal pinky_text
-            mute_pinky = addressed_to not in ["PINKY", "MICE"]
-            p_context = (f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
-                         f"MODE: " + ("FRAME_ONLY" if fuel_start > 0.6 else "DIRECT_RESPONSE"))
+            p_context = f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
             pinky_text = await self._process_node_stream(
                 "pinky", query, p_context, "Pinky (Triage)",
                 tools=["ask_brain", "think", "vram_vibe_check", "get_lab_health"],
                 behavioral_guidance=situational_guidance or "Standard brevity. Focus on natural interaction.",
                 shutdown_event=shutdown_event,
-                is_internal=mute_pinky,
                 retry_count=retry_count,
                 use_lora=self.lora_enabled
             )
@@ -610,7 +619,6 @@ class CognitiveHub:
             brain_online = self.get_vram_status()
             threshold = 0.0 if not brain_online else 0.2
             role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
-            mute_shadow = addressed_to not in ["BRAIN", "MICE"]
             
             if fuel_start > threshold:
                 # [FEAT-233.8] Overhearing Pinky: Context Warming
@@ -621,7 +629,6 @@ class CognitiveHub:
                     tools=["ask_brain", "think"],
                     behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
-                    is_internal=mute_shadow,
                     retry_count=retry_count,
                     use_lora=self.lora_enabled
                 )
@@ -688,7 +695,7 @@ class CognitiveHub:
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):
-                    retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100], "internal": True})
+                    retract_res = await self.residents["pinky"].call_tool("think", {"query": "[AUDIT_FAILURE]", "context": brain_full[:100]})
                     retract_full = str(retract_res.content[0].text)
                     await self.execute_dispatch(retract_full, "Pinky (Retraction)", retry_count=retry_count+1, final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
@@ -728,10 +735,9 @@ class CognitiveHub:
             res_res = await self.residents["pinky"].call_tool("think", {
                 "query": cooldown_query, 
                 "context": f"[PROPOSED_STRATEGY]: {text[:1000]}",
-                "internal": True,
                 "use_lora": use_lora
             })
             res_full = str(res_res.content[0].text)
-            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", is_internal=True, retry_count=retry_count+1, final=True)
+            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", retry_count=retry_count+1, final=True)
         except Exception:
             pass
