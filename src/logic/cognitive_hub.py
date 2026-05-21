@@ -5,6 +5,7 @@ import re
 import os
 import time
 import datetime
+from collections import deque
 from infra.cognitive_audit import CognitiveAudit
 
 class CognitiveHub:
@@ -45,6 +46,7 @@ class CognitiveHub:
         
         # [FEAT-233.7] Session Buffers: Real-time context for inter-node overhearing
         self.session_buffers = defaultdict(str)
+        self.round_table_memory = deque(maxlen=5) # [FEAT-356] FOIL-AWARE MEMORY
         self.consecutive_parse_failures = 0 # [FEAT-339] Triage stability tracker
         self.lora_enabled = True # [FEAT-339] Global LoRA toggle
         self.current_fuel = 0.0
@@ -108,9 +110,8 @@ class CognitiveHub:
                 asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
                 return None
 
-        # [Task 2.2] Harden: Handle thinking blocks or pex noise
-        # Strip <thought> tags if present
-        text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
+        # [FEAT-355] Visible Consensus: Do NOT strip <thought> tags anymore.
+        # They are now broadcast for inter-node debate and user visibility.
         
         if "{" not in text:
             # [FIX] Silence [RAW_OUTPUT] for connection errors to reduce UI noise
@@ -161,6 +162,17 @@ class CognitiveHub:
             await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
             return text
             
+        # [FEAT-355] Open Debate: Broadcast thoughts to inter-node context
+        if "<thought>" in str(text) and self.current_fuel > 0.6:
+            # Map labels (e.g. "Brain (Intuition)") to buffer keys (e.g. "shadow")
+            label_lower = source.lower()
+            thought_source = "pinky" if "pinky" in label_lower else "brain"
+            if "intuition" in label_lower or "shadow" in label_lower:
+                thought_source = "shadow"
+            
+            if text not in self.session_buffers[thought_source]:
+                self.session_buffers[thought_source] += f"\n{text}"
+
         # [FEAT-072.1] Signal-Based Morning Briefing Uplink
         if "trigger_morning_briefing" in str(text) and final:
             if hasattr(self, 'trigger_briefing_cb') and self.trigger_briefing_cb:
@@ -400,6 +412,13 @@ class CognitiveHub:
             return await self.execute_dispatch("Max retries reached.", "System", shutdown_event=shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
         logging.info(f"[USER] Intercom Query: {query}")
+        original_raw_query = query
+        
+        # [FEAT-356] Ledger Prepending
+        if self.round_table_memory:
+            previous_debate = "\n".join(self.round_table_memory)
+            query = f"[PREVIOUS_DEBATE]:\n{previous_debate}\n\n[CURRENT_QUERY]: {query}"
+            
         self.current_fuel = 0.0
         self.current_topic = "Casual"
         intent = None # [Task 19.4.1] Initialize as None to prevent accidental override
@@ -569,6 +588,7 @@ class CognitiveHub:
         # 4. Waterfall Local Inference (Cascading Spark)
         pinky_text = ""
         shadow_text = ""
+        brain_full = ""
         
         async def run_pinky():
             nonlocal pinky_text
@@ -675,6 +695,18 @@ class CognitiveHub:
 
             if brain_full:
                 await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
+
+        # [FEAT-356] Ledger Appending
+        turn_summary = f"USER: {original_raw_query}\n"
+        if pinky_text:
+            turn_summary += f"PINKY: {pinky_text}\n"
+        if shadow_text:
+            turn_summary += f"SHADOW: {shadow_text}\n"
+        if brain_full:
+            turn_summary += f"BRAIN: {brain_full}\n"
+        
+        if turn_summary.strip() != f"USER: {original_raw_query}":
+            self.round_table_memory.append(turn_summary.strip())
 
         return True
 
