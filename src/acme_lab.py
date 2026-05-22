@@ -149,6 +149,15 @@ class AcmeLab:
         os.fsync(self._lock_fd)
 
         self.mode = mode
+        # [FEAT-365] Load Infrastructure Config
+        self.config = {}
+        if os.path.exists(INFRA_CONFIG):
+            try:
+                with open(INFRA_CONFIG, 'r') as f:
+                    self.config = json.load(f)
+            except Exception:
+                pass
+
         self.idle_gate = 600 # [FEAT-363] Standardize on 10m window
         self.status = "INIT"
         self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
@@ -1818,15 +1827,14 @@ class AcmeLab:
             await self.broadcast({"type": "crosstalk", "brain": "Error state detected. Please check logs.", "brain_source": "System"})
             return ""
 
-        # [FEAT-342] Silicon Hardening: Staggered Release
-        # If engine is NOT vocal yet, we still allow Hub delegation (for the handshake),
-        # but the Hub logic will handle the vLLM connection error gracefully.
-        
+        # Delegate to the Cognitive Hub (Pinky Handshake / Reflex leg)
+        # Note: If engine is down, Hub will provide the [FEAT-368] Vocal Handshake.
         await self.cognitive.process_query(query)
 
-        # After delegation (if it was a handshake turn), if we are still warming, 
-        # we now physically wait for the heavy engine before releasing the turn.
-        if not engine_vocal and query.startswith("[ME]"):
+        # [FEAT-342] Silicon Hardening: Staggered Release
+        # If engine is NOT vocal yet, and this was an external query, we now 
+        # physically block the completion of the turn until the engine is ready.
+        if (not engine_vocal) and query.startswith("[ME]"):
              logging.info(f"[HUB] Query '{query[:30]}' waiting for physical engine_ready...")
              await self.engine_ready.wait()
              logging.info(f"[HUB] Physical engine ready. Staggered release complete.")

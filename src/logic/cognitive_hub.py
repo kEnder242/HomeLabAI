@@ -565,10 +565,20 @@ class CognitiveHub:
                                 await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
                                 os._exit(1)
                         else:
-                            logging.warning("[HUB] Triage connection error in final attempt. Providing Vocal Handshake.")
-                            # [FEAT-368] Vocal Handshake: If engine is down, Pinky speaks for the system
-                            handshake = "<thought> The heavy engine is still warming up. I will provide a status handshake. </thought> Narf! I am hearing you, but I am still warming up my archives. Just a moment!"
-                            await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
+                            # [FEAT-368] Connection Hardening: Never lobotomize on network/server errors
+                            connection_errors = ["vLLM connection failed", "Error:", "Connection failed", "Server disconnected", "timeout"]
+                            is_connection_error = any(err.lower() in t_text.lower() for err in connection_errors)
+                            
+                            if not is_connection_error:
+                                self.triage_failures += 1
+                                if self.triage_failures >= 3:
+                                    await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
+                                    os._exit(1)
+                            else:
+                                logging.warning("[HUB] Triage connection error in final attempt. Providing Vocal Handshake.")
+                                # [FEAT-368] Vocal Handshake: If engine is down, Pinky speaks for the system
+                                handshake = "<thought> The heavy engine is still warming up. I will provide a status handshake. </thought> Narf! I am hearing you, but I am still warming up my archives. Just a moment!"
+                                await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
                         
                         self.current_fuel = 0.2
 
