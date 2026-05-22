@@ -132,28 +132,43 @@ class CognitiveHub:
                 asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
             return None
 
-        # [FEAT-347] Nuclear JSON Extractor: Greedy match for 3B resilience
-        # This ignores trailing garbage or nested quote collisions
-        json_blocks = []
-        match = re.search(r'(\{.*\})', text, re.DOTALL)
-        if match:
-            json_blocks = [match.group(1)]
-        else:
-            return None
+        # [FEAT-347] Nuclear JSON Extractor: Multi-block match for 3B resilience
+        # This handles cases where models output multiple blocks or trailing garbage.
+        json_blocks = re.findall(r'(\{.*?\})', text, re.DOTALL)
+        if not json_blocks:
+            # Fallback to greedy if non-greedy fails
+            match = re.search(r'(\{.*\})', text, re.DOTALL)
+            if match:
+                json_blocks = [match.group(1)]
+            else:
+                return None
 
         # 3. Parse valid block
+        valid_parsed = []
         for block in json_blocks:
             try:
                 # [FEAT-220.2] Structural Sanitization
                 block = block.replace("{{", "{").replace("}}", "}")
-                # [FIX] Task 19.6.1: Removed destructive block.replace("'", '"')
                 # Fix common JSON errors from small models
                 block = re.sub(r",\s*}", "}", block) # trailing comma
                 block = block.replace("True", "true").replace("False", "false")
                 block = block.replace('"::', '":')
-                return json.loads(block)
+                
+                parsed = json.loads(block)
+                if isinstance(parsed, dict):
+                    valid_parsed.append(parsed)
             except Exception:
                 continue
+
+        # [FIX] Task 3: Return the first block that contains triage fields
+        for parsed in valid_parsed:
+            if "intent" in parsed or "fuel" in parsed:
+                return parsed
+                
+        # Fallback for tool calls (which don't have intent/fuel)
+        if valid_parsed:
+            return valid_parsed[0]
+            
         return None
 
     async def execute_dispatch(self, text, source, shutdown_event=None, original_query=None, retry_count=0, final=True, use_lora=True):
@@ -611,10 +626,15 @@ class CognitiveHub:
         # [Task 19.4.1] Trigger RAG on RECALL intent instead of hardcoded regex
         if intent == "RECALL" and "archive" in self.residents:
             try:
-                res_context = await self.residents["archive"].call_tool("get_context", {"query": query})
+                # [FEAT-GAP] Task 2: Fix Context Leaking. Pass raw query to RAG, not debate-expanded.
+                res_context = await self.residents["archive"].call_tool("get_context", {"query": original_raw_query})
                 historical_context = str(res_context.content[0].text)
             except Exception:
                 pass
+
+        # [FEAT-GAP] Task 1: Inject RAG Context into query for all nodes
+        if historical_context:
+            query = f"[HISTORICAL_TRUTH]: {historical_context}\n\n[USER_QUERY]: {original_raw_query}"
 
         # 4. Waterfall Local Inference (Cascading Spark)
         pinky_text = ""
