@@ -164,6 +164,7 @@ High-fidelity behavioral verification of cognitive and systemic integrity.
 | :--- | :--- | :--- |
 | **Grounding Fidelity** | `src/debug/test_grounding_fidelity.py` | Verifies Brain responses use ONLY provided historical anchors. |
 | **Consensus Loop** | `src/debug/test_consensus_loop.py` | Validates synthesis quality of the Internal Debate peer-review. |
+| **Uber 5x5 Hand-Crank**| `src/debug/uber_5x5_hand_crank.py` | **ULTIMATE.** Stress tests the 75-minute H2->Operational lifecycle with increasing idle stress. |
 | **Stability Marathon**| `src/debug/stability_marathon_v2.py` | Long-running stress test for 11GB VRAM fragmentation. |
 | **Deep Smoke** | `acme_lab.py --mode DEEP_SMOKE` | [SMOKE] State-machine validation: Ingest -> Reason -> Dream -> Recall. |
 | **Smoke Verify** | `src/debug/smoke_verify.py` | [SMOKE] Rapid verification of the Deep Smoke results in the archive. |
