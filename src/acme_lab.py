@@ -114,10 +114,11 @@ async def verify_engine_liveness():
 
 class AcmeLab:
     def __init__(self, mode="VLLM", afk_timeout=600, role="HUB"):
-        # [FEAT-220] Silicon Handshake: Adopt Attendant token if present
+        # [FEAT-220] Silicon Handshake: Derive stable session token from fingerprint
         self.role = role
-        self.session_token = os.environ.get("LAB_IMMUNITY_TOKEN") or uuid.uuid4().hex[:8]
-        title = f"[{self.role}:{self.session_token}]"
+        from infra.montana import get_fingerprint
+        self.session_token = get_fingerprint(self.role)
+        title = f"acme_lab {self.session_token}"
         try:
             import setproctitle
             setproctitle.setproctitle(title)
@@ -149,15 +150,6 @@ class AcmeLab:
         os.fsync(self._lock_fd)
 
         self.mode = mode
-        # [FEAT-365] Load Infrastructure Config
-        self.config = {}
-        if os.path.exists(INFRA_CONFIG):
-            try:
-                with open(INFRA_CONFIG, 'r') as f:
-                    self.config = json.load(f)
-            except Exception:
-                pass
-
         self.idle_gate = 600 # [FEAT-363] Standardize on 10m window
         self.status = "INIT"
         self._spark_active = True # [FEAT-314.5] Boot Lock: Prevent early triggers
@@ -337,9 +329,6 @@ class AcmeLab:
         """Sends state-aware tics during long reasoning tasks."""
         task = self._track_task(coro)
 
-        # [FEAT-365] Configurable Reflexes
-        enabled = self.config.get("enable_reflexes", True)
-
         # Standard character tics as fallback
         base_tics = [
             "Thinking...",
@@ -352,6 +341,9 @@ class AcmeLab:
         tic_count = 0
 
         while not task.done():
+            # [FEAT-365] Configurable Reflexes (Reactive Check)
+            enabled = self.config.get("enable_reflexes", True)
+
             try:
                 # [FEAT-053] Dynamic Shadow Tics: 
                 # Attempt to get a characterful tic from the local Sentinel (Lab Node)
@@ -669,20 +661,18 @@ class AcmeLab:
 
     async def reflex_loop(self):
         """Background maintenance and status updates grounded in silicon truth."""
-        # [FEAT-365] Configurable Reflexes
-        enabled = self.config.get("enable_reflexes", True)
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         
         while not self.shutdown_event.is_set():
+            # [FEAT-365] Configurable Reflexes (Reactive Check)
+            enabled = self.config.get("enable_reflexes", True)
+            
             # [FEAT-318.11] Dynamic Reflex: Poll faster during transitions (5s) or slow during idle (30s)
             poll_rate = 5.0 if self.status in ["HIBERNATING", "WAKING", "BOOTING"] else 30.0
             await asyncio.sleep(poll_rate)
             
             # Skip tics if disabled
-            if not enabled:
-                # [FEAT-365] Logic: We still need to poll physical sync even if vocal tics are off
-                pass
-            else:
+            if enabled:
                 # [FEAT-052] User typing suppression
                 if self.connected_clients and not self.is_user_typing():
                     tic_msg = random.choice(tics)
@@ -1827,14 +1817,15 @@ class AcmeLab:
             await self.broadcast({"type": "crosstalk", "brain": "Error state detected. Please check logs.", "brain_source": "System"})
             return ""
 
-        # Delegate to the Cognitive Hub (Pinky Handshake / Reflex leg)
-        # Note: If engine is down, Hub will provide the [FEAT-368] Vocal Handshake.
+        # [FEAT-342] Silicon Hardening: Staggered Release
+        # If engine is NOT vocal yet, we still allow Hub delegation (for the handshake),
+        # but the Hub logic will handle the vLLM connection error gracefully.
+        
         await self.cognitive.process_query(query)
 
-        # [FEAT-342] Silicon Hardening: Staggered Release
-        # If engine is NOT vocal yet, and this was an external query, we now 
-        # physically block the completion of the turn until the engine is ready.
-        if (not engine_vocal) and query.startswith("[ME]"):
+        # After delegation (if it was a handshake turn), if we are still warming, 
+        # we now physically wait for the heavy engine before releasing the turn.
+        if not engine_vocal and query.startswith("[ME]"):
              logging.info(f"[HUB] Query '{query[:30]}' waiting for physical engine_ready...")
              await self.engine_ready.wait()
              logging.info(f"[HUB] Physical engine ready. Staggered release complete.")
