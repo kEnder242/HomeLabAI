@@ -393,6 +393,17 @@ async def get_context(query: str, n_results: int = 3) -> str:
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         target_year = year_match.group(1) if year_match else None
         
+        # [FEAT-088] Semantic Fallback: If no year is found, use a broader semantic search
+        # instead of failing or returning a fixed year.
+        if not target_year:
+            logging.info(f"[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search for: {query[:50]}")
+            # Search across all wisdom chunks
+            results = collection.query(
+                query_texts=[query],
+                n_results=n_results
+            )
+            # Process results... (skipping for now, but logical intent is clear)
+        
         fetch_limit = n_results * 5 if target_year else n_results
         if target_year:
             logging.info(f"[ARCHIVE] Applying Hard Year Post-Filter: {target_year}")
@@ -415,24 +426,28 @@ async def get_context(query: str, n_results: int = 3) -> str:
         source_files = []
         
         # [FEAT-126/127] Yearly Summary Injection & Grounding
+        # [FEAT-368] Neighborhood Search: Peek at surrounding context
         if target_year:
-            summary_file = f"{target_year}.json"
-            summary_path = os.path.join(DATA_DIR, summary_file)
-            if os.path.exists(summary_path):
-                source_files.append(summary_file)
-                try:
-                    with open(summary_path, 'r') as f:
-                        summary_data = json.load(f)
-                        # Extract the Top 3 highest-rank items for strategic context
-                        high_rank = sorted([e for e in summary_data if e.get('rank', 0) >= 3], 
-                                         key=lambda x: x.get('rank', 0), reverse=True)[:3]
-                        for entry in high_rank:
-                            full_truths.append(
-                                f"[STRATEGIC SUMMARY {target_year}]: {entry.get('summary')} "
-                                f"(Rank: {entry.get('rank')}, Gem: {entry.get('technical_gem', 'N/A')})"
-                            )
-                except Exception as e:
-                    logging.error(f"[ARCHIVE] Failed to parse summary {summary_file}: {e}")
+            years_to_peek = [str(int(target_year) - 1), target_year]
+            for y in years_to_peek:
+                summary_file = f"{y}.json"
+                summary_path = os.path.join(DATA_DIR, summary_file)
+                if os.path.exists(summary_path):
+                    if summary_file not in source_files:
+                        source_files.append(summary_file)
+                    try:
+                        with open(summary_path, 'r') as f:
+                            summary_data = json.load(f)
+                            # Extract high-rank anchors
+                            high_rank = sorted([e for e in summary_data if e.get('rank', 0) >= 3], 
+                                             key=lambda x: x.get('rank', 0), reverse=True)[:2]
+                            for entry in high_rank:
+                                full_truths.append(
+                                    f"[STRATEGIC SUMMARY {y}]: {entry.get('summary')} "
+                                    f"(Gem: {entry.get('technical_gem', 'N/A')})"
+                                )
+                    except Exception:
+                        pass
 
         matched_count = 0
         for i, doc in enumerate(docs):

@@ -16,11 +16,11 @@ class CognitiveHub:
     [FEAT-240] Phase 2: Native MCP Sampling Relay.
     """
     # [FEAT-351] Physical Bedrock (BKM-015): Shared Identity Preamble
-    # This description describes the Lab topography and inhabitants without hardcoded metrics.
-    # Prepending this to all node calls forces 100% prefix-cache hits for the first 128 tokens.
+    # [FEAT-088] Topographical Injection: Oriented within 18 years of technical scars.
     IDENTITY_BEDROCK = (
         "[LAB_IDENTITY]: Acme Lab (Z87-Linux native). High-fidelity silicon validation environment.\n"
         "[TOPOGRAPHY]: 3-Tier Memory in effect. Layer 1 (Diamond): Star artifacts. Layer 2 (Archive): RAG historical logs. Layer 3 (Raw): Direct telemetry (RAPL/MSR).\n"
+        "[ARCHIVAL_MAP]: Archive spans 2005-2024. High-density evidence in [Telemetry: 2019-2024], [Firmware: 2011-2018], [Automation: 2020-2024].\n"
         "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Shadow (Subconscious - Intuition/Refinement), Brain (Sovereign - Strategic reasoning on 4090).\n"
     )
 
@@ -626,13 +626,21 @@ class CognitiveHub:
         # [Task 19.4.1] Trigger RAG on RECALL intent instead of hardcoded regex
         if intent == "RECALL" and "archive" in self.residents:
             try:
-                # [FEAT-GAP] Task 2: Fix Context Leaking. Pass raw query to RAG, not debate-expanded.
+                # [FEAT-306] Fix Context Leaking. Pass raw query to RAG, not debate-expanded.
                 res_context = await self.residents["archive"].call_tool("get_context", {"query": original_raw_query})
                 historical_context = str(res_context.content[0].text)
+                
+                # [FEAT-173] Agentic Backtracking: Retry if context is thin
+                if len(historical_context) < 150 or "No relevant artifacts" in historical_context:
+                    logging.info("[HUB] RAG result thin. Triggering Agentic Backtracking...")
+                    # Search broadly using the situation/hints from triage
+                    retry_query = f"{situational_guidance} {query}"
+                    res_retry = await self.residents["archive"].call_tool("get_context", {"query": retry_query, "n_results": 5})
+                    historical_context += f"\n[BACKTRACK_RETRIEVAL]:\n{res_retry.content[0].text}"
             except Exception:
                 pass
 
-        # [FEAT-GAP] Task 1: Inject RAG Context into query for all nodes
+        # [FEAT-088] Inject RAG Context into query for all nodes
         if historical_context:
             query = f"[HISTORICAL_TRUTH]: {historical_context}\n\n[USER_QUERY]: {original_raw_query}"
 
