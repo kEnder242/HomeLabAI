@@ -37,5 +37,6 @@
         "qwen2.5-3b-awq": "/speedy/models/Qwen2.5-3B-Instruct",
         "llama-3.2-1b-awq": "/speedy/models/Llama-3.2-1B-Instruct",
         "unified-base": "/speedy/models/Qwen2.5-3B-Instruct"
-    }
+    },
+    "enable_reflexes": false
 }
