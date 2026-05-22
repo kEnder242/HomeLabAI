@@ -355,13 +355,22 @@ class CognitiveHub:
         if node_id not in self.residents:
             return ""
         
-        # [FEAT-242.1] Handshake Tic
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"Initiating {source_name} intuition...",
-            "brain_source": source_name,
-            "final": False
-        })
+        # [FEAT-242.1] Handshake Tic (Gated via FEAT-365)
+        enabled = True
+        try:
+             # Heuristic: Find config from the 'lab' resident if available
+             if "lab" in self.residents and hasattr(self.residents["lab"], "config"):
+                  enabled = self.residents["lab"].config.get("enable_reflexes", True)
+        except Exception:
+             pass
+
+        if enabled:
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"Initiating {source_name} intuition...",
+                "brain_source": source_name,
+                "final": False
+            })
 
         try:
             # [Task 20.3] Identity Bedrock: Prepend shared identity to every node call
@@ -446,6 +455,13 @@ class CognitiveHub:
         addressed_to = "MICE" # Default to collective
         triage_data_update = {} # [FIX] Initialize early
         
+        # [FEAT-368] Pre-Sync Handshake: If nodes aren't ready yet, provide immediate feedback
+        if "lab" not in self.residents or "pinky" not in self.residents:
+            logging.warning("[HUB] Nodes not yet synchronized. Providing pre-sync Vocal Handshake.")
+            handshake = "<thought> The internal neural nodes are still synchronizing. I will provide a status handshake. </thought> Narf! I am here, but I am still establishing my internal connections. Just a moment!"
+            await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
+            return True
+
         if "lab" in self.residents:
             if not mute_all:
                 await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Triage starting for query: {query[:30]}...", "brain_source": "System"})
@@ -565,20 +581,10 @@ class CognitiveHub:
                                 await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
                                 os._exit(1)
                         else:
-                            # [FEAT-368] Connection Hardening: Never lobotomize on network/server errors
-                            connection_errors = ["vLLM connection failed", "Error:", "Connection failed", "Server disconnected", "timeout"]
-                            is_connection_error = any(err.lower() in t_text.lower() for err in connection_errors)
-                            
-                            if not is_connection_error:
-                                self.triage_failures += 1
-                                if self.triage_failures >= 3:
-                                    await self.broadcast({"type": "status", "state": "error", "message": "☢️ SILICON LOBOTOMY DETECTED. Resetting..."})
-                                    os._exit(1)
-                            else:
-                                logging.warning("[HUB] Triage connection error in final attempt. Providing Vocal Handshake.")
-                                # [FEAT-368] Vocal Handshake: If engine is down, Pinky speaks for the system
-                                handshake = "<thought> The heavy engine is still warming up. I will provide a status handshake. </thought> Narf! I am hearing you, but I am still warming up my archives. Just a moment!"
-                                await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
+                            logging.warning("[HUB] Triage connection error in final attempt. Providing Vocal Handshake.")
+                            # [FEAT-368] Vocal Handshake: If engine is down, Pinky speaks for the system
+                            handshake = "<thought> The heavy engine is still warming up. I will provide a status handshake. </thought> Narf! I am hearing you, but I am still warming up my archives. Just a moment!"
+                            await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
                         
                         self.current_fuel = 0.2
 
