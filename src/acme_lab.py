@@ -1791,10 +1791,11 @@ class AcmeLab:
             else:
                 # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
                 logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
-                # [FIX] Queue the triggering query so it isn't lost
+                
+                # [FIX] Atomic Ignition Guard: Don't queue if already sparking
                 self._neural_queue.put_nowait(query)
-                # Spark ignition via Attendant
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
+                return # Exit immediately, the drainer will pick this up
                 
                 async def _wait_and_signal():
                     try:

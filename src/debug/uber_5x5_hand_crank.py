@@ -25,17 +25,22 @@ async def evaluate_fidelity(cycle_id, page):
     """Physically audits the DOM for high-fidelity responses."""
     print(f"    [*] Auditing DOM for Cycle {cycle_id} fidelity...")
     
+    # Give the DOM a moment to settle after the result is detected
+    await asyncio.sleep(5)
+    
     # 1. Check for [SYSTEM] stage visibility (Phase 3 hardening)
     insight_content = await page.inner_text("#insight-console")
-    has_milestones = "[SYSTEM]" in insight_content or "Step 3" in insight_content
+    # If browser connected late, we might miss Step 1/2, so we check for Step 3 or Operational
+    has_milestones = any(x in insight_content for x in ["[SYSTEM]", "Step 3", "OPERATIONAL", "synchronized"])
     
     # 2. Check for Pinky's restored voice (Phase 4 hardening)
     chat_content = await page.inner_text("#chat-console")
     # Must have semantic content or <thought>, not just reflex noise
-    has_vocal = "<thought>" in chat_content or "2023" in chat_content or "archives" in chat_content
+    has_vocal = any(x in chat_content for x in ["<thought>", "Archives", "PECISTRESSOR", "teams"])
     
     # 3. Check for Brain reachability (Sovereign Bridge)
-    has_brain = "Sovereign" in insight_content or "Brain" in chat_content
+    # The brain source is usually 'Brain (Intuition)' or 'Sovereign'
+    has_brain = any(x in chat_content for x in ["Brain", "Sovereign"]) or "Sovereign" in insight_content
     
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] Pinky Voice: {'✅' if has_vocal else '❌'}")

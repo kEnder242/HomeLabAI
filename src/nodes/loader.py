@@ -161,6 +161,17 @@ class BicameralNode:
             # Fallback to serving name if found
             if "unified-base" in available_models:
                 return "unified-base"
+            
+            # [FIX] Filter out non-chat models (embeddings) from fallback
+            chat_candidates = [m for m in available_models if not any(x in m.lower() for x in ["nomic", "embed", "bert"])]
+            if chat_candidates:
+                # Prefer llama3.1:8b for Sovereign if available
+                for fav in ["llama3.1:8b", "llama3.2:3b", "gemma"]:
+                    for c in chat_candidates:
+                        if fav in c.lower():
+                            return c
+                return chat_candidates[0]
+                
             return available_models[0]
 
         return "llama3.2:3b"
