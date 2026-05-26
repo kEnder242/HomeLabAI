@@ -68,7 +68,9 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
             "--disable-dev-shm-usage",
             "--disable-setuid-sandbox",
             "--no-zygote",
-            "--single-process"
+            "--disable-extensions",
+            "--disable-software-rasterizer",
+            "--disable-features=IsolateOrigins,site-per-process"
         ]
     )
     page = await browser.new_page()

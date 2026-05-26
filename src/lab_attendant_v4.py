@@ -1651,7 +1651,11 @@ class LabAttendantV4:
             "session": self.session_token,
             "style_key": get_style_key(),
             "boot_hash": _BOOT_HASH,
-            "memory_map": self.map_physical_memory()
+            "memory_map": self.map_physical_memory(),
+            # [LEGACY_ALIAS] Support for older diagnostic scripts
+            "lab_server_running": foyer_up,
+            "full_lab_ready": engine_vocal,
+            "lab_pid": self.active_pids.get('hub_pid')
         }
 
     async def _get_vram_info(self):
