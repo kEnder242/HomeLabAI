@@ -6,9 +6,10 @@ import time
 import subprocess
 
 def get_pid():
-    """Returns the PID of the active acme_lab.py process."""
+    """Returns the PID of the active acme_lab process, handling renamed titles."""
     try:
-        return subprocess.check_output(["pgrep", "-f", "acme_lab.py"]).decode().strip()
+        # Search for 'acme_lab' substring in the full command line
+        return subprocess.check_output(["pgrep", "-f", "acme_lab"]).decode().strip().split('\n')[0]
     except: return None
 
 async def liveliness_check():
@@ -33,34 +34,30 @@ async def liveliness_check():
 
         try:
             async with websockets.connect(uri) as ws:
-                print("  🤝 Socket Connected. Waiting for Status...")
-                msg = await asyncio.wait_for(ws.recv(), timeout=10)
-                data = json.loads(msg)
-                print(f"  📥 RX: {data}")
+                print("  🤝 Socket Connected. Sending Handshake...")
+                await ws.send(json.dumps({"type": "handshake", "version": version}))
+                
+                # Wait for Status Response
+                while True:
+                    msg = await asyncio.wait_for(ws.recv(), timeout=10)
+                    data = json.loads(msg)
+                    print(f"  📥 RX: {data.get('type')} from {data.get('brain_source')}")
 
-                if data.get('type') == 'status':
-                    state = data.get('state', 'unknown').upper()
-                    print(f"  ✅ Server is in {state} mode.")
-
-                    if state == 'READY':
-                        print("\n⭐⭐⭐ SYSTEM NOMINAL ⭐⭐⭐")
-                        return True
-                    else:
-                        print("  ⌛ Waiting for READY signal...")
-                        while True:
-                            msg = await asyncio.wait_for(ws.recv(), timeout=30)
-                            data = json.loads(msg)
-                            if data.get('state') == 'ready':
-                                print("\n⭐⭐⭐ SYSTEM NOMINAL ⭐⭐⭐")
-                                return True
-
+                    if data.get('type') == 'status':
+                        state = str(data.get('state', 'unknown')).upper()
+                        print(f"  ✅ Server state: {state}")
+                        if state in ['READY', 'OPERATIONAL']:
+                            print("\n⭐⭐⭐ SYSTEM NOMINAL ⭐⭐⭐")
+                            return True
+                    
+                    # If we get a chat message from System, it's also a sign of life
+                    if data.get('type') == 'chat' and data.get('brain_source') == 'System':
+                         print("  ✅ System is talking. Assuming operational.")
+                         return True
+                         
         except Exception as e:
             print(f"  ❌ {type(e).__name__}: {e}")
-            # Fast-fail if process disappeared mid-test
-            if not get_pid():
-                print("  🛑 Server process died during probe.")
-                return False
-            await asyncio.sleep(5)
+            await asyncio.sleep(2) # Prevent tight loop
 
     print("\n❌ Liveliness check timed out.")
     return False

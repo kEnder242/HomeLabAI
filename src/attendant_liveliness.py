@@ -1,23 +1,43 @@
 import requests
 import time
 import sys
+import hashlib
+import os
 
 # Configuration
 ATTENDANT_URL = 'http://localhost:9999'
 STATUS_URL = f'{ATTENDANT_URL}/status'
 START_URL = f'{ATTENDANT_URL}/start'
 STOP_URL = f'{ATTENDANT_URL}/stop'
-CLEANUP_URL = f'{ATTENDANT_URL}/cleanup'
+CLEANUP_URL = f'{ATTENDANT_URL}/hard_reset' # [FIX] Map to existing hard_reset endpoint
 
 TIMEOUT_SEC = 240 # 4 minutes total timeout for full lifecycle
 POLL_INTERVAL_SEC = 5 # Poll every 5 seconds
 
+def get_lab_key():
+    """Calculates the dynamic Lab Key from style.css MD5."""
+    # Force absolute path resolution
+    base_dir = "/home/jallred/Dev_Lab"
+    css_path = os.path.join(base_dir, "Portfolio_Dev/field_notes/style.css")
+    
+    try:
+        with open(css_path, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()[:8]
+    except Exception as e:
+        print(f"[Monitor] WARNING: Could not calculate Lab Key at {css_path}: {e}")
+        return "ERROR_KEY"
+
 def call_attendant_api(method, url, json_payload=None):
+    key = get_lab_key()
+    headers = {
+        'Content-Type': 'application/json',
+        'X-Lab-Key': key
+    }
     try:
         if method == 'GET':
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, headers=headers, timeout=10)
         elif method == 'POST':
-            response = requests.post(url, json=json_payload, headers={'Content-Type': 'application/json'}, timeout=10)
+            response = requests.post(url, json=json_payload, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -37,9 +57,9 @@ def main():
         print(f"[Monitor] FATAL: Could not connect to Lab Attendant. Is the service running? {current_status.get('message')}")
         sys.exit(1)
 
-    initial_lab_running = current_status.get('lab_server_running', False)
-    initial_lab_ready = current_status.get('full_lab_ready', False)
-    lab_pid = current_status.get('lab_pid', 'N/A')
+    initial_lab_running = current_status.get('foyer_up', False)
+    initial_lab_ready = current_status.get('engine_vocal', False)
+    lab_pid = current_status.get('attendant_pid', 'N/A')
 
     if initial_lab_ready:
         print(f"\n[Monitor] ✅ Lab is already READY (PID: {lab_pid})!")
@@ -81,9 +101,9 @@ def main():
             print(f"[Monitor] ERROR: Could not connect to Lab Attendant during polling. {current_status.get('message')}")
             sys.exit(1)
 
-        running = current_status.get('lab_server_running', False)
-        ready = current_status.get('full_lab_ready', False)
-        mode = current_status.get('lab_mode', 'UNKNOWN')
+        running = current_status.get('foyer_up', False)
+        ready = current_status.get('engine_vocal', False)
+        mode = current_status.get('engine_mode', 'UNKNOWN')
         lab_pid = current_status.get('lab_pid', 'N/A')
         last_logs = current_status.get('last_log_lines', [])
 
