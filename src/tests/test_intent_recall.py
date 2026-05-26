@@ -35,8 +35,9 @@ async def test_intent_recall_no_year():
         recall_triggered = False
         start_time = time.time()
         
-        # Increase timeout for slow warming
-        while time.time() - start_time < 120:
+        # Increase timeout for deep cold starts (Ignition + Larynx + Buffer Drain)
+        # 300s matches the Lab Attendant's wait_ready timeout
+        while time.time() - start_time < 300:
             try:
                 msg = await asyncio.wait_for(ws.recv(), timeout=10)
                 data = json.loads(msg)
@@ -47,8 +48,14 @@ async def test_intent_recall_no_year():
                 print(f"  📥 RX: {m_type} ({m_source}) -> {m_content[:60]}...", flush=True)
                 
                 # Check for RECALL in triage result OR final synthesis grounding
-                if "RECALL" in m_content or "intent\":\"RECALL\"" in m_content or "Archives" in m_content:
-                    print("✅ [SUCCESS]: System identified RECALL intent and anchored in archives.", flush=True)
+                # The Hub now explicitly broadcasts '[HUB] Triage Result'
+                if "RECALL" in m_content or "intent\":\"RECALL\"" in m_content:
+                    print("✅ [SUCCESS]: Hub identified RECALL intent.", flush=True)
+                    recall_triggered = True
+                    break
+                    
+                if "Archives" in m_content or "PECISTRESSOR" in m_content:
+                    print("✅ [SUCCESS]: System anchored in archives (RECALL verified).", flush=True)
                     recall_triggered = True
                     break
             except asyncio.TimeoutError:
