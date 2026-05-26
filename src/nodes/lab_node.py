@@ -11,7 +11,8 @@ LAB_SYSTEM_PROMPT = (
     "SCHEMA: {\"intent\": \"STRATEGIC|CASUAL|RECALL\", \"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"SILICON_TELEMETRY|ARCHIVE_HISTORY|PINKY_INTERFACE\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.0-1.0, \"intrigue\": 0.0-1.0, \"importance\": 0.0-1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
     "RULES:\n"
     "1. If technical (RAPL, MSR, BKM, NVIDIA), set vibe=SILICON_TELEMETRY, importance=1.0.\n"
-    "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about ANY past events, work history, or experience (e.g. 'What did I do...', 'My past...', 'Early career', 'vintages'), you MUST set intent=RECALL, even if no specific year is mentioned.\n"
+    "2. [FEAT-088] TEMPORAL GRAVITY: You are the GATEKEEPER of 18 years of history. If the user asks about ANY past events, work history, or experience (e.g. 'What did I do...', 'My past...', 'Early career', 'vintages', 'previous teams'), you MUST set intent=RECALL.\n"
+    "   - RECALL is the ONLY intent for historical lookup. Do NOT use CASUAL for these queries.\n"
     "3. No preamble. No markdown."
 )
 

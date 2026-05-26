@@ -1779,15 +1779,9 @@ class AcmeLab:
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
             # [Task 7.3] Harden Spark Restoration: Queue queries arriving during WAKING state
             if self._wake_task and not self._wake_task.done():
-                logging.info(f"[HUB] Ignition already in progress. Queuing query: {query[:30]}...")
-                await self.engine_ready.wait()
-                # [FIX] Wait for Larynx check to complete (Status becomes OPERATIONAL)
-                start_wait = time.time()
-                while self.status != "OPERATIONAL" and time.time() - start_wait < 60:
-                    await asyncio.sleep(1)
-                logging.info(f"[HUB] Ignition and Cognitive Sync complete. Releasing queued query: {query[:30]}")
-                # Recalculate engine_vocal after wait
-                engine_vocal = self.engine_ready.is_set()
+                logging.warning(f"[HUB] Ignition in progress. Queuing query: {query[:30]}...")
+                self._neural_queue.put_nowait(query)
+                return "" # [FIX] Exit immediately, the drainer handles release
             else:
                 # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
                 logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
@@ -1795,7 +1789,7 @@ class AcmeLab:
                 # [FIX] Atomic Ignition Guard: Don't queue if already sparking
                 self._neural_queue.put_nowait(query)
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
-                return # Exit immediately, the drainer will pick this up
+                return "" # Exit immediately, the drainer will pick this up
                 
                 async def _wait_and_signal():
                     try:
