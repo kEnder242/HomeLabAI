@@ -398,7 +398,7 @@ async def get_context(query: str, n_results: int = 3) -> str:
         if not target_year:
             logging.info(f"[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search for: {query[:50]}")
             # Search across all wisdom chunks
-            results = collection.query(
+            results = wisdom.query(
                 query_texts=[query],
                 n_results=n_results
             )

@@ -60,7 +60,17 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
 
     # 3. Hand-Crank the Ignition via UI
     print("    [Action] Launching Headless Browser (Hand-Crank)...")
-    browser = await p_instance.chromium.launch(headless=True)
+    browser = await p_instance.chromium.launch(
+        headless=True,
+        args=[
+            "--disable-gpu", 
+            "--no-sandbox", 
+            "--disable-dev-shm-usage",
+            "--disable-setuid-sandbox",
+            "--no-zygote",
+            "--single-process"
+        ]
+    )
     page = await browser.new_page()
     await page.goto(INTERCOM_URL)
     

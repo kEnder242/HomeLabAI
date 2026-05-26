@@ -1352,6 +1352,7 @@ class AcmeLab:
 
     async def _drain_neural_buffer(self):
         """[FEAT-283] Persistent Neural Buffer Drainer."""
+        logging.info("[HUB] Neural Buffer Drainer started.")
         while not self.shutdown_event.is_set():
             # Wait for the mind to be vocal
             await self.engine_ready.wait()
@@ -1362,7 +1363,7 @@ class AcmeLab:
 
             if not self._neural_queue.empty():
                 count = self._neural_queue.qsize()
-                logging.info(f"[HUB] Draining Neural Buffer: {count} items.")
+                logging.warning(f"[HUB] Draining Neural Buffer: {count} items.")
                 
                 # [FEAT-321] Queue Feedback
                 await self.broadcast({
@@ -1373,6 +1374,7 @@ class AcmeLab:
 
                 while not self._neural_queue.empty():
                     query = await self._neural_queue.get()
+                    logging.info(f"[HUB] Releasing buffered query: {query[:30]}")
                     # Spark processing
                     self._track_task(self.process_query(query))
                     self._neural_queue.task_done()
