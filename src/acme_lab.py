@@ -195,6 +195,16 @@ class AcmeLab:
         self._wake_task = None # [FEAT-265.47] Task Sovereignty: Track active wake task
         self._triage_lock = asyncio.Lock() # [FEAT-265.48] Absolute State: Prevent concurrent triage
         self._residents_booted = False # [FEAT-337] Resident Persistence
+
+        # [FEAT-365] Lab Config: Load infrastructure settings
+        self.config = {}
+        if os.path.exists(INFRA_CONFIG):
+            try:
+                with open(INFRA_CONFIG, "r") as f:
+                    self.config = json.load(f)
+            except Exception as e:
+                logging.error(f"[HUB] Failed to load config: {e}")
+
         reclaim_logger(role)
         self.set_proc_title()
 
@@ -1771,12 +1781,18 @@ class AcmeLab:
             if self._wake_task and not self._wake_task.done():
                 logging.info(f"[HUB] Ignition already in progress. Queuing query: {query[:30]}...")
                 await self.engine_ready.wait()
-                logging.info(f"[HUB] Ignition complete. Releasing queued query: {query[:30]}")
+                # [FIX] Wait for Larynx check to complete (Status becomes OPERATIONAL)
+                start_wait = time.time()
+                while self.status != "OPERATIONAL" and time.time() - start_wait < 60:
+                    await asyncio.sleep(1)
+                logging.info(f"[HUB] Ignition and Cognitive Sync complete. Releasing queued query: {query[:30]}")
                 # Recalculate engine_vocal after wait
                 engine_vocal = self.engine_ready.is_set()
             else:
                 # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
                 logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
+                # [FIX] Queue the triggering query so it isn't lost
+                self._neural_queue.put_nowait(query)
                 # Spark ignition via Attendant
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
                 
