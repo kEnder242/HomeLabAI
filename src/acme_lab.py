@@ -247,6 +247,14 @@ class AcmeLab:
         # Added physical client count for audit
         logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content[:60]}... (Sockets: {len(self.connected_clients)})")
 
+        # [Task 6.1] Intercept and record thoughts for deferred evaluation [BKM-032]
+        if m_type in ["chat", "crosstalk"]:
+            try:
+                from infra.forensic_ledger import ledger
+                ledger.record_thought(m_source, m_content, role=m_type.upper())
+            except Exception as e:
+                logging.error(f"[LEDGER] Failed to record thought trace: {e}")
+
         # [FEAT-227] Session Reset: Wipe history on explicit request
         if message_dict.get("reset_session"):
             logging.info("[HUB] Session Reset triggered. Wiping message history.")
@@ -1757,8 +1765,15 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
-            # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
-            if not self._wake_task or self._wake_task.done():
+            # [Task 7.3] Harden Spark Restoration: Queue queries arriving during WAKING state
+            if self._wake_task and not self._wake_task.done():
+                logging.info(f"[HUB] Ignition already in progress. Queuing query: {query[:30]}...")
+                await self.engine_ready.wait()
+                logging.info(f"[HUB] Ignition complete. Releasing queued query: {query[:30]}")
+                # Recalculate engine_vocal after wait
+                engine_vocal = self.engine_ready.is_set()
+            else:
+                # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
                 logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
                 # Spark ignition via Attendant
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
