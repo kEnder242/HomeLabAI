@@ -195,6 +195,10 @@ class AcmeLab:
         self._wake_task = None # [FEAT-265.47] Task Sovereignty: Track active wake task
         self._triage_lock = asyncio.Lock() # [FEAT-265.48] Absolute State: Prevent concurrent triage
         self._residents_booted = False # [FEAT-337] Resident Persistence
+        
+        # [Task 7.4] System Replay Buffer: Store recent status/milestones for new clients
+        from collections import deque
+        self.system_replay_buffer = deque(maxlen=20)
 
         # [FEAT-365] Lab Config: Load infrastructure settings
         self.config = {}
@@ -256,6 +260,10 @@ class AcmeLab:
         # [FEAT-274] Token Traceability: Log the current session generation
         # Added physical client count for audit
         logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content[:60]}... (Sockets: {len(self.connected_clients)})")
+
+        # [Task 7.4] Replay Buffer: Store system milestones
+        if m_type in ["crosstalk", "status"] or (m_type == "chat" and m_source == "System"):
+            self.system_replay_buffer.append(message_dict)
 
         # [Task 6.1] Intercept and record thoughts for deferred evaluation [BKM-032]
         if m_type in ["chat", "crosstalk"]:
@@ -1527,6 +1535,10 @@ class AcmeLab:
                             "full_lab_ready": self.status == "OPERATIONAL",
                             "msg_id": uuid.uuid4().hex[:12]
                         })
+
+                        # [Task 7.4] System Replay: Send buffered milestones
+                        for msg in list(self.system_replay_buffer):
+                            await ws.send_json(msg)
                         if "archive" in self.residents:
                             try:
                                 res = await self.residents["archive"].call_tool(
