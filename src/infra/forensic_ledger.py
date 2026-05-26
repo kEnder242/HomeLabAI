@@ -2,61 +2,53 @@ import os
 import json
 import datetime
 import logging
-from infra.atomic_io import atomic_write_json
-from debug.trace_monitor import TraceMonitor
-
-# Paths
-LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
-PAGER_ACTIVITY_FILE = os.path.join(PORTFOLIO_DIR, "field_notes/data/pager_activity.json")
-SERVER_LOG = os.path.join(LAB_DIR, "server.log")
-ATTENDANT_LOG = os.path.join(LAB_DIR, "attendant.log")
-
-logger = logging.getLogger("forensic_ledger")
+from typing import Dict, Any
 
 class ForensicLedger:
     """
-    [FEAT-151] Forensic Ledger: Structured Silicon Logging.
-    Captures state transitions and physical trace evidence during autonomous transitions.
+    [BKM-032] The Wordy Logger.
+    Captures 100% of the inter-node thought traces into a persistent ledger
+    for deferred semantic evaluation by the AI.
     """
-    def __init__(self):
-        self.monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])
-        self.ensure_ledger_exists()
-
-    def ensure_ledger_exists(self):
-        if not os.path.exists(PAGER_ACTIVITY_FILE):
-            atomic_write_json(PAGER_ACTIVITY_FILE, [])
-
-    def record_event(self, severity: str, message: str, metadata: dict = None):
-        """
-        Records a structured event with physical trace evidence.
-        """
-        timestamp = datetime.datetime.now().isoformat()
+    def __init__(self, log_dir: str = "logs"):
+        self.log_dir = log_dir
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+            
+        # [Task 6.1] Initialize the evaluation batch file
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.ledger_path = os.path.join(self.log_dir, f"evaluation_batch_{timestamp}.log")
         
-        # Capture trace delta
-        trace = self.monitor.capture_delta()
-        
-        event = {
-            "timestamp": timestamp,
-            "severity": severity,
-            "message": message,
-            "metadata": metadata or {},
-            "trace": trace
-        }
+        logging.info(f"[LEDGER] Initialized Wordy Logger at: {self.ledger_path}")
 
+    def record_thought(self, node: str, content: str, role: str = "THOUGHT"):
+        """Appends a thought block to the persistent ledger."""
         try:
-            with open(PAGER_ACTIVITY_FILE, "r") as f:
-                ledger = json.load(f)
-            
-            # Keep only last 100 events to prevent blow-out
-            ledger.append(event)
-            ledger = ledger[-100:]
-            
-            atomic_write_json(PAGER_ACTIVITY_FILE, ledger)
-            logger.info(f"[FORENSIC] Event recorded: {message}")
+            entry = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "node": node,
+                "role": role,
+                "content": content
+            }
+            with open(self.ledger_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
         except Exception as e:
-            logger.error(f"[FORENSIC] Failed to record event: {e}")
+            logging.error(f"[LEDGER] Failed to record thought: {e}")
 
-    def refresh_marks(self):
-        """Resets the trace markers to the current EOF."""
-        self.monitor.refresh_marks()
+    def record_interaction(self, query: str, response: str, metadata: Dict[str, Any] = None):
+        """Records a full interaction turn with metadata."""
+        try:
+            entry = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "type": "INTERACTION",
+                "query": query,
+                "response": response,
+                "metadata": metadata or {}
+            }
+            with open(self.ledger_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logging.error(f"[LEDGER] Failed to record interaction: {e}")
+
+# Global instance for easy access
+ledger = ForensicLedger()
