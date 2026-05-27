@@ -58,12 +58,9 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     print(f"\n🚀 STARTING UBER-CYCLE {cycle_id}/5 (Wait: {wait_minutes}m)")
     key = get_key()
     
-    # 1. Force Clean H2 State
-    print(f"    [Action] Entering Silicon Sleep (H2)...")
-    requests.post(f"{ATTENDANT_URL}/hibernate?level=2&key={key}")
-    
-    # 2. The Increasing Wait (5x5 Protocol)
-    print(f"    [Action] Waiting {wait_minutes} minutes for idle cold-start...")
+    # [FIX] Natural Drift Logic: Remove forced hibernation.
+    # The system must enter sleep naturally during the wait.
+    print(f"    [Action] Waiting {wait_minutes} minutes for natural idle drift...")
     for m in range(wait_minutes):
         if (m + 1) % 5 == 0 or m == 0:
             print(f"        ... {wait_minutes - m} minutes remaining ...")
