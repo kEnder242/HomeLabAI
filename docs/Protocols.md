@@ -149,6 +149,7 @@
 1.  **Rule of the Ghost Keyword**: No technical keywords or domain-specific anchors (e.g., "RAPL", "ESB2") are allowed in `.py` logic blocks. They must reside in `config/intent_anchors.json` or a dedicated ChromaDB collection.
 2.  **The Vibe-First Mandate**: Any `if/else` logic determining intent or routing must be preceded by a call to a `_classify_vibe()` or `_route_expert_domain()` method that utilizes a semantic pass (Vector or LLM).
 3.  **DNA-First Verification**: A feature is only marked `[COMPLETE]` if its implementation matches the "Mechanism" described in `FeatureTracker.md`. If the mechanism specifies "Sentinel Pass" and the code uses "List-Matching," the status is `[PARTIAL/STALE]`.
+4.  **Retrieval Optimization Exception**: Hardcoded logic (e.g., year-based regex) is permitted strictly for physical retrieval optimization (e.g., opening a specific `YYYY.json` file) AFTER a semantic intent (RECALL) has been established. It must never be used to gate the intent itself or replace semantic classification.
 
 ## BKM-016: The Montana Protocol (Logger Control)
 **Objective**: Prevent external library logger hijacking and ensure forensic traceability.
