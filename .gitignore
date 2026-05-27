@@ -38,3 +38,4 @@ round_table.lock
 .venv*/
 src/forge/expertise/*.jsonl
 run/
+.omo/run-continuation/*.json
