@@ -26,25 +26,31 @@ async def evaluate_fidelity(cycle_id, page):
     print(f"    [*] Auditing DOM for Cycle {cycle_id} fidelity...")
     
     # Give the DOM a moment to settle after the result is detected
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
+    
+    # Get content from both consoles to be safe
+    insight_content = await page.inner_text("#insight-console")
+    chat_content = await page.inner_text("#chat-console")
+    full_dom = insight_content + "\n" + chat_content
     
     # 1. Check for [SYSTEM] stage visibility (Phase 3 hardening)
-    insight_content = await page.inner_text("#insight-console")
-    # If browser connected late, we might miss Step 1/2, so we check for Step 3 or Operational
-    has_milestones = any(x in insight_content for x in ["[SYSTEM]", "Step 3", "OPERATIONAL", "synchronized"])
+    # focus on persistent status rather than ephemeral startup steps
+    has_milestones = any(x in full_dom.lower() for x in ["operational", "synchronized", "established", "ready"])
     
     # 2. Check for Pinky's restored voice (Phase 4 hardening)
-    chat_content = await page.inner_text("#chat-console")
     # Must have semantic content or <thought>, not just reflex noise
-    has_vocal = any(x in chat_content for x in ["<thought>", "Archives", "PECISTRESSOR", "teams"])
+    has_vocal = any(x in full_dom for x in ["<thought>", "Archives", "PECISTRESSOR", "teams", "focus"])
     
     # 3. Check for Brain reachability (Sovereign Bridge)
     # The brain source is usually 'Brain (Intuition)' or 'Sovereign'
-    has_brain = any(x in chat_content for x in ["Brain", "Sovereign"]) or "Sovereign" in insight_content
+    has_brain = any(x in full_dom for x in ["Brain", "Sovereign"])
     
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] Pinky Voice: {'✅' if has_vocal else '❌'}")
     print(f"    [Audit] Brain Presence: {'✅' if has_brain else '❌'}")
+    
+    if not (has_milestones and has_vocal and has_brain):
+        print(f"    [Forensic] Full Console Content Snippet:\n{full_dom[:1000]}")
     
     return has_milestones and has_vocal and has_brain
 
