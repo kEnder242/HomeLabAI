@@ -39,7 +39,8 @@ async def evaluate_fidelity(cycle_id, page):
     
     # 2. Check for Pinky's restored voice (Phase 4 hardening)
     # Must have semantic content or <thought>, not just reflex noise
-    has_vocal = any(x in full_dom for x in ["<thought>", "Archives", "PECISTRESSOR", "teams", "focus"])
+    # We check for structural existence of reasoning and historical context markers
+    has_vocal = any(x in full_dom for x in ["<thought>", "Archives", "career", "focus"])
     
     # 3. Check for Brain reachability (Sovereign Bridge)
     # The brain source is usually 'Brain (Intuition)' or 'Sovereign'
@@ -96,9 +97,9 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     start_t = time.time()
     success = False
     while time.time() - start_t < 300:
-        # Look for the final synthesis from Brain or the vocal handshake from Pinky
+        # Look for substantial response blocks or the vocal handshake
         content = await page.inner_text("#chat-console")
-        if "PECISTRESSOR" in content or "Archives" in content:
+        if len(content.strip()) > 100 or "Archives" in content:
             success = await evaluate_fidelity(cycle_id, page)
             break
         await asyncio.sleep(10)

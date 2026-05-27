@@ -47,15 +47,10 @@ async def test_intent_recall_no_year():
                 
                 print(f"  📥 RX: {m_type} ({m_source}) -> {m_content[:60]}...", flush=True)
                 
-                # Check for RECALL in triage result OR final synthesis grounding
-                # The Hub now explicitly broadcasts '[HUB] Triage Result'
+                # [BKM-032] Deferred Evaluation: Automated check only verifies INTENT logic.
+                # Semantic content (Archives/PECISTRESSOR) is audited by Gemini CLI in the Wordy Log.
                 if "RECALL" in m_content or "intent\":\"RECALL\"" in m_content:
-                    print("✅ [SUCCESS]: Hub identified RECALL intent.", flush=True)
-                    recall_triggered = True
-                    break
-                    
-                if "Archives" in m_content or "PECISTRESSOR" in m_content:
-                    print("✅ [SUCCESS]: System anchored in archives (RECALL verified).", flush=True)
+                    print("✅ [SUCCESS]: Hub logically identified RECALL intent.", flush=True)
                     recall_triggered = True
                     break
             except asyncio.TimeoutError:

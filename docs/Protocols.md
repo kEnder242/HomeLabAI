@@ -289,6 +289,20 @@
 
 ---
 
+## BKM-032: Deferred Semantic Evaluation (Human-in-the-Loop)
+**Objective**: Decouple automated technical stability checks from qualitative semantic fidelity audits. This protocol ensures that tests remain resilient to "Logic Drift" while maintaining the Lab's high-stakes technical grounding.
+
+1.  **Strict Automated Gating**: Scripts (e.g., `uber_5x5`) are restricted to validating **Structural Evidence**:
+    *   **Milestones**: Did the engine reach OPERATIONAL?
+    *   **Presence**: Are `<thought>` tags or `brain_source` identifiers present?
+    *   **Liveness**: Did a response of sufficient length (>100 chars) return?
+2.  **Prohibition of Hardcoding**: Automated scripts MUST NOT perform string-matching on specific technical facts (e.g., "PECISTRESSOR"). This violates BKM-015 and creates fragile tests that fail during legitimate archive updates.
+3.  **The Wordy Log (Task 6.1)**: Every test run must produce a **Forensic Trace** capturing 100% of the reasoning thoughts.
+4.  **AI Audit Phase**: After the batch completes, the Lead Engineer or AI Agent (Gemini CLI) reviews the Wordy Log using the `semantic_audit_template.md`.
+5.  **Certification**: The "Pass" verdict is issued only after both the automated structural check AND the manual semantic audit are verified.
+
+---
+
 ## BKM-033: The Babysitting Protocol (Autonomous Monitoring)
 **Objective**: Ensure long-running batch processes complete successfully by providing real-time forensic oversight and surgical recovery.
 
