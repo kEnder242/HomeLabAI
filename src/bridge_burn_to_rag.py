@@ -116,7 +116,41 @@ def main():
             except Exception as e:
                 print(f"Error processing strat doc {doc}: {e}")
 
-    print(f"Success: Synced {total_added} new items (Artifacts + Strategy) into Wisdom collection.")
+    # 5. Sync Asset Catalog (Artifacts)
+    artifact_files = glob.glob(os.path.join(FIELD_NOTES_DATA, "artifacts_*.json"))
+    for fpath in artifact_files:
+        fname = os.path.basename(fpath)
+        try:
+            with open(fpath, 'r') as f:
+                data = json.load(f)
+            if not isinstance(data, list): continue
+
+            for item in data:
+                filename = item.get('filename', 'Unknown')
+                synopsis = item.get('synopsis', '')
+                keywords = item.get('keywords', [])
+                rank = item.get('rank', 0)
+                
+                if not synopsis: continue
+
+                # High-density asset block
+                content = f"[ASSET: {filename}] {synopsis}"
+                if keywords: content += f"\nKEYWORDS: {', '.join(keywords)}"
+                if rank >= 3: content += f" [RANK: {rank}]"
+
+                asset_id = f"asset_{hashlib.md5(content.encode()).hexdigest()}"
+
+                if not wisdom.get(ids=[asset_id])['ids']:
+                    wisdom.add(
+                        documents=[content],
+                        metadatas=[{"source": fname, "filename": filename, "type": "asset_catalog"}],
+                        ids=[asset_id]
+                    )
+                    total_added += 1
+        except Exception as e:
+            print(f"Error processing artifact catalog {fname}: {e}")
+
+    print(f"Success: Synced {total_added} new items (Artifacts + Strategy + Assets) into Wisdom collection.")
 
 if __name__ == "__main__":
     main()
