@@ -56,19 +56,19 @@ async def evaluate_fidelity(cycle_id, page):
     return has_milestones and has_vocal and has_brain
 
 async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
-    print(f"\n🚀 STARTING UBER-CYCLE {cycle_id}/5 (Wait: {wait_minutes}m)")
+    print(f"\n🚀 STARTING UBER-CYCLE {cycle_id}/5 (Wait: {wait_minutes}m)", flush=True)
     key = get_key()
     
     # [FIX] Natural Drift Logic: Remove forced hibernation.
     # The system must enter sleep naturally during the wait.
-    print(f"    [Action] Waiting {wait_minutes} minutes for natural idle drift...")
+    print(f"    [Action] Waiting {wait_minutes} minutes for natural idle drift...", flush=True)
     for m in range(wait_minutes):
         if (m + 1) % 5 == 0 or m == 0:
-            print(f"        ... {wait_minutes - m} minutes remaining ...")
+            print(f"        ... {wait_minutes - m} minutes remaining ...", flush=True)
         await asyncio.sleep(60)
 
     # 3. Hand-Crank the Ignition via UI
-    print("    [Action] Launching Headless Browser (Hand-Crank)...")
+    print("    [Action] Launching Headless Browser (Hand-Crank)...", flush=True)
     browser = await p_instance.chromium.launch(
         headless=True,
         args=[
@@ -87,13 +87,13 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     
     # 4. Fire Strategic Probe (Triggers Wake-on-Intent)
     query = f"[ME] [UBER-5x5] Cycle {cycle_id}. Summarize my 2023 PECISTRESSOR focus and verify node sync."
-    print(f"    [Action] Sending Strategic Probe: {query[:40]}...")
+    print(f"    [Action] Sending Strategic Probe: {query[:40]}...", flush=True)
     await page.wait_for_selector("#text-input")
     await page.fill("#text-input", query)
     await page.keyboard.press("Enter")
     
     # 5. Long-Tail Monitoring
-    print("    [Action] Monitoring for result (300s timeout)...")
+    print("    [Action] Monitoring for result (300s timeout)...", flush=True)
     start_t = time.time()
     success = False
     while time.time() - start_t < 300:
@@ -108,8 +108,8 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     return success
 
 async def main():
-    print("💎 INITIATING THE ULTIMATE UBER 5x5 HAND-CRANKED CERTIFICATION")
-    print("[*] Mandate: 5 consecutive wins. Reset on fix. Increasing idle stress.")
+    print("💎 INITIATING THE ULTIMATE UBER 5x5 HAND-CRANKED CERTIFICATION", flush=True)
+    print("[*] Mandate: 5 consecutive wins. Reset on fix. Increasing idle stress.", flush=True)
     
     async with async_playwright() as p:
         total_wins = 0

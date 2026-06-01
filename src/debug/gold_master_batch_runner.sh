@@ -23,10 +23,10 @@ mkdir -p "$BASE_DIR/HomeLabAI/logs"
 
 # [BKM-033] Pulse 1: Unit Sanity
 echo "[1/4] Running Unit Sanity (Attendant & Liveliness)..."
-$VENV_LAB "$BASE_DIR/HomeLabAI/src/attendant_liveliness.py"
+stdbuf -oL $VENV_LAB "$BASE_DIR/HomeLabAI/src/attendant_liveliness.py"
 if [ $? -ne 0 ]; then echo -e "${RED}❌ HARD ERROR: Attendant Liveliness Failed.${NC}"; exit 1; fi
 
-$VENV_LAB "$BASE_DIR/HomeLabAI/src/test_liveliness.py"
+stdbuf -oL $VENV_LAB "$BASE_DIR/HomeLabAI/src/test_liveliness.py"
 if [ $? -ne 0 ]; then echo -e "${RED}❌ HARD ERROR: Lab Liveliness (WebSocket) Failed.${NC}"; exit 1; fi
 
 echo -e "${GREEN}✅ Unit Sanity Passed.${NC}"
@@ -34,10 +34,10 @@ sleep 10
 
 # [BKM-033] Pulse 2: Semantic Logic
 echo "[2/4] Running Mock RAG & Intent Recall..."
-$VENV_PORTFOLIO "$BASE_DIR/HomeLabAI/src/tests/test_intent_recall.py"
+stdbuf -oL $VENV_PORTFOLIO "$BASE_DIR/HomeLabAI/src/tests/test_intent_recall.py"
 if [ $? -ne 0 ]; then echo -e "${RED}❌ HARD ERROR: Intent Recall (BKM-015.1) Failed.${NC}"; exit 1; fi
 
-$VENV_LAB "$BASE_DIR/HomeLabAI/src/test_rag_logic.py"
+stdbuf -oL $VENV_LAB "$BASE_DIR/HomeLabAI/src/test_rag_logic.py"
 if [ $? -ne 0 ]; then echo -e "${RED}❌ HARD ERROR: RAG Multi-Stage Logic Failed.${NC}"; exit 1; fi
 
 echo -e "${GREEN}✅ Semantic Logic Passed.${NC}"
@@ -46,7 +46,7 @@ sleep 10
 # [BKM-033] Pulse 3: Stress Gauntlet
 echo "[3/4] Running Stress Gauntlet (Uber 5x5 - Natural Drift)..."
 # We run this last as it takes 75 minutes
-$VENV_PORTFOLIO "$BASE_DIR/HomeLabAI/src/debug/uber_5x5_hand_crank.py"
+stdbuf -oL $VENV_PORTFOLIO "$BASE_DIR/HomeLabAI/src/debug/uber_5x5_hand_crank.py"
 if [ $? -ne 0 ]; then 
     echo -e "${RED}❌ HARD ERROR: Stress Gauntlet Failed.${NC}"
     echo "Check DOM Forensic traces in the wordy log."
