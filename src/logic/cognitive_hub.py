@@ -21,7 +21,7 @@ class CognitiveHub:
         "[LAB_IDENTITY]: Acme Lab (Z87-Linux native). High-fidelity silicon validation environment.\n"
         "[TOPOGRAPHY]: 3-Tier Memory in effect. Layer 1 (Diamond): Star artifacts. Layer 2 (Archive): RAG historical logs. Layer 3 (Raw): Direct telemetry (RAPL/MSR).\n"
         "[ARCHIVAL_MAP]: Archive spans 2005-2024. High-density evidence in [Telemetry: 2019-2024], [Firmware: 2011-2018], [Automation: 2020-2024].\n"
-        "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Shadow (Subconscious - Intuition/Refinement), Brain (Sovereign - Strategic reasoning on 4090).\n"
+        "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Brain (Subconscious - Intuition/Refinement), Deep Thought (Sovereign - Strategic reasoning on 4090).\n"
     )
 
     def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
@@ -40,8 +40,8 @@ class CognitiveHub:
         self.streaming_config = {
             "lab": "WATERFALL",
             "pinky": "WATERFALL",
-            "brain": "WATERFALL",
-            "shadow": "WATERFALL"
+            "thought": "WATERFALL",
+            "brain": "WATERFALL"
         }
         
         # [FEAT-233.7] Session Buffers: Real-time context for inter-node overhearing
@@ -189,11 +189,11 @@ class CognitiveHub:
             
         # [FEAT-355] Open Debate: Broadcast thoughts to inter-node context
         if "<thought>" in str(text) and self.current_fuel > 0.6:
-            # Map labels (e.g. "Brain (Intuition)") to buffer keys (e.g. "shadow")
+            # Map labels (e.g. "Deep Thought") to buffer keys (e.g. "thought")
             label_lower = source.lower()
-            thought_source = "pinky" if "pinky" in label_lower else "brain"
-            if "intuition" in label_lower or "shadow" in label_lower:
-                thought_source = "shadow"
+            thought_source = "pinky" if "pinky" in label_lower else "thought"
+            if "intuition" in label_lower or "brain" in label_lower:
+                thought_source = "brain"
             
             if text not in self.session_buffers[thought_source]:
                 self.session_buffers[thought_source] += f"\n{text}"
@@ -210,7 +210,7 @@ class CognitiveHub:
         # 1. Clean and Strip Node Artifacts
         clean_text = str(text).replace("<|eot_id|>", "").replace("<|begin_of_text|>", "").strip()
         
-        # [FEAT-110] Shadow Moat
+        # [FEAT-110] Brain Moat
         if "Brain" in source:
             pinky_isms = ["narf", "poit", "zort", "egad", "trotro"]
             for ism in pinky_isms:
@@ -286,10 +286,10 @@ class CognitiveHub:
                     if tool == "ask_brain":
                         self.current_fuel = 1.0
                         if not raw_speech:
-                            raw_speech = "Narf! I'll ask the Brain for you."
+                            raw_speech = "Narf! I'll ask Deep Thought for you."
 
                     if tool in ["think"]:
-                        # If Pinky or Shadow calls think on themselves, it's a VETO
+                        # If Pinky or The Brain calls think on themselves, it's a VETO
                         # [FEAT-295] Tooling Parity: Unifying think/think as demotion signals
                         self.current_fuel = 0.0
                         if not raw_speech:
@@ -406,7 +406,7 @@ class CognitiveHub:
             result_text = str(res.content[0].text) if hasattr(res, 'content') else str(res)
             
             # [FEAT-287] Activity Latch
-            if node_id == "brain" or node_id == "shadow":
+            if node_id == "brain" or node_id == "thought":
                 self.last_activity = time.time()
                 if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
                     self.last_prime_callback(time.time())
@@ -568,8 +568,8 @@ class CognitiveHub:
                     intent = triage_data_update.get("intent", "STRATEGIC")
 
                     # [REVISION-17.2] Direct Address Force
-                    if addressed_to == "BRAIN":
-                        logging.info("[HUB] Direct Address: Brain. Forcing Sovereign promotion.")
+                    if addressed_to in ["BRAIN", "THOUGHT", "DEEP THOUGHT"]:
+                        logging.info(f"[HUB] Direct Address: {addressed_to}. Forcing Sovereign promotion.")
                         self.current_fuel = max(0.65, self.current_fuel)
                     elif addressed_to == "PINKY" and self.current_fuel > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
@@ -667,18 +667,18 @@ class CognitiveHub:
                 use_lora=self.lora_enabled
             )
 
-        async def run_shadow():
+        async def run_brain_leg():
             nonlocal shadow_text
-            brain_online = self.get_vram_status()
-            threshold = 0.0 if not brain_online else 0.2
-            role = "TECHNICAL_REASONER" if not brain_online else "TECHNICAL_INTUITION"
+            thought_online = self.get_vram_status()
+            threshold = 0.0 if not thought_online else 0.2
+            role = "TECHNICAL_REASONER" if not thought_online else "TECHNICAL_INTUITION"
             
             if fuel_start > threshold:
                 # [FEAT-233.8] Overhearing Pinky: Context Warming
                 overheard = self.session_buffers.get("pinky", "")
                 s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}\n[OVERHEARD_GATEWAY]: {overheard}"
                 shadow_text = await self._process_node_stream(
-                    "shadow", query, s_context, "Brain (Intuition)",
+                    "brain", query, s_context, "The Brain",
                     tools=["ask_brain", "think"],
                     behavioral_guidance=situational_guidance or "Provide immediate technical intuition.",
                     shutdown_event=shutdown_event,
@@ -686,42 +686,42 @@ class CognitiveHub:
                     use_lora=self.lora_enabled
                 )
 
-        # [Task 1.2] Cascading Spark: Pinky -> Shadow -> Brain
+        # [Task 1.2] Cascading Spark: Pinky -> Brain -> Deep Thought
         pinky_task = asyncio.create_task(run_pinky())
-        shadow_task = None
+        brain_leg_task = None
         
-        # 1. Shadow Warming
+        # 1. Brain Warming
         while not pinky_task.done():
             # If Pinky has started speaking, or if fuel is already high enough
             if len(self.session_buffers.get("pinky", "").split()) >= 3 or fuel_start > 0.4:
-                logging.info("[HUB] Waterfall: Overheard Pinky. Cascading to Shadow...")
-                shadow_task = asyncio.create_task(run_shadow())
+                logging.info("[HUB] Waterfall: Overheard Pinky. Cascading to Brain...")
+                brain_leg_task = asyncio.create_task(run_brain_leg())
                 break
             await asyncio.sleep(0.1)
 
-        # [Task 1.3] Brain Leg
+        # [Task 1.3] Deep Thought Leg
         # Wait for either local node to finish OR for fuel spike
         while True:
-            if pinky_task.done() and (not shadow_task or shadow_task.done()):
+            if pinky_task.done() and (not brain_leg_task or brain_leg_task.done()):
                 break
             
             if self.current_fuel > 0.6:
-                logging.info(f"[HUB] Waterfall: Dynamic Fuel ({self.current_fuel:.2f}) triggered Brain early.")
+                logging.info(f"[HUB] Waterfall: Dynamic Fuel ({self.current_fuel:.2f}) triggered Deep Thought early.")
                 break
                 
             await asyncio.sleep(0.5)
 
-        # 5. Sovereign Brain (Final Waterfall Leg)
-        brain_online = self.get_vram_status()
-        can_run_brain = brain_online and "brain" in self.residents
+        # 5. Deep Thought (Final Waterfall Leg)
+        thought_online = self.get_vram_status()
+        can_run_thought = thought_online and "thought" in self.residents
         
-        if (can_run_brain or not brain_online) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE"]:
-            target_node = "brain" if can_run_brain else "shadow"
-            source_label = "Brain (Result)" if can_run_brain else "Shadow (Failover)"
+        if (can_run_thought or not thought_online) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE", "THOUGHT", "DEEP THOUGHT"]:
+            target_node = "thought" if can_run_thought else "brain"
+            source_label = "Deep Thought" if can_run_thought else "The Brain (Failover)"
             
-            # [FEAT-233.8] Double Warming: Overhearing Pinky + Shadow
+            # [FEAT-233.8] Double Warming: Overhearing Pinky + Brain
             b_overheard_p = self.session_buffers.get("pinky", "")
-            b_overheard_s = self.session_buffers.get("shadow", "")
+            b_overheard_b = self.session_buffers.get("brain", "")
             
             b_context = ""
             if historical_context:
@@ -730,7 +730,7 @@ class CognitiveHub:
                 b_context += f"{archival_map_context}\n\n"
             
             b_context += f"[PINKY_HEARING]: {b_overheard_p}\n"
-            b_context += f"[SHADOW_INTUITION]: {b_overheard_s}\n"
+            b_context += f"[BRAIN_INTUITION]: {b_overheard_b}\n"
 
             verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
             
@@ -754,16 +754,16 @@ class CognitiveHub:
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             if brain_full:
-                await self.evaluate_grounding("Brain", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
+                await self.evaluate_grounding("Deep Thought", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
         # [FEAT-356] Ledger Appending
         turn_summary = f"USER: {original_raw_query}\n"
         if pinky_text:
             turn_summary += f"PINKY: {pinky_text}\n"
         if shadow_text:
-            turn_summary += f"SHADOW: {shadow_text}\n"
+            turn_summary += f"BRAIN: {shadow_text}\n"
         if brain_full:
-            turn_summary += f"BRAIN: {brain_full}\n"
+            turn_summary += f"THOUGHT: {brain_full}\n"
         
         if turn_summary.strip() != f"USER: {original_raw_query}":
             self.round_table_memory.append(turn_summary.strip())
@@ -771,7 +771,7 @@ class CognitiveHub:
         return True
 
     async def evaluate_grounding(self, source, text, fuel, shutdown_event, retry_count=0, use_lora=True):
-        """[FEAT-247] Physical Audit Gate: Pinky audits Brain for feasibility."""
+        """[FEAT-247] Physical Audit Gate: Pinky audits Deep Thought for feasibility."""
         # [REVISION-17.9] Lower gate to 0.5 to ensure common technical tasks are audited
         if "pinky" not in self.residents or fuel < 0.5:
             return
