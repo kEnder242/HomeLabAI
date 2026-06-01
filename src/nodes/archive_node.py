@@ -280,21 +280,33 @@ async def patch_file(filename: str, diff: str, soft_fail: bool = False) -> str:
 
 @mcp.tool()
 async def peek_related_notes(keyword: str) -> str:
-    """RLM Research Pattern: Follows technical breadcrumbs."""
-    index_path = os.path.join(FIELD_NOTES_DIR, "search_index.json")
+    """RLM Research Pattern: Follows technical breadcrumbs using Hybrid Keyword Search."""
     try:
-        if not os.path.exists(index_path):
-            return "Error: Search index missing."
-        with open(index_path, "r") as f:
-            index = json.load(f)
-        matches = []
-        k_lower = keyword.lower()
-        for key in index.keys():
-            if k_lower in key.lower():
-                matches.extend(index[key])
-        if not matches:
+        # Use the established keyword_search for high-fidelity matching
+        results = keyword_search(keyword, limit=10)
+        
+        if not results:
+            # Fallback to search_index.json for broad categorization
+            index_path = os.path.join(FIELD_NOTES_DIR, "search_index.json")
+            if os.path.exists(index_path):
+                with open(index_path, "r") as f:
+                    index = json.load(f)
+                matches = []
+                k_lower = keyword.lower()
+                for key in index.keys():
+                    if k_lower in key.lower():
+                        matches.extend(index[key])
+                if matches:
+                    return f"Related technical breadcrumbs (Index): {', '.join(list(set(matches))[:10])}"
+            
             return f"No notes found relating to '{keyword}'."
-        return f"Related technical breadcrumbs: {', '.join(list(set(matches))[:10])}"
+        
+        breadcrumbs = []
+        for doc_id, meta in results:
+            src = meta.get("source", "Unknown")
+            breadcrumbs.append(f"{doc_id} (in {src})")
+            
+        return f"Related technical breadcrumbs (Hybrid): {', '.join(breadcrumbs)}"
     except Exception as e:
         return f"Error: {e}"
 

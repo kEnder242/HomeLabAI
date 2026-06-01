@@ -48,8 +48,7 @@ async def test_relay_interest_buildup():
         broadcast_callback=broadcast,
         sensory_manager=sensory,
         get_vram_status=thought_online,
-        trigger_morning_briefing=AsyncMock(),
-        monitor_task_with_tics=monitor_pass_through
+        trigger_morning_briefing=AsyncMock()
     )
     
     # [FIX] BKM-032: Mock the Auditor to prevent recursive retry loops in tests

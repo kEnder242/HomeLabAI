@@ -81,11 +81,11 @@ async def remote_brain_think(prompt, context):
                     data = await resp.json()
                     # Hub response format: {"responses": [{"source": "brain", "text": "..."}]}
                     responses = data.get("responses", [])
-                    # Find brain or shadow response
+                    # Find thought or brain response
                     for r in responses:
-                        if r.get("source") in ["brain", "shadow"]:
+                        if r.get("source") in ["thought", "brain"]:
                             return r.get("text")
-                    return "Synthesis failed: No brain/shadow response in payload."
+                    return "Synthesis failed: No thought/brain response in payload."
     except Exception as e:
         return f"Synthesis Error via Hub: {e}"
 
