@@ -24,14 +24,13 @@ class CognitiveHub:
         "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Brain (Subconscious - Intuition/Refinement), Deep Thought (Sovereign - Strategic reasoning on 4090).\n"
     )
 
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, monitor_task_with_tics, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
         from collections import defaultdict
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
         self.get_vram_status = get_vram_status
         self.trigger_morning_briefing_cb = trigger_morning_briefing
-        self.monitor_task_with_tics = monitor_task_with_tics
         self.last_prime_callback = last_prime_callback
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
         self.hibernate_callback = hibernate_callback
@@ -354,6 +353,57 @@ class CognitiveHub:
             "fuel": self.current_interest
         })
         return text
+
+    async def monitor_task_with_tics(self, coro, delay=2.5):
+        """Sends state-aware tics during long reasoning tasks."""
+        task = asyncio.create_task(coro)
+
+        base_tics = ["Thinking...", "Processing...", "Just a moment...", "Checking circuits..."]
+        current_delay = delay
+        tic_count = 0
+
+        while not task.done():
+            try:
+                tic_msg = None
+                if self.residents.get("lab") and tic_count > 0:
+                    try:
+                        tic_res = await self.residents["lab"].call_tool("think", {
+                            "query": "[INTERNAL_STATUS_MODE] Provide a 1-sentence cognitive 'tic' or status update for the user. Be brief.",
+                            "fuel": 0.1
+                        })
+                        tic_msg = tic_res.content[0].text
+                    except Exception: pass
+
+                if not tic_msg:
+                    if not self.get_vram_status():
+                        tic_msg = "Sovereign unreachable... attempting failover."
+                    elif tic_count == 0:
+                        tic_msg = "Resonating weights... waking the Architect."
+                    else:
+                        tic_msg = random.choice(base_tics)
+
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=current_delay)
+                except asyncio.TimeoutError:
+                    await self.broadcast({"type": "crosstalk", "brain": tic_msg, "brain_source": "The Brain"})
+                    tic_count += 1
+                    current_delay = min(current_delay * 1.5, 15.0)
+            except Exception:
+                if task.done(): break
+                await asyncio.sleep(1.0)
+        
+        return await task
+
+    async def handle_workspace_save(self, filename, content):
+        """Strategic Vibe Check: Performs logic/code validation on save."""
+        logging.info(f"[WORKSPACE] Save Event: {filename}")
+        await self.broadcast({"brain": f"Poit! I noticed you saved {filename}. Let me look...", "brain_source": "Pinky"})
+
+        thought_online = self.get_vram_status()
+        if thought_online and "thought" in self.residents:
+            prompt = f"[STRATEGIC VIBE CHECK] User saved '{filename}'. Content starts with: '{content[:500]}'. Validate technical logic."
+            b_res = await self.monitor_task_with_tics(self.residents["thought"].call_tool("deep_think", {"task": prompt}))
+            await self.broadcast({"brain": b_res.content[0].text, "brain_source": "Deep Thought", "channel": "insight"})
 
     async def _route_expert_domain(self, query, interjection=""):
         """[FEAT-184] Vibe-based adapter selection and situational guidance."""

@@ -31,16 +31,16 @@ class InternalDebate:
             current_input = f"Topic: {topic}\nHistorical Context: {context}"
 
         for i in range(turns):
-            # Brain's Strategic Insight
-            logging.info(f"[DEBATE] Turn {i + 1}: Brain's turn.")
+            # Deep Thought's Strategic Insight
+            logging.info(f"[DEBATE] Turn {i + 1}: Deep Thought's turn.")
             if not self.brain:
-                logging.error("[DEBATE] Brain node unavailable for turn.")
+                logging.error("[DEBATE] Strategic node unavailable for turn.")
                 break
 
             brain_prompt = (
                 f"Analyze this topic: {current_input}. "
-                "Provide a strategic, validation-oriented perspective. "
-                "Be concise and technical. STRICT: NO ROLEPLAY."
+                "Provide a strategic, architecture-oriented perspective. "
+                "Be precise and technical. STRICT: NO ROLEPLAY."
             )
             try:
                 res = await self.brain.call_tool(
@@ -51,21 +51,21 @@ class InternalDebate:
                     },
                 )
                 brain_out = res.content[0].text
-                self.history.append(f"Brain: {brain_out}")
+                self.history.append(f"Deep Thought: {brain_out}")
             except Exception as e:
-                logging.error(f"[DEBATE] Brain failed: {e}")
+                logging.error(f"[DEBATE] Deep Thought failed: {e}")
                 break
 
-            # Pinky's Grounding (Lab Pragmatist)
-            logging.info(f"[DEBATE] Turn {i + 1}: Pinky's turn.")
+            # The Brain's Grounding (Local Intuition)
+            logging.info(f"[DEBATE] Turn {i + 1}: The Brain's turn.")
             if not self.pinky:
-                logging.error("[DEBATE] Pinky node unavailable for turn.")
+                logging.error("[DEBATE] Intuition node unavailable for turn.")
                 break
 
             pinky_prompt = (
-                f"The Brain said: '{brain_out}'. "
+                f"Deep Thought said: '{brain_out}'. "
                 "Ground this in physical lab constraints and implementation reality. "
-                "STRICT: No roleplay, no 'Narf', no character fillers. Be precise."
+                "STRICT: No roleplay, no character fillers. Be precise."
             )
             try:
                 res = await self.pinky.call_tool(
@@ -73,10 +73,10 @@ class InternalDebate:
                     arguments={"query": pinky_prompt, "context": brain_out},
                 )
                 pinky_out = res.content[0].text
-                self.history.append(f"Pinky: {pinky_out}")
+                self.history.append(f"The Brain: {pinky_out}")
                 current_input = pinky_out
             except Exception as e:
-                logging.error(f"[DEBATE] Pinky failed: {e}")
+                logging.error(f"[DEBATE] The Brain failed: {e}")
                 break
 
         # 3. Final Synthesis

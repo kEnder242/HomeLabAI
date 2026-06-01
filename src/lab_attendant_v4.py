@@ -1,4 +1,5 @@
 import os
+import fcntl
 import subprocess
 import json
 import asyncio
@@ -28,6 +29,7 @@ if _SELF_DIR not in sys.path:
 # --- Configuration ---
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
+VRAM_LOCK_FILE = "/tmp/lab_vram.lock"
 DATA_DIR = os.path.join(LAB_DIR, "data") 
 SERVER_LOG = f"{LAB_DIR}/server.log"
 ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
@@ -241,6 +243,7 @@ class LabAttendantV4:
         # [WD] State Initialization
         self.ready_event = asyncio.Event()
         self.ignition_lock = asyncio.Lock() # [FEAT-265.30] Ignition Mutex
+        self._vram_lock_fd = None # [Task 1.4] Physical VRAM Mutex
         self._boot_time = time.time()
         self._last_ignition_time = 0 # [FEAT-317] Port Stability Window
         self.failure_count = 0
@@ -704,6 +707,17 @@ class LabAttendantV4:
             self._recovery_in_progress = False
 
     async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+        """[Task 1.4] Physical VRAM Mutex Wrapper for Ignition."""
+        if not self._acquire_vram_lock():
+            logger.info(f"[IGNITION] [{reason}] VRAM Mutex busy. Aborting redundant spark.")
+            return {"status": "busy", "message": "VRAM Mutex held by another process."}
+        
+        try:
+            return await self._mcp_start_core(engine, model, disable_ear, op_mode, engine_only, reason)
+        finally:
+            self._release_vram_lock()
+
+    async def _mcp_start_core(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
         self.log_event(f"IGNITION_START ({reason})", "INFO")
         async with self.ignition_lock:
             global current_lab_mode, current_model, lab_process, is_hibernating
@@ -1844,6 +1858,28 @@ class LabAttendantV4:
         
         logger.error(f"[VLLM] Engine failed to reason within {timeout}s.")
         return False
+
+    def _acquire_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Acquire file lock on /tmp/lab_vram.lock."""
+        try:
+            if self._vram_lock_fd is None:
+                self._vram_lock_fd = open(VRAM_LOCK_FILE, 'w')
+            
+            fcntl.flock(self._vram_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logger.info(f"[SILICON] VRAM Mutex acquired: {VRAM_LOCK_FILE}")
+            return True
+        except (IOError, OSError):
+            logger.debug("[SILICON] VRAM Mutex busy.")
+            return False
+
+    def _release_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Release file lock."""
+        if self._vram_lock_fd is not None:
+            try:
+                fcntl.flock(self._vram_lock_fd, fcntl.LOCK_UN)
+                logger.info("[SILICON] VRAM Mutex released.")
+            except Exception as e:
+                logger.error(f"[SILICON] Failed to release VRAM Mutex: {e}")
 
     # --- REST Handlers ---
     async def handle_start_rest(self, r): 

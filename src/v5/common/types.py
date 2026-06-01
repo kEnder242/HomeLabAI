@@ -25,6 +25,14 @@ class IntentEvent:
         return cls(**data)
 
 @dataclass
+class NodeStatus:
+    name: str
+    online: bool = False
+    pid: Optional[int] = None
+    vram_mib: int = 0
+    role: str = ""
+
+@dataclass
 class LabStatus:
     state: str = "HIBERNATING"
     timestamp: float = field(default_factory=time.time)
@@ -33,6 +41,18 @@ class LabStatus:
     vram_total: int = 0
     engine_up: bool = False
     vocal: bool = False
+    nodes: Dict[str, NodeStatus] = field(default_factory=dict)
+    active_intent_id: Optional[str] = None
 
     def to_dict(self):
-        return asdict(self)
+        return {
+            "state": self.state,
+            "timestamp": self.timestamp,
+            "version": self.version,
+            "vram_used": self.vram_used,
+            "vram_total": self.vram_total,
+            "engine_up": self.engine_up,
+            "vocal": self.vocal,
+            "nodes": {k: asdict(v) for k, v in self.nodes.items()},
+            "active_intent_id": self.active_intent_id
+        }
