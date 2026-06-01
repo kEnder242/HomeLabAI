@@ -51,6 +51,9 @@ async def test_relay_interest_buildup():
         trigger_morning_briefing=AsyncMock(),
         monitor_task_with_tics=monitor_pass_through
     )
+    # Add 'lab' to residents to satisfy synchronization check
+    residents["lab"] = MagicMock()
+    residents["lab"].call_tool = AsyncMock()
     
     # --- TURN 1: THE HOOK ---
     query_1 = "[ME] Tell me about the RAPL-Sim implementation."
@@ -74,12 +77,11 @@ async def test_relay_interest_buildup():
     })
     
     # Configure Mocks for Turn 1
-    # 1. Triage (Pinky/Archive called first depending on implementation, here we'll mock the internal triage call)
-    # Since Hub calls residents['archive'].call_tool("query_vibe", ...), we mock that.
-    archive.call_tool.side_effect = [
-        MagicMock(content=[MagicMock(text=triage_1)]), # Triage
-        MagicMock(content=[MagicMock(text=rag_1)])    # RAG
-    ]
+    # 1. Triage (Hub calls residents['lab'].call_tool)
+    residents["lab"].call_tool.return_value = MagicMock(content=[MagicMock(text=triage_1)])
+    
+    # 2. RAG (Hub calls residents['archive'].call_tool("get_context", ...))
+    archive.call_tool.return_value = MagicMock(content=[MagicMock(text=rag_1)])
     
     pinky.call_tool.return_value = MagicMock(content=[MagicMock(text='{"thought": "Narf! Researching RAPL-Sim."}')])
     brain.call_tool.return_value = MagicMock(content=[MagicMock(text='{"thought": "Local intuition: msr-tools required."}')])
@@ -87,8 +89,8 @@ async def test_relay_interest_buildup():
 
     await hub.process_query(query_1)
     
-    print(f"  Resulting Fuel/Interest: {hub.current_fuel:.2f}")
-    assert hub.current_fuel > 0.6
+    print(f"  Resulting Fuel/Interest: {hub.current_interest:.2f}")
+    assert hub.current_interest > 0.6
     
     # --- TURN 2: THE FOLLOW-UP ---
     query_2 = "[ME] How did we solve the kernel update issue for it?"
@@ -106,17 +108,12 @@ async def test_relay_interest_buildup():
     })
     
     # Configure Mocks for Turn 2
-    # This time RAG might peek at the session-scoped 'clipboard' (Task 3.1)
-    archive.call_tool.side_effect = [
-        MagicMock(content=[MagicMock(text=triage_2)]), # Triage
-        MagicMock(content=[MagicMock(text='{"text": "Kernel update required linux-modules-extra.", "sources": []}')]) # RAG
-    ]
-    
-    # On Turn 2, if Interest > Threshold, it should trigger 'create_followup_file' or 'scribble'
-    # For now, let's verify if 'scribble_note' or similar was considered
+    residents["lab"].call_tool.return_value = MagicMock(content=[MagicMock(text=triage_2)])
+    archive.call_tool.return_value = MagicMock(content=[MagicMock(text='{"text": "Kernel update required linux-modules-extra.", "sources": []}')])
     
     await hub.process_query(query_2)
-    print(f"  Interest loop sustained. Fuel: {hub.current_fuel:.2f}")
+    print(f"  Interest loop sustained. Fuel: {hub.current_interest:.2f}")
+    assert hub.current_interest > 0.7
     
     # --- TURN 3: THE LEDGER ---
     # In a real scenario, the mice might call 'write_to_whiteboard' automatically
