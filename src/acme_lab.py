@@ -189,6 +189,7 @@ class AcmeLab:
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         self._background_tasks = set() # [FEAT-339] Lifecycle Hardening
+        self._ignition_in_progress = False # [Task 8.1] Dedicated Ignition Mutex
         self.current_processing_task = None
         self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
         self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
@@ -228,20 +229,24 @@ class AcmeLab:
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
     async def broadcast(self, message_dict):
         """[FEAT-221] Safe broadcast with dead-socket pruning, schema enforcement, and server-side logging."""
-        if self.shutdown_event.is_set() or not self.connected_clients:
-            return
-
-        # [FIX] Schema Enforcement: Ensure type, brain, and brain_source exist
+        # [Task 8.4] Forensic Integrity: Record to ledger BEFORE client check
+        # This ensures we capture 100% of the reasoning even if UI is closed.
         m_type = message_dict.get("type", "chat")
         m_content = message_dict.get("brain") or message_dict.get("message")
-
         if not m_content:
-            if m_type == "status":
-                # [FEAT-221.3] Silence automated state changes to reduce foyer noise
-                return
-            else:
-                m_content = "EMPTY_CONTENT"                
+            if m_type == "status": return
+            m_content = "EMPTY_CONTENT"
         m_source = message_dict.get("brain_source", "System")
+
+        try:
+            from infra.forensic_ledger import ledger
+            if m_type in ["chat", "crosstalk"]:
+                ledger.record_thought(m_source, m_content, role=m_type.upper())
+        except Exception as e:
+            logging.error(f"[LEDGER] Failed to record thought trace: {e}")
+
+        if self.shutdown_event.is_set() or not self.connected_clients:
+            return
         
         # Back-fill dictionary for clients
         message_dict["type"] = m_type
@@ -256,14 +261,6 @@ class AcmeLab:
         # [FEAT-274] Token Traceability: Log the current session generation
         # Added physical client count for audit
         logging.info(f"[BROADCAST] [{self.session_token}] [{m_type.upper()}] ({m_source}): {m_content[:60]}... (Sockets: {len(self.connected_clients)})")
-
-        # [Task 6.1] Intercept and record thoughts for deferred evaluation [BKM-032]
-        if m_type in ["chat", "crosstalk"]:
-            try:
-                from infra.forensic_ledger import ledger
-                ledger.record_thought(m_source, m_content, role=m_type.upper())
-            except Exception as e:
-                logging.error(f"[LEDGER] Failed to record thought trace: {e}")
 
         # [FEAT-227] Session Reset: Wipe history on explicit request
         if message_dict.get("reset_session"):
@@ -535,6 +532,10 @@ class AcmeLab:
 
     async def spark_restoration(self, client_id="system", intent="ACTIVE", skip_lock=False):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
+        if self._ignition_in_progress:
+            logging.info(f"[HUB] Redundant Ignition Ignored ({client_id}). Ignition already in progress.")
+            return
+
         if not skip_lock:
             # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
             if getattr(self, "_spark_active", False) or self.status == "BOOTING":
@@ -542,140 +543,94 @@ class AcmeLab:
             
             async with self._ignition_lock:
                 # Re-check flag inside lock
-                if getattr(self, "_spark_active", False):
+                if getattr(self, "_spark_active", False) or self._ignition_in_progress:
                     return
                 self._spark_active = True
+                self._ignition_in_progress = True
+        else:
+            self._ignition_in_progress = True
         
-        # [FEAT-291] Passive Guard: Don't spark if the intent is strictly PASSIVE (e.g., status check)
-        # unless we are already in a waking state.
-        if intent == "PASSIVE" and self.status == "HIBERNATING":
-            self._spark_active = False # Release if guard blocks
-            return
-
-        # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
-        # [FEAT-265.26] Sovereign Override: NEVER yield if physically hibernating
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=1.0) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        # Physical truth: If hibernating, we must spark, regardless of reason
-                        v_reason = data.get("vitals", {}).get("reason", "")
-                        c_reason = data.get("current_reason", "")
-                        
-                        if data.get("mode") == "HIBERNATING":
-                            logging.info("[HUB] Sovereign Override: Attendant is HIBERNATING. Reclaiming ignition authority.")
-                        elif v_reason in ["SAFE_PILOT", "MANUAL_IGNITION", "RECOVERY", "FOYER_RECOVERY"] or v_reason.startswith("RESTORE_") or c_reason.startswith("RESTORE_"):
-                            logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session (Current: {v_reason or c_reason}).")
-                            self._spark_active = False # Release lock if yielding
-                            return
-        except Exception:
-            pass
+            # [FEAT-291] Passive Guard: Don't spark if the intent is strictly PASSIVE
+            if intent == "PASSIVE" and self.status == "HIBERNATING":
+                return
 
-        self.status = "WAKING"
-        self.engine_ready.clear() # [FIX] Reset state machine early
-        self.last_activity = time.time()
-        
-        # [FEAT-317.5] Instant Feedback: Tell the user we are sparking
-        await self.broadcast({'type': 'crosstalk', 'brain': f'⚡ [IGNITION] Restoration sequence initiated ({client_id}).', 'brain_source': 'System'})
-        
-        # [FEAT-294] Forensic Ignition: Log the specific source and intent of the wake event
-        msg = f"Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}"
-        logging.warning(f"[HUB] {msg}")
-        self.trigger_pager(msg, severity="info", source="Hub")
-        
-        # [FEAT-265.14] Sovereign Sync: We yield to the Attendant's vLLM path only.
-        # Removed the parallel check_brain_health call to prevent local Ollama priming.
-
-        # [FEAT-265.21] Key Integrity: Refresh style key immediately before spark
-        # to prevent 401 Unauthorized due to file edits during session
-        current_style_key = get_style_key()
-        
-        async def _run_ignition(cid):
-            await asyncio.sleep(5) # [FIX] Settle window for Attendant watchdog
+            # [FEAT-282.5] Authority Handover: Only yield if Attendant is ALREADY igniting
             try:
                 async with aiohttp.ClientSession() as session:
-                    key = current_style_key
-                    headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
-                    target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
-                    
-                    async with session.post("http://127.0.0.1:9999/start", 
-                                     headers=headers, 
-                                     json={
-                                         "engine": target_engine, 
-                                         "model": "MEDIUM", 
-                                         "engine_only": True,
-                                         "op_mode": "SERVICE_UNATTENDED",
-                                         "reason": f"RESTORE_{cid.upper()}"
-                                     }) as r:
+                    async with session.get("http://127.0.0.1:9999/status", headers={'X-Lab-Key': get_style_key()}, timeout=1.0) as r:
                         if r.status == 200:
-                            logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
+                            data = await r.json()
+                            if data.get("mode") == "HIBERNATING":
+                                logging.info("[HUB] Sovereign Override: Attendant is HIBERNATING. Reclaiming ignition authority.")
+                            elif data.get("current_reason", "").startswith("RESTORE_"):
+                                logging.info(f"[HUB] Yielding restoration trigger ({client_id}) to active Attendant session.")
+                                return
+            except Exception:
+                pass
 
-                            # [FEAT-342] Safe-Anchor Window: Wait for silicon to stabilize
-                            await asyncio.sleep(3.0) 
+            self.status = "WAKING"
+            self.engine_ready.clear() # [FIX] Reset state machine early
+            self.last_activity = time.time()
+            
+            # [FEAT-317.5] Instant Feedback
+            await self.broadcast({'type': 'crosstalk', 'brain': f'⚡ [IGNITION] Restoration sequence initiated ({client_id}).', 'brain_source': 'System'})
+            
+            logging.warning(f"[HUB] Ignition Sequence Initiated. Source: {client_id} | Intent: {intent}")
+            
+            # Refresh style key to prevent 401s
+            current_style_key = get_style_key()
+            
+            async def _run_ignition(cid):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        key = current_style_key
+                        headers = {'X-Lab-Key': key, 'Content-Type': 'application/json'}
+                        target_engine = self.mode if self.mode in ["VLLM", "OLLAMA"] else "VLLM"
+                        
+                        async with session.post("http://127.0.0.1:9999/start", 
+                                         headers=headers, 
+                                         json={
+                                             "engine": target_engine, 
+                                             "model": "MEDIUM", 
+                                             "engine_only": True,
+                                             "op_mode": "SERVICE_UNATTENDED",
+                                             "reason": f"RESTORE_{cid.upper()}"
+                                         }) as r:
+                            if r.status == 200:
+                                logging.info("[HUB] Spark Success. Yielding to Attendant for readiness...")
+                                await asyncio.sleep(3.0) 
 
-                            # Yield to Authority: Wait for Attendant to confirm silicon is OPERATIONAL
-                            try:
                                 # [FEAT-363] Event Polling & Timeout Hardening (300s)
                                 seen_events = set()
                                 wait_start = time.time()
                                 while time.time() - wait_start < 300:
-                                    # 1. Poll Attendant's heartbeat for event ledger
                                     try:
                                         async with session.get(f"http://127.0.0.1:9999/heartbeat?key={key}", timeout=1.0) as h_req:
                                             if h_req.status == 200:
                                                 h_data = await h_req.json()
-                                                vitals = h_data
-                                                
-                                                ledger = vitals.get("event_ledger", [])
-                                                for ev in ledger:
-                                                    ev_id = f"{ev.get('timestamp')}_{ev.get('message')}"
-                                                    if ev_id not in seen_events:
-                                                        seen_events.add(ev_id)
-                                                        await self.broadcast({
-                                                            "type": "crosstalk",
-                                                            "brain": f"[SYSTEM] {ev.get('message')}",
-                                                            "brain_source": "System"
-                                                        })
-                                                
-                                                # [FIX] Warming Deadlock: Recognize SERVICE_UNATTENDED early
-                                                is_vocal = vitals.get("operational")
-                                                is_unattended = self.mode == "SERVICE_UNATTENDED" and vitals.get("engine_up")
-                                                
-                                                if is_vocal or is_unattended:
-                                                    logging.info(f"[HUB] Ignition Success (Vocal: {is_vocal}, Unattended: {is_unattended}). Restoring residents...")
-                                                    self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
-                                                    self._track_task(self._resident_lifecycle_task())
+                                                if h_data.get("operational") or (self.mode == "SERVICE_UNATTENDED" and h_data.get("engine_up")):
+                                                    logging.info(f"[HUB] Ignition Success. Restoring residents...")
+                                                    await self._resident_lifecycle_task()
                                                     return
-                                    except Exception:
-                                        pass
-
-                                    # 2. Check if OPERATIONAL via short-timeout wait_ready
-                                    try:
-                                        async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=1&key={key}", timeout=2.0) as ready_req:
-                                            if ready_req.status == 200:
-                                                logging.info("[HUB] Attendant confirmed OPERATIONAL. Restoring residents...")
-                                                self.trigger_pager(f"Restoration SUCCESS: {cid}", severity="info", source="Hub")
-                                                self._track_task(self._resident_lifecycle_task())
-                                                return
-                                    except Exception:
-                                        pass
-
+                                    except Exception: pass
                                     await asyncio.sleep(2.0)
 
-                                logging.error("[HUB] wait_ready timed out after 300s.")
+                                logging.error("[HUB] wait_ready timed out.")
                                 self.status = "ERROR"
-                            except Exception as e:
-                                logging.error(f"[HUB] Wait-Ready request failed: {e}")
-                                self.status = "ERROR"
+                except Exception as e:
+                    logging.error(f"[HUB] Spark reload failed: {e}")
+                    self.status = "ERROR"
+                finally:
+                    self._ignition_in_progress = False
+                    self._spark_active = False
 
-            except Exception as e:
-                logging.error(f"[HUB] Spark reload failed: {e}")
-                self.status = "ERROR"
-            finally:
-                self._spark_active = False
-
-        self._track_task(_run_ignition(client_id))
+            # We use _track_task to run the actual REST call in background
+            self._track_task(_run_ignition(client_id))
+        except Exception:
+            self._ignition_in_progress = False
+            self._spark_active = False
+            raise
 
     async def reflex_loop(self):
         """Background maintenance and status updates grounded in silicon truth."""
@@ -1256,6 +1211,9 @@ class AcmeLab:
                 logging.error(f"[HUB] Warm Wake Larynx Check FAILED: {e}")
                 return False
 
+        # [Task 8.6] Larynx Jitter Guard: Wait for physical socket stabilization
+        await asyncio.sleep(2.0)
+        
         # 3. Finalize State
         self.status = "OPERATIONAL"
         self.engine_ready.set()
@@ -1777,68 +1735,32 @@ class AcmeLab:
 
         # [FEAT-259.2] Wake-on-Intent: Handle queries during hibernation or error
         if (self.status in ["HIBERNATING", "LOBBY", "INIT", "ERROR"] or not engine_vocal) and query.startswith("[ME]"):
-            # [Task 7.3] Harden Spark Restoration: Queue queries arriving during WAKING state
-            if self._wake_task and not self._wake_task.done():
-                logging.warning(f"[HUB] Ignition in progress. Queuing query: {query[:30]}...")
-                self._neural_queue.put_nowait(query)
-                return "" # [FIX] Exit immediately, the drainer handles release
-            else:
-                # [FEAT-265.47] Task Sovereignty: Prevent multiple concurrent wake tasks
-                logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Triggering Sovereign ignition.")
-                
-                # [FIX] Atomic Ignition Guard: Don't queue if already sparking
-                self._neural_queue.put_nowait(query)
+            logging.warning(f"[HUB] Query '{query[:30]}' arrived while engine is passive. Queuing for restoration.")
+            
+            # 1. Queue the query for the drainer
+            self._neural_queue.put_nowait(query)
+            
+            # 2. Trigger Spark if not already active
+            if not self._ignition_in_progress:
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
-                return "" # Exit immediately, the drainer will pick this up
-                
-                async def _wait_and_signal():
-                    try:
-                        expected_key = get_style_key()
-                        async with aiohttp.ClientSession() as session:
-                            # Wait for Attendant to signal OPERATIONAL
-                            async with session.get(f"http://127.0.0.1:9999/wait_ready?timeout=180&key={expected_key}") as ready_req:
-                                if ready_req.status == 200:
-                                    # [FEAT-342] Unified Resumption Sequence
-                                    # Centralized wait logic is now inside this call
-                                    await self._synchronize_and_probe("WAKE_INTENT")
-                                    return
-                                else:
-                                    res = await ready_req.json()
-                                    logging.error(f"[HUB] Attendant readiness failure: {res.get('status')}")
-                                    self.status = "ERROR"
-                    except Exception as e:
-                        logging.error(f"[HUB] Wake sequence failed: {e}")
-                        self._spark_active = False # Ensure lock is released on error
-                
-                self._wake_task = self._track_task(_wait_and_signal())
-
-            # Notify user and wait for readiness event (Non-blocking)
+            
+            # 3. Broadcast acknowledgment
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
             
-            # [Task 19.2.1] Cached Lobby Relay: If Brain is online, bypass local boot and get an immediate response!
+            # [Task 19.2.1] Cached Lobby Relay: Immediate Sovereign Brain Response
             if self.brain_online and "brain" in self.residents:
-                logging.info(f"[HUB] Fast-Tracking Query '{query[:30]}' to Sovereign Brain while local engine boots.")
+                logging.info(f"[HUB] Fast-Tracking Query '{query[:30]}' to Sovereign Brain.")
                 try:
                     b_res = await self.residents["brain"].call_tool(
                         "think", 
-                        {"query": f"{query}\n[SYSTEM: You are answering a user while the local nodes are asleep. Be concise and authoritative.]"}
+                        {"query": f"{query}\n[SYSTEM: You are answering a user while local nodes boot. Be concise.]"}
                     )
-                    brain_text = ""
-                    if hasattr(b_res, 'content') and b_res.content:
-                        brain_text = str(b_res.content[0].text)
-                    else:
-                        brain_text = str(b_res)
-                        
+                    brain_text = b_res.content[0].text if hasattr(b_res, 'content') else str(b_res)
                     if brain_text and brain_text != "None":
-                        logging.info(f"[HUB] Fast-Track Success: Received {len(brain_text)} chars from Brain.")
                         await self.broadcast({"type": "chat", "brain": brain_text, "brain_source": "Brain (Result)"})
-                        # Allow Pinky to ALSO speak (Handshake)
-                except Exception as e:
-                    logging.warning(f"[HUB] Fast-Track failed: {e}")
+                except Exception: pass
             
-            # [FEAT-366] Ignition Bypass: Allow Persona presence while engine warms
-            logging.info("[HUB] Ignition Bypass: Allowing Hub delegation for immediate persona response.")
-            # We do NOT return here, but we MUST ensure heavy inference waits later.
+            return "" # Exit immediately, the drainer handles release post-sync
 
         # 4. Hub Delegation [FEAT-145]
         if self.status == "ERROR":
