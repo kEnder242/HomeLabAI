@@ -77,6 +77,32 @@ mcp = node.mcp
 
 
 @mcp.tool()
+async def create_followup_file(topic_filename: str, context: str) -> str:
+    """
+    [Task 3.4] The Collaborative Ledger: Instantiates a physical build-up file in whiteboard.
+    Ensures the filename ends in .md and populates initial context.
+    """
+    if not topic_filename.endswith(".md"):
+        topic_filename += ".md"
+    
+    path = os.path.join(WHITEBOARD_DIR, topic_filename)
+    
+    # [Task 3.5] Append-only by default: If file exists, we append context
+    mode = "a" if os.path.exists(path) else "w"
+    try:
+        with open(path, mode) as f:
+            if mode == "w":
+                f.write(f"# {topic_filename.replace('.md', '').upper()} RESEARCH LEDGER\n")
+                f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+            f.write(f"## Context Entry ({datetime.datetime.now().strftime('%H:%M')})\n")
+            f.write(f"{context}\n\n---\n")
+        
+        return f"✅ Follow-up ledger created/updated: whiteboard/{topic_filename}"
+    except Exception as e:
+        return f"❌ Failed to create ledger: {e}"
+
+
+@mcp.tool()
 async def list_cabinet() -> str:
     """The Filing Cabinet: Lists all openable technical artifacts (JSON and HTML)."""
     try:

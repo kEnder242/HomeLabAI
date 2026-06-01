@@ -49,7 +49,7 @@ class CognitiveHub:
         self.round_table_memory = deque(maxlen=5) # [FEAT-356] FOIL-AWARE MEMORY
         self.consecutive_parse_failures = 0 # [FEAT-339] Triage stability tracker
         self.lora_enabled = True # [FEAT-339] Global LoRA toggle
-        self.current_fuel = 0.0
+        self.current_interest = 0.0 # [Task 2.1] Interest Scorer (formerly current_fuel)
         self.current_topic = "Casual"
         self.resonant_history = []
         self.triage_failures = 0 # [FEAT-270] Track consecutive failures
@@ -188,7 +188,7 @@ class CognitiveHub:
             return text
             
         # [FEAT-355] Open Debate: Broadcast thoughts to inter-node context
-        if "<thought>" in str(text) and self.current_fuel > 0.6:
+        if "<thought>" in str(text) and self.current_interest > 0.6:
             # Map labels (e.g. "Deep Thought") to buffer keys (e.g. "thought")
             label_lower = source.lower()
             thought_source = "pinky" if "pinky" in label_lower else "thought"
@@ -224,10 +224,10 @@ class CognitiveHub:
             clean_text = clean_text.replace(action_match.group(0), "").strip()
             if action == "UPLINK":
                 await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Action Tag: UPLINK via {source}", "brain_source": "System"})
-                self.current_fuel = 1.0
+                self.current_interest = 1.0
             elif action == "THINK MORE":
                 await self.broadcast({"type": "crosstalk", "brain": f"[HUB] Action Tag: THINK MORE via {source}", "brain_source": "System"})
-                self.current_fuel = min(1.0, self.current_fuel + 0.3)
+                self.current_interest = min(1.0, self.current_interest + 0.3)
             
             # [FEAT-265.4] Clinical Thoughts: Strip formatting from internal stances
             for tag in ["TECHNICAL_INTUITION", "SYSTEM_DESIGN_STANCE", "HISTORICAL_TRUTH"]:
@@ -284,14 +284,14 @@ class CognitiveHub:
 
                     # Handle Known Tools
                     if tool == "ask_brain":
-                        self.current_fuel = 1.0
+                        self.current_interest = 1.0
                         if not raw_speech:
                             raw_speech = "Narf! I'll ask Deep Thought for you."
 
                     if tool in ["think"]:
                         # If Pinky or The Brain calls think on themselves, it's a VETO
                         # [FEAT-295] Tooling Parity: Unifying think/think as demotion signals
-                        self.current_fuel = 0.0
+                        self.current_interest = 0.0
                         if not raw_speech:
                             raw_speech = params.get("task") or params.get("query") or params.get("context") or "Narf! Thinking fast."
 
@@ -315,7 +315,7 @@ class CognitiveHub:
                         return True
 
                     # Forward utility tools
-                    known_hub_tools = ["bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open"]
+                    known_hub_tools = ["bounce_node", "scribble_note", "trigger_morning_briefing", "build_cv_summary", "access_personal_history", "select_file", "notify_file_open", "create_followup_file"]
                     if tool in known_hub_tools:
                         # [FEAT-072.1] Handle Morning Briefing Signal
                         if tool == "trigger_morning_briefing" and hasattr(self, 'trigger_briefing_cb') and self.trigger_briefing_cb:
@@ -323,7 +323,7 @@ class CognitiveHub:
                             asyncio.create_task(self.trigger_briefing_cb())
                             return True
 
-                        if tool in ["build_cv_summary", "access_personal_history"] and "archive" in self.residents:
+                        if tool in ["build_cv_summary", "access_personal_history", "create_followup_file", "select_file", "notify_file_open", "scribble_note"] and "archive" in self.residents:
                             res = await self.residents["archive"].call_tool(tool, params)
                             return await self.execute_dispatch(res.content[0].text, f"Archive ({tool})", shutdown_event=shutdown_event, retry_count=retry_count+1, final=True)
 
@@ -343,7 +343,7 @@ class CognitiveHub:
             "channel": "chat",
             "final": final,
             "topic": self.current_topic,
-            "fuel": self.current_fuel
+            "fuel": self.current_interest
         })
         return text
 
@@ -365,7 +365,7 @@ class CognitiveHub:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, fuel_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
         if node_id not in self.residents:
             return ""
@@ -455,7 +455,7 @@ class CognitiveHub:
             previous_debate = "\n".join(self.round_table_memory)
             query = f"[PREVIOUS_DEBATE]:\n{previous_debate}\n\n[CURRENT_QUERY]: {query}"
             
-        self.current_fuel = 0.0
+        self.current_interest = 0.0
         self.current_topic = "Casual"
         intent = None # [Task 19.4.1] Initialize as None to prevent accidental override
         self.trigger_briefing_cb = trigger_briefing_callback
@@ -551,16 +551,25 @@ class CognitiveHub:
                     # [FEAT-244] Speaker Masking Scalar
                     addressed_to = triage_data_update.get("addressed_to", "MICE").upper()
 
-                    # Multiplicative Fuel Function
+        # Multiplicative Interest Function
                     raw_imp = float(triage_data_update.get("importance", 0.5))
                     raw_cas = float(triage_data_update.get("casual", 0.5))
                     raw_int = float(triage_data_update.get("intrigue", 0.5))
                     
-                    # [Task 19.3.1] Removed hardcoded fuel boost. Trust the LLM's assessment.
-                    self.current_fuel = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0)
-                    self.current_fuel = min(1.0, self.current_fuel) # Clamp to 1.0
+                    # [Task 2.1] Interest Scorer (Recursive Scalar)
+                    # We start with raw assessment
+                    self.current_interest = (((1.0 - raw_cas) * (raw_int + raw_imp)) / 2.0)
                     
-                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> FUEL={self.current_fuel:.2f}")
+                    # Recursive Overlap: Boost interest if topic resonates with history
+                    for turn in self.round_table_memory:
+                        if triage_data_update.get("hints", "").lower() in turn.lower():
+                            logging.info(f"[HUB] Interest Boost: Contextual resonance with '{triage_data_update.get('hints')}'")
+                            self.current_interest = min(1.0, self.current_interest + 0.2)
+                            break
+
+                    self.current_interest = min(1.0, self.current_interest) # Clamp to 1.0
+                    
+                    logging.info(f"[HUB] Triage: Importance={raw_imp} Casual={raw_cas} Intrigue={raw_int} -> INTEREST={self.current_interest:.2f}")
 
                     # [FEAT-246] Unified Vibe Schema
 
@@ -570,10 +579,10 @@ class CognitiveHub:
                     # [REVISION-17.2] Direct Address Force
                     if addressed_to in ["BRAIN", "THOUGHT", "DEEP THOUGHT"]:
                         logging.info(f"[HUB] Direct Address: {addressed_to}. Forcing Sovereign promotion.")
-                        self.current_fuel = max(0.65, self.current_fuel)
-                    elif addressed_to == "PINKY" and self.current_fuel > 0.2:
+                        self.current_interest = max(0.65, self.current_interest)
+                    elif addressed_to == "PINKY" and self.current_interest > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
-                        self.current_fuel = min(0.15, self.current_fuel)
+                        self.current_interest = min(0.15, self.current_interest)
 
                     if not mute_all:
                         await self.broadcast({"type": "status", "state": "triage_complete", "message": "Routing determined.", "brain_source": "System"})
@@ -607,9 +616,9 @@ class CognitiveHub:
                             handshake = "<thought> The heavy engine is still warming up. I will provide a status handshake. </thought> Narf! I am hearing you, but I am still warming up my archives. Just a moment!"
                             await self.broadcast({"type": "chat", "brain": handshake, "brain_source": "Pinky (Handshake)"})
                         
-                        self.current_fuel = 0.2
+                        self.current_interest = 0.2
 
-        fuel_start = self.current_fuel
+        interest_start = self.current_interest
         situational_guidance = triage_data_update.get("hints", "")
         selected_expert = triage_data_update.get("domain", "standard")
 
@@ -650,6 +659,20 @@ class CognitiveHub:
         if historical_context:
             query = f"[HISTORICAL_TRUTH]: {historical_context}\n\n[USER_QUERY]: {original_raw_query}"
 
+        # [Task 3.4] Workspace-as-Cache: Instantiate physical ledger on high-interest follow-up
+        if intent == "FOLLOW_UP" and self.current_interest > 0.7:
+            if "archive" in self.residents and triage_data_update.get("hints"):
+                topic_hint = triage_data_update.get("hints").lower().replace(" ", "_")
+                logging.info(f"[HUB] Interest High. Instantiating physical ledger: {topic_hint}")
+                # Trigger background creation to not block waterfall spark
+                ledger_ctx = f"Auto-generated for deep dive into: {topic_hint}\n[RAG_DISCOVERY]: {historical_context[:500]}..."
+                asyncio.create_task(self.residents["archive"].call_tool("create_followup_file", {
+                    "topic_filename": topic_hint,
+                    "context": ledger_ctx
+                }))
+                # Notify UI
+                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": f"[WORKSPACE] Building collaborative ledger for {topic_hint}...", "brain_source": "System"}))
+
         # 4. Waterfall Local Inference (Cascading Spark)
         pinky_text = ""
         shadow_text = ""
@@ -657,7 +680,7 @@ class CognitiveHub:
         
         async def run_pinky():
             nonlocal pinky_text
-            p_context = f"ROUTE: PINKY -> BRAIN\nFUEL: {fuel_start:.2f} | TOPIC: {self.current_topic}\n"
+            p_context = f"ROUTE: PINKY -> BRAIN\nINTEREST: {interest_start:.2f} | TOPIC: {self.current_topic}\n"
             pinky_text = await self._process_node_stream(
                 "pinky", query, p_context, "Pinky (Triage)",
                 tools=["ask_brain", "think", "vram_vibe_check", "get_lab_health"],
@@ -673,10 +696,10 @@ class CognitiveHub:
             threshold = 0.0 if not thought_online else 0.2
             role = "TECHNICAL_REASONER" if not thought_online else "TECHNICAL_INTUITION"
             
-            if fuel_start > threshold:
+            if interest_start > threshold:
                 # [FEAT-233.8] Overhearing Pinky: Context Warming
                 overheard = self.session_buffers.get("pinky", "")
-                s_context = f"FUEL: {fuel_start:.2f} | ROLE: {role}\n[OVERHEARD_GATEWAY]: {overheard}"
+                s_context = f"INTEREST: {interest_start:.2f} | ROLE: {role}\n[OVERHEARD_GATEWAY]: {overheard}"
                 shadow_text = await self._process_node_stream(
                     "brain", query, s_context, "The Brain",
                     tools=["ask_brain", "think"],
@@ -692,21 +715,21 @@ class CognitiveHub:
         
         # 1. Brain Warming
         while not pinky_task.done():
-            # If Pinky has started speaking, or if fuel is already high enough
-            if len(self.session_buffers.get("pinky", "").split()) >= 3 or fuel_start > 0.4:
+            # If Pinky has started speaking, or if interest is already high enough
+            if len(self.session_buffers.get("pinky", "").split()) >= 3 or interest_start > 0.4:
                 logging.info("[HUB] Waterfall: Overheard Pinky. Cascading to Brain...")
                 brain_leg_task = asyncio.create_task(run_brain_leg())
                 break
             await asyncio.sleep(0.1)
 
         # [Task 1.3] Deep Thought Leg
-        # Wait for either local node to finish OR for fuel spike
+        # Wait for either local node to finish OR for interest spike
         while True:
             if pinky_task.done() and (not brain_leg_task or brain_leg_task.done()):
                 break
             
-            if self.current_fuel > 0.6:
-                logging.info(f"[HUB] Waterfall: Dynamic Fuel ({self.current_fuel:.2f}) triggered Deep Thought early.")
+            if self.current_interest > 0.6:
+                logging.info(f"[HUB] Waterfall: Dynamic Interest ({self.current_interest:.2f}) triggered Deep Thought early.")
                 break
                 
             await asyncio.sleep(0.5)
@@ -715,7 +738,7 @@ class CognitiveHub:
         thought_online = self.get_vram_status()
         can_run_thought = thought_online and "thought" in self.residents
         
-        if (can_run_thought or not thought_online) and self.current_fuel > 0.6 and addressed_to in ["BRAIN", "MICE", "THOUGHT", "DEEP THOUGHT"]:
+        if (can_run_thought or not thought_online) and self.current_interest > 0.6 and addressed_to in ["BRAIN", "MICE", "THOUGHT", "DEEP THOUGHT"]:
             target_node = "thought" if can_run_thought else "brain"
             source_label = "Deep Thought" if can_run_thought else "The Brain (Failover)"
             
@@ -732,7 +755,7 @@ class CognitiveHub:
             b_context += f"[PINKY_HEARING]: {b_overheard_p}\n"
             b_context += f"[BRAIN_INTUITION]: {b_overheard_b}\n"
 
-            verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_fuel > 0.8 else "Provide moderate technical depth."
+            verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_interest > 0.8 else "Provide moderate technical depth."
             
             brain_full = await self._process_node_stream(
                 target_node, query, b_context, source_label,
@@ -754,7 +777,7 @@ class CognitiveHub:
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
             if brain_full:
-                await self.evaluate_grounding("Deep Thought", brain_full, self.current_fuel, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
+                await self.evaluate_grounding("Deep Thought", brain_full, self.current_interest, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
         # [FEAT-356] Ledger Appending
         turn_summary = f"USER: {original_raw_query}\n"
