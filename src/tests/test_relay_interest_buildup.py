@@ -75,8 +75,9 @@ async def test_relay_interest_buildup():
     # Configure Mocks for Turn 1
     residents["lab"].call_tool.return_value = mock_resp(triage_1)
     archive.call_tool.return_value = mock_resp('{"text": "[ACQUISITION Source: 2024_02.json]: RAPL-Sim uses /dev/cpu/0/msr.", "sources": ["2024_02.json"]}')
-    pinky.call_tool.return_value = mock_resp("Narf! I'm looking into the RAPL-Sim files for you.")
-    brain.call_tool.return_value = mock_resp("Local intuition: We solved the energy overflow bug in Epoch 2.")
+    
+    pinky.call_tool.return_value = mock_resp("<thought> The user is asking about RAPL-Sim. I will trigger research mode. </thought> Narf! I'm looking into the RAPL-Sim files for you.")
+    brain.call_tool.return_value = mock_resp("<thought> RAPL requires MSR tools. </thought> Local intuition: We solved the energy overflow bug in Epoch 2.")
     thought.call_tool.return_value = mock_resp("Sovereign analysis: The implementation relies on MSR registers for high-fidelity telemetry.")
 
     await hub.process_query(query_1)
@@ -95,12 +96,17 @@ async def test_relay_interest_buildup():
     # Configure Mocks for Turn 2
     residents["lab"].call_tool.return_value = mock_resp(triage_2)
     archive.call_tool.return_value = mock_resp("✅ Ledger entry created.") # For both RAG and Ledger tool calls
-    pinky.call_tool.return_value = mock_resp("Poit! Deep Thought is waking up to look at the kernel logs.")
-    brain.call_tool.return_value = mock_resp("The Brain: Intuition suggests a missing header in the new kernel headers.")
+    
+    pinky.call_tool.return_value = mock_resp("<thought> Cascading to Deep Thought. </thought> Poit! Deep Thought is waking up to look at the kernel logs.")
+    brain.call_tool.return_value = mock_resp("<thought> Checking kernel headers. </thought> The Brain: Intuition suggests a missing header in the new kernel headers.")
     thought.call_tool.return_value = mock_resp("Deep Thought: We patched the RAPL-Sim driver to use the new MSR-safe kernel symbols introduced in 6.12.")
 
     await hub.process_query(query_2)
     print(f"  Interest loop sustained. Interest: {hub.current_interest:.2f}")
+    
+    # Verify that thought traces were captured
+    print(f"  Captured traces: {list(hub.turn_thought_trace.keys())}")
+    assert "pinky" in hub.turn_thought_trace or "brain" in hub.turn_thought_trace
 
     # --- BKM-032: WORDY OUTPUT AUDIT ---
     print("\n--- [BKM-032] CONVERSATION LEDGER (Wordy Output) ---")

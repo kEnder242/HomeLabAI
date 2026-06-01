@@ -29,6 +29,10 @@ RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
 STYLE_CSS = os.path.join(FIELD_NOTES_DIR, "style.css")
 SEMANTIC_MAP_FILE = os.path.join(DATA_DIR, "semantic_map.json")
 
+# [Task 3.1] The Clipboard: Session-scoped context cache
+SESSION_CLIPBOARD = []
+CLIPBOARD_LIMIT = 10 # Max segments to prevent context blowout
+
 def get_style_key():
     """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
     import hashlib
@@ -81,6 +85,7 @@ async def create_followup_file(topic_filename: str, context: str) -> str:
     """
     [Task 3.4] The Collaborative Ledger: Instantiates a physical build-up file in whiteboard.
     Ensures the filename ends in .md and populates initial context.
+    [Task 3.6] RAG Pointers: Use pointers (e.g. [Source: 2024_02.json]) instead of full text to save headroom.
     """
     if not topic_filename.endswith(".md"):
         topic_filename += ".md"
@@ -100,6 +105,43 @@ async def create_followup_file(topic_filename: str, context: str) -> str:
         return f"✅ Follow-up ledger created/updated: whiteboard/{topic_filename}"
     except Exception as e:
         return f"❌ Failed to create ledger: {e}"
+
+
+@mcp.tool()
+async def scribble_to_clipboard(content: str) -> str:
+    """
+    [Task 3.1] The Clipboard: Scribbles high-value context to the session-scoped cache.
+    Useful for preserving overhearing results turn-over-turn.
+    """
+    global SESSION_CLIPBOARD
+    if content not in SESSION_CLIPBOARD:
+        SESSION_CLIPBOARD.append(content)
+        if len(SESSION_CLIPBOARD) > CLIPBOARD_LIMIT:
+            SESSION_CLIPBOARD.pop(0) # FIFO Eviction
+        return f"✅ Scribbled to clipboard. ({len(SESSION_CLIPBOARD)} segments active)"
+    return "Segment already resident in clipboard."
+
+
+@mcp.tool()
+async def read_clipboard() -> str:
+    """
+    [Task 3.1] The Clipboard: Retrieves the accumulated session context.
+    """
+    if not SESSION_CLIPBOARD:
+        return "Clipboard is empty."
+    
+    combined = "\n---\n".join(SESSION_CLIPBOARD)
+    return f"[SESSION_CLIPBOARD]:\n{combined}"
+
+
+@mcp.tool()
+async def clear_clipboard() -> str:
+    """
+    [Task 3.1] The Clipboard: Purges the session-scoped cache.
+    """
+    global SESSION_CLIPBOARD
+    SESSION_CLIPBOARD = []
+    return "✅ Clipboard cleared."
 
 
 @mcp.tool()
@@ -405,54 +447,122 @@ async def scribble_note(query: str, response: str) -> str:
         return f"Error: {e}"
 
 
+def rrf_fuse(results_list, k=60):
+    """
+    [Task 3.2] Reciprocal Rank Fusion: Merges multiple search result lists.
+    results_list: list of lists of (id, metadata)
+    """
+    scores = {}
+    metadata_map = {}
+    for results in results_list:
+        for rank, (doc_id, meta) in enumerate(results):
+            scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
+            if doc_id not in metadata_map:
+                metadata_map[doc_id] = meta
+    
+    # Sort by fused score
+    sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [(doc_id, metadata_map[doc_id]) for doc_id, _ in sorted_ids]
+
+
+def keyword_search(query, limit=10):
+    """
+    [Task 3.2] Exact-match search for acronyms and specific terms.
+    Scans raw JSON archives.
+    """
+    # Extract candidate acronyms (all caps, 3+ chars)
+    import re
+    acronyms = re.findall(r"\b[A-Z]{3,}\b", query)
+    # Also extract non-stop words
+    terms = [t for t in query.split() if len(t) > 4 and t.upper() not in acronyms]
+    
+    candidates = acronyms + terms
+    if not candidates:
+        return []
+
+    results = []
+    seen_ids = set()
+    
+    # Search in DATA_DIR
+    json_files = glob.glob(os.path.join(DATA_DIR, "*.json"))
+    for f_path in json_files:
+        try:
+            with open(f_path, "r") as f:
+                data = json.load(f)
+                if not isinstance(data, list): continue
+                
+                for entry in data:
+                    text_blob = str(entry).lower()
+                    for c in candidates:
+                        if c.lower() in text_blob:
+                            e_id = entry.get("id") or entry.get("filename") or str(entry.get("date", ""))
+                            if e_id and e_id not in seen_ids:
+                                results.append((e_id, {"source": os.path.basename(f_path), "text": str(entry)}))
+                                seen_ids.add(e_id)
+                                break
+                    if len(results) >= limit: break
+        except Exception:
+            continue
+        if len(results) >= limit: break
+        
+    return results
+
+
 @mcp.tool()
 async def get_context(query: str, n_results: int = 3) -> str:
     """
     [FEAT-117] Multi-Stage Retrieval: Discovery -> Acquisition.
     Stage 1: ChromaDB identifies the metadata anchor.
     Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
+    [Task 3.1] The Clipboard: Integrates session context and expands neighborhoods.
     """
     try:
+        # [Task 3.1] Integrate session clipboard early
+        combined_context = []
+        if SESSION_CLIPBOARD:
+            combined_context.append(f"[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
+
         # [FEAT-117] Hard Year Filtering (Post-Filter)
         import re
         # Support years from 1990 to 2029
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         target_year = year_match.group(1) if year_match else None
         
-        # [FEAT-088] Semantic Fallback: If no year is found, use a broader semantic search
-        # instead of failing or returning a fixed year.
+        # [FEAT-088] Semantic Fallback
         if not target_year:
-            logging.info(f"[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search for: {query[:50]}")
-            # Search across all wisdom chunks
-            results = wisdom.query(
-                query_texts=[query],
-                n_results=n_results
-            )
-            # Process results... (skipping for now, but logical intent is clear)
+            logging.info(f"[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search.")
         
         fetch_limit = n_results * 5 if target_year else n_results
         if target_year:
             logging.info(f"[ARCHIVE] Applying Hard Year Post-Filter: {target_year}")
 
-        # Stage 1: Vector Discovery
-        res = wisdom.query(query_texts=[query], n_results=fetch_limit)
-        docs = res.get("documents", [[]])[0]
-        metas = res.get("metadatas", [[]])[0]
+        # Stage 1: Hybrid Discovery (RRF)
+        vector_results = []
+        res_w = wisdom.query(query_texts=[query], n_results=fetch_limit)
+        for i, doc in enumerate(res_w.get("documents", [[]])[0]):
+            meta = res_w.get("metadatas", [[]])[0][i]
+            vector_results.append((doc[:100], {**meta, "text_anchor": doc}))
 
-        if not docs:
-            res = stream.query(query_texts=[query], n_results=fetch_limit)
-            docs = res.get("documents", [[]])[0]
-            metas = res.get("metadatas", [[]])[0]
+        res_s = stream.query(query_texts=[query], n_results=fetch_limit)
+        for i, doc in enumerate(res_s.get("documents", [[]])[0]):
+            meta = res_s.get("metadatas", [[]])[0][i]
+            vector_results.append((doc[:100], {**meta, "text_anchor": doc}))
+            
+        k_results = keyword_search(query, limit=fetch_limit)
+        
+        # Reciprocal Rank Fusion
+        fused_results = rrf_fuse([vector_results, k_results])
 
-        if not docs:
+        if not fused_results and not SESSION_CLIPBOARD:
             return json.dumps({"text": "No relevant artifacts found in neural archives.", "sources": []})
+        elif not fused_results:
+             return json.dumps({"text": "\n\n".join(combined_context), "sources": []})
 
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
         source_files = []
         
-        # [FEAT-126/127] Yearly Summary Injection & Grounding
-        # [FEAT-368] Neighborhood Search: Peek at surrounding context
+        # [FEAT-126/127] Yearly Summary Injection
         if target_year:
             years_to_peek = [str(int(target_year) - 1), target_year]
             for y in years_to_peek:
@@ -476,46 +586,66 @@ async def get_context(query: str, n_results: int = 3) -> str:
                         pass
 
         matched_count = 0
-        for i, doc in enumerate(docs):
+        expansion_triggered = False
+
+        for doc_id, meta in fused_results:
             if matched_count >= n_results:
                 break
                 
-            meta = metas[i] if i < len(metas) else {}
-            # [FIX] Handle varied metadata keys (date vs timestamp vs source)
             ts = str(meta.get("timestamp") or meta.get("date") or meta.get("source", ""))
+            doc_anchor = meta.get("text_anchor", meta.get("text", ""))
             
-            # [STRICT-YEAR] If we have a target year, strictly reject any mismatch
             if target_year and target_year not in ts:
                 continue
                 
             matched_count += 1
+            target_file = None
             if ts:
-                # Case 1: Full filename provided
                 if ts.endswith(".json"):
                     target_file = ts
-                # Case 2: Date string provided (YYYY-MM-DD)
                 elif len(ts) >= 7:
                     year_month = ts[:7].replace("-", "_")
                     target_file = f"{year_month}.json"
-                else:
-                    target_file = None
 
                 if target_file and os.path.exists(os.path.join(DATA_DIR, target_file)):
-                    # [FEAT-117/306] Bridge to raw JSON truth via explicit anchors
+                    # [FEAT-117/306] Bridge to raw JSON truth
+                    file_path = os.path.join(DATA_DIR, target_file)
+                    with open(file_path, "r") as f:
+                        file_data = json.load(f)
+                    
+                    # Neighborhood Expansion
+                    if not expansion_triggered:
+                        for idx, entry in enumerate(file_data):
+                            if doc_anchor[:50] in str(entry):
+                                neighbors = []
+                                if idx > 0: neighbors.append(file_data[idx-1])
+                                neighbors.append(file_data[idx]) # Self
+                                if idx < len(file_data) - 1: neighbors.append(file_data[idx+1])
+                                
+                                for n in neighbors:
+                                    n_text = f"[NEIGHBORHOOD_EXPANSION Source: {target_file}]: {json.dumps(n)}"
+                                    if n_text not in SESSION_CLIPBOARD:
+                                        SESSION_CLIPBOARD.append(n_text)
+                                
+                                logging.info(f"[ARCHIVE] Neighborhood expansion triggered for {target_file}")
+                                expansion_triggered = True
+                                break
+
                     full_truths.append(
                         f"[ACQUISITION Source: {target_file}]: "
-                        f"Document anchor: {doc[:200]}... "
+                        f"Document anchor: {doc_anchor[:200]}... "
                         f"Use 'read_document(\"{target_file}\")' to see the physical evidence."
                     )
                     if target_file not in source_files:
                         source_files.append(target_file)
                     continue
 
-            full_truths.append(f"[DISCOVERY Anchor: {ts}]: {doc}")
+            full_truths.append(f"[DISCOVERY Anchor: {ts}]: {doc_anchor[:200]}...")
 
-        # [FEAT-120] Return structured JSON for Hub transparency
+        # Combine Clipboard + New Truths
+        final_text = "\n\n".join(combined_context + ["\n---\n".join(full_truths)])
         return json.dumps(
-            {"text": "\n---\n".join(full_truths), "sources": source_files}
+            {"text": final_text, "sources": source_files}
         )
     except Exception as e:
         return json.dumps({"text": f"Search Error: {e}", "sources": []})

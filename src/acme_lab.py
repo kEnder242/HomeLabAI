@@ -38,6 +38,7 @@ ORACLE_CONFIG = os.path.join(LAB_DIR, "config/oracle.json")
 NIGHTLY_DIALOGUE_FILE = os.path.join(
     WORKSPACE_DIR, "field_notes/data/nightly_dialogue.json"
 )
+HISTORY_FILE = os.path.join(WORKSPACE_DIR, "field_notes/data/interaction_history.json")
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
 VRAM_LOCK_FILE = "/tmp/lab_vram.lock"
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
@@ -189,7 +190,7 @@ class AcmeLab:
         self.last_turn_time = 0.0
         self._disconnect_task = None # [FEAT-171] Idle timer task
         self.last_induction_date = None # [FEAT-202] Track daily grounding
-        self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
+        self.message_history = self._load_history() # [Task 3.3] Persistent history
         self._background_tasks = set() # [FEAT-339] Lifecycle Hardening
         self._vram_lock_fd = None # [Task 1.4] Physical VRAM Mutex
         self.current_processing_task = None
@@ -252,6 +253,24 @@ class AcmeLab:
             except Exception as e:
                 logging.error(f"[SILICON] Failed to release VRAM Mutex: {e}")
 
+    def _load_history(self):
+        """[Task 3.3] Selective Persistence: Loads message history from disk."""
+        try:
+            if os.path.exists(HISTORY_FILE):
+                with open(HISTORY_FILE, "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            logging.error(f"[HUB] Failed to load history: {e}")
+        return []
+
+    def _save_history(self):
+        """[Task 3.3] Selective Persistence: Saves current message history to disk."""
+        try:
+            from infra.atomic_io import atomic_write_json
+            atomic_write_json(HISTORY_FILE, self.message_history)
+        except Exception as e:
+            logging.error(f"[HUB] Failed to save history: {e}")
+
     async def broadcast(self, message_dict):
         """[FEAT-221] Safe broadcast with dead-socket pruning, schema enforcement, and server-side logging."""
         # [Task 8.4] Forensic Integrity: Record to ledger BEFORE client check
@@ -291,7 +310,9 @@ class AcmeLab:
         if message_dict.get("reset_session"):
             logging.info("[HUB] Session Reset triggered. Wiping message history.")
             self.message_history = []
-
+            if os.path.exists(HISTORY_FILE):
+                os.remove(HISTORY_FILE)
+            return True
         # [FEAT-229] Ascension Rule: Only save final messages to history for persistence
         # [FIX] Historize status/crosstalk so they can be deduped on replay
         if message_dict.get("final", True) or m_type in ["status", "crosstalk"]:
@@ -826,8 +847,14 @@ class AcmeLab:
                         logging.info(f"[HUB] Hibernation (H{level}) signal accepted. Reverting status.")
                         self.status = "HIBERNATING"
                         self.engine_ready.clear()
-                        # [FEAT-337] Resident Persistence: We NO LONGER clear residents or close the stack here.
-                        # Subprocesses remain alive and passive in RAM.
+                        
+                        # [Task 3.3] Selective Persistence: Save history & discard volatile context
+                        self._save_history()
+                        if level >= 2 and "archive" in self.residents:
+                            logging.info("[HUB] H2 Rule: Discarding RAG Clipboard.")
+                            asyncio.create_task(self.residents["archive"].call_tool("clear_clipboard", {}))
+                            
+                        # [FEAT-337] Resident Persistence: Subprocesses remain alive and passive in RAM.
         except Exception as e:
             logging.error(f"[HUB] Hibernation request error: {e}")
 
