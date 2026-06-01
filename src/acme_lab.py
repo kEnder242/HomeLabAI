@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ NIGHTLY_DIALOGUE_FILE = os.path.join(
     WORKSPACE_DIR, "field_notes/data/nightly_dialogue.json"
 )
 ROUND_TABLE_LOCK = os.path.join(LAB_DIR, "round_table.lock")
+VRAM_LOCK_FILE = "/tmp/lab_vram.lock"
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 MAINTENANCE_LOCK = os.path.join(WORKSPACE_DIR, "field_notes/data/maintenance.lock")
 STYLE_CSS = os.path.join(WORKSPACE_DIR, "field_notes/style.css")
@@ -53,14 +55,14 @@ def get_style_key():
         return hashlib.md5(f.read()).hexdigest()[:8]
 
 
-def resolve_brain_url():
-    """Resolves the Brain's heartbeat URL from infrastructure config."""
+def resolve_thought_url():
+    """Resolves Deep Thought's heartbeat URL from infrastructure config."""
     try:
         if os.path.exists(INFRA_CONFIG):
             with open(INFRA_CONFIG, "r") as f:
                 infra = json.load(f)
             primary = (
-                infra.get("nodes", {}).get("brain", {}).get("primary", "localhost")
+                infra.get("nodes", {}).get("thought", {}).get("primary", "localhost")
             )
             host_cfg = infra.get("hosts", {}).get(primary, {})
             ip_hint = host_cfg.get("ip_hint", "127.0.0.1")
@@ -166,7 +168,7 @@ class AcmeLab:
         self.last_typing_event = 0.0  # [FEAT-052] Typing Awareness
         self.reflex_ttl = 1.0
         self.banter_backoff = 0
-        self.brain_online = False
+        self.thought_online = False
         self._last_brain_prime = 0  # [FEAT-085] Keep-alive tracking
         self._priming_in_progress = False # [FEAT-286.2] Strict Latching
         self.mic_active = False  # [FEAT-025] Amygdala Switch State
@@ -175,7 +177,7 @@ class AcmeLab:
             self.residents, 
             self.broadcast, 
             self.sensory, 
-            get_vram_status=lambda force=False: self.brain_online,
+            get_vram_status=lambda force=False: self.thought_online,
             trigger_morning_briefing=self.trigger_morning_briefing,
             monitor_task_with_tics=self.monitor_task_with_tics,
             last_prime_callback=self._update_prime_timer,
@@ -189,7 +191,7 @@ class AcmeLab:
         self.last_induction_date = None # [FEAT-202] Track daily grounding
         self.message_history = [] # [FEAT-225] Short-Term Memory Buffer
         self._background_tasks = set() # [FEAT-339] Lifecycle Hardening
-        self._ignition_in_progress = False # [Task 8.1] Dedicated Ignition Mutex
+        self._vram_lock_fd = None # [Task 1.4] Physical VRAM Mutex
         self.current_processing_task = None
         self.engine_ready = asyncio.Event() # [FEAT-265] Waking State synchronization
         self._neural_queue = asyncio.Queue() # [FEAT-283] Neural Buffer: Queue queries during WAKING
@@ -227,6 +229,29 @@ class AcmeLab:
             # Fallback: Overwrite sys.argv
             sys.argv[0] = title
         logging.info(f"[BOOT] Fingerprint established: {get_fingerprint(self.role)}")
+
+    def _acquire_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Acquire file lock on /tmp/lab_vram.lock."""
+        try:
+            if self._vram_lock_fd is None:
+                self._vram_lock_fd = open(VRAM_LOCK_FILE, 'w')
+            
+            fcntl.flock(self._vram_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logging.info(f"[SILICON] VRAM Mutex acquired: {VRAM_LOCK_FILE}")
+            return True
+        except (IOError, OSError):
+            logging.debug("[SILICON] VRAM Mutex busy.")
+            return False
+
+    def _release_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Release file lock."""
+        if self._vram_lock_fd is not None:
+            try:
+                fcntl.flock(self._vram_lock_fd, fcntl.LOCK_UN)
+                logging.info("[SILICON] VRAM Mutex released.")
+            except Exception as e:
+                logging.error(f"[SILICON] Failed to release VRAM Mutex: {e}")
+
     async def broadcast(self, message_dict):
         """[FEAT-221] Safe broadcast with dead-socket pruning, schema enforcement, and server-side logging."""
         # [Task 8.4] Forensic Integrity: Record to ledger BEFORE client check
@@ -382,7 +407,7 @@ class AcmeLab:
                         logging.debug(f"[HUB] Dynamic Tic Generation failed: {e}")
 
                 if not tic_msg:
-                    if not self.brain_online:
+                    if not self.thought_online:
                         tic_msg = "Sovereign unreachable... attempting failover."
                     elif tic_count == 0:
                         tic_msg = "Resonating weights... waking the Architect."
@@ -395,7 +420,7 @@ class AcmeLab:
                 except asyncio.TimeoutError:
                     if self.connected_clients and not self.is_user_typing():
                         await self.broadcast(
-                            {"type": "crosstalk", "brain": tic_msg, "brain_source": "Shadow"}
+                            {"type": "crosstalk", "brain": tic_msg, "brain_source": "The Brain"}
                         )
                     tic_count += 1
                     # Increase delay exponentially
@@ -408,7 +433,7 @@ class AcmeLab:
                     return task.result()
         return task.result()
 
-    async def check_brain_health(self, force=False):
+    async def check_thought_health(self, force=False):
         """[FEAT-265.31] State-Aware Probe: Suppress heartbeats only during raw silicon boot."""
         # [FEAT-344] Sovereign Hardening: Allow probes during WAKING to ensure relay is ready.
         if self.status in ["BOOTING", "INIT"]:
@@ -425,52 +450,52 @@ class AcmeLab:
             self._last_brain_ping = 0
 
         # [BKM-026] 60s Failure Penalty Box
-        if not force and not self.brain_online and (now - self._last_brain_fail < 60):
+        if not force and not self.thought_online and (now - self._last_brain_fail < 60):
             return
 
         try:
-            target_url = resolve_brain_url()
+            target_url = resolve_thought_url()
             async with aiohttp.ClientSession() as session:
                 # Tier 1: Light API Check (Status only)
                 try:
                     async with session.get(target_url, timeout=2.0) as r:
                         is_reachable = r.status == 200
                         if not is_reachable:
-                            if self.brain_online: 
+                            if self.thought_online: 
                                 logging.info("[HEALTH] KENDER Offline. Entering 60s penalty box.")
                                 await self.broadcast({
-                                    "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
+                                    "brain": "Strategic Sovereignty: DEEP THOUGHT (Primary Offline)",
                                     "brain_source": "System",
                                     "channel": "insight"
                                 })
-                            self.brain_online = False
+                            self.thought_online = False
                             self._last_brain_fail = now
                             return
                         
                         data = await r.json()
                         models = [m.get("name") for m in data.get("models", [])]
                         if not models:
-                            self.brain_online = False
+                            self.thought_online = False
                             return
                         
                         # [FIX] Distinguish between transition and stable state
-                        if not self.brain_online:
+                        if not self.thought_online:
                             logging.info("[BRAIN] Strategic Sovereignty: PRIMARY (Online)")
                             await self.broadcast({
                                 "brain": "Strategic Sovereignty: PRIMARY",
                                 "brain_source": "System",
                                 "channel": "insight"
                             })
-                        self.brain_online = True # API is at least talking
+                        self.thought_online = True # API is at least talking
                 except Exception as e:
-                    if self.brain_online:
+                    if self.thought_online:
                         logging.info(f"[HEALTH] KENDER Offline. Entering 60s penalty box. (Error: {e})")
                         await self.broadcast({
                             "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
                             "brain_source": "System",
                             "channel": "insight"
                         })
-                    self.brain_online = False
+                    self.thought_online = False
                     self._last_brain_fail = now
                     return
 
@@ -532,23 +557,23 @@ class AcmeLab:
 
     async def spark_restoration(self, client_id="system", intent="ACTIVE", skip_lock=False):
         """[FEAT-265.8] Reusable ignition spark for Handshakes and Alarms."""
-        if self._ignition_in_progress:
-            logging.info(f"[HUB] Redundant Ignition Ignored ({client_id}). Ignition already in progress.")
+        # [Task 1.4] File-based VRAM Mutex
+        if not self._acquire_vram_lock():
+            logging.info(f"[HUB] Redundant Ignition Ignored ({client_id}). VRAM Lock held by another process.")
             return
 
         if not skip_lock:
             # [FEAT-265.45] Immediate Spark Lock: Prevent async races during status fetch
             if getattr(self, "_spark_active", False) or self.status == "BOOTING":
+                self._release_vram_lock()
                 return
             
             async with self._ignition_lock:
                 # Re-check flag inside lock
-                if getattr(self, "_spark_active", False) or self._ignition_in_progress:
+                if getattr(self, "_spark_active", False):
+                    self._release_vram_lock()
                     return
                 self._spark_active = True
-                self._ignition_in_progress = True
-        else:
-            self._ignition_in_progress = True
         
         try:
             # [FEAT-291] Passive Guard: Don't spark if the intent is strictly PASSIVE
@@ -622,14 +647,14 @@ class AcmeLab:
                     logging.error(f"[HUB] Spark reload failed: {e}")
                     self.status = "ERROR"
                 finally:
-                    self._ignition_in_progress = False
                     self._spark_active = False
+                    self._release_vram_lock()
 
             # We use _track_task to run the actual REST call in background
             self._track_task(_run_ignition(client_id))
         except Exception:
-            self._ignition_in_progress = False
             self._spark_active = False
+            self._release_vram_lock()
             raise
 
     async def reflex_loop(self):
@@ -702,7 +727,7 @@ class AcmeLab:
                 except Exception:
                     pass
                 self._track_task(self._hibernate(level=h_level))
-                self.brain_online = False # Mark offline while sleeping
+                self.thought_online = False # Mark offline while sleeping
 
             if self.connected_clients:
                 # [FEAT-221.2] Persona Gate: Only banter if the mind is actually active
@@ -714,8 +739,8 @@ class AcmeLab:
                     {
                         "type": "status",
                         "state": self.status.lower(), # [FEAT-265] Granular states: waking, hibernating, operational
-                        "brain_online": self.brain_online,
-                        "full_lab_ready": self.brain_online and self.status == "OPERATIONAL", # [FEAT-265.6]
+                        "brain_online": self.thought_online,
+                        "full_lab_ready": self.thought_online and self.status == "OPERATIONAL", # [FEAT-265.6]
                         "hibernating": (self.status == "HIBERNATING")
                     }
                 )
@@ -726,11 +751,11 @@ class AcmeLab:
 
                 # [FEAT-329] Remote Brain Cool-down: Suspend probes during extended inactivity
                 if is_active or self.status in ["WAKING", "BOOTING"]:
-                    await self.check_brain_health()
+                    await self.check_thought_health()
                 else:
-                    if self.brain_online:
+                    if self.thought_online:
                         logging.info("[HEALTH] Remote Brain Cool-down: Suspending probes due to inactivity.")
-                        self.brain_online = False # Mark as passive/cooling
+                        self.thought_online = False # Mark as passive/cooling
 
     async def _log_tailer_loop(self):
         """[FEAT-313.2] Live Engine Logs: Stream vLLM progress to the Intercom."""
@@ -1396,18 +1421,18 @@ class AcmeLab:
             )
             
             # [FEAT-328] Sovereignty Debouncing: Only broadcast if not already known
-            if not hasattr(self, "_last_broadcast_sovereignty") or self._last_broadcast_sovereignty != self.brain_online:
+            if not hasattr(self, "_last_broadcast_sovereignty") or self._last_broadcast_sovereignty != self.thought_online:
                 await ws.send_str(
                     json.dumps(
                         {
                             "type": "crosstalk",
-                            "brain": f"Strategic Sovereignty: {'ONLINE' if self.brain_online else 'INITIATING...'}",
+                            "brain": f"Strategic Sovereignty: {'ONLINE' if self.thought_online else 'INITIATING...'}",
                             "brain_source": "System",
                             "channel": "insight",
                         }
                     )
                 )
-                self._last_broadcast_sovereignty = self.brain_online
+                self._last_broadcast_sovereignty = self.thought_online
 
 
             async for message in ws:
@@ -1600,14 +1625,14 @@ class AcmeLab:
                         await self.broadcast(
                             {"text": text, "type": "hearing"}
                         )
-                        # SHADOW DISPATCH: Proactive Brain Engagement
+                        # BRAIN DISPATCH: Proactive Brain Engagement
                         strat_keys = [
                             "architecture",
                             "silicon",
                             "regression",
                             "validate",
                         ]
-                        # [FEAT-027] Hard Gate for Shadow Dispatch
+                        # [FEAT-027] Hard Gate for Brain Dispatch
                         is_text_casual = await self.check_intent_is_casual(text)
 
                         if (
@@ -1615,11 +1640,11 @@ class AcmeLab:
                             and not self.current_processing_task
                             and not is_text_casual
                         ):
-                            logging.info(f"[SHADOW] Intent detected: {text}")
+                            logging.info(f"[BRAIN] Intent detected: {text}")
                             await self.broadcast(
                                 {
                                     "brain": "Predicted strategic intent... preparing.",
-                                    "brain_source": "Brain (Shadow)",
+                                    "brain_source": "The Brain",
                                 }
                             )
         finally:
@@ -1650,7 +1675,7 @@ class AcmeLab:
             }
         )
 
-        if self.brain_online and "brain" in self.residents:
+        if self.thought_online and "thought" in self.residents:
             prompt = (
                 f"[STRATEGIC VIBE CHECK] User saved '{filename}'. "
                 f"Content starts with: '{content[:500]}'. Validate the "
@@ -1658,7 +1683,7 @@ class AcmeLab:
             )
             # [FEAT-048] Monitor long-running Vibe Checks
             b_res = await self.monitor_task_with_tics(
-                self.residents["brain"].call_tool(
+                self.residents["thought"].call_tool(
                     name="deep_think", arguments={"task": prompt}
                 )
             )
@@ -1741,17 +1766,17 @@ class AcmeLab:
             self._neural_queue.put_nowait(query)
             
             # 2. Trigger Spark if not already active
-            if not self._ignition_in_progress:
+            if not getattr(self, "_spark_active", False):
                 self._track_task(self.spark_restoration("WAKE_INTENT"))
             
             # 3. Broadcast acknowledgment
             await self.broadcast({"type": "crosstalk", "brain": "Lab is warming its anchors. Your request is queued.", "brain_source": "System"})
             
             # [Task 19.2.1] Cached Lobby Relay: Immediate Sovereign Brain Response
-            if self.brain_online and "brain" in self.residents:
+            if self.thought_online and "thought" in self.residents:
                 logging.info(f"[HUB] Fast-Tracking Query '{query[:30]}' to Sovereign Brain.")
                 try:
-                    b_res = await self.residents["brain"].call_tool(
+                    b_res = await self.residents["thought"].call_tool(
                         "think", 
                         {"query": f"{query}\n[SYSTEM: You are answering a user while local nodes boot. Be concise.]"}
                     )
@@ -1906,8 +1931,8 @@ class AcmeLab:
         nodes = [
             ("pinky", os.path.join(n_dir, "pinky_node.py")),
             ("archive", os.path.join(n_dir, "archive_node.py")),
+            ("thought", os.path.join(n_dir, "thought_node.py")),
             ("brain", os.path.join(n_dir, "brain_node.py")),
-            ("shadow", os.path.join(n_dir, "brain_node.py")),
             ("lab", os.path.join(n_dir, "lab_node.py")),
             ("thinking", os.path.join(n_dir, "thinking_node.py")),
             ("browser", os.path.join(n_dir, "browser_node.py")),

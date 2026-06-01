@@ -1,12 +1,12 @@
 {
     "vram_hibernation_level": 2,
     "nodes": {
-        "brain": {
+        "thought": {
             "primary": "KENDER",
             "fallback": "KENDER",
             "lora_name": "lab_history_v1"
         },
-        "shadow": {
+        "brain": {
             "primary": "localhost",
             "lora_name": null
         },
