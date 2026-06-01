@@ -53,6 +53,7 @@ class CognitiveHub:
         self.current_topic = "Casual"
         self.resonant_history = []
         self.triage_failures = 0 # [FEAT-270] Track consecutive failures
+        self.turn_thought_trace = {} # [Task 2.4] Current turn's logic cache
 
         # [BKM-015] Anchor Migration
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
@@ -197,6 +198,13 @@ class CognitiveHub:
             
             if text not in self.session_buffers[thought_source]:
                 self.session_buffers[thought_source] += f"\n{text}"
+
+        # [Task 2.4] Thought Trace Capture
+        thought_match = re.search(r'<thought>(.*?)</thought>', str(text), re.DOTALL | re.IGNORECASE)
+        if thought_match:
+            source_key = "pinky" if "pinky" in source.lower() else "brain"
+            self.turn_thought_trace[source_key] = thought_match.group(1).strip()
+            logging.info(f"[HUB] Captured thought trace from {source_key}")
 
         # [FEAT-072.1] Signal-Based Morning Briefing Uplink
         if "trigger_morning_briefing" in str(text) and final:
@@ -388,9 +396,14 @@ class CognitiveHub:
             })
 
         try:
-            # [Task 20.3] Identity Bedrock: Prepend shared identity to every node call
-            # This describes Lab topography and residents (BKM-015 compliant).
-            guidance = self.IDENTITY_BEDROCK
+            # [Task 2.3] Persona Interest: Adjust behavioral density based on scalar
+            stance = ""
+            if self.current_interest > 0.75:
+                stance = "\n[STANCE]: ACADEMIC (Evidence-heavy, dense, refer to GEM/SCAR IDs)."
+            elif self.current_interest < 0.3:
+                stance = "\n[STANCE]: INTERFACE (Witty, character-first, high brevity)."
+            
+            guidance = self.IDENTITY_BEDROCK + stance
             if behavioral_guidance:
                 guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
             
@@ -465,6 +478,7 @@ class CognitiveHub:
 
         # [FEAT-233.9] Reset Waterfall: Clear session buffers for fresh turn
         self.session_buffers.clear()
+        self.turn_thought_trace.clear() # [Task 2.4] Fresh traces per turn
 
         # 1. Lab Node Triage
         addressed_to = "MICE" # Default to collective
@@ -746,6 +760,10 @@ class CognitiveHub:
             b_overheard_p = self.session_buffers.get("pinky", "")
             b_overheard_b = self.session_buffers.get("brain", "")
             
+            # [Task 2.4] Explicit Thought Trace Passage
+            trace_p = self.turn_thought_trace.get("pinky", "")
+            trace_b = self.turn_thought_trace.get("brain", "")
+            
             b_context = ""
             if historical_context:
                 b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
@@ -753,7 +771,14 @@ class CognitiveHub:
                 b_context += f"{archival_map_context}\n\n"
             
             b_context += f"[PINKY_HEARING]: {b_overheard_p}\n"
+            if trace_p: b_context += f"[PINKY_THOUGHT_TRACE]: {trace_p}\n"
             b_context += f"[BRAIN_INTUITION]: {b_overheard_b}\n"
+            if trace_b: b_context += f"[BRAIN_THOUGHT_TRACE]: {trace_b}\n"
+
+            # [Task 2.2] Interest Gate: Force full synthesis if depth is high
+            if self.current_interest > 0.8:
+                logging.info("[HUB] Interest Gate: High depth detected (> 0.8). Forcing exhaustive synthesis wait.")
+                await asyncio.sleep(1.0) # Ensure local tasks have settled their dispatch
 
             verbosity = "Provide full-spectrum exhaustive synthesis." if self.current_interest > 0.8 else "Provide moderate technical depth."
             
@@ -778,6 +803,13 @@ class CognitiveHub:
 
             if brain_full:
                 await self.evaluate_grounding("Deep Thought", brain_full, self.current_interest, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
+
+        # [Task 2.4] Final Synchronization: Ensure local nodes have finished their dispatch
+        # before building the turn summary.
+        if pinky_task and not pinky_task.done():
+            await pinky_task
+        if brain_leg_task and not brain_leg_task.done():
+            await brain_leg_task
 
         # [FEAT-356] Ledger Appending
         turn_summary = f"USER: {original_raw_query}\n"
