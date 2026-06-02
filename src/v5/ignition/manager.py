@@ -11,9 +11,10 @@ import uuid
 from typing import Dict, Set
 
 # Add src to path for common and residents imports
-LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if LAB_DIR not in sys.path:
-    sys.path.append(LAB_DIR)
+V5_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.dirname(V5_DIR)
+if SRC_DIR not in sys.path:
+    sys.path.append(SRC_DIR)
 
 from v5.common.types import LabStatus, IntentEvent
 from v5.common.residents import ResidentManager
