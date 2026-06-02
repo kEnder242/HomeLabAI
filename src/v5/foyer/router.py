@@ -10,7 +10,7 @@ from aiohttp import web
 import aiohttp_cors
 import sys
 
-# Add src to path for logic and equipment imports
+# Add src to path
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if LAB_DIR not in sys.path:
     sys.path.append(LAB_DIR)
@@ -20,8 +20,8 @@ from v5.common.residents import ResidentManager
 from logic.cognitive_hub import CognitiveHub
 from equipment.sensory_manager import SensoryManager
 
-# [Task 4.2] V5 Foyer: The Always-Online Router (Full Feature)
-# Objective: Host the Cognitive Hub and provide 100% foyer uptime.
+# [Task 4.2] V5 Foyer: The Logic Master
+# Objective: Host the Cognitive Hub and manage logical node lifecycle.
 
 PORT = 8765
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -29,7 +29,9 @@ DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 
+# Configure logging early
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [FOYER] - %(levelname)s - %(message)s')
+logger = logging.getLogger("foyer")
 
 class FoyerRouter:
     def __init__(self):
@@ -37,6 +39,8 @@ class FoyerRouter:
         self.session_token = uuid.uuid4().hex[:8]
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
+        
+        self.status = LabStatus()
         self.cognitive = CognitiveHub(
             self.residents.residents, 
             self.broadcast, 
@@ -44,17 +48,16 @@ class FoyerRouter:
             get_vram_status=self.get_vram_status,
             trigger_morning_briefing=self.trigger_morning_briefing
         )
-        self.status = LabStatus()
         self.app = web.Application()
+        self.app.on_startup.append(self.on_startup)
         self.setup_routes()
-
-    async def trigger_morning_briefing(self):
-        logging.info("[FOYER] Triggering Morning Briefing...")
-        # Future: Logic for morning synthesis
-        pass
         
     def get_vram_status(self, force=False):
         return self.status.vocal
+
+    async def trigger_morning_briefing(self):
+        logger.info("Triggering Morning Briefing...")
+        pass
 
     def setup_routes(self):
         self.app.add_routes([
@@ -62,9 +65,7 @@ class FoyerRouter:
             web.get('/hub', self.handle_websocket),
             web.post('/inject', self.handle_rest_inject),
             web.get('/health', self.handle_health),
-            web.get('/status', self.handle_status),
-            web.post('/wake', self.handle_wake),
-            web.post('/stop', self.handle_stop)
+            web.get('/status', self.handle_status)
         ])
         
         cors = aiohttp_cors.setup(self.app, defaults={
@@ -77,21 +78,21 @@ class FoyerRouter:
         for route in list(self.app.router.routes()):
             cors.add(route)
 
+    async def on_startup(self, app):
+        """[FEAT-339] Clean task scheduling on event loop start."""
+        logger.info("V5 Foyer Router starting background tasks...")
+        await self.sensory.load()
+        asyncio.create_task(self.status_watcher())
+        asyncio.create_task(self.reflex_loop())
+        asyncio.create_task(self.ear_poller_loop())
+        asyncio.create_task(self.scheduled_tasks_loop())
+        asyncio.create_task(self.queue_drainer())
+
     async def handle_health(self, request):
         return web.json_response({"status": "ONLINE", "version": "5.0.0-foyer"})
 
     async def handle_status(self, request):
         return web.json_response(self.status.to_dict())
-
-    async def handle_wake(self, request):
-        """[FEAT-318.12] Wake signal to ignition."""
-        # Future: IPC to Ignition Manager
-        return web.json_response({"status": "WAKING"})
-
-    async def handle_stop(self, request):
-        """Graceful logical stop."""
-        await self.residents.shutdown()
-        return web.json_response({"status": "STOPPED"})
 
     async def handle_rest_inject(self, request):
         data = await request.json()
@@ -102,12 +103,13 @@ class FoyerRouter:
         return web.json_response({"status": "ERROR", "message": "No query provided"}, status=400)
 
     async def handle_websocket(self, ws_request):
+        # [FEAT-326] Socket Persistence: 30s heartbeat to keep Cloudflare/proxies alive
         ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(ws_request)
         
         socket_id = str(uuid.uuid4())[:8]
         self.connected_clients.add(ws)
-        logging.info(f"Client connected: {socket_id}")
+        logger.info(f"Client connected: {socket_id}")
         
         await ws.send_str(json.dumps(self.status.to_dict()))
         
@@ -126,13 +128,11 @@ class FoyerRouter:
                         }))
                     elif m_type == "text_input":
                         query = data.get("content")
-                        # [Task 4.3] Durable Enqueue
                         await self.enqueue_intent(query, source=f"WS_{socket_id}")
                     elif m_type == "workspace_save":
                         fn = data.get("filename")
                         content = data.get("content")
-                        # Delegate to cognitive hub for 'Vibe Check'
-                        asyncio.create_task(self.cognitive.handle_workspace_save(fn, content, self.broadcast))
+                        asyncio.create_task(self.cognitive.handle_workspace_save(fn, content))
                     elif m_type == "read_file":
                         fn = data.get("filename")
                         archive = self.residents.get_node("archive")
@@ -146,19 +146,19 @@ class FoyerRouter:
                             }))
                     elif m_type == "mic_state":
                         active = data.get("active", False)
-                        self.status.mic_active = active
-                        logging.info(f"[SENSORY] Mic state changed: {active}")
+                        logger.info(f"Mic state changed: {active}")
                         
         finally:
             if ws in self.connected_clients:
                 self.connected_clients.remove(ws)
-            logging.info(f"Client disconnected: {socket_id}")
+            logger.info(f"Client disconnected: {socket_id}")
             
         return ws
 
     async def enqueue_intent(self, query, source):
         event = IntentEvent(query=query, source=source)
         try:
+            os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
             with open(QUEUE_FILE, "a") as f:
                 f.write(event.to_json() + "\n")
             
@@ -169,11 +169,10 @@ class FoyerRouter:
             })
             return event
         except Exception as e:
-            logging.error(f"Failed to enqueue: {e}")
+            logger.error(f"Failed to enqueue: {e}")
             raise
 
     async def broadcast(self, message_dict):
-        """[FEAT-221] Safe broadcast with schema enforcement and forensic integrity."""
         m_type = message_dict.get("type", "chat")
         m_content = message_dict.get("brain") or message_dict.get("message")
         if not m_content:
@@ -181,15 +180,12 @@ class FoyerRouter:
             m_content = "EMPTY_CONTENT"
         m_source = message_dict.get("brain_source", "System")
 
-        # [Task 8.4] Forensic Integrity
         try:
             from infra.forensic_ledger import ledger
             if m_type in ["chat", "crosstalk"]:
                 ledger.record_thought(m_source, m_content, role=m_type.upper())
-        except Exception as e:
-            logging.error(f"[LEDGER] Failed to record thought: {e}")
+        except Exception: pass
 
-        # Schema Enrichment
         message_dict["type"] = m_type
         message_dict["brain"] = m_content
         message_dict["brain_source"] = m_source
@@ -197,9 +193,6 @@ class FoyerRouter:
         if "msg_id" not in message_dict:
             message_dict["msg_id"] = uuid.uuid4().hex[:12]
 
-        logging.info(f"[BROADCAST] [{m_type.upper()}] ({m_source}): {m_content[:60]}...")
-
-        # Broadcast to sockets
         msg_str = json.dumps(message_dict)
         for ws in list(self.connected_clients):
             try:
@@ -207,12 +200,10 @@ class FoyerRouter:
                     await ws.send_str(msg_str)
                 else:
                     self.connected_clients.remove(ws)
-            except Exception:
-                if ws in self.connected_clients:
-                    self.connected_clients.remove(ws)
+            except Exception: pass
 
     async def status_watcher(self):
-        """Polls status.json for hardware state updates."""
+        logger.info("Status watcher active.")
         last_mtime = 0
         while True:
             try:
@@ -224,56 +215,76 @@ class FoyerRouter:
                             self.status.state = data.get("state", "UNKNOWN")
                             self.status.vocal = data.get("vocal", False)
                             self.status.engine_up = data.get("engine_up", False)
+                            logger.info(f"Status sync: {self.status.state} (Vocal: {self.status.vocal})")
                         last_mtime = mtime
             except Exception as e:
-                logging.error(f"Status watcher error: {e}")
+                logger.error(f"Status watcher error: {e}")
             await asyncio.sleep(1)
 
     async def reflex_loop(self):
         """[FEAT-365] Characterful reflexes (tics)."""
         tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
         while True:
-            # Only tic if operational and not typing
-            if self.status.state == "OPERATIONAL" and self.connected_clients:
-                if random.random() < 0.1: # 10% chance
+            if self.status.vocal and self.connected_clients:
+                if random.random() < 0.1:
                     await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
             await asyncio.sleep(30)
 
     async def ear_poller_loop(self):
         """[FEAT-259.1] Global Sensory Sentinel."""
-        logging.info("[SENSORY] Global Ear Poller active.")
         while True:
             try:
                 query = self.sensory.check_turn_end()
                 if query:
-                    logging.info(f"[SENSORY] Turn end detected: {query}")
                     asyncio.create_task(self.cognitive.process_query(f"[ME] {query}"))
-            except Exception as e:
-                logging.error(f"[SENSORY] Poller failure: {e}")
+            except Exception: pass
             await asyncio.sleep(0.1)
-
-    async def start_services(self):
-        """[FEAT-145] Sensory Boot."""
-        logging.info("[FOYER] Starting background services...")
-        await self.sensory.load()
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] Periodic Maintenance (Nibbler)."""
-        last_nibble = 0
         while True:
-            if time.time() - last_nibble > 600:
-                logging.info("[ALARM] Triggering periodic Nibbler pass...")
-                # Future: Spawn nibbler subprocess
-                last_nibble = time.time()
-            await asyncio.sleep(60)
+            # Periodic tasks...
+            await asyncio.sleep(600)
+
+    async def queue_drainer(self):
+        """[Task 4.3] Neural Queue Drainer."""
+        logger.info("Queue drainer active.")
+        last_pos = 0
+        if os.path.exists(QUEUE_FILE):
+            last_pos = os.path.getsize(QUEUE_FILE)
+
+        processed_ids = set()
+
+        while True:
+            try:
+                if self.status.vocal:
+                    # 1. Boot logical nodes if not ready
+                    if not self.residents.booted:
+                        logger.info("Lab is vocal. Booting logical nodes...")
+                        await self.residents.boot_all()
+                    
+                    if os.path.exists(QUEUE_FILE):
+                        size = os.path.getsize(QUEUE_FILE)
+                        if size > last_pos:
+                            with open(QUEUE_FILE, "r") as f:
+                                f.seek(last_pos)
+                                for line in f:
+                                    if not line.strip(): continue
+                                    try:
+                                        event = IntentEvent.from_json(line)
+                                        if event.status == "PENDING" and event.id not in processed_ids:
+                                            logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
+                                            processed_ids.add(event.id)
+                                            asyncio.create_task(self.cognitive.process_query(event.query))
+                                    except Exception as e:
+                                        logger.error(f"Intent parse error: {e}")
+                                last_pos = f.tell()
+                
+            except Exception as e:
+                logger.error(f"Queue drainer failure: {e}")
+            await asyncio.sleep(1)
 
     def run(self):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.start_services())
-        loop.create_task(self.status_watcher())
-        loop.create_task(self.reflex_loop())
-        loop.create_task(self.ear_poller_loop())
-        loop.create_task(self.scheduled_tasks_loop())
         web.run_app(self.app, port=PORT)
 
 if __name__ == "__main__":
