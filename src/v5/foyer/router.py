@@ -126,8 +126,8 @@ class FoyerRouter:
                         }))
                     elif m_type == "text_input":
                         query = data.get("content")
-                        # [Task 2.1] Integrated Reasoning
-                        asyncio.create_task(self.cognitive.process_query(query))
+                        # [Task 4.3] Durable Enqueue
+                        await self.enqueue_intent(query, source=f"WS_{socket_id}")
                     elif m_type == "workspace_save":
                         fn = data.get("filename")
                         content = data.get("content")
@@ -161,6 +161,12 @@ class FoyerRouter:
         try:
             with open(QUEUE_FILE, "a") as f:
                 f.write(event.to_json() + "\n")
+            
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[FOYER] Request {event.id} secured in queue. Igniting Brain...",
+                "brain_source": "Foyer"
+            })
             return event
         except Exception as e:
             logging.error(f"Failed to enqueue: {e}")
