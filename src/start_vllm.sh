@@ -9,7 +9,7 @@ if [ -z "$LAB_VENV_PYTHON" ]; then
 fi
 
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_PATH="/speedy/models/Qwen2.5-3B-Instruct"
+    MODEL_PATH="/speedy/models/llama-3.2-3b-instruct-awq"
 fi
 
 # [TURING BREAKTHROUGH] Optimization Defaults for RTX 2080 Ti
