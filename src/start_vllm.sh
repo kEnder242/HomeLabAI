@@ -34,7 +34,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --port 8088 \
     --served-model-name unified-base \
     --trust-remote-code \
-    --gpu-memory-utilization 0.5 \
+    --gpu-memory-utilization 0.4 \
     --max-model-len 8192 \
     --enable-chunked-prefill \
     --max-num-batched-tokens 1024 \
@@ -43,7 +43,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --attention-backend TRITON_ATTN \
     --enable-prefix-caching \
     --enable-lora \
-    --max-loras 7 \
+    --max-loras 4 \
     --max-cpu-loras 10 \
     --lora-modules $LORA_MODULES \
     --enable-auto-tool-choice \
