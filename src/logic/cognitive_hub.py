@@ -48,6 +48,7 @@ class CognitiveHub:
         self.round_table_memory = deque(maxlen=5) # [FEAT-356] FOIL-AWARE MEMORY
         self.consecutive_parse_failures = 0 # [FEAT-339] Triage stability tracker
         self.lora_enabled = True # [FEAT-339] Global LoRA toggle
+        self.skip_audit = os.environ.get("LAB_SKIP_AUDIT") == "1"
         self.current_interest = 0.0 # [Task 2.1] Interest Scorer (formerly current_fuel)
         self.current_topic = "Casual"
         self.resonant_history = []
@@ -555,6 +556,15 @@ class CognitiveHub:
                             "brain_source": "System"
                         })
                     
+                    # [Task 5.3] Physical Wait: Don't hammer triage if engine is waking
+                    if not self.get_vram_status():
+                        logging.info("[HUB] Silicon is warming up. Awaiting stabilization...")
+                        # If cold boot, wait up to 90s for first attempt, shorter for subsequent
+                        wait_limit = 18 if triage_attempt == 0 else 3
+                        for _ in range(wait_limit):
+                            if self.get_vram_status(): break
+                            await asyncio.sleep(5.0)
+
                     # Triage is a blocking call to establish routing
                     # [FIX] Use stable sampling for high-fidelity prompt
                     # [FEAT-339] Support auto-disabling LoRA if silicon is producing gibberish
@@ -613,12 +623,25 @@ class CognitiveHub:
                     triage_data_update = {k.lower(): v for k, v in t_parsed.items()}
 
                     # [FEAT-244] Speaker Masking Scalar
-                    addressed_to = triage_data_update.get("addressed_to", "MICE").upper()
+                    addressed_raw = triage_data_update.get("addressed_to", "MICE")
+                    if isinstance(addressed_raw, list):
+                        addressed_to = ", ".join(addressed_raw).upper()
+                    else:
+                        addressed_to = str(addressed_raw).upper()
 
-        # Multiplicative Interest Function
-                    raw_imp = float(triage_data_update.get("importance", 0.5))
-                    raw_cas = float(triage_data_update.get("casual", 0.5))
-                    raw_int = float(triage_data_update.get("intrigue", 0.5))
+                    # Multiplicative Interest Function
+                    try:
+                        raw_imp = float(triage_data_update.get("importance", 0.5))
+                    except Exception:
+                        raw_imp = 0.5
+                    try:
+                        raw_cas = float(triage_data_update.get("casual", 0.5))
+                    except Exception:
+                        raw_cas = 0.5
+                    try:
+                        raw_int = float(triage_data_update.get("intrigue", 0.5))
+                    except Exception:
+                        raw_int = 0.5
                     
                     # [Task 2.1] Interest Scorer (Recursive Scalar)
                     # We start with raw assessment
@@ -641,10 +664,21 @@ class CognitiveHub:
                     intent = triage_data_update.get("intent", "STRATEGIC")
 
                     # [REVISION-17.2] Direct Address Force
-                    if addressed_to in ["BRAIN", "THOUGHT", "DEEP THOUGHT"]:
-                        logging.info(f"[HUB] Direct Address: {addressed_to}. Forcing Sovereign promotion.")
+                    addresses = []
+                    raw_addr_list = addressed_to if isinstance(addressed_to, list) else [addressed_to]
+                    for item in raw_addr_list:
+                        if isinstance(item, str):
+                            # Normalize: strip non-alphanumeric for robust matching (e.g. DEEP_THOUGHT -> DEEPTHOUGHT)
+                            val = "".join(filter(str.isalnum, item)).upper()
+                            addresses.append(val)
+                        else:
+                            addresses.append(str(item).upper())
+
+                    target_keys = ["BRAIN", "THOUGHT", "DEEPTHOUGHT"]
+                    if any(x in target_keys for x in addresses):
+                        logging.info(f"[HUB] Direct Address: {addresses}. Forcing Sovereign promotion.")
                         self.current_interest = max(0.65, self.current_interest)
-                    elif addressed_to == "PINKY" and self.current_interest > 0.2:
+                    elif "PINKY" in addresses and self.current_interest > 0.2:
                         logging.info("[HUB] Direct Address: Pinky. Forcing local-only turn.")
                         self.current_interest = min(0.15, self.current_interest)
 
@@ -786,6 +820,11 @@ class CognitiveHub:
                 break
             await asyncio.sleep(0.1)
 
+        # [SAFETY] Ensure Brain starts even if Pinky finished instantly (blocking call)
+        if not brain_leg_task:
+            logging.info("[HUB] Waterfall: Pinky completed or skipped. Cascading to Brain leg...")
+            brain_leg_task = asyncio.create_task(run_brain_leg())
+
         # [Task 1.3] Deep Thought Leg
         # Wait for either local node to finish OR for interest spike
         while True:
@@ -842,7 +881,7 @@ class CognitiveHub:
             )
             
             # Cognitive Audit
-            if brain_full and not getattr(self, "is_extraction", False):
+            if brain_full and not getattr(self, "is_extraction", False) and not self.skip_audit:
                 if not self.auditor and "pinky" in self.residents:
                     self.auditor = CognitiveAudit(self.residents["pinky"])
                 if self.auditor and not await self.auditor.audit_technical_truth(query, brain_full, ""):

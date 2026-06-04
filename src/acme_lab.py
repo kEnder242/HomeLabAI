@@ -1,9 +1,17 @@
 import asyncio
 import os
 import sys
+import subprocess
 
 # V5 Transition Shim
-# [Task 2.1] The Clean Cut
+# [FEAT-265] Waking State Machine (Orchestrator)
+
+# [FEAT-122] Kernel-Level Visibility
+try:
+    import setproctitle
+    setproctitle.setproctitle("acme_hub_v5")
+except ImportError:
+    pass
 
 LAB_DIR = os.path.dirname(os.path.abspath(__file__))
 V5_DIR = os.path.join(LAB_DIR, "v5/foyer")
@@ -28,13 +36,9 @@ if __name__ == "__main__":
     ignition_script = os.path.join(LAB_DIR, "v5/ignition/manager.py")
     ignition_proc = subprocess.Popen([sys.executable, ignition_script])
     
-    # [BUGFIX] Spawn MCP Server
-    mcp_script = os.path.join(LAB_DIR, "acme_lab_mcp.py")
-    mcp_proc = subprocess.Popen([sys.executable, mcp_script], cwd=LAB_DIR)
-    
     try:
+        # [FEAT-145] "Unity" Dispatcher: Hub Router
         router = FoyerRouter()
         router.run()
     finally:
         ignition_proc.terminate()
-        mcp_proc.terminate()
