@@ -5,6 +5,7 @@ import datetime
 import asyncio
 import re
 import time
+import aiohttp
 from typing import List, Dict
 
 from infra.atomic_io import atomic_write_json, atomic_write_text
@@ -264,6 +265,37 @@ class NightlyRecruiter:
         
         return path, valid_jobs
 
+    async def run_synergy_scan(self):
+        """[FEAT-167.3] Pedigree Discovery: Scan archive for hidden CV synergy."""
+        if not self.brain or not self.signatures:
+            return
+
+        import random
+        # Pick a random bucket to refine
+        target_bucket = random.choice(list(self.signatures.keys()))
+        logging.info(f"🔍 No new jobs. Initiating hidden pedigree scan for: {target_bucket}")
+        
+        prompt = f"""
+        [ROLE] You are the Career Strategy Architect.
+        [TASK] Search the 18-year archive for the top 3 most impactful 'Validation Scars' 
+        that align with the '{target_bucket}' Team Signature.
+        
+        [SIGNATURE DEFINITION]
+        {json.dumps(self.signatures.get(target_bucket), indent=2)}
+        
+        [GOAL] Synthesize a 'Hidden Pedigree' report that can be used to strengthen the CV for this specific domain.
+        STRICT: NO ROLEPLAY.
+        """
+        
+        # In V5, we use the Hub's REST injection for consistency in background tasks
+        try:
+            HUB_URL = "http://localhost:8765/inject"
+            async with aiohttp.ClientSession() as session:
+                await session.post(HUB_URL, json={"query": f"[RECRUITER_SYNERGY]: {prompt}"}, timeout=60)
+            logging.info(f"✅ Synergy scan request for {target_bucket} dispatched.")
+        except Exception as e:
+            logging.error(f"[RECRUITER] Synergy scan failed: {e}")
+
 async def run_recruiter_task(archive_interface=None, brain_interface=None, browser_interface=None):
     recruiter = NightlyRecruiter(archive_interface, brain_interface, browser_interface)
     logging.info("Waking up for Nightly Multi-Vector Acquisition drive...")
@@ -274,6 +306,11 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None, brows
     # [PHASE 2] Verification and Scoring
     verified_jobs = await recruiter.verify_and_score_jobs(raw_jobs)
     
+    if not verified_jobs:
+        logging.info("💤 No new job listings found. Proceeding to Synergy Scan.")
+        await recruiter.run_synergy_scan()
+        return None
+
     brief_path, new_count = await recruiter.generate_brief(verified_jobs, ctx)
     
     # [UI-043] Dashboard Reporting
