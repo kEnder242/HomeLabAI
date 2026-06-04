@@ -47,6 +47,7 @@ class IgnitionManager:
         self.status = LabStatus()
         self._vram_lock_fd = None
         self.processed_ids = set()
+        self.last_induction_date = None # [FEAT-289] Atomic Induction
 
     def _acquire_vram_lock(self):
         """[FEAT-287] Mutual Exclusion (Ignition Mutex)."""
@@ -153,16 +154,63 @@ class IgnitionManager:
             await asyncio.sleep(1)
 
     async def continuous_burn_loop(self):
-        """[Task 2.4] Quiet Refinement."""
+        """[FEAT-266] Periodic Maintenance (ALARM tasks)."""
+        import datetime
         logging.info("[IGNITION] Continuous Burn loop active.")
         while True:
             try:
+                now = datetime.datetime.now()
+                today = now.date()
+                
+                # [FEAT-136] Quiescence Awareness: Check for maintenance lock
+                if os.path.exists(MAINTENANCE_LOCK):
+                    await asyncio.sleep(60)
+                    continue
+
+                # 1. Daily Induction Window (02:00 - 04:00)
+                is_window = (2 <= now.hour < 4)
+                if is_window and self.last_induction_date != today:
+                    # [FEAT-289] Atomic Induction: Mark today as started
+                    self.last_induction_date = today
+                    logging.info("[ALARM] Entering Daily Induction Window...")
+                    
+                    # Try to acquire silicon mutex
+                    if self._acquire_vram_lock():
+                        try:
+                            # Step 1: Nightly Recruiter
+                            logging.info("[ALARM] Step 1: Nightly Recruiter...")
+                            # Trigger via CLI to avoid node dependency in manager
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "recruiter"], env=os.environ.copy())
+                            
+                            # Step 2: Hierarchy Refactor
+                            logging.info("[ALARM] Step 2: Hierarchy Refactor...")
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "lab"], env=os.environ.copy())
+                            
+                        finally:
+                            self._release_vram_lock()
+                            self.status.timestamp = time.time() # Reset idle timer
+                    else:
+                        logging.warning("[ALARM] Silicon busy (Mutex Locked). Deferring induction.")
+                        # Reset so we try again in 10 mins
+                        self.last_induction_date = None
+
+                # 2. Slow Burn: Idle GEM Refinement
                 idle_time = time.time() - self.status.timestamp
-                if idle_time > 3600:
-                    logging.info("[IGNITION] System Idle. Triggering Quiet Refinement...")
-                    # Future: Logic to run refine_gem.py safely
-                    await asyncio.sleep(3600)
-            except Exception: pass
+                if idle_time > 3600 and self.status.state == "HIBERNATING":
+                    logging.info("[IGNITION] System Idle > 1hr. Triggering Quiet Refinement...")
+                    if self._acquire_vram_lock():
+                        try:
+                            # Run one gem refinement pass
+                            refiner = os.path.join(LAB_DIR, "field_notes/refine_gem.py")
+                            if os.path.exists(refiner):
+                                subprocess.run([sys.executable, refiner, "--one-turn"], env=os.environ.copy())
+                        finally:
+                            self._release_vram_lock()
+                            self.status.timestamp = time.time()
+                
+            except Exception as e:
+                logging.error(f"[ALARM] Continuous Burn failure: {e}")
+            
             await asyncio.sleep(300)
 
     async def main_loop(self):

@@ -307,9 +307,23 @@ class FoyerRouter:
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] Periodic Maintenance (Nibbler)."""
+        logger.info("Scheduled tasks loop active.")
+        last_nibble_time = 0
         while True:
-            # Periodic tasks...
-            await asyncio.sleep(600)
+            try:
+                # 1. Periodic Nibble (Artifact Scanning) - Every 10 mins
+                if time.time() - last_nibble_time > 600:
+                    last_nibble_time = time.time()
+                    nibbler = os.path.join(WORKSPACE_DIR, "field_notes/nibble_v2.py")
+                    if os.path.exists(nibbler):
+                        # Use system python to avoid venv dependency in the subprocess call if needed
+                        # but standard is to use the active executable
+                        logger.info("[ALARM] Triggering Nibbler...")
+                        subprocess.Popen([sys.executable, nibbler, "--one-turn"])
+            except Exception as e:
+                logger.error(f"[ALARM] Scheduled tasks failure: {e}")
+            
+            await asyncio.sleep(60)
 
     async def queue_drainer(self):
         """[Task 4.3] Neural Queue Drainer."""
