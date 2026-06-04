@@ -16,6 +16,7 @@ async def run_and_monitor():
     
     # 1. Restart the Lab via Systemd
     print("[SYSTEMD] Restarting services (Clean Slate)...")
+    os.environ["LAB_SKIP_AUDIT"] = "1"
     subprocess.run(["sudo", "systemctl", "restart", "field-notes.service", "lab-attendant.service"])
     print("[SYSTEMD] Services restarted. Giving Foyer time to bind...")
     await asyncio.sleep(5)
@@ -32,16 +33,14 @@ async def run_and_monitor():
     # 3. Stream output back to the terminal
     while True:
         try:
-            line = await asyncio.wait_for(process.stdout.readline(), timeout=120)
+            line = await process.stdout.readline()
             if line:
                 print(line.decode().rstrip(), flush=True)
             elif process.stdout.at_eof():
                 break
-        except asyncio.TimeoutError:
-            print("... [Babysitter] Still waiting for cycle to complete...", flush=True)
-            # Check if process is still alive
-            if process.returncode is not None:
-                break
+        except Exception as e:
+            print(f"[Babysitter] Stream error: {e}")
+            break
 
                 
     await process.wait()

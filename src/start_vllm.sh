@@ -38,7 +38,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --max-model-len 8192 \
     --enable-chunked-prefill \
     --max-num-batched-tokens 1024 \
-    --max-num-seqs 4 \
+    --max-num-seqs 16 \
     --enforce-eager \
     --attention-backend TRITON_ATTN \
     --enable-prefix-caching \

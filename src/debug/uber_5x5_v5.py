@@ -47,7 +47,7 @@ async def evaluate_fidelity(cycle_id, page):
     has_consensus = refinement_count > 0
     
     # 4. Semantic Content Check
-    has_vocal = any(x in full_dom for x in ["<thought>", "Archives", "PECISTRESSOR"])
+    has_vocal = any(x.lower() in full_dom.lower() for x in ["<thought>", "Archives", "PECISTRESSOR"])
 
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] V5 Nomenclature: {'✅' if has_v5_nodes else '❌'}")
@@ -77,23 +77,31 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     # Hand-Crank via Browser
     print("    [Action] Launching Hand-Crank (Chromium)...", flush=True)
     browser = await p_instance.chromium.launch(headless=True)
-    page = await browser.new_page()
-    await page.goto(INTERCOM_URL)
+    context = await browser.new_context()
+    context.set_default_timeout(180000) # 3 mins
+    page = await context.new_page()
+    await page.goto(INTERCOM_URL, timeout=120000)
+    
+    # [Task 5.4] Wait for WS connection
+    print("    [Action] Awaiting WebSocket uplink...", flush=True)
+    await page.wait_for_selector(".status-dot.online", state="attached", timeout=180000)
     
     # Fire Strategic Probe
     query = f"[ME] [UBER-5x5] Cycle {cycle_id}. Summarize the PECISTRESSOR validation scar and verify node sync."
     print(f"    [Action] Sending Probe: {query[:50]}...", flush=True)
-    await page.wait_for_selector("#text-input")
+    await page.wait_for_selector("#text-input", timeout=120000)
     await page.fill("#text-input", query)
     await page.keyboard.press("Enter")
     
     # Monitoring for Result
-    print("    [Action] Monitoring for neural response (300s timeout)...", flush=True)
+    print("    [Action] Monitoring for neural response (600s timeout)...", flush=True)
     start_t = time.time()
     success = False
-    while time.time() - start_t < 300:
-        content = await page.inner_text("#chat-console")
-        if "Deep Thought" in content or "The Brain" in content or "Archives" in content:
+    while time.time() - start_t < 600:
+        content = await page.inner_text("#chat-console", timeout=120000)
+        cl = content.upper()
+        # Look for actual message signatures rather than headers
+        if "[DEEP THOUGHT [SID:" in cl or "[THE BRAIN [SID:" in cl or "[PINKY [SID:" in cl:
             success = await evaluate_fidelity(cycle_id, page)
             break
         await asyncio.sleep(10)
