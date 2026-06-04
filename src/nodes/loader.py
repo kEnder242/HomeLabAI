@@ -109,6 +109,8 @@ class BicameralNode:
                 # [FEAT-339] Use LoRA by default, but allow override for stability
                 async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools):
                     full_response += token
+                    if stream_source:
+                        self._broadcast_token(token, stream_source)
                 
             return full_response
 
@@ -275,7 +277,12 @@ class BicameralNode:
                                     target = am
                                     break
 
-                    self._engine_cache = {"url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", "model": target, "type": engine_type}
+                    self._engine_cache = {
+                        "url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", 
+                        "model": target, 
+                        "type": engine_type,
+                        "available": available
+                    }
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
         except Exception as e:
@@ -364,7 +371,11 @@ class BicameralNode:
                 "stream": True
             }
             if self.lora_name and use_lora:
-                payload["model"] = self.lora_name
+                # [FEAT-339] Adaptive LoRA: Verify availability before requesting
+                if self.lora_name in engine.get("available", []):
+                    payload["model"] = self.lora_name
+                else:
+                    logging.warning(f"[{self.name}] LoRA '{self.lora_name}' not active on vLLM. Falling back to base: {engine['model']}")
                 
             # [Task 19.7.1] Guided JSON Tool Calling (Option B)
             if tools and not disable_tools:
@@ -412,20 +423,18 @@ class BicameralNode:
             logging.error(f"[{self.name}] Generation failed: {e}")
             yield f"Egad! Logic failure: {e}"
 
-    async def _broadcast_token(self, token, source_name):
-        """Helper to POST tokens to the Hub's stream_ingest endpoint."""
-        try:
-            # Note: We use a short timeout to prevent blocking generation
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "text": token,
-                    "source": source_name,
-                    "final": False
-                }
-                async with session.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.5):
-                    pass
-        except Exception:
-            pass
+    def _broadcast_token(self, token, source_name):
+        """Threaded fire-and-forget relay to avoid event loop congestion."""
+        import threading
+        def _relay_task():
+            try:
+                import requests
+                payload = {"text": token, "source": source_name, "final": False}
+                requests.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.2)
+            except Exception:
+                pass
+        
+        threading.Thread(target=_relay_task, daemon=True).start()
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""

@@ -32,13 +32,24 @@ GEM_REFINER = os.path.join(WORKSPACE_DIR, "field_notes/refine_gem.py")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [IGNITION] - %(levelname)s - %(message)s')
 
+# [FEAT-122] Kernel-Level Visibility
+try:
+    import setproctitle
+except ImportError:
+    setproctitle = None
+
 class IgnitionManager:
     def __init__(self):
+        # Rename process
+        if setproctitle:
+            setproctitle.setproctitle("acme_ignition_v5")
+            
         self.status = LabStatus()
         self._vram_lock_fd = None
         self.processed_ids = set()
 
     def _acquire_vram_lock(self):
+        """[FEAT-287] Mutual Exclusion (Ignition Mutex)."""
         try:
             if self._vram_lock_fd is None:
                 self._vram_lock_fd = open(VRAM_LOCK_FILE, 'w')
@@ -56,7 +67,7 @@ class IgnitionManager:
             except Exception: pass
 
     async def start_lab(self, reason="INTENT"):
-        """V5 Physical Ignition."""
+        """[FEAT-265.8] Ignition sequence."""
         if self.status.state in ["WAKING", "OPERATIONAL"]:
             return True
 
@@ -102,9 +113,16 @@ class IgnitionManager:
             self.update_status_file()
 
     def update_status_file(self):
+        """[FEAT-265] Multi-host status synchronization."""
         self.status.timestamp = time.time()
-        with open(STATUS_JSON, "w") as f:
-            json.dump(self.status.to_dict(), f, indent=2)
+        try:
+            with open(STATUS_JSON, "w") as f:
+                json.dump(self.status.to_dict(), f, indent=2)
+            
+            # [Task 5.2] Push to Foyer Router for real-time sync
+            import requests
+            requests.post("http://localhost:8765/status_update", json=self.status.to_dict(), timeout=0.5)
+        except Exception: pass
 
     async def queue_watcher(self):
         """[Task 4.3] Monitors the foyer queue for new intent."""
