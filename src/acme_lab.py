@@ -38,7 +38,7 @@ if __name__ == "__main__":
     
     try:
         # [FEAT-145] "Unity" Dispatcher: Hub Router
-        router = FoyerRouter()
+        router = FoyerRouter(trigger_task=args.trigger_task)
         router.run()
     finally:
         ignition_proc.terminate()

@@ -49,7 +49,7 @@ def get_style_key():
     return "default_key"
 
 class FoyerRouter:
-    def __init__(self):
+    def __init__(self, trigger_task=None):
         # Rename process
         if setproctitle:
             setproctitle.setproctitle("acme_foyer_v5")
@@ -59,6 +59,7 @@ class FoyerRouter:
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
         self.waterfall_queue = asyncio.Queue()
+        self.trigger_task = trigger_task
         
         self.status = LabStatus()
         self.cognitive = CognitiveHub(
@@ -121,6 +122,23 @@ class FoyerRouter:
     async def on_startup(self, app):
         """[FEAT-339] Clean task scheduling on event loop start."""
         logger.info("V5 Foyer Router starting background tasks...")
+        
+        # [Task 5.2] Execute one-off trigger task if requested
+        trigger_task = getattr(self, "trigger_task", None)
+        if trigger_task:
+            logger.info(f"[BOOT] Executing deferred trigger: {trigger_task}")
+            if trigger_task == "recruiter":
+                from recruiter import run_recruiter_task
+                asyncio.create_task(run_recruiter_task(
+                    self.residents.residents.get("archive"),
+                    self.residents.residents.get("brain"),
+                    self.residents.residents.get("browser")
+                ))
+            elif trigger_task == "lab":
+                lab_node = self.residents.residents.get("lab")
+                if lab_node:
+                    asyncio.create_task(lab_node.call_tool("build_semantic_map"))
+        
         asyncio.create_task(self.reflex_loop())
         asyncio.create_task(self.ear_poller_loop())
         asyncio.create_task(self.scheduled_tasks_loop())
