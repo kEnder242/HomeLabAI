@@ -35,6 +35,9 @@ class CognitiveHub:
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
         self.hibernate_callback = hibernate_callback
         
+        # [Task 6.4] Ghost Attributes
+        self.is_extraction = False
+        
         # [FEAT-332] Dynamic Streaming Modes
         self.streaming_config = {
             "lab": "WATERFALL",
@@ -76,21 +79,24 @@ class CognitiveHub:
         """[FEAT-233.7] Real-time token ingestion for inter-node overhearing."""
         source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
         token = data.get("brain", "")
+        final = data.get("final", False)
+        
         if token:
             self.session_buffers[source] += token
             
-            # [FEAT-362] Non-Blocking Waterfall: Stream to user immediately
-            if self.waterfall_queue:
-                try:
-                    self.waterfall_queue.put_nowait(data)
-                except Exception as e:
-                    logging.error(f"[WATERFALL] Queue error: {e}")
-            else:
-                asyncio.create_task(self.broadcast(data))
-                
-            # [DEBUG] Trace waterfall flow
-            if "triage" not in source:
-                logging.debug(f"[WATERFALL] Ingested token from {source} ({len(self.session_buffers[source])} total)")
+        # [FEAT-362] Non-Blocking Waterfall: Stream to user immediately
+        # [Task 6.6] Relays all tokens (including empty 'final' markers) to the queue
+        if self.waterfall_queue:
+            try:
+                self.waterfall_queue.put_nowait(data)
+            except Exception as e:
+                logging.error(f"[WATERFALL] Queue error: {e}")
+        else:
+            asyncio.create_task(self.broadcast(data))
+            
+        # [DEBUG] Trace waterfall flow
+        if token and "triage" not in source:
+            logging.debug(f"[WATERFALL] Ingested token from {source} ({len(self.session_buffers[source])} total)")
 
     def bridge_signal_clean(self, text):
         """[FEAT-220.1] Extract and sanitize the FIRST JSON block from raw LLM output. Hardened for vLLM 3B."""
@@ -890,6 +896,17 @@ class CognitiveHub:
                     await self.execute_dispatch(retract_full, "Pinky (Retraction)", retry_count=retry_count+1, final=True)
                     return await self.process_query(query, mic_active, shutdown_event, retry_count=retry_count+1)
 
+                # [Task 6.4] Alignment: Mice calling each other out
+                resonance = await self.auditor.audit_vibe_alignment(brain_full, self.current_topic)
+                if resonance < 0.6:
+                    logging.warning(f"[HUB] Low Vibe Resonance ({resonance:.2f}). Triggering interjection.")
+                    interject_res = await self.residents["pinky"].call_tool("think", {
+                        "query": f"The Sovereign node seems a bit off-vibe ({resonance:.2f}). Interject with a 1-sentence course correction.",
+                        "context": f"[OFF_VIBE_RESPONSE]: {brain_full[:500]}"
+                    })
+                    interject_full = str(interject_res.content[0].text)
+                    await self.execute_dispatch(interject_full, "Pinky (Interjection)", retry_count=retry_count+1, final=True)
+
             if brain_full:
                 await self.evaluate_grounding("Deep Thought", brain_full, self.current_interest, shutdown_event, retry_count=retry_count, use_lora=self.lora_enabled)
 
@@ -935,6 +952,6 @@ class CognitiveHub:
                 "use_lora": use_lora
             })
             res_full = str(res_res.content[0].text)
-            await self.execute_dispatch(res_full, "Pinky (Physical Audit)", retry_count=retry_count+1, final=True)
+            await self.execute_dispatch(res_full, "Pinky (Reality Check)", retry_count=retry_count+1, final=True)
         except Exception:
             pass

@@ -5,6 +5,9 @@ import os
 import logging
 import time
 import socket
+import threading
+import queue
+import requests
 from mcp.server.fastmcp import FastMCP
 
 # Paths
@@ -85,6 +88,10 @@ class BicameralNode:
         self.primary_host = node_cfg.get("primary", "localhost")
         self.lora_name = node_cfg.get("lora_name")
 
+        # [Task 6.1] Physics: Single Telemetry Relay Thread
+        self.telemetry_queue = queue.Queue()
+        self._start_telemetry_relay()
+
         @self.mcp.tool()
         async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.0, use_lora: bool = True) -> str:
             """
@@ -111,6 +118,10 @@ class BicameralNode:
                     full_response += token
                     if stream_source:
                         self._broadcast_token(token, stream_source)
+                
+                # [FEAT-233.7] Signal completion
+                if stream_source:
+                    self._broadcast_token("", stream_source, final=True)
                 
             return full_response
 
@@ -180,15 +191,18 @@ class BicameralNode:
         return "llama3.2:3b"
 
     def _resolve_primary_host(self):
-        """[FEAT-255.7] Dynamic Resolution: Forced 127.0.0.1 for local stability."""
+        """[FEAT-255.7] Dynamic Resolution with [FEAT-265] Discovery."""
         if self.primary_host in ["localhost", "127.0.0.1", "z87-Linux"]:
             target = "127.0.0.1"
             logging.info(f"[{self.name}] Resolved primary host to local: {target}")
             return target
         
-        if self.primary_host == "KENDER":
-            # [HARDENING] Direct IP bypass for known Windows host
-            return "192.168.1.26"
+        # [Task 6.5] Dynamic Discovery for Sovereign IP
+        host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
+        ip_hint = host_cfg.get("ip_hint")
+        if ip_hint:
+            logging.info(f"[{self.name}] Using dynamic IP hint for {self.primary_host}: {ip_hint}")
+            return ip_hint
 
         try:
             # Try dynamic DNS resolution
@@ -196,11 +210,7 @@ class BicameralNode:
             logging.info(f"[{self.name}] Resolved {self.primary_host} to: {res}")
             return res
         except Exception:
-            # Fallback to ip_hint from infrastructure.json
-            host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
-            res = host_cfg.get("ip_hint", self.primary_host)
-            logging.warning(f"[{self.name}] DNS resolution failed for {self.primary_host}. Using hint: {res}")
-            return res
+            return "127.0.0.1"
 
     async def ping_engine(self, force=False):
         """[FEAT-192] Checks if the backend engine is responsive with TTL throttling."""
@@ -423,18 +433,23 @@ class BicameralNode:
             logging.error(f"[{self.name}] Generation failed: {e}")
             yield f"Egad! Logic failure: {e}"
 
-    def _broadcast_token(self, token, source_name):
-        """Threaded fire-and-forget relay to avoid event loop congestion."""
-        import threading
-        def _relay_task():
-            try:
-                import requests
-                payload = {"text": token, "source": source_name, "final": False}
-                requests.post("http://localhost:8765/stream_ingest", json=payload, timeout=0.2)
-            except Exception:
-                pass
-        
-        threading.Thread(target=_relay_task, daemon=True).start()
+    def _start_telemetry_relay(self):
+        """[FEAT-233.2] Dedicated thread for non-blocking token delivery."""
+        def _relay_worker():
+            while True:
+                item = self.telemetry_queue.get()
+                if item is None: break
+                try:
+                    # In V5, Foyer is at 8765
+                    requests.post("http://localhost:8765/stream_ingest", json=item, timeout=0.5)
+                except Exception: pass
+                self.telemetry_queue.task_done()
+        threading.Thread(target=_relay_worker, daemon=True).start()
+
+    def _broadcast_token(self, token, source_name, final=False):
+        """Threaded fire-and-forget relay via persistent worker."""
+        payload = {"text": token, "source": source_name, "final": final}
+        self.telemetry_queue.put(payload)
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""

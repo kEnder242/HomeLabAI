@@ -44,15 +44,30 @@ class CognitiveAudit:
             logging.error(f"[AUDIT] System failure: {e}")
             return False
 
-    async def audit_vibe_alignment(self, response: str, expected_vibe: str) -> bool:
-        """Judges if the response tone matches the expected VIBE."""
+    async def audit_vibe_alignment(self, response: str, expected_vibe: str) -> float:
+        """[Task 6.4] Judges if the response tone matches the expected VIBE. Returns resonance score (0.0-1.0)."""
         audit_prompt = (
-            f"You are the Vibe Auditor. Does the following text exhibit a '{expected_vibe}' tone?\n"
+            f"You are the Vibe Auditor. YOUR TASK: On a scale of 0.0 to 1.0, how well does the following text exhibit a '{expected_vibe}' tone?\n"
             f"TEXT: {response}\n\n"
-            f"Output ONLY 'PASS' or 'FAIL'."
+            f"RULES: Output ONLY the numeric score (e.g. 0.85). No conversational filler."
         )
         try:
             result = await self.node.call_tool("think", {"query": audit_prompt, "internal": True})
-            return "PASS" in result.content[0].text.strip().upper()
-        except:
-            return False
+            score_text = result.content[0].text.strip()
+            
+            # Extract first float found
+            import re
+            match = re.search(r"\d+\.\d+", score_text)
+            if match:
+                score = float(match.group())
+                logging.info(f"[AUDIT] Vibe Resonance: {score:.2f}")
+                return score
+            
+            # If no float, check for pass/fail keywords as fallback
+            if "PASS" in score_text.upper(): return 1.0
+            if "FAIL" in score_text.upper(): return 0.0
+            
+            return 1.0 # Default to pass if unparseable but not failing
+        except Exception as e:
+            logging.error(f"[AUDIT] Vibe system failure: {e}")
+            return 0.0
