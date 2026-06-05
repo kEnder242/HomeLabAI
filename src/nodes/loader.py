@@ -152,7 +152,8 @@ class BicameralNode:
     def _resolve_best_model(self, available_models, engine_type, running_model=None):
         """[FEAT-080] Dynamic selection based on host capability."""
         # [FEAT-320] Adaptive Priority: If a model is already running on remote Ollama, use it.
-        if running_model and self.name == "brain" and self.primary_host != "localhost":
+        if running_model and self.name in ["brain", "thought"] and self.primary_host != "localhost":
+            logging.info(f"[{self.name}] Adaptive Priority: Adopting running model '{running_model}'")
             return running_model
 
         # [FEAT-339] Tier Resolution: Default to UNIFIED if no environment override

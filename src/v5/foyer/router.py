@@ -9,6 +9,7 @@ import aiohttp
 from aiohttp import web
 import aiohttp_cors
 import sys
+import subprocess
 
 # Add src to path
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -88,6 +89,8 @@ class FoyerRouter:
             web.post('/inject', self.handle_rest_inject),
             web.post('/stream_ingest', self.handle_stream_ingest),
             web.post('/status_update', self.handle_status_update),
+            web.post('/trigger_task', self.handle_trigger_task),
+            web.post('/release_nodes', self.handle_release_nodes),
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status)
         ])
@@ -101,6 +104,37 @@ class FoyerRouter:
         })
         for route in list(self.app.router.routes()):
             cors.add(route)
+
+    async def handle_release_nodes(self, request):
+        """REST endpoint to gracefully shutdown logical nodes for hibernation."""
+        try:
+            logger.info("[FOYER] Releasing logical nodes for hibernation...")
+            await self.residents.shutdown()
+            return web.json_response({"status": "RELEASED"})
+        except Exception as e:
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
+
+    async def handle_trigger_task(self, request):
+        """REST endpoint to trigger one-off background tasks."""
+        try:
+            data = await request.json()
+            task = data.get("task")
+            logger.info(f"[TRIGGER] Requesting task: {task}")
+            if task == "recruiter":
+                from recruiter import run_recruiter_task
+                asyncio.create_task(run_recruiter_task(
+                    self.residents.residents.get("archive"),
+                    self.residents.residents.get("brain"),
+                    self.residents.residents.get("browser")
+                ))
+            elif task == "lab":
+                lab_node = self.residents.residents.get("lab")
+                if lab_node:
+                    asyncio.create_task(lab_node.call_tool("build_semantic_map"))
+            
+            return web.json_response({"status": "TRIGGERED", "task": task})
+        except Exception as e:
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def handle_status_update(self, request):
         """REST endpoint for the Ignition Manager to push state changes."""
