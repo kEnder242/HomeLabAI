@@ -37,6 +37,20 @@ if __name__ == "__main__":
     ignition_proc = subprocess.Popen([sys.executable, ignition_script])
     
     try:
+        # [Task 5.2] Execute one-off trigger task if requested
+        if args.trigger_task:
+            # Check if Foyer is already up
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex(('127.0.0.1', 8765))
+            if result == 0:
+                # Foyer is up, use REST
+                import requests
+                print(f"[BOOT] Foyer active on 8765. Triggering '{args.trigger_task}' via REST...")
+                requests.post("http://localhost:8765/trigger_task", json={"task": args.trigger_task}, timeout=5)
+                sys.exit(0)
+            sock.close()
+
         # [FEAT-145] "Unity" Dispatcher: Hub Router
         router = FoyerRouter(trigger_task=args.trigger_task)
         router.run()

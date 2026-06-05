@@ -31,7 +31,7 @@ SEMANTIC_MAP_FILE = os.path.join(DATA_DIR, "semantic_map.json")
 
 # [Task 3.1] The Clipboard: Session-scoped context cache
 SESSION_CLIPBOARD = []
-CLIPBOARD_LIMIT = 10 # Max segments to prevent context blowout
+CLIPBOARD_CHAR_LIMIT = 8000 # [Task 2.3] Memory-OS: Context ceiling
 
 def get_style_key():
     """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
@@ -111,14 +111,18 @@ async def create_followup_file(topic_filename: str, context: str) -> str:
 async def scribble_to_clipboard(content: str) -> str:
     """
     [Task 3.1] The Clipboard: Scribbles high-value context to the session-scoped cache.
-    Useful for preserving overhearing results turn-over-turn.
+    [Task 2.3] Memory-OS: Implements character-aware eviction.
     """
     global SESSION_CLIPBOARD
     if content not in SESSION_CLIPBOARD:
         SESSION_CLIPBOARD.append(content)
-        if len(SESSION_CLIPBOARD) > CLIPBOARD_LIMIT:
-            SESSION_CLIPBOARD.pop(0) # FIFO Eviction
-        return f"✅ Scribbled to clipboard. ({len(SESSION_CLIPBOARD)} segments active)"
+        
+        # [Task 2.3] Memory-OS: Evict until under char limit
+        while sum(len(c) for c in SESSION_CLIPBOARD) > CLIPBOARD_CHAR_LIMIT:
+            SESSION_CLIPBOARD.pop(0) # FIFO Eviction of oldest context
+            
+        total_len = sum(len(c) for c in SESSION_CLIPBOARD)
+        return f"✅ Scribbled to clipboard. ({len(SESSION_CLIPBOARD)} segments, {total_len} chars active)"
     return "Segment already resident in clipboard."
 
 
@@ -442,6 +446,34 @@ async def dream(summary: str, sources: list[str]) -> str:
         return f"Dream failed: {e}"
 
 
+MEMO_CACHE = os.path.join(DATA_DIR, "memo_cache.json")
+
+@mcp.tool()
+async def get_observational_memo(topic: str = None, year: str = None) -> str:
+    """
+    [FEAT-266.9] Memo Layer: Retrieves pre-synthesized observations.
+    Useful for high-level grounding before deep retrieval.
+    """
+    if not os.path.exists(MEMO_CACHE):
+        return "No observational memos found."
+        
+    try:
+        with open(MEMO_CACHE, "r") as f:
+            data = json.load(f)
+            
+        if year and year in data.get("years", {}):
+            return f"[MEMO: {year}]: {data['years'][year]}"
+            
+        if topic:
+            # Simple keyword match for topics
+            for t, content in data.get("topics", {}).items():
+                if topic.lower() in t.lower():
+                    return f"[MEMO: {t}]: {content}"
+                    
+        return "No matching memo for this context."
+    except Exception as e:
+        return f"Memo retrieval error: {e}"
+
 @mcp.tool()
 async def scribble_note(query: str, response: str) -> str:
     """Caches a response semantically for future recall."""
@@ -539,6 +571,11 @@ async def get_context(query: str, n_results: int = 3) -> str:
         # Support years from 1990 to 2029
         year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
         target_year = year_match.group(1) if year_match else None
+
+        # [Task 2.1] Memo Integration: Check for high-level observations first
+        memo = await get_observational_memo(topic=query if not target_year else None, year=target_year)
+        if "[MEMO:" in memo:
+            combined_context.append(memo)
         
         # [FEAT-088] Semantic Fallback
         if not target_year:

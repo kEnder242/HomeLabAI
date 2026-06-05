@@ -118,6 +118,13 @@ class CognitiveHub:
                 asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
                 return None
                 
+            # [Task 6.6] Infinite Newline Check
+            if text.count('\n') / len(text) > 0.3:
+                msg = "[GIBBERISH] Infinite newline loop detected."
+                logging.warning(msg)
+                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
+                return None
+                
             # Alphanumeric Density Check (e.g. "oru 使用(menuresponsive...")
             alnum_count = sum(1 for c in text if c.isalnum())
             alnum_density = alnum_count / len(text)
@@ -429,6 +436,31 @@ class CognitiveHub:
         except Exception as e:
             logging.debug(f"[HUB] Vibe routing failed or timed out: {e}")
             return {"adapter": "exp_for", "guidance": ""}
+
+    async def _distill_sovereign_brief(self, raw_context):
+        """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
+        if not raw_context or "brain" not in self.residents:
+            return raw_context
+            
+        logging.info("[HUB] Context Precision: Distilling raw RAG into Sovereign Brief...")
+        try:
+            prompt = (
+                "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Sovereign Brief'. "
+                "Extract specific platform anchors, validation targets, and known PECI/MSR scars. "
+                "STRICT: NO ROLEPLAY. PROVIDE ONLY THE TECHNICAL SYNTHESIS."
+            )
+            # Use 'think' to generate distillation
+            res = await self.residents["brain"].call_tool("think", {
+                "query": prompt, 
+                "context": raw_context,
+                "behavioral_guidance": "Distill for Sovereign Thought."
+            })
+            brief = str(res.content[0].text)
+            logging.info(f"[HUB] Distillation complete ({len(brief)} chars).")
+            return f"[SOVEREIGN_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
+        except Exception as e:
+            logging.warning(f"[HUB] Context distillation failed: {e}")
+            return raw_context
 
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and waits for completion."""
@@ -861,7 +893,8 @@ class CognitiveHub:
             
             b_context = ""
             if historical_context:
-                b_context += f"[HISTORICAL_TRUTH]:\n{historical_context}\n\n"
+                # [Task 2.2] Context Precision: Distill before dispatching to Sovereign
+                b_context += await self._distill_sovereign_brief(historical_context) + "\n\n"
             if archival_map_context:
                 b_context += f"{archival_map_context}\n\n"
             

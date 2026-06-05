@@ -49,6 +49,7 @@ class IgnitionManager:
         from collections import deque
         self.processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
         self.last_induction_date = None # [FEAT-289] Atomic Induction
+        self.last_activity_time = time.time() # [Task 4.1] Idle tracking
 
     def _acquire_vram_lock(self):
         """[FEAT-287] Mutual Exclusion (Ignition Mutex)."""
@@ -59,6 +60,7 @@ class IgnitionManager:
             logging.info("[IGNITION] VRAM Mutex acquired.")
             return True
         except (IOError, OSError):
+            logging.warning("[IGNITION] VRAM Mutex busy (locked by another process).")
             return False
 
     def _release_vram_lock(self):
@@ -103,16 +105,19 @@ class IgnitionManager:
             if not api_ready:
                 logging.error("[IGNITION] vLLM failed to bind port 8088 within 5 minutes.")
                 self.status.state = "ERROR"
+                self._release_vram_lock() # Release on failure
                 return False
 
             self.status.state = "OPERATIONAL"
             self.status.engine_up = True
             self.status.vocal = True
             logging.info("[IGNITION] Physical silicon is READY.")
+            # [Task 6.6] Lock is NOT released here; it is held while OPERATIONAL
             return True
-        finally:
-            self._release_vram_lock()
+        except Exception:
+            self._release_vram_lock() # Release on crash
             self.update_status_file()
+            raise
 
     def update_status_file(self):
         """[FEAT-265] Multi-host status synchronization."""
@@ -135,6 +140,46 @@ class IgnitionManager:
                 _push_update()
         except Exception: pass
 
+    async def stop_lab(self, reason="AFK"):
+        """[Task 4.1] Stable Hibernation: Strict subprocess termination."""
+        logging.info(f"[IGNITION] Initiating Deep Sleep: {reason}")
+        
+        # 1. Notify Foyer to release logical nodes (VRAM Hygiene)
+        try:
+            import requests
+            requests.post("http://localhost:8765/release_nodes", timeout=5)
+        except Exception as e:
+            logging.warning(f"[IGNITION] Failed to notify Foyer for node release: {e}")
+
+        # 2. Targeted Kill of vLLM (Read PID file)
+        try:
+            pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
+            if os.path.exists(pid_file):
+                with open(pid_file, "r") as f:
+                    pid = int(f.read().strip())
+                logging.info(f"[IGNITION] Sending SIGKILL to vLLM PID: {pid}")
+                subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
+                os.remove(pid_file)
+        except Exception as e:
+            logging.debug(f"[IGNITION] PID-based kill failed: {e}")
+
+        # 3. Recursive cleanup (EngineCore and rogue vllm)
+        try:
+            # [FEAT-036] Release port 8088 and kill survivors
+            subprocess.run(["sudo", "fuser", "-k", "8088/tcp"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "EngineCore"], check=False)
+        except Exception: pass
+        
+        # 4. Reset Status
+        self.status.state = "HIBERNATING"
+        self.status.engine_up = False
+        self.status.vocal = False
+        self._release_vram_lock() # [Task 6.6] Release silicon lock on deep sleep
+        self.update_status_file()
+        logging.info("[IGNITION] Deep Sleep confirmed. VRAM released.")
+        return True
+
     async def queue_watcher(self):
         """[Task 4.3] Monitors the foyer queue for new intent."""
         logging.info(f"[IGNITION] Queue watcher started.")
@@ -154,11 +199,17 @@ class IgnitionManager:
                                 try:
                                     event = IntentEvent.from_json(line)
                                     if event.status == "PENDING" and event.id not in self.processed_ids:
-                                        logging.info(f"[IGNITION] New Intent: {event.id}")
-                                        self.processed_ids.add(event.id)
+                                        logging.info(f"[IGNITION] New Intent Detected: {event.id} (State: {self.status.state})")
+                                        self.processed_ids.append(event.id)
+                                        self.last_activity_time = time.time() # Reset idle timer
                                         if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR"]:
+                                            logging.info(f"[IGNITION] Triggering ignition task for {event.id}...")
                                             asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
-                                except Exception: pass
+                                        else:
+                                            logging.info(f"[IGNITION] Lab already {self.status.state}. Skipping ignition.")
+                                except Exception as e:
+                                    logging.error(f"[IGNITION] Intent processing error: {e}")
+
                             last_pos = f.tell()
             except Exception: pass
             await asyncio.sleep(1)
@@ -172,12 +223,12 @@ class IgnitionManager:
                 now = datetime.datetime.now()
                 today = now.date()
                 
-                # [FEAT-136] Quiescence Awareness: Check for maintenance lock
-                if os.path.exists(MAINTENANCE_LOCK):
-                    await asyncio.sleep(60)
-                    continue
+                # 1. AFK Hibernation (Task 4.1)
+                idle_time = time.time() - self.last_activity_time
+                if idle_time > 1800 and self.status.state == "OPERATIONAL":
+                    await self.stop_lab(reason="AFK_TIMEOUT")
 
-                # 1. Daily Induction Window (02:00 - 04:00)
+                # 2. Daily Induction Window (02:00 - 04:00)
                 is_window = (2 <= now.hour < 4)
                 if is_window and self.last_induction_date != today:
                     # [FEAT-289] Atomic Induction: Mark today as started
@@ -189,28 +240,24 @@ class IgnitionManager:
                         try:
                             # Step 1: Nightly Recruiter
                             logging.info("[ALARM] Step 1: Nightly Recruiter...")
-                            # Trigger via CLI to avoid node dependency in manager
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "recruiter"], env=os.environ.copy())
                             
                             # Step 2: Hierarchy Refactor
                             logging.info("[ALARM] Step 2: Hierarchy Refactor...")
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "lab"], env=os.environ.copy())
-                            
                         finally:
                             self._release_vram_lock()
-                            self.status.timestamp = time.time() # Reset idle timer
+                            self.status.timestamp = time.time() 
                     else:
                         logging.warning("[ALARM] Silicon busy (Mutex Locked). Deferring induction.")
-                        # Reset so we try again in 10 mins
                         self.last_induction_date = None
 
-                # 2. Slow Burn: Idle GEM Refinement
+                # 3. Slow Burn: Idle GEM Refinement
                 idle_time = time.time() - self.status.timestamp
                 if idle_time > 3600 and self.status.state == "HIBERNATING":
                     logging.info("[IGNITION] System Idle > 1hr. Triggering Quiet Refinement...")
                     if self._acquire_vram_lock():
                         try:
-                            # Run one gem refinement pass
                             refiner = os.path.join(LAB_DIR, "field_notes/refine_gem.py")
                             if os.path.exists(refiner):
                                 subprocess.run([sys.executable, refiner, "--one-turn"], env=os.environ.copy())

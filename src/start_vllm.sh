@@ -9,7 +9,7 @@ if [ -z "$LAB_VENV_PYTHON" ]; then
 fi
 
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_PATH="/speedy/models/llama-3.2-3b-instruct-awq"
+    MODEL_PATH="Qwen/Qwen2.5-3B-Instruct-AWQ"
 fi
 
 # [TURING BREAKTHROUGH] Optimization Defaults for RTX 2080 Ti
@@ -17,15 +17,16 @@ fi
 export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
 export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
 export VLLM_USE_V1=${VLLM_USE_V1:-0}
+export VLLM_USE_FLASHINFER_BFLOAT16=0  # [TURING FIX] Disable BF16 JIT
+export VLLM_USE_FLASHINFER_SAMPLER=0   # [TURING FIX] Disable FlashInfer Sampler
 
 echo "--- vLLM Sovereign Ignition: $MODEL_PATH ---"
 echo "Env: Backend=${VLLM_ATTENTION_BACKEND}, P2P_Disable=${NCCL_P2P_DISABLE}, V1=${VLLM_USE_V1}"
-
 # [FEAT-352] Standardized Qwen-2.5 Recipe
 # Optimized for Turing (RTX 2080 Ti) with 100% Prefix Caching enabled.
-# Using 'llama_legacy' adapters until Qwen-native LoRAs are trained in Goal 21.
-LORA_LEGACY="/speedy/models/adapters/llama_legacy"
-LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
+# LoRAs disabled until Qwen-native adapters are available.
+# LORA_LEGACY="/speedy/models/adapters/llama_legacy"
+# LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
 
 $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
@@ -42,12 +43,9 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --enforce-eager \
     --attention-backend TRITON_ATTN \
     --enable-prefix-caching \
-    --enable-lora \
-    --max-loras 4 \
-    --max-cpu-loras 10 \
-    --lora-modules $LORA_MODULES \
+    --no-enable-lora \
     --enable-auto-tool-choice \
-    --tool-call-parser llama3_json \
+    --tool-call-parser qwen3_coder \
     $VLLM_EXTRA_ARGS \
     > vllm_server.log 2>&1 &
 
