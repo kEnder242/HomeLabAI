@@ -46,7 +46,8 @@ class IgnitionManager:
             
         self.status = LabStatus()
         self._vram_lock_fd = None
-        self.processed_ids = set()
+        from collections import deque
+        self.processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
         self.last_induction_date = None # [FEAT-289] Atomic Induction
 
     def _acquire_vram_lock(self):
@@ -120,9 +121,18 @@ class IgnitionManager:
             with open(STATUS_JSON, "w") as f:
                 json.dump(self.status.to_dict(), f, indent=2)
             
-            # [Task 5.2] Push to Foyer Router for real-time sync
-            import requests
-            requests.post("http://localhost:8765/status_update", json=self.status.to_dict(), timeout=0.5)
+            # [Task 6.2] Latency: Async status push
+            def _push_update():
+                try:
+                    import requests
+                    requests.post("http://localhost:8765/status_update", json=self.status.to_dict(), timeout=0.5)
+                except Exception: pass
+            
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.run_in_executor(None, _push_update)
+            else:
+                _push_update()
         except Exception: pass
 
     async def queue_watcher(self):

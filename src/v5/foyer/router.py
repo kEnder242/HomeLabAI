@@ -291,10 +291,28 @@ class FoyerRouter:
     async def waterfall_drainer(self):
         """[FEAT-233.2] Drains the internal token buffer and broadcasts to clients."""
         logger.info("Waterfall drainer active.")
+        from collections import defaultdict
+        ui_buffers = defaultdict(str)
+
         while True:
             try:
                 data = await self.waterfall_queue.get()
-                await self.broadcast(data)
+                source = str(data.get("brain_source", data.get("source", "Unknown")))
+                token = data.get("brain", "")
+                final = data.get("final", False)
+
+                # 1. Update UI-specific block buffer
+                if token:
+                    ui_buffers[source] += token
+                
+                # 2. UI Delivery Policy (Task 6.6): Only 'POP' on completion
+                if final:
+                    # Deliver the full block
+                    data["brain"] = ui_buffers[source]
+                    await self.broadcast(data)
+                    # Reset buffer for this source
+                    ui_buffers[source] = ""
+                
                 self.waterfall_queue.task_done()
             except Exception as e:
                 logger.error(f"Waterfall drainer error: {e}")
@@ -350,7 +368,8 @@ class FoyerRouter:
         if os.path.exists(QUEUE_FILE):
             last_pos = os.path.getsize(QUEUE_FILE)
 
-        processed_ids = set()
+        from collections import deque
+        processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
 
         while True:
             try:
@@ -371,7 +390,7 @@ class FoyerRouter:
                                         event = IntentEvent.from_json(line)
                                         if event.status == "PENDING" and event.id not in processed_ids:
                                             logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
-                                            processed_ids.add(event.id)
+                                            processed_ids.append(event.id)
                                             
                                             # [FIX] Keep WebSocket alive during long node boot
                                             await self.broadcast({
