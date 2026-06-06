@@ -27,6 +27,10 @@ echo "Env: Backend=${VLLM_ATTENTION_BACKEND}, P2P_Disable=${NCCL_P2P_DISABLE}, V
 LORA_LEGACY="/speedy/models/adapters/llama_legacy"
 LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
 
+# [Task 7.1] Physics: Fix fragmented JIT paths after driver upgrade
+CUDA_LIB_PATH="/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib"
+export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
+
 $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
     --load-format auto \
