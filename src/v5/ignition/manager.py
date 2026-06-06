@@ -225,7 +225,7 @@ class IgnitionManager:
                 
                 # 1. AFK Hibernation (Task 4.1)
                 idle_time = time.time() - self.last_activity_time
-                if idle_time > 1800 and self.status.state == "OPERATIONAL":
+                if idle_time > 120 and self.status.state == "OPERATIONAL":
                     await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
@@ -245,6 +245,10 @@ class IgnitionManager:
                             # Step 2: Hierarchy Refactor
                             logging.info("[ALARM] Step 2: Hierarchy Refactor...")
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "lab"], env=os.environ.copy())
+                            
+                            # Step 3: Sequenced Batch Forge
+                            logging.info("[ALARM] Step 3: Sequenced Batch Forge...")
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "forge"], env=os.environ.copy())
                         finally:
                             self._release_vram_lock()
                             self.status.timestamp = time.time() 

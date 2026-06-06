@@ -131,6 +131,12 @@ class FoyerRouter:
                 lab_node = self.residents.residents.get("lab")
                 if lab_node:
                     asyncio.create_task(lab_node.call_tool("build_semantic_map"))
+            elif task == "forge":
+                # [FEAT-217] Sequenced Batch Forge
+                archive_node = self.residents.residents.get("archive")
+                if archive_node:
+                    for target in ["cli_voice_v1", "shadow_brain_v2", "lab_history_v1"]:
+                        asyncio.create_task(archive_node.call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
             
             return web.json_response({"status": "TRIGGERED", "task": task})
         except Exception as e:

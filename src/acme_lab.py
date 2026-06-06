@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--afk-timeout", type=int, default=300)
     parser.add_argument("--disable-ear", action="store_true", default=False)
     parser.add_argument("--role", default="HUB")
-    parser.add_argument("--trigger-task", choices=["recruiter", "lab"])
+    parser.add_argument("--trigger-task", choices=["recruiter", "lab", "forge"])
     args = parser.parse_args()
     
     # [Task 5.2] Spawn Ignition Manager as a sibling process
