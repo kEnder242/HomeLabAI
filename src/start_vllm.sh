@@ -50,11 +50,11 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --max-loras 4 \
     --max-cpu-loras 10 \
     --lora-modules $LORA_MODULES \
-    --enable-auto-tool-choice \
-    --tool-call-parser llama3_json \
+
+
     $VLLM_EXTRA_ARGS \
-    > vllm_server.log 2>&1 &
+    > /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log 2>&1 &
 
 PID=$!
-echo $PID > run/vllm.pid
+echo $PID > /home/jallred/Dev_Lab/HomeLabAI/run/vllm.pid
 echo "Sovereign Node launched with PID: $PID"
