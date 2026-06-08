@@ -21,8 +21,8 @@ def run_linter(file_path):
     except Exception as e:
         return False, str(e)
 
-def atomic_patch(file_path, old_pattern, new_pattern, multi=False):
-    """Apply a regex-based patch only if it results in a lint-clean file."""
+def atomic_patch(file_path, old_pattern, new_pattern, multi=False, force=False):
+    """Apply a regex-based patch, logging lint errors but allowing bypass with force."""
     if not os.path.exists(file_path):
         print(f"Error: File {file_path} not found.")
         return False
@@ -52,10 +52,16 @@ def atomic_patch(file_path, old_pattern, new_pattern, multi=False):
         print(f"Successfully patched {file_path} and verified.")
         return True
     else:
-        print(f"Error: Patch failed linting.\n{output}")
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        return False
+        print(f"Warning: Patch failed linting.\n{output}")
+        if force:
+            print("Force flag active. Proceeding with patch despite lint errors.")
+            os.replace(tmp_path, file_path)
+            return True
+        else:
+            print("Rollback initiated. Use --force to override.")
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Atomic Multi-Language Patcher with Lint-Gate")
@@ -63,6 +69,7 @@ if __name__ == "__main__":
     parser.add_argument("--old", required=True, help="Regex pattern to find")
     parser.add_argument("--new", required=True, help="Replacement text")
     parser.add_argument("--multi", action="store_true", help="Replace multiple occurrences")
+    parser.add_argument("--force", action="store_true", help="Apply patch even if linting fails")
     
     args = parser.parse_args()
     
@@ -70,7 +77,7 @@ if __name__ == "__main__":
     new_pattern = args.new.replace("\\n", "\n")
     old_pattern = args.old.replace("\\n", "\n")
     
-    if atomic_patch(args.file, old_pattern, new_pattern, args.multi):
+    if atomic_patch(args.file, old_pattern, new_pattern, args.multi, args.force):
         sys.exit(0)
     else:
         sys.exit(1)

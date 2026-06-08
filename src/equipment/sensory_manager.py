@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import asyncio
 import numpy as np
 import random
 import time
@@ -35,7 +36,7 @@ class SensoryManager:
                 sys.path.append(e_dir)
                 
             from ear_node import EarNode
-            self.ear = EarNode()
+            self.ear = await asyncio.to_thread(EarNode)
             logging.info("[SENSORY] EarNode initialized (NeMo).")
         except Exception as e:
             logging.error(f"[SENSORY] Failed to load EarNode: {e}")
