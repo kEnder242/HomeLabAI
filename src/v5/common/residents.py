@@ -20,11 +20,15 @@ class ResidentManager:
         self.session_token = session_token
         self.stack = AsyncExitStack()
         self.booted = False
+        self.booting = False
+        self._boot_lock = asyncio.Lock()
 
     async def boot_all(self):
         """Idempotent boot of all logical nodes."""
-        if self.booted:
-            return
+        async with self._boot_lock:
+            if self.booted:
+                return
+            self.booting = True
         
         logging.info("[RESIDENTS] Booting node stack...")
         n_dir = os.path.join(SRC_DIR, "nodes")
@@ -41,8 +45,11 @@ class ResidentManager:
         for name, path in nodes:
             boot_tasks.append(self._boot_node(name, path))
         
-        await asyncio.gather(*boot_tasks)
-        self.booted = True
+        try:
+            await asyncio.gather(*boot_tasks)
+            self.booted = True
+        finally:
+            self.booting = False
 
     async def _boot_node(self, name, path):
         try:
@@ -71,6 +78,8 @@ class ResidentManager:
         await self.stack.aclose()
         self.residents.clear()
         self.booted = False
+        self.booting = False
+        self._boot_lock = asyncio.Lock()
 
     def get_node(self, name: str) -> Optional[ClientSession]:
         return self.residents.get(name)
