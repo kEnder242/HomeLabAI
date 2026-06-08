@@ -4,25 +4,25 @@ import logging
 import os
 import time
 import uuid
-import hashlib
-import sys
+import random
 import aiohttp
 from aiohttp import web
 import aiohttp_cors
+import sys
+import subprocess
 
 # Add src to path
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if LAB_DIR not in sys.path:
     sys.path.append(LAB_DIR)
 
+from v5.common.types import IntentEvent, LabStatus
+from v5.common.residents import ResidentManager
+from logic.cognitive_hub import CognitiveHub
+from equipment.sensory_manager import SensoryManager
+
 # [Task 4.2] V5 Foyer: The Logic Master
 # Objective: Host the Cognitive Hub and manage logical node lifecycle.
-
-from v5.common.types import IntentEvent, LabStatus  # noqa: E402
-from v5.common.residents import ResidentManager  # noqa: E402
-from logic.cognitive_hub import CognitiveHub  # noqa: E402
-from equipment.sensory_manager import SensoryManager  # noqa: E402
-from infra.montana import reclaim_logger  # noqa: E402
 
 PORT = 8765
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -30,7 +30,9 @@ DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 
+# Configure logging early
 # [BKM-016] Montana Protocol: Log Reclamation
+from infra.montana import reclaim_logger
 reclaim_logger(role="SENSORY")
 logger = logging.getLogger("foyer")
 
@@ -40,34 +42,33 @@ try:
 except ImportError:
     setproctitle = None
 
-
 def get_style_key():
     """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
     style_path = os.path.join(WORKSPACE_DIR, "field_notes/style.css")
     if os.path.exists(style_path):
+        import hashlib
         with open(style_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()[:8]
     return "default_key"
-
 
 class FoyerRouter:
     def __init__(self, trigger_task=None):
         # Rename process
         if setproctitle:
             setproctitle.setproctitle("acme_foyer_v5")
-
+            
         self.connected_clients = set()
         self.session_token = uuid.uuid4().hex[:8]
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
         self.waterfall_queue = asyncio.Queue()
         self.trigger_task = trigger_task
-
+        
         self.status = LabStatus()
         self.cognitive = CognitiveHub(
-            self.residents.residents,
-            self.broadcast,
-            self.sensory,
+            self.residents.residents, 
+            self.broadcast, 
+            self.sensory, 
             get_vram_status=self.get_vram_status,
             trigger_morning_briefing=self.trigger_morning_briefing,
             waterfall_queue=self.waterfall_queue
@@ -75,7 +76,7 @@ class FoyerRouter:
         self.app = web.Application()
         self.app.on_startup.append(self.on_startup)
         self.setup_routes()
-
+        
     def get_vram_status(self, force=False):
         return self.status.vocal
 
@@ -95,7 +96,7 @@ class FoyerRouter:
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status)
         ])
-
+        
         cors = aiohttp_cors.setup(self.app, defaults={
             "*": aiohttp_cors.ResourceOptions(
                 allow_credentials=True,
@@ -138,7 +139,7 @@ class FoyerRouter:
                 if archive_node:
                     for target in ["cli_voice_v1", "shadow_brain_v2", "lab_history_v1"]:
                         asyncio.create_task(archive_node.call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
-
+            
             return web.json_response({"status": "TRIGGERED", "task": task})
         except Exception as e:
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
@@ -151,13 +152,12 @@ class FoyerRouter:
             self.status.state = data.get("state", self.status.state)
             self.status.vocal = data.get("vocal", self.status.vocal)
             self.status.engine_up = data.get("engine_up", self.status.engine_up)
-
+            
             # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently
-            if self.status.vocal and not self.residents.booted:
+            if self.status.vocal and not self.residents.booted and not self.residents.booting:
                 logger.info("[FOYER] Physical silicon vocal. Initiating logical boot...")
-                asyncio.create_task(self.sensory.load())
                 asyncio.create_task(self.residents.boot_all())
-
+            
             return web.Response(status=200)
         except Exception as e:
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
@@ -165,7 +165,13 @@ class FoyerRouter:
     async def on_startup(self, app):
         """[FEAT-339] Clean task scheduling on event loop start."""
         logger.info("V5 Foyer Router starting background tasks...")
-
+        
+        # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
+        # Load it preemptively on startup, exempting it from hibernation.
+        # Ensure it gets contiguous memory before vLLM or residents spawn.
+        logger.info("[BOOT] Pre-emptively loading Sensory EarNode...")
+        asyncio.create_task(self.sensory.load())
+        
         # [Task 5.2] Execute one-off trigger task if requested
         trigger_task = getattr(self, "trigger_task", None)
         if trigger_task:
@@ -181,7 +187,7 @@ class FoyerRouter:
                 lab_node = self.residents.residents.get("lab")
                 if lab_node:
                     asyncio.create_task(lab_node.call_tool("build_semantic_map"))
-
+        
         asyncio.create_task(self.reflex_loop())
         asyncio.create_task(self.ear_poller_loop())
         asyncio.create_task(self.scheduled_tasks_loop())
@@ -198,130 +204,211 @@ class FoyerRouter:
         data = await request.json()
         query = data.get("query")
         if query:
-            await self.enqueue_intent(query, source="REST")
-            return web.json_response({"status": "QUEUED"})
-        return web.json_response({"status": "ERROR", "message": "No query"}, status=400)
+            event = await self.enqueue_intent(query, source="REST")
+            return web.json_response({"status": "QUEUED", "id": event.id})
+        return web.json_response({"status": "ERROR", "message": "No query provided"}, status=400)
 
     async def handle_websocket(self, ws_request):
-        ws = web.WebSocketResponse()
+        # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
+        ws = web.WebSocketResponse(heartbeat=300.0)
         await ws.prepare(ws_request)
         
-        client_id = uuid.uuid4().hex[:8]
+        socket_id = str(uuid.uuid4())[:8]
         self.connected_clients.add(ws)
-        logger.info(f"Client connected: {client_id}")
-
+        logger.info(f"Client connected: {socket_id}")
+        
+        await ws.send_str(json.dumps(self.status.to_dict()))
+        
         try:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
-                    query = data.get("query")
-                    if query:
-                        await self.enqueue_intent(query, source=client_id)
-                elif msg.type == aiohttp.WSMsgType.BINARY:
-                    # Voice streaming
-                    res = self.sensory.process_binary_chunk(msg.data)
-                    if res:
-                        await self.enqueue_intent(res, source=client_id)
+                    m_type = data.get("type")
+                    
+                    if m_type == "handshake":
+                        await ws.send_str(json.dumps({
+                            "type": "status", 
+                            "state": "connected", 
+                            "socket_id": socket_id,
+                            "version": "5.0.0-foyer"
+                        }))
+                    elif m_type == "text_input":
+                        query = data.get("content")
+                        await self.enqueue_intent(query, source=f"WS_{socket_id}")
+                    elif m_type == "workspace_save":
+                        fn = data.get("filename")
+                        content = data.get("content")
+                        asyncio.create_task(self.cognitive.handle_workspace_save(fn, content))
+                    elif m_type == "read_file":
+                        fn = data.get("filename")
+                        archive = self.residents.get_node("archive")
+                        if archive:
+                            res = await archive.call_tool("read_document", {"filename": fn})
+                            await ws.send_str(json.dumps({
+                                "type": "file_content",
+                                "filename": fn,
+                                "content": res.content[0].text,
+                                "brain_source": "System"
+                            }))
+                    elif m_type == "mic_state":
+                        active = data.get("active", False)
+                        logger.info(f"Mic state changed: {active}")
+                        
         finally:
-            self.connected_clients.remove(ws)
-            logger.info(f"Client disconnected: {client_id}")
+            if ws in self.connected_clients:
+                self.connected_clients.remove(ws)
+            logger.info(f"Client disconnected: {socket_id}")
+            
         return ws
 
     async def handle_stream_ingest(self, request):
-        """[FEAT-233.2] Receives real-time tokens from residents."""
+        """[FEAT-233.7] Real-time token ingestion from decoupled nodes."""
         try:
             data = await request.json()
-            await self.waterfall_queue.put(data)
+            # Relay to Cognitive Hub for waterfall overhearing
+            self.cognitive.on_token({
+                "brain": data.get("text", ""),
+                "brain_source": data.get("source", "Unknown"),
+                "final": data.get("final", False)
+            })
             return web.Response(status=200)
-        except Exception:
-            return web.Response(status=400)
+        except Exception as e:
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def enqueue_intent(self, query, source):
         event = IntentEvent(query=query, source=source)
-        with open(QUEUE_FILE, "a") as f:
-            f.write(event.to_json() + "\n")
-        
-        # [FEAT-265.8] Trigger ignition if hibernating
-        if self.status.state == "HIBERNATING":
-            logger.info(f"[FOYER] Request {event.id} secured in queue. Igniting Brain...")
-            try:
-                async with aiohttp.ClientSession() as session:
-                    await session.post("http://localhost:9999/ignite", json={"reason": "INTENT"}, timeout=1.0)
-            except Exception:
-                pass
-        return event
+        try:
+            os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
+            with open(QUEUE_FILE, "a") as f:
+                f.write(event.to_json() + "\n")
+            
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[FOYER] Request {event.id} secured in queue. Igniting Brain...",
+                "brain_source": "Foyer"
+            })
+            return event
+        except Exception as e:
+            logger.error(f"Failed to enqueue: {e}")
+            raise
 
     async def broadcast(self, message_dict):
-        """[FEAT-145] Send logical updates to all connected UIs."""
+        """[FEAT-221] Safe broadcast with loop-congestion protection."""
         m_type = message_dict.get("type", "chat")
-        m_source = message_dict.get("brain_source", "System")
         m_content = message_dict.get("brain") or message_dict.get("message")
-        
         if not m_content:
-            if m_type == "status":
-                pass
-            else:
-                return
+            if m_type == "status": pass
+            else: return
 
         # [NEW] Check if we are being called from a synchronous context
         try:
             loop = asyncio.get_event_loop()
             if not loop.is_running():
-                # Should not happen in aiohttp
-                return
-        except Exception:
-            return
+                 # Should not happen in aiohttp
+                 return
+        except Exception: return
 
         # Perform formatting and logging
+        m_source = message_dict.get("brain_source", "System")
         try:
-            from v5.common.ledger import ForensicLedger
-            ledger = ForensicLedger()
+            from infra.forensic_ledger import ledger
             if m_type in ["chat", "crosstalk"]:
                 ledger.record_thought(m_source, m_content, role=m_type.upper())
-        except Exception:
-            pass
+        except Exception: pass
 
         message_dict["type"] = m_type
-        message_dict["timestamp"] = time.time()
-        
-        payload = json.dumps(message_dict)
+        message_dict["brain"] = m_content
+        message_dict["brain_source"] = m_source
+        message_dict["hub_pid"] = os.getpid()
+        if "msg_id" not in message_dict:
+            message_dict["msg_id"] = uuid.uuid4().hex[:12]
+
+        msg_str = json.dumps(message_dict)
+
+        # Non-blocking WebSocket fan-out
         for ws in list(self.connected_clients):
             try:
-                await ws.send_str(payload)
+                if not ws.closed:
+                    # Fire-and-forget the send_str to avoid blocking the main loop
+                    asyncio.create_task(asyncio.wait_for(ws.send_str(msg_str), timeout=1.0))
+                else:
+                    self.connected_clients.remove(ws)
             except Exception:
-                self.connected_clients.remove(ws)
-
-    async def reflex_loop(self):
-        """[FEAT-031] Autonomous Reflexes."""
-        while True:
-            # Placeholder for future fast-path reflexes
-            await asyncio.sleep(60)
-
-    async def ear_poller_loop(self):
-        """Polls for ASR results if sensory model is active."""
-        while True:
-            await asyncio.sleep(1)
-
-    async def scheduled_tasks_loop(self):
-        """[FEAT-072] Nightly Induction & Archive Sync."""
-        logger.info("Scheduled tasks loop active.")
-        while True:
-            # Polled via Ignition Manager in V5
-            await asyncio.sleep(300)
+                if ws in self.connected_clients:
+                    self.connected_clients.remove(ws)
 
     async def waterfall_drainer(self):
-        """[FEAT-233.2] Ingests and broadcasts tokens from the internal buffer."""
+        """[FEAT-233.2] Drains the internal token buffer and broadcasts to clients."""
         logger.info("Waterfall drainer active.")
+        from collections import defaultdict
+        ui_buffers = defaultdict(str)
+
         while True:
-            item = await self.waterfall_queue.get()
-            # Relay to all clients
-            await self.broadcast({
-                "type": "chat",
-                "brain": item.get("text", ""),
-                "brain_source": item.get("source", "Resident"),
-                "final": item.get("final", False)
-            })
-            self.waterfall_queue.task_done()
+            try:
+                data = await self.waterfall_queue.get()
+                source = str(data.get("brain_source", data.get("source", "Unknown")))
+                token = data.get("brain", "")
+                final = data.get("final", False)
+
+                # 1. Update UI-specific block buffer
+                if token:
+                    ui_buffers[source] += token
+                
+                # 2. UI Delivery Policy (Task 6.6): Only 'POP' on completion
+                if final:
+                    # Deliver the full block
+                    data["brain"] = ui_buffers[source]
+                    await self.broadcast(data)
+                    # Reset buffer for this source
+                    ui_buffers[source] = ""
+                
+                self.waterfall_queue.task_done()
+            except Exception as e:
+                logger.error(f"Waterfall drainer error: {e}")
+                await asyncio.sleep(0.1)
+
+    async def reflex_loop(self):
+        """[FEAT-365] Characterful reflexes and persistence heartbeats."""
+        tics = ["Narf!", "Poit!", "Zort!", "Checking circuits...", "Egad!", "Trotro!"]
+        while True:
+            # Persistent heartbeat to prevent browser timeouts
+            if self.connected_clients:
+                await self.broadcast({"type": "status", "state": "HEARTBEAT", "message": "Neural link stable.", "brain_source": "System"})
+                
+                # Random character tics
+                if self.status.vocal and random.random() < 0.1:
+                    await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
+            await asyncio.sleep(10)
+
+    async def ear_poller_loop(self):
+        """[FEAT-259.1] Global Sensory Sentinel."""
+        while True:
+            try:
+                query = self.sensory.check_turn_end()
+                if query:
+                    asyncio.create_task(self.cognitive.process_query(f"[ME] {query}"))
+            except Exception: pass
+            await asyncio.sleep(0.1)
+
+    async def scheduled_tasks_loop(self):
+        """[FEAT-266] Periodic Maintenance (Nibbler)."""
+        logger.info("Scheduled tasks loop active.")
+        last_nibble_time = 0
+        while True:
+            try:
+                # 1. Periodic Nibble (Artifact Scanning) - Every 10 mins
+                if time.time() - last_nibble_time > 600:
+                    last_nibble_time = time.time()
+                    nibbler = os.path.join(WORKSPACE_DIR, "field_notes/nibble_v2.py")
+                    if os.path.exists(nibbler):
+                        # Use system python to avoid venv dependency in the subprocess call if needed
+                        # but standard is to use the active executable
+                        logger.info("[ALARM] Triggering Nibbler...")
+                        subprocess.Popen([sys.executable, nibbler, "--one-turn"])
+            except Exception as e:
+                logger.error(f"[ALARM] Scheduled tasks failure: {e}")
+            
+            await asyncio.sleep(60)
 
     async def queue_drainer(self):
         """[Task 4.3] Neural Queue Drainer."""
@@ -347,8 +434,7 @@ class FoyerRouter:
                             with open(QUEUE_FILE, "r") as f:
                                 f.seek(last_pos)
                                 for line in f:
-                                    if not line.strip():
-                                        continue
+                                    if not line.strip(): continue
                                     try:
                                         event = IntentEvent.from_json(line)
                                         if event.status == "PENDING" and event.id not in processed_ids:
