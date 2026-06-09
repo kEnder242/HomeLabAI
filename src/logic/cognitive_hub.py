@@ -59,6 +59,10 @@ class CognitiveHub:
         source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
         token = data.get("brain", "")
         
+        # [NEW] Push to waterfall queue for real-time UI delivery
+        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+            await self.waterfall_queue.put(data)
+        
         if token:
             self.session_buffers[source] += token
             # Audit for dynamic interjections if importance is high
@@ -189,7 +193,8 @@ class CognitiveHub:
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
             
-            # [Task 1.1] Spark the node via MCP and wait for full block
+            # [Task 1.1] Spark the node via MCP
+            # Tokens will stream back via the Telemetry Relay POST endpoint
             res = await node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
@@ -197,8 +202,13 @@ class CognitiveHub:
                 "use_lora": use_lora
             })
             
-            full_text = res.content[0].text if hasattr(res, 'content') else str(res)
-            # Yield for caller compatibility (e.g. process_query generator)
+            # Extract full text for caller logic (e.g. Triage result)
+            full_text = ""
+            if hasattr(res, 'content') and len(res.content) > 0:
+                full_text = res.content[0].text
+            else:
+                full_text = str(res)
+            
             yield full_text
 
             # [FEAT-287] Activity Latch
@@ -226,7 +236,7 @@ class CognitiveHub:
         """Placeholder for FEAT-190 The Judge."""
         pass
 
-    async def process_query(self, turn):
+    async def process_query(self, turn, shutdown_event=None):
         """[FEAT-145] Main Reasoning Waterfall."""
         # 1. Triage Phase
         logging.info(f"[HUB] Triage starting for query: {turn[:40]}...")
@@ -309,7 +319,7 @@ class CognitiveHub:
         target = t_parsed.get("addressed_to", "PINKY").lower()
         if "brain" in target or "deep" in target:
             # Elevate to Sovereign
-            await self._run_brain_leg(turn, t_parsed)
+            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event)
         else:
             # Local Response
             async for _ in self._process_node_stream(
@@ -317,7 +327,7 @@ class CognitiveHub:
             ):
                 pass
 
-    async def _run_brain_leg(self, query, triage):
+    async def _run_brain_leg(self, query, triage, shutdown_event=None):
         """Handles Sovereign (4090) leg of the waterfall."""
         # [Task 2.2] Context Distillation
         distilled_context = ""
@@ -327,15 +337,22 @@ class CognitiveHub:
                 "query": f"Summarize archive context for: {query[:100]}",
                 "internal": True
             })
-            distilled_context = res.content[0].text if hasattr(res, 'content') else str(res)
+            distilled_context = ""
+            if hasattr(res, 'content') and len(res.content) > 0:
+                distilled_context = res.content[0].text
+            else:
+                distilled_context = str(res)
         except Exception as e:
             logging.warning(f"[HUB] Context distillation failed: {e}")
 
         # Dispatch to Sovereign
+        # Side-channel Telemetry Relay handles the broadcast.
+        # We just need to exhaust the generator to ensure the node task completes.
         async for token in self._process_node_stream(
             "thought", query, distilled_context, "Deep Thought", tools=[], temperature=0.2
         ):
-            pass
+            if shutdown_event and shutdown_event.is_set():
+                break
 
     async def trigger_morning_briefing(self):
         """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""

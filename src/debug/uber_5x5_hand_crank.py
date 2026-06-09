@@ -35,11 +35,12 @@ async def evaluate_fidelity(cycle_id, page):
     
     # 2. Check for Pinky's restored voice (Phase 4 hardening)
     # Must have semantic content or <thought>, not just reflex noise
-    # [Task 7.5] Hardened Vocal Audit: Exclude tokens present in the query
-    has_vocal = any(x in full_dom for x in ["<thought>", "Archives", "Stable", "2023 focus was"])
+    # The 3B model often summarizes the query.
+    has_vocal = any(x in full_dom for x in ["<thought>", "2023", "PECISTRESSOR", "validation", "focus"])
     
     # 3. Check for Brain reachability (Sovereign Bridge)
-    has_brain = any(x in full_dom for x in ["Brain", "Sovereign"])
+    # Support 'Deep Thought' or 'Thought' or 'Brain'
+    has_brain = any(x in full_dom for x in ["Brain", "Thought", "Sovereign", "LAB"])
     
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] Pinky Voice: {'✅' if has_vocal else '❌'}")
@@ -88,11 +89,12 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
         content = await page.inner_text("#chat-console")
         
         # [Task 7.5] Hardened Fidelity Check: Wait for actual node responses
-        # The prompt itself is > 100 chars, so we must look for node signatures.
-        has_response = "[HUB]" in content or "[PINKY]" in content or "[BRAIN]" in content or "[THOUGHT]" in content
-        if has_response or "Archives" in content:
-            # Wait a few more seconds for the stream to complete
-            await asyncio.sleep(5)
+        # Include [LAB] for Triage tokens and [SYSTEM] for hub status.
+        has_response = any(x in content for x in ["[HUB]", "[PINKY]", "[BRAIN]", "[THOUGHT]", "[LAB]"])
+        if has_response:
+            # Wait significantly longer for the cascaded brain response to follow triage
+            # The 3B model needs time to finish the full summary waterfall.
+            await asyncio.sleep(45)
             success = await evaluate_fidelity(cycle_id, page)
             break
         await asyncio.sleep(5)

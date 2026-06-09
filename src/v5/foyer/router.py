@@ -75,8 +75,26 @@ class FoyerRouter:
         )
         self.app = web.Application()
         self.app.on_startup.append(self.on_startup)
+        self.app.on_cleanup.append(self.cleanup)
         self.setup_routes()
         
+    async def cleanup(self, app):
+        """[FEAT-339] Clean task release for aiohttp."""
+        logger.info("V5 Foyer Router shutting down...")
+        try:
+            # [FIX] Safeguard against anyio cancel scope drift
+            await self.residents.shutdown()
+        except Exception as e:
+            logger.error(f"Error during logical node shutdown: {e}")
+        
+        # Cancel all background tasks
+        for task in [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
     def get_vram_status(self, force=False):
         return self.status.vocal
 
@@ -154,9 +172,15 @@ class FoyerRouter:
             self.status.engine_up = data.get("engine_up", self.status.engine_up)
             
             # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently
-            if self.status.vocal and not self.residents.booted and not self.residents.booting:
-                logger.info("[FOYER] Physical silicon vocal. Initiating logical boot...")
-                asyncio.create_task(self.residents.boot_all())
+            if self.status.vocal:
+                if not self.residents.booted and not self.residents.booting:
+                    logger.info("[FOYER] Physical silicon vocal. Initiating logical boot...")
+                    asyncio.create_task(self.residents.boot_all())
+            else:
+                # [NEW] Hibernate logical nodes when silicon goes silent
+                if self.residents.booted:
+                    logger.info("[FOYER] Physical silicon silent. Hibernating logical nodes...")
+                    asyncio.create_task(self.residents.shutdown())
             
             return web.Response(status=200)
         except Exception as e:
@@ -265,14 +289,15 @@ class FoyerRouter:
         """[FEAT-233.7] Real-time token ingestion from decoupled nodes."""
         try:
             data = await request.json()
-            # Relay to Cognitive Hub for waterfall overhearing
-            self.cognitive.on_token({
+            # Relay to Cognitive Hub for waterfall overhearing and queueing
+            await self.cognitive.handle_stream_token({
                 "brain": data.get("text", ""),
                 "brain_source": data.get("source", "Unknown"),
                 "final": data.get("final", False)
             })
             return web.Response(status=200)
         except Exception as e:
+            logger.error(f"Stream ingest error: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def enqueue_intent(self, query, source):
@@ -338,34 +363,66 @@ class FoyerRouter:
                     self.connected_clients.remove(ws)
 
     async def waterfall_drainer(self):
-        """[FEAT-233.2] Drains the internal token buffer and broadcasts to clients."""
+        """[FEAT-233.2] Drains the internal token buffer with chunked delivery."""
         logger.info("Waterfall drainer active.")
         from collections import defaultdict
-        ui_buffers = defaultdict(str)
+        
+        # Track pending chunks per source
+        pending_chunks = defaultdict(str)
+        last_broadcast = time.time()
 
         while True:
             try:
-                data = await self.waterfall_queue.get()
-                source = str(data.get("brain_source", data.get("source", "Unknown")))
-                token = data.get("brain", "")
-                final = data.get("final", False)
+                # Use a timeout to allow periodic flushing of chunks
+                try:
+                    data = await asyncio.wait_for(self.waterfall_queue.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    data = None
 
-                # 1. Update UI-specific block buffer
-                if token:
-                    ui_buffers[source] += token
-                
-                # 2. UI Delivery Policy (Task 6.6): Only 'POP' on completion
-                if final:
-                    # Deliver the full block
-                    data["brain"] = ui_buffers[source]
-                    await self.broadcast(data)
-                    # Reset buffer for this source
-                    ui_buffers[source] = ""
-                
-                self.waterfall_queue.task_done()
+                if data:
+                    source = str(data.get("brain_source", data.get("source", "Unknown")))
+                    token = data.get("brain", "")
+                    final = data.get("final", False)
+
+                    if token:
+                        pending_chunks[source] += token
+                    
+                    if final:
+                        # Flush immediately on completion
+                        if pending_chunks[source]:
+                            await self.broadcast({
+                                "type": "chat",
+                                "brain": pending_chunks[source],
+                                "brain_source": source,
+                                "final": False
+                            })
+                            pending_chunks[source] = ""
+                        
+                        await self.broadcast({
+                            "type": "chat",
+                            "brain": "", 
+                            "brain_source": source,
+                            "final": True
+                        })
+                    self.waterfall_queue.task_done()
+
+                # Periodic flush (every 100ms) for all sources
+                if time.time() - last_broadcast > 0.1:
+                    for src in list(pending_chunks.keys()):
+                        chunk = pending_chunks[src]
+                        if chunk:
+                            await self.broadcast({
+                                "type": "chat",
+                                "brain": chunk,
+                                "brain_source": src,
+                                "final": False
+                            })
+                            pending_chunks[src] = ""
+                    last_broadcast = time.time()
+
             except Exception as e:
                 logger.error(f"Waterfall drainer error: {e}")
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
 
     async def reflex_loop(self):
         """[FEAT-365] Characterful reflexes and persistence heartbeats."""
@@ -386,9 +443,10 @@ class FoyerRouter:
             try:
                 query = self.sensory.check_turn_end()
                 if query:
-                    asyncio.create_task(self.cognitive.process_query(f"[ME] {query}"))
+                    shutdown_ev = asyncio.Event()
+                    asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev))
             except Exception: pass
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
         """[FEAT-266] Periodic Maintenance (Nibbler)."""
@@ -396,8 +454,8 @@ class FoyerRouter:
         last_nibble_time = 0
         while True:
             try:
-                # 1. Periodic Nibble (Artifact Scanning) - Every 10 mins
-                if time.time() - last_nibble_time > 600:
+                # 1. Periodic Nibble (Artifact Scanning) - DISABLED for Gauntlet
+                if False and time.time() - last_nibble_time > 600:
                     last_nibble_time = time.time()
                     nibbler = os.path.join(WORKSPACE_DIR, "field_notes/nibble_v2.py")
                     if os.path.exists(nibbler):
@@ -449,7 +507,9 @@ class FoyerRouter:
                                                 "brain_source": "System"
                                             })
                                             
-                                            asyncio.create_task(self.cognitive.process_query(event.query))
+                                            # [NEW] Shutdown tracking for this intent
+                                            shutdown_ev = asyncio.Event()
+                                            asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev))
                                     except Exception as e:
                                         logger.error(f"Intent parse error: {e}")
                                 last_pos = f.tell()
