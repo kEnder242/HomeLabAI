@@ -166,9 +166,10 @@ class IgnitionManager:
         # 3. Recursive cleanup (EngineCore and rogue vllm)
         try:
             # [FEAT-036] Release port 8088 and kill survivors
-            subprocess.run(["sudo", "fuser", "-k", "8088/tcp"], check=False)
-            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm"], check=False)
-            subprocess.run(["sudo", "pkill", "-9", "-f", "EngineCore"], check=False)
+            # [FIX] Avoid fuser -k as it kills clients holding sockets (e.g. Gemini CLI)
+            # Adhere to 'The Blacklist Law': Only kill what we own.
+            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
         except Exception: pass
         
         # 4. Reset Status
