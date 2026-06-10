@@ -112,7 +112,12 @@ class FoyerRouter:
             web.post('/trigger_task', self.handle_trigger_task),
             web.post('/release_nodes', self.handle_release_nodes),
             web.get('/health', self.handle_health),
-            web.get('/status', self.handle_status)
+            web.get('/status', self.handle_status),
+            # [FEAT-143] Remote Control endpoints
+            web.post('/start', self.handle_remote_action),
+            web.post('/hibernate', self.handle_remote_action),
+            web.post('/quiesce', self.handle_remote_action),
+            web.post('/stop', self.handle_remote_action)
         ])
         
         cors = aiohttp_cors.setup(self.app, defaults={
@@ -120,10 +125,17 @@ class FoyerRouter:
                 allow_credentials=True,
                 expose_headers="*",
                 allow_headers="*",
+                allow_methods="*",
             )
         })
         for route in list(self.app.router.routes()):
             cors.add(route)
+
+    async def handle_remote_action(self, request):
+        """REST endpoint for remote control UI."""
+        action = request.path.lstrip('/')
+        await self.enqueue_intent(f"[OPERATIONAL] {action.upper()}", source="REMOTE")
+        return web.json_response({"status": "success", "message": f"{action.capitalize()} signal enqueued."})
 
     async def handle_release_nodes(self, request):
         """REST endpoint to gracefully shutdown logical nodes for hibernation."""

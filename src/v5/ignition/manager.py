@@ -203,7 +203,23 @@ class IgnitionManager:
                                         logging.info(f"[IGNITION] New Intent Detected: {event.id} (State: {self.status.state})")
                                         self.processed_ids.append(event.id)
                                         self.last_activity_time = time.time() # Reset idle timer
-                                        if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR"]:
+                                        
+                                        # Handle remote control operational intents
+                                        if event.query.startswith("[OPERATIONAL]"):
+                                            op = event.query.split(" ")[1]
+                                            if op == "HIBERNATE" or op == "STOP":
+                                                asyncio.create_task(self.stop_lab(reason=f"REMOTE_{op}"))
+                                            elif op == "QUIESCE":
+                                                self.status.state = "MAINTENANCE"
+                                                self.update_status_file()
+                                            elif op == "START":
+                                                if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR", "MAINTENANCE"]:
+                                                    logging.info(f"[IGNITION] Triggering ignition task for {event.id}...")
+                                                    asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
+                                                else:
+                                                    logging.info(f"[IGNITION] Lab already {self.status.state}. Skipping ignition.")
+                                        # Normal intents
+                                        elif self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR"]:
                                             logging.info(f"[IGNITION] Triggering ignition task for {event.id}...")
                                             asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
                                         else:

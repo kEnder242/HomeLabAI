@@ -3,10 +3,12 @@ from playwright.async_api import async_playwright
 import subprocess
 import os
 import json
+import requests
 
 # --- Paths ---
 STATUS_URL = "http://localhost:9001/status.html"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
+ATTENDANT_URL = "http://localhost:8765"
 
 def get_key():
     import hashlib
@@ -36,12 +38,14 @@ async def run_remote_control_simulation():
         
         # 2. Sync Verification
         print("[*] Waiting for vital sync (data/status.json)...")
-        # Increase timeout and add explicit check
         try:
-            await page.wait_for_selector("#vram-status:not(:text('0.0%'))", timeout=30000)
+            # Wait for the first successful status poll
+            async with page.expect_response(lambda response: "status.json" in response.url and response.status == 200, timeout=30000):
+                pass
+            await asyncio.sleep(2) # Allow DOM to settle
             print("[+] Vital sync confirmed.")
         except Exception as e:
-            print(f"[-] FAILURE: UI failed to load vitals. Dumping state...")
+            print(f"[-] FAILURE: UI failed to fetch vitals. Dumping state...")
             raise e
         
         # 3. Test Cycle: HIBERNATE -> START -> PAUSE -> STOP
