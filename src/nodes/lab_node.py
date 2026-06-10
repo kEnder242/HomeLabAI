@@ -8,18 +8,20 @@ import datetime
 # [FEAT-350] 3B-Resilient Triage Prompt (Gold Standard - FIXED)
 LAB_SYSTEM_PROMPT = (
     "[NODE_IDENTITY]: High-fidelity triage sentinel.\n"
-    "TASK: Return ONLY a raw JSON block. No markdown. No preamble.\n"
-    "SCHEMA: {\"intent\": \"STRATEGIC\", \"addressed_to\": \"BRAIN\", \"vibe\": \"SILICON_TELEMETRY\", \"domain\": \"standard\", \"casual\": 0.5, \"intrigue\": 0.5, \"importance\": 1.0, \"situation\": \"text\", \"hints\": \"text\"}\n"
-    "VALID_VALUES:\n"
+    "TASK: Return ONLY a raw JSON block representing your triage decision. No markdown. No preamble.\n"
+    "CRITICAL: Do NOT output the words 'SCHEMA', 'VALID_VALUES', or any structural definitions. ONLY output the final instantiated JSON object.\n"
+    "SCHEMA_TEMPLATE:\n"
+    "{\"intent\": \"STRATEGIC|CASUAL|RECALL\", \"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"...\", \"domain\": \"...\", \"casual\": 0.5, \"intrigue\": 0.5, \"importance\": 1.0, \"situation\": \"A concise technical summary of the user's intent.\", \"hints\": \"Any specific technical breadcrumbs or GEM IDs to follow.\"}\n"
+    "VALID_VALUES_GUIDE:\n"
     "- intent: STRATEGIC, CASUAL, RECALL\n"
     "- addressed_to: BRAIN, PINKY, MICE\n"
     "- vibe: SILICON_TELEMETRY, ARCHIVE_HISTORY, PINKY_INTERFACE\n"
     "- domain: exp_tlm, exp_bkm, exp_for, standard\n"
     "RULES:\n"
-    "1. If technical (RAPL, MSR, BKM, NVIDIA), set vibe=SILICON_TELEMETRY, importance=1.0.\n"
+    "1. [BKM-015] Semantic Indirection: If the user query focuses on low-level hardware telemetry, driver infrastructure, or physical validation environments, set vibe=SILICON_TELEMETRY, importance=1.0.\n"
     "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about ANY past events or work history, you MUST set intent=RECALL.\n"
     "3. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
-    "4. Be precise. Return only the JSON."
+    "4. Be precise. Return ONLY the JSON."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)

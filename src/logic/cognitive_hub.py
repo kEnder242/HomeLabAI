@@ -60,7 +60,9 @@ class CognitiveHub:
         token = data.get("brain", "")
         
         # [NEW] Push to waterfall queue for real-time UI delivery
-        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+        # [Task 9.2] Filter out internal triage/intuition tokens from the UI
+        is_internal = "triage" in source or "intuition" in source
+        if not is_internal and hasattr(self, 'waterfall_queue') and self.waterfall_queue:
             await self.waterfall_queue.put(data)
         
         if token:
@@ -156,7 +158,7 @@ class CognitiveHub:
         asyncio.create_task(_tic_loop())
         return await task
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True, response_format=None):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         if node_id not in self.residents:
             return
@@ -193,24 +195,50 @@ class CognitiveHub:
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
             
-            # [Task 1.1] Spark the node via MCP
-            # Tokens will stream back via the Telemetry Relay POST endpoint
-            res = await node.call_tool("think", {
+            # [Task 9.1] Spark the node via Native MCP call, but run in background
+            # Tokens will stream directly to the Hub via the Foyer's `/stream_ingest`
+            # which populates `self.session_buffers`. We yield from that buffer here.
+            src_key = source_name.lower()
+            self.session_buffers[src_key] = ""
+            
+            # [Task 9.2] Set internal=False to enable streaming broadcast for overhearing.
+            # handle_stream_token now filters triage/intuition tokens from the UI.
+            call_task = asyncio.create_task(node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
-                "use_lora": use_lora
-            })
+                "use_lora": use_lora, "response_format": response_format, "internal": False
+            }))
             
-            # Extract full text for caller logic (e.g. Triage result)
             full_text = ""
-            if hasattr(res, 'content') and len(res.content) > 0:
-                full_text = res.content[0].text
-            else:
-                full_text = str(res)
+            last_len = 0
+            while not call_task.done():
+                await asyncio.sleep(0.05)
+                curr_buffer = self.session_buffers[src_key]
+                if len(curr_buffer) > last_len:
+                    new_tokens = curr_buffer[last_len:]
+                    full_text += new_tokens
+                    yield new_tokens
+                    last_len = len(curr_buffer)
+                    
+            # Get the final result and any remaining buffer
+            res = await call_task
+            curr_buffer = self.session_buffers[src_key]
+            if len(curr_buffer) > last_len:
+                new_tokens = curr_buffer[last_len:]
+                full_text += new_tokens
+                yield new_tokens
+                
+            # If the node didn't stream anything (e.g. error or missing logic), fallback to the full response
+            if not full_text:
+                if hasattr(res, 'content') and len(res.content) > 0:
+                    full_text = res.content[0].text
+                else:
+                    full_text = str(res)
+                yield full_text
             
-            yield full_text
-
+            self.session_buffers[src_key] = "" # Clear buffer
+            
             # [FEAT-287] Activity Latch
             if node_id in ["brain", "thought"]:
                 self.last_activity = time.time()
@@ -261,8 +289,31 @@ class CognitiveHub:
                             break
                         await asyncio.sleep(5.0)
                 
+                # [Task 9.2] Guided Decoding Schema for Triage
+                triage_schema = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "triage_result",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "intent": {"type": "string", "enum": ["STRATEGIC", "CASUAL", "RECALL"]},
+                                "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
+                                "vibe": {"type": "string", "enum": ["SILICON_TELEMETRY", "ARCHIVE_HISTORY", "PINKY_INTERFACE"]},
+                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
+                                "casual": {"type": "number"},
+                                "intrigue": {"type": "number"},
+                                "importance": {"type": "number"},
+                                "situation": {"type": "string"},
+                                "hints": {"type": "string"}
+                            },
+                            "required": ["intent", "addressed_to", "vibe", "domain"]
+                        }
+                    }
+                }
+
                 async for token in self._process_node_stream(
-                    "lab", turn, "[MODE]: TRIAGE", "Lab (Triage)", tools=[], temperature=0.0
+                    "lab", turn, "[MODE]: TRIAGE", "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema
                 ):
                     t_text += token
 
@@ -302,6 +353,11 @@ class CognitiveHub:
                 self.consecutive_parse_failures = 0 # Reset on success
                 self.triage_failures = 0 # [FIX] Reset on successful parse
                 t_parsed = t_clean
+                await self.broadcast({
+                    "type": "crosstalk",
+                    "brain": f"[HUB] Triage successful. Intent: {t_parsed.get('intent')}",
+                    "brain_source": "System"
+                })
                 break
             except Exception as e:
                 logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")

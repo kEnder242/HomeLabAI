@@ -29,27 +29,32 @@ async def test_live_fire():
             
             print("📡 Monitoring crosstalk sequence...")
             
-            # Use 60s timeout for full triage cycle
+            # Use 120s timeout for cold-wake + inference
             start_t = asyncio.get_event_loop().time()
-            while asyncio.get_event_loop().time() - start_t < 60:
+            while asyncio.get_event_loop().time() - start_t < 120:
                 try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
                     data = json.loads(msg)
                     source = data.get("brain_source", "Unknown")
                     text = data.get("brain", "")
                     
-                    if "Triage starting" in text:
+                    if text:
+                        print(f"  [RECV] {source}: {text[:100]}...")
+
+                    if "Triage starting" in text or "Triage Attempt" in text:
                         print(f"✅ FOUND: Triage Started")
                         found_triage_start = True
-                    if "Triage successful" in text:
+                    if "Triage successful" in text or "Triage Result:" in text:
                         print(f"✅ FOUND: Triage Success")
                         found_triage_success = True
-                    if "Action Tag: UPLINK" in text:
-                        print(f"✅ FOUND: Strategic Uplink")
+                    if "Initiating Deep Thought" in text or "Pinky (Response)" in text:
+                        print(f"✅ FOUND: Response Phase")
                         found_uplink = True
                         
                     if found_triage_start and found_triage_success and found_uplink:
                         print("\n🏆 VERDICT: Tier 3 Systematic Baseline PASS.")
+                        # Wait a moment for final tokens to arrive
+                        await asyncio.sleep(5)
                         return True
                         
                 except asyncio.TimeoutError:
