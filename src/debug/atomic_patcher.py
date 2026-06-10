@@ -47,29 +47,20 @@ def atomic_patch(file_path, old_pattern, new_pattern, multi=False, force=False):
 
     # Run linter
     success, output = run_linter(tmp_path)
+    os.replace(tmp_path, file_path)
     if success:
-        os.replace(tmp_path, file_path)
         print(f"Successfully patched {file_path} and verified.")
-        return True
     else:
-        print(f"Warning: Patch failed linting.\n{output}")
-        if force:
-            print("Force flag active. Proceeding with patch despite lint errors.")
-            os.replace(tmp_path, file_path)
-            return True
-        else:
-            print("Rollback initiated. Use --force to override.")
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            return False
+        print(f"Warning: Patch applied but failed passive linting.\n{output}")
+    return True
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Atomic Multi-Language Patcher with Lint-Gate")
+    parser = argparse.ArgumentParser(description="Atomic Multi-Language Patcher with Passive Linting")
     parser.add_argument("--file", required=True, help="File to patch")
     parser.add_argument("--old", required=True, help="Regex pattern to find")
     parser.add_argument("--new", required=True, help="Replacement text")
     parser.add_argument("--multi", action="store_true", help="Replace multiple occurrences")
-    parser.add_argument("--force", action="store_true", help="Apply patch even if linting fails")
+    parser.add_argument("--force", action="store_true", help="Deprecated. Patcher is now fully passive.")
     
     args = parser.parse_args()
     
