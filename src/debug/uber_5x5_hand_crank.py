@@ -28,7 +28,11 @@ async def evaluate_fidelity(cycle_id, page):
     # Wait for the console to actually contain something
     await asyncio.sleep(2)
     
-    full_dom = await page.inner_text("#chat-console")
+    try:
+        full_dom = await page.locator("#chat-console").text_content(timeout=2000)
+        if full_dom is None: full_dom = ""
+    except Exception:
+        full_dom = ""
     
     # 1. Check for physical ignition milestones
     has_milestones = any(x in full_dom.lower() for x in ["operational", "synchronized", "established", "ready"])
@@ -86,8 +90,11 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
     start_t = time.time()
     success = False
     while time.time() - start_t < 300:
-        content = await page.inner_text("#chat-console")
-        
+        try:
+            content = await page.locator("#chat-console").text_content(timeout=1000)
+        except Exception:
+            content = ""
+            
         # [Task 7.5] Hardened Fidelity Check: Wait for actual node responses
         # Include [LAB] for Triage tokens and [SYSTEM] for hub status.
         has_response = any(x in content for x in ["[HUB]", "[PINKY]", "[BRAIN]", "[THOUGHT]", "[LAB]"])
