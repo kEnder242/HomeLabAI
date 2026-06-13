@@ -266,6 +266,13 @@ class CognitiveHub:
 
     async def process_query(self, turn, shutdown_event=None):
         """[FEAT-145] Main Reasoning Waterfall."""
+        
+        # [Task 9.7] Direct Intent Overrides
+        if turn.startswith("[TRIGGER]"):
+            task = turn.replace("[TRIGGER]", "").strip().lower()
+            await self._run_triggered_task(task)
+            return
+
         # 1. Triage Phase
         logging.info(f"[HUB] Triage starting for query: {turn[:40]}...")
         t_text = ""
@@ -409,6 +416,40 @@ class CognitiveHub:
         ):
             if shutdown_event and shutdown_event.is_set():
                 break
+
+    async def _run_triggered_task(self, task_name):
+        """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
+        import subprocess
+        import sys
+        
+        # Path Discovery
+        SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
+        
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"Executing Triggered Task: {task_name.upper()}",
+            "brain_source": "System"
+        })
+        
+        try:
+            if task_name == "recruiter":
+                script = os.path.join(SRC_DIR, "recruiter.py")
+                subprocess.Popen([sys.executable, script])
+            elif task_name == "lab":
+                script = os.path.join(WORKSPACE_DIR, "field_notes/scan_librarian.py")
+                subprocess.Popen([sys.executable, script])
+            elif task_name == "forge":
+                script = os.path.join(SRC_DIR, "mass_scan.py")
+                subprocess.Popen([sys.executable, script])
+            
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"Task {task_name.upper()} dispatched to background.",
+                "brain_source": "System"
+            })
+        except Exception as e:
+            logging.error(f"[HUB] Failed to run triggered task {task_name}: {e}")
 
     async def trigger_morning_briefing(self):
         """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""

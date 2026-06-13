@@ -39,20 +39,50 @@ class LabStatus:
     version: str = "5.0.0-appliance"
     vram_used: int = 0
     vram_total: int = 0
+    ram_pct: float = 0.0
     engine_up: bool = False
     vocal: bool = False
     nodes: Dict[str, NodeStatus] = field(default_factory=dict)
     active_intent_id: Optional[str] = None
 
     def to_dict(self):
+        # [Task 9.7] UI Compatibility Layer (V3 -> V5 Bridge)
+        vram_pct = (self.vram_used / self.vram_total * 100) if self.vram_total > 0 else 0
+        
+        # Discover style key
+        style_key = "38637b40" # Fallback
+        try:
+            workspace = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
+            style_path = os.path.join(workspace, "field_notes/style.css")
+            if os.path.exists(style_path):
+                import hashlib
+                with open(style_path, "rb") as f:
+                    style_key = hashlib.md5(f.read()).hexdigest()[:8]
+        except Exception: pass
+
         return {
             "state": self.state,
-            "timestamp": self.timestamp,
+            "status": "ONLINE" if self.state == "OPERATIONAL" else (
+                "HIBERNATING (VRAM Free)" if self.state == "HIBERNATING" else self.state
+            ),
+            "message": "Systems Nominal" if self.state == "OPERATIONAL" else "Lab Hibernating",
+            "timestamp": time.strftime("%H:%M:%S", time.localtime(self.timestamp)),
             "version": self.version,
             "vram_used": self.vram_used,
             "vram_total": self.vram_total,
+            "ram_pct": self.ram_pct,
             "engine_up": self.engine_up,
             "vocal": self.vocal,
             "nodes": {k: asdict(v) for k, v in self.nodes.items()},
-            "active_intent_id": self.active_intent_id
+            "active_intent_id": self.active_intent_id,
+            "vitals": {
+                "mode": self.state,
+                "model": "Llama-3.2-3B-AWQ" if self.engine_up else "-",
+                "vram": f"{vram_pct:.1f}%",
+                "ram": f"{self.ram_pct:.1f}%",
+                "intercom": "ONLINE" if self.vocal else "OFFLINE",
+                "brain": "ONLINE" if self.engine_up else "OFFLINE",
+                "session": self.active_intent_id or "standby",
+                "style_key": style_key
+            }
         }
