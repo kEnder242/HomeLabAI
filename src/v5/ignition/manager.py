@@ -122,6 +122,20 @@ class IgnitionManager:
     def update_status_file(self):
         """[FEAT-265] Multi-host status synchronization."""
         self.status.timestamp = time.time()
+        
+        # [Task 9.7] Live Telemetry Polling
+        try:
+            self.status.ram_pct = psutil.virtual_memory().percent
+            import pynvml
+            try:
+                pynvml.nvmlInit()
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                self.status.vram_used = int(info.used // 1024**2)
+                self.status.vram_total = int(info.total // 1024**2)
+            except Exception: pass
+        except Exception: pass
+
         try:
             with open(STATUS_JSON, "w") as f:
                 json.dump(self.status.to_dict(), f, indent=2)

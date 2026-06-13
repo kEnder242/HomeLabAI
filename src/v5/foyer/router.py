@@ -182,6 +182,9 @@ class FoyerRouter:
             self.status.state = data.get("state", self.status.state)
             self.status.vocal = data.get("vocal", self.status.vocal)
             self.status.engine_up = data.get("engine_up", self.status.engine_up)
+            self.status.vram_used = data.get("vram_used", self.status.vram_used)
+            self.status.vram_total = data.get("vram_total", self.status.vram_total)
+            self.status.ram_pct = data.get("ram_pct", self.status.ram_pct)
             
             # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently
             if self.status.vocal:
