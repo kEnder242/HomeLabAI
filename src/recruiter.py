@@ -306,12 +306,7 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None, brows
     # [PHASE 2] Verification and Scoring
     verified_jobs = await recruiter.verify_and_score_jobs(raw_jobs)
     
-    if not verified_jobs:
-        logging.info("💤 No new job listings found. Proceeding to Synergy Scan.")
-        await recruiter.run_synergy_scan()
-        return None
-
-    brief_path, new_count = await recruiter.generate_brief(verified_jobs, ctx)
+    brief_path, new_count = await recruiter.generate_brief(verified_jobs, ctx) if verified_jobs else (None, 0)
     
     # [UI-043] Dashboard Reporting
     try:
@@ -319,21 +314,27 @@ async def run_recruiter_task(archive_interface=None, brain_interface=None, brows
         
         # Calculate density
         density = {}
-        for job in verified_jobs:
+        for job in (verified_jobs or []):
             b = job.get("bucket", "General")
             density[b] = density.get(b, 0) + 1
             
         report = {
             "last_run": datetime.datetime.now().isoformat(),
             "status": "UPLINK_NOMINAL",
-            "brief_path": os.path.basename(brief_path),
+            "brief_path": os.path.basename(brief_path) if brief_path else "None",
             "new_jobs": new_count,
             "bucket_density": density
         }
         atomic_write_json(report_path, report)
         
         # [ALARM] Pulse the dashboard pager
-        trigger_pager(f"Nightly Multi-Vector Brief Ready: {os.path.basename(brief_path)}", severity="INFO", source="Recruiter")
+        msg = f"Nightly Multi-Vector Brief Ready: {os.path.basename(brief_path)}" if brief_path else "Nightly Acquisition Sweep: No new jobs."
+        trigger_pager(msg, severity="INFO", source="Recruiter")
+        
+        if not verified_jobs:
+            logging.info("💤 No new job listings found. Proceeding to Synergy Scan.")
+            await recruiter.run_synergy_scan()
+            
     except Exception as e:
         logging.error(f"[RECRUITER] Reporting failed: {e}")
     

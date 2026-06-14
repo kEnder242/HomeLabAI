@@ -20,6 +20,7 @@ from v5.common.types import IntentEvent, LabStatus
 from v5.common.residents import ResidentManager
 from logic.cognitive_hub import CognitiveHub
 from equipment.sensory_manager import SensoryManager
+from infra.pager_relay import trigger_pager
 
 # [Task 4.2] V5 Foyer: The Logic Master
 # Objective: Host the Cognitive Hub and manage logical node lifecycle.
@@ -53,7 +54,7 @@ def get_style_key():
 
 class FoyerRouter:
     def __init__(self, trigger_task=None):
-        # Rename process
+        # ... existing ...
         if setproctitle:
             setproctitle.setproctitle("acme_foyer_v5")
             
@@ -77,7 +78,11 @@ class FoyerRouter:
         self.app.on_startup.append(self.on_startup)
         self.app.on_cleanup.append(self.cleanup)
         self.setup_routes()
-        
+
+    def record_pager(self, message, severity="INFO", source="Foyer"):
+        """[Task 9.9] Centralized Pager Logging."""
+        trigger_pager(message, severity=severity, source=source)
+
     async def cleanup(self, app):
         """[FEAT-339] Clean task release for aiohttp."""
         logger.info("V5 Foyer Router shutting down...")
@@ -204,6 +209,7 @@ class FoyerRouter:
     async def on_startup(self, app):
         """[FEAT-339] Clean task scheduling on event loop start."""
         logger.info("V5 Foyer Router starting background tasks...")
+        self.record_pager("Foyer Logic Hub Started.", source="Foyer")
         
         # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
         # Load it preemptively on startup, exempting it from hibernation.
@@ -255,6 +261,7 @@ class FoyerRouter:
         socket_id = str(uuid.uuid4())[:8]
         self.connected_clients.add(ws)
         logger.info(f"Client connected: {socket_id}")
+        self.record_pager(f"Client Connected: {socket_id}", source="Foyer")
         
         await ws.send_str(json.dumps(self.status.to_dict()))
         
