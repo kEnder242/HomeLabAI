@@ -18,6 +18,7 @@ if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
 from v5.common.types import LabStatus, IntentEvent
+from infra.pager_relay import trigger_pager
 
 # [Task 4.4] V5 Ignition: The physical Hardware Guardian
 # Objective: Manage silicon state and certify ALARM tasks.
@@ -48,8 +49,48 @@ class IgnitionManager:
         self._vram_lock_fd = None
         from collections import deque
         self.processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
+
+    def record_pager(self, message, severity="INFO", source="LabAttendant"):
+        """[Task 9.9] Centralized Pager Logging."""
+        trigger_pager(message, severity=severity, source=source)
         self.last_induction_date = None # [FEAT-289] Atomic Induction
         self.last_activity_time = time.time() # [Task 4.1] Idle tracking
+
+    async def journal_monitor(self):
+        """[Task 9.10] Interleaved System Logs: Bridges journalctl to Pager."""
+        logging.info("[IGNITION] Journal monitor started.")
+        # Filter for interesting non-lab services
+        cmd = ["journalctl", "-f", "-n", "0", "--no-pager"]
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                text = line.decode().strip()
+                
+                # Pattern Matching for "Interleaved" logs
+                # Focus on interesting events and errors
+                if any(x in text for x in ["Started", "Stopped", "error", "failed", "offline", "online"]):
+                    # Ignore internal lab chatter (already logged via record_pager)
+                    if not any(x in text for x in ["python3", "acme_foyer", "acme_ignition"]):
+                        # Extract source (crude heuristic)
+                        try:
+                            parts = text.split("z87-Linux ")
+                            if len(parts) > 1:
+                                content = parts[1]
+                                source = content.split("[")[0].split(":")[0].strip()
+                                msg = content.split(": ", 1)[1] if ":" in content else content
+                                self.record_pager(msg[:200], source=source)
+                        except Exception: pass
+        except Exception as e:
+            logging.error(f"[IGNITION] Journal monitor failed: {e}")
 
     def _acquire_vram_lock(self):
         """[FEAT-287] Mutual Exclusion (Ignition Mutex)."""
@@ -81,6 +122,7 @@ class IgnitionManager:
         self.status.state = "WAKING"
         self.update_status_file()
         logging.info(f"[IGNITION] Waking physical silicon for: {reason}")
+        self.record_pager(f"IGNITION_START ({reason})", severity="INFO")
         
         try:
             # Physical hardware ignition
@@ -157,6 +199,7 @@ class IgnitionManager:
     async def stop_lab(self, reason="AFK"):
         """[Task 4.1] Stable Hibernation: Strict subprocess termination."""
         logging.info(f"[IGNITION] Initiating Deep Sleep: {reason}")
+        self.record_pager(f"HIBERNATION_START ({reason})", severity="INFO")
         
         # 1. Notify Foyer to release logical nodes (VRAM Hygiene)
         try:
@@ -265,21 +308,27 @@ class IgnitionManager:
                     # [FEAT-289] Atomic Induction: Mark today as started
                     self.last_induction_date = today
                     logging.info("[ALARM] Entering Daily Induction Window...")
+                    self.record_pager("Daily Induction Window [OPEN]", source="Induction")
                     
                     # Try to acquire silicon mutex
                     if self._acquire_vram_lock():
                         try:
                             # Step 1: Nightly Recruiter
                             logging.info("[ALARM] Step 1: Nightly Recruiter...")
+                            self.record_pager("Step 1: Nightly Recruiter [START]", source="Induction")
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "recruiter"], env=os.environ.copy())
                             
                             # Step 2: Hierarchy Refactor
                             logging.info("[ALARM] Step 2: Hierarchy Refactor...")
+                            self.record_pager("Step 2: Hierarchy Refactor [START]", source="Induction")
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "lab"], env=os.environ.copy())
                             
                             # Step 3: Sequenced Batch Forge
                             logging.info("[ALARM] Step 3: Sequenced Batch Forge...")
+                            self.record_pager("Step 3: Sequenced Batch Forge [START]", source="Induction")
                             subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "forge"], env=os.environ.copy())
+                            
+                            self.record_pager("Full Induction Cycle [COMPLETE]", source="Induction")
                         finally:
                             self._release_vram_lock()
                             self.status.timestamp = time.time() 
@@ -309,6 +358,7 @@ class IgnitionManager:
         logging.info("[IGNITION] V5 Ignition Manager Active.")
         asyncio.create_task(self.queue_watcher())
         asyncio.create_task(self.continuous_burn_loop())
+        asyncio.create_task(self.journal_monitor())
         while True:
             self.update_status_file()
             await asyncio.sleep(30)
