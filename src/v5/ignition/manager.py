@@ -44,17 +44,17 @@ class IgnitionManager:
         # Rename process
         if setproctitle:
             setproctitle.setproctitle("acme_ignition_v5")
-            
+
         self.status = LabStatus()
         self._vram_lock_fd = None
         from collections import deque
         self.processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
-
+        self.last_induction = None
+        self.last_induction_date = None # [FEAT-289] Atomic Induction
+        self.last_activity_time = time.time() # [Task 4.1] Idle tracking
     def record_pager(self, message, severity="INFO", source="LabAttendant"):
         """[Task 9.9] Centralized Pager Logging."""
         trigger_pager(message, severity=severity, source=source)
-        self.last_induction_date = None # [FEAT-289] Atomic Induction
-        self.last_activity_time = time.time() # [Task 4.1] Idle tracking
 
     async def journal_monitor(self):
         """[Task 9.10] Interleaved System Logs: Bridges journalctl to Pager."""
@@ -123,6 +123,30 @@ class IgnitionManager:
         self.update_status_file()
         logging.info(f"[IGNITION] Waking physical silicon for: {reason}")
         self.record_pager(f"IGNITION_START ({reason})", severity="INFO")
+        
+        # [Task 12.1] KENDER Parallel Warmup
+        async def _bg_prime_kender():
+            try:
+                import aiohttp
+                import json
+                kender_ip = "192.168.1.26"
+                try:
+                    infra_path = os.path.join(LAB_DIR, "config/infrastructure.json")
+                    if os.path.exists(infra_path):
+                        with open(infra_path, "r") as f:
+                            infra = json.load(f)
+                            kender_ip = infra.get("hosts", {}).get("KENDER", {}).get("ip_hint", kender_ip)
+                except Exception: pass
+                
+                # Ping with a typical sovereign model to force VRAM load
+                payload = {"model": "gemma4:26b", "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"http://{kender_ip}:11434/api/generate", json=payload, timeout=30) as r:
+                        if r.status == 200:
+                            logging.info("[IGNITION] KENDER Parallel Warmup SUCCESS.")
+            except Exception as e:
+                logging.debug(f"[IGNITION] KENDER Parallel Warmup failed/bypassed: {e}")
+        asyncio.create_task(_bg_prime_kender())
         
         try:
             # Physical hardware ignition

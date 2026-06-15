@@ -18,10 +18,11 @@ LAB_SYSTEM_PROMPT = (
     "- vibe: SILICON_TELEMETRY, ARCHIVE_HISTORY, PINKY_INTERFACE\n"
     "- domain: exp_tlm, exp_bkm, exp_for, standard\n"
     "RULES:\n"
-    "1. [BKM-015] Semantic Indirection: If the user query focuses on low-level hardware telemetry, driver infrastructure, or physical validation environments, set vibe=SILICON_TELEMETRY, importance=1.0.\n"
-    "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about ANY past events or work history, you MUST set intent=RECALL.\n"
-    "3. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
-    "4. Be precise. Return ONLY the JSON."
+    "1. [BKM-015] Semantic Indirection: If the query focuses on hardware metrics, driver infrastructure, or validation environments, set vibe=SILICON_TELEMETRY, importance=1.0.\n"
+    "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about past events or work history, set intent=RECALL.\n"
+    "3. CONVERSATIONAL GRACE: If the user says hello, goodbye, or makes simple small talk without technical depth, set intent=CASUAL, vibe=PINKY_INTERFACE, and importance=0.1.\n"
+    "4. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
+    "5. Be precise. Return ONLY the JSON."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)

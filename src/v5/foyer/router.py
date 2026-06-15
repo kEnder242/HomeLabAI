@@ -385,62 +385,42 @@ class FoyerRouter:
                     self.connected_clients.remove(ws)
 
     async def waterfall_drainer(self):
-        """[FEAT-233.2] Drains the internal token buffer with chunked delivery."""
-        logger.info("Waterfall drainer active.")
+        """[Task 12.3] Drains internal token buffer into final Pop messages for UI."""
+        logger.info("Waterfall drainer active (Pop Mode).")
         from collections import defaultdict
         
-        # Track pending chunks per source
         pending_chunks = defaultdict(str)
-        last_broadcast = time.time()
 
         while True:
             try:
-                # Use a timeout to allow periodic flushing of chunks
-                try:
-                    data = await asyncio.wait_for(self.waterfall_queue.get(), timeout=0.1)
-                except asyncio.TimeoutError:
-                    data = None
+                data = await self.waterfall_queue.get()
 
-                if data:
-                    source = str(data.get("brain_source", data.get("source", "Unknown")))
-                    token = data.get("brain", "")
-                    final = data.get("final", False)
+                source = str(data.get("brain_source", data.get("source", "Unknown")))
+                token = data.get("brain", "")
+                final = data.get("final", False)
 
-                    if token:
-                        pending_chunks[source] += token
-                    
-                    if final:
-                        # Flush immediately on completion
-                        if pending_chunks[source]:
-                            await self.broadcast({
-                                "type": "chat",
-                                "brain": pending_chunks[source],
-                                "brain_source": source,
-                                "final": False
-                            })
-                            pending_chunks[source] = ""
-                        
+                if token:
+                    pending_chunks[source] += token
+                
+                if final:
+                    # [Task 12.3] Flush entire accumulated string immediately
+                    if pending_chunks[source]:
+                        # [Task 12.4] Insight Window Routing
+                        channel = "chat"
+                        s_lower = source.lower()
+                        if "brain" in s_lower or "thought" in s_lower:
+                            channel = "insight"
+                            
                         await self.broadcast({
                             "type": "chat",
-                            "brain": "", 
+                            "brain": pending_chunks[source],
                             "brain_source": source,
-                            "final": True
+                            "final": True,
+                            "channel": channel
                         })
-                    self.waterfall_queue.task_done()
+                        pending_chunks[source] = ""
 
-                # Periodic flush (every 100ms) for all sources
-                if time.time() - last_broadcast > 0.1:
-                    for src in list(pending_chunks.keys()):
-                        chunk = pending_chunks[src]
-                        if chunk:
-                            await self.broadcast({
-                                "type": "chat",
-                                "brain": chunk,
-                                "brain_source": src,
-                                "final": False
-                            })
-                            pending_chunks[src] = ""
-                    last_broadcast = time.time()
+                self.waterfall_queue.task_done()
 
             except Exception as e:
                 logger.error(f"Waterfall drainer error: {e}")

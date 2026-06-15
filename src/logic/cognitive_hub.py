@@ -198,7 +198,9 @@ class CognitiveHub:
             # [Task 9.1] Spark the node via Native MCP call, but run in background
             # Tokens will stream directly to the Hub via the Foyer's `/stream_ingest`
             # which populates `self.session_buffers`. We yield from that buffer here.
-            src_key = source_name.lower()
+            # The MCP node responds with its 'self.name' as the source.
+            name_map = {"lab": "lab", "pinky": "pinky", "brain": "brain", "thought": "deep thought"}
+            src_key = name_map.get(node_id, node_id)
             self.session_buffers[src_key] = ""
             
             # [Task 9.2] Set internal=False to enable streaming broadcast for overhearing.
@@ -287,9 +289,24 @@ class CognitiveHub:
                     "brain_source": "System"
                 })
                 
-                # [Task 5.3] Physical Wait: Don't hammer triage if engine is waking
+                # [Task 12.2] Sovereign Early-Reply: Let Brain fill dead air while waking
                 if not self.get_vram_status():
-                    logging.info("[HUB] Silicon warming. Waiting for VRAM Readiness...")
+                    logging.info("[HUB] Silicon warming. Routing to KENDER immediately.")
+                    if triage_attempt == 0:
+                        await self.broadcast({
+                            "type": "crosstalk", 
+                            "brain": "Lab is warming its anchors. Reaching out to Deep Thought...", 
+                            "brain_source": "System"
+                        })
+                        try:
+                            # Pass to thought node to fill dead air
+                            async for _ in self._process_node_stream(
+                                "thought", turn, "", "Deep Thought", tools=[], temperature=0.7
+                            ):
+                                pass
+                        except Exception as e:
+                            logging.warning(f"[HUB] Early-reply failed: {e}")
+                    
                     wait_limit = 18 if triage_attempt == 0 else 3
                     for _ in range(wait_limit):
                         if self.get_vram_status():
