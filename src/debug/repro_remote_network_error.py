@@ -14,36 +14,27 @@ async def run_repro():
         # We will use a data URL to simulate a page on notes.jason-lab.dev trying to fetch pager.jason-lab.dev
         # This will simulate the cross-origin fetch
         
-        html_content = """
-        <html>
-        <body>
-            <h1>Reproduction</h1>
-            <script>
-                async function testFetch() {
-                    console.log("[JS] Attempting fetch to https://pager.jason-lab.dev/health");
-                    try {
-                        const response = await fetch('https://pager.jason-lab.dev/health', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({})
-                        });
-                        console.log("[JS] Fetch Success: " + response.status);
-                    } catch (e) {
-                        console.error("[JS] Fetch Error: " + e.name + " - " + e.message);
-                    }
-                }
-                testFetch();
-            </script>
-        </body>
-        </html>
-        """
-        
         page.on("console", lambda msg: print(f"  {msg.text}"))
         
         print("[*] Navigating to simulation page...")
-        # To simulate cross-origin, we can just use a local file or data URL
-        # Browsers treat data URLs as unique origins, which triggers CORS
-        await page.set_content(html_content)
+        await page.goto("http://localhost:9001")
+        
+        # Inject our fetch script into the page context
+        await page.evaluate("""
+            async () => {
+                console.log("[JS] Attempting fetch to https://pager.jason-lab.dev/health");
+                try {
+                    const response = await fetch('https://pager.jason-lab.dev/health', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    console.log("[JS] Fetch Success: " + response.status);
+                } catch (e) {
+                    console.error("[JS] Fetch Error: " + e.name + " - " + e.message);
+                }
+            }
+        """)
         
         # Wait for the console error
         print("[*] Waiting for result...")
