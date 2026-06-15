@@ -196,7 +196,7 @@ class IgnitionManager:
                 _push_update()
         except Exception: pass
 
-    async def stop_lab(self, reason="AFK"):
+    async def stop_lab(self, reason="AFK", target_state="HIBERNATING"):
         """[Task 4.1] Stable Hibernation: Strict subprocess termination."""
         logging.info(f"[IGNITION] Initiating Deep Sleep: {reason}")
         self.record_pager(f"HIBERNATION_START ({reason})", severity="INFO")
@@ -230,7 +230,7 @@ class IgnitionManager:
         except Exception: pass
         
         # 4. Reset Status
-        self.status.state = "HIBERNATING"
+        self.status.state = target_state
         self.status.engine_up = False
         self.status.vocal = False
         self._release_vram_lock() # [Task 6.6] Release silicon lock on deep sleep
@@ -264,14 +264,22 @@ class IgnitionManager:
                                         # Handle remote control operational intents
                                         if event.query.startswith("[OPERATIONAL]"):
                                             op = event.query.split(" ")[1]
-                                            if op == "HIBERNATE" or op == "STOP":
-                                                asyncio.create_task(self.stop_lab(reason=f"REMOTE_{op}"))
-                                            elif op == "QUIESCE":
+                                            if op == "SLEEP":
+                                                asyncio.create_task(self.stop_lab(reason="REMOTE_SLEEP", target_state="HIBERNATING"))
+                                            elif op == "SHUTDOWN":
+                                                asyncio.create_task(self.stop_lab(reason="REMOTE_SHUTDOWN", target_state="OFFLINE"))
+                                            elif op == "LOCK":
+                                                # Create maintenance lock file
+                                                try: open(MAINTENANCE_LOCK, 'w').close()
+                                                except Exception: pass
                                                 self.status.state = "MAINTENANCE"
                                                 self.update_status_file()
-                                            elif op == "START":
-                                                if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR", "MAINTENANCE"]:
-                                                    logging.info(f"[IGNITION] Triggering ignition task for {event.id}...")
+                                            elif op == "WAKE":
+                                                if os.path.exists(MAINTENANCE_LOCK):
+                                                    try: os.remove(MAINTENANCE_LOCK)
+                                                    except Exception: pass
+                                                if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR", "MAINTENANCE", "OFFLINE"]:
+                                                    logging.info(f"[IGNITION] Triggering wake task for {event.id}...")
                                                     asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
                                                 else:
                                                     logging.info(f"[IGNITION] Lab already {self.status.state}. Skipping ignition.")
