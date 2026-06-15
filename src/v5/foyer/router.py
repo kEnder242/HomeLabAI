@@ -119,10 +119,10 @@ class FoyerRouter:
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
             # [FEAT-143] Remote Control endpoints
-            web.post('/start', self.handle_remote_action),
-            web.post('/hibernate', self.handle_remote_action),
-            web.post('/quiesce', self.handle_remote_action),
-            web.post('/stop', self.handle_remote_action)
+            web.post('/wake', self.handle_remote_action),
+            web.post('/sleep', self.handle_remote_action),
+            web.post('/lock', self.handle_remote_action),
+            web.post('/shutdown', self.handle_remote_action)
         ])
         
         cors = aiohttp_cors.setup(self.app, defaults={

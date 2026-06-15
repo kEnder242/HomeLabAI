@@ -63,4 +63,18 @@ These laws govern the physical transition of silicon handles and ports. They are
 *   **Goal**: Prevent "Zombie VRAM Pressure" where un-killed child processes hold silicon handles invisible to the parent ledger.
 
 ---
+
+## 🎛️ Remote Control & Resource Lifecycles
+*Standardized verbs for managing the Lab's physical presence (Sprint 32 Phase 5).*
+
+| Intent/Verb | Action | Impact | State Outcome |
+| :--- | :--- | :--- | :--- |
+| **WAKE** | Boots the vLLM engine and logical nodes. | **Consumes VRAM (~5GB)**. Restores intelligence. | `OPERATIONAL` |
+| **SLEEP** | Gracefully murders the vLLM process via `stop_lab()`. Foyer remains active. | **Frees 100% VRAM**. Auto-wakes on next query or ALARM. | `HIBERNATING` |
+| **LOCK** | Drops a `MAINTENANCE_LOCK` file. | **No memory change**. Freezes all automation, Induction, and Watchdogs. | `MAINTENANCE` |
+| **SHUTDOWN**| Forces `stop_lab()` and sets a hard termination state. | **Frees VRAM & RAM**. Disarms IgnitionManager. Only remote WAKE can revive. | `OFFLINE` |
+
+*Note: With `opencode` socket activation enabled, closing the UI client connections will also eventually trigger a timeout that drops the heavy proxy layer, freeing System RAM independently of the VRAM states above.*
+
+---
 **"A slow truth is better than a fast hallucination."**
