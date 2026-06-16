@@ -58,15 +58,18 @@ class CognitiveHub:
         """[FEAT-233.2] Ingests token into session buffers and audits for vetoes."""
         source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
         token = data.get("brain", "")
-        
+        # Extract request ID if present
+        request_id = data.get("request_id", "default")
+        buf_key = f"{request_id}_{source}"
+
         # [NEW] Push to waterfall queue for real-time UI delivery
         # [Task 9.2] Filter out internal triage/intuition tokens from the UI
         is_internal = "triage" in source or "intuition" in source
         if not is_internal and hasattr(self, 'waterfall_queue') and self.waterfall_queue:
             await self.waterfall_queue.put(data)
-        
+
         if token:
-            self.session_buffers[source] += token
+            self.session_buffers[buf_key] += token
             # Audit for dynamic interjections if importance is high
             if self.current_interest > 0.8:
                 await self._check_dynamic_audit(source, token)
@@ -158,11 +161,15 @@ class CognitiveHub:
         asyncio.create_task(_tic_loop())
         return await task
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True, response_format=None):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True, response_format=None, request_id="default"):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         if node_id not in self.residents:
             return
         
+        # [Task 12.7] Ensure response_format is valid for Pydantic
+        if response_format is None:
+            response_format = {}
+
         # [FEAT-242.1] Handshake Tic (Gated via FEAT-365)
         enabled = True
         try:
@@ -195,28 +202,26 @@ class CognitiveHub:
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
             
-            # [Task 9.1] Spark the node via Native MCP call, but run in background
-            # Tokens will stream directly to the Hub via the Foyer's `/stream_ingest`
-            # which populates `self.session_buffers`. We yield from that buffer here.
-            # The MCP node responds with its 'self.name' as the source.
+            # [Task 9.1] Isolated Buffer Key
             name_map = {"lab": "lab", "pinky": "pinky", "brain": "brain", "thought": "deep thought"}
             src_key = name_map.get(node_id, node_id)
-            self.session_buffers[src_key] = ""
+            buf_key = f"{request_id}_{src_key}"
+            self.session_buffers[buf_key] = ""
             
-            # [Task 9.2] Set internal=False to enable streaming broadcast for overhearing.
-            # handle_stream_token now filters triage/intuition tokens from the UI.
+            # [Task 9.2] Set internal=True. Hub will be the source of truth for the UI.
             call_task = asyncio.create_task(node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
-                "use_lora": use_lora, "response_format": response_format, "internal": False
+                "use_lora": use_lora, "response_format": response_format, 
+                "internal": True, "request_id": request_id
             }))
             
             full_text = ""
             last_len = 0
             while not call_task.done():
                 await asyncio.sleep(0.05)
-                curr_buffer = self.session_buffers[src_key]
+                curr_buffer = self.session_buffers[buf_key]
                 if len(curr_buffer) > last_len:
                     new_tokens = curr_buffer[last_len:]
                     full_text += new_tokens
@@ -225,7 +230,7 @@ class CognitiveHub:
                     
             # Get the final result and any remaining buffer
             res = await call_task
-            curr_buffer = self.session_buffers[src_key]
+            curr_buffer = self.session_buffers[buf_key]
             if len(curr_buffer) > last_len:
                 new_tokens = curr_buffer[last_len:]
                 full_text += new_tokens
@@ -239,7 +244,7 @@ class CognitiveHub:
                     full_text = str(res)
                 yield full_text
             
-            self.session_buffers[src_key] = "" # Clear buffer
+            self.session_buffers[buf_key] = "" # Clear buffer
             
             # [FEAT-287] Activity Latch
             if node_id in ["brain", "thought"]:
@@ -266,8 +271,17 @@ class CognitiveHub:
         """Placeholder for FEAT-190 The Judge."""
         pass
 
-    async def process_query(self, turn, shutdown_event=None):
+    async def process_query(self, turn, shutdown_event=None, request_id=None):
         """[FEAT-145] Main Reasoning Waterfall."""
+        if request_id is None:
+            import uuid
+            request_id = uuid.uuid4().hex[:8]
+        
+        if request_id in self.processed_ids:
+            logging.debug(f"[HUB] Ignoring redundant request: {request_id}")
+            return
+        
+        self.processed_ids.add(request_id)
         
         # [Task 9.7] Direct Intent Overrides
         if turn.startswith("[TRIGGER]"):
@@ -301,7 +315,7 @@ class CognitiveHub:
                         try:
                             # Pass to thought node to fill dead air
                             async for _ in self._process_node_stream(
-                                "thought", turn, "", "Deep Thought", tools=[], temperature=0.7
+                                "thought", turn, "", "Deep Thought", tools=[], temperature=0.7, request_id=request_id
                             ):
                                 pass
                         except Exception as e:
@@ -337,7 +351,7 @@ class CognitiveHub:
                 }
 
                 async for token in self._process_node_stream(
-                    "lab", turn, "[MODE]: TRIAGE", "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema
+                    "lab", turn, "[MODE]: TRIAGE", "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
                 ):
                     t_text += token
 
@@ -399,15 +413,15 @@ class CognitiveHub:
         target = t_parsed.get("addressed_to", "PINKY").lower()
         if "brain" in target or "deep" in target:
             # Elevate to Sovereign
-            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event)
+            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
             # Local Response
             async for _ in self._process_node_stream(
-                "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", tools=[], temperature=0.7
+                "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", tools=[], temperature=0.7, request_id=request_id
             ):
                 pass
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None):
+    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
         """Handles Sovereign (4090) leg of the waterfall."""
         # [Task 2.2] Context Distillation
         distilled_context = ""
@@ -415,7 +429,9 @@ class CognitiveHub:
             # Call brain node to summarize archives
             res = await self.residents["brain"].call_tool("think", {
                 "query": f"Summarize archive context for: {query[:100]}",
-                "internal": True
+                "internal": True,
+                "request_id": request_id,
+                "response_format": {}
             })
             distilled_context = ""
             if hasattr(res, 'content') and len(res.content) > 0:
@@ -429,7 +445,7 @@ class CognitiveHub:
         # Side-channel Telemetry Relay handles the broadcast.
         # We just need to exhaust the generator to ensure the node task completes.
         async for token in self._process_node_stream(
-            "thought", query, distilled_context, "Deep Thought", tools=[], temperature=0.2
+            "thought", query, distilled_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
         ):
             if shutdown_event and shutdown_event.is_set():
                 break

@@ -91,13 +91,15 @@ class BicameralNode:
         # [Task 6.1] Physics: Single Telemetry Relay Thread
         self.telemetry_queue = queue.Queue()
         self._start_telemetry_relay()
+        self.current_request_id = "default"
 
         @self.mcp.tool()
-        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.0, use_lora: bool = True, response_format: dict = None) -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.0, use_lora: bool = True, response_format: dict = None, request_id: str = "default") -> str:
             """
             [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
             Supports real-time token yielding to the Hub for internal waterfall streaming.
             """
+            self.current_request_id = request_id
             system_override = self.system_prompt
             if behavioral_guidance:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
@@ -123,13 +125,15 @@ class BicameralNode:
                 if stream_source:
                     self._broadcast_token("", stream_source, final=True)
                 
+            self.current_request_id = "default"
             return full_response
 
-    async def create_message(self, query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", response_format: dict = None):
+    async def create_message(self, query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", response_format: dict = None, request_id: str = "default"):
         """
         [FEAT-240.2] Native Sampling Bridge (Streaming).
         Returns an async generator of tokens.
         """
+        self.current_request_id = request_id
         system_override = self.system_prompt
         if behavioral_guidance:
             system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
@@ -452,7 +456,12 @@ class BicameralNode:
 
     def _broadcast_token(self, token, source_name, final=False):
         """Threaded fire-and-forget relay via persistent worker."""
-        payload = {"text": token, "source": source_name, "final": final}
+        payload = {
+            "text": token, 
+            "source": source_name, 
+            "final": final,
+            "request_id": self.current_request_id
+        }
         self.telemetry_queue.put(payload)
 
     async def _stream_vllm(self, url, payload):
