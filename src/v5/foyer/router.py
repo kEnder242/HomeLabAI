@@ -315,7 +315,8 @@ class FoyerRouter:
             await self.cognitive.handle_stream_token({
                 "brain": data.get("text", ""),
                 "brain_source": data.get("source", "Unknown"),
-                "final": data.get("final", False)
+                "final": data.get("final", False),
+                "request_id": data.get("request_id", "default")
             })
             return web.Response(status=200)
         except Exception as e:
@@ -445,8 +446,10 @@ class FoyerRouter:
             try:
                 query = self.sensory.check_turn_end()
                 if query:
+                    import uuid
+                    request_id = f"EAR_{uuid.uuid4().hex[:4]}"
                     shutdown_ev = asyncio.Event()
-                    asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev))
+                    asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev, request_id=request_id))
             except Exception: pass
             await asyncio.sleep(0.5)
 
@@ -511,7 +514,7 @@ class FoyerRouter:
                                             
                                             # [NEW] Shutdown tracking for this intent
                                             shutdown_ev = asyncio.Event()
-                                            asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev))
+                                            asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev, request_id=event.id))
                                     except Exception as e:
                                         logger.error(f"Intent parse error: {e}")
                                 last_pos = f.tell()
