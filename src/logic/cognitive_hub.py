@@ -539,25 +539,25 @@ class CognitiveHub:
         except Exception as e:
             logging.error(f"[HUB] Morning Briefing failed: {e}")
 
-    async def _prime_first_try(self, t_parsed):
+    async def _prime_first_try(self, turn):
         """[NEW] First Try: Persona-faithful quick response."""
-        node_id = t_parsed.get("addressed_to", "PINKY").lower()
-        persona = "Pinky (character-faithful tic)" if node_id == "pinky" else "Deep Thought (analytical thinking response)"
+        # Persona defaults to Deep Thought as it's pre-triage
+        persona = "Deep Thought (analytical thinking response)"
         
         try:
             tic_res = await self.residents["lab"].call_tool("think", {
-                "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{t_parsed.get('situation', '')[:50]}'.",
+                "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'.",
                 "temperature": 0.8
             })
             tic_msg = tic_res.content[0].text
         except Exception:
-            tic_msg = "Acknowledged. Processing..."
+            tic_msg = "Initiating mental synthesis... deep thought in progress."
             
         await self.broadcast({
             "type": "crosstalk",
             "brain": tic_msg,
-            "brain_source": node_id.capitalize(),
-            "channel": "insight" if node_id in ["brain", "thought"] else "chat",
+            "brain_source": "System",
+            "channel": "insight",
             "final": False,
             "version": "5.0.0-foyer"
         })
