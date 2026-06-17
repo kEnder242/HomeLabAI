@@ -454,7 +454,7 @@ class FoyerRouter:
         while True:
             # Persistent heartbeat to prevent browser timeouts
             if self.connected_clients:
-                await self.broadcast({"type": "status", "state": "HEARTBEAT", "message": "Neural link stable.", "brain_source": "System"})
+                await self.broadcast({"type": "status", "state": "HEARTBEAT", "message": "Neural link stable.", "brain_source": "System", "version": "5.0.0-foyer"})
                 
                 # Random character tics
                 if self.status.vocal and random.random() < 0.1:
@@ -529,10 +529,11 @@ class FoyerRouter:
                                             
                                             # [FIX] Keep WebSocket alive during long node boot
                                             await self.broadcast({
-                                                "type": "status", 
-                                                "state": "SYNCING", 
-                                                "message": "Physical silicon ready. Syncing logical nodes...", 
-                                                "brain_source": "System"
+                                                "type": "status",
+                                                "state": "SYNCING",
+                                                "message": "Physical silicon ready. Syncing logical nodes...",
+                                                "brain_source": "System",
+                                                "version": "5.0.0-foyer"
                                             })
                                             
                                             # [NEW] Shutdown tracking for this intent
