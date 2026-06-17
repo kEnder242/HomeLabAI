@@ -134,13 +134,14 @@ class CognitiveHub:
                     if task.done():
                         break
                         
-                    # Request a context-aware tic from the Lab node
+                    # Request a context-aware tic/quip from the Lab node
                     tic_msg = ""
-                    # Always try to fetch a persona-faithful tic from the node itself if ready, 
-                    # else fallback to base persona tics.
+                    # Persona definition
+                    persona = "Pinky (character-faithful tic)" if node_id.lower() == "pinky" else "Deep Thought (analytical thinking response)"
+                    
                     try:
                         tic_res = await self.residents["lab"].call_tool("think", {
-                            "query": "[SYSTEM_TIC]: Provide a character-faithful interjection based on current lab state.",
+                            "query": f"[SYSTEM_TIC]: Provide a {persona} for the Lab's current state.",
                             "temperature": 0.8
                         })
                         tic_msg = tic_res.content[0].text
@@ -148,16 +149,18 @@ class CognitiveHub:
                         pass
 
                     if not tic_msg:
-                        # Fallback to persona tics
-                        base_tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
-                        tic_msg = random.choice(base_tics)
+                        # Fallback to base persona tics/quips
+                        if node_id.lower() == "pinky":
+                            tic_msg = random.choice(["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"])
+                        else:
+                            tic_msg = "Analyzing parameters... deep thought in progress."
 
                     try:
                         await self.broadcast({
                             "type": "crosstalk",
                             "brain": tic_msg,
                             "brain_source": node_id.capitalize(),
-                            "channel": "insight" if node_id in ["brain", "thought"] else "chat",
+                            "channel": "insight" if node_id.lower() in ["brain", "thought"] else "chat",
                             "final": False,
                             "version": "5.0.0-foyer"
                         })
