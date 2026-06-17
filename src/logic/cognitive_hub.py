@@ -56,16 +56,26 @@ class CognitiveHub:
 
     async def handle_stream_token(self, data):
         """[FEAT-233.2] Ingests token into session buffers and audits for vetoes."""
-        source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
+        raw_source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
+        
+        # [Task 14.3] Map raw node names to UI-friendly display names
+        display_map = {
+            "lab": "Lab (Triage)",
+            "pinky": "Pinky (Response)",
+            "brain": "Brain (Archive)",
+            "thought": "Deep Thought"
+        }
+        source = display_map.get(raw_source, raw_source)
+        data["brain_source"] = source
+        
         token = data.get("brain", "")
         # Extract request ID if present
         request_id = data.get("request_id", "default")
-        buf_key = f"{request_id}_{source}"
+        buf_key = f"{request_id}_{raw_source}"
 
         # [NEW] Push to waterfall queue for real-time UI delivery
-        # [Task 9.2] Filter out internal triage/intuition tokens from the UI
-        is_internal = "triage" in source or "intuition" in source
-        if not is_internal and hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+        # [FEAT-361] 100% Transparency: No masking of inter-node whispers.
+        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
             await self.waterfall_queue.put(data)
 
         if token:
@@ -128,7 +138,6 @@ class CognitiveHub:
                     try:
                         tic_res = await self.residents["lab"].call_tool("think", {
                             "query": "[SYSTEM_TIC]: Provide a character-faithful interjection.",
-                            "internal": True,
                             "temperature": 0.8
                         })
                         tic_msg = tic_res.content[0].text
@@ -180,11 +189,13 @@ class CognitiveHub:
              pass
 
         if enabled:
+            channel = "insight" if "brain" in source_name.lower() or "thought" in source_name.lower() else "chat"
             await self.broadcast({
                 "type": "crosstalk",
                 "brain": f"Initiating {source_name} intuition...",
                 "brain_source": source_name,
-                "final": False
+                "final": False,
+                "channel": channel
             })
 
         try:
@@ -208,13 +219,13 @@ class CognitiveHub:
             buf_key = f"{request_id}_{src_key}"
             self.session_buffers[buf_key] = ""
             
-            # [Task 9.2] Set internal=True. Hub will be the source of truth for the UI.
+            # [Task 9.2] Hub relies on the Node's telemetry queue to populate the Foyer drainer.
             call_task = asyncio.create_task(node.call_tool("think", {
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora, "response_format": response_format, 
-                "internal": True, "request_id": request_id
+                "request_id": request_id
             }))
             
             full_text = ""
@@ -252,8 +263,8 @@ class CognitiveHub:
                 if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
                     self.last_prime_callback(time.time())
             
-            # Final dispatch to UI
-            await self.execute_dispatch(full_text, source_name, shutdown_event=shutdown_event, retry_count=retry_count, final=True)
+            # [Task 14.2] Drainer Primacy: Removed execute_dispatch(). 
+            # The Foyer's waterfall_drainer handles the final Pop delivery.
             
         except Exception as e:
             logging.error(f"[HUB] Stream from {node_id} failed: {e}")
@@ -337,7 +348,7 @@ class CognitiveHub:
                             "properties": {
                                 "intent": {"type": "string", "enum": ["STRATEGIC", "CASUAL", "RECALL"]},
                                 "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
-                                "vibe": {"type": "string", "enum": ["SILICON_TELEMETRY", "ARCHIVE_HISTORY", "PINKY_INTERFACE"]},
+                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META"]},
                                 "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
                                 "casual": {"type": "number"},
                                 "intrigue": {"type": "number"},
@@ -411,13 +422,22 @@ class CognitiveHub:
         self.current_interest = importance
         
         target = t_parsed.get("addressed_to", "PINKY").lower()
+        vibe = t_parsed.get("vibe", "").upper()
+        
+        # [Task 15.1] Conversational Grace Override
+        behavioral_guidance = ""
+        if vibe == "CASUAL":
+            behavioral_guidance = "[MODE]: CONVERSATIONAL (Natural, witty, brief greetings. No technical lecturing.)"
+
         if "brain" in target or "deep" in target:
             # Elevate to Sovereign
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
             # Local Response
             async for _ in self._process_node_stream(
-                "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", tools=[], temperature=0.7, request_id=request_id
+                "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", 
+                tools=[], temperature=0.7, request_id=request_id,
+                behavioral_guidance=behavioral_guidance
             ):
                 pass
 
@@ -429,7 +449,6 @@ class CognitiveHub:
             # Call brain node to summarize archives
             res = await self.residents["brain"].call_tool("think", {
                 "query": f"Summarize archive context for: {query[:100]}",
-                "internal": True,
                 "request_id": request_id,
                 "response_format": {}
             })
