@@ -347,7 +347,8 @@ class CognitiveHub:
                         await self.broadcast({
                             "type": "crosstalk", 
                             "brain": "Lab is warming its anchors. Reaching out to Deep Thought...", 
-                            "brain_source": "System"
+                            "brain_source": "System",
+                            "version": "5.0.0-foyer"
                         })
                         try:
                             # Pass to thought node to fill dead air
@@ -431,10 +432,12 @@ class CognitiveHub:
                 await self.broadcast({
                     "type": "crosstalk",
                     "brain": f"[HUB] Triage successful. Intent: {t_parsed.get('intent')}",
-                    "brain_source": "System"
+                    "brain_source": "System",
+                    "version": "5.0.0-foyer"
                 })
+                # [NEW] First Try Priming (After triage)
+                asyncio.create_task(self._prime_first_try(t_parsed))
                 break
-            except Exception as e:
                 logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
                 t_text = ""
                 await asyncio.sleep(2)
@@ -567,3 +570,26 @@ class CognitiveHub:
                 pass
         except Exception as e:
             logging.error(f"[HUB] Morning Briefing failed: {e}")
+
+    async def _prime_first_try(self, t_parsed):
+        """[NEW] First Try: Persona-faithful quick response."""
+        node_id = t_parsed.get("addressed_to", "PINKY").lower()
+        persona = "Pinky (character-faithful tic)" if node_id == "pinky" else "Deep Thought (analytical thinking response)"
+        
+        try:
+            tic_res = await self.residents["lab"].call_tool("think", {
+                "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{t_parsed.get('situation', '')[:50]}'.",
+                "temperature": 0.8
+            })
+            tic_msg = tic_res.content[0].text
+        except Exception:
+            tic_msg = "Acknowledged. Processing..."
+            
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": tic_msg,
+            "brain_source": node_id.capitalize(),
+            "channel": "insight" if node_id in ["brain", "thought"] else "chat",
+            "final": False,
+            "version": "5.0.0-foyer"
+        })
