@@ -294,6 +294,7 @@ class CognitiveHub:
             request_id = uuid.uuid4().hex[:8]
         
         # [NEW] Unified Early Priming
+        logging.info(f"[PRIME] Spawning priming task for: {turn[:20]}")
         asyncio.create_task(self._prime_first_try(turn))
         
         logging.info(f"[HUB_GUARD] Request {request_id} entering process_query. Set size: {len(self.processed_ids)}")
