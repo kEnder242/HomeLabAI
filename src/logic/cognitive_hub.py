@@ -136,14 +136,20 @@ class CognitiveHub:
                         
                     # Request a context-aware tic from the Lab node
                     tic_msg = ""
-                    try:
-                        tic_res = await self.residents["lab"].call_tool("think", {
-                            "query": "[SYSTEM_TIC]: Provide a character-faithful interjection.",
-                            "temperature": 0.8
-                        })
-                        tic_msg = tic_res.content[0].text
-                    except Exception:
-                        pass
+                    analytical_tics = ["[THINKING]: Mapping architecture...", "[THINKING]: Retrieving BKM...", "[THINKING]: Verifying telemetry...", "[THINKING]: Parsing triage schema..."]
+                    base_tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
+                    
+                    if node_id in ["brain", "thought"]:
+                        tic_msg = random.choice(analytical_tics)
+                    else:
+                        try:
+                            tic_res = await self.residents["lab"].call_tool("think", {
+                                "query": "[SYSTEM_TIC]: Provide a character-faithful interjection.",
+                                "temperature": 0.8
+                            })
+                            tic_msg = tic_res.content[0].text
+                        except Exception:
+                            pass
 
                     if not tic_msg:
                         # Fallback to base tics
@@ -155,8 +161,9 @@ class CognitiveHub:
                     try:
                         await self.broadcast({
                             "type": "crosstalk",
-                            "brain": f"[{node_id.upper()}]: {tic_msg}",
-                            "brain_source": "System",
+                            "brain": tic_msg,
+                            "brain_source": node_id.capitalize(),
+                            "channel": "insight" if node_id in ["brain", "thought"] else "chat",
                             "final": False
                         })
                         # Exponential backoff for tics to avoid spamming
