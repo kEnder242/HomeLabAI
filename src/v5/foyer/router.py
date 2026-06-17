@@ -63,7 +63,12 @@ class FoyerRouter:
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
         self.waterfall_queue = asyncio.Queue()
+        self.broadcast_queue = asyncio.Queue()
         self.trigger_task = trigger_task
+        
+        # [Task 6.3] Hygiene: Global Process Tracking
+        from collections import deque
+        self.processed_ids = deque(maxlen=1000)
         
         self.status = LabStatus()
         self.cognitive = CognitiveHub(
@@ -78,6 +83,57 @@ class FoyerRouter:
         self.app.on_startup.append(self.on_startup)
         self.app.on_cleanup.append(self.cleanup)
         self.setup_routes()
+
+    async def broadcast(self, message_dict):
+        """[FEAT-233.2] Thread-safe, serialized WebSocket broadcast."""
+        await self.broadcast_queue.put(message_dict)
+
+    async def broadcast_worker(self):
+        """[FIX] Sequential WebSocket Dispatcher to prevent stuttering/interleaving."""
+        logger.info("Foyer broadcast worker active.")
+        while True:
+            message_dict = await self.broadcast_queue.get()
+            try:
+                m_type = message_dict.get("type", "chat")
+                m_content = message_dict.get("brain", message_dict.get("message", ""))
+                m_source = message_dict.get("brain_source", "System")
+                
+                # ... Forensic Ledger ...
+                try:
+                    from infra.forensic_ledger import ledger
+                    if m_type in ["chat", "crosstalk"]:
+                        ledger.record_thought(m_source, m_content, role=m_type.upper())
+                except Exception: pass
+
+                message_dict["type"] = m_type
+                message_dict["brain"] = m_content
+                message_dict["brain_source"] = m_source
+                message_dict["hub_pid"] = os.getpid()
+                if "msg_id" not in message_dict:
+                    message_dict["msg_id"] = uuid.uuid4().hex[:12]
+
+                msg_str = json.dumps(message_dict)
+
+                # Serialized Fan-out
+                clients = list(self.connected_clients)
+                if not clients:
+                    logger.debug(f"[BROADCAST] No clients connected for msg: {m_type}")
+                
+                for ws in clients:
+                    if not ws.closed:
+                        try:
+                            await asyncio.wait_for(ws.send_str(msg_str), timeout=1.0)
+                        except Exception as e:
+                            logger.error(f"[BROADCAST] Failed to send to client: {e}")
+                            if ws in self.connected_clients:
+                                self.connected_clients.remove(ws)
+                    else:
+                        if ws in self.connected_clients:
+                            self.connected_clients.remove(ws)
+            except Exception as e:
+                logger.error(f"Broadcast worker error: {e}")
+            finally:
+                self.broadcast_queue.task_done()
 
     def record_pager(self, message, severity="INFO", source="Foyer"):
         """[Task 9.9] Centralized Pager Logging."""
@@ -208,7 +264,7 @@ class FoyerRouter:
 
     async def on_startup(self, app):
         """[FEAT-339] Clean task scheduling on event loop start."""
-        logger.info("V5 Foyer Router starting background tasks...")
+        logger.info(f"[FOYER_BOOT] V5 Foyer Router starting background tasks... (Token: {self.session_token})")
         self.record_pager("Foyer Logic Hub Started.", source="Foyer")
         
         # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
@@ -238,6 +294,7 @@ class FoyerRouter:
         asyncio.create_task(self.scheduled_tasks_loop())
         asyncio.create_task(self.queue_drainer())
         asyncio.create_task(self.waterfall_drainer())
+        asyncio.create_task(self.broadcast_worker())
 
     async def handle_health(self, request):
         return web.json_response({"status": "ONLINE", "version": "5.0.0-foyer"})
@@ -280,7 +337,8 @@ class FoyerRouter:
                         }))
                     elif m_type == "text_input":
                         query = data.get("content")
-                        await self.enqueue_intent(query, source=f"WS_{socket_id}")
+                        req_id = data.get("request_id")
+                        await self.enqueue_intent(query, source=f"WS_{socket_id}", request_id=req_id)
                     elif m_type == "workspace_save":
                         fn = data.get("filename")
                         content = data.get("content")
@@ -323,8 +381,10 @@ class FoyerRouter:
             logger.error(f"Stream ingest error: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
-    async def enqueue_intent(self, query, source):
+    async def enqueue_intent(self, query, source, request_id=None):
         event = IntentEvent(query=query, source=source)
+        if request_id:
+            event.id = request_id
         try:
             os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
             with open(QUEUE_FILE, "a") as f:
@@ -340,56 +400,12 @@ class FoyerRouter:
             logger.error(f"Failed to enqueue: {e}")
             raise
 
-    async def broadcast(self, message_dict):
-        """[FEAT-221] Safe broadcast with loop-congestion protection."""
-        m_type = message_dict.get("type", "chat")
-        m_content = message_dict.get("brain") or message_dict.get("message")
-        if not m_content:
-            if m_type == "status": pass
-            else: return
-
-        # [NEW] Check if we are being called from a synchronous context
-        try:
-            loop = asyncio.get_event_loop()
-            if not loop.is_running():
-                 # Should not happen in aiohttp
-                 return
-        except Exception: return
-
-        # Perform formatting and logging
-        m_source = message_dict.get("brain_source", "System")
-        try:
-            from infra.forensic_ledger import ledger
-            if m_type in ["chat", "crosstalk"]:
-                ledger.record_thought(m_source, m_content, role=m_type.upper())
-        except Exception: pass
-
-        message_dict["type"] = m_type
-        message_dict["brain"] = m_content
-        message_dict["brain_source"] = m_source
-        message_dict["hub_pid"] = os.getpid()
-        if "msg_id" not in message_dict:
-            message_dict["msg_id"] = uuid.uuid4().hex[:12]
-
-        msg_str = json.dumps(message_dict)
-
-        # Non-blocking WebSocket fan-out
-        for ws in list(self.connected_clients):
-            try:
-                if not ws.closed:
-                    # Fire-and-forget the send_str to avoid blocking the main loop
-                    asyncio.create_task(asyncio.wait_for(ws.send_str(msg_str), timeout=1.0))
-                else:
-                    self.connected_clients.remove(ws)
-            except Exception:
-                if ws in self.connected_clients:
-                    self.connected_clients.remove(ws)
-
     async def waterfall_drainer(self):
         """[Task 12.3] Drains internal token buffer into final Pop messages for UI."""
         logger.info("Waterfall drainer active (Pop Mode).")
         from collections import defaultdict
         
+        # [Task 14.2] Isolated buffers by (request_id, source)
         pending_chunks = defaultdict(str)
 
         while True:
@@ -399,13 +415,17 @@ class FoyerRouter:
                 source = str(data.get("brain_source", data.get("source", "Unknown")))
                 token = data.get("brain", "")
                 final = data.get("final", False)
+                request_id = data.get("request_id", "default")
+                
+                buf_key = (request_id, source)
 
                 if token:
-                    pending_chunks[source] += token
+                    pending_chunks[buf_key] += token
                 
                 if final:
                     # [Task 12.3] Flush entire accumulated string immediately
-                    if pending_chunks[source]:
+                    content = pending_chunks[buf_key]
+                    if content:
                         # [Task 12.4] Insight Window Routing
                         channel = "chat"
                         s_lower = source.lower()
@@ -414,12 +434,13 @@ class FoyerRouter:
                             
                         await self.broadcast({
                             "type": "chat",
-                            "brain": pending_chunks[source],
+                            "brain": content,
                             "brain_source": source,
                             "final": True,
-                            "channel": channel
+                            "channel": channel,
+                            "request_id": request_id
                         })
-                        pending_chunks[source] = ""
+                        del pending_chunks[buf_key]
 
                 self.waterfall_queue.task_done()
 
@@ -475,13 +496,10 @@ class FoyerRouter:
 
     async def queue_drainer(self):
         """[Task 4.3] Neural Queue Drainer."""
-        logger.info("Queue drainer active.")
+        logger.info(f"Queue drainer active (Token: {self.session_token}).")
         last_pos = 0
         if os.path.exists(QUEUE_FILE):
             last_pos = os.path.getsize(QUEUE_FILE)
-
-        from collections import deque
-        processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
 
         while True:
             try:
@@ -500,9 +518,14 @@ class FoyerRouter:
                                     if not line.strip(): continue
                                     try:
                                         event = IntentEvent.from_json(line)
-                                        if event.status == "PENDING" and event.id not in processed_ids:
+                                        if event.status == "PENDING" and event.id not in self.processed_ids:
+                                            # [FIX] Filter out operational signals from reasoning engine
+                                            if event.query.startswith("[OPERATIONAL]"):
+                                                self.processed_ids.append(event.id)
+                                                continue
+
                                             logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
-                                            processed_ids.append(event.id)
+                                            self.processed_ids.append(event.id)
                                             
                                             # [FIX] Keep WebSocket alive during long node boot
                                             await self.broadcast({
@@ -517,7 +540,7 @@ class FoyerRouter:
                                             asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev, request_id=event.id))
                                     except Exception as e:
                                         logger.error(f"Intent parse error: {e}")
-                                last_pos = f.tell()
+                                last_pos = os.path.getsize(QUEUE_FILE) # [FIX] Accurate tailing
                 
             except Exception as e:
                 logger.error(f"Queue drainer failure: {e}")

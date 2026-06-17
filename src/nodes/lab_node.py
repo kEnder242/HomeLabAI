@@ -18,9 +18,9 @@ LAB_SYSTEM_PROMPT = (
     "- vibe: TECHNICAL, CASUAL, HISTORICAL, ANALYTICAL, OPERATIONAL, FORENSIC, META\n"
     "- domain: exp_tlm, exp_bkm, exp_for, standard\n"
     "RULES:\n"
-    "1. [BKM-015] Semantic Indirection: If the query focuses on hardware metrics, driver infrastructure, or validation environments, set vibe=OPERATIONAL, importance=1.0.\n"
-    "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about past events or work history, set intent=RECALL, vibe=HISTORICAL.\n"
-    "3. CONVERSATIONAL GRACE: If the user says hello, goodbye, or makes simple small talk without technical depth, set intent=CASUAL, vibe=CASUAL, and importance=0.1.\n"
+    "1. [BKM-015] Semantic Indirection: If the query focuses on hardware metrics, driver infrastructure, or validation environments, set vibe=OPERATIONAL, importance=1.0, addressed_to=PINKY.\n"
+    "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about past events or work history, set intent=RECALL, vibe=HISTORICAL, addressed_to=BRAIN.\n"
+    "3. CONVERSATIONAL GRACE: If the user says hello, goodbye, or makes simple small talk, you MUST set intent=CASUAL, vibe=CASUAL, and addressed_to=PINKY. Conversational flow is the priority.\n"
     "4. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
     "5. Be precise. Return ONLY the JSON."
 )
