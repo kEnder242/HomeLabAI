@@ -4,7 +4,7 @@ import time
 import json
 
 HUB_URL = "http://127.0.0.1:8765/hub"
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 
 async def test_induction_lock():
     print("="*60)

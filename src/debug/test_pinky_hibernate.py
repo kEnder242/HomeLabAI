@@ -4,7 +4,7 @@ import json
 import time
 import subprocess
 
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://127.0.0.1:8765"
 LAB_KEY = "92e785ba"
 

@@ -9,7 +9,7 @@ import subprocess
 # [FEAT-337] Warm Wake Validation Harness
 # Used for certifying sub-second wake performance and Zero Layering.
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "ws://localhost:8765"
 STYLE_KEY = "92e785ba"
 

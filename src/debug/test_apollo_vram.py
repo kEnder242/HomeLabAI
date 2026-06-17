@@ -10,7 +10,7 @@ _LAB_ROOT = os.path.abspath(os.path.join(_SELF_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(_LAB_ROOT, "src"))
 
 # Configuration from Environment or Defaults
-ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:9999")
+ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:8765")
 VLLM_URL = "http://localhost:8088/v1/chat/completions" # Direct to vLLM
 SERVED_NAME = "unified-base"
 

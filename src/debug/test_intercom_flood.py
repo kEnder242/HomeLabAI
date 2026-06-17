@@ -27,7 +27,7 @@ async def flood_intercom(target_url, count=30):
         print(f"[*] Initial Hub PID detected: {initial_pid}")
     except:
         print("[!] Hub is currently offline. Starting Lab...")
-        subprocess.run(["curl", "-X", "POST", f"http://localhost:9999/start?key={key}", "-H", "Content-Type: application/json", "-d", '{"engine": "OLLAMA", "model": "MEDIUM"}'])
+        subprocess.run(["curl", "-X", "POST", f"http://localhost:8765/start?key={key}", "-H", "Content-Type: application/json", "-d", '{"engine": "OLLAMA", "model": "MEDIUM"}'])
         await asyncio.sleep(10)
         fuser_out = subprocess.check_output(["sudo", "fuser", "8765/tcp"], text=True)
         initial_pid = int(fuser_out.split(":")[-1].strip())

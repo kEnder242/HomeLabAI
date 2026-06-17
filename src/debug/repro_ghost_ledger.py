@@ -9,7 +9,7 @@ import psutil
 # [FEAT-322] Shadow Deadlock Reproduction Harness v3 (PORT PERSISTENCE)
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 LEDGER_PATH = os.path.join(LAB_DIR, "run/active_pids.json")
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 LAB_KEY = "92e785ba"
 
 def start_ghost_hub():

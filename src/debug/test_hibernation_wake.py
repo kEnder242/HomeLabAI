@@ -5,7 +5,7 @@ import websockets
 import time
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 WS_URL = "ws://127.0.0.1:8765"
 
 def get_style_key():

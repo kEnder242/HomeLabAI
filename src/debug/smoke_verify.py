@@ -3,7 +3,7 @@ import aiohttp
 import time
 import sys
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 
 async def run_smoke():
     print("--- 🌫️  Starting Full-Stack DEBUG_SMOKE Gate ---")

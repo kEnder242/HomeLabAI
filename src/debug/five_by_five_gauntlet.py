@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 
 # [FEAT-318] Hardened 5x5 Infrastructure
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 STATUS_URL = "http://localhost:9001/intercom.html"
 
 # Task 20.4: Auth Stability

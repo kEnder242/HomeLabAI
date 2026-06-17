@@ -10,7 +10,7 @@ def audit():
     print("="*60)
 
     # 1. Ports
-    ports = {8088: "vLLM", 11434: "Ollama", 8765: "Hub", 9999: "Attendant"}
+    ports = {8088: "vLLM", 11434: "Ollama", 8765: "Hub", 8765: "Attendant"}
     print("\n[PORTS]")
     for port, name in ports.items():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

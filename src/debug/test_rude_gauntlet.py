@@ -47,7 +47,7 @@ async def run_cycle(cycle):
     
     # 1. Force Hibernate (H2 - Lean Sleep)
     print(f"    [Action] Entering Lean Sleep (H2)...")
-    subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:9999/hibernate?level=2&key={key}'], capture_output=True)
+    subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:8765/hibernate?level=2&key={key}'], capture_output=True)
     time.sleep(10) # Settle
 
     # 2. Fire Rude Storm (5 concurrent queries to sleeping lab)

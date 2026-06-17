@@ -50,7 +50,7 @@ async def main():
         import hashlib
         with open("/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css", "rb") as f:
             key = hashlib.md5(f.read()).hexdigest()[:8]
-        requests.post(f"http://localhost:9999/hibernate?level=1&key={key}")
+        requests.post(f"http://localhost:8765/hibernate?level=1&key={key}")
         print("[*] Triggered H1 Hibernation. Waiting 5s for settle...")
         time.sleep(5)
     except Exception as e:

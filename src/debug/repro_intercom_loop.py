@@ -7,7 +7,7 @@ import requests
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 WS_URL = "ws://127.0.0.1:8765"
-HB_URL = "http://127.0.0.1:9999/heartbeat"
+HB_URL = "http://127.0.0.1:8765/heartbeat"
 
 async def repro_collision():
     print("[#] Starting High-Fidelity Hub Collision Reproduction...")
@@ -18,7 +18,7 @@ async def repro_collision():
         import hashlib
         with open("/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css", "rb") as f:
             style_key = hashlib.md5(f.read()).hexdigest()[:8]
-        requests.post("http://127.0.0.1:9999/hibernate", headers={"X-Lab-Key": style_key}, json={"reason": "REPRO"})
+        requests.post("http://127.0.0.1:8765/hibernate", headers={"X-Lab-Key": style_key}, json={"reason": "REPRO"})
         print("[+] Lab set to HIBERNATING.")
         await asyncio.sleep(5)
     except: pass

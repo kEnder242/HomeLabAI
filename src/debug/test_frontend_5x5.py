@@ -11,7 +11,7 @@ from playwright.async_api import async_playwright
 # Definitive certification of the entire Lab stack (Hardware -> Hub -> JS -> UI).
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 INTERCOM_URL = "http://localhost:9001/intercom.html"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
 

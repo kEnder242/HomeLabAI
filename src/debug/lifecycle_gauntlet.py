@@ -20,7 +20,7 @@ from pathlib import Path
 LOG_LEVEL = logging.INFO
 SCRIPTS_DIR = Path.home() / "Dev_Lab/HomeLabAI/src/forge"
 DEBUG_DIR = Path.home() / "Dev_Lab/HomeLabAI/src/debug"
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -28,7 +28,7 @@ logging.basicConfig(
 )
 
 async def check_attendant_health():
-    """Verify Master Attendant is responding on port 9999."""
+    """Verify Master Attendant is responding on port 8765."""
     logging.info("--- PROBE: Master Attendant Health ---")
     try:
         async with aiohttp.ClientSession() as session:

@@ -8,7 +8,7 @@ import os
 import psutil
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-HEARTBEAT_URL = "http://localhost:9999/heartbeat"
+HEARTBEAT_URL = "http://localhost:8765/heartbeat"
 METRICS_URL = "http://localhost:8088/metrics"
 
 async def get_vllm_metrics():
@@ -47,7 +47,7 @@ async def characterize_ignition():
     # 1. Physical Reset
     print("[STEP 1] Nuclear Purge & Service Start...")
     subprocess.run(["sudo", "systemctl", "stop", "lab-attendant.service"])
-    subprocess.run(["sudo", "fuser", "-k", "9999/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
+    subprocess.run(["sudo", "fuser", "-k", "8765/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
     subprocess.run(["sudo", "pkill", "-9", "-f", "acme_lab|vllm|ollama|EngineCore"], stderr=subprocess.DEVNULL)
     
     start_t = time.time()
@@ -68,7 +68,7 @@ async def characterize_ignition():
         # Check if the lab is at least online even if metrics are slow
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:9999/heartbeat", timeout=2) as r:
+                async with session.get("http://localhost:8765/heartbeat", timeout=2) as r:
                     if r.status == 200:
                         print("\n⚠️ WARNING: Lab is ONLINE but KV blocks are not yet reporting in metrics.")
                         larynx_ready_t = time.time() - start_t

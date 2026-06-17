@@ -8,7 +8,7 @@ import hashlib
 
 # --- Config ---
 HUB_URL = "http://localhost:8765/hub"
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
 
 def get_key():
