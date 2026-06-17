@@ -136,27 +136,21 @@ class CognitiveHub:
                         
                     # Request a context-aware tic from the Lab node
                     tic_msg = ""
-                    analytical_tics = ["[THINKING]: Mapping architecture...", "[THINKING]: Retrieving BKM...", "[THINKING]: Verifying telemetry...", "[THINKING]: Parsing triage schema..."]
-                    base_tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
-                    
-                    if node_id in ["brain", "thought"]:
-                        tic_msg = random.choice(analytical_tics)
-                    else:
-                        try:
-                            tic_res = await self.residents["lab"].call_tool("think", {
-                                "query": "[SYSTEM_TIC]: Provide a character-faithful interjection.",
-                                "temperature": 0.8
-                            })
-                            tic_msg = tic_res.content[0].text
-                        except Exception:
-                            pass
+                    # Always try to fetch a persona-faithful tic from the node itself if ready, 
+                    # else fallback to base persona tics.
+                    try:
+                        tic_res = await self.residents["lab"].call_tool("think", {
+                            "query": "[SYSTEM_TIC]: Provide a character-faithful interjection based on current lab state.",
+                            "temperature": 0.8
+                        })
+                        tic_msg = tic_res.content[0].text
+                    except Exception:
+                        pass
 
                     if not tic_msg:
-                        # Fallback to base tics
-                        if self.current_interest > 0.8:
-                            tic_msg = "Resonating weights... waking the Architect."
-                        else:
-                            tic_msg = random.choice(base_tics)
+                        # Fallback to persona tics
+                        base_tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
+                        tic_msg = random.choice(base_tics)
 
                     try:
                         await self.broadcast({
@@ -164,7 +158,8 @@ class CognitiveHub:
                             "brain": tic_msg,
                             "brain_source": node_id.capitalize(),
                             "channel": "insight" if node_id in ["brain", "thought"] else "chat",
-                            "final": False
+                            "final": False,
+                            "version": "5.0.0-foyer"
                         })
                         # Exponential backoff for tics to avoid spamming
                         current_delay = min(current_delay * 1.5, 15.0)
