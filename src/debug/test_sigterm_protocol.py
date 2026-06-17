@@ -4,7 +4,7 @@ import os
 import aiohttp
 import time
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 VRAM_CONFIG_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/vram_characterization.json")
 
 async def test_sigterm_protocol():

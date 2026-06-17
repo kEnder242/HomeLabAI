@@ -14,7 +14,7 @@ ATTENDANT_LOG = os.path.join(LAB_DIR, "attendant.log")
 
 async def test_bounce():
     uri = "ws://localhost:8765"
-    attendant_url = "http://localhost:9999/heartbeat"
+    attendant_url = "http://localhost:8765/heartbeat"
     
     # [FEAT-151] Initialize Trace Monitor
     monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG])

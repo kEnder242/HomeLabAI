@@ -5,7 +5,7 @@ import hashlib
 import os
 
 HUB_URL = "http://localhost:8765/hub"
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 
 async def simulate_alarm_storm():
     print("[*] Simulating 2AM Alarm Storm...")

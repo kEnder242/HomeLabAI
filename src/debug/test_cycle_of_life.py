@@ -16,7 +16,7 @@ def get_key():
 async def run_cycle_test():
     print("[*] Starting formal Cycle of Life Test...")
     key = get_key()
-    base_url = "http://localhost:9999"
+    base_url = "http://localhost:8765"
     
     # 1. Ensure Online
     print("[*] Stage 1: Ensuring Lab is ONLINE...")

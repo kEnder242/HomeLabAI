@@ -4,7 +4,7 @@ import pytest
 import aiohttp
 import os
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 SEMANTIC_MAP_FILE = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
 
 @pytest.mark.asyncio

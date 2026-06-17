@@ -8,7 +8,7 @@ import subprocess
 # [TEST-54] Lobby Robustness Reproduction
 # Proves that a Silicon Scythe (H3) kills the Lobby/Foyer and fails to recover it.
 
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://localhost:8765"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
 

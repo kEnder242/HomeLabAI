@@ -9,7 +9,7 @@ _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
 _LAB_ROOT = os.path.abspath(os.path.join(_SELF_DIR, "..", ".."))
 _VLLM_LOG = os.path.join(_LAB_ROOT, "vllm_server.log")
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 VLLM_URL = "http://localhost:8088/v1/chat/completions"
 WALL_MIB = 333
 

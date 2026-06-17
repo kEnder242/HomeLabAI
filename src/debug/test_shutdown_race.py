@@ -27,7 +27,7 @@ def run_race_test():
 
     # 2. Trigger Ignition
     print("[*] Triggering VLLM Ignition...")
-    url = f"http://localhost:9999/start?key={key}"
+    url = f"http://localhost:8765/start?key={key}"
     try:
         requests.post(url, json={"engine": "VLLM", "model": "MEDIUM", "reason": "RACE_TEST"}, timeout=2)
     except requests.exceptions.ReadTimeout:

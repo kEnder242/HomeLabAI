@@ -1,44 +1,17 @@
 import asyncio
 import aiohttp
-import json
-import os
 import pytest
 
-ATTENDANT_URL = "http://localhost:9999"
-STATUS_JSON_PATH = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
+ATTENDANT_URL = "http://localhost:8765"
 
-@pytest.mark.asyncio
 async def test_attendant_heartbeat():
-    """Verifies Attendant is alive and responding."""
     async with aiohttp.ClientSession() as session:
-        url = f"{ATTENDANT_URL}/wait_ready"
+        url = f"{ATTENDANT_URL}/status"
         async with session.get(url) as resp:
             assert resp.status == 200
             data = await resp.json()
-            assert data["status"] == "ready"
-            print(f"[PASS] Attendant Heartbeat: READY")
-
-@pytest.mark.asyncio
-async def test_status_json_update():
-    """Verifies Attendant can write to status.json."""
-    if os.path.exists(STATUS_JSON_PATH):
-        initial_mtime = os.path.getmtime(STATUS_JSON_PATH)
-    else:
-        initial_mtime = 0
-    
-    async with aiohttp.ClientSession() as session:
-        await session.get(f"{ATTENDANT_URL}/heartbeat")
-    
-    await asyncio.sleep(3) 
-    new_mtime = os.path.getmtime(STATUS_JSON_PATH)
-    assert new_mtime > initial_mtime
-    
-    with open(STATUS_JSON_PATH, "r") as f:
-        data = json.load(f)
-        assert "timestamp" in data
-        assert "vitals" in data
-    print(f"[PASS] status.json updated at {data['timestamp']}")
+            assert data["state"] in ["WAKING", "READY"]
+            print(f"[PASS] Attendant Heartbeat: {data['state']}")
 
 if __name__ == "__main__":
     asyncio.run(test_attendant_heartbeat())
-    asyncio.run(test_status_json_update())

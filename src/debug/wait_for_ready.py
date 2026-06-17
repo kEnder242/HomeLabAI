@@ -8,7 +8,7 @@ import sys
 # Paths
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
-HEARTBEAT_URL = "http://localhost:9999/heartbeat"
+HEARTBEAT_URL = "http://localhost:8765/heartbeat"
 
 async def wait_for_ready(timeout=180):
     """Standalone Forensic Wait: Polls heartbeat and tails log for crashes."""

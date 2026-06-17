@@ -6,7 +6,7 @@ import json
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 VLLM_LOG = os.path.join(LAB_DIR, "vllm_server.log")
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 
 async def test_vllm_crash_recovery():
     print("[#] Starting vLLM Crash Recovery Verification [FEAT-308]")

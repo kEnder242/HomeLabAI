@@ -7,7 +7,7 @@ import time
 
 # Paths
 _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "ws://localhost:8765/"
 STYLE_CSS = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/style.css")
 

@@ -84,7 +84,7 @@ async def run_cycle(cycle):
     
     # 1. Natural Hibernate (H2 - Lean Sleep)
     print(f"    [Action] Entering Lean Sleep (H2)...")
-    subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:9999/hibernate?level=2&key={key}'], capture_output=True)
+    subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:8765/hibernate?level=2&key={key}'], capture_output=True)
     time.sleep(5) # Minimum settle
 
     # 2. Launch Storm

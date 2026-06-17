@@ -6,7 +6,7 @@ import subprocess
 import os
 import json
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "ws://localhost:8765"
 STABILITY_GOAL = 300 
 

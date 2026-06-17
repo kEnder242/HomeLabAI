@@ -2,7 +2,7 @@ import requests
 import time
 import json
 
-URL = "http://localhost:9999"
+URL = "http://localhost:8765"
 
 def check_lab():
     print("--- 🔬 Python Lab Probe ---")

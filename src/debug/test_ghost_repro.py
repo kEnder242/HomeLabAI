@@ -27,7 +27,7 @@ async def reproduce_ghost():
     # 3. Corrupt the Ledger (Make Attendant blind)
     print("[*] Corrupting the PID ledger...")
     with open(LEDGER_PATH, "w") as f:
-        json.dump({"hub_pid": 99999, "engine_pid": 88888, "engine_mode": "VLLM"}, f)
+        json.dump({"hub_pid": 87659, "engine_pid": 88888, "engine_mode": "VLLM"}, f)
         
     # 4. Start the Attendant
     print("[*] Starting Lab Attendant with blind state...")

@@ -27,7 +27,7 @@ async def run_browser_simulation():
         
         # 1. Start Lab (Cold Start)
         print("[*] Triggering Lab Ignition (VLLM)...")
-        subprocess.run(["curl", "-X", "POST", f"http://localhost:9999/start?key={key}", "-H", "Content-Type: application/json", "-d", '{"engine": "OLLAMA", "model": "MEDIUM", "reason": "BROWSER_SIM"}'])
+        subprocess.run(["curl", "-X", "POST", f"http://localhost:8765/start?key={key}", "-H", "Content-Type: application/json", "-d", '{"engine": "OLLAMA", "model": "MEDIUM", "reason": "BROWSER_SIM"}'])
         
         # 2. Navigate to Intercom immediately
         print(f"[*] Navigating to {INTERCOM_URL}")

@@ -36,7 +36,7 @@ async def main():
     
     # 1. Force Hibernation (Ensure weights are offloaded)
     print("[*] Leveling silicon to H1...")
-    requests.post(f"http://localhost:9999/hibernate?level=1&key={key}")
+    requests.post(f"http://localhost:8765/hibernate?level=1&key={key}")
     time.sleep(10)
     
     # 2. Fire Burst

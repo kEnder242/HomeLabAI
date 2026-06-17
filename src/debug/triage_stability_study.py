@@ -3,7 +3,7 @@ import json
 import time
 
 STYLE_KEY = "92e785ba"
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "http://localhost:8765"
 
 def study():

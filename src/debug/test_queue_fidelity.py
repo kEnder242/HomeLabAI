@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 
 # [FEAT-321] Neural Queue Fidelity Test
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 STATUS_URL = "http://localhost:9001/intercom.html"
 LAB_KEY = "92e785ba" # Standard MD5 hash of style.css
 

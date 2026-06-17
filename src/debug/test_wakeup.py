@@ -23,7 +23,7 @@ async def test_wakeup():
             for i in range(10):
                 async with aiohttp.ClientSession() as session:
                     headers = {'X-Lab-Key': 'c48e0b32'}
-                    async with session.get("http://localhost:9999/status", headers=headers) as r:
+                    async with session.get("http://localhost:8765/status", headers=headers) as r:
                         if r.status == 404:
                             text = await r.text()
                             print(f"  ❌ 404 ERROR: Attendant returned File Not Found. Trace:\n{text[:200]}")

@@ -5,7 +5,7 @@ import os
 import psutil
 import time
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 STATUS_JSON = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
 PAGER_ACTIVITY_FILE = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
 
