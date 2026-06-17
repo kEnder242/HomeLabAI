@@ -436,6 +436,21 @@ class CognitiveHub:
             # Elevate to Sovereign
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
+            # [Task 16.4] Analytical Quips: Fill dead air while Pinky boots
+            if vibe in ["TECHNICAL", "ANALYTICAL", "FORENSIC"]:
+                quip = "Analyzing technical telemetry vectors..."
+                if vibe == "FORENSIC": quip = "Scanning crash signatures and system traces..."
+                elif vibe == "ANALYTICAL": quip = "Computing quantitative baselines..."
+                
+                await self.broadcast({
+                    "type": "chat",
+                    "brain": f"*{quip}*",
+                    "brain_source": "Brain (Archive)",
+                    "final": True,
+                    "channel": "insight",
+                    "request_id": request_id
+                })
+
             # Local Response
             async for _ in self._process_node_stream(
                 "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", 
