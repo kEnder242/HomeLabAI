@@ -299,6 +299,7 @@ class IgnitionManager:
                                                 self.status.state = "MAINTENANCE"
                                                 self.update_status_file()
                                             elif op == "WAKE":
+                                                self.last_activity_time = time.time() # [Task 15.3] Reset timer for ALL wake attempts
                                                 if os.path.exists(MAINTENANCE_LOCK):
                                                     try: os.remove(MAINTENANCE_LOCK)
                                                     except Exception: pass
