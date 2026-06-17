@@ -36,6 +36,7 @@ class CognitiveHub:
         
         # [Task 6.3] Hygiene: Process Tracking
         self.processed_ids = set()
+        self.request_lock = asyncio.Lock()
         
         # [FEAT-350] Gibberish Guard: Stable Baseline
         self.consecutive_parse_failures = 0
@@ -288,11 +289,13 @@ class CognitiveHub:
             import uuid
             request_id = uuid.uuid4().hex[:8]
         
-        if request_id in self.processed_ids:
-            logging.debug(f"[HUB] Ignoring redundant request: {request_id}")
-            return
-        
-        self.processed_ids.add(request_id)
+        logging.info(f"[HUB_GUARD] Request {request_id} entering process_query. Set size: {len(self.processed_ids)}")
+        async with self.request_lock:
+            if request_id in self.processed_ids:
+                logging.warning(f"[HUB_GUARD] REJECTED redundant request: {request_id}")
+                return
+            self.processed_ids.add(request_id)
+            logging.info(f"[HUB_GUARD] ACCEPTED request: {request_id}")
         
         # [Task 9.7] Direct Intent Overrides
         if turn.startswith("[TRIGGER]"):
