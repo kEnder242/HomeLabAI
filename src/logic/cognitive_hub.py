@@ -543,14 +543,20 @@ class CognitiveHub:
         """[NEW] First Try: Persona-faithful quick response."""
         # Persona defaults to Deep Thought as it's pre-triage
         persona = "Deep Thought (analytical thinking response)"
+        logging.info(f"[PRIME] Initiating priming for turn: {turn[:50]}")
+        
+        await asyncio.sleep(5) # Allow lab synchronization
         
         try:
+            logging.info(f"[PRIME] Calling 'think' tool for persona: {persona}")
             tic_res = await self.residents["lab"].call_tool("think", {
                 "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'.",
                 "temperature": 0.8
             })
             tic_msg = tic_res.content[0].text
-        except Exception:
+            logging.info(f"[PRIME] Tic generated: {tic_msg[:30]}")
+        except Exception as e:
+            logging.error(f"[PRIME] Tic generation failed: {e}")
             tic_msg = "Initiating mental synthesis... deep thought in progress."
             
         await self.broadcast({
@@ -561,3 +567,4 @@ class CognitiveHub:
             "final": False,
             "version": "5.0.0-foyer"
         })
+        logging.info("[PRIME] Broadcast complete.")
