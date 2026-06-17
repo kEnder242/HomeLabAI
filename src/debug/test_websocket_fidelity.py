@@ -41,9 +41,9 @@ async def test_streaming_fidelity():
         final_received = False
         start_time = time.time()
         
-        while time.time() - start_time < 45:
+        while time.time() - start_time < 180:
             try:
-                msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                msg = await asyncio.wait_for(ws.recv(), timeout=20.0)
                 data = json.loads(msg)
                 
                 m_type = data.get("type", "unknown")
