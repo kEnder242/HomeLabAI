@@ -122,7 +122,6 @@ class CognitiveHub:
 
     async def monitor_task_with_tics(self, coro, node_id="lab"):
         """[FEAT-267] Display periodic 'Tics' (e.g., Narf!) during long node runs."""
-        base_tics = ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
         task = asyncio.create_task(coro)
         
         # Start a background tic broadcaster
@@ -421,6 +420,7 @@ class CognitiveHub:
                     "version": "5.0.0-foyer"
                 })
                 break
+            except Exception as e:
                 logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
                 t_text = ""
                 await asyncio.sleep(2)
@@ -448,8 +448,10 @@ class CognitiveHub:
             # [Task 16.4] Analytical Quips: Fill dead air while Pinky boots
             if vibe in ["TECHNICAL", "ANALYTICAL", "FORENSIC"]:
                 quip = "Analyzing technical telemetry vectors..."
-                if vibe == "FORENSIC": quip = "Scanning crash signatures and system traces..."
-                elif vibe == "ANALYTICAL": quip = "Computing quantitative baselines..."
+                if vibe == "FORENSIC":
+                    quip = "Scanning crash signatures and system traces..."
+                elif vibe == "ANALYTICAL":
+                    quip = "Computing quantitative baselines..."
                 
                 await self.broadcast({
                     "type": "chat",
