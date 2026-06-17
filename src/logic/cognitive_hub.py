@@ -294,24 +294,9 @@ class CognitiveHub:
             import uuid
             request_id = uuid.uuid4().hex[:8]
         
-        # [NEW] Early Priming: If Lab is WAKING, try a quick thought from KENDER
-        # to fill the air while the heavy vLLM engine initializes.
-        try:
-            # Quick check if attendant is currently WAKING
-            import requests
-            attendant_status = requests.get("http://localhost:8765/status", timeout=2).json()
-            if attendant_status.get("state") == "WAKING":
-                # KENDER (Brain node) is likely ready from parallel boot
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": "Initiating mental synthesis... deep thought in progress.",
-                    "brain_source": "System",
-                    "channel": "insight",
-                    "version": "5.0.0-foyer"
-                })
-        except Exception:
-            pass
-
+        # [NEW] Unified Early Priming
+        asyncio.create_task(self._prime_first_try(turn))
+        
         logging.info(f"[HUB_GUARD] Request {request_id} entering process_query. Set size: {len(self.processed_ids)}")
         async with self.request_lock:
             if request_id in self.processed_ids:
@@ -435,8 +420,6 @@ class CognitiveHub:
                     "brain_source": "System",
                     "version": "5.0.0-foyer"
                 })
-                # [NEW] First Try Priming (After triage)
-                asyncio.create_task(self._prime_first_try(t_parsed))
                 break
                 logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
                 t_text = ""
