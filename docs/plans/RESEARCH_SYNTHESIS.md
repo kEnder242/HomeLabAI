@@ -26,6 +26,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | **Agentic FS** | 2602.20478 | Context as a File System. | **Grounding:** Validates our "Static Synthesis" architecture. | **100%** |
 | **13-Param Reason** | 2602.04118 | Extreme parameter efficiency. | **Sentinel:** Optimization logic for 1B "Sentinel" mice nodes. | **Active** |
 | **REDSearcher** | 2602.14234 | Long-Horizon Search Scaling. | **Discovery:** framework for deep technical history discovery. | **Design** |
+| **VibeThinker-3B** | 2606.16140 | Verifiable Reasoning / Spectrum-to-Signal. | **Sanity:** Unified local base model for Phase 10 [FEAT-368]. | **Active** |
 | **Banter Decay** | N/A | Frequency-based idling. | **Legacy:** Replaced by [FEAT-152] Metabolism of Presence [FEAT-039]. | **DEFEATURED** |
 | **Persona-Locked Dispatch** | N/A | Rigid isolation. | **Legacy:** Rigid isolation prevented collaborative synthesis [FEAT-068]. | **DEFEATURED** |
 
