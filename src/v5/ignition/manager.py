@@ -375,9 +375,12 @@ class IgnitionManager:
                     logging.info("[IGNITION] System Idle > 1hr. Triggering Quiet Refinement...")
                     if self._acquire_vram_lock():
                         try:
-                            refiner = os.path.join(LAB_DIR, "field_notes/refine_gem.py")
+                            refiner = GEM_REFINER
                             if os.path.exists(refiner):
+                                logging.info(f"[IGNITION] Running {refiner}...")
                                 subprocess.run([sys.executable, refiner, "--one-turn"], env=os.environ.copy())
+                            else:
+                                logging.warning(f"[IGNITION] Refiner script not found at {refiner}")
                         finally:
                             self._release_vram_lock()
                             self.status.timestamp = time.time()
