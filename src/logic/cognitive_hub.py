@@ -432,10 +432,16 @@ class CognitiveHub:
         target = t_parsed.get("addressed_to", "PINKY").lower()
         vibe = t_parsed.get("vibe", "").upper()
         
-        # [Task 15.1] Conversational Grace Override
+        # [Task 15.1] Conversational Grace Override & [Task 18.3] Pinky Un-gagging
         behavioral_guidance = ""
+        context = ""
         if vibe == "CASUAL":
             behavioral_guidance = "[MODE]: CONVERSATIONAL (Natural, witty, brief greetings. No technical lecturing.)"
+        else:
+            # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
+            behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
+            # Pass the triage hints as context so Pinky has something to synthesize.
+            context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
 
         if "brain" in target or "deep" in target:
             # Elevate to Sovereign
@@ -443,7 +449,7 @@ class CognitiveHub:
         else:
             # Local Response
             async for _ in self._process_node_stream(
-                "pinky", turn, "[MODE]: DIRECT_RESPONSE", "Pinky (Response)", 
+                "pinky", turn, context, "Pinky (Response)", 
                 tools=[], temperature=0.7, request_id=request_id,
                 behavioral_guidance=behavioral_guidance
             ):
