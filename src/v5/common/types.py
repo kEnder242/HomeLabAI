@@ -1,9 +1,11 @@
 import os
 import json
-import logging
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import time
+
+# [Task 17.3] Single Source of Versioning
+LAB_VERSION = "5.0.0-foyer"
 
 # [Task 4.1] V5 Common: Unified types for the Modular Suite
 
@@ -36,7 +38,7 @@ class NodeStatus:
 class LabStatus:
     state: str = "HIBERNATING"
     timestamp: float = field(default_factory=time.time)
-    version: str = "5.0.0-appliance"
+    version: str = LAB_VERSION
     vram_used: int = 0
     vram_total: int = 0
     ram_pct: float = 0.0
