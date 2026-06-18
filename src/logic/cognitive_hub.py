@@ -538,7 +538,7 @@ class CognitiveHub:
     async def _prime_first_try(self, turn):
         """[NEW] First Try: Persona-faithful quick response."""
         # Persona defaults to Deep Thought as it's pre-triage
-        persona = "Deep Thought (analytical thinking response)"
+        persona = "Deep Thought (naive, laconic, hesitant to answer directly, slightly arrogant)"
         logging.info(f"[PRIME] Initiating priming for turn: {turn[:50]}")
         
         tic_msg = None
@@ -549,7 +549,7 @@ class CognitiveHub:
                 logging.info(f"[PRIME] Calling 'think' tool for persona: {persona}")
                 # Use a very short timeout; this is just to buy time for triage, not stall it.
                 tic_res = await asyncio.wait_for(self.residents["thought"].call_tool("think", {
-                    "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'.",
+                    "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'. Do not answer the question directly. Acknowledge with arrogant hesitance, knowing the waterfall process will handle the details.",
                     "temperature": 0.8
                 }), timeout=3.0)
                 tic_msg = tic_res.content[0].text
