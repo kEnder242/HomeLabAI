@@ -569,7 +569,7 @@ class CognitiveHub:
         await self.broadcast({
             "type": "crosstalk",
             "brain": tic_msg,
-            "brain_source": "System",
+            "brain_source": "Deep Thought",
             "channel": "insight",
             "final": False,
             "version": LAB_VERSION
