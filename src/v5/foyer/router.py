@@ -16,7 +16,7 @@ LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file
 if LAB_DIR not in sys.path:
     sys.path.append(LAB_DIR)
 
-from v5.common.types import IntentEvent, LabStatus
+from v5.common.types import IntentEvent, LabStatus, LAB_VERSION
 from v5.common.residents import ResidentManager
 from logic.cognitive_hub import CognitiveHub
 from equipment.sensory_manager import SensoryManager
@@ -297,7 +297,7 @@ class FoyerRouter:
         asyncio.create_task(self.broadcast_worker())
 
     async def handle_health(self, request):
-        return web.json_response({"status": "ONLINE", "version": "5.0.0-foyer"})
+        return web.json_response({"status": "ONLINE", "version": LAB_VERSION})
 
     async def handle_status(self, request):
         return web.json_response(self.status.to_dict())
@@ -333,7 +333,7 @@ class FoyerRouter:
                             "type": "status", 
                             "state": "connected", 
                             "socket_id": socket_id,
-                            "version": "5.0.0-foyer"
+                            "version": LAB_VERSION
                         }))
                     elif m_type == "text_input":
                         query = data.get("content")
@@ -454,7 +454,7 @@ class FoyerRouter:
         while True:
             # Persistent heartbeat to prevent browser timeouts
             if self.connected_clients:
-                await self.broadcast({"type": "status", "state": "HEARTBEAT", "brain_source": "System", "version": "5.0.0-foyer"})
+                await self.broadcast({"type": "status", "state": "HEARTBEAT", "brain_source": "System", "version": LAB_VERSION})
                 
                 # Random character tics
                 if self.status.vocal and random.random() < 0.1:
@@ -533,7 +533,7 @@ class FoyerRouter:
                                                 "state": "SYNCING",
                                                 "message": "Physical silicon ready. Syncing logical nodes...",
                                                 "brain_source": "System",
-                                                "version": "5.0.0-foyer"
+                                                "version": LAB_VERSION
                                             })
                                             
                                             # [NEW] Shutdown tracking for this intent

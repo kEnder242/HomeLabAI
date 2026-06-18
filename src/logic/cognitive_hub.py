@@ -5,6 +5,7 @@ import os
 import re
 import time
 import random
+from v5.common.types import LAB_VERSION
 
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
@@ -161,7 +162,7 @@ class CognitiveHub:
                             "brain_source": node_id.capitalize(),
                             "channel": "insight" if node_id.lower() in ["brain", "thought"] else "chat",
                             "final": False,
-                            "version": "5.0.0-foyer"
+                            "version": LAB_VERSION
                         })
                         # Exponential backoff for tics to avoid spamming
                         current_delay = min(current_delay * 1.5, 15.0)
@@ -333,7 +334,7 @@ class CognitiveHub:
                             "type": "crosstalk", 
                             "brain": "Lab is warming its anchors. Reaching out to Deep Thought...", 
                             "brain_source": "System",
-                            "version": "5.0.0-foyer"
+                            "version": LAB_VERSION
                         })
                         try:
                             # Pass to thought node to fill dead air
@@ -418,7 +419,7 @@ class CognitiveHub:
                     "type": "crosstalk",
                     "brain": f"[HUB] Triage successful. Intent: {t_parsed.get('intent')}",
                     "brain_source": "System",
-                    "version": "5.0.0-foyer"
+                    "version": LAB_VERSION
                 })
                 break
             except Exception as e:
@@ -571,6 +572,6 @@ class CognitiveHub:
             "brain_source": "System",
             "channel": "insight",
             "final": False,
-            "version": "5.0.0-foyer"
+            "version": LAB_VERSION
         })
         logging.info("[PRIME] Broadcast complete.")
