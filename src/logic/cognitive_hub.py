@@ -380,12 +380,6 @@ class CognitiveHub:
                     t_text += token
 
                 logging.info(f"[HUB] Triage Output: {t_text}")
-                # [FEAT-355] Visible Triage: Broadcast for automated verification
-                asyncio.create_task(self.broadcast({
-                    "type": "crosstalk", 
-                    "brain": f"[HUB] Triage Result: {t_text}", 
-                    "brain_source": "System"
-                }))
 
                 t_clean = self.bridge_signal_clean(t_text)
                 if not t_clean:
