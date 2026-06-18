@@ -35,27 +35,29 @@ async def test_triage_casual_with_priming():
         await ws.send(json.dumps({"type": "handshake", "version": "5.0.0-foyer"}))
         
         # 2. Trigger the query
-        payload = {"content": "Hi! How do you calculate pi?", "type": "text_input", "request_id": "TEST_PRIMING_123"}
+        req_id = f"TEST_PRIMING_{int(time.time())}"
+        payload = {"content": "Hi! How do you calculate pi?", "type": "text_input", "request_id": req_id}
         await ws.send(json.dumps(payload))
-        
+
         priming_received = False
         start_time = time.time()
-        
+
         while time.time() - start_time < 60:
             try:
                 msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
                 data = json.loads(msg)
-                
+
                 # Check for crosstalk channel "insight" and the expected priming message
-                if data.get("type") == "crosstalk":
+                if data.get("type") == "crosstalk" and data.get("channel") == "insight":
                     brain = data.get("brain", "")
-                    print(f"DEBUG: Received crosstalk: {brain}")
-                    if "Initiating mental synthesis" in brain or "Acknowledged" in brain:
+                    source = data.get("brain_source", "")
+                    print(f"DEBUG: Received crosstalk: [{source}] {brain}")
+                    if source == "Deep Thought":
                         print("✓ First Try Priming successful (WebSocket validated).")
                         priming_received = True
                         break
             except asyncio.TimeoutError:
-                break
+                continue
         
         assert priming_received, "Priming broadcast not received!"
 
