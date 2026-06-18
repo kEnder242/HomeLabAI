@@ -5,7 +5,7 @@ import hashlib
 import os
 
 # Configuration
-ATTENDANT_URL = 'http://localhost:9999'
+ATTENDANT_URL = 'http://localhost:8765'
 STATUS_URL = f'{ATTENDANT_URL}/status'
 START_URL = f'{ATTENDANT_URL}/start'
 STOP_URL = f'{ATTENDANT_URL}/stop'

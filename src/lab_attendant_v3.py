@@ -1,1 +1,2120 @@
-/home/jallred/Dev_Lab/HomeLabAI/src/lab_attendant_v4.py
+import os
+import fcntl
+import subprocess
+import json
+import asyncio
+import datetime
+import logging
+import psutil
+import aiohttp
+import hashlib
+import re
+from aiohttp import web
+import time
+import uuid
+import sys
+import signal
+from mcp.server.fastmcp import FastMCP
+from infra.montana import reclaim_logger
+
+# [BKM-022] Atomic IO & [FEAT-151] Trace Monitoring
+from infra.atomic_io import atomic_write_json
+from debug.trace_monitor import TraceMonitor
+
+# --- Path Self-Awareness ---
+_SELF_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SELF_DIR not in sys.path:
+    sys.path.insert(0, _SELF_DIR)
+
+# --- Configuration ---
+PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
+LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
+VRAM_LOCK_FILE = "/tmp/lab_vram.lock"
+DATA_DIR = os.path.join(LAB_DIR, "data") 
+SERVER_LOG = f"{LAB_DIR}/server.log"
+ATTENDANT_LOG = f"{LAB_DIR}/attendant.log"
+VLLM_SERVER_LOG = f"{LAB_DIR}/vllm_server.log"
+STATUS_JSON = f"{PORTFOLIO_DIR}/field_notes/data/status.json"
+CHARACTERIZATION_FILE = f"{PORTFOLIO_DIR}/field_notes/data/vram_characterization.json"
+INFRASTRUCTURE_FILE = f"{LAB_DIR}/config/infrastructure.json"
+EXPERTISE_DIR = f"{LAB_DIR}/src/forge/expertise"
+ROUND_TABLE_LOCK = f"{LAB_DIR}/round_table.lock"
+MAINTENANCE_LOCK = f"{PORTFOLIO_DIR}/field_notes/data/maintenance.lock"
+PAGER_ACTIVITY_FILE = f"{PORTFOLIO_DIR}/field_notes/data/pager_activity.json"
+VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
+LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
+LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
+STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
+ATTENDANT_PORT = 8765
+
+# [FEAT-180] Resilience Metadata
+MONITOR_CONTAINERS = ["field_prometheus", "field_grafana", "field_node_exporter"]
+
+# --- Global State ---
+lab_process = None
+current_lab_mode = "OFFLINE"
+current_model = None
+is_hibernating = False
+_BOOT_HASH = uuid.uuid4().hex[:4].upper()
+
+# [BKM-002] Montana Protocol: Aggressive Logger Authority
+reclaim_logger(role="ATTENDANT")
+logger = logging.getLogger("lab_attendant_v3")
+
+def get_style_key():
+    """Generates the 'Moving Target' key from the style.css hash."""
+    if not os.path.exists(STYLE_CSS):
+        logger.error(f"[SECURITY] STYLE_CSS missing: {STYLE_CSS}")
+        return "missing"
+    with open(STYLE_CSS, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()[:8]
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
+                                        cwd=LAB_DIR, text=True).strip()
+    except Exception:
+        return "unknown"
+
+def get_fingerprint(role="ATTENDANT"):
+    return f"[{_BOOT_HASH}:{get_git_commit()}:{role}]"
+
+# --- Global Singleton Lock ---
+def check_singleton():
+    lock_file = "/tmp/lab_attendant.lock"
+    try:
+        if os.path.exists(lock_file):
+            with open(lock_file, "r") as f:
+                pid_str = f.read().strip()
+                if pid_str:
+                    pid = int(pid_str)
+                    if psutil.pid_exists(pid):
+                        print(f"[FATAL] Lab Attendant already running as PID {pid}. Aborting.", file=sys.stderr)
+                        sys.exit(0)
+    except Exception:
+        pass
+
+    # Atomic Reclaim
+    try:
+        with open(lock_file + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace(lock_file + ".tmp", lock_file)
+    except Exception as e:
+        print(f"[ERROR] Failed to establish singleton lock: {e}", file=sys.stderr)
+
+# --- Silicon Telemetry (NVML) ---
+try:
+    import pynvml
+    pynvml.nvmlInit()
+    _NVML_ACTIVE = True
+except Exception as e:
+    _NVML_ACTIVE = False
+    print(f"[BOOT] NVML Initialization failed (Hardware/Driver missing): {e}", file=sys.stderr)
+
+# --- FastMCP Server ---
+mcp = FastMCP("Acme Lab Attendant", dependencies=["mcp", "psutil", "aiohttp", "pynvml"])
+
+@web.middleware
+async def key_middleware(request, handler):
+    """[FEAT-219] Silicon Handshake: Validates the Lab Key (Query or Header)."""
+    # [FEAT-267] CORS Hardening: Always bypass key check for pre-flight OPTIONS
+    if request.method == 'OPTIONS':
+        resp = web.Response(status=200)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key, LabKey'
+        return resp
+        
+    # Public endpoints (Heartbeat, etc.)
+    if any(request.path.endswith(p) for p in ["/heartbeat", "/ping", "/mutex", "/wait_ready"]):
+        response = await handler(request)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+
+    expected_key = get_style_key()
+    provided_key = request.query.get("key") or request.headers.get("LabKey") or request.headers.get("X-Lab-Key")
+
+    attendant_instance = request.app.get('attendant')
+    session_token = attendant_instance.session_token if attendant_instance else None
+    
+    if provided_key not in [expected_key, session_token]:
+        forwarded = request.headers.get("X-Forwarded-For", "Direct")
+        ua = request.headers.get("User-Agent", "Unknown")
+        logger.warning(f"[SECURITY] 401 Unauthorized: {request.method} {request.path} | Key: {provided_key} | IP: {request.remote} | Fwd: {forwarded} | UA: {ua}")
+        resp = web.json_response({"status": "error", "message": "Invalid Lab Key. Unauthorized."}, status=401)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    
+    # Authorized endpoints
+    response = await handler(request)
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Lab-Key, LabKey'
+    return response
+
+class LabAttendantV4:
+    def map_physical_memory(self):
+        """[FEAT-334] Passive Physical Auditor: Scans processes and identifies Ghosts."""
+        import psutil
+        accounted = set()
+        if self.active_pids.get('hub_pid'):
+            accounted.add(self.active_pids['hub_pid'])
+        if self.active_pids.get('engine_pid'):
+            accounted.add(self.active_pids['engine_pid'])
+        for pid in self.active_pids.get('family', []):
+            accounted.add(pid)
+
+        mapping = {"accounted": [], "ghosts": []}
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info', 'username']):
+                try:
+                    # Filter for our workspace or typical AI signatures
+                    cmd = " ".join(proc.info['cmdline'] or []).lower()
+                    is_ai_related = any(sig in cmd for sig in ['vllm', 'ollama', 'acme_lab', 'python3'])
+                    
+                    if is_ai_related and proc.info['username'] == psutil.Process().username():
+                        mem_mib = proc.info['memory_info'].rss / (1024 * 1024)
+                        p_data = {
+                            "pid": proc.info['pid'],
+                            "name": proc.info['name'],
+                            "mem_mib": round(mem_mib, 2),
+                            "cmd": cmd[:100]
+                        }
+                        if proc.info['pid'] in accounted:
+                            mapping["accounted"].append(p_data)
+                        else:
+                            mapping["ghosts"].append(p_data)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            logger.error(f"[AUDIT] Memory mapping failed: {e}")
+
+        return mapping
+
+    def __init__(self):
+        # [FEAT-267] Unified Middleware: key_middleware now handles OPTIONS directly
+        self.app = web.Application(middlewares=[key_middleware])
+        self.app['attendant'] = self # [FIX] Register for middleware access
+        
+        # [SERVICE] Control & Monitoring Endpoints (Dual-Registration for Option B)
+        self.register_route("POST", "/start", self.handle_start_rest)
+        self.register_route("POST", "/wake", self.handle_wake_rest)
+        self.register_route("POST", "/stop", self.handle_stop_rest)
+        self.register_route("POST", "/quiesce", self.handle_quiesce_rest)
+        self.register_route("POST", "/ignition", self.handle_ignition_rest)
+        self.register_route("POST", "/refresh", self.handle_ignition_rest)
+        self.register_route("POST", "/train", self.handle_train_rest)
+        self.register_route("POST", "/hibernate", self.handle_hibernate_rest)
+        self.register_route("POST", "/hard_reset", self.handle_stop_rest)
+        self.register_route("GET", "/memory_map", self.handle_memory_map_rest)
+        self.register_route("POST", "/reset_cache", self.handle_reset_cache_rest)
+        self.register_route("POST", "/update_prompt", self.handle_update_prompt_rest)
+        self.register_route("GET", "/heartbeat", self.handle_heartbeat_rest)
+        self.register_route("GET", "/status", self.handle_heartbeat_rest) # [FIX] Alias for backward compatibility
+        self.register_route("GET", "/ping", self.handle_ping_rest)
+        self.register_route("GET", "/wait_ready", self.handle_wait_ready_rest)
+        self.register_route("GET", "/logs", self.handle_logs_rest)
+        self.register_route("GET", "/mutex", self.handle_mutex_rest)
+        
+        # [FEAT-151] Forensic Trace Monitor: Added vLLM Server log
+        self.trace_monitor = TraceMonitor([SERVER_LOG, ATTENDANT_LOG, VLLM_SERVER_LOG])
+        
+        # [FIX] Ensure the transient run/ directory exists
+        _run_dir = os.path.join(LAB_DIR, 'run')
+        if not os.path.exists(_run_dir):
+            os.makedirs(_run_dir, exist_ok=True)
+            
+        self.ledger_path = os.path.join(_run_dir, 'active_pids.json')
+        self.token_path = os.path.join(_run_dir, 'session.token')
+        
+        self.event_ledger = [] # [FEAT-363] Initialize before ledger load
+        
+        # [FEAT-277] PID Ledger Initialization
+        # We load existing ledger but ensure 'family' key exists to prevent KeyError
+        self.active_pids = self._load_ledger()
+        if 'family' not in self.active_pids:
+            self.active_pids['family'] = []
+
+        self.current_reason = "INIT"
+        self.session_token = self._load_or_create_token() # [FEAT-220] Persistent Session Identity
+        self.vram_config = {}
+        self.refresh_vram_config()
+        
+        # [WD] State Initialization
+        self.ready_event = asyncio.Event()
+        self.ignition_lock = asyncio.Lock() # [FEAT-265.30] Ignition Mutex
+        self._vram_lock_fd = None # [Task 1.4] Physical VRAM Mutex
+        self._boot_time = time.time()
+        self._last_ignition_time = 0 # [FEAT-317] Port Stability Window
+        self.failure_count = 0
+        self.recovery_attempts = 0 # [FEAT-302] Adaptive Cooldown Tracking
+        self._recovery_in_progress = False # [FIX] Recovery Singleton
+        self._active_monitors = set() # [FIX] Monitor Registry
+        self._operational_start_time = 0 # [FEAT-302] Stability Latch
+        self.boot_grace_period = 180 # 360 seconds for vLLM weights (at 2s pulse)
+        self._worker_throttled = False # [FEAT-330] State-aware throttling
+        self._last_docker_check = 0 # [FEAT-180.1] Docker Cooldown
+        
+        # [FEAT-308] Passive Trace Monitor: Calibrate to current log tail
+        vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
+        self._last_vllm_log_size = os.path.getsize(vllm_log) if os.path.exists(vllm_log) else 0
+
+        # [FEAT-339] Persistent Telemetry Ledger
+        self.pulse_count = 0 
+        self.telemetry_path = os.path.join(DATA_DIR, "telemetry_ledger.jsonl")
+
+
+    def register_route(self, method, path, handler):
+        """[FEAT-219] Silicon Handshake: Multi-Path Router."""
+        if method == "POST":
+            self.app.router.add_post(path, handler)
+            self.app.router.add_post(f"/attendant{path}", handler)
+        else:
+            self.app.router.add_get(path, handler)
+            self.app.router.add_get(f"/attendant{path}", handler)
+
+    def refresh_vram_config(self):
+        if os.path.exists(CHARACTERIZATION_FILE):
+            try:
+                with open(CHARACTERIZATION_FILE, "r") as f:
+                    self.vram_config = json.load(f)
+            except Exception:
+                pass
+
+    def _load_or_create_token(self):
+        """[FEAT-220] Persistent Identity: Survives service restarts."""
+        if os.path.exists(self.token_path):
+            try:
+                with open(self.token_path, "r") as f:
+                    token = f.read().strip()
+                    if token:
+                        logger.info(f"[BOOT] Adopting persistent session token: {token}")
+                        return token
+            except Exception:
+                pass
+        
+        # Fallback to new generation
+        token = uuid.uuid4().hex[:8]
+        try:
+            with open(self.token_path, "w") as f:
+                f.write(token)
+            logger.info(f"[BOOT] Created new persistent session token: {token}")
+        except Exception as e:
+            logger.error(f"[BOOT] Failed to persist token: {e}")
+        return token
+
+    def handle_sigterm(self, sig, frame):
+        """[FEAT-119.5] Synchronous Signal Guard: Blocks exit until silicon is reaped."""
+        logger.warning(f"[SIGNAL] Received Signal {sig}. Executing synchronous silicon purge...")
+        # Use a new loop or the existing one to run the cleanup
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is already running, create a task
+                loop.create_task(self.cleanup_silicon(mode="SESSION"))
+            else:
+                loop.run_until_complete(self.cleanup_silicon(mode="SESSION"))
+        except Exception as e:
+            # Emergency fallback: subshell kill
+            logger.error(f"[SIGNAL] Async purge failed, falling back to emergency reap: {e}")
+            subprocess.run(["sudo", "fuser", "-k", "8765/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
+        
+        logger.warning("[SIGNAL] Purge complete. Exiting.")
+        sys.exit(0)
+
+    # --- Pager Helper ---
+    def log_event(self, message, severity="INFO"):
+        """Appends a milestone event to the interleaved Forensic Ledger."""
+        try:
+            alert = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "source": "LabAttendant",
+                "severity": severity,
+                "message": f"[{self.session_token}] {message}"
+            }
+            
+            # [FEAT-363] Track in-memory for Hub polling
+            if hasattr(self, "event_ledger"):
+                self.event_ledger.append(alert)
+                if len(self.event_ledger) > 50:
+                    self.event_ledger = self.event_ledger[-25:]
+
+            data = []
+            if os.path.exists(PAGER_ACTIVITY_FILE):
+                with open(PAGER_ACTIVITY_FILE, "r") as f:
+                    data = json.load(f)
+            data.append(alert)
+            data = data[-100:] # Keep last 100
+            with open(PAGER_ACTIVITY_FILE + ".tmp", "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(PAGER_ACTIVITY_FILE + ".tmp", PAGER_ACTIVITY_FILE)
+        except Exception as e:
+            logger.error(f"[PAGER] Failed to log event: {e}")
+
+    # --- Pulse Loop ---
+    async def record_telemetry(self):
+        """[FEAT-339] Persistent Telemetry: Logs resource state for historical audit."""
+        try:
+            import datetime
+            mem = psutil.virtual_memory()
+            v_used, v_total = await self._get_vram_info()
+            
+            # Map physical memory to identify hogs
+            m_map = self.map_physical_memory()
+            
+            # Sort accounted by RSS to find top lab hogs
+            top_lab = sorted(m_map.get("accounted", []), key=lambda x: x["mem_mib"], reverse=True)[:3]
+            
+            entry = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "ram_pct": mem.percent,
+                "vram_mib": v_used,
+                "vram_pct": round((v_used / v_total * 100), 1) if v_total > 0 else 0,
+                "mode": current_lab_mode,
+                "top_lab_hogs": top_lab
+            }
+            
+            with open(self.telemetry_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.error(f"[TELEMETRY] Logging failed: {e}")
+
+    async def pulse_loop(self):
+        """Continuous background vitals pulse for the dashboard."""
+        logger.info("[PULSE] Background status cycle active (2s).")
+        while True:
+            self.pulse_count += 1
+            
+            # [FEAT-339] Periodic Telemetry Logging (Every 60s at 2s pulse)
+            if self.pulse_count % 30 == 0:
+                await self.record_telemetry()
+
+            # [FEAT-265.17] Decrement boot grace
+            if self.boot_grace_period > 0:
+                self.boot_grace_period -= 1
+
+            # [FEAT-302] Stability Latch: Reset backoff if stable for >5m
+            if self._operational_start_time and (time.time() - self._operational_start_time > 300):
+                if self.recovery_attempts > 0:
+                    logger.info(f"[WATCHDOG] Silicon Stability Verified ({int(time.time() - self._operational_start_time)}s). Resetting recovery backoff.")
+                    self.recovery_attempts = 0
+
+            # [FEAT-282.6] Passive Pulsing: Continue VRAM telemetry even when hibernating
+            await self.update_status_json()
+            
+            # [FEAT-318.7] RAM-Aware Watchdog: Prevent system-wide OOM
+            try:
+                mem = psutil.virtual_memory()
+                
+                # [FEAT-330] Physical Governor: Signal-based Throttling (Edge-triggered)
+                mass_scan_pid_file = os.path.join(LAB_DIR, "run/mass_scan.pid")
+                if os.path.exists(mass_scan_pid_file):
+                    try:
+                        with open(mass_scan_pid_file, "r") as f:
+                            pid = int(f.read().strip())
+                        
+                        if mem.percent > 85:
+                            # [FEAT-334] Passive Forensic Audit
+                            m_map = self.map_physical_memory()
+                            logger.warning(f"[GOVERNOR] High RAM ({mem.percent}%). Audit Map: {json.dumps(m_map)}")
+                            
+                            if not self._worker_throttled:
+                                os.kill(pid, signal.SIGUSR1) # PAUSE
+                                self._worker_throttled = True
+                                logger.warning(f"[GOVERNOR] Throttling background workers (PID {pid}).")
+                        elif mem.percent < 70 and self._worker_throttled:
+                            os.kill(pid, signal.SIGUSR2) # RESUME
+                            self._worker_throttled = False
+                            logger.info(f"[GOVERNOR] RAM stabilized ({mem.percent}%). Resuming background workers.")
+                    except ProcessLookupError:
+                        os.remove(mass_scan_pid_file) # Stale PID
+                    except Exception as e:
+                        logger.error(f"[GOVERNOR] Throttling failed: {e}")
+
+                if mem.percent > 95:
+                    # [FEAT-336] Informed Governance: Double check VRAM vs RAM
+                    v_used, v_total = await self._get_vram_info()
+                    is_vram_stalled = (v_used / v_total > 0.90) if v_total > 0 else False
+                    
+                    if is_vram_stalled:
+                        logger.critical(f"[WATCHDOG] CRITICAL SILICON EXHAUSTED: RAM {mem.percent}%, VRAM {round(v_used/v_total*100, 1)}%. Emergency hibernation.")
+                        self.log_event("VRAM Exhaustion detected (>90%). Emergency hibernation triggered.", "CRITICAL")
+                        asyncio.create_task(self.mcp_hibernate(reason="EMERGENCY_VRAM_PRESSURE"))
+                    else:
+                        logger.warning(f"[WATCHDOG] System RAM high ({mem.percent}%), but VRAM is nominal ({round(v_used/v_total*100, 1)}%). Monitoring only.")
+            except Exception:
+                pass
+
+            # [FEAT-308] Passive Trace Monitor: Continuous Engine Crash Detection
+            # We check the engine log every 2 seconds for fatal tracebacks.
+            vllm_log = os.path.join(LAB_DIR, 'vllm_server.log')
+            if os.path.exists(vllm_log):
+                try:
+                    current_size = os.path.getsize(vllm_log)
+                    if current_size < self._last_vllm_log_size:
+                        self._last_vllm_log_size = 0 # Log was rotated or wiped
+                        
+                    if current_size > self._last_vllm_log_size:
+                        with open(vllm_log, 'r') as f:
+                            f.seek(self._last_vllm_log_size)
+                            new_lines = f.readlines()
+                            self._last_vllm_log_size = current_size
+                            
+                            # [FEAT-342] TraceMonitor: Filter nominal vLLM errors
+                            # CancelledError is standard for client disconnects
+                            crash_line = next((line for line in new_lines if 
+                                any(t in line for t in ['Traceback', 'RuntimeError', 'ValueError:']) and 
+                                not any(n in line for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError'])
+                            ), None)
+                            if crash_line:
+                                # 1. Forensic Snip
+                                snip_path = os.path.join(LAB_DIR, f'logs/crash_{int(time.time())}.log')
+                                os.makedirs(os.path.dirname(snip_path), exist_ok=True)
+                                with open(snip_path, 'w') as sf:
+                                    sf.writelines(new_lines[-50:]) # Capture recent context
+                                
+                                # [FIX] Passive Mode: Don't trigger recovery automatically yet (Too aggressive during loading)
+                                logger.error(f"[WATCHDOG] Suspicious signal in engine log: {crash_line.strip()}")
+                                # if current_lab_mode != 'OFFLINE':
+                                #    asyncio.create_task(self._trigger_adaptive_recovery(reason='VLLM_CRASH_RECOVERY', engine_only=True))
+                except Exception as e:
+                    logger.error(f'[WATCHDOG] Trace monitor error: {e}')
+
+            # [FEAT-180.1] Docker Observability: Check containers every 5 minutes
+            # Melded from legacy watchdog to ensure stack stability.
+            now = time.time()
+            if now - self._last_docker_check > 300:
+                for container in MONITOR_CONTAINERS:
+                    try:
+                        res = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", container],
+                                             capture_output=True, text=True, timeout=2)
+                        if "true" not in res.stdout:
+                            logger.error(f"[WATCHDOG] Container {container} is DOWN. Restarting...")
+                            subprocess.Popen(["docker", "start", container])
+                            self.log_event(f"Recovered observability container: {container}", "WARNING")
+                    except Exception:
+                        pass
+                self._last_docker_check = now
+
+            # [FEAT-317] Absolute Foyer: Physical Port Verification
+            # If the Lab is not OFFLINE and not hibernating, the Hub foyer MUST be listening.
+            # [FIX] Maintenance Awareness: Skip if maintenance lock is active
+            if current_lab_mode != "OFFLINE" and not is_hibernating and not os.path.exists(MAINTENANCE_LOCK):
+                # We only trigger recovery if we are past the stability window.
+                if time.time() - self._last_ignition_time > 60:
+                    try:
+                        # Use non-blocking socket check
+                        _, writer = await asyncio.wait_for(asyncio.open_connection('127.0.0.1', 8765), timeout=1.0)
+                        writer.close()
+                        await writer.wait_closed()
+                    except Exception:
+                        # Port is closed - Hub is likely dead.
+                        logger.error("[WATCHDOG] Foyer is DEAD (Port 8765 Refused). Triggering Hub recovery...")
+                        self.log_event("Lab Foyer (Hub) died silently. Triggering autonomous recovery.", "CRITICAL")
+                        # [FEAT-302] Unified Adaptive Recovery
+                        asyncio.create_task(self._trigger_adaptive_recovery(reason="FOYER_RECOVERY", engine_only=False))
+
+            await asyncio.sleep(2)
+
+    # --- Proxy Helper ---
+    async def _proxy_request(self, method, endpoint, data=None, retries=5):
+        """[FEAT-258] Resilient Proxy: Redirects tool calls with automatic retry backoff."""
+        key = get_style_key()
+        connector = "&" if "?" in endpoint else "?"
+        url = f"http://127.0.0.1:{ATTENDANT_PORT}/{endpoint}{connector}key={key}"
+        
+        for i in range(retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    if method == "POST":
+                        async with session.post(url, json=data, timeout=5) as r:
+                            return await r.json()
+                    else:
+                        async with session.get(url, timeout=5) as r:
+                            return await r.json()
+            except Exception as e:
+                if i == retries - 1:
+                    return {"status": "error", "message": f"Proxy connection to Master failed after {retries} attempts: {e}"}
+                await asyncio.sleep(2) # Settling window for Master boot
+
+    def _save_ledger(self):
+        """[FEAT-277] Persist Sovereign Ledger to disk."""
+        ledger = {
+            "authority": {
+                "token": self.session_token,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "boot_hash": _BOOT_HASH
+            },
+            "inventory": self.active_pids
+        }
+        atomic_write_json(self.ledger_path, ledger)
+
+    def _load_ledger(self):
+        """[FEAT-277] Load Sovereign Ledger from disk."""
+        base = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+        if os.path.exists(self.ledger_path):
+            try:
+                with open(self.ledger_path, 'r') as f:
+                    data = json.load(f)
+                    inv = data.get("inventory", data)
+                    if isinstance(inv, dict):
+                        # [FEAT-220.6] Schema Hardening: Merge loaded data into base to ensure all keys exist
+                        base.update(inv)
+            except Exception:
+                pass
+        
+        # [FIX] Ensure family is always a list
+        if not isinstance(base.get('family'), list):
+            base['family'] = []
+
+        # [FEAT-322] Authority Verification: Verify adopted Hub is actually a Lab process
+        if base.get('hub_pid'):
+            try:
+                proc = psutil.Process(base['hub_pid'])
+                # [FIX] Ownership Check: Only adopt if process belongs to current user
+                if proc.username() != psutil.Process().username():
+                    logger.warning(f"[BOOT] Authority Mismatch: PID {base['hub_pid']} is owned by {proc.username()}. Wiping authority.")
+                    return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+                    
+                cmd = " ".join(proc.cmdline()).lower()
+                if "acme_lab" not in cmd:
+                    logger.warning(f"[BOOT] Stale Hub detected in ledger (PID {base['hub_pid']} is {proc.name()}). Wiping authority.")
+                    return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.warning(f"[BOOT] Stale or Restricted Hub detected (PID {base.get('hub_pid')}). Wiping authority.")
+                return {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+                
+        return base
+
+    def sync_family_ledger(self):
+        """[FEAT-220.4] Family Sovereignty: Recursively discovers and authorizes child processes."""
+        new_family = set()
+        # [FEAT-265.48] Absolute Sovereignty: Global identity audit
+        token_lower = self.session_token.lower()
+        
+        # Pass 1: Ledger-Based Discovery (Direct trust)
+        target_pids = [os.getpid(), self.active_pids.get('hub_pid'), self.active_pids.get('engine_pid')]
+        for pid in target_pids:
+            if pid and psutil.pid_exists(pid):
+                new_family.add(pid)
+                try:
+                    proc = psutil.Process(pid)
+                    for child in proc.children(recursive=True):
+                        new_family.add(child.pid)
+                except Exception:
+                    pass
+        
+        # Pass 2: Token-Based Discovery (Identify detached workers)
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                p_info = proc.info
+                p_name = str(p_info['name'] or "").lower()
+                cmd = " ".join(p_info['cmdline'] or []).lower()
+                pid = p_info['pid']
+                
+                # Format: [hub:f5e8f53], [pinky:f5e8f53], or environment match
+                if token_lower in cmd or token_lower in p_name or "[hub:" in cmd or "[pinky:" in cmd:
+                    new_family.add(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        self.active_pids['family'] = list(new_family)
+        self._save_ledger()
+
+    async def _handshake_graceful_stop(self):
+        """[FEAT-324] Handshake: Attempt to notify the Hub to stop gracefully."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                # We use a short timeout as the Hub should be responsive if alive
+                async with session.post("http://127.0.0.1:8765/stop", timeout=2.0) as r:
+                    if r.status == 200:
+                        logger.info("[HANDSHAKE] Graceful stop signal accepted by Hub.")
+                        # Give the Hub and residents time to de-initialize
+                        await asyncio.sleep(4.0)
+                        return True
+        except Exception:
+            # Silence expected failures if Hub is already dead or unreachable
+            pass
+        return False
+
+    # --- MCP Tools Implementation ---
+    async def mcp_heartbeat(self):
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("GET", "heartbeat")
+        vitals = await self._get_current_vitals()
+        
+        # [FEAT-249.1] Report Hibernation Status: Engines OFFLINE while Hub is ONLINE
+        if vitals.get("brain") == "OFFLINE" and is_hibernating:
+            vitals["mode"] = "HIBERNATING"
+            
+        vitals["fingerprint"] = get_fingerprint()
+        vitals["timestamp"] = datetime.datetime.now().isoformat()
+        # [FEAT-318] Quiescence Telemetry: Expose remaining window in seconds
+        vitals["quiescence_remaining"] = self.boot_grace_period * 2
+        # [FEAT-323] Backoff Telemetry: Expose recovery effort
+        vitals["recovery_level"] = self.recovery_attempts
+        vitals["recovery_in_progress"] = self._recovery_in_progress
+        
+        # [FEAT-363] Expose event ledger for polling
+        vitals["event_ledger"] = self.event_ledger[-3:] if hasattr(self, "event_ledger") else []
+        
+        # [FEAT-341] Ledger Visibility: Last 5 telemetry snapshots
+        try:
+            if os.path.exists(self.telemetry_path):
+                from collections import deque
+                with open(self.telemetry_path, "r") as f:
+                    vitals["telemetry_ledger"] = [json.loads(line) for line in deque(f, 5)]
+        except Exception:
+            pass
+
+        return vitals
+
+    async def _trigger_adaptive_recovery(self, reason, engine_only=False):
+        """[FEAT-341] Incremental Watchdog: Exponential backoff to handle persistent failures."""
+        # [FIX] Recovery Singleton: Prevent parallel backoff tasks
+        if self._recovery_in_progress:
+            logger.info(f"[WATCHDOG] Recovery already in progress. Ignoring redundant trigger: {reason}")
+            return
+            
+        self._recovery_in_progress = True
+        try:
+            self.recovery_attempts += 1
+            
+            # [FEAT-341] 1m / 5m / 15m Scale
+            backoff_intervals = [60, 300, 900]
+            idx = min(self.recovery_attempts - 1, len(backoff_intervals) - 1)
+            cooldown = backoff_intervals[idx]
+            
+            logger.warning(f"[WATCHDOG] [{reason}] Triggering incremental recovery in {cooldown}s (Attempt {self.recovery_attempts})...")
+            self.log_event(f"UNEXPECTED_FAILURE ({reason}). Backoff active ({cooldown}s).", "CRITICAL")
+            
+            await asyncio.sleep(cooldown)
+            
+            # [FEAT-341] Physical Guard: Verify system RAM before recovery
+            mem = psutil.virtual_memory()
+            if mem.percent > 90:
+                logger.error(f"[WATCHDOG] Recovery ABORTED: System RAM critical ({mem.percent}%). Protecting external load.")
+                return
+
+            # [FIX] Intent Awareness: Check if system was taken offline during sleep
+            if current_lab_mode == "OFFLINE" or is_hibernating:
+                logger.info(f"[WATCHDOG] Recovery aborted: System is {current_lab_mode} (Hibernating: {is_hibernating})")
+                return
+
+            self._operational_start_time = 0
+            await self.mcp_start(engine=os.environ.get("LAB_MODE", "VLLM"), engine_only=engine_only, reason=reason)
+        finally:
+            self._recovery_in_progress = False
+
+    async def mcp_start(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+        """[Task 1.4] Physical VRAM Mutex Wrapper for Ignition."""
+        if not self._acquire_vram_lock():
+            logger.info(f"[IGNITION] [{reason}] VRAM Mutex busy. Aborting redundant spark.")
+            return {"status": "busy", "message": "VRAM Mutex held by another process."}
+        
+        try:
+            return await self._mcp_start_core(engine, model, disable_ear, op_mode, engine_only, reason)
+        finally:
+            self._release_vram_lock()
+
+    async def _mcp_start_core(self, engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED", engine_only: bool = False, reason: str = "UNSPECIFIED"):
+        self.log_event(f"IGNITION_START ({reason})", "INFO")
+        async with self.ignition_lock:
+            global current_lab_mode, current_model, lab_process, is_hibernating
+            self._last_ignition_time = time.time() # [FEAT-317] Reset port stability window
+            self._last_engine_check = 0 # [FIX] Clear TTL cache for fresh cognitive probe
+
+            # [FIX] Redundant Spark Guard: If already vocal, return success immediately
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational") and not reason == "MANUAL_IGNITION":
+                logger.info(f"[IGNITION] [{reason}] Lab is already VOCAL. Skipping redundant spark.")
+                return {"status": "success", "message": "Lab is already operational."}
+
+            # [FEAT-262] Fast Wake Path: If already hibernating, just wake up
+            # We check this FIRST to avoid triggering the Assassin (Deck Clear) on a healthy sleeping process.
+            if current_lab_mode == "HIBERNATING" and engine == "VLLM":
+                logger.info(f"[IGNITION] [{reason.upper()}] Fast Wake triggered for hibernating vLLM.")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post("http://127.0.0.1:8088/wake_up", timeout=5.0) as r:
+                            if r.status == 200:
+                                current_lab_mode = op_mode
+                                is_hibernating = False
+                                self.ready_event.set()
+                                logger.info("[WAKE] vLLM successfully woken from sleep.")
+                                
+                                # [FEAT-318.12] Trigger Hub Wake
+                                try:
+                                    async with session.post("http://127.0.0.1:8765/wake", timeout=2.0) as rh:
+                                        if rh.status == 200:
+                                            logger.info("[WAKE] Hub foyer notified of wake.")
+                                except Exception:
+                                    pass
+
+                                # [FEAT-255.1] Update status file immediately
+                                try:
+                                    with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
+                                        json.dump({"mode": engine, "model": current_model, "reason": f"WAKE_{reason}", "session": self.session_token, "timestamp": time.time()}, f)
+                                except Exception:
+                                    pass
+                                return {"status": "success", "message": "vLLM woken from sleep mode."}
+                except Exception as e:
+                    logger.warning(f"[WAKE] Fast-wake failed, proceeding with full ignition: {e}")
+
+            # [FEAT-265.23] Priority Space: Intentional wakes bypass the congestion gate
+            is_priority_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_") or reason == "SAFE_PILOT")
+            logger.info(f"[IGNITION] [{reason}] Priority Wake: {is_priority_wake} | Engine: {engine}")
+
+            # [FEAT-265.17] Priority Bypass: If we are in the middle of a boot (not ready AND grace > 0), block new starts.
+            if self.boot_grace_period > 0 and not self.ready_event.is_set() and not is_priority_wake:
+                return {"status": "error", "message": "Ignition in progress. Please wait."}
+
+            # [FEAT-265.44] Ledger Eviction: Clear engine residues before deck clear
+            # This ensures the Assassin treats dormant members as orphans to be reaped
+            if not engine_only:
+                logger.info(f"[IGNITION] [{reason.upper()}] Evicting existing engine from family ledger.")
+                self.active_pids['engine_pid'] = None
+                self.active_pids['engine_mode'] = None
+                self._save_ledger()
+
+            # [FEAT-265.10] The "Deck Clear": Surgical ghost-reaping happens EXACTLY once before ignition
+            # We scavenge physical reality first to adopt survivors or reap confirmed ghosts.
+            logger.info(f"[BOOT] Performing Pre-Ignition Deck Clear (Reason: {reason})")
+            await self.scavenge_reality()
+            await self.cleanup_silicon(mode="GHOSTS", engine_only=engine_only)
+
+            # [FIX] Force immediate state flush to allow restoration to proceed
+            is_hibernating = False
+            self.ready_event.clear()
+            self.current_reason = reason
+            
+            # [FEAT-318.6] Sanitary Ignition: Clear the family ledger before sparking
+            # This prevents "Ghost Adoption" of previous session survivors.
+            self.active_pids['family'] = []
+            
+            # We set mode early to ensure heartbeat reflects the TARGET engine immediately
+            current_lab_mode = engine 
+
+            if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+                return await self._proxy_request("POST", "start", {
+                    "engine": engine, "model": model, "disable_ear": disable_ear, 
+                    "op_mode": op_mode, "engine_only": engine_only, "reason": reason
+                })
+
+            # [FEAT-119.4] Non-Destructive Restoration
+            # If we are only starting engines, we MUST NOT purge port 8765.
+            logger.info(f"[{self.session_token}] [IGNITION] [{reason.upper()}] Starting {model} via {engine} (EngineOnly: {engine_only})")
+
+            if not engine_only:
+                await self.cleanup_silicon(mode="ORPHANS", engine_only=engine_only)
+            else:
+                # Selective Cleanup: Only purge engine ports to avoid self-reaping
+                for port in [8088, 11434]:
+                    try:
+                        subprocess.run(["sudo", "fuser", "-k", "-n", "tcp", str(port)], stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
+                await asyncio.sleep(1.0)
+
+
+            self.refresh_vram_config() # Reload latest model mappings
+
+            # Resolve model path and config from map
+            model_map = self.vram_config.get("model_map", {})
+            tier_config = model_map.get(model, model_map.get("UNIFIED", {}))
+
+            target_model = tier_config.get("vllm" if engine == "VLLM" else "ollama", model)
+            utilization = tier_config.get("gpu_memory_utilization", 0.4)
+
+            current_lab_mode = op_mode
+            current_model = target_model
+            # [FEAT-255.1] Export state with Reason
+            try:
+                with open(os.path.join(DATA_DIR, "status.json"), "w") as f:
+                    json.dump({
+                        "mode": engine, 
+                        "model": target_model, 
+                        "reason": reason,
+                        "session": self.session_token,
+                        "timestamp": time.time()
+                    }, f)
+            except Exception:
+                pass
+
+
+            # [FEAT-259.2] Fast STUB: Skip physical silicon gates for logic testing
+            if engine == "STUB":
+                logger.info(f"[{self.session_token}] [IGNITION] STUB mode active. Bypassing physical gates.")
+                current_lab_mode = "STUB" # [FIX] Ensure mode is updated for vitals
+                is_hibernating = False
+                self.ready_event.set() # Instant Ready
+                if engine_only:
+                    return {"status": "success", "message": "STUB engine sparked."}
+
+            # 1. Resolve Required Memory [FEAT-254]
+            used_now, total_vram = await self._get_vram_info()
+            required_mb = int(total_vram * utilization)
+            self.log_event("Step 1: Required memory verified.", "INFO")
+
+            # [FIX] VRAM Guard: Skip if in STUB mode or is priority wake
+            if engine != "STUB" and not is_priority_wake and (total_vram - used_now) < required_mb:
+                msg = f"SILICON_CONGESTION: {total_vram - used_now}MB free < {required_mb}MB required."
+                logger.error(f"[{self.session_token}] {msg}")
+                self.log_event(msg, severity="ERROR")
+                return {"status": "error", "message": msg, "metrics": {"free": total_vram - used_now, "required": required_mb}}
+
+            # 3. [FEAT-254] The Assassin Audit: Settling Window
+            # [FEAT-363] Snappy Wake: Reduce window if weights already resident
+            settle_window = 5.0
+            if used_now > 5000: # Heuristic: Weights are already resident (H1)
+                settle_window = 1.0
+                logger.info(f"[IGNITION] Weights resident ({used_now}MB). Using snappy 1s settling window.")
+            
+            await asyncio.sleep(settle_window)
+            self.log_event("Step 2: VRAM settling gate passed.", "INFO")
+
+            # 4. [FEAT-254.1] The Physical Audit Gate
+            used_post, _ = await self._get_vram_info()
+            free_mb = total_vram - used_post
+
+            if not is_priority_wake and free_mb < required_mb:
+                msg = f"SILICON_CONGESTION: {free_mb}MB free < {required_mb}MB required."
+                logger.error(f"[IGNITION] {msg}")
+                self.log_event(msg, severity="ERROR")
+                return {
+                    "status": "error", 
+                    "message": msg,
+                    "metrics": {"free": free_mb, "required": required_mb}
+                }
+
+            self.ready_event.clear()
+            self.trace_monitor.refresh_marks()
+            # [FEAT-255.2] State Clearance: Explicitly reset the Hub's READY signal in the log
+            logger.info("[WATCHDOG] Clearing Hub READY state for engine transition.")
+
+            env = os.environ.copy()
+            env["LAB_MODE"] = str(engine)
+            # [FEAT-220] Silicon Handshake: Inject Immunity Token into all spawned families
+            env["LAB_IMMUNITY_TOKEN"] = str(self.session_token)
+
+            if disable_ear:
+                env["DISABLE_EAR"] = "1"
+
+            # Sanitize: subprocess.Popen requires all env values to be strings and not None
+            env = {k: str(v) for k, v in env.items() if v is not None}
+
+            if engine == "VLLM":
+                # [FEAT-305] Ledger-Locked Ignition: Rely on Attendant's internal ledger. 
+                # No broad port-based nukes to prevent accidental RDP/Xorg deaths.
+                logger.info("[IGNITION] Verified Ledger State. Proceeding to spark.")
+                
+                # [SPR-13.0] Verified Stable Config for Turing (RTX 2080 Ti)
+                env["NCCL_P2P_DISABLE"] = "1"
+                env["NCCL_SOCKET_IFNAME"] = "lo"
+                env["VLLM_SERVER_DEV_MODE"] = "1" # [FEAT-262] Required for Extended Debug Endpoints
+                env["VLLM_USE_V1"] = "0" # [PLACEBO] Maintain legacy alignment
+
+                logger.info(f"[VLLM] Igniting Sovereign Node (Shell-First Strategy): {target_model}")
+                self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model}")
+
+                # [DUMB_IGNITION] Bash script handles the backgrounding. We don't hold the process object.
+                subprocess.Popen(["bash", VLLM_START_PATH, target_model, sys.executable], 
+                                 env=env, cwd=LAB_DIR, start_new_session=True)
+                self.log_event("Step 3: Sovereign Engine sparked.", "INFO")
+
+                # [FEAT-277] Shell-Side PID Tracking: Physical Integrity Check
+                logger.info("[VLLM] Awaiting engine PID bonding...")
+                bonded_pid = None
+                for _ in range(20): # 10s max wait
+                    try:
+                        pid_path = os.path.join(LAB_DIR, "run/vllm.pid")
+                        if os.path.exists(pid_path):
+                            with open(pid_path, "r") as f:
+                                bonded_pid = int(f.read().strip())
+                                if psutil.pid_exists(bonded_pid):
+                                    logger.info(f"[VLLM] Engine physically bonded (PID: {bonded_pid}).")
+                                    break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+                
+                if not bonded_pid:
+                    logger.error("[VLLM] Engine failed to write PID. Ignition likely crashed.")
+                    # [FEAT-265.42] Ledger Pruning: Clear stale residues on failure
+                    self.active_pids['engine_pid'] = None
+                    self.active_pids['engine_mode'] = None
+                    self._save_ledger()
+                    return {"status": "error", "message": "Engine failed to bond. Check vllm_server.log."}
+                
+                self.active_pids['engine_pid'] = bonded_pid
+                self.active_pids['engine_mode'] = 'VLLM'
+                # [FEAT-309.2] RECURSIVE LEDGER TRACKING: Record all children of the engine
+                family = self.active_pids.setdefault('family', [])
+                if bonded_pid not in family:
+                    family.append(bonded_pid)
+                try:
+                    parent = psutil.Process(bonded_pid)
+                    for child in parent.children(recursive=True):
+                        if child.pid not in family:
+                            logger.info(f'[VLLM] Authorizing child core: PID {child.pid} ({child.name()})')
+                            family.append(child.pid)
+                except Exception:
+                    pass
+                self._save_ledger()
+
+                # [FEAT-313] Non-Blocking Ignition: Do not wait for cognitive readiness here.
+                # The Hub will handle an offline engine, and the log_monitor_loop will detect readiness.
+                asyncio.create_task(self._wait_for_vllm_cognitive())
+            elif engine == "OLLAMA":
+                # [SPR-13.0] OLLAMA Fallback
+                logger.info(f"[OLLAMA] Launching Fallback Node: {target_model}")
+                self.log_event(f"Ignition [{reason.upper()}]: {engine}/{target_model} (Mode: {op_mode})")
+                proc = subprocess.Popen(["ollama", "run", target_model], env=env, start_new_session=True)
+                self.active_pids['engine_pid'] = proc.pid
+                self.active_pids['engine_mode'] = 'OLLAMA'
+                self._save_ledger()
+            elif engine == "STUB":
+                self.log_event(f"Ignition [{reason.upper()}]: STUB (Mode: {op_mode})")
+                # No physical subprocess needed for STUB engine
+                pass
+
+            # [FEAT-250] Surgical Ignition: Only skip Hub if it is already running AND immune
+            hub_active = False
+            is_intentional_wake = (reason.startswith("WAKE_") or reason.startswith("RESTORE_"))
+            try:
+                res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.STDOUT, text=True)
+                if ":" in res:
+                    pids = re.findall(r'\d+', res.split(":")[1])
+                    if pids:
+                        pid = int(pids[0])
+                        # [FEAT-220.5] Check family immunity
+                        is_family = pid in self.active_pids.get('family', [])
+                        if self._is_current_session_process(pid) or is_family or is_intentional_wake:
+                            hub_active = True
+                            self.active_pids['hub_pid'] = pid
+                            logger.info(f"[IGNITION] Immune Hub detected on PID {pid} (Reason: {reason}). Sparing.")
+                        else:
+                            logger.warning(f"[IGNITION] Reaping non-immune orphan on port 8765 (PID: {pid})")
+                            try:
+                                os.killpg(os.getpgid(pid), signal.SIGKILL)
+                            except Exception:
+                                pass
+                            await asyncio.sleep(1.0)
+            except Exception:
+                pass
+
+            # [FEAT-276.5] The Sequencer: Non-Blocking Engine-First Ignition
+            if engine == "VLLM":
+                logger.info(f"[{self.session_token}] [SEQUENCER] Engine spark initiated. Hub foyer will follow immediately.")
+
+            if hub_active and (engine_only or is_intentional_wake):
+                logger.info(f"[IGNITION] Surgical Spark complete. Foyer already active (Reason: {reason}).")
+                # [FEAT-265.42] Ensure monitor loop is running for adopted Hub
+                asyncio.create_task(self.log_monitor_loop())
+                return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode} (Hub Spared)"}
+
+            # Start Hub
+            logger.info(f"[IGNITION] [{reason.upper()}] Igniting Hub foyer...")
+            cmd = [sys.executable, LAB_SERVER_PATH, "--mode", op_mode]
+            if disable_ear:
+                cmd.append("--disable-ear")
+
+            # [FEAT-213] Engine Warm-up Delay (Reduced for speed)
+            await asyncio.sleep(2.0)
+
+            # [FEAT-265.41] Eternal Descriptor: Persistent log handle for background foyer
+            log_f = open(SERVER_LOG, "a", buffering=1)
+            lab_process = subprocess.Popen(cmd, cwd=LAB_DIR, env=env, stdout=log_f, stderr=log_f, start_new_session=True)
+            self.active_pids['hub_pid'] = lab_process.pid
+            self._save_ledger()
+
+            # [FEAT-265.34] Liveness Lock: Wait for foyer to bind 8765 before releasing mutex
+            # This prevents double-ignition if a recovery signal arrives during boot
+            logger.info(f"[IGNITION] [{reason.upper()}] Holding territorial lock for foyer (8765)...")
+            for _ in range(20): # 10s max wait
+                try:
+                    res = subprocess.check_output(["sudo", "fuser", "8765/tcp"], stderr=subprocess.DEVNULL)
+                    if res:
+                        logger.info("[IGNITION] Foyer territorial bond verified.")
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.5)
+
+            asyncio.create_task(self.log_monitor_loop())
+            logger.info(f"[IGNITION] Hub process spawned with PID: {lab_process.pid} (Immunity: {_BOOT_HASH})")
+            return {"status": "success", "message": f"Ignited {model} via {engine} in mode {op_mode}"}
+
+    async def mcp_stop(self, reason="MANUAL"):
+        """[FEAT-119] Atomic Stop: Maintenance Lock -> Silicon Purge."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "stop", {"reason": reason})
+
+        self.current_reason = reason
+        self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
+        logger.warning(f"[{self.session_token}] [STOP] Manual stop initiated (Reason: {reason}).")
+        self.log_event(f"NOMINAL_SHUTDOWN ({reason})", "INFO")
+
+        # [FEAT-324] Graceful Shutdown Handshake
+        await self._handshake_graceful_stop()
+
+        # [NUCLEAR RESET] Force immediate and recursive cleanup (Fallback/Engine)
+        await self.cleanup_silicon(mode="STOP")
+
+        # [FEAT-277] Clear Ledger on Stop
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+        try:
+            if os.path.exists(self.ledger_path):
+                os.remove(self.ledger_path)
+            logger.info("[STOP] Process ledger wiped.")
+        except Exception as e:
+            logger.error(f"[STOP] Failed to wipe ledger: {e}")
+        
+        self._save_ledger()
+
+        global current_lab_mode, is_hibernating
+        current_lab_mode = "OFFLINE"
+        is_hibernating = False
+        self.ready_event.clear()
+
+        await self.update_status_json(f"OFFLINE ({reason})")
+        return {"status": "success", "message": "Lab stopped and silicon scrubbed."}
+
+
+    async def mcp_hibernate(self, reason: str = "IDLE_TIMEOUT", level: int = 1):
+        """
+        [FEAT-265] Multi-Level Hibernation: Silicon reclamation based on wake-debt.
+        level=1 (H1): Standby. vLLM offloads weights to RAM. Nodes stay resident.
+        level=2 (H2): Lean Sleep. vLLM is stopped. Nodes stay resident. (Reclaims 3.1GB).
+        level=3 (H3): Deep Sleep. vLLM and Hub are stopped. (Reclaims 4.5GB).
+        """
+        self._operational_start_time = 0 # [FEAT-302] Reset Stability Latch
+        # [FEAT-265.35] Mutual Exclusion: No sleep during ignition
+        if self.ignition_lock.locked():
+            logger.warning(f"[WATCHDOG] Hibernation rejected. Ignition lock is ACTIVE (Reason: {reason}).")
+            return {"status": "deferred", "message": "Ignition in progress. Cannot sleep."}
+
+        # [FEAT-265.9] Boot Grace Window: Prevent instant hibernation during first 300s of life
+        uptime = time.time() - self._boot_time
+        if uptime < 300 and reason == "IDLE_TIMEOUT":
+            logger.info(f"[WATCHDOG] Hibernation deferred. Boot grace active ({int(300 - uptime)}s remaining).")
+            return {"status": "deferred", "message": "Boot grace window active."}
+
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "hibernate", {"reason": reason, "level": level})
+
+        global is_hibernating, current_lab_mode
+        logger.warning(f"[{self.session_token}] [HIBERNATE] Level {level} initiated (Reason: {reason})")
+        
+        # 1. Level 3 Handle: Full Deep Sleep (Shutdown but Remote-Ready)
+        if level >= 3:
+            return await self.mcp_stop(reason=f"H3_DEEP_SLEEP:{reason}")
+
+        # 2. Level 2 Handle: Lean Sleep (Kill vLLM, Keep Nodes)
+        if level == 2:
+            # [FEAT-340] Lean Sleep: Stop vLLM Core but leave Foyer up
+            await self.cleanup_silicon(mode="MAINTENANCE", engine_only=True)
+            self.active_pids['engine_pid'] = None
+            self._save_ledger()
+            is_hibernating = True
+            current_lab_mode = "HIBERNATING" # Hub is still up logically
+            await self.update_status_json("HIBERNATING (H2-Lean)")
+            return {"status": "success", "message": "vLLM engine reaped. Nodes resident."}
+
+        # 3. Level 1 Handle: Standard Standby (Legacy Level 2)
+        # [QUIET WINDOW] Suspend pulse loop to prevent API contention during offload
+        self.ready_event.clear()
+        
+        success = False
+        try:
+            async with aiohttp.ClientSession() as session:
+                # [FEAT-282] Clear prefix cache before offload
+                await session.post("http://127.0.0.1:8088/reset_prefix_cache", timeout=2.0)
+                
+                # Full weight offload (Level 2)
+                # [BKM] Increased timeout to 30s for Z87 PCIe latency
+                async with session.post("http://127.0.0.1:8088/sleep?level=2", timeout=30.0) as r:
+                    if r.status == 200:
+                        logger.warning(f"[{self.session_token}] [SLEEP] vLLM accepted Level 2 offload signal.")
+                        success = True
+                    else:
+                        err_body = await r.text()
+                        # [FEAT-283.3] Forensic Hibernation Logging (ERR-09)
+                        logger.error(f"[{self.session_token}] [SLEEP] Level 2 rejected ({r.status}): {err_body}")
+        except Exception as e:
+            logger.error(f"[{self.session_token}] [SLEEP] Offload signal failed: {e}")
+
+        if success:
+            current_lab_mode = "HIBERNATING"
+            is_hibernating = True
+            
+            # 3. [FEAT-249.3] Forensic Monitoring: Wait up to 180s for VRAM drop
+            # weights (~2.3GB) + KV Cache should move to CPU
+            start_vram, _ = await self._get_vram_info()
+            logger.info(f"[HIBERNATE] Monitoring offload curve. Starting VRAM: {start_vram}MB")
+            
+            reclaimed = False
+            for i in range(36): # 180s total (Quiet pulse)
+                await asyncio.sleep(5)
+                used, _ = await self._get_vram_info()
+                logger.info(f"  [*] VRAM Decay Check {i+1}/36: {used}MB")
+                if used < 3500: # Target: Weights unmapped
+                    logger.info(f"[{self.session_token}] [HIBERNATE] VRAM reclamation verified at {used}MB.")
+                    reclaimed = True
+                    break
+            
+            # [FEAT-265.11] Surgical Zombie Reap: If VRAM hasn't decayed, kill the core
+            if not reclaimed:
+                logger.warning(f"[{self.session_token}] [HIBERNATE] VRAM STALL: Weights remained in silicon. Reaping Ghost Core.")
+                await self.cleanup_silicon(mode="GHOSTS", engine_only=True)
+            
+            await self.update_status_json("HIBERNATING (VRAM Free)" if reclaimed else "HIBERNATING (STALLED)")
+            return {"status": "success", "message": "Soft hibernation active."}
+        else:
+            # Fallback to H2-Lean if signal fails
+            logger.info("[HIBERNATE] Offload signal failed. Falling back to H2-Lean (Purge).")
+            # [FIX] Async escalation to avoid blocking current request handler
+            asyncio.create_task(self.mcp_hibernate(reason=f"FALLBACK:{reason}", level=2))
+            return {"status": "success", "message": "Soft hibernation failed. Escalating to Lean Sleep."}
+
+    async def mcp_quiesce(self):
+        global current_lab_mode, is_hibernating
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "quiesce")
+        logger.warning("[QUIESCE] Lockdown initiated. Setting maintenance lock.")
+        self.log_event("Quiesce: Lab locked for maintenance.", severity="WARNING")
+        
+        current_lab_mode = "MAINTENANCE"
+        is_hibernating = True
+        
+        with open(MAINTENANCE_LOCK, "w") as f:
+            f.write(datetime.datetime.now().isoformat())
+
+        # [FEAT-324] Graceful Shutdown Handshake
+        await self._handshake_graceful_stop()
+
+        await self.cleanup_silicon(mode="MAINTENANCE")
+        return {"status": "locked", "message": "Lab freezing. Watchdog passive."}
+
+    async def mcp_ignition(self, reason: str = "MANUAL_IGNITION"):
+        global is_hibernating
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("POST", "ignition", {"reason": reason})
+        
+        # [FEAT-213] Re-Ignition must clear the maintenance lock first
+        if os.path.exists(MAINTENANCE_LOCK):
+            os.remove(MAINTENANCE_LOCK)
+            self.log_event("Ignition: Maintenance lock cleared.")
+            
+        is_hibernating = False
+            
+        # [SPR-13.0] Restoration using current state or defaults
+        engine = os.environ.get("LAB_MODE", "OLLAMA")
+        model = os.environ.get("LAB_MODEL", "MEDIUM")
+        disable_ear = os.environ.get("DISABLE_EAR") == "1"
+        
+        return await self.mcp_start(engine, model, disable_ear, "SERVICE_UNATTENDED", reason=reason)
+
+    async def mcp_train_adapter(self, adapter_name: str, steps: int = 60):
+        """[FEAT-213/218] Autonomous VRAM Handover for Sequenced Batch Forging."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            # For proxy mode, we forward to the Master Attendant (which will then handle the batch logic)
+            return await self._proxy_request("POST", "train", {"adapter": adapter_name, "steps": steps})
+        
+        # Support batch mode (comma-separated list)
+        adapters = [a.strip() for a in adapter_name.split(",")]
+        logger.info(f"[FORGE] Initiating sequenced batch training for: {adapters} ({steps} steps each).")
+        self.log_event(f"Forge: Starting batch training for {len(adapters)} adapters.")
+        
+        # 1. Quiesce once for the entire batch
+        await self.mcp_quiesce()
+        await asyncio.sleep(5)
+        
+        # [FEAT-213] VRAM Guard: Verify silicon is ready for Unsloth
+        self.refresh_vram_config()
+        max_vram = self.vram_config.get("unsloth_threshold_mb", 10000)
+        used_mb, total_mb = await self._get_vram_info()
+        
+        if used_mb > max_vram:
+            logger.error(f"[FORGE] VRAM Guard Triggered: {used_mb}MB used, threshold is {max_vram}MB. Aborting.")
+            self.log_event(f"Forge: VRAM Guard Triggered ({used_mb}MB). Aborting.", severity="WARNING")
+            await self.mcp_ignition()
+            return {"status": "error", "message": f"Silicon contention: {used_mb}MB used."}
+        
+        results = []
+        for target in adapters:
+            # 2. Identify Dataset
+            dataset_map = {
+                "lab_history": f"{EXPERTISE_DIR}/lab_history_training.jsonl",
+                "cli_voice": f"{EXPERTISE_DIR}/cli_voice_training.jsonl",
+                "lab_sentinel": f"{EXPERTISE_DIR}/lab_sentinel_training.jsonl"
+            }
+            dataset = dataset_map.get(target)
+            output_dir = f"/speedy/models/adapters/{target}"
+            
+            if not dataset or not os.path.exists(dataset):
+                logger.error(f"[FORGE] Dataset not found: {dataset}")
+                self.log_event(f"Forge: Dataset missing for {target}", severity="WARNING")
+                results.append({"adapter": target, "status": "missing_dataset"})
+                continue
+
+            # 3. Execute Forge (Unsloth)
+            logger.info(f"[FORGE] Training {target}...")
+            self.log_event(f"Forge: Training {target}...")
+            try:
+                cmd = [LAB_VENV_PYTHON, f"{LAB_DIR}/src/forge/train_expert.py", dataset, output_dir, str(steps)]
+                process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode == 0:
+                    logger.info(f"[FORGE] {target} completed successfully.")
+                    self.log_event(f"Forge: {target} completed successfully.")
+                    results.append({"adapter": target, "status": "complete"})
+                else:
+                    logger.error(f"[FORGE] {target} failed: {stderr.decode()}")
+                    self.log_event(f"Forge: {target} FAILED.", severity="WARNING")
+                    results.append({"adapter": target, "status": "failed"})
+            except Exception as e:
+                logger.error(f"[FORGE] Execution error for {target}: {e}")
+                self.log_event(f"Forge: Execution error for {target}", severity="WARNING")
+                results.append({"adapter": target, "status": "error", "message": str(e)})
+        
+        # 4. Re-Ignite Hub once after all adapters are processed
+        await self.mcp_ignition()
+        self.log_event("Forge: Batch complete. Hub re-ignited.")
+        return {"status": "batch_complete", "results": results}
+
+    async def mcp_wait_ready(self, timeout: int = 480):
+        """[FEAT-136] Blocking wait for the Lab Hub to reach the READY state with Forensic detection."""
+        if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+            return await self._proxy_request("GET", f"wait_ready?timeout={timeout}")
+
+        start_t = time.time()
+
+        # [FIX] Immediate check: If already operational, return success
+        vitals = await self._get_current_vitals()
+        if vitals.get("operational"):
+            logger.info(f"[{self.session_token}] [WATCHDOG] Lab already operational. Bypassing wait.")
+            return {"status": "init", "message": "Lab is operational."}
+
+        # [FEAT-251.2] Forensic Wait
+        while time.time() - start_t < timeout:
+            # 1. Physical/Cognitive Probe
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational"):
+                logger.info(f"[{self.session_token}] [WATCHDOG] Lab reached OPERATIONAL after {int(time.time()-start_t)}s")
+                return {"status": "init", "message": "Lab is operational."}
+            
+            # 2. Check for Hub crashes in log
+            if os.path.exists(SERVER_LOG):
+                try:
+                    def read_log():
+                        with open(SERVER_LOG, "r") as f:
+                            f.seek(0, 2)
+                            if f.tell() > 2000:
+                                f.seek(-2000, 2)
+                            return f.readlines()
+                    
+                    lines = await asyncio.to_thread(read_log)
+                    if any(("Traceback" in line or "SyntaxError" in line) and not any(n in line for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError']) for line in lines):
+                        logger.error(f"[{self.session_token}] [WATCHDOG] Hub crash detected in logs.")
+                        return {"status": "crashed", "message": "Hub foyer crashed during ignition."}
+                except Exception:
+                    pass
+
+            await asyncio.sleep(5)
+            
+        return {"status": "timeout", "message": f"Lab failed to reach functional OPERATIONAL within {timeout}s"}
+
+    async def cleanup_silicon(self, mode="ORPHANS", engine_only=False):
+        """
+        [FEAT-119] Sovereign Assassin: Reclaim hardware handles.
+        LED MODEL: No general scanning. Only reaps based on the explicit PID Ledger.
+        """
+        target_pids = set()
+        
+        # 1. Ledger-Based Target Definition
+        engine_pid = self.active_pids.get('engine_pid')
+        hub_pid = self.active_pids.get('hub_pid')
+
+        if engine_only:
+            # [FEAT-340] Surgical vLLM Reap: ONLY target engine and its immediate family
+            if engine_pid:
+                target_pids.add(engine_pid)
+                try:
+                    p = psutil.Process(engine_pid)
+                    for child in p.children(recursive=True):
+                        target_pids.add(child.pid)
+                except Exception:
+                    pass
+        else:
+            # Target everything in the ledger (Hub + Engine + All Family)
+            if hub_pid:
+                target_pids.add(hub_pid)
+            if engine_pid:
+                target_pids.add(engine_pid)
+            for pid in self.active_pids.get('family', []):
+                target_pids.add(pid)
+
+        # 2. Final Purge Logic
+        if not target_pids:
+            logger.info("[ASSASSIN] No tracked processes in ledger. Clean slate.")
+            return
+
+        # [FEAT-119.3] Restoration Silence
+        # [Task 18.3] Spare Hub if in WAKING/BOOTING to prevent Killer Loop
+        is_igniting = (self.current_reason.startswith("RESTORE_") or 
+                       self.current_reason.startswith("WAKE_") or 
+                       self.current_reason == "SAFE_PILOT" or
+                       current_lab_mode in ["WAKING", "BOOTING"])
+                       
+        if mode == "ORPHANS" and is_igniting:
+            logger.info(f"[ASSASSIN] Active ignition window ({self.current_reason} / {current_lab_mode}). Skipping Hub purge.")
+            # Remove Hub from targets if igniting
+            if hub_pid in target_pids:
+                target_pids.remove(hub_pid)
+            if not target_pids: return
+
+        logger.warning(f"[{self.session_token}] [ASSASSIN] [{mode}] Purging tracked ledger processes: {target_pids}")
+        for pid in target_pids:
+            try:
+                if psutil.pid_exists(pid):
+                    os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
+        
+        # [FEAT-318.5] Aggressive Reap: Fallback to name-based pkill for engine cores
+        if mode in ["STOP", "SESSION", "GHOSTS", "MAINTENANCE"]:
+            try:
+                subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], stderr=subprocess.DEVNULL)
+                subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints"], stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
+        await asyncio.sleep(1.0)
+
+    def _is_current_session_process(self, pid):
+        """Returns True if the process (or its parent) carries the current session token."""
+        try:
+            if pid == os.getpid():
+                return False
+            
+            # [FEAT-305] Ledger Authority: Check direct registration
+            if pid == self.active_pids.get('hub_pid') or pid == self.active_pids.get('engine_pid'):
+                return True
+            if pid in self.active_pids.get('family', []):
+                return True
+
+            proc = psutil.Process(pid)
+            
+            # 1. Recursive Search: Check self and parents
+            curr = proc
+            while curr:
+                try:
+                    env = curr.environ()
+                    if env.get("LAB_IMMUNITY_TOKEN") == self.session_token:
+                        return True
+                    if env.get("GEMINI_CLI_IMMUNITY") == "1":
+                        return True
+                except Exception:
+                    pass
+                curr = curr.parent()
+                
+            return False
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+
+    def _is_stale_process(self, pid):
+        """[FEAT-220] Checks if a process carries an OLD or MISSING Diplomatic Immunity token."""
+        try:
+            if pid == os.getpid():
+                return False
+            proc = psutil.Process(pid)
+            # Check environment for the current boot hash
+            env = proc.environ()
+            token = env.get("LAB_IMMUNITY_TOKEN")
+            
+            # If token matches the current session, it is IMMUNE (SPARE)
+            if token == self.session_token:
+                logger.info(f"[ASSASSIN] Sparing immune process {pid} ({proc.name()})")
+                return False
+                
+            # If token is different, or token is missing, it is STALE (KILL)
+            # This ensures we clean up "orphans" from previous manual runs or crashes
+            if token:
+                logger.warning(f"[ASSASSIN] Targeting stale process {pid} ({proc.name()}) with old token {token}")
+            else:
+                logger.warning(f"[ASSASSIN] Targeting non-immune orphan process {pid} ({proc.name()})")
+            
+            return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        return False
+
+    async def scavenge_reality(self):
+        """[FEAT-220.1] Physical Scavenging: Adopts existing engines or reaps stale ones."""
+        logger.info("[BOOT] Performing physical scavenging audit...")
+        
+        # 1. Identity Validation: Check the existing ledger's authority
+        stale_family = []
+        if os.path.exists(self.ledger_path):
+            try:
+                with open(self.ledger_path, 'r') as f:
+                    data = json.load(f)
+                    ledger_token = data.get("authority", {}).get("token")
+                    if ledger_token and ledger_token != self.session_token:
+                        logger.warning(f"[BOOT] Session mismatch! Ledger token {ledger_token} is STALE. Marking family for purge.")
+                        stale_family = data.get("inventory", {}).get("family", [])
+            except Exception:
+                pass
+
+        # [FEAT-310] Physical Truth Scavenging: Reap any high-memory orphans (>1GB)
+        # to ensure silicon room for the engine load. Adheres to [BKM-031].
+        try:
+            smi_out = subprocess.check_output(
+                ['nvidia-smi', '--query-compute-apps=pid,used_memory', '--format=csv,noheader,nounits'],
+                text=True, stderr=subprocess.DEVNULL
+            )
+            SIGNATURES = ['vllm.entrypoints', 'vllm/v1/engine', 'speedy/models/', '8088']
+            for smi_line in smi_out.strip().split('\n'):
+                if not smi_line.strip():
+                    continue
+                v_pid, v_mem = map(int, smi_line.split(','))
+                
+                # If using > 1GB and not our own Attendant
+                if v_mem > 1000 and v_pid != os.getpid():
+                    # Is it a family member we already know?
+                    if not self._is_current_session_process(v_pid):
+                        # [FEAT-310] BLACKLIST FINGERPRINT: Only reap if confirmed vLLM ghost
+                        try:
+                            proc = psutil.Process(v_pid)
+                            cmd = ' '.join(proc.cmdline()).lower()
+                            if any(sig in cmd for sig in SIGNATURES):
+                                logger.warning(f'[BOOT] Confirmed vLLM Ghost detected: PID {v_pid} using {v_mem}MB. Reaping to clear silicon.')
+                                os.kill(v_pid, signal.SIGKILL)
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f'[BOOT] Physical Truth audit failed: {e}')
+
+        # 2. Stale Identity Purge [Task 22]
+        if stale_family:
+            logger.warning(f"[BOOT] Purging {len(stale_family)} stale survivors from previous session.")
+            for pid in stale_family:
+                try:
+                    p = psutil.Process(pid)
+                    # [FEAT-316.1] Polite Reaping: SIGTERM -> Wait -> SIGKILL
+                    logger.warning(f"[ASSASSIN] Politley requesting exit for PID {pid} ({p.name()})")
+                    p.terminate()
+
+                    # Wait up to 2s for graceful exit
+                    gone, alive = psutil.wait_procs([p], timeout=2.0)
+                    if alive:
+                        logger.critical(f"[ASSASSIN] Force-killing stubborn survivor: PID {pid}")
+                        p.kill()
+                except Exception:
+                    pass
+
+            await asyncio.sleep(1.0) # Wait for release
+
+        # 3. Physical Port Sweep (Adoption)
+        ports = {8088: "VLLM", 11434: "OLLAMA", 8765: "HUB"}
+        adopted_count = 0
+
+        for port, mode in ports.items():
+            try:
+                res = subprocess.check_output(["sudo", "fuser", f"{port}/tcp"], stderr=subprocess.STDOUT, text=True)
+                if ":" in res:
+                    pids = res.split(":")[1].strip().split()
+                    for pid_str in pids:
+                        pid = int(pid_str)
+                        if self._is_current_session_process(pid):
+                            logger.info(f"[BOOT] Adopting existing {mode} on PID {pid}.")
+                            if mode == "HUB":
+                                self.active_pids['hub_pid'] = pid
+                            else:
+                                self.active_pids['engine_pid'] = pid
+                                self.active_pids['engine_mode'] = mode
+                            adopted_count += 1
+            except Exception:
+                pass
+        
+        if adopted_count > 0:
+            self.sync_family_ledger() # Recursively authorize the adopted family
+            logger.info(f"[BOOT] Successfully adopted {adopted_count} nodes into the Immunity Ledger.")
+            
+            # [FEAT-220.3] State Reconstruction
+            global current_lab_mode
+            current_lab_mode = self.active_pids.get('engine_mode', "SERVICE_UNATTENDED")
+            
+            vitals = await self._get_current_vitals()
+            if vitals.get("operational"):
+                logger.info("[BOOT] Lab confirmed OPERATIONAL. Setting signal.")
+                self.ready_event.set()
+            elif vitals.get("engine_up") and not vitals.get("engine_vocal"):
+                global is_hibernating
+                is_hibernating = True
+                logger.warning("[BOOT] Engine present but silent. Reconstructing HIBERNATING state.")
+
+    async def _get_current_vitals(self):
+        """[FEAT-213] Silicon Health Check: Returns consolidated telemetry."""
+        foyer_up = False
+        engine_up = False
+        engine_vocal = False
+        
+        # [FIX] Cache successful probes to prevent socket contention with nodes
+        now = time.time()
+        if not hasattr(self, "_last_engine_check"):
+            self._last_engine_check = 0
+            self._engine_state_cache = False
+            self._vocal_state_cache = False
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # 1. Physical Probe (Ports)
+                try:
+                    async with session.get("http://127.0.0.1:8765/heartbeat", timeout=1.0) as r:
+                        if r.status == 200:
+                            foyer_up = True
+                except Exception:
+                    pass
+                
+                # 2. Engine Probes (with TTL and Hibernation Guard)
+                is_igniting = (self.current_reason.startswith("RESTORE_") or self.current_reason.startswith("GAUNTLET_") or self.current_reason == "SAFE_PILOT" or self.current_reason == "MANUAL_IGNITION" or self.current_reason == "DREAM_CYCLE")
+                
+                # [FIX] Force fresh probe if we aren't vocal yet to avoid cache-lag re-ignitions
+                force_probe = is_igniting or not getattr(self, "_vocal_state_cache", False)
+                
+                if is_hibernating:
+                    # [FEAT-282.6] Passive Mode: Don't poke the engine if it's supposed to be asleep
+                    engine_up = False
+                    engine_vocal = False
+                elif force_probe or (now - self._last_engine_check > 30): # 30s TTL
+                    # [FIX] Resolve Engine Type from Ledger or Default
+                    engine_type = self.active_pids.get('engine_mode', "VLLM")
+                    port = 8088 if engine_type == "VLLM" else 11434
+                    
+                    try:
+                        async with session.get(f"http://127.0.0.1:{port}/v1/models" if port == 8088 else f"http://127.0.0.1:{port}/api/tags", timeout=1.0) as r:
+                            if r.status == 200:
+                                engine_up = True
+                                self._engine_state_cache = True
+                    except Exception:
+                        self._engine_state_cache = False
+                    
+                    # Cognitive Probe (Functional)
+                    if self._engine_state_cache and port == 8088:
+                        try:
+                            # [FIX] Use chat endpoint for V1 engine compatibility
+                            payload = {
+                                "model": "unified-base", 
+                                "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
+                                "max_tokens": 10,
+                                "temperature": 0.0
+                            }
+                            async with session.post("http://127.0.0.1:8088/v1/chat/completions", json=payload, timeout=5.0) as p:
+                                if p.status == 200:
+                                    engine_vocal = True
+                                    self._vocal_state_cache = True
+                                    logger.info("[PROBE] Engine is VOCAL (Cognitive SUCCESS).")
+                                else:
+                                    logger.warning(f"[PROBE] Engine NOT VOCAL (Status {p.status}).")
+                                    self._vocal_state_cache = False
+                        except Exception as e:
+                            logger.debug(f"[PROBE] Cognitive probe exception: {e}")
+                            self._vocal_state_cache = False
+                    
+                    self._last_engine_check = now
+                else:
+                    # Use cache
+                    engine_up = self._engine_state_cache
+                    engine_vocal = self._vocal_state_cache
+
+        except Exception as e:
+            logger.debug(f"[PROBE] Overall probe failed: {e}")
+
+        # [FIX] Final states must be the union of local and cached to ensure 'is_op' is accurate
+        engine_up = engine_up or getattr(self, "_engine_state_cache", False)
+        engine_vocal = engine_vocal or getattr(self, "_vocal_state_cache", False)
+        
+        used_mb, total_mb = await self._get_vram_info()
+        vram_pct = f"{(used_mb / total_mb * 100):.1f}%" if total_mb > 0 else "0.0%"
+        
+        # [FEAT-276] Persistent VRAM Telemetry
+        logger.info(f"[{self.session_token}] [VRAM_TRACE] {used_mb}MB / {total_mb}MB ({vram_pct}) | Foyer:{foyer_up} Eng:{engine_up} Vocal:{engine_vocal}")
+
+        # [FEAT-265.6] Functional Gate: Strict Cognitive Truth
+        # A node is ONLY operational if it is vocal (for VLLM) or physically up (for others)
+        is_op = (foyer_up and engine_vocal and not is_hibernating) or (current_lab_mode == "STUB" and foyer_up)
+        
+        # [BKM] No optimistic overrides. If the engine isn't vocal, we aren't operational.
+        
+        return {
+            "attendant_pid": os.getpid(),
+            "mode": current_lab_mode,
+            "model": current_model,
+            "foyer_up": foyer_up,
+            "engine_up": engine_up or current_lab_mode == "STUB",
+            "engine_vocal": engine_vocal or current_lab_mode == "STUB",
+            "vram": vram_pct,
+            "vram_mib": used_mb,
+            "ram": f"{psutil.virtual_memory().percent:.1f}%",
+            "ram_mib": int(psutil.virtual_memory().used / 1024 / 1024),
+            "operational": is_op,
+            "reason": self.current_reason,
+            "session": self.session_token,
+            "style_key": get_style_key(),
+            "boot_hash": _BOOT_HASH,
+            "memory_map": self.map_physical_memory(),
+            # [LEGACY_ALIAS] Support for older diagnostic scripts
+            "lab_server_running": foyer_up,
+            "full_lab_ready": engine_vocal,
+            "lab_pid": self.active_pids.get('hub_pid')
+        }
+
+    async def _get_vram_info(self):
+        """[FEAT-213] Silicon Health Check: Returns (used_mb, total_mb)"""
+        # 1. Primary Path: pynvml (Fresh Probe)
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            used, total = int(info.used / 1024 / 1024), int(info.total / 1024 / 1024)
+            pynvml.nvmlShutdown()
+            return used, total
+        except Exception:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
+
+        # 2. Fallback Path: nvidia-smi
+        try:
+            res = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"],
+                text=True,
+                stderr=subprocess.DEVNULL
+            )
+            used, total = map(int, res.strip().split(","))
+            return used, total
+        except Exception as e:
+            logger.error(f"[VRAM] Total probe failure (NVML & SMI): {e}")
+            return 0, 0
+
+    async def update_status_json(self, msg=None):
+        vitals = await self._get_current_vitals()
+        live_data = {
+            "status": "ONLINE" if vitals.get("foyer_up") else "OFFLINE",
+            "message": msg or ("OPERATIONAL" if vitals.get("operational") else "INIT"),
+            "timestamp": datetime.datetime.now().isoformat(),
+            "vitals": vitals
+        }
+        atomic_write_json(STATUS_JSON, live_data)
+
+    async def log_monitor_loop(self):
+        # [FEAT-265.40] Ledger-Locked Monitor: Watch the PID stored in the sovereign ledger
+        target_pid = self.active_pids.get('hub_pid')
+        if not target_pid:
+            logger.warning("[WATCHDOG] Log monitor aborted: No hub_pid in ledger.")
+            return
+
+        # [FIX] Monitor Registry: Prevent redundant tasks for the same PID
+        if target_pid in self._active_monitors:
+            logger.info(f"[WATCHDOG] Hub {target_pid} is already being monitored. Yielding.")
+            return
+            
+        self._active_monitors.add(target_pid)
+        logger.info(f"[WATCHDOG] Monitoring Lab Foyer (PID: {target_pid})...")
+        
+        try:
+            self.ready_event.clear()
+            if not os.path.exists(SERVER_LOG):
+                logger.warning(f"[WATCHDOG] Log file missing: {SERVER_LOG}")
+                return
+
+            with open(SERVER_LOG, "r") as f:
+                # Seek to end initially to only catch new signals
+                f.seek(0, os.SEEK_END)
+                while True:
+                    # [FIX] Handover: Yield to new monitor if PID has changed in ledger
+                    current_ledger_pid = self.active_pids.get('hub_pid')
+                    if current_ledger_pid != target_pid:
+                        logger.info(f"[WATCHDOG] Handover: Ledger PID changed to {current_ledger_pid}. Monitor {target_pid} yielding.")
+                        break
+
+                    # [FEAT-259.1] Hibernation/Offline Awareness: Skip auto-restart if manually stopped
+                    if is_hibernating or current_lab_mode == "OFFLINE" or os.path.exists(MAINTENANCE_LOCK):
+                        await asyncio.sleep(5)
+                        continue
+                    # Physical Liveness Check
+                    foyer_alive = False
+                    try:
+                        p = psutil.Process(target_pid)
+                        if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
+                            foyer_alive = True
+                    except Exception:
+                        pass
+
+                    if not foyer_alive:
+                        logger.warning(f"[WATCHDOG] Lab process {target_pid} physically ended.")
+                        # [FIX] Yield to New Authority: If another Hub has been spawned, this monitor is obsolete.
+                        if self.active_pids.get('hub_pid') != target_pid:
+                            logger.info(f"[WATCHDOG] Obsolete monitor for PID {target_pid}. Yielding to current authority.")
+                            break
+
+                        # [FEAT-149.1] Parent-Led Recovery: Auto-bounce only unattended services
+                        if current_lab_mode == "SERVICE_UNATTENDED":
+                            # [FEAT-302] Unified Adaptive Recovery (engine_only=False since process ended)
+                            asyncio.create_task(self._trigger_adaptive_recovery(reason="RECOVERY", engine_only=False))
+                        break
+                    
+                    line = f.readline()
+                    if not line:
+                        await asyncio.sleep(1.0)
+                        continue
+                    
+                    if "[OPERATIONAL] Hub foyer is fully synchronized." in line or "[OPERATIONAL] Hub foyer successfully woken" in line:
+                        self.ready_event.set()
+                        # [FIX] Clear ignition reason once operational to allow 30s TTL to take over
+                        self.current_reason = "IDLE"
+                        # [FEAT-302] Stability Latch: Record when we reached operational
+                        if not self._operational_start_time:
+                            self._operational_start_time = time.time()
+                            logger.info("[WATCHDOG] Lab reported OPERATIONAL signal. Stability latch armed (300s).")
+                        await self.update_status_json("Mind is OPERATIONAL")
+                    
+                    # [FEAT-255.2] Continuous Sentinel: Listen for state resets
+                    if "Clearing Hub OPERATIONAL state" in line:
+                        self.ready_event.clear()
+                        logger.warning("[WATCHDOG] Hub OPERATIONAL state cleared for transition.")
+        finally:
+            self._active_monitors.discard(target_pid)
+
+    async def _wait_for_vllm_cognitive(self, timeout=240):
+        """[FEAT-281.2] Cognitive Readiness: Wait for successful token generation."""
+        start_t = time.time()
+        vllm_log = os.path.join(LAB_DIR, "vllm_server.log")
+        
+        logger.info("[VLLM] API is UP. Monitoring vllm_server.log for startup signal...")
+        
+        # [FEAT-265.8] Deterministic Readiness: Wait for vLLM completion string
+        startup_signal_found = False
+        for _ in range(180): # 180s max monitor
+            if os.path.exists(vllm_log):
+                try:
+                    with open(vllm_log, 'r') as f:
+                        # Check last 50 lines for the signal
+                        lines = f.readlines()[-50:]
+                        if any("Application startup complete." in line for line in lines):
+                            logger.info(f"[VLLM] Deterministic startup signal detected after {int(time.time() - start_t)}s.")
+                            startup_signal_found = True
+                            break
+                except Exception:
+                    pass
+            await asyncio.sleep(1.0)
+
+        if not startup_signal_found:
+            logger.warning("[VLLM] Startup signal not found in logs, proceeding with fallback probe.")
+        
+        logger.info("[VLLM] Beginning cognitive reasoning probes (127.0.0.1:8088)...")
+        
+        while time.time() - start_t < timeout:
+            # forensic check for crashes
+            if os.path.exists(vllm_log):
+                try:
+                    with open(vllm_log, "r") as f:
+                        lines = f.readlines()[-30:]
+                        if any(t in line for line in lines for t in ["Traceback", "RuntimeError", "ValueError:"]) and \
+                           not any(n in line for line in lines for n in ['CancelledError', 'GeneratorExit', 'TimeoutError', 'ClientConnectionError']):
+                            logger.error("[VLLM] Fatal engine core crash detected in logs. Aborting.")
+                            return False
+                except Exception:
+                    pass
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Functional ping (Reasoning Test)
+                    payload = {
+                        "model": "unified-base",
+                        "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
+                        "max_tokens": 10,
+                        "temperature": 0.0
+                    }
+                    # [FIX] Use chat endpoint for V1 engine compatibility
+                    async with session.post("http://127.0.0.1:8088/v1/chat/completions", json=payload, timeout=10.0) as r:
+                        if r.status == 200:
+                            res = await r.json()
+                            if "choices" in res:
+                                logger.info(f"[VLLM] Engine is VOCAL and REASONING after {int(time.time() - start_t)}s.")
+                                # [FIX] Update internal caches to reflect cognitive truth
+                                self._engine_state_cache = True
+                                self._vocal_state_cache = True
+                                return True
+            except Exception as e:
+                logger.debug(f"[VLLM] Cognitive probe attempt failed: {e}")
+            
+            await asyncio.sleep(5)
+        
+        logger.error(f"[VLLM] Engine failed to reason within {timeout}s.")
+        return False
+
+    def _acquire_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Acquire file lock on /tmp/lab_vram.lock."""
+        try:
+            if self._vram_lock_fd is None:
+                self._vram_lock_fd = open(VRAM_LOCK_FILE, 'w')
+            
+            fcntl.flock(self._vram_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logger.info(f"[SILICON] VRAM Mutex acquired: {VRAM_LOCK_FILE}")
+            return True
+        except (IOError, OSError):
+            logger.debug("[SILICON] VRAM Mutex busy.")
+            return False
+
+    def _release_vram_lock(self):
+        """[Task 1.4] Physical VRAM Mutex: Release file lock."""
+        if self._vram_lock_fd is not None:
+            try:
+                fcntl.flock(self._vram_lock_fd, fcntl.LOCK_UN)
+                logger.info("[SILICON] VRAM Mutex released.")
+            except Exception as e:
+                logger.error(f"[SILICON] Failed to release VRAM Mutex: {e}")
+
+    # --- REST Handlers ---
+    async def handle_start_rest(self, r): 
+        data = await r.json() if r.has_body else {}
+        engine = data.get("engine", "VLLM")
+        model = data.get("model", "MEDIUM")
+        disable_ear = data.get("disable_ear", True)
+        op_mode = data.get("op_mode", "SERVICE_UNATTENDED")
+        engine_only = data.get("engine_only", False)
+        reason = data.get("reason", "REST_API_START")
+        return web.json_response(await self.mcp_start(engine, model, disable_ear, op_mode, engine_only=engine_only, reason=reason))
+    async def handle_stop_rest(self, r):
+        return web.json_response(await self.mcp_stop())
+    async def handle_hibernate_rest(self, r):
+        try:
+            data = await r.json() if r.has_body else {}
+            reason = data.get("reason", "REST_API_HIBERNATE")
+            level = int(data.get("level", 2))
+            recover = str(data.get("recover", "false")).lower() == "true"
+        except Exception:
+            reason = "REST_API_HIBERNATE"
+            level = 2
+            recover = False
+            
+        # Also support query parameters for curl one-liners
+        if 'level' in r.query:
+            try:
+                level = int(r.query['level'])
+            except:
+                pass
+        if 'recover' in r.query:
+            recover = r.query['recover'].lower() == "true"
+
+        res = await self.mcp_hibernate(reason=reason, level=level)
+        
+        # [FEAT-344] Sovereign Recovery: Immediately schedule a restart if requested
+        if recover:
+            logger.warning(f"[RECOVERY] Hub requested immediate re-ignition after H{level}.")
+            asyncio.create_task(self.mcp_start(reason=f"RECOVERY_H{level}"))
+            
+        return web.json_response(res)
+    async def handle_quiesce_rest(self, r):
+        return web.json_response(await self.mcp_quiesce())
+    async def handle_ignition_rest(self, r):
+        data = await r.json() if r.has_body else {}
+        reason = data.get("reason", "REST_API_IGNITION")
+        return web.json_response(await self.mcp_ignition(reason=reason))
+    async def handle_train_rest(self, r):
+        data = await r.json() if r.has_body else {}
+        return web.json_response(await self.mcp_train_adapter(data.get("adapter"), data.get("steps", 60)))
+    async def handle_heartbeat_rest(self, r):
+        return web.json_response(await self.mcp_heartbeat())
+
+    async def handle_reset_cache_rest(self, r):
+        """[FEAT-333] Force Silicon Reset: Clears GPU and Engine caches."""
+        logger.warning("[REST] Manual Silicon Reset initiated.")
+        import torch
+        torch.cuda.empty_cache()
+        
+        # vLLM prefix cache reset
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post("http://127.0.0.1:8088/reset_prefix_cache", timeout=2.0)
+        except Exception:
+            pass
+            
+        return web.json_response({"status": "success", "message": "GPU and Engine caches cleared."})
+
+    async def handle_update_prompt_rest(self, r):
+        """[FEAT-333] Live Prompt Update: Modifies node prompts without restart."""
+        data = await r.json()
+        node_id = data.get("node")
+        new_prompt = data.get("prompt")
+        
+        if not node_id or not new_prompt:
+            return web.json_response({"status": "error", "message": "Missing node or prompt."}, status=400)
+            
+        logger.warning(f"[REST] Live Prompt Update for {node_id}")
+        # Send to Hub via proxy
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "http://127.0.0.1:8765/hub/config/prompt"
+                await session.post(url, json=data, timeout=5.0)
+        except Exception as e:
+            return web.json_response({"status": "error", "message": f"Hub handshake failed: {e}"}, status=502)
+            
+        return web.json_response({"status": "success", "message": f"Prompt updated for {node_id}."})
+
+    async def handle_memory_map_rest(self, r):
+        """[FEAT-334] Physical Memory Map: Returns ground-truth memory usage."""
+        return web.json_response(self.map_physical_memory())
+
+    async def handle_wake_rest(self, r):
+        """[FEAT-315] Non-destructive wake: Spark engines but spare Hub."""
+        self._last_engine_check = 0 # [FIX] Force fresh probe after wake
+        return web.json_response(await self.mcp_start(engine_only=True, reason="WAKE_INTENT"))
+
+    async def handle_ping_rest(self, r):
+        return web.json_response(await self.mcp_heartbeat())
+    async def handle_wait_ready_rest(self, r):
+        """[FEAT-265] Blocks until the Lab reports READY or engine becomes vocal."""
+        timeout = int(r.query.get("timeout", 300))
+        start_t = time.time()
+
+        while time.time() - start_t < timeout:
+            # [FEAT-265.43] Physical Synchrony: Foyer can proceed if engine is already vocal
+            if self.ready_event.is_set():
+                return web.json_response({"status": "ready"})
+            
+            # Check physical engine state directly if ready_event is not set yet
+            used, _ = await self._get_vram_info()
+            if used > 5000: # Heuristic: Weights are loaded
+                 return web.json_response({"status": "vocal_baseline", "message": "Engine is physically resident."})
+
+            await asyncio.sleep(1.0)
+
+        return web.json_response({"status": "timeout", "message": "Lab failed to reach OPERATIONAL state in time."}, status=408)
+
+    async def handle_logs_rest(self, r):
+        target_file = r.query.get('file')
+        if target_file:
+            # [FEAT-309.3] Forensic Log Proxy: Serve specific crash logs
+            # Sanitize: No path traversal
+            safe_name = os.path.basename(target_file)
+            log_path = os.path.join(LAB_DIR, 'logs', safe_name)
+            if os.path.exists(log_path):
+                with open(log_path, 'r') as f:
+                    return web.Response(text=f.read())
+            return web.Response(status=404, text=f'Log {safe_name} not found.')
+            
+        if os.path.exists(SERVER_LOG):
+            with open(SERVER_LOG, 'r') as f:
+                return web.Response(text=f.read()[-5000:])
+        return web.Response(status=404)
+    async def handle_mutex_rest(self, r):
+        return web.json_response({"round_table_lock_exists": os.path.exists(ROUND_TABLE_LOCK)})
+
+    async def handle_shutdown(self, app):
+        """[CLEAN_RESTART] Ensures the Lab reaps its OWN session upon exit."""
+        logger.warning(f"[SHUTDOWN] Service termination detected (Session: {self.session_token}). Reaping session silicon...")
+        # [FEAT-119.5] Robust Synchronous Guard: Force-reap all engines and Hub
+        try:
+            await self.cleanup_silicon(mode="SESSION")
+            logger.warning("[SHUTDOWN] Silicon reap successful.")
+        except Exception as e:
+            logger.error(f"[SHUTDOWN] Silicon reap failed: {e}")
+            # Final emergency: use fuser
+            subprocess.run(["sudo", "fuser", "-k", "8088/tcp", "11434/tcp", "8765/tcp"], stderr=subprocess.DEVNULL)
+        
+        # [FEAT-277] Ensure ledger is cleared
+        self.active_pids = {'hub_pid': None, 'engine_pid': None, 'engine_mode': None, 'family': []}
+        self._save_ledger()
+
+# --- Global Instance and MCP Wrappers ---
+attendant = LabAttendantV4()
+@mcp.tool()
+async def lab_heartbeat():
+    return await attendant.mcp_heartbeat()
+@mcp.tool()
+async def lab_start(engine: str = "VLLM", model: str = "MEDIUM", disable_ear: bool = True, op_mode: str = "SERVICE_UNATTENDED"):
+    return await attendant.mcp_start(engine, model, disable_ear, op_mode)
+@mcp.tool()
+async def lab_stop():
+    return await attendant.mcp_stop()
+@mcp.tool()
+async def lab_quiesce():
+    return await attendant.mcp_quiesce()
+@mcp.tool()
+async def lab_ignition():
+    return await attendant.mcp_ignition()
+
+@mcp.tool()
+async def lab_train_adapter(adapter_name: str, steps: int = 60):
+    """Perform an autonomous training run for a specific adapter."""
+    return await attendant.mcp_train_adapter(adapter_name, steps)
+
+@mcp.tool()
+async def lab_wait_ready(timeout: int = 120):
+    """[FEAT-258.1] Resilient Sentinel: Wait for Hub READY with Master liveness probe."""
+    # If we are the PROXY, ensure the Master is actually up before we even try to call the internal wait
+    if os.environ.get("LAB_ATTENDANT_ROLE") == "PROXY":
+        for i in range(10): # 20s initial_probe
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("http://127.0.0.1:8765/heartbeat", timeout=2) as r:
+                        if r.status == 200:
+                            break
+            except Exception:
+                await asyncio.sleep(2)
+        else:
+            return {"status": "error", "message": "Proxy cannot reach Master Attendant after 20s. Is the service running?"}
+
+    return await attendant.mcp_wait_ready(timeout)
+
+async def run_bilingual():
+    # [FEAT-219] Silicon Handshake: Role-Based Execution
+    role = os.environ.get("LAB_ATTENDANT_ROLE")
+    
+    if role == "MASTER":
+        # Full Master Mode: REST API + Pulse + Watchdog
+        attendant.app.on_shutdown.append(attendant.handle_shutdown)
+        runner = web.AppRunner(attendant.app)
+        await runner.setup()
+        await web.TCPSite(runner, "0.0.0.0", ATTENDANT_PORT).start()
+        logger.info(f"[BOOT] Lab Attendant V4.1 (Guardian) active on {ATTENDANT_PORT}")
+        
+        # [FEAT-220.1] Physical Adoption
+        logger.info("[BOOT] Initiating state reconstruction...")
+        await attendant.scavenge_reality()
+        
+        # [FEAT-265.12] Quiet Sentry: Background WD loop decommissioned (Sprint 21 LED Model)
+        asyncio.create_task(attendant.pulse_loop())
+        
+        # [FEAT-136] Cold Hub Ignition: Proactively open the foyer for the Handshake Spark
+        logger.info("[BOOT] Safe-Pilot: Igniting Hub foyer...")
+        # Support STUB mode for rapid testing via environment
+        engine = "STUB" if os.environ.get("LAB_TEST_STUB") == "1" else os.environ.get("LAB_MODE", "VLLM")
+        model = os.environ.get("LAB_MODEL", "MEDIUM")
+        # Note: In this context, engine_only=True means 'Just start the Hub'.
+        asyncio.create_task(attendant.mcp_start(engine=engine, model=model, engine_only=True, reason="SAFE_PILOT"))
+
+        # If in a TTY, also allow local tools, otherwise just wait
+        if sys.stdin.isatty():
+            await mcp.run_stdio_async()
+        else:
+            await asyncio.Event().wait()
+    else:
+        # Proxy Mode: Tool execution forwards to the Master
+        os.environ["LAB_ATTENDANT_ROLE"] = "PROXY" 
+        
+        # [FIX] Always run the stdio transport when spawned as an MCP server.
+        # The isatty check was blocking the Gemini CLI from discovering tools.
+        logger.info("[BOOT] Proxy node starting MCP stdio transport...")
+        await mcp.run_stdio_async()
+
+
+if __name__ == "__main__":
+    asyncio.run(run_bilingual())

@@ -13,7 +13,7 @@ from mcp.client.stdio import stdio_client
 PYTHON_PATH = sys.executable
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARCHIVE_NODE = os.path.join(BASE_DIR, "src/nodes/archive_node.py")
-ATTENDANT_URL = "http://127.0.0.1:9999"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 
 # [FEAT-219] Lab Authentication
 STYLE_CSS = os.path.join(BASE_DIR, "../Portfolio_Dev/field_notes/style.css")
