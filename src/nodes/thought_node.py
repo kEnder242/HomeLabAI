@@ -34,7 +34,7 @@ async def deep_think(task: str, context: str = "", metadata: dict = None) -> str
     return full_response
 
 @mcp.tool()
-async def think(task: str, context: str = "") -> str:
+async def think(query: str, context: str = "") -> str:
     """Fast Reflex: Provide a short, immediate response for simple strategic queries."""
     shallow_prompt = (
         "You are Deep Thought. Fast mode. Reply in < 15 words. "
@@ -44,7 +44,7 @@ async def think(task: str, context: str = "") -> str:
     )
     # Return full string block
     full_response = ""
-    async for token in node.generate_response(task, context, system_override=shallow_prompt, max_tokens=100):
+    async for token in node.generate_response(query, context, system_override=shallow_prompt, max_tokens=100):
         full_response += token
     return full_response
 
