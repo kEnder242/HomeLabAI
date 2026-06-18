@@ -735,7 +735,7 @@ async def get_lab_health() -> str:
     try:
         headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:9999/heartbeat", headers=headers, timeout=2.0) as r:
+            async with session.get("http://localhost:8765/heartbeat", headers=headers, timeout=2.0) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
@@ -751,7 +751,7 @@ async def lab_train_adapter(adapter_name: str, steps: int = 60) -> str:
         headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
             payload = {"adapter": adapter_name, "steps": steps}
-            async with session.post("http://localhost:9999/train", json=payload, headers=headers, timeout=3600) as r:
+            async with session.post("http://localhost:8765/train", json=payload, headers=headers, timeout=3600) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
@@ -765,7 +765,7 @@ async def vram_vibe_check() -> str:
     """[FEAT-191] Quick check of physical VRAM and temperature."""
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:9999/heartbeat", timeout=2.0) as r:
+            async with session.get("http://localhost:8765/heartbeat", timeout=2.0) as r:
                 if r.status == 200:
                     data = await r.json()
                     gpu = data.get("gpu", {})

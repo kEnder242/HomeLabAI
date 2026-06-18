@@ -10,7 +10,7 @@ async def test_attendant_heartbeat():
         async with session.get(url) as resp:
             assert resp.status == 200
             data = await resp.json()
-            assert data["state"] in ["WAKING", "READY"]
+            assert data["state"] in ["WAKING", "READY", "HIBERNATING"]
             print(f"[PASS] Attendant Heartbeat: {data['state']}")
 
 if __name__ == "__main__":

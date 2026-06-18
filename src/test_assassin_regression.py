@@ -3,7 +3,7 @@ import aiohttp
 import asyncio
 import sys
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 
 async def test_assassin_regression():
     print("--- [TEST] FEAT-119: Socket-Aware Assassin ---")

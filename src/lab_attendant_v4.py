@@ -45,7 +45,7 @@ VLLM_START_PATH = f"{LAB_DIR}/src/start_vllm.sh"
 LAB_SERVER_PATH = f"{LAB_DIR}/src/acme_lab.py"
 LAB_VENV_PYTHON = f"{LAB_DIR}/.venv/bin/python3"
 STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
-ATTENDANT_PORT = 9999
+ATTENDANT_PORT = 8765
 
 # [FEAT-180] Resilience Metadata
 MONITOR_CONTAINERS = ["field_prometheus", "field_grafana", "field_node_exporter"]
@@ -317,7 +317,7 @@ class LabAttendantV4:
         except Exception as e:
             # Emergency fallback: subshell kill
             logger.error(f"[SIGNAL] Async purge failed, falling back to emergency reap: {e}")
-            subprocess.run(["sudo", "fuser", "-k", "9999/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
+            subprocess.run(["sudo", "fuser", "-k", "8765/tcp", "8765/tcp", "8088/tcp", "11434/tcp"], stderr=subprocess.DEVNULL)
         
         logger.warning("[SIGNAL] Purge complete. Exiting.")
         sys.exit(0)
@@ -2064,7 +2064,7 @@ async def lab_wait_ready(timeout: int = 120):
         for i in range(10): # 20s initial_probe
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get("http://127.0.0.1:9999/heartbeat", timeout=2) as r:
+                    async with session.get("http://127.0.0.1:8765/heartbeat", timeout=2) as r:
                         if r.status == 200:
                             break
             except Exception:

@@ -4,7 +4,7 @@ import pytest
 import aiohttp
 import websockets
 
-ATTENDANT_URL = "http://localhost:9999"
+ATTENDANT_URL = "http://localhost:8765"
 LAB_WS_URL = "ws://localhost:8765"
 
 @pytest.mark.asyncio

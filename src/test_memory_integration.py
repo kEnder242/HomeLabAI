@@ -10,7 +10,7 @@ PORT = 8765
 URI = f"ws://{HOST}:{PORT}"
 
 async def test_memory():
-    secret_code = f"BANANA-{random.randint(1000,9999)}"
+    secret_code = f"BANANA-{random.randint(1000,8765)}"
 
     print(f"🔌 Connecting to {URI}...")
     try:
