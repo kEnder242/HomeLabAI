@@ -1,8 +1,24 @@
 #!/bin/bash
-# --- vLLM Sovereign Base Startup (Llama-3.2-3B-Instruct-AWQ) ---
-# [FEAT-145] Hardcoded Baseline (Bypass Infra Manifest)
-MODEL_PATH="/speedy/models/llama-3.2-3b-instruct-awq"
-LAB_VENV_PYTHON="/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
+# --- vLLM Sovereign Base Startup ---
+# [Task 17.2] Registry Authority Restored
+MODEL_PATH=${1:-}
+LAB_VENV_PYTHON=${2:-"/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"}
+
+# Check if MODEL_PATH was passed, otherwise pull from config
+if [ -z "$MODEL_PATH" ]; then
+    MODEL_KEY=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest']['unified-base'])" 2>/dev/null)
+    # If unified-base points to a specific model key, resolve it
+    if [[ "$MODEL_KEY" != /* ]]; then
+        MODEL_PATH=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest'].get('$MODEL_KEY', '$MODEL_KEY'))" 2>/dev/null)
+    else
+        MODEL_PATH=$MODEL_KEY
+    fi
+    
+    # Fallback if config parsing fails
+    if [ -z "$MODEL_PATH" ]; then
+        MODEL_PATH="/speedy/models/llama-3.2-3b-instruct-awq"
+    fi
+fi
 
 export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
 export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
@@ -12,7 +28,14 @@ export VLLM_USE_FLASHINFER_SAMPLER=0
 
 LORA_LEGACY="/speedy/models/adapters/llama_legacy"
 LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
-LORA_ARGS="--enable-lora --max-loras 4 --max-cpu-loras 10 --lora-modules $LORA_MODULES"
+
+# [Task 17.2] Architecture Check: Only load Llama LoRAs if using a Llama base
+if [[ "$MODEL_PATH" == *"Llama"* || "$MODEL_PATH" == *"llama"* ]]; then
+    LORA_ARGS="--enable-lora --max-loras 4 --max-cpu-loras 10 --lora-modules $LORA_MODULES"
+else
+    echo "Non-Llama architecture detected. Disabling incompatible Llama LoRA modules."
+    LORA_ARGS=""
+fi
 
 CUDA_LIB_PATH="/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib"
 export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
