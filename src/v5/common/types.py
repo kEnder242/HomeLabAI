@@ -48,6 +48,7 @@ class LabStatus:
     active_intent_id: Optional[str] = None
     recovery_level: int = 0
     recovery_in_progress: bool = False
+    active_domain: Optional[str] = None
 
     def to_dict(self):
         # [Task 9.7] UI Compatibility Layer (V3 -> V5 Bridge)
@@ -80,6 +81,7 @@ class LabStatus:
             "vocal": self.vocal,
             "nodes": {k: asdict(v) for k, v in self.nodes.items()},
             "active_intent_id": self.active_intent_id,
+            "active_domain": self.active_domain,
             "vitals": {
                 "mode": self.state,
                 "model": "Llama-3.2-3B-AWQ" if self.engine_up else "-",

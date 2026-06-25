@@ -16,11 +16,12 @@ LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file
 if LAB_DIR not in sys.path:
     sys.path.append(LAB_DIR)
 
-from v5.common.types import IntentEvent, LabStatus, LAB_VERSION
-from v5.common.residents import ResidentManager
-from logic.cognitive_hub import CognitiveHub
-from equipment.sensory_manager import SensoryManager
-from infra.pager_relay import trigger_pager
+from v5.common.types import IntentEvent, LabStatus, LAB_VERSION  # noqa: E402
+from v5.common.residents import ResidentManager  # noqa: E402
+from logic.cognitive_hub import CognitiveHub  # noqa: E402
+from equipment.sensory_manager import SensoryManager  # noqa: E402
+from infra.pager_relay import trigger_pager  # noqa: E402
+from infra.atomic_io import atomic_write_json  # noqa: E402
 
 # [Task 4.2] V5 Foyer: The Logic Master
 # Objective: Host the Cognitive Hub and manage logical node lifecycle.
@@ -33,7 +34,7 @@ STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 
 # Configure logging early
 # [BKM-016] Montana Protocol: Log Reclamation
-from infra.montana import reclaim_logger
+from infra.montana import reclaim_logger  # noqa: E402
 reclaim_logger(role="SENSORY")
 logger = logging.getLogger("foyer")
 
@@ -53,12 +54,15 @@ def get_style_key():
     return "default_key"
 
 class FoyerRouter:
-    def __init__(self, trigger_task=None):
+    def __init__(self, trigger_task=None, mode="SERVICE_UNATTENDED", afk_timeout=300):
         # ... existing ...
         if setproctitle:
             setproctitle.setproctitle("acme_foyer_v5")
             
         self.connected_clients = set()
+        self.mode = mode
+        self.afk_timeout = afk_timeout
+        self.disconnect_timer = None
         self.session_token = uuid.uuid4().hex[:8]
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
@@ -77,7 +81,8 @@ class FoyerRouter:
             self.sensory, 
             get_vram_status=self.get_vram_status,
             trigger_morning_briefing=self.trigger_morning_briefing,
-            waterfall_queue=self.waterfall_queue
+            waterfall_queue=self.waterfall_queue,
+            set_active_domain=self.update_active_domain
         )
         self.app = web.Application()
         self.app.on_startup.append(self.on_startup)
@@ -103,7 +108,8 @@ class FoyerRouter:
                     from infra.forensic_ledger import ledger
                     if m_type in ["chat", "crosstalk"]:
                         ledger.record_thought(m_source, m_content, role=m_type.upper())
-                except Exception: pass
+                except Exception:
+                    pass
 
                 message_dict["type"] = m_type
                 message_dict["brain"] = m_content
@@ -320,6 +326,12 @@ class FoyerRouter:
         logger.info(f"Client connected: {socket_id}")
         self.record_pager(f"Client Connected: {socket_id}", source="Foyer")
         
+        # Cancel disconnect timer if it is running
+        if self.disconnect_timer is not None:
+            logger.info("[FOYER] Client reconnected. Cancelling idle shutdown timer.")
+            self.disconnect_timer.cancel()
+            self.disconnect_timer = None
+            
         await ws.send_str(json.dumps(self.status.to_dict()))
         
         try:
@@ -363,7 +375,24 @@ class FoyerRouter:
                 self.connected_clients.remove(ws)
             logger.info(f"Client disconnected: {socket_id}")
             
+            # Start disconnect timer if no clients connected and mode is DEBUG_BRAIN
+            if not self.connected_clients and self.mode == "DEBUG_BRAIN":
+                logger.info(f"[FOYER] No clients connected. Starting {self.afk_timeout}s idle shutdown timer.")
+                self.disconnect_timer = asyncio.create_task(self.delayed_shutdown(self.afk_timeout))
+            
         return ws
+
+    async def delayed_shutdown(self, delay):
+        try:
+            await asyncio.sleep(delay)
+            logger.warning(f"[FOYER] {delay}s client disconnect timeout reached in {self.mode} mode. Initiating shutdown...")
+            self.record_pager("Client disconnect timeout reached. Shutting down Foyer.", severity="WARNING", source="Foyer")
+            await self.enqueue_intent("[OPERATIONAL] SHUTDOWN", source="TIMEOUT")
+            await asyncio.sleep(5.0)
+            logger.info("[FOYER] Exiting Foyer process.")
+            sys.exit(0)
+        except asyncio.CancelledError:
+            logger.info("[FOYER] Delayed shutdown timer cancelled.")
 
     async def handle_stream_ingest(self, request):
         """[FEAT-233.7] Real-time token ingestion from decoupled nodes."""
@@ -471,7 +500,8 @@ class FoyerRouter:
                     request_id = f"EAR_{uuid.uuid4().hex[:4]}"
                     shutdown_ev = asyncio.Event()
                     asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev, request_id=request_id))
-            except Exception: pass
+            except Exception:
+                pass
             await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
@@ -515,7 +545,8 @@ class FoyerRouter:
                             with open(QUEUE_FILE, "r") as f:
                                 f.seek(last_pos)
                                 for line in f:
-                                    if not line.strip(): continue
+                                    if not line.strip():
+                                        continue
                                     try:
                                         event = IntentEvent.from_json(line)
                                         if event.status == "PENDING" and event.id not in self.processed_ids:
@@ -546,6 +577,15 @@ class FoyerRouter:
             except Exception as e:
                 logger.error(f"Queue drainer failure: {e}")
             await asyncio.sleep(1)
+
+    def update_active_domain(self, domain):
+        """[Task 19.2] Propagate active triage domain to state and status center."""
+        self.status.active_domain = domain
+        try:
+            atomic_write_json(STATUS_JSON, self.status.to_dict())
+            logger.info(f"[FOYER] Active domain updated to {domain} and written to status.json.")
+        except Exception as e:
+            logger.error(f"[FOYER] Failed to write status.json with active domain {domain}: {e}")
 
     def run(self):
         web.run_app(self.app, port=PORT)

@@ -18,7 +18,7 @@ class CognitiveHub:
         "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Brain (Subconscious - Intuition/Refinement), Deep Thought (Sovereign - Strategic reasoning on 4090).\n"
     )
 
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None):
         from collections import defaultdict
         self.residents = residents
         self.broadcast = broadcast_callback
@@ -28,6 +28,7 @@ class CognitiveHub:
         self.last_prime_callback = last_prime_callback
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
         self.hibernate_callback = hibernate_callback
+        self.set_active_domain = set_active_domain
 
         self.session_buffers = defaultdict(str)
         self.active_intent = None
@@ -423,7 +424,7 @@ class CognitiveHub:
 
         if not t_parsed:
             logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
-            t_parsed = {"intent": "CASUAL", "addressed_to": "PINKY", "importance": 0.5}
+            t_parsed = {"intent": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
 
         # 2. Routing Phase
         importance = float(t_parsed.get("importance", 0.5))
@@ -431,6 +432,9 @@ class CognitiveHub:
         
         target = t_parsed.get("addressed_to", "PINKY").lower()
         vibe = t_parsed.get("vibe", "").upper()
+        
+        if self.set_active_domain:
+            self.set_active_domain(t_parsed.get("domain", "standard"))
         
         # [Task 15.1] Conversational Grace Override & [Task 18.3] Pinky Un-gagging
         behavioral_guidance = ""
@@ -462,7 +466,7 @@ class CognitiveHub:
         try:
             # Call brain node to summarize archives
             res = await self.residents["brain"].call_tool("think", {
-                "query": f"Summarize archive context for: {query[:100]}",
+                "query": f"Summarize archive context for: {query[:100]} (Triage Domain: {triage.get('domain', 'standard')})",
                 "request_id": request_id,
                 "response_format": {}
             })

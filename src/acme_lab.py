@@ -52,7 +52,7 @@ if __name__ == "__main__":
             sock.close()
 
         # [FEAT-145] "Unity" Dispatcher: Hub Router
-        router = FoyerRouter(trigger_task=args.trigger_task)
+        router = FoyerRouter(trigger_task=args.trigger_task, mode=args.mode, afk_timeout=args.afk_timeout)
         router.run()
     finally:
         ignition_proc.terminate()
