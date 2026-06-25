@@ -7,8 +7,6 @@ import fcntl
 import psutil
 import subprocess
 import sys
-import uuid
-from typing import Dict, Set
 
 # Add src to path for common imports
 V5_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,6 +50,11 @@ class IgnitionManager:
         self.last_induction = None
         self.last_induction_date = None # [FEAT-289] Atomic Induction
         self.last_activity_time = time.time() # [Task 4.1] Idle tracking
+        # [FEAT-302] & [FEAT-323] Recovery backoff attributes
+        self.recovery_attempts = 0
+        self.cooldown_until = 0.0
+        self.operational_start_time = 0.0
+        self.recovery_in_progress = False
     def record_pager(self, message, severity="INFO", source="LabAttendant"):
         """[Task 9.9] Centralized Pager Logging."""
         trigger_pager(message, severity=severity, source=source)
@@ -116,9 +119,17 @@ class IgnitionManager:
         if self.status.state in ["WAKING", "OPERATIONAL"]:
             return True
 
+        # [FEAT-302] Adaptive Cooldown Tracking
+        now = time.time()
+        if now < self.cooldown_until:
+            remaining = int(self.cooldown_until - now)
+            logging.warning(f"[IGNITION] Ignition request rejected. Cooldown active. Try again in {remaining}s.")
+            return False
+
         if not self._acquire_vram_lock():
             return False
 
+        self.recovery_in_progress = True
         self.status.state = "WAKING"
         self.update_status_file()
         logging.info(f"[IGNITION] Waking physical silicon for: {reason}")
@@ -170,17 +181,30 @@ class IgnitionManager:
             
             if not api_ready:
                 logging.error("[IGNITION] vLLM failed to bind port 8088 within 5 minutes.")
+                self.recovery_attempts += 1
+                cooldown = 5 + (self.recovery_attempts * 120)
+                self.cooldown_until = time.time() + cooldown
                 self.status.state = "ERROR"
+                self.recovery_in_progress = False
                 self._release_vram_lock() # Release on failure
+                self.update_status_file()
                 return False
 
             self.status.state = "OPERATIONAL"
             self.status.engine_up = True
             self.status.vocal = True
+            self.operational_start_time = time.time()
+            self.recovery_in_progress = False
             logging.info("[IGNITION] Physical silicon is READY.")
             # [Task 6.6] Lock is NOT released here; it is held while OPERATIONAL
+            self.update_status_file()
             return True
         except Exception:
+            self.recovery_attempts += 1
+            cooldown = 5 + (self.recovery_attempts * 120)
+            self.cooldown_until = time.time() + cooldown
+            self.recovery_in_progress = False
+            self.status.state = "ERROR"
             self._release_vram_lock() # Release on crash
             self.update_status_file()
             raise
@@ -201,6 +225,10 @@ class IgnitionManager:
                 self.status.vram_total = int(info.total // 1024**2)
             except Exception: pass
         except Exception: pass
+
+        # [FEAT-323] Expose recovery info to status
+        self.status.recovery_level = self.recovery_attempts
+        self.status.recovery_in_progress = self.recovery_in_progress
 
         try:
             with open(STATUS_JSON, "w") as f:
@@ -264,7 +292,7 @@ class IgnitionManager:
 
     async def queue_watcher(self):
         """[Task 4.3] Monitors the foyer queue for new intent."""
-        logging.info(f"[IGNITION] Queue watcher started.")
+        logging.info("[IGNITION] Queue watcher started.")
         last_pos = 0
         if os.path.exists(QUEUE_FILE):
             last_pos = os.path.getsize(QUEUE_FILE)
@@ -396,6 +424,12 @@ class IgnitionManager:
         asyncio.create_task(self.continuous_burn_loop())
         asyncio.create_task(self.journal_monitor())
         while True:
+            # [FEAT-302] Stability Latch: Reset backoff if stable for >5m
+            if self.status.state == "OPERATIONAL" and self.operational_start_time > 0:
+                stable_dur = time.time() - self.operational_start_time
+                if stable_dur > 300 and self.recovery_attempts > 0:
+                    logging.info(f"[IGNITION] Silicon Stability Verified ({int(stable_dur)}s). Resetting recovery backoff.")
+                    self.recovery_attempts = 0
             self.update_status_file()
             await asyncio.sleep(30)
 
