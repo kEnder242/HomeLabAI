@@ -553,7 +553,7 @@ def keyword_search(query, limit=10):
 
 
 @mcp.tool()
-async def get_context(query: str, n_results: int = 3) -> str:
+async def get_context(query: str, n_results: int = 3, domain: str = None) -> str:
     """
     [FEAT-117] Multi-Stage Retrieval: Discovery -> Acquisition.
     Stage 1: ChromaDB identifies the metadata anchor.
@@ -564,7 +564,7 @@ async def get_context(query: str, n_results: int = 3) -> str:
         # [Task 3.1] Integrate session clipboard early
         combined_context = []
         if SESSION_CLIPBOARD:
-            combined_context.append(f"[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
+            combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
 
         # [FEAT-117] Hard Year Filtering (Post-Filter)
         import re
@@ -579,7 +579,7 @@ async def get_context(query: str, n_results: int = 3) -> str:
         
         # [FEAT-088] Semantic Fallback
         if not target_year:
-            logging.info(f"[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search.")
+            logging.info("[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search.")
         
         fetch_limit = n_results * 5 if target_year else n_results
         if target_year:
@@ -632,20 +632,57 @@ async def get_context(query: str, n_results: int = 3) -> str:
                                     f"(Gem: {entry.get('technical_gem', 'N/A')})"
                                 )
                     except Exception:
-                        pass
+                         pass
 
-        matched_count = 0
-        expansion_triggered = False
+        domain_keywords = {
+            "exp_tlm": ["telemetry", "monitor", "prometheus", "grafana", "rapl", "msr", "power", "thermal", "load", "sensory", "logging", "metric", "dcgm", "gpu", "nvml"],
+            "exp_bkm": ["bkm", "validation", "test", "verification", "verify", "spec", "method", "guide", "setup", "procedure", "config", "manual", "checklist"],
+            "exp_for": ["forensic", "post-mortem", "post_mortem", "crash", "triage", "hang", "error", "abort", "fail", "debug", "logs", "analysis", "incident"]
+        }
 
+        # Collect candidates
+        candidates = []
         for doc_id, meta in fused_results:
-            if matched_count >= n_results:
-                break
-                
             ts = str(meta.get("timestamp") or meta.get("date") or meta.get("source", ""))
             doc_anchor = meta.get("text_anchor", meta.get("text", ""))
             
             if target_year and target_year not in ts:
                 continue
+            candidates.append((doc_id, meta, ts, doc_anchor))
+
+        # MCompassRAG: Domain-Guided Paragraph Filtering
+        if not domain:
+            status_path = os.path.join(DATA_DIR, "status.json")
+            if os.path.exists(status_path):
+                try:
+                    with open(status_path, "r") as f:
+                        status_data = json.load(f)
+                        domain = status_data.get("active_domain")
+                        if domain:
+                            logging.info(f"[MCompassRAG] Read active domain fallback from status.json: {domain}")
+                except Exception as e:
+                    logging.warning(f"[MCompassRAG] Failed to read active domain fallback: {e}")
+
+        if domain and domain in domain_keywords:
+            keywords = domain_keywords[domain]
+            filtered = []
+            for doc_id, meta, ts, doc_anchor in candidates:
+                doc_anchor_low = str(doc_anchor).lower()
+                if any(kw in doc_anchor_low for kw in keywords):
+                    filtered.append((doc_id, meta, ts, doc_anchor))
+            
+            if filtered:
+                logging.info(f"[MCompassRAG] Restricting search space to {len(filtered)}/{len(candidates)} paragraphs for domain {domain}.")
+                candidates = filtered
+            else:
+                logging.info(f"[MCompassRAG] Domain {domain} filter yielded 0 matches. Falling back to unfiltered space.")
+
+        matched_count = 0
+        expansion_triggered = False
+
+        for doc_id, meta, ts, doc_anchor in candidates:
+            if matched_count >= n_results:
+                break
                 
             matched_count += 1
             target_file = None
