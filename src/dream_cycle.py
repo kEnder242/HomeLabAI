@@ -38,14 +38,15 @@ async def ensure_engine_ready():
         r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=5)
         status = r.json()
         
-        if status.get("operational"):
+        if status.get("state") == "OPERATIONAL" or status.get("vocal"):
             logging.info("[DREAM] Lab is already operational.")
-            return True, status.get("model")
+            # Retrieve model from vitals
+            model_name = status.get("vitals", {}).get("model", "unified-base")
+            return True, model_name
 
         # 2. Request Ignition
         logging.warning(f"[DREAM] Lab is {status.get('state')}. Triggering ignition...")
-        payload = {"engine": "VLLM", "model": "MEDIUM", "reason": "DREAM_CYCLE"}
-        r = requests.post(f"{ATTENDANT_URL}/start", json=payload, headers=HEADERS, timeout=60)
+        r = requests.post(f"{ATTENDANT_URL}/wake", headers=HEADERS, timeout=60)
         
         if r.status_code != 200:
             logging.error(f"[DREAM] Ignition request failed: {r.text}")
@@ -58,7 +59,8 @@ async def ensure_engine_ready():
                 data = r.json()
                 if data.get("vocal"):
                     logging.info("[DREAM] Lab is now READY for synthesis.")
-                    return True, data.get("model")
+                    model_name = data.get("vitals", {}).get("model", "unified-base")
+                    return True, model_name
             await asyncio.sleep(2)
             
         return False, None
@@ -127,14 +129,16 @@ class DreamManager:
         
         cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
         files = json.loads(cabinet_res.content[0].text)
-        if not files: return
+        if not files:
+            return
         
         target_file = random.choice([f for f in files if f.endswith(".json")])
         logging.info(f"📂 Selected target for refinement: {target_file}")
         
         doc_res = await self.archive.call_tool("read_document", arguments={"filename": target_file})
         content = json.loads(doc_res.content[0].text)
-        if not isinstance(content, list) or not content: return
+        if not isinstance(content, list) or not content:
+            return
         
         candidates = [i for i in content if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")]
         if not candidates:
