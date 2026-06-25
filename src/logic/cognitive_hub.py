@@ -176,7 +176,7 @@ class CognitiveHub:
         asyncio.create_task(_tic_loop())
         return await task
 
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.0, retry_count=0, use_lora=True, response_format=None, request_id="default"):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default"):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         if node_id not in self.residents:
             return

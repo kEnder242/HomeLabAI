@@ -46,6 +46,8 @@ class LabStatus:
     vocal: bool = False
     nodes: Dict[str, NodeStatus] = field(default_factory=dict)
     active_intent_id: Optional[str] = None
+    recovery_level: int = 0
+    recovery_in_progress: bool = False
 
     def to_dict(self):
         # [Task 9.7] UI Compatibility Layer (V3 -> V5 Bridge)
@@ -60,7 +62,8 @@ class LabStatus:
                 import hashlib
                 with open(style_path, "rb") as f:
                     style_key = hashlib.md5(f.read()).hexdigest()[:8]
-        except Exception: pass
+        except Exception:
+            pass
 
         return {
             "state": self.state,
@@ -85,6 +88,8 @@ class LabStatus:
                 "intercom": "ONLINE" if self.vocal else "OFFLINE",
                 "brain": "ONLINE" if self.engine_up else "OFFLINE",
                 "session": self.active_intent_id or "standby",
-                "style_key": style_key
+                "style_key": style_key,
+                "recovery_level": self.recovery_level,
+                "recovery_in_progress": self.recovery_in_progress
             }
         }
