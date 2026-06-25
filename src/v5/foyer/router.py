@@ -84,7 +84,37 @@ class FoyerRouter:
             waterfall_queue=self.waterfall_queue,
             set_active_domain=self.update_active_domain
         )
-        self.app = web.Application()
+        # [FIX] CORS must be registered at Application creation time in aiohttp.
+        # Wildcard origin is incompatible with allow_credentials=True (browser spec).
+        # This middleware echoes back the exact request origin if it is in the allowlist.
+        _CORS_ORIGINS = {
+            "https://notes.jason-lab.dev",
+            "https://www.jason-lab.dev",
+            "http://localhost",
+            "http://localhost:9001",
+            "http://127.0.0.1",
+            "http://127.0.0.1:9001",
+        }
+
+        @web.middleware
+        async def _cors_mw(request, handler):
+            origin = request.headers.get("Origin", "")
+            if request.method == "OPTIONS":
+                resp = web.Response(status=204)
+            else:
+                try:
+                    resp = await handler(request)
+                except web.HTTPException as ex:
+                    resp = ex
+            if origin in _CORS_ORIGINS:
+                resp.headers["Access-Control-Allow-Origin"] = origin
+                resp.headers["Access-Control-Allow-Credentials"] = "true"
+                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, CF-Authorization"
+                resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+                resp.headers["Access-Control-Expose-Headers"] = "*"
+            return resp
+
+        self.app = web.Application(middlewares=[_cors_mw])
         self.app.on_startup.append(self.on_startup)
         self.app.on_cleanup.append(self.cleanup)
         self.setup_routes()
@@ -190,16 +220,7 @@ class FoyerRouter:
             web.post('/shutdown', self.handle_remote_action)
         ])
         
-        cors = aiohttp_cors.setup(self.app, defaults={
-            "*": aiohttp_cors.ResourceOptions(
-                allow_credentials=True,
-                expose_headers="*",
-                allow_headers="*",
-                allow_methods="*",
-            )
-        })
-        for route in list(self.app.router.routes()):
-            cors.add(route)
+        # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
 
     async def handle_remote_action(self, request):
         """REST endpoint for remote control UI."""
