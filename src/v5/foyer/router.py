@@ -180,6 +180,7 @@ class FoyerRouter:
             web.post('/release_nodes', self.handle_release_nodes),
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
+            web.get('/sys_metrics', self.handle_sys_metrics),    # [FEAT-T20.5] Live graph feed
             web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
             web.get('/benchmarks_kpi', self.handle_benchmarks_kpi),  # [FEAT-T21.2]
             # [FEAT-143] Remote Control endpoints
@@ -321,6 +322,46 @@ class FoyerRouter:
 
     async def handle_status(self, request):
         return web.json_response(self.status.to_dict())
+
+    async def handle_sys_metrics(self, request):
+        """
+        [FEAT-T20.5] Live system metrics endpoint for the SYSTEM graph tab.
+        Returns a single-point snapshot: CPU %, RAM %, VRAM %, GPU temp, GPU power.
+        Polled every 5s by the frontend to build a rolling 60-point canvas graph.
+        """
+        try:
+            import psutil
+            cpu_pct = psutil.cpu_percent(interval=None)   # non-blocking
+            ram = psutil.virtual_memory()
+            ram_pct = ram.percent
+
+            # DCGM snapshot (reuse TelemetryCollector singleton)
+            gpu_temp = 0.0
+            gpu_power = 0.0
+            vram_pct = 0.0
+            try:
+                from infra.telemetry_collector import get_collector
+                col = get_collector()
+                snap = col.snapshot()
+                gpu_temp = snap.gpu_temp_c
+                gpu_power = snap.gpu_power_w
+                if snap.vram_total_mb > 0:
+                    vram_pct = round(snap.vram_used_mb / snap.vram_total_mb * 100, 1)
+            except Exception:
+                # Fallback to LabStatus VRAM if collector unavailable
+                if self.status.vram_total > 0:
+                    vram_pct = round(self.status.vram_used / self.status.vram_total * 100, 1)
+
+            return web.json_response({
+                "ts": time.time(),
+                "cpu_pct": round(cpu_pct, 1),
+                "ram_pct": round(ram_pct, 1),
+                "vram_pct": vram_pct,
+                "gpu_temp_c": round(gpu_temp, 1),
+                "gpu_power_w": round(gpu_power, 1),
+            })
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
 
     async def handle_telemetry_kpi(self, request):
         """
