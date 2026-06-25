@@ -180,6 +180,7 @@ class FoyerRouter:
             web.post('/release_nodes', self.handle_release_nodes),
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
+            web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
             # [FEAT-143] Remote Control endpoints
             web.post('/wake', self.handle_remote_action),
             web.post('/sleep', self.handle_remote_action),
@@ -307,6 +308,29 @@ class FoyerRouter:
 
     async def handle_status(self, request):
         return web.json_response(self.status.to_dict())
+
+    async def handle_telemetry_kpi(self, request):
+        """
+        [FEAT-T20.3] KPI endpoint: serves last N telemetry samples from ledger.
+        Query param: ?n=50 (default 50, max 200)
+        """
+        try:
+            n = min(int(request.rel_url.query.get("n", 50)), 200)
+            ledger_path = os.path.join(LAB_DIR, "logs", "telemetry_ledger.jsonl")
+            samples = []
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r") as f:
+                    lines = f.readlines()
+                for line in lines[-n:]:
+                    line = line.strip()
+                    if line:
+                        try:
+                            samples.append(json.loads(line))
+                        except Exception:
+                            pass
+            return web.json_response({"samples": samples, "count": len(samples)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
 
     async def handle_rest_inject(self, request):
         data = await request.json()

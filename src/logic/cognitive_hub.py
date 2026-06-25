@@ -7,6 +7,14 @@ import time
 import random
 from v5.common.types import LAB_VERSION
 
+# [FEAT-T20.2] Lazy import — avoids hard dep if DCGM is absent
+def _get_telemetry_collector():
+    try:
+        from infra.telemetry_collector import get_collector
+        return get_collector()
+    except Exception:
+        return None
+
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
 
@@ -56,6 +64,16 @@ class CognitiveHub:
                 pass
         
         self.auditor = None  # [FEAT-190] The Judge
+
+        # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
+        self._tel_collector = _get_telemetry_collector()
+        for node in self.residents.values():
+            if hasattr(node, '_on_telemetry'):
+                node._on_telemetry = self._collect_telemetry
+            # Also wire on the underlying BicameralNode if wrapped
+            underlying = getattr(node, '_node', node)
+            if underlying is not node and hasattr(underlying, '_on_telemetry'):
+                underlying._on_telemetry = self._collect_telemetry
 
     async def handle_stream_token(self, data):
         """[FEAT-233.2] Ingests token into session buffers and audits for vetoes."""
@@ -288,6 +306,37 @@ class CognitiveHub:
     async def _check_dynamic_audit(self, source, token):
         """Placeholder for FEAT-190 The Judge."""
         pass
+
+    def _collect_telemetry(self, event: dict) -> None:
+        """
+        [FEAT-T20.1/T20.2] Telemetry collector callback.
+        Called by BicameralNode._emit_telemetry() at end of generation.
+        Enriches with live GPU snapshot and writes to ledger.
+        """
+        if not self._tel_collector:
+            return
+        try:
+            from infra.telemetry_collector import TelemetrySample
+            sample = self._tel_collector.snapshot(
+                node=event.get("node", ""),
+                request_id=event.get("request_id", "default"),
+            )
+            # Overlay token-level metrics from the node
+            sample.ttft_ms = event.get("ttft_ms", 0.0)
+            sample.total_tokens = event.get("total_tokens", 0)
+            sample.duration_s = event.get("duration_s", 0.0)
+            sample.engine_type = event.get("engine_type", "")
+            sample.model = event.get("model", "")
+            sample.enrich_economics()
+            self._tel_collector.write_ledger(sample)
+            logging.debug(
+                f"[TEL] {sample.node} | TTFT={sample.ttft_ms:.0f}ms "
+                f"tps={sample.tokens_per_sec:.1f} "
+                f"power={sample.gpu_power_w:.0f}W "
+                f"J/tok={sample.joules_per_token:.4f}"
+            )
+        except Exception as e:
+            logging.debug(f"[TEL] Collect failed: {e}")
 
     async def process_query(self, turn, shutdown_event=None, request_id=None):
         """[FEAT-145] Main Reasoning Waterfall."""
