@@ -317,7 +317,7 @@ class BicameralNode:
                 self._session = None
             return False, f"Connection failed: {e}"
 
-    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.1, use_lora=True, tools=None, response_format=None):
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.1, use_lora=True, tools=None, response_format=None, request_id="default"):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
@@ -421,24 +421,47 @@ class BicameralNode:
 
         self._mirror_trace("send", payload, url=engine["url"], metadata=metadata)
 
+        # [FEAT-T20.1] Token timing instrumentation
         full_response = ""
+        token_count = 0
+        ttft_ms = 0.0
+        t0 = time.time()
+        first_token = True
         try:
-            if engine["type"] == "VLLM":
-                async for token in self._stream_vllm(engine["url"], payload):
-                    full_response += token
-                    yield token
-            else:
-                async for token in self._stream_ollama(engine["url"], payload):
-                    full_response += token
-                    yield token
-            
+            stream_iter = (
+                self._stream_vllm(engine["url"], payload)
+                if engine["type"] == "VLLM"
+                else self._stream_ollama(engine["url"], payload)
+            )
+            async for token in stream_iter:
+                if first_token and token:
+                    ttft_ms = (time.time() - t0) * 1000.0
+                    first_token = False
+                full_response += token
+                token_count += 1
+                yield token
+
+            duration_s = time.time() - t0
             self._mirror_trace("recv", full_response)
+
+            # [FEAT-T20.1] Emit telemetry event for hub collection
+            self._emit_telemetry(
+                request_id=request_id,
+                ttft_ms=ttft_ms,
+                total_tokens=token_count,
+                duration_s=duration_s,
+                engine_type=engine.get("type", ""),
+                model=engine.get("model", ""),
+            )
         except Exception as e:
             logging.error(f"[{self.name}] Generation failed: {e}")
             yield f"Egad! Logic failure: {e}"
 
     def _start_telemetry_relay(self):
         """[FEAT-233.2] Dedicated thread for non-blocking token delivery."""
+        # [FEAT-T20.1] Telemetry callback — wired by cognitive_hub after init
+        self._on_telemetry = None
+
         def _relay_worker():
             while True:
                 item = self.telemetry_queue.get()
@@ -459,6 +482,22 @@ class BicameralNode:
             "request_id": request_id
         }
         self.telemetry_queue.put(payload)
+
+    def _emit_telemetry(self, request_id, ttft_ms, total_tokens, duration_s, engine_type, model):
+        """[FEAT-T20.1] Fire telemetry callback if wired by hub."""
+        if callable(self._on_telemetry):
+            try:
+                self._on_telemetry({
+                    "node": self.name,
+                    "request_id": request_id,
+                    "ttft_ms": round(ttft_ms, 2),
+                    "total_tokens": total_tokens,
+                    "duration_s": round(duration_s, 3),
+                    "engine_type": engine_type,
+                    "model": model,
+                })
+            except Exception as e:
+                logging.debug(f"[{self.name}] Telemetry emit failed: {e}")
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
