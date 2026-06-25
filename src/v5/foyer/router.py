@@ -181,6 +181,7 @@ class FoyerRouter:
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
             web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
+            web.get('/benchmarks_kpi', self.handle_benchmarks_kpi),  # [FEAT-T21.2]
             # [FEAT-143] Remote Control endpoints
             web.post('/wake', self.handle_remote_action),
             web.post('/sleep', self.handle_remote_action),
@@ -237,6 +238,18 @@ class FoyerRouter:
                 if archive_node:
                     for target in ["cli_voice_v1", "shadow_brain_v2", "lab_history_v1"]:
                         asyncio.create_task(archive_node.call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
+            elif task == "eval":
+                # [FEAT-T21.3] BKM-032: Background benchmark eval run
+                tag = data.get("tag", "baseline")
+                eval_script = os.path.join(LAB_DIR, "src", "run_evals.py")
+                import subprocess, sys
+                subprocess.Popen(
+                    [sys.executable, eval_script, "--tag", tag, "--engine", "vllm"],
+                    cwd=os.path.join(LAB_DIR, "src"),
+                    env={**os.environ, "PYTHONPATH": os.path.join(LAB_DIR, "src")}
+                )
+                logger.info(f"[TRIGGER] Eval run dispatched for tag: {tag}")
+
             
             return web.json_response({"status": "TRIGGERED", "task": task})
         except Exception as e:
@@ -329,6 +342,65 @@ class FoyerRouter:
                         except Exception:
                             pass
             return web.json_response({"samples": samples, "count": len(samples)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_benchmarks_kpi(self, request):
+        """
+        [FEAT-T21.2] Benchmarks endpoint: serves benchmark runs with per-model aggregates.
+        Query params: ?n=100 (last N runs), ?tag=telemetry (filter by tag)
+        """
+        try:
+            n = min(int(request.rel_url.query.get("n", 100)), 500)
+            tag_filter = request.rel_url.query.get("tag", None)
+            ledger_path = os.path.join(LAB_DIR, "logs", "benchmarks.jsonl")
+            runs = []
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r") as f:
+                    lines = f.readlines()
+                for line in lines[-n:]:
+                    line = line.strip()
+                    if line:
+                        try:
+                            r = json.loads(line)
+                            if tag_filter and tag_filter not in r.get("tags", []):
+                                continue
+                            runs.append(r)
+                        except Exception:
+                            pass
+
+            # Per-model aggregates
+            from collections import defaultdict
+            model_stats = defaultdict(lambda: {"runs": 0, "total_score": 0, "total_tps": 0,
+                                                "total_power": 0, "total_j_tok": 0, "tags": set()})
+            for r in runs:
+                m = r.get("model", "unknown")
+                model_stats[m]["runs"] += 1
+                model_stats[m]["total_score"] += r.get("judge_score", 0)
+                model_stats[m]["total_tps"] += r.get("tokens_per_sec", 0)
+                model_stats[m]["total_power"] += r.get("gpu_power_w", 0)
+                model_stats[m]["total_j_tok"] += r.get("joules_per_token", 0)
+                model_stats[m]["tags"].update(r.get("tags", []))
+
+            aggregates = {}
+            for model, s in model_stats.items():
+                n_runs = s["runs"] or 1
+                aggregates[model] = {
+                    "runs": s["runs"],
+                    "avg_score": round(s["total_score"] / n_runs, 2),
+                    "avg_tps": round(s["total_tps"] / n_runs, 2),
+                    "avg_power_w": round(s["total_power"] / n_runs, 2),
+                    "avg_j_tok": round(s["total_j_tok"] / n_runs, 6),
+                    "tags": list(s["tags"]),
+                }
+
+            all_tags = sorted({t for r in runs for t in r.get("tags", [])})
+            return web.json_response({
+                "runs": list(reversed(runs)),  # newest first
+                "aggregates": aggregates,
+                "total": len(runs),
+                "tags": all_tags,
+            })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
