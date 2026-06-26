@@ -58,7 +58,7 @@ def main():
         sys.exit(1)
 
     initial_lab_running = current_status.get('foyer_up', False)
-    initial_lab_ready = current_status.get('engine_vocal', False)
+    initial_lab_ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
     lab_pid = current_status.get('attendant_pid', 'N/A')
 
     if initial_lab_ready:
@@ -102,7 +102,7 @@ def main():
             sys.exit(1)
 
         running = current_status.get('foyer_up', False)
-        ready = current_status.get('engine_vocal', False)
+        ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
         mode = current_status.get('engine_mode', 'UNKNOWN')
         lab_pid = current_status.get('lab_pid', 'N/A')
         last_logs = current_status.get('last_log_lines', [])

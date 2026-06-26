@@ -79,6 +79,8 @@ class LabStatus:
             "ram_pct": self.ram_pct,
             "engine_up": self.engine_up,
             "vocal": self.vocal,
+            "engine_vocal": self.vocal,
+            "full_lab_ready": self.vocal,
             "nodes": {k: asdict(v) for k, v in self.nodes.items()},
             "active_intent_id": self.active_intent_id,
             "active_domain": self.active_domain,
