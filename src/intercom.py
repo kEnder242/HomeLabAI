@@ -7,13 +7,37 @@ import json
 from enum import Enum, auto
 
 # --- PLATFORM HANDLING ---
-# msvcrt is Windows only. We use it for non-blocking key polling.
+# msvcrt is Windows only. For Linux, we use select and termios/tty.
 try:
     import msvcrt
     IS_WINDOWS = True
 except ImportError:
     IS_WINDOWS = False
-    print("⚠️  Running in Non-Windows Mode. Keyboard Toggle (SPACE) will not work natively.")
+    try:
+        import select
+        import termios
+        import tty
+    except ImportError:
+        pass
+
+OLD_SETTINGS = None
+if not IS_WINDOWS:
+    try:
+        OLD_SETTINGS = termios.tcgetattr(sys.stdin.fileno())
+    except Exception:
+        pass
+
+def set_raw_mode(enable):
+    if IS_WINDOWS or OLD_SETTINGS is None:
+        return
+    try:
+        fd = sys.stdin.fileno()
+        if enable:
+            tty.setcbreak(fd)
+        else:
+            termios.tcsetattr(fd, termios.TCSADRAIN, OLD_SETTINGS)
+    except Exception:
+        pass
 
 # --- COLOR HANDLING ---
 try:
@@ -58,15 +82,23 @@ async def get_user_input():
     return await loop.run_in_executor(None, sys.stdin.readline)
 
 async def check_keyboard_trigger():
-    """Polls for SPACE key to toggle modes (Windows Only)."""
-    if not IS_WINDOWS:
-        return False
-
-    if msvcrt.kbhit():
-        char = msvcrt.getch()
-        # Trigger text mode only on SPACE (32)
-        if char == b' ':
-            return True
+    """Polls for SPACE key to toggle modes (Cross-Platform)."""
+    if IS_WINDOWS:
+        if msvcrt.kbhit():
+            char = msvcrt.getch()
+            # Trigger text mode only on SPACE (32)
+            if char == b' ':
+                return True
+    else:
+        if OLD_SETTINGS is not None:
+            try:
+                r, _, _ = select.select([sys.stdin], [], [], 0)
+                if r:
+                    char = sys.stdin.read(1)
+                    if char == ' ':
+                        return True
+            except Exception:
+                pass
     return False
 
 async def receive_messages(websocket):
@@ -80,19 +112,18 @@ async def receive_messages(websocket):
             if data.get("type") == "status":
                 s = data.get("state")
                 v = data.get("version", "unknown")
-                if s == "ready":
+                is_vocal = data.get("vocal", False) or data.get("engine_vocal", False)
+                if s == "OPERATIONAL" or is_vocal or s == "ready" or s == "connected":
                     if STATE == ClientState.LOBBY:
                         print(f"{COLOR_GREEN}[ACME LAB]: Connected to v{v}. Ready. {COLOR_RESET}")
                         print(f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}")
                     STATE = ClientState.LISTENING
-                elif s == "shutdown":
+                elif s == "shutdown" or s == "HIBERNATING" or s == "offline":
                     if IS_HEARING:
                         print("")
                         IS_HEARING = False
-                    print(f"{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
-                    STATE = ClientState.SHUTDOWN
-                    SHUTDOWN_EVENT.set()
-                    return
+                    print(f"{COLOR_RED}[ACME LAB]: Closing / Hibernating.{COLOR_RESET}")
+                    STATE = ClientState.LOBBY
 
             # 2. Transcription & Responses
             elif "text" in data and STATE == ClientState.LISTENING:
@@ -144,6 +175,7 @@ async def audio_and_input_loop(websocket):
     p = pyaudio.PyAudio()
     stream = None
 
+    current_raw = False
     try:
         # Setup Audio
         stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
@@ -153,6 +185,10 @@ async def audio_and_input_loop(websocket):
 
             # --- STATE: LISTENING (Mic On) ---
             if STATE == ClientState.LISTENING:
+                if not current_raw:
+                    set_raw_mode(True)
+                    current_raw = True
+
                 if stream.is_stopped():
                     stream.start_stream()
 
@@ -166,6 +202,9 @@ async def audio_and_input_loop(websocket):
 
                 # 2. Poll Keyboard (Trigger)
                 if await check_keyboard_trigger():
+                    if current_raw:
+                        set_raw_mode(False)
+                        current_raw = False
                     STATE = ClientState.TYPING
                     stream.stop_stream() # Mute Mic
                     print(f"{COLOR_BLUE}[TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}")
@@ -176,6 +215,10 @@ async def audio_and_input_loop(websocket):
 
             # --- STATE: TYPING (Mic Off) ---
             elif STATE == ClientState.TYPING:
+                if current_raw:
+                    set_raw_mode(False)
+                    current_raw = False
+
                 # 1. Get Input (Blocking, off-thread)
                 user_text = (await get_user_input()).strip()
 
@@ -201,11 +244,15 @@ async def audio_and_input_loop(websocket):
 
             # --- STATE: LOBBY/WAITING ---
             else:
+                if current_raw:
+                    set_raw_mode(False)
+                    current_raw = False
                 await asyncio.sleep(0.1)
 
     except Exception as e:
         print(f"{COLOR_RED}[ERROR]: {e}{COLOR_RESET}")
     finally:
+        set_raw_mode(False)
         if stream:
             stream.stop_stream()
             stream.close()
@@ -222,7 +269,13 @@ async def connect_with_retry(uri):
     raise ConnectionRefusedError("Server Unreachable")
 
 async def main():
-    uri = f"ws://{HOST}:{PORT}"
+    import argparse
+    parser = argparse.ArgumentParser(description="Acme Intercom Client")
+    parser.add_argument("--host", default="127.0.0.1", help="Foyer WebSocket host")
+    parser.add_argument("--port", type=int, default=8765, help="Foyer WebSocket port")
+    args = parser.parse_args()
+
+    uri = f"ws://{args.host}:{args.port}"
     print(f"{COLOR_BLUE}[CLIENT] Connecting to {uri}...{COLOR_RESET}")
     try:
         ws = await connect_with_retry(uri)
