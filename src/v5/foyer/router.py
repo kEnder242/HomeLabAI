@@ -527,6 +527,14 @@ class FoyerRouter:
                     elif m_type == "mic_state":
                         active = data.get("active", False)
                         logger.info(f"Mic state changed: {active}")
+                elif msg.type == aiohttp.WSMsgType.BINARY:
+                    text = self.sensory.process_binary_chunk(msg.data)
+                    if text:
+                        await self.broadcast({
+                            "type": "hearing",
+                            "text": text,
+                            "socket_id": socket_id
+                        })
                         
         finally:
             if ws in self.connected_clients:
@@ -656,6 +664,11 @@ class FoyerRouter:
                 if query:
                     import uuid
                     request_id = f"EAR_{uuid.uuid4().hex[:4]}"
+                    # Broadcast the final transcription event to the UI
+                    await self.broadcast({
+                        "type": "final",
+                        "text": f"[ME] {query}"
+                    })
                     shutdown_ev = asyncio.Event()
                     asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev, request_id=request_id))
             except Exception:
