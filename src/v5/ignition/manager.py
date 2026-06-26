@@ -168,15 +168,40 @@ class IgnitionManager:
             # We run it detached so it survives the manager script block
             subprocess.Popen(["bash", vllm_script], cwd=LAB_DIR, env=env)
             
-            # Poll for API readiness
+            # Poll for API readiness and perform cognitive vocality check
             api_ready = False
             for _ in range(60): # Up to 5 minutes
                 try:
                     import urllib.request
-                    urllib.request.urlopen("http://localhost:8088/v1/models", timeout=2)
-                    api_ready = True
-                    break
-                except Exception:
+                    import json
+                    # 1. Basic model list check (port binding check)
+                    req_models = urllib.request.Request("http://localhost:8088/v1/models")
+                    with urllib.request.urlopen(req_models, timeout=2) as resp_models:
+                        if resp_models.status != 200:
+                            raise Exception(f"Model list returned status {resp_models.status}")
+                    
+                    # 2. Cognitive probe: Force-check real text generation
+                    payload = {
+                        "model": "unified-base", 
+                        "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
+                        "max_tokens": 10,
+                        "temperature": 0.0
+                    }
+                    data_bytes = json.dumps(payload).encode('utf-8')
+                    req_chat = urllib.request.Request(
+                        "http://localhost:8088/v1/chat/completions",
+                        data=data_bytes,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(req_chat, timeout=5) as response:
+                        if response.status == 200:
+                            api_ready = True
+                            logging.info("[IGNITION] Cognitive probe SUCCESS. Engine is vocal.")
+                            break
+                        else:
+                            raise Exception(f"Cognitive probe returned status {response.status}")
+                except Exception as e:
+                    logging.debug(f"[IGNITION] API probe failed (retrying): {e}")
                     await asyncio.sleep(5)
             
             if not api_ready:
