@@ -349,6 +349,79 @@ class IgnitionManager:
             except Exception: pass
             await asyncio.sleep(1)
 
+    async def is_engine_active(self) -> bool:
+        """
+        [FEAT-374] Tiered Idle Verification Pattern
+        Checks Tier 1 (TCP connections on port 8088) and Tier 2 (vLLM metrics).
+        Returns True if active, False if idle.
+        """
+        if self.operational_start_time > 0:
+            uptime = time.time() - self.operational_start_time
+            if uptime < 60:  # 60s settle window
+                logging.info("[IGNITION] Settle window active. Deferring idle check.")
+                return True
+
+        pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
+        if not os.path.exists(pid_file):
+            return False
+
+        try:
+            with open(pid_file, "r") as f:
+                vllm_pid = int(f.read().strip())
+            
+            if not psutil.pid_exists(vllm_pid):
+                return False
+                
+            vllm_proc = psutil.Process(vllm_pid)
+            conns = vllm_proc.connections(kind='tcp')
+            
+            # Look for established connections on local port 8088
+            active_conns = [
+                c for c in conns 
+                if c.status == "ESTABLISHED" and c.laddr.port == 8088
+            ]
+            
+            if not active_conns:
+                logging.info("[IGNITION] Tier 1: Zero connections on port 8088. Engine is idle.")
+                return False
+                
+            logging.info(f"[IGNITION] Tier 1: {len(active_conns)} connections detected on port 8088. Escalating to Tier 2...")
+            
+        except Exception as e:
+            logging.warning(f"[IGNITION] Tier 1 check failed: {e}. Escalating to Tier 2.")
+
+        # Tier 2: Check vLLM metrics
+        import urllib.request
+        try:
+            url = "http://localhost:8088/metrics"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=3) as response:
+                content = response.read().decode('utf-8')
+                
+            num_running = 0.0
+            num_waiting = 0.0
+            
+            for line in content.splitlines():
+                if line.startswith("vllm:num_requests_running") or line.startswith("vllm_num_requests_running"):
+                    parts = line.rsplit(" ", 1)
+                    if len(parts) == 2:
+                        num_running = float(parts[1])
+                elif line.startswith("vllm:num_requests_waiting") or line.startswith("vllm_num_requests_waiting"):
+                    parts = line.rsplit(" ", 1)
+                    if len(parts) == 2:
+                        num_waiting = float(parts[1])
+            
+            if num_running > 0 or num_waiting > 0:
+                logging.info(f"[IGNITION] Tier 2: Active requests detected (running={num_running}, waiting={num_waiting}). Keeping awake.")
+                return True
+                
+            logging.info("[IGNITION] Tier 2: No running or waiting requests in vLLM. Engine is idle.")
+            return False
+            
+        except Exception as e:
+            logging.warning(f"[IGNITION] Tier 2 metrics check failed: {e}. Assuming active to be safe.")
+            return True
+
     async def continuous_burn_loop(self):
         """[FEAT-266] Periodic Maintenance (ALARM tasks)."""
         import datetime
@@ -361,7 +434,12 @@ class IgnitionManager:
                 # 1. AFK Hibernation (Task 4.1)
                 idle_time = time.time() - self.last_activity_time
                 if idle_time > 120 and self.status.state == "OPERATIONAL":
-                    await self.stop_lab(reason="AFK_TIMEOUT")
+                    if await self.is_engine_active():
+                        # Reset idle timer because engine is active
+                        self.last_activity_time = time.time()
+                        logging.info("[IGNITION] Resetting idle timer due to engine activity.")
+                    else:
+                        await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
                 is_window = (2 <= now.hour < 4)
