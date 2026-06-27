@@ -7,14 +7,14 @@ import uuid
 import random
 import aiohttp
 from aiohttp import web
-import aiohttp_cors
 import sys
 import subprocess
 
 # Add src to path
-LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if LAB_DIR not in sys.path:
-    sys.path.append(LAB_DIR)
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+SRC_DIR = os.path.join(LAB_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.append(SRC_DIR)
 
 from v5.common.types import IntentEvent, LabStatus, LAB_VERSION  # noqa: E402
 from v5.common.residents import ResidentManager  # noqa: E402
@@ -208,8 +208,10 @@ class FoyerRouter:
             web.post('/status_update', self.handle_status_update),
             web.post('/trigger_task', self.handle_trigger_task),
             web.post('/release_nodes', self.handle_release_nodes),
+            web.post('/train', self.handle_train_rest),
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
+            web.get('/logs', self.handle_logs),
             web.get('/sys_metrics', self.handle_sys_metrics),    # [FEAT-T20.5] Live graph feed
             web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
             web.get('/benchmarks_kpi', self.handle_benchmarks_kpi),  # [FEAT-T21.2]
@@ -237,6 +239,68 @@ class FoyerRouter:
         except Exception as e:
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
+    async def handle_train_rest(self, request):
+        """REST endpoint to trigger adapter training."""
+        try:
+            data = await request.json()
+            adapter_name = data.get("adapter")
+            steps = data.get("steps", 60)
+            
+            if not adapter_name:
+                return web.json_response({"status": "ERROR", "message": "Missing adapter name"}, status=400)
+            
+            adapters = [a.strip() for a in adapter_name.split(",")]
+            logger.info(f"[FORGE] Initiating sequenced batch training for: {adapters} ({steps} steps each).")
+            
+            results = []
+            for target in adapters:
+                clean_target = target
+                if clean_target.endswith("_v1") or clean_target.endswith("_v2"):
+                    clean_target = clean_target.rsplit("_", 1)[0]
+                
+                dataset_map = {
+                    "lab_history": os.path.join(SRC_DIR, "forge/expertise/lab_history_training.jsonl"),
+                    "cli_voice": os.path.join(SRC_DIR, "forge/expertise/cli_voice_training.jsonl"),
+                    "lab_sentinel": os.path.join(SRC_DIR, "forge/expertise/lab_sentinel_training.jsonl"),
+                    "cli_voice_v1": os.path.join(SRC_DIR, "forge/expertise/cli_voice_training.jsonl"),
+                    "shadow_brain_v2": os.path.join(SRC_DIR, "forge/expertise/lab_history_training.jsonl"),
+                    "lab_history_v1": os.path.join(SRC_DIR, "forge/expertise/lab_history_training.jsonl"),
+                }
+                dataset = dataset_map.get(target) or dataset_map.get(clean_target)
+                output_dir = f"/speedy/models/adapters/{target}"
+                
+                if not dataset or not os.path.exists(dataset):
+                    logger.error(f"[FORGE] Dataset not found for {target} (searched: {dataset})")
+                    results.append({"adapter": target, "status": "missing_dataset"})
+                    continue
+                
+                logger.info(f"[FORGE] Training {target} using {dataset}...")
+                
+                cmd = [sys.executable, os.path.join(SRC_DIR, "forge/train_expert.py"), dataset, output_dir, str(steps)]
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd, 
+                        stdout=asyncio.subprocess.PIPE, 
+                        stderr=asyncio.subprocess.PIPE,
+                        cwd=SRC_DIR
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode == 0:
+                        logger.info(f"[FORGE] {target} completed successfully.")
+                        results.append({"adapter": target, "status": "complete"})
+                    else:
+                        logger.error(f"[FORGE] {target} failed: {stderr.decode()}")
+                        results.append({"adapter": target, "status": "failed", "error": stderr.decode()})
+                except Exception as ex:
+                    logger.error(f"[FORGE] Subprocess error training {target}: {ex}")
+                    results.append({"adapter": target, "status": "error", "message": str(ex)})
+            
+            return web.json_response({"status": "success", "results": results})
+        except Exception as e:
+            logger.error(f"Train handler error: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
     async def handle_trigger_task(self, request):
         """REST endpoint to trigger one-off background tasks."""
         try:
@@ -255,16 +319,23 @@ class FoyerRouter:
                 if lab_node:
                     asyncio.create_task(lab_node.call_tool("build_semantic_map"))
             elif task == "forge":
-                # [FEAT-217] Sequenced Batch Forge
-                archive_node = self.residents.residents.get("archive")
-                if archive_node:
-                    for target in ["cli_voice_v1", "shadow_brain_v2", "lab_history_v1"]:
-                        asyncio.create_task(archive_node.call_tool("lab_train_adapter", {"adapter_name": target, "steps": 60}))
+                # [FEAT-217] Sequenced Batch Forge - bypass MCP catch-22
+                async def _run_batch_forge():
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            payload = {"adapter": "cli_voice_v1,shadow_brain_v2,lab_history_v1", "steps": 60}
+                            url = f"http://127.0.0.1:{PORT}/train"
+                            async with session.post(url, json=payload, timeout=3600) as r:
+                                logger.info(f"[TRIGGER] Sequenced Batch Forge completed. Status: {r.status}")
+                    except Exception as e:
+                        logger.error(f"[TRIGGER] Sequenced Batch Forge failed: {e}")
+                asyncio.create_task(_run_batch_forge())
             elif task == "eval":
                 # [FEAT-T21.3] BKM-032: Background benchmark eval run
                 tag = data.get("tag", "baseline")
                 eval_script = os.path.join(LAB_DIR, "src", "run_evals.py")
-                import subprocess, sys
+                import subprocess
+                import sys
                 subprocess.Popen(
                     [sys.executable, eval_script, "--tag", tag, "--engine", "vllm"],
                     cwd=os.path.join(LAB_DIR, "src"),
@@ -343,6 +414,33 @@ class FoyerRouter:
 
     async def handle_status(self, request):
         return web.json_response(self.status.to_dict())
+
+    async def handle_logs(self, request):
+        """
+        [FEAT-309.3] Serve specific log trace files or the main log.
+        """
+        try:
+            target_file = request.rel_url.query.get('file')
+            if target_file:
+                # Sanitize: No path traversal
+                safe_name = os.path.basename(target_file)
+                log_path = os.path.join(LAB_DIR, 'logs', safe_name)
+                if os.path.exists(log_path):
+                    with open(log_path, 'r') as f:
+                        return web.Response(text=f.read())
+                return web.Response(status=404, text=f'Log {safe_name} not found.')
+                
+            # If no file requested, serve last 5000 chars of attendant.log or similar
+            attendant_log = os.path.join(LAB_DIR, 'logs', 'attendant.log')
+            if not os.path.exists(attendant_log):
+                # Check workspace parent folder
+                attendant_log = os.path.expanduser('~/Dev_Lab/attendant.log')
+            if os.path.exists(attendant_log):
+                with open(attendant_log, 'r') as f:
+                    return web.Response(text=f.read()[-5000:])
+            return web.Response(status=404, text='No log file found.')
+        except Exception as e:
+            return web.Response(status=500, text=str(e))
 
     async def handle_sys_metrics(self, request):
         """
