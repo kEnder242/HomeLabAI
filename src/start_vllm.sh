@@ -26,7 +26,7 @@ export VLLM_USE_V1=${VLLM_USE_V1:-0}
 export VLLM_USE_FLASHINFER_BFLOAT16=0
 export VLLM_USE_FLASHINFER_SAMPLER=0
 
-LORA_LEGACY="/speedy/models/adapters/llama_legacy"
+LORA_LEGACY="/speedy/models/adapters"
 LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
 
 # [Task 17.2] Architecture Check: Only load Llama LoRAs if using a Llama base
