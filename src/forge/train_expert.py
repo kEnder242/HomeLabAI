@@ -1,6 +1,8 @@
 import os
 import sys
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 try:
     from unsloth import FastLanguageModel
     import torch
@@ -81,8 +83,8 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
         dataset_num_proc = 2,
         packing = False,
         args = TrainingArguments(
-            per_device_train_batch_size = 2,
-            gradient_accumulation_steps = 4,
+            per_device_train_batch_size = 1,
+            gradient_accumulation_steps = 8,
             warmup_steps = 5,
             max_steps = steps,
             learning_rate = 2e-4,
@@ -94,6 +96,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
             lr_scheduler_type = "linear",
             seed = 3407,
             output_dir = "outputs",
+            report_to = "none",
         ),
     )
 
