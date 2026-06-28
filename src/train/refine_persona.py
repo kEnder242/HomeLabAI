@@ -50,6 +50,7 @@ def get_trainer(model, tokenizer, dataset, output_dir):
             lr_scheduler_type = "linear",
             seed = 3407,
             output_dir = output_dir,
+            report_to = "none",
         ),
     )
 
@@ -103,9 +104,9 @@ def execute_burn(target_persona, base_model, dataset_path):
         )
 
         formatted_path = format_dataset(dataset_path, target_persona)
-        if not formatted_path: return
+        if not formatted_path:
+            return
 
-        from datasets import load_dataset
         dataset = load_dataset("json", data_files=formatted_path, split="train")
 
         output_dir = os.path.join(ADAPTER_DIR, f"{target_persona.lower().replace(' ', '_')}_v2")

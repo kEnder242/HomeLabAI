@@ -42,8 +42,8 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
     else:
         # System hint to force the persona
         dream_query = (
-            "[ME] [DREAM_PASS]: Act as the Lead Engineer. Provide a concise, professional, "
-            f"and technically accurate response to this directive: '{prompt}'"
+            "[ME] [DREAM_PASS]: Respond as a highly skilled engineering peer. Provide a concise, "
+            f"friendly, and technically precise answer to: '{prompt}'"
         )
 
     message = {"type": "text_input", "content": dream_query}
