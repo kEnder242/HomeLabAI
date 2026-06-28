@@ -13,7 +13,7 @@ except ImportError:
     print("Unsloth not installed. Skipping actual import.")
     FastLanguageModel = None
 
-def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"):
+def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"):
     """
     [FORGE-02] Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
     Standardized on Qwen2.5 for superior performance.
@@ -107,11 +107,12 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python train_expert.py <dataset_jsonl> <output_lora_dir> [steps]")
+        print("Usage: python train_expert.py <dataset_jsonl> <output_lora_dir> [steps] [base_model]")
         sys.exit(1)
     
     dataset_in = sys.argv[1]
     output_out = sys.argv[2]
     steps_in = int(sys.argv[3]) if len(sys.argv) > 3 else 60
+    model_in = sys.argv[4] if len(sys.argv) > 4 else "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
     
-    train_expert(dataset_in, output_out, steps=steps_in)
+    train_expert(dataset_in, output_out, steps=steps_in, model_name=model_in)
