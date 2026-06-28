@@ -467,7 +467,8 @@ class IgnitionManager:
                         await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
-                is_window = (2 <= now.hour < 4)
+                disable_lock_path = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/disable_induction.lock"
+                is_window = (2 <= now.hour < 4) and not os.path.exists(disable_lock_path)
                 if is_window and self.last_induction_date != today:
                     # [FEAT-289] Atomic Induction: Mark today as started
                     self.last_induction_date = today
@@ -477,6 +478,16 @@ class IgnitionManager:
                     # Try to acquire silicon mutex
                     if self._acquire_vram_lock():
                         try:
+                            # [Task 1.2] Pre-Forge Dataset Refresh
+                            logging.info("[ALARM] Step 0: Pre-Forge Dataset Refresh...")
+                            self.record_pager("Step 0: Pre-Forge Dataset Refresh [START]", source="Induction")
+                            
+                            # Sequential dataset prep runs
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/extract_gemini_prompts.py")], env=os.environ.copy())
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/refine_prompts.py")], env=os.environ.copy())
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/dream_voice.py")], env=os.environ.copy())
+                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/build_lora_datasets.py")], env=os.environ.copy())
+                            
                             # Step 1: Nightly Recruiter
                             logging.info("[ALARM] Step 1: Nightly Recruiter...")
                             self.record_pager("Step 1: Nightly Recruiter [START]", source="Induction")
