@@ -63,8 +63,12 @@ def clean_json_output(text: str) -> list:
         end = text_clean.rfind("]")
         if start != -1 and end != -1:
             json_str = text_clean[start:end+1]
-            return json.loads(json_str)
-        return json.loads(text_clean)
+        else:
+            json_str = text_clean
+            
+        # Clean invalid single quote escapes that cause json parse errors
+        json_str = re.sub(r"\\'", "'", json_str)
+        return json.loads(json_str)
     except Exception as e:
         print(f"Failed to parse JSON content: {e}. Raw: {repr(text)}")
         return []
