@@ -73,11 +73,15 @@ class CognitiveHub:
     def _wrap_residents_for_sandbox(self):
         """[Task 1.3] Wraps call_tool and list_tools on all resident sessions to enforce sandbox."""
         for name, session in self.residents.items():
-            if not hasattr(session, "_original_call_tool"):
-                session._original_call_tool = session.call_tool
-                session._original_list_tools = session.list_tools
+            # Handle mock objects in test environments
+            is_mock = "Mock" in type(session).__name__
+            
+            if is_mock:
+                # Store original methods if not already stored
+                if not hasattr(session, "_original_call_tool"):
+                    session._original_call_tool = session.call_tool
+                    session._original_list_tools = session.list_tools
                 
-                # Define wrapped versions
                 async def wrapped_call_tool(tool_name, arguments=None, *, session_ref=session, **kwargs):
                     vibe = getattr(self, "current_vibe", "TECHNICAL")
                     if vibe != "META":
@@ -94,9 +98,34 @@ class CognitiveHub:
                         if hasattr(resp, "tools"):
                             resp.tools = [t for t in resp.tools if not any(kw in t.name.lower() for kw in blocked_keywords)]
                     return resp
-                    
+                
                 session.call_tool = wrapped_call_tool
                 session.list_tools = wrapped_list_tools
+            else:
+                if not hasattr(session, "_original_call_tool"):
+                    # Use object.__setattr__ to bypass mock or custom descriptors
+                    object.__setattr__(session, "_original_call_tool", session.call_tool)
+                    object.__setattr__(session, "_original_list_tools", session.list_tools)
+                    
+                    async def wrapped_call_tool(tool_name, arguments=None, *, session_ref=session, **kwargs):
+                        vibe = getattr(self, "current_vibe", "TECHNICAL")
+                        if vibe != "META":
+                            blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                            if any(kw in tool_name.lower() for kw in blocked_keywords):
+                                raise ValueError(f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')")
+                        return await session_ref._original_call_tool(tool_name, arguments, **kwargs)
+                        
+                    async def wrapped_list_tools(*args, session_ref=session, **kwargs):
+                        resp = await session_ref._original_list_tools(*args, **kwargs)
+                        vibe = getattr(self, "current_vibe", "TECHNICAL")
+                        if vibe != "META":
+                            blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                            if hasattr(resp, "tools"):
+                                resp.tools = [t for t in resp.tools if not any(kw in t.name.lower() for kw in blocked_keywords)]
+                        return resp
+                        
+                    object.__setattr__(session, "call_tool", wrapped_call_tool)
+                    object.__setattr__(session, "list_tools", wrapped_list_tools)
 
     async def handle_stream_token(self, data):
         """[FEAT-233.2] Ingests token into session buffers and audits for vetoes."""
