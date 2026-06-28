@@ -66,13 +66,27 @@ def clean_json_output(text: str) -> list:
         else:
             json_str = text_clean
             
-        # Clean invalid backslash-escaped single quotes
+        # Strip all invalid single-quote escapes (e.g. \', \\')
         json_str = json_str.replace("\\'", "'")
+        json_str = json_str.replace("\\\\'", "'")
         
-        # Clean double-escaped sequences that cause JSON errors
+        # Strip other invalid backslash escapes
         json_str = re.sub(r'\\(?![/u"bfnrt])', '', json_str)
         
-        return json.loads(json_str)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            # Fallback: Extract objects using regex
+            objects = re.findall(r'\{\s*"instruction"\s*:\s*".*?"\s*,\s*"output"\s*:\s*".*?"\s*\}', json_str, re.DOTALL)
+            parsed = []
+            for obj in objects:
+                try:
+                    parsed.append(json.loads(obj))
+                except Exception:
+                    pass
+            if parsed:
+                return parsed
+            raise
     except Exception as e:
         print(f"Failed to parse JSON content: {e}. Raw: {repr(text)}")
         return []
