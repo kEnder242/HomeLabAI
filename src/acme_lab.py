@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 import subprocess
@@ -19,7 +18,7 @@ if V5_DIR not in sys.path:
     sys.path.append(V5_DIR)
 
 # [Task 4.2] V5 Foyer Router
-from router import FoyerRouter
+from router import FoyerRouter  # noqa: E402
 
 if __name__ == "__main__":
     import argparse
@@ -52,7 +51,8 @@ if __name__ == "__main__":
             sock.close()
 
         # [FEAT-145] "Unity" Dispatcher: Hub Router
-        router = FoyerRouter(trigger_task=args.trigger_task, mode=args.mode, afk_timeout=args.afk_timeout)
+        disable_ear = args.disable_ear or (args.trigger_task is not None)
+        router = FoyerRouter(trigger_task=args.trigger_task, mode=args.mode, afk_timeout=args.afk_timeout, disable_ear=disable_ear)
         router.run()
     finally:
         ignition_proc.terminate()

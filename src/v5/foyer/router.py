@@ -54,7 +54,8 @@ def get_style_key():
     return "default_key"
 
 class FoyerRouter:
-    def __init__(self, trigger_task=None, mode="SERVICE_UNATTENDED", afk_timeout=300):
+    def __init__(self, trigger_task=None, mode="SERVICE_UNATTENDED", afk_timeout=300, disable_ear=False):
+        self.disable_ear = disable_ear
         # ... existing ...
         if setproctitle:
             setproctitle.setproctitle("acme_foyer_v5")
@@ -380,11 +381,12 @@ class FoyerRouter:
         logger.info(f"[FOYER_BOOT] V5 Foyer Router starting background tasks... (Token: {self.session_token})")
         self.record_pager("Foyer Logic Hub Started.", source="Foyer")
         
-        # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST
-        # Load it preemptively on startup, exempting it from hibernation.
-        # Ensure it gets contiguous memory before vLLM or residents spawn.
-        logger.info("[BOOT] Pre-emptively loading Sensory EarNode...")
-        asyncio.create_task(self.sensory.load())
+        # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST (if enabled)
+        if not self.disable_ear:
+            logger.info("[BOOT] Pre-emptively loading Sensory EarNode...")
+            asyncio.create_task(self.sensory.load())
+        else:
+            logger.info("[BOOT] Sensory EarNode disabled by configuration.")
         
         # [Task 5.2] Execute one-off trigger task if requested
         trigger_task = getattr(self, "trigger_task", None)
