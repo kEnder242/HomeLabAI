@@ -59,6 +59,8 @@ def extract_from_tmp():
                             if isinstance(content, list):
                                 content = " ".join([str(c) for c in content])
                             prompts.append(content)
+        except json.JSONDecodeError:
+            pass
         except Exception as e:
             print(f"Error reading {chat_file}: {e}")
             
@@ -74,11 +76,14 @@ def extract_from_tmp():
                 for line in f:
                     if not line.strip():
                         continue
-                    entry = json.loads(line)
-                    if entry.get("type") == "USER_INPUT" and entry.get("content"):
-                        prompts.append(entry["content"])
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "USER_INPUT" and entry.get("content"):
+                            prompts.append(entry["content"])
+                    except json.JSONDecodeError:
+                        pass
         except Exception as e:
-            print(f"Error reading {agy_file}: {e}. Line content: {repr(line)}")
+            print(f"Error reading {agy_file}: {e}")
             
     return prompts
 
