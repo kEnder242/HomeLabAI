@@ -70,7 +70,10 @@ class BicameralNode:
             except Exception as e:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
-        self.system_prompt = system_prompt
+        self.IDENTITY_BEDROCK = (
+            "[ACME_LAB_TOPOGRAPHY]: Z87-Linux native runtime. Inhabitants: Pinky (local reflex on 2080 Ti), Brain (subconscious RAG engine), Deep Thought (sovereign strategist on remote 4090). A shared whiteboard resides at whiteboard.md. The user is an engineering peer collaborating with the system."
+        )
+        self.system_prompt = self.IDENTITY_BEDROCK + "\n\n" + system_prompt
         self.mcp = FastMCP(name)
         self._last_brain_prime = 0
         self.brain_online = True

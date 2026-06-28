@@ -19,12 +19,7 @@ def _get_telemetry_collector():
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
 
 class CognitiveHub:
-    IDENTITY_BEDROCK = (
-        "[LAB_IDENTITY]: Acme Lab is your digital container (Z87-Linux native). You reside within it. The user is the Lead Engineer who built you.\n"
-        "[TOPOGRAPHY]: 3-Tier Memory in effect. Layer 1 (Diamond): Star artifacts. Layer 2 (Archive): RAG historical logs. Layer 3 (Raw): Direct telemetry (RAPL/MSR).\n"
-        "[ARCHIVAL_MAP]: Archive spans 2005-2024. High-density evidence in [Telemetry: 2019-2024], [Firmware: 2011-2018], [Automation: 2020-2024].\n"
-        "[INHABITANTS]: Pinky (Right Hemisphere - Casual/Triage/STT), Brain (Subconscious - Intuition/Refinement), Deep Thought (Sovereign - Strategic reasoning on 4090).\n"
-    )
+
 
     def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None):
         from collections import defaultdict
@@ -231,7 +226,7 @@ class CognitiveHub:
             elif self.current_interest < 0.3:
                 stance = "\n[STANCE]: INTERFACE (Witty, character-first, high brevity)."
             
-            guidance = self.IDENTITY_BEDROCK + stance
+            guidance = stance
             if behavioral_guidance:
                 guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
             
@@ -409,7 +404,6 @@ class CognitiveHub:
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "intent": {"type": "string", "enum": ["STRATEGIC", "CASUAL", "RECALL"]},
                                 "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
                                 "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META"]},
                                 "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
@@ -419,7 +413,7 @@ class CognitiveHub:
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"}
                             },
-                            "required": ["intent", "addressed_to", "vibe", "domain"]
+                            "required": ["addressed_to", "vibe", "domain"]
                         }
                     }
                 }
@@ -461,7 +455,7 @@ class CognitiveHub:
                 t_parsed = t_clean
                 await self.broadcast({
                     "type": "crosstalk",
-                    "brain": f"[HUB] Triage successful. Intent: {t_parsed.get('intent')}",
+                    "brain": f"[HUB] Triage successful. Vibe: {t_parsed.get('vibe')}",
                     "brain_source": "System",
                     "version": LAB_VERSION
                 })
@@ -473,7 +467,7 @@ class CognitiveHub:
 
         if not t_parsed:
             logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
-            t_parsed = {"intent": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
+            t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
 
         # 2. Routing Phase
         importance = float(t_parsed.get("importance", 0.5))
