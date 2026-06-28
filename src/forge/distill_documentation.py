@@ -66,8 +66,12 @@ def clean_json_output(text: str) -> list:
         else:
             json_str = text_clean
             
-        # Clean invalid single quote escapes that cause json parse errors
-        json_str = re.sub(r"\\'", "'", json_str)
+        # Clean invalid backslash-escaped single quotes
+        json_str = json_str.replace("\\'", "'")
+        
+        # Clean double-escaped sequences that cause JSON errors
+        json_str = re.sub(r'\\(?![/u"bfnrt])', '', json_str)
+        
         return json.loads(json_str)
     except Exception as e:
         print(f"Failed to parse JSON content: {e}. Raw: {repr(text)}")
