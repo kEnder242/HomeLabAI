@@ -78,7 +78,7 @@ class CognitiveHub:
             
             if is_mock:
                 # Store original methods if not already stored
-                if not hasattr(session, "_original_call_tool"):
+                if "_original_call_tool" not in session.__dict__:
                     session._original_call_tool = session.call_tool
                     session._original_list_tools = session.list_tools
                 
@@ -102,7 +102,7 @@ class CognitiveHub:
                 session.call_tool = wrapped_call_tool
                 session.list_tools = wrapped_list_tools
             else:
-                if not hasattr(session, "_original_call_tool"):
+                if "_original_call_tool" not in session.__dict__:
                     # Use object.__setattr__ to bypass mock or custom descriptors
                     object.__setattr__(session, "_original_call_tool", session.call_tool)
                     object.__setattr__(session, "_original_list_tools", session.list_tools)
