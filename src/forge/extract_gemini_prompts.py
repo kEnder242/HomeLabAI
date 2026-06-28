@@ -43,10 +43,10 @@ def extract_from_history():
 def extract_from_tmp():
     """Extracts prompts from the local session logs."""
     prompts = []
-    print(f"Scanning {GEMINI_TMP} for sessions...")
+    print(f"Scanning {GEMINI_TMP} for legacy sessions...")
     
     chat_files = glob.glob(str(GEMINI_TMP / "**/chats/*.json"), recursive=True)
-    print(f"Found {len(chat_files)} session files.")
+    print(f"Found {len(chat_files)} legacy session files.")
     
     for chat_file in chat_files:
         try:
@@ -61,6 +61,24 @@ def extract_from_tmp():
                             prompts.append(content)
         except Exception as e:
             print(f"Error reading {chat_file}: {e}")
+            
+    # New AGY Transcript Extraction
+    AGY_BRAIN = Path("/home/jallred/.gemini/antigravity-cli/brain")
+    print(f"Scanning {AGY_BRAIN} for AGY sessions...")
+    agy_files = glob.glob(str(AGY_BRAIN / "**/.system_generated/logs/transcript.jsonl"), recursive=True)
+    print(f"Found {len(agy_files)} AGY transcript files.")
+    
+    for agy_file in agy_files:
+        try:
+            with open(agy_file, 'r') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    entry = json.loads(line)
+                    if entry.get("type") == "USER_INPUT" and entry.get("content"):
+                        prompts.append(entry["content"])
+        except Exception as e:
+            print(f"Error reading {agy_file}: {e}")
             
     return prompts
 
