@@ -78,7 +78,7 @@ def extract_from_tmp():
                     if entry.get("type") == "USER_INPUT" and entry.get("content"):
                         prompts.append(entry["content"])
         except Exception as e:
-            print(f"Error reading {agy_file}: {e}")
+            print(f"Error reading {agy_file}: {e}. Line content: {repr(line)}")
             
     return prompts
 
