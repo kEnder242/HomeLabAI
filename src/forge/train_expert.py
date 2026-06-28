@@ -113,6 +113,23 @@ if __name__ == "__main__":
     dataset_in = sys.argv[1]
     output_out = sys.argv[2]
     steps_in = int(sys.argv[3]) if len(sys.argv) > 3 else 60
-    model_in = sys.argv[4] if len(sys.argv) > 4 else "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+    model_in = sys.argv[4] if len(sys.argv) > 4 else None
+    if not model_in:
+        try:
+            import json
+            config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    cfg = json.load(f)
+                    base = cfg.get("model_manifest", {}).get("unified-base", "")
+                    if "qwen2.5-3b" in base.lower():
+                        model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
+                    elif "llama-3.2-3b" in base.lower():
+                        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+        except Exception:
+            pass
     
+    if not model_in:
+        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+        
     train_expert(dataset_in, output_out, steps=steps_in, model_name=model_in)
