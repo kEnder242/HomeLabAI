@@ -41,8 +41,8 @@ def trigger_pager(message, severity="INFO", source="System"):
             return
 
         data.insert(0, entry)
-        # Keep last 100 for the interleaved dashboard
-        data = data[:100]
+        # Keep last 2000 for the interleaved dashboard
+        data = data[:2000]
         
         atomic_write_json(PAGER_FILE, data)
         
