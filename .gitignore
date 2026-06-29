@@ -33,6 +33,9 @@ logs/forensic_*.json
 
 # [FEAT-151] Transient Telemetry
 logs/trace_*.json
+logs/*.jsonl
+logs/benchmarks.jsonl
+logs/telemetry_ledger.jsonl
 server.log.stale
 round_table.lock
 .venv*/
