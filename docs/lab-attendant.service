@@ -1,0 +1,44 @@
+[Unit]
+Description=Acme Lab Attendant Service
+After=network.target
+
+[Service]
+TimeoutStopSec=30
+KillMode=mixed
+LimitMEMLOCK=infinity
+Environment="LAB_MODE=VLLM"
+Environment="LAB_MODEL=MEDIUM"
+Environment="VLLM_ATTENTION_BACKEND=TRITON_ATTN"
+Environment="NCCL_P2P_DISABLE=1"
+Environment="VLLM_USE_V1=1"
+Environment="LAB_ATTENDANT_ROLE=MASTER"
+Environment="LAB_SKIP_AUDIT=1"
+Environment="THOUGHT_MODEL=llama3.1:8b"
+Environment="LD_LIBRARY_PATH=/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib:$LD_LIBRARY_PATH"
+Environment="PYTHONPATH=/home/jallred/Dev_Lab/HomeLabAI/src:$PYTHONPATH"
+Type=simple
+User=jallred
+Group=jallred
+WorkingDirectory=/home/jallred/Dev_Lab/HomeLabAI
+
+# [Task 5.2] Strict Zombie Cleanup
+# Removed fuser -k as it kills clients like Gemini CLI.
+# Removed pkill -f as it sweeps up unintended processes. Using explicit process names.
+ExecStartPre=-/usr/bin/pkill -9 acme_foyer_v5
+ExecStartPre=-/usr/bin/pkill -9 acme_ignition_
+ExecStartPre=-/usr/bin/pkill -9 acme_node_
+ExecStartPre=-/usr/bin/rm -f /home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/foyer_queue.jsonl
+ExecStartPre=-/usr/bin/rm -f /home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json
+ExecStartPre=-/usr/bin/rm -f /home/jallred/Dev_Lab/HomeLabAI/run/vllm.pid
+ExecStartPre=-/usr/bin/rm -f /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log
+
+# Boot V5 Transition Shim (Spawns Foyer Router and Ignition Manager)
+ExecStart=/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3 /home/jallred/Dev_Lab/HomeLabAI/src/acme_lab.py 
+
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/jallred/Dev_Lab/attendant.log
+StandardError=append:/home/jallred/Dev_Lab/attendant.log
+
+[Install]
+WantedBy=multi-user.target
