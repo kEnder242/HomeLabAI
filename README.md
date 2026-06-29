@@ -2,17 +2,15 @@
 
 HomeLabAI is a federated cognitive sandbox and archive refinement laboratory. It operates as a distributed agentic workspace—integrating Linux hosts, Windows compute nodes, and historical knowledge bases—to facilitate low-latency research, semantic memory extraction, and automated telemetry analysis.
 
----
-
 ## The High-Level Vision: Bicameral Mind Topology
 
 The workspace coordinates cognitive tasks across specialized functional nodes, modeled after the split-brain architecture of the Bicameral Mind:
 
-*   **The Heart (EarNode):** The invariant sensory core. Powered by NVIDIA NeMo (STT), it provides always-on audio capture and mono 16kHz PCM streaming. Sensing is the invariant constant of the lab; reasoning is secondary.
 *   **The Right Hemisphere (Pinky):** The Pragmatic Foil. Grounded in physical telemetry, presence-awareness, and immediate user interaction. This layer manages the "Vibe"—evaluating hardware limitations (VRAM, thermals) using AYPWIP-style literalism.
-*   **The Left Hemisphere (The Brain):** The Sovereign Architect. Strategic, abstract, and logical. Resident on the compute node, this layer manages the "Truth"—handling long-term archive retrieval, complex code generation, and strategic reasoning (powered by Qwen 27B / Unified 3B tiers).
+*   **The Left Hemisphere (The Brain):** The Sovereign Architect. Strategic, abstract, and logical. Resident on the compute node, this layer manages the "Truth"—handling long-term archive retrieval, complex code generation, and strategic reasoning.
 *   **The Systems Guardian (Lab Attendant):** The lifecycle manager. A systemd-managed daemon that controls engine states, manages the VRAM hardware mutex, and prevents hardware thrashing.
-*   **The Structural Registrar (Architect):** The BKM Librarian responsible for formatting technical derivations into the structured BKM Protocol format.
+*   **The Sensory Modality (EarNode):** Always-on audio ears powered by NVIDIA NeMo (STT). Provides audio capture and mono 16kHz PCM streaming.
+*   **The Structural Registrar (Architect):** BKM Librarian responsible for formatting technical derivations into the structured BKM Protocol format.
 
 ### Operational Philosophy: Multi-Modal Stream Separation
 *   **Input Interface:** Optimized for fast, multi-modal command ingestion (both voice and text terminal inputs).
@@ -29,6 +27,22 @@ Developing HomeLabAI using a co-pilot (AGY/Gemini) forms a self-refining, meta-a
 2.  **The DNA Matrix (Portfolio_Dev/FeatureTracker.md):** Records active technical capabilities and "Scars"—retrospectives of past engineering failures and hardware constraints (e.g., vLLM BF16 initialization deadlocks on Turing compute). This serves as a durable context anchor that prevents the agent from repeating past regressions.
 3.  **The Instrument Ledger (docs/DIAGNOSTIC_SCRIPT_MAP.md):** Catalogues every validation script and test harness, allowing the agent to run verification cycles (such as test_intent_recall.py for semantic intent or test_sandbox.py for tool isolation) before committing logic.
 4.  **The Physical Floor (docs/LAB_INFRASTRUCTURE.md):** Tracks hardware mounts, CUDA drivers, absolute paths, and port mappings.
+
+---
+
+## Environment & Model Topology
+
+HomeLabAI distributes tasks across co-equal nodes based on physical hardware capacities:
+
+### 1. Orchestration Host (z87-Linux)
+*   **Hardware:** NVIDIA RTX 2080 Ti (11GB VRAM, Turing Compute 7.5 architecture).
+*   **Constraint:** Turing lacks native `bfloat16` hardware execution units. Running BF16 models on vLLM's custom kernels causes silent driver-level deadlocks.
+*   **Unified Base Model:** Standardized on **Llama-3.2-3B-AWQ** running in vLLM. Swapping resident node personas (Pinky, Brain, Librarian, Architect) is handled dynamically via low-overhead LoRA adapters. This shared footprint takes up only ~2.5GB of VRAM, leaving KV cache headroom and space for NeMo STT (EarNode).
+*   **Fallback Engine:** Gemma 2 2B is relegated to local Ollama because Ollama natively handles the BF16-to-FP16 casting gracefully on Turing without deadlocking.
+
+### 2. Compute Node (KENDER - 192.168.1.26)
+*   **Hardware:** Windows workstation running a high-power RTX 4090.
+*   **Model Residency:** Queries to KENDER's Ollama endpoint do not specify a model name, allowing the engine to leverage whatever model is currently resident in VRAM (typically **omnicoder**) to prevent context reloading and VRAM thrashing overhead.
 
 ---
 
@@ -54,10 +68,9 @@ HomeLabAI maps academic literature directly to operational code modules (documen
 
 ---
 
-## Project State & Gem Restoration
+## Project State
 
-*   **Version 4.1 (Active):** Standardized on Llama-3.2-3B-AWQ as the Unified Base Model. Implemented Monolingual Squeeze for VRAM efficiency and dynamic sandbox tool isolation.
-*   **Gems Restoration Plan (docs/RETROSPECTIVE_AWAKENING_v4.9.md):** Recovering uncommitted logic "Gems" from the log forensics, such as the VRAM Heartbeat (sliding-window load monitoring for graceful model dimming) and Shadow Dispatch (background inference during user typing).
+*   **Version 4.1 (Active):** Standardized on Llama-3.2-3B-AWQ as the Unified Base Model with multi-LoRA switching. Implemented dynamic sandbox tool isolation.
 *   **Version 4.0:** Implemented the Resilience Downshift Ladder (vLLM -> Ollama -> Downshift -> Suspend) for hardware multi-tenancy.
 *   **Version 3.5:** Standardized asynchronous dispatch and VRAM guard controls.
 *   **January 2026:** Rebranded to HomeLabAI; introduced the Bicameral Mind split.
