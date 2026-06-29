@@ -206,6 +206,7 @@ class FoyerRouter:
             web.get('/hub', self.handle_websocket),
             web.post('/inject', self.handle_rest_inject),
             web.post('/stream_ingest', self.handle_stream_ingest),
+            web.post('/telemetry_ingest', self.handle_telemetry_ingest),
             web.post('/status_update', self.handle_status_update),
             web.post('/trigger_task', self.handle_trigger_task),
             web.post('/release_nodes', self.handle_release_nodes),
@@ -674,6 +675,30 @@ class FoyerRouter:
             return web.Response(status=200)
         except Exception as e:
             logger.error(f"Stream ingest error: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
+
+    async def handle_telemetry_ingest(self, request):
+        """[FEAT-T20.3] Ingests metrics from decoupled resident nodes and appends to ledger."""
+        try:
+            data = await request.json()
+            if self.cognitive and self.cognitive._tel_collector:
+                from infra.telemetry_collector import TelemetrySample
+                # Scrape raw GPU info from DCGM first to enrich
+                sample = self.cognitive._tel_collector.snapshot(
+                    node=data.get("node", ""),
+                    request_id=data.get("request_id", "default")
+                )
+                sample.ttft_ms = data.get("ttft_ms", 0.0)
+                sample.total_tokens = data.get("total_tokens", 0)
+                sample.duration_s = data.get("duration_s", 0.0)
+                sample.engine_type = data.get("engine_type", "")
+                sample.model = data.get("model", "")
+                sample.enrich_economics()
+                self.cognitive._tel_collector.write_ledger(sample)
+                logger.info(f"[TEL INGEST] Logged telemetry for {sample.node} | TTFT={sample.ttft_ms}ms")
+            return web.Response(status=200)
+        except Exception as e:
+            logger.error(f"Telemetry ingest error: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def enqueue_intent(self, query, source, request_id=None):

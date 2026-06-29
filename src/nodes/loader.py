@@ -117,7 +117,7 @@ class BicameralNode:
             with redirect_stdout(sys.stderr):
                 # Pass sampling parameters for small model stability
                 # [FEAT-339] Use LoRA by default, but allow override for stability
-                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools, response_format=response_format):
+                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools, response_format=response_format, request_id=request_id):
                     full_response += token
                     if stream_source:
                         self._broadcast_token(token, stream_source, request_id=request_id)
@@ -501,6 +501,27 @@ class BicameralNode:
                 })
             except Exception as e:
                 logging.debug(f"[{self.name}] Telemetry emit failed: {e}")
+
+        # HTTP POST to Foyer Router for decoupled processes
+        payload = {
+            "node": self.name,
+            "request_id": request_id,
+            "ttft_ms": round(ttft_ms, 2),
+            "total_tokens": total_tokens,
+            "duration_s": round(duration_s, 3),
+            "engine_type": engine_type,
+            "model": model,
+        }
+
+        def _send_http():
+            try:
+                import requests
+                requests.post("http://localhost:8765/telemetry_ingest", json=payload, timeout=1.0)
+            except Exception:
+                pass
+
+        import threading
+        threading.Thread(target=_send_http, daemon=True).start()
 
     async def _stream_vllm(self, url, payload):
         """[FEAT-233] vLLM token generator."""
