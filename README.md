@@ -1,88 +1,76 @@
-# HomeLabAI: A Distributed Voice-Native Ecosystem (v4.1)
+# HomeLabAI: A Bicameral Agentic Workspace & Research Playground
 
-**HomeLabAI** is a proactive, voice-first AI ecosystem designed for the modern home lab. It functions as a distributed agentic partner—integrating Linux servers, Windows workstations, and personal knowledge bases—to act as a highly specialized, context-aware "Jarvis."
+HomeLabAI is a federated cognitive sandbox and archive refinement laboratory. It operates as a distributed agentic workspace—integrating Linux hosts, Windows compute nodes, and historical knowledge bases—to facilitate low-latency research, semantic memory extraction, and automated telemetry analysis.
 
-## 🔭 The High-Level Vision
-The project is built on the philosophy that a personal AI should be a synthesis of four distinct technical roles, coordinated by a sentient sentinel:
+## The High-Level Vision: Bicameral Mind Topology
 
-*   **The Sensory Lead (EarNode):** Powered by **NVIDIA NeMo (STT)**, it provides always-on listening. It is loaded first to prevent memory fragmentation, though it may be unloaded in future resource-priority scenarios.
-*   **Lab:** The **Environmental Sentinel**. Monitors the "4th Wall" (Hardware vitals, Silicon limits) and coordinates the hemispheres.
-*   **Pinky:** The **Physicality Auditor (Foil)**. Grounds strategic derivations in hardware reality (VRAM, Thermals) using AYPWIP-style literalism.
-*   **Brain:** The **Sovereign Architect (4090)**. High-fidelity reasoning and archive synthesis using the Qwen 27B Ultra tier.
-*   **Architect:** The **Structural Registrar**. Resident BKM Librarian responsible for high-density formatting of derivations into the BKM Protocol [v3.0] format.
+The workspace coordinates cognitive tasks across specialized functional nodes:
 
-### The "Talk & Read" Philosophy
-*   **Voice Input:** Optimized for speed and natural brainstorming.
-*   **Text Output:** Designed for rapid scanning and information density.
-*   **The Loop:** A tight, low-latency feedback loop that facilitates seamless collaboration between human and machine.
+*   **The Sovereign Brain:** Resident on the high-power compute node. Responsible for strategic reasoning, long-term archive retrieval, and complex code generation (powered by Qwen 27B / Unified 3B tiers).
+*   **The Pragmatic Foil (Pinky):** Local response node resident on the validation host. Responsible for grounding strategic assertions in physical telemetry (VRAM limits, thermals) using AYPWIP-style literalism.
+*   **The Systems Guardian (Lab Attendant):** Systemd-managed lifecycle daemon. Controls engine states, manages the VRAM hardware mutex, and prevents resource thrashing.
+*   **The Sensory Modality (EarNode):** Optional voice-input interface powered by NVIDIA NeMo (STT). Provides always-on audio capture and mono 16kHz PCM streaming.
+*   **The Structural Registrar (Architect):** BKM Librarian responsible for formatting technical derivations into the structured BKM Protocol format.
 
----
-
-## 🏗️ The Acme Lab Model: Architecture
-HomeLabAI employs the **Bicameral Mind** pattern—an asynchronous dispatch model that distributes cognitive load across specialized nodes.
-
-### 1. The Lab Attendant (Bilingual V2)
-*   **Role:** Lifecycle management and hardware monitoring.
-*   **Dual-Protocol:** Supports **REST (:9999)** for systemd compatibility and **MCP** for native Agentic tool integration.
-*   **VRAM Guard:** Detects "Phone Rings" (Socket activity) and "Alarm Clocks" (Scheduled tasks) to manage VRAM. 
-*   **Resource Priority:** Ready to issue SIGTERM to AI engines if non-AI tasks (Games/Transcodes) request the silicon.
-
-### 2. The Communication Hub (Corpus Callosum)
-*   **Role:** The **Hub**. An asynchronous bridge managing multiple interjective streams:
-    *   **The "Unified" Mind:** vLLM-powered state where all resident nodes share the **Unified 3B Base Model** footprint.
-    *   **Sentinel Mode:** Proactive Brain interjections based on **Contextual Worthiness** (Amygdala v3) rather than brittle keywords.
-    *   **Resilience:** Native NVML telemetry enforcing the **Resilience Ladder** (vLLM -> Ollama -> Downshift -> Suspend).
-    *   **The Nightly Recruiter:** Scheduled "Alarm Clock" task matching job openings against the 18-year archive and 3x3 CVT.
-
-### 3. Operational Protocols (Laws of the Lab)
-*   **The Montana Protocol:** Mandatory logger isolation. All resident nodes must use `reclaim_logger()` after importing heavy libraries to prevent stdout/stderr hijacking.
-*   **The BKM Protocol:** All technical reports and achievement logs must follow the **Execution / Validation / Scars** format to maintain high-density information pedigree.
+### Operational Philosophy: Multi-Modal Stream Separation
+*   **Input Interface:** Optimized for fast, multi-modal command ingestion (both voice and text terminal inputs).
+*   **Output Delivery:** Optimized for high-density, rapidly scannable text outputs.
+*   **Reasoning Loop:** A tight, low-latency feedback loop ensuring human control over the autonomous synthesis cycles.
 
 ---
 
-## 📜 Research & Ledger
-Refer to internal documentation for technical deep-dives:
-*   **[Bicameral DNA Ledger](../Portfolio_Dev/FeatureTracker.md):** The God-View of active technical capabilities.
-*   **[Bicameral Dispatch](../Portfolio_Dev/docs/BICAMERAL_DISPATCH.md):** The "Soul" and Persona Architecture.
-*   **[Observational Memory](../Portfolio_Dev/docs/RESEARCH_NOTES.md):** Research notes on the transition from RAG to state-based world models.
-*   **[vLLM Integration](docs/plans/VLLM_INTEGRATION_PLAN.md):** The iterative path to high-throughput reasoning.
-*   **[Resurrection Retrospective](docs/RETROSPECTIVE_AWAKENING_v4.9.md):** The "Lost Gems" recovery log and restoration plan.
-*   **Collaborative Workspace:** Unified Diff-based editing via the `patch_file` tool.
-*   **Human Priority:** Typing collision awareness suppresses agent tics during active work.
-*   **Manual Save:** The `💾 SAVE` event triggers a hemispheric "vibe check" on user edits.
+## Portfolio Integration & Static Synthesis
 
-### 4. The Archives (Memory)
-*   **Neural Pedigree Recall:** Driven by LoRA-hardened weights encoding 18 years of technical history directly into the model's neurons.
-*   **Research Goal: Observational Memory:** Transitioning from RAG lookup to a state-based "World Model" summarized in `compressed_history.json`.
-*   **Adaptive Caching:** Semantic cache for high-frequency reasoning results.
+The HomeLabAI execution environment coordinates with the static portfolio repository (Portfolio_Dev):
+
+*   **Static Airlock:** The public gateway (www.jason-lab.dev) hosted on GitHub Pages, linking securely to Zero Trust subdomains.
+*   **The Notes Dashboard (notes.jason-lab.dev):** Hosted locally on port 9001 and secured via Cloudflare Access. Provides unified navigation across the Career Timeline, Career Map, and search indexes.
+*   **WebSocket Intercom:** A browser-based web panel hosted on the static notes site that initiates secure, real-time WebSocket handshakes back to the local Foyer Router.
 
 ---
 
-## 🚀 Getting Started
+## Architectural Layout
 
-### 1. Environment Topology
-*   **Orchestration Node (Z87-Linux):** Manages STT (NeMo), Pinky, and the Lab Attendant.
-*   **Inference Node (Windows 4090):** High-power reasoning host running Ollama/vLLM.
+HomeLabAI distributes tasks across three core components:
 
-### 2. Execution
-The system is managed by the Lab Attendant. Use the native `acme_attendant` MCP tools:
+### 1. The Lab Attendant (SERVICE_UNATTENDED Mode)
+*   **Role:** Node manager and hardware guardian.
+*   **Dual-Protocol Interface:** Exposes REST endpoints for systemd control and MCP protocols for agentic tool integration.
+*   **VRAM Mutex:** Coordinates VRAM reservation, suspending vLLM instances during heavy gaming/rendering tasks, and enforcing a 60-second quiescence window.
+
+### 2. The Foyer Router (Corpus Callosum)
+*   **Role:** Asynchronous WebSocket routing bridge.
+*   **Unified Footprint:** Hosts multi-LoRA adapters on top of a single base model (Llama-3.2-3B-AWQ), optimizing the 11GB VRAM budget.
+*   **Sentinel Triage:** Routes queries based on semantic vibe classification (TECHNICAL, CASUAL, HISTORICAL, META) and restricts tool availability dynamically.
+
+### 3. Operational Protocols
+*   **The Montana Protocol:** Logger reclamation. All nodes must invoke `reclaim_logger()` to prevent STDOUT hijacking by third-party imports.
+*   **The BKM Protocol:** Standardization format for engineering playbooks (Execution, Validation, Scars).
+
+---
+
+## Environment Topology
+
+*   **Orchestration Host (z87-Linux):** Native local runner managing the Lab Attendant, Foyer Router, and local resident nodes (Pinky, Lab, Archive).
+*   **Compute Node (192.168.1.26):** Remote Windows host running high-throughput vLLM and Ollama inference instances.
+
+### Getting Started
+
+Management is mediated by the Lab Attendant service:
+
 ```bash
-# Verify the mind is resident
+# Verify process liveness
 acme_attendant lab_heartbeat
 
-# Start the mind (Unified 3B Base)
+# Boot the unified inference engine
 acme_attendant lab_start
 ```
 
-### 3. Client Access
-Access the **Web Intercom** via the Portfolio dashboard (port 9001). 
-Features multi-panel routing: **Pinky Console** (Gateway) and **Brain Insight** (Strategic).
-
 ---
 
-## 📜 Project State
-*   **v4.1 (ACTIVE):** Transitioned to **Unified 3B Base (Llama 3.2 / Qwen 2.5)**. Gemma 2 2B tabled due to Turing BF16 hardware incompatibility. Implemented **Monolingual Squeeze** [FEAT-166] for VRAM efficiency.
-*   **v4.0:** Implemented the **Resilience Ladder** (Engine Swap & Downshift) for hardware multi-tenancy.
-*   **v3.5.x:** Implemented Asynchronous Dispatch, VRAM Guard, and Patch-based editing.
-*   **v3.4.x:** Stabilized EarNode (NeMo) and resident initialization.
-*   **Jan 2026:** Rebranded as HomeLabAI; refined the "Bicameral Mind" (Acme Lab) architecture.
+## Project State
+
+*   **Version 4.1 (Active):** Standardized on Llama-3.2-3B-AWQ as the Unified Base Model. Implemented Monolingual Squeeze for VRAM efficiency and dynamic sandbox tool isolation.
+*   **Version 4.0:** Implemented the Resilience Downshift Ladder for engine failover.
+*   **Version 3.5:** Standardized asynchronous dispatch and VRAM guard controls.
+*   **January 2026:** Rebranded to HomeLabAI; introduced the Bicameral Mind split.
