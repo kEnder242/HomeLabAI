@@ -11,6 +11,7 @@ def hub():
         trigger_morning_briefing=lambda: None
     )
 
+@pytest.mark.skip(reason="Legacy V4 local router replaced by V5 Lab Triage Node")
 @pytest.mark.asyncio
 async def test_route_expert_domain(hub):
     # Telemetry
