@@ -99,7 +99,7 @@ async def trigger_cycle(cycle_id, p_instance):
                 hub_operational_time = time.time()
 
             # [Task 18.4] Verify Strategic Routing & Substance
-            if len(text) > 100 and ("Brain" in source or "Shadow" in source):
+            if len(text) > 100 and any(x in source.lower() for x in ["brain", "shadow", "thought"]):
                 if brain_responded_time == 0:
                     brain_responded_time = time.time()
                     
