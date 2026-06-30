@@ -36,6 +36,7 @@ class CognitiveHub:
         self.session_buffers = defaultdict(str)
         self.active_intent = None
         self.current_interest = 0.0
+        self._boosted_interest = False
         self.current_topic = "INTERFACE"
         self.last_activity = time.time()
         
@@ -313,6 +314,14 @@ class CognitiveHub:
                 if len(curr_buffer) > last_len:
                     new_tokens = curr_buffer[last_len:]
                     full_text += new_tokens
+                    
+                    # Check for peer-vote interest boosting signals [FEAT-238]
+                    if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                        self._boosted_interest = True
+                        old_interest = self.current_interest
+                        self.current_interest = min(1.0, self.current_interest + 0.3)
+                        logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
+                        
                     yield new_tokens
                     last_len = len(curr_buffer)
                     
@@ -322,6 +331,14 @@ class CognitiveHub:
             if len(curr_buffer) > last_len:
                 new_tokens = curr_buffer[last_len:]
                 full_text += new_tokens
+                
+                # Check for peer-vote interest boosting signals [FEAT-238]
+                if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                    self._boosted_interest = True
+                    old_interest = self.current_interest
+                    self.current_interest = min(1.0, self.current_interest + 0.3)
+                    logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
+                    
                 yield new_tokens
                 
             # If the node didn't stream anything (e.g. error or missing logic), fallback to the full response
@@ -330,6 +347,14 @@ class CognitiveHub:
                     full_text = res.content[0].text
                 else:
                     full_text = str(res)
+                
+                # Check for peer-vote interest boosting signals [FEAT-238]
+                if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                    self._boosted_interest = True
+                    old_interest = self.current_interest
+                    self.current_interest = min(1.0, self.current_interest + 0.3)
+                    logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
+                    
                 yield full_text
             
             self.session_buffers[buf_key] = "" # Clear buffer
@@ -557,17 +582,25 @@ class CognitiveHub:
             # Pass the triage hints as context so Pinky has something to synthesize.
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
 
+        # Initialize dynamic interest boost state
+        self._boosted_interest = False
+
         if "brain" in target or "deep" in target:
-            # Elevate to Sovereign
+            # Elevate to Sovereign (Brain & Deep Thought), bypassing Pinky's first turn
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
-            # Local Response
+            # Local Response (Pinky First Turn)
             async for _ in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
                 tools=[], temperature=0.7, request_id=request_id,
                 behavioral_guidance=behavioral_guidance
             ):
-                pass
+                if shutdown_event and shutdown_event.is_set():
+                    break
+            
+            # Cascade to Sovereign if interest is high
+            if self.current_interest > 0.5:
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
 
     async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default"):
         """
