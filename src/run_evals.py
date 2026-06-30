@@ -41,6 +41,7 @@ DCGM_URL = os.environ.get("DCGM_URL", "http://localhost:9400/metrics")
 VLLM_URL = os.environ.get("VLLM_URL", "http://localhost:8088/v1/chat/completions")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 VLLM_MODEL = os.environ.get("VLLM_MODEL", "unified-base")
+VLLM_MODELS_URL = os.environ.get("VLLM_MODELS_URL", "http://localhost:8088/v1/models")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 
 # BKM-032 Watchdog threshold: alert if avg judge score drops below this
@@ -391,12 +392,69 @@ def _watchdog_check(score: int, prompt_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Model Name Resolution
+# ---------------------------------------------------------------------------
+def _humanize_model_path(path: str) -> str:
+    """Convert a filesystem model path to a human-readable name.
+    e.g. '/speedy/models/llama-3.2-3b-instruct-awq' -> 'Llama-3.2-3B-Instruct-AWQ'
+    """
+    base = os.path.basename(path.rstrip("/"))
+    # Title-case each segment, preserve version numbers and acronyms
+    parts = base.split("-")
+    result = []
+    for p in parts:
+        if p.upper() in ("AWQ", "GPTQ", "GGUF", "FP16", "BF16"):
+            result.append(p.upper())
+        elif re.match(r'^\d', p):  # starts with digit (version/size)
+            result.append(p.upper() if len(p) <= 3 else p)
+        else:
+            result.append(p.capitalize())
+    return "-".join(result)
+
+
+async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str, str]:
+    """Query vLLM /v1/models to get the real model path and quantization.
+    Returns (human_name, quantization).
+    Falls back to VLLM_MODEL env var if the endpoint is unavailable.
+    """
+    try:
+        async with session.get(VLLM_MODELS_URL, timeout=aiohttp.ClientTimeout(total=5)) as r:
+            if r.status == 200:
+                data = await r.json()
+                models = data.get("data", [])
+                if models:
+                    model_id = models[0].get("id", VLLM_MODEL)
+                    human = _humanize_model_path(model_id)
+                    # Detect quantization from the path
+                    lower = model_id.lower()
+                    if "awq" in lower:
+                        quant = "AWQ"
+                    elif "gptq" in lower:
+                        quant = "GPTQ"
+                    elif "gguf" in lower:
+                        quant = "GGUF"
+                    else:
+                        quant = "FP16"
+                    log.info(f"Resolved vLLM model: {human} ({quant}) from {model_id}")
+                    return human, quant
+    except Exception as e:
+        log.warning(f"Could not resolve vLLM model name: {e}. Using fallback.")
+    return VLLM_MODEL, "AWQ"
+
+
+# ---------------------------------------------------------------------------
 # Main Eval Loop
 # ---------------------------------------------------------------------------
 async def run_eval(prompts: list, engine: str = "vllm", dry_run: bool = False) -> list[BenchmarkRun]:
     runs = []
-    quantization = "AWQ" if engine == "vllm" else "unknown"
-    model_name = VLLM_MODEL if engine == "vllm" else OLLAMA_MODEL
+
+    # Resolve the actual model identity at runtime
+    async with aiohttp.ClientSession() as probe:
+        if engine == "vllm":
+            model_name, quantization = await _resolve_vllm_model_name(probe)
+        else:
+            model_name = OLLAMA_MODEL
+            quantization = "Q4_0"  # Ollama default quantization
 
     async with aiohttp.ClientSession() as session:
         for i, p in enumerate(prompts):
