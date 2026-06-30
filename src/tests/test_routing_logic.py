@@ -7,9 +7,8 @@ def hub():
         residents={},
         broadcast_callback=lambda x: None,
         sensory_manager=None,
-        brain_online_callback=lambda: True,
-        get_oracle_signal_callback=lambda x: "signal",
-        monitor_task_with_tics_callback=lambda x: x
+        get_vram_status=lambda: {"total": 11000, "free": 8000},
+        trigger_morning_briefing=lambda: None
     )
 
 @pytest.mark.asyncio
