@@ -564,33 +564,92 @@ class CognitiveHub:
             ):
                 pass
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
-        """Handles Sovereign (4090) leg of the waterfall."""
-        # [Task 2.2] Context Distillation
-        distilled_context = ""
+    async def evaluate_grounding(self, source, text, fuel=0.8, shutdown_event=None, request_id="default"):
+        """
+        [FEAT-227] The Grounding Gate (V5).
+        Restores character balance by prompting Pinky to critique or conversationally 
+        summarize Deep Thought's technical output directly into the Chat pane.
+        """
+        if "pinky" not in self.residents:
+            return
+        
+        logging.info(f"[HUB] Grounding Gate triggered for {source} (Fuel: {fuel}).")
+        cooldown_query = (
+            f"Provide a friendly, casual peer critique and summary of the technical output from {source}. "
+            "Address the user directly. Keep it brief (< 40 words)."
+        )
+        
         try:
-            # Call brain node to summarize archives
-            res = await self.residents["brain"].call_tool("think", {
-                "query": f"Summarize archive context for: {query[:100]} (Triage Domain: {triage.get('domain', 'standard')})",
-                "request_id": request_id,
-                "response_format": {}
+            # We call pinky's think tool to generate the summary
+            res_cool = await self.residents["pinky"].call_tool("think", {
+                "query": cooldown_query, 
+                "context": f"Technical Output: {text}",
+                "request_id": request_id
             })
-            distilled_context = ""
-            if hasattr(res, 'content') and len(res.content) > 0:
-                distilled_context = res.content[0].text
+            
+            cool_text = ""
+            if hasattr(res_cool, 'content') and len(res_cool.content) > 0:
+                cool_text = res_cool.content[0].text
             else:
-                distilled_context = str(res)
+                cool_text = str(res_cool)
+            
+            # Dispatch as terminal summary to the chat window
+            await self.execute_dispatch(cool_text, "Pinky (Summary)", shutdown_event=shutdown_event, final=True)
+        except Exception as e:
+            logging.error(f"[HUB] Grounding Gate failed: {e}")
+
+    async def _distill_sovereign_brief(self, raw_context, request_id="default"):
+        """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
+        if not raw_context or "brain" not in self.residents:
+            return raw_context
+            
+        logging.info("[HUB] Context Precision: Distilling raw RAG into Sovereign Brief...")
+        try:
+            prompt = (
+                "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Sovereign Brief'. "
+                "Extract specific platform anchors, validation targets, and known PECI/MSR scars. "
+                "STRICT: NO ROLEPLAY. PROVIDE ONLY THE TECHNICAL SYNTHESIS."
+            )
+            # Use 'think' to generate distillation
+            res = await self.residents["brain"].call_tool("think", {
+                "query": prompt, 
+                "context": raw_context,
+                "behavioral_guidance": "Distill for Sovereign Thought.",
+                "request_id": request_id
+            })
+            
+            brief = ""
+            if hasattr(res, 'content') and len(res.content) > 0:
+                brief = res.content[0].text
+            else:
+                brief = str(res)
+                
+            logging.info(f"[HUB] Distillation complete ({len(brief)} chars).")
+            return f"[SOVEREIGN_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
         except Exception as e:
             logging.warning(f"[HUB] Context distillation failed: {e}")
+            return raw_context
+
+    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
+        """Handles Sovereign (4090) leg of the waterfall."""
+        # [Task 2.2] Context Precision
+        raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
+        distilled_context = await self._distill_sovereign_brief(raw_context, request_id=request_id)
 
         # Dispatch to Sovereign
         # Side-channel Telemetry Relay handles the broadcast.
         # We just need to exhaust the generator to ensure the node task completes.
+        dt_response = ""
         async for token in self._process_node_stream(
             "thought", query, distilled_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
         ):
+            dt_response += token
             if shutdown_event and shutdown_event.is_set():
                 break
+
+        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/sovereign output in the main chat pane
+        fuel = float(triage.get("importance", 0.8))
+        await self.evaluate_grounding("Deep Thought", dt_response, fuel=fuel, shutdown_event=shutdown_event, request_id=request_id)
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
