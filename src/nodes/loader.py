@@ -64,9 +64,10 @@ class BicameralNode:
         # [FEAT-210] Optimized kernels (Lazy Load)
         if os.environ.get("DISABLE_EAR") != "1":
             try:
-                from liger_kernel.transformers import apply_liger_kernel_to_qwen2
+                from liger_kernel.transformers import apply_liger_kernel_to_qwen2, apply_liger_kernel_to_llama
                 apply_liger_kernel_to_qwen2()
-                logging.debug(f"[{self.name}] Liger kernels applied.")
+                apply_liger_kernel_to_llama()
+                logging.debug(f"[{self.name}] Liger kernels applied (Qwen + Llama).")
             except Exception as e:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
