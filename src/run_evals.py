@@ -423,10 +423,13 @@ async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str,
                 data = await r.json()
                 models = data.get("data", [])
                 if models:
-                    model_id = models[0].get("id", VLLM_MODEL)
-                    human = _humanize_model_path(model_id)
-                    # Detect quantization from the path
-                    lower = model_id.lower()
+                    # Find the base model (parent is null), skip LoRA adapters
+                    base = next((m for m in models if m.get("parent") is None), models[0])
+                    # Use 'root' field for the actual model path, fall back to 'id'
+                    model_path = base.get("root", base.get("id", VLLM_MODEL))
+                    human = _humanize_model_path(model_path)
+                    # Detect quantization from the real path
+                    lower = model_path.lower()
                     if "awq" in lower:
                         quant = "AWQ"
                     elif "gptq" in lower:
@@ -435,7 +438,7 @@ async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str,
                         quant = "GGUF"
                     else:
                         quant = "FP16"
-                    log.info(f"Resolved vLLM model: {human} ({quant}) from {model_id}")
+                    log.info(f"Resolved vLLM model: {human} ({quant}) from {model_path}")
                     return human, quant
     except Exception as e:
         log.warning(f"Could not resolve vLLM model name: {e}. Using fallback.")
