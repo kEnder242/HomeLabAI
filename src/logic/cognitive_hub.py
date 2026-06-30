@@ -611,17 +611,39 @@ class CognitiveHub:
         if "pinky" not in self.residents:
             return
         
-        logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest: {interest}).")
+        # Calculate dynamic scaling based on length
+        importance = interest
+        if len(text) > 800:
+            importance = min(1.0, importance + 0.2)
+            
+        if importance <= 0.5:
+            logging.info(f"[HUB] Grounding Gate skipped for {source} (Interest/Importance: {importance:.2f} <= 0.5).")
+            return
+            
+        logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
         cooldown_query = (
             f"Provide a friendly, casual peer critique and summary of the technical output from {source}. "
             "Address the user directly. Keep it brief (< 40 words)."
         )
+        
+        # Vibe-Aware Tone mapping
+        vibe = self.current_vibe.upper() if hasattr(self, 'current_vibe') and self.current_vibe else "CASUAL"
+        vibe_tone = "Tone guidance: Casual, friendly, peer-to-peer."
+        if vibe == "TECHNICAL":
+            vibe_tone = "Tone guidance: Grounded, slightly critique-oriented, checking technical viability."
+        elif vibe == "HISTORICAL":
+            vibe_tone = "Tone guidance: Reflective, nostalgic, referencing previous engineering scars."
+        elif vibe == "FORENSIC":
+            vibe_tone = "Tone guidance: Cynical, investigative, auditing telemetry patterns."
+        elif vibe == "META":
+            vibe_tone = "Tone guidance: Self-aware, observing the lab's state machine."
         
         try:
             # We call pinky's think tool to generate the summary
             res_cool = await self.residents["pinky"].call_tool("think", {
                 "query": cooldown_query, 
                 "context": f"Technical Output: {text}",
+                "behavioral_guidance": vibe_tone,
                 "request_id": request_id
             })
             
