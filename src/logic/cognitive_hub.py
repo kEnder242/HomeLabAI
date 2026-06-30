@@ -531,7 +531,12 @@ class CognitiveHub:
 
         # 2. Routing Phase
         importance = float(t_parsed.get("importance", 0.5))
-        self.current_interest = importance
+        casual = float(t_parsed.get("casual", 0.5))
+        intrigue = float(t_parsed.get("intrigue", 0.5))
+        
+        # [FEAT-234] Unified Interest Calculation
+        interest = ((1.0 - casual) * (intrigue + importance)) / 2.0
+        self.current_interest = max(0.0, min(1.0, interest))
         
         target = t_parsed.get("addressed_to", "PINKY").lower()
         vibe = t_parsed.get("vibe", "").upper()
@@ -564,7 +569,7 @@ class CognitiveHub:
             ):
                 pass
 
-    async def evaluate_grounding(self, source, text, fuel=0.8, shutdown_event=None, request_id="default"):
+    async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default"):
         """
         [FEAT-227] The Grounding Gate (V5).
         Restores character balance by prompting Pinky to critique or conversationally 
@@ -573,7 +578,7 @@ class CognitiveHub:
         if "pinky" not in self.residents:
             return
         
-        logging.info(f"[HUB] Grounding Gate triggered for {source} (Fuel: {fuel}).")
+        logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest: {interest}).")
         cooldown_query = (
             f"Provide a friendly, casual peer critique and summary of the technical output from {source}. "
             "Address the user directly. Keep it brief (< 40 words)."
@@ -648,8 +653,7 @@ class CognitiveHub:
                 break
 
         # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/sovereign output in the main chat pane
-        fuel = float(triage.get("importance", 0.8))
-        await self.evaluate_grounding("Deep Thought", dt_response, fuel=fuel, shutdown_event=shutdown_event, request_id=request_id)
+        await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id)
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
