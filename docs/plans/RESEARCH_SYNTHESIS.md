@@ -75,6 +75,11 @@ These ideas were identified in the **AI Master Plan (2026)** and are scheduled f
 | **vLLM Serving** | N/A | Achieved SOTA serving throughput for the Web Intercom. | **100%** |
 | **3x3 CVT** | N/A | High-Density Resume Indexer. Correlates Focal goals with Artifact evidence. | **100%** |
 | **Agentic-R** | 2601.11888 | Implement in ArchiveMemory for deep technical search. | **Active** |
+| **KV‑Cache Routing** | 2606.32032 | Adaptive cache sharing across persona swaps. | **Routing:** Implement adaptive KV‑cache routing logic in `loader.py`. | **Planned** |
+| **Oracle GraphRAG** | N/A | Graph‑based retrieval for structured artifacts. | **Integration:** Add GraphRAG pipeline to `search_index.json` generation. | **Planned** |
+| **DSpark Speculative Decoding** | N/A | Faster per‑token generation for role‑token switches. | **Optimization:** Apply DSpark decoding to vLLM inference path. | **Planned** |
+| **Semantic Compass (MCompassRAG)** | 2606.26300 | Metadata‑driven semantic navigation of the archive. | **Enhancement:** Extend `ArchiveMemory` ranking with compass metadata. | **Planned** |
+
 
 ---
 
