@@ -17,6 +17,7 @@ CHARACTERIZATION_FILE = os.path.expanduser(
 )
 INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
+ROLE_TOKENS_PATH = os.path.join(LAB_DIR, "config", "role_tokens.json")
 
 
 class BicameralNode:
@@ -86,6 +87,10 @@ class BicameralNode:
         # Load configs
         self.vram_config = self._load_json(CHARACTERIZATION_FILE)
         self.infra = self._load_json(INFRA_CONFIG)
+
+        # [BKM-015] Role Token Registry: Config-driven LoRA overrides
+        # Tokens and their LoRA targets live in config/role_tokens.json — single source of truth.
+        self.role_tokens = self._load_json(ROLE_TOKENS_PATH)
 
         # Identity
         node_cfg = self.infra.get("nodes", {}).get(self.name, {})
@@ -337,6 +342,18 @@ class BicameralNode:
             yield "Error: No engine online."
             return
 
+        # [BKM-015] Role Token Resolution: Scan query for config-driven role tokens
+        # to dynamically select LoRA adapter. Config file is the single source of truth.
+        role_lora_override = None  # None = no token, "" = base model, str = adapter name
+        if self.role_tokens:
+            for token, lora_target in self.role_tokens.items():
+                if token in query:
+                    query = query.replace(token, "").strip()
+                    role_lora_override = lora_target if lora_target is not None else ""
+                    label = role_lora_override if role_lora_override else "BASE"
+                    logging.debug(f"[{self.name}] Role token '{token}' -> LoRA: '{label}'")
+                    break
+
         system_prompt = system_override or self.system_prompt
         
         # [FEAT-254.2] Metadata Displacement: Context shifts from system to user
@@ -385,12 +402,15 @@ class BicameralNode:
                 "repetition_penalty": repetition_penalty,
                 "stream": True
             }
-            if self.lora_name and use_lora:
-                # [FEAT-339] Adaptive LoRA: Verify availability before requesting
-                if self.lora_name in engine.get("available", []):
-                    payload["model"] = self.lora_name
+            # [BKM-015] Active LoRA: role token override takes priority over static config
+            active_lora = self.lora_name
+            if role_lora_override is not None:
+                active_lora = role_lora_override if role_lora_override else None
+            if active_lora and use_lora:
+                if active_lora in engine.get("available", []):
+                    payload["model"] = active_lora
                 else:
-                    logging.warning(f"[{self.name}] LoRA '{self.lora_name}' not active on vLLM. Falling back to base: {engine['model']}")
+                    logging.warning(f"[{self.name}] LoRA '{active_lora}' not active on vLLM. Falling back to base: {engine['model']}")
                 
             # [Task 9.2] Enforce explicit JSON schema if provided
             if response_format:

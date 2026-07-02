@@ -59,6 +59,27 @@ class CognitiveHub:
             except Exception:
                 pass
         
+        # [BKM-015] Role Token Routing: Load tokens from config/role_tokens.json
+        # Script-relative path: HomeLabAI/src/logic/ → ../../config/
+        self._config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
+        self._role_tokens_path = os.path.join(self._config_dir, "role_tokens.json")
+        self.role_tokens = {}
+        if os.path.exists(self._role_tokens_path):
+            try:
+                with open(self._role_tokens_path, "r") as f:
+                    self.role_tokens = json.load(f)
+            except Exception:
+                pass
+
+        # [BKM-015] Token → routing override map.
+        # Tokens live in config/role_tokens.json (single source of truth);
+        # routing targets are pre-defined per the role token contract.
+        self._token_routes = {
+            "<|PINKY|>":   {"addressed_to": "PINKY",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.5, "casual": 0.3, "intrigue": 0.5},
+            "<|BRAIN|>":   {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
+            "<|THOUGHT|>": {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
+        }
+
         self.auditor = None  # [FEAT-190] The Judge
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
@@ -447,8 +468,27 @@ class CognitiveHub:
         t_text = ""
         t_parsed = None
         
+        # [BKM-015] Role Token Routing: Bypass LLM triage if query contains a role token
+        if self.role_tokens:
+            for token in self.role_tokens:
+                if token in turn:
+                    route = self._token_routes.get(token)
+                    if route:
+                        turn = turn.replace(token, "").strip()
+                        t_parsed = dict(route)
+                        logging.info(f"[HUB] Role token '{token}' detected. Direct routing to {t_parsed['addressed_to']}.")
+                        await self.broadcast({
+                            "type": "crosstalk",
+                            "brain": f"[HUB] Role token '{token}' → {t_parsed['addressed_to']}. Bypassing triage.",
+                            "brain_source": "System",
+                            "version": LAB_VERSION
+                        })
+                        break
+        
         # [FEAT-350] Silicon Stabilization: Retry loop for small models
         for triage_attempt in range(3):
+            if t_parsed is not None:
+                break
             try:
                 await self.broadcast({
                     "type": "crosstalk", 
