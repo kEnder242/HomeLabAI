@@ -19,10 +19,9 @@ LAB_SYSTEM_PROMPT = (
     "RULES:\n"
     "1. [BKM-015] Semantic Indirection: If the query focuses on hardware metrics, driver infrastructure, or validation environments, set vibe=OPERATIONAL, importance=1.0, addressed_to=PINKY.\n"
     "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about past events or work history, set vibe=HISTORICAL, addressed_to=BRAIN.\n"
-    "3. CONVERSATIONAL GRACE: If the user says hello, goodbye, or makes simple small talk, you MUST set vibe=CASUAL, addressed_to=PINKY, situation='', hints=''. Conversational flow is the priority.\n"
-    "4. GREETING/STATUS INTENT: If the user query is a greeting or casual request for updates/status (e.g., 'what's up', 'any updates', 'how is the lab', 'status brief', 'wywo', 'wywa'), you MUST set addressed_to=PINKY, vibe=CASUAL, situation='morning_briefing', and hints='trigger_morning_briefing'. This is critical to trigger the automated morning briefing.\n"
-    "5. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
-    "6. Be precise. Return ONLY the JSON."
+    "3. CONVERSATIONAL GRACE & GREETING/STATUS INTENT: If the user says hello, goodbye, makes simple small talk, or requests updates (e.g., 'what's up', 'any updates', 'how is the lab', 'status brief', 'wywo', 'wywa'), you MUST set addressed_to=PINKY, vibe=CASUAL, situation='morning_briefing', and hints='trigger_morning_briefing'. This triggers the morning briefing / WYWA news. Only set empty situation/hints for pure farewells or non-greeting banter.\n"
+    "4. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
+    "5. Be precise. Return ONLY the JSON."
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
