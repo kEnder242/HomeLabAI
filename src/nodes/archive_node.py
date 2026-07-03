@@ -822,6 +822,13 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
 
             full_truths.append(f"[DISCOVERY Anchor: {ts}]: {doc_anchor[:200]}...")
 
+        # Log RAG event to pager activity
+        try:
+            from infra.pager_relay import trigger_pager
+            trigger_pager(f"RAG Query: '{query}' -> Retrieved {len(full_truths)} anchors from {len(source_files)} sources.", source="RAG", severity="INFO")
+        except Exception as pe:
+            logging.error(f"[ARCHIVE] Failed to log RAG event to pager: {pe}")
+
         # Combine Clipboard + New Truths
         final_text = "\n\n".join(combined_context + ["\n---\n".join(full_truths)])
         return json.dumps(

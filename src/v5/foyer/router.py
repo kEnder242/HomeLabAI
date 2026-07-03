@@ -198,7 +198,7 @@ class FoyerRouter:
 
     async def trigger_morning_briefing(self):
         logger.info("Triggering Morning Briefing...")
-        pass
+        await self.cognitive.trigger_morning_briefing()
 
     def setup_routes(self):
         self.app.add_routes([
@@ -682,7 +682,6 @@ class FoyerRouter:
         try:
             data = await request.json()
             if self.cognitive and self.cognitive._tel_collector:
-                from infra.telemetry_collector import TelemetrySample
                 # Scrape raw GPU info from DCGM first to enrich
                 sample = self.cognitive._tel_collector.snapshot(
                     node=data.get("node", ""),

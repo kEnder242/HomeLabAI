@@ -5,6 +5,13 @@ import chromadb
 from chromadb.utils import embedding_functions
 import logging
 import hashlib
+import sys
+
+# Set up paths for internal imports
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if LAB_DIR not in sys.path:
+    sys.path.append(LAB_DIR)
+from infra.pager_relay import trigger_pager
 
 # Paths
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
@@ -16,6 +23,7 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     print("--- Bridging 'Slow Burn' Artifacts & Strategic Stories to RAG ---")
+    trigger_pager("RAG Sync Started: Bridging slow burn artifacts and strategic stories...", source="RAG", severity="INFO")
 
     # 1. Init Chroma
     chroma_client = chromadb.PersistentClient(path=DB_PATH)
@@ -151,6 +159,7 @@ def main():
             print(f"Error processing artifact catalog {fname}: {e}")
 
     print(f"Success: Synced {total_added} new items (Artifacts + Strategy + Assets) into Wisdom collection.")
+    trigger_pager(f"RAG Sync Complete: Synced {total_added} new items to long_term_wisdom.", source="RAG", severity="INFO")
 
 if __name__ == "__main__":
     main()
