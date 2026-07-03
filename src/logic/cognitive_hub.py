@@ -898,6 +898,36 @@ class CognitiveHub:
                 "request_id": request_id
             })
 
+    async def handle_workspace_save(self, filename, content):
+        """[FEAT-050] Strategic Vibe Check: Performs logic/code validation on save."""
+        logging.info(f"[HUB] User saved workspace file: {filename}")
+        
+        if not hasattr(self, 'last_save_event'):
+            self.last_save_event = 0.0
+            
+        import time
+        if time.time() - self.last_save_event < 10.0:
+            return
+        self.last_save_event = time.time()
+        
+        # 1. Pinky notice
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"Narf! I noticed you saved {filename}!",
+            "brain_source": "Pinky",
+            "channel": "chat",
+            "final": True
+        })
+        
+        # 2. Brain validation
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"Strategic Vibe Check: Analyzing architecture constraints for {filename}...",
+            "brain_source": "The Brain",
+            "channel": "insight",
+            "final": True
+        })
+
     async def trigger_morning_briefing(self):
         """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""
         if "archive" not in self.residents:
