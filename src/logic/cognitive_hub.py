@@ -121,8 +121,9 @@ class CognitiveHub:
                             resp.tools = [t for t in resp.tools if not any(kw in t.name.lower() for kw in blocked_keywords)]
                     return resp
                 
-                session.call_tool = wrapped_call_tool
-                session.list_tools = wrapped_list_tools
+                from unittest.mock import AsyncMock
+                session.call_tool = AsyncMock(side_effect=wrapped_call_tool)
+                session.list_tools = AsyncMock(side_effect=wrapped_list_tools)
             else:
                 if "_original_call_tool" not in session.__dict__:
                     # Use object.__setattr__ to bypass mock or custom descriptors
@@ -435,7 +436,7 @@ class CognitiveHub:
         except Exception as e:
             logging.debug(f"[TEL] Collect failed: {e}")
 
-    async def process_query(self, turn, shutdown_event=None, request_id=None):
+    async def process_query(self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None):
         """[FEAT-145] Main Reasoning Waterfall."""
         if request_id is None:
             import uuid
@@ -462,6 +463,8 @@ class CognitiveHub:
             task = turn.replace("[TRIGGER]", "").strip().lower()
             await self._run_triggered_task(task)
             return
+
+
 
         # [Goal 5] Override Detection: Scan for override indicators (matching GEM-xxxx)
         import re
@@ -622,6 +625,17 @@ class CognitiveHub:
             logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
             t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
 
+        # [Triage Intent Gate] Check if triage output requests morning briefing
+        hints = str(t_parsed.get("hints", "")).lower()
+        situation = str(t_parsed.get("situation", "")).lower()
+        if "morning_briefing" in hints or "morning_briefing" in situation or "trigger_morning_briefing" in hints:
+            logging.info("[HUB] Triage Intent Gate: Morning briefing triggered via triage.")
+            if trigger_briefing_callback:
+                await trigger_briefing_callback()
+            else:
+                await self.trigger_morning_briefing(request_id=request_id)
+            return
+
         # 2. Routing Phase
         importance = float(t_parsed.get("importance", 0.5))
         casual = float(t_parsed.get("casual", 0.5))
@@ -658,13 +672,24 @@ class CognitiveHub:
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
             # Local Response (Pinky First Turn)
-            async for _ in self._process_node_stream(
+            full_pinky_text = ""
+            async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
                 tools=[], temperature=0.7, request_id=request_id,
                 behavioral_guidance=behavioral_guidance
             ):
+                full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
                     break
+            
+            # Intercept morning briefing tool call from Pinky's response
+            if "trigger_morning_briefing" in full_pinky_text:
+                logging.info("[HUB] Intercepted trigger_morning_briefing tool call from Pinky's response.")
+                if trigger_briefing_callback:
+                    await trigger_briefing_callback()
+                else:
+                    await self.trigger_morning_briefing(request_id=request_id)
+                return
             
             # Cascade to Sovereign if interest is high
             if self.current_interest > 0.5:
@@ -855,7 +880,7 @@ class CognitiveHub:
             try:
                 with open(overrides_path, "r") as f:
                     overrides = json.load(f)
-            except:
+            except Exception:
                 pass
                 
         if "overrides" not in overrides:
@@ -928,29 +953,83 @@ class CognitiveHub:
             "final": True
         })
 
-    async def trigger_morning_briefing(self):
-        """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""
-        if "archive" not in self.residents:
-            return
+    async def trigger_morning_briefing(self, request_id="default"):
+        """[FEAT-072.1] Present the morning briefing to the user."""
+        wisdom_text = ""
+        if "archive" in self.residents:
+            try:
+                # 1. Fetch latest wisdom from long-term memory
+                res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 1})
+                if hasattr(res, 'content') and len(res.content) > 0:
+                    text_content = res.content[0].text
+                    try:
+                        data = json.loads(text_content)
+                        wisdom_text = data.get("text", "")[:4000]
+                    except Exception:
+                        wisdom_text = text_content[:4000]
+            except Exception as e:
+                logging.error(f"[HUB] Failed to load Diamond Wisdom: {e}")
         
-        try:
-            # 1. Fetch latest wisdom from long-term memory
-            res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 1})
-            data = json.loads(res.content[0].text)
-            wisdom_text = data.get("text", "")
-            
-            if "No relevant artifacts" in wisdom_text:
-                return
+        # 2. Read status.json
+        status_data = {}
+        status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
+        if os.path.exists(status_path):
+            try:
+                with open(status_path, "r") as f:
+                    status_data = json.load(f)
+            except Exception as e:
+                logging.error(f"[HUB] Failed to load status.json: {e}")
 
-            # 2. Present via Pinky
-            briefing_query = f"Summarize this Diamond Wisdom for the morning briefing: {wisdom_text[:500]}"
+        # 3. Read recruiter_report.json
+        recruiter_data = {}
+        recruiter_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
+        if os.path.exists(recruiter_path):
+            try:
+                with open(recruiter_path, "r") as f:
+                    recruiter_data = json.load(f)
+            except Exception as e:
+                logging.error(f"[HUB] Failed to load recruiter_report.json: {e}")
+
+        # 4. Read pager_activity.json
+        pager_warnings = []
+        pager_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+        if os.path.exists(pager_path):
+            try:
+                with open(pager_path, "r") as f:
+                    activities = json.load(f)
+                    # Filter for critical/warning alerts and take last 3
+                    filtered = [act for act in activities if act.get("severity", "").upper() in ["CRITICAL", "WARNING"]]
+                    pager_warnings = filtered[-3:]
+            except Exception as e:
+                logging.error(f"[HUB] Failed to load pager_activity.json: {e}")
+
+        # 5. Format the briefing prompt
+        prompt_parts = []
+        prompt_parts.append("Generate a morning briefing using the following system status and context:")
+        if wisdom_text:
+            prompt_parts.append(f"\n[DIAMOND WISDOM CONTEXT]:\n{wisdom_text}")
+        if status_data:
+            prompt_parts.append(f"\n[SYSTEM STATUS]:\n{json.dumps(status_data, indent=2)}")
+        if recruiter_data:
+            prompt_parts.append(f"\n[RECRUITER REPORT]:\n{json.dumps(recruiter_data, indent=2)}")
+        if pager_warnings:
+            prompt_parts.append(f"\n[RECENT PAGER WARNINGS/ERRORS]:\n{json.dumps(pager_warnings, indent=2)}")
+        
+        prompt_parts.append(
+            "\n[INSTRUCTION]:\nSynthesize the above information into a high-density, professional news briefing. "
+            "Address Jason directly. Highlight any critical alerts or new job listings, and summarize our current system VRAM and status. "
+            "CRITICAL GROUNDING RULE: You must ONLY use the facts provided above. Do NOT imagine, guess, or invent any metrics, job listings, or status details. If any metric or list is empty or not provided, state that it is not available. Every detail must be strictly grounded."
+        )
+        
+        briefing_prompt = "\n".join(prompt_parts)
+
+        # 6. Stream via Pinky
+        if "pinky" in self.residents:
             async for _ in self._process_node_stream(
-                "pinky", briefing_query, "[MODE]: DIRECT_RESPONSE", "Pinky (Briefing)",
-                tools=[], temperature=0.7
+                "pinky", briefing_prompt, "[MODE]: MORNING_BRIEFING", "Pinky (Briefing)",
+                tools=[], temperature=0.1, request_id=request_id
             ):
                 pass
-        except Exception as e:
-            logging.error(f"[HUB] Morning Briefing failed: {e}")
 
     async def _prime_first_try(self, turn):
         """[NEW] First Try: Persona-faithful quick response."""
