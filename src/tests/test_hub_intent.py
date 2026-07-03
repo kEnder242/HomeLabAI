@@ -25,18 +25,12 @@ def hub(mock_residents):
     vram_status = MagicMock(return_value={"vram": "idle"})
     trigger_morning = AsyncMock()
     
-    # Correctly mock monitor_task_with_tics as a pass-through that awaits
-    async def monitor_pass_through(coro):
-        return await coro
-    monitor = AsyncMock(side_effect=monitor_pass_through)
-    
     hub_inst = CognitiveHub(
         residents=mock_residents,
         broadcast_callback=broadcast,
         sensory_manager=sensory,
         get_vram_status=vram_status,
         trigger_morning_briefing=trigger_morning,
-        monitor_task_with_tics=monitor
     )
     # [FIX] Manually inject anchors for test isolation
     hub_inst.intent_anchors = {
@@ -105,3 +99,17 @@ async def test_expert_routing_telemetry(hub):
     await hub.process_query("Check the telemetry for the last run")
     call_args = hub.residents["brain"].call_tool.call_args
     assert "expert_adapter" in call_args[0][1]["metadata"]
+
+@pytest.mark.asyncio
+async def test_override_intent_detection(hub):
+    # Mock pinky's think method
+    pinky_think_mock = AsyncMock(return_value='{"tags": ["strategy", "anchor", "verified"]}')
+    hub.residents["pinky"].think = pinky_think_mock
+    
+    # We mock _save_override_to_file to verify it was called
+    hub._save_override_to_file = MagicMock()
+    
+    await hub.process_query("please correct GEM-ea62: change tags to [strategy, anchor, verified]")
+    
+    # Assert _save_override_to_file was called with GEM ID and updates
+    hub._save_override_to_file.assert_called_with("GEM-EA62", {"tags": ["strategy", "anchor", "verified"]})

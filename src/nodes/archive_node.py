@@ -562,6 +562,35 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
     Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
     [Task 3.1] The Clipboard: Integrates session context and expands neighborhoods.
     """
+    def get_relational_context(summary):
+        graph_path = os.path.join(DATA_DIR, "graph_relations.json")
+        if not os.path.exists(graph_path):
+            return ""
+        try:
+            with open(graph_path, "r") as f:
+                relations = json.load(f)
+        except:
+            return ""
+            
+        matched_relations = []
+        seen_triplets = set()
+        summary_low = summary.lower()
+        for rel in relations:
+            src = rel.get("source", "")
+            tgt = rel.get("target", "")
+            rtype = rel.get("type", "")
+            if not src or not tgt:
+                continue
+            if src.lower() in summary_low or tgt.lower() in summary_low:
+                triplet = (src, rtype, tgt)
+                if triplet not in seen_triplets:
+                    seen_triplets.add(triplet)
+                    matched_relations.append(f"- {src} --[{rtype}]--> {tgt}")
+                    
+        if matched_relations:
+            return "[RELATIONAL_NEIGHBOR_EXPANSION]:\n" + "\n".join(matched_relations[:5])
+        return ""
+
     try:
         # [Task 3.1] Integrate session clipboard early
         combined_context = []
@@ -745,6 +774,11 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                 break
                 
             matched_count += 1
+            
+            # Fetch relational adjacency (Goal 8)
+            rel_ctx = get_relational_context(doc_anchor)
+            if rel_ctx:
+                full_truths.append(rel_ctx)
             target_file = None
             if ts:
                 if ts.endswith(".json"):

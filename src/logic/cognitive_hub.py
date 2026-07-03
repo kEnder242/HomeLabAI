@@ -463,6 +463,34 @@ class CognitiveHub:
             await self._run_triggered_task(task)
             return
 
+        # [Goal 5] Override Detection: Scan for override indicators (matching GEM-xxxx)
+        import re
+        gem_match = re.search(r"\b(GEM-[a-fA-F0-9]{4})\b", turn, re.IGNORECASE)
+        is_correction = any(kw in turn.lower() for kw in ["correct", "wrong", "fix", "override", "change", "update"])
+        
+        if gem_match and is_correction:
+            gem_id = gem_match.group(1).upper()
+            logging.info(f"[HUB] Goal 5: Override intent detected for {gem_id} in query: {turn}")
+            
+            # Start background crosstalk notify
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[HUB] Processing correction for {gem_id}...",
+                "brain_source": "System"
+            })
+            
+            # Parse the override
+            updates = await self._parse_override_with_resident(gem_id, turn)
+            if updates:
+                # Save override
+                self._save_override_to_file(gem_id, updates)
+                confirm_msg = f"[SYSTEM]: Correction registered for {gem_id}. Applied updates: {updates}. This override will be active during the next compile."
+            else:
+                confirm_msg = f"[SYSTEM]: Correction detected for {gem_id}, but failed to extract fields. No updates applied."
+                
+            await self._stream_message_to_ui(confirm_msg, source="System", request_id=request_id)
+            return
+
         # 1. Triage Phase
         logging.info(f"[HUB] Triage starting for query: {turn[:40]}...")
         t_text = ""
@@ -783,6 +811,92 @@ class CognitiveHub:
             })
         except Exception as e:
             logging.error(f"[HUB] Failed to run triggered task {task_name}: {e}")
+
+    async def _parse_override_with_resident(self, gem_id, turn):
+        """Use the resident model to parse key-value corrections from user query."""
+        prompt = f"""
+        [TASK]
+        Extract performance reviews/validation correction updates for the entry identifier '{gem_id}' from this message.
+        
+        [MESSAGE]
+        {turn}
+        
+        [OUTPUT FORMAT]
+        Return JSON only with keys:
+        - "date": "YYYY-MM-DD" or null
+        - "tags": ["tag1", "tag2"] or null
+        - "summary": "updated text summary" or null
+        
+        JSON:
+        """
+        # Call node to parse
+        node = self.residents.get("pinky")
+        if not node:
+            node = self.residents.get("brain")
+            
+        if node:
+            try:
+                response_str = await node.think(prompt, internal=True)
+                import re
+                import json
+                match = re.search(r'\{.*\}', response_str, re.DOTALL)
+                if match:
+                    updates = json.loads(match.group(0))
+                    return {k: v for k, v in updates.items() if v is not None}
+            except Exception as e:
+                logging.error(f"[HUB] Override parsing error: {e}")
+        return None
+
+    def _save_override_to_file(self, gem_id, updates):
+        """Append or update correction rules in overrides.json atomically."""
+        overrides_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/overrides.json")
+        overrides = {}
+        if os.path.exists(overrides_path):
+            try:
+                with open(overrides_path, "r") as f:
+                    overrides = json.load(f)
+            except:
+                pass
+                
+        if "overrides" not in overrides:
+            overrides["overrides"] = {}
+            
+        if gem_id not in overrides["overrides"]:
+            overrides["overrides"][gem_id] = {}
+        overrides["overrides"][gem_id].update(updates)
+        
+        # Atomic write
+        tmp = overrides_path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(overrides, f, indent=2)
+            os.replace(tmp, overrides_path)
+            logging.info(f"[HUB] Successfully committed override for {gem_id} to overrides.json")
+        except Exception as e:
+            logging.error(f"[HUB] Failed to save overrides.json: {e}")
+
+    async def _stream_message_to_ui(self, message, source="System", request_id="default"):
+        """Streams a message character-by-character to the UI waterfall."""
+        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+            chunk_size = 5
+            for i in range(0, len(message), chunk_size):
+                chunk = message[i:i+chunk_size]
+                await self.waterfall_queue.put({
+                    "brain": chunk,
+                    "source": source,
+                    "brain_source": source,
+                    "final": False,
+                    "request_id": request_id
+                })
+                await asyncio.sleep(0.01)
+            # Finalize
+            await self.waterfall_queue.put({
+                "brain": "",
+                "source": source,
+                "brain_source": source,
+                "final": True,
+                "request_id": request_id
+            })
 
     async def trigger_morning_briefing(self):
         """[FEAT-072.1] Present the latest Diamond Wisdom to the user."""
