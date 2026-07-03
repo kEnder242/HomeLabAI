@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 from nodes.archive_node import (
     rrf_fuse,
@@ -114,9 +114,54 @@ async def test_fuzzy_temporal_routing():
     print("✅ Goal 3 Verification: Fuzzy Temporal Compass Routing verified.")
 
 
+async def test_relational_neighborhood_expansion():
+    """
+    [Goal 8] Verification for Relational Neighborhood Expansion.
+    Tests that context extraction retrieves adjacent nodes from graph_relations.json.
+    """
+    print("\n--- [GOAL 8] VERIFICATION: RELATIONAL NEIGHBORHOOD EXPANSION ---")
+
+    mock_relations = [
+        {"source": "MCTP", "target": "PECI", "type": "RESOLVES"},
+        {"source": "Montana", "target": "MCTP", "type": "UTILIZES"}
+    ]
+
+    with patch("nodes.archive_node.wisdom") as mock_wisdom, \
+         patch("nodes.archive_node.stream") as mock_stream, \
+         patch("nodes.archive_node.keyword_search") as mock_keyword, \
+         patch("os.path.exists", return_value=True), \
+         patch("builtins.open", mock_open(read_data=json.dumps(mock_relations))):
+        
+        mock_wisdom.query.return_value = {
+            "documents": [
+                ["MCTP driver setup on Montana board"]
+            ],
+            "metadatas": [
+                [
+                    {"timestamp": "2018-10-15"}
+                ]
+            ]
+        }
+        mock_stream.query.return_value = {"documents": [[]], "metadatas": [[]]}
+        mock_keyword.return_value = []
+        
+        ctx_res_raw = await get_context("MCTP setup", n_results=1)
+        ctx_res = json.loads(ctx_res_raw)
+        
+        print(f"[STEP 1] Relational neighborhood context:\n{ctx_res['text']}\n")
+        
+        # Verify that relational expansion contains the mock relations
+        assert "[RELATIONAL_NEIGHBOR_EXPANSION]" in ctx_res["text"]
+        assert "MCTP --[RESOLVES]--> PECI" in ctx_res["text"]
+        assert "Montana --[UTILIZES]--> MCTP" in ctx_res["text"]
+
+    print("✅ Goal 8 Verification: Relational Neighborhood Expansion verified.")
+
+
 async def main():
     await test_archive_rrf_logic()
     await test_fuzzy_temporal_routing()
+    await test_relational_neighborhood_expansion()
 
 
 if __name__ == "__main__":
