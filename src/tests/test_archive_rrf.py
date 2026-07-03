@@ -68,5 +68,56 @@ async def test_archive_rrf_logic():
 
     print("\n✅ Task 3.2 Verification: Hybrid Retrieval (RRF) verified.")
 
+
+async def test_fuzzy_temporal_routing():
+    """
+    [Goal 3] Verification for Fuzzy Temporal Compass Routing.
+    Tests neighborhood retrieval accuracy across year-end boundaries.
+    """
+    print("\n--- [GOAL 3] VERIFICATION: FUZZY TEMPORAL COMPASS ROUTING ---")
+
+    with patch("nodes.archive_node.wisdom") as mock_wisdom, \
+         patch("nodes.archive_node.stream") as mock_stream, \
+         patch("nodes.archive_node.keyword_search") as mock_keyword:
+        
+        # Scenario: RRF returns 3 candidates with different timestamps
+        mock_wisdom.query.return_value = {
+            "documents": [
+                ["MCTP driver setup (old)", "MCTP stress tests on Purley", "Resolved MCTP bus conflicts (new)"]
+            ],
+            "metadatas": [
+                [
+                    {"timestamp": "2017-06-20"},
+                    {"timestamp": "2018-10-15"},
+                    {"timestamp": "2019-01-05"}
+                ]
+            ]
+        }
+        mock_stream.query.return_value = {"documents": [[]], "metadatas": [[]]}
+        mock_keyword.return_value = []
+        
+        # Query specifies "late 2018".
+        # 2018-10-15 is 17 days away.
+        # 2019-01-05 is 65 days away (spans year-end!).
+        # 2017-06-20 is 500+ days away (should be penalized below top 2).
+        ctx_res_raw = await get_context("MCTP cycle tests in late 2018", n_results=2)
+        ctx_res = json.loads(ctx_res_raw)
+        
+        print(f"[STEP 1] Fuzzy routing context text:\n{ctx_res['text']}\n")
+        
+        # Top 2 results should contain the 2018-10-15 and 2019-01-05 items
+        # and exclude the 2017 item
+        assert "Purley" in ctx_res["text"]
+        assert "bus conflicts" in ctx_res["text"]
+        assert "driver setup" not in ctx_res["text"]
+
+    print("✅ Goal 3 Verification: Fuzzy Temporal Compass Routing verified.")
+
+
+async def main():
+    await test_archive_rrf_logic()
+    await test_fuzzy_temporal_routing()
+
+
 if __name__ == "__main__":
-    asyncio.run(test_archive_rrf_logic())
+    asyncio.run(main())

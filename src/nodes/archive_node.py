@@ -502,10 +502,12 @@ def rrf_fuse(results_list, k=60):
         for rank, (doc_id, meta) in enumerate(results):
             scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
             if doc_id not in metadata_map:
-                metadata_map[doc_id] = meta
+                metadata_map[doc_id] = dict(meta) if meta else {}
     
     # Sort by fused score
     sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    for doc_id, score in sorted_ids:
+        metadata_map[doc_id]["_rrf_score"] = score
     return [(doc_id, metadata_map[doc_id]) for doc_id, _ in sorted_ids]
 
 
@@ -566,11 +568,27 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         if SESSION_CLIPBOARD:
             combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
 
-        # [FEAT-117] Hard Year Filtering (Post-Filter)
+        # [FEAT-117] Fuzzy Temporal Compass: Parse temporal target and qualifiers from query
         import re
-        # Support years from 1990 to 2029
-        year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
-        target_year = year_match.group(1) if year_match else None
+        import math
+        target_date = None
+        qualifier_match = re.search(r"\b(early|late|mid|middle)\s+(199[0-9]|20[0-2][0-9])\b", query, re.IGNORECASE)
+        if qualifier_match:
+            qualifier = qualifier_match.group(1).lower()
+            year = int(qualifier_match.group(2))
+            if qualifier == "early":
+                target_date = datetime.date(year, 2, 1)
+            elif qualifier == "late":
+                target_date = datetime.date(year, 11, 1)
+            else:
+                target_date = datetime.date(year, 6, 15)
+        else:
+            year_match = re.search(r"\b(199[0-9]|20[0-2][0-9])\b", query)
+            if year_match:
+                year = int(year_match.group(1))
+                target_date = datetime.date(year, 7, 1)
+
+        target_year = str(target_date.year) if target_date else None
 
         # [Task 2.1] Memo Integration: Check for high-level observations first
         memo = await get_observational_memo(topic=query if not target_year else None, year=target_year)
@@ -583,7 +601,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         
         fetch_limit = n_results * 5 if target_year else n_results
         if target_year:
-            logging.info(f"[ARCHIVE] Applying Hard Year Post-Filter: {target_year}")
+            logging.info(f"[ARCHIVE] Applying Fuzzy Year Post-Filter: {target_year} (Target: {target_date})")
 
         # Stage 1: Hybrid Discovery (RRF)
         vector_results = []
@@ -640,15 +658,57 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
             "exp_for": ["forensic", "post-mortem", "post_mortem", "crash", "triage", "hang", "error", "abort", "fail", "debug", "logs", "analysis", "incident"]
         }
 
-        # Collect candidates
-        candidates = []
+        # Helper to parse candidate dates from timestamp fields
+        def parse_candidate_date(ts_str):
+            if not ts_str:
+                return None
+            # Try YYYY-MM-DD
+            match_ymd = re.search(r"(\d{4})[-_/](\d{1,2})[-_/](\d{1,2})", ts_str)
+            if match_ymd:
+                try:
+                    return datetime.date(int(match_ymd.group(1)), int(match_ymd.group(2)), int(match_ymd.group(3)))
+                except ValueError:
+                    pass
+            # Try YYYY-MM
+            match_ym = re.search(r"(\d{4})[-_/](\d{1,2})", ts_str)
+            if match_ym:
+                try:
+                    return datetime.date(int(match_ym.group(1)), int(match_ym.group(2)), 15)
+                except ValueError:
+                    pass
+            # Try YYYY
+            match_y = re.search(r"\b(\d{4})\b", ts_str)
+            if match_y:
+                try:
+                    return datetime.date(int(match_y.group(1)), 7, 1)
+                except ValueError:
+                    pass
+            return None
+
+        # Collect candidates with fuzzy Gaussian weight decay
+        scored_candidates = []
         for doc_id, meta in fused_results:
             ts = str(meta.get("timestamp") or meta.get("date") or meta.get("source", ""))
             doc_anchor = meta.get("text_anchor", meta.get("text", ""))
             
-            if target_year and target_year not in ts:
-                continue
-            candidates.append((doc_id, meta, ts, doc_anchor))
+            rrf_score = meta.get("_rrf_score", 0.0)
+            if target_date:
+                c_date = parse_candidate_date(ts)
+                if c_date:
+                    days_diff = abs((c_date - target_date).days)
+                    # Gaussian weight decay (std dev = 180 days)
+                    temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                else:
+                    # Default weight for undated items
+                    temporal_weight = 0.2
+            else:
+                temporal_weight = 1.0
+                
+            combined_score = rrf_score * temporal_weight
+            scored_candidates.append((combined_score, doc_id, meta, ts, doc_anchor))
+            
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        candidates = [(x[1], x[2], x[3], x[4]) for x in scored_candidates]
 
         # MCompassRAG: Domain-Guided Paragraph Filtering
         if not domain:
