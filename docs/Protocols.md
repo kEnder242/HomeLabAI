@@ -313,4 +313,15 @@
 4.  **Forensic Reporting**: Every pulse check must produce a detailed report summarizing the current cycle, VRAM/RAM utilization, and any log anomalies detected since the last pulse.
 5.  **Deferred Evaluation**: All high-fidelity thought traces must be captured into a dedicated evaluation log for a final **BKM-032** semantic audit after the entire gauntlet completes.
 
+---
 
+## BKM-034: OpenAgent Delegation & Playbook Protocol
+**Objective**: Establish safe, context-preserving boundary gates for delegating tasks from Gemini (Orchestration) to OpenAgent (Local/Remote Swarm) to minimize token consumption and prevent intent drift.
+**Playbook Reference**: [AGY_TO_OPENAGENT_PLAYBOOK.md](../../Portfolio_Dev/AGY_TO_OPENAGENT_PLAYBOOK.md)
+
+1.  **Role Division**:
+    *   **Orchestrator (Gemini)**: Acts as the *Strategic Guardian of the DNA*. Responsible for updating the Master Plan (`SPRINT_PLAN_SPR_XX_X.md`), defining architectural requirements, auditing code changes via git diffs, and running final integration tests.
+    *   **Swarm (OpenAgent)**: Executes *Tactical Implementation loops*. Responsible for writing codebase logic, updating test files, and running line-by-line debugging iterations.
+2.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
+3.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
+4.  **Forensic Review Gate**: After OpenAgent commits changes locally, Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
