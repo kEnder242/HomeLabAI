@@ -229,7 +229,7 @@
 1.  **Compare**: Contrast active code with the documented goal. Fix any deviations from the original plan immediately to reduce drift.
 2.  **Save**: Commit file edits to Git after each sub-task is completed but **BEFORE** testing.
 3.  **Review**: Execute a `git diff` on the latest commit. Verify that no "Ghost Grafts" or accidental deletions occurred.
-4.  **Validate**: Run the specified diagnostic or test script. Repeat steps 1-4 until the task is complete and passing.
+4.  **Validate**: Run the specified diagnostic or test script (including `build_site.py` if static page templates, styles, or source markdown documents were modified). Repeat steps 1-4 until the task is complete and passing.
 
 ## BKM-030: The Resonant Planning Pattern
 **Role: [SPRINT] - Planning & Execution Protocol**
