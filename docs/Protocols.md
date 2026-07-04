@@ -93,26 +93,6 @@
 4.  **Safety**: Automatically runs `ruff` check and rolls back all changes if a lint regression is detected.
 5.  **Precision**: When providing multi-line strings, ensure blank lines are **truly empty** (zero spaces) to prevent `W293` whitespace thrashing.
 
-## BKM-026: The Asymmetric Probe Standard (TODO: This is not a BKM Protocol, it is design and infrastructure - Consider moving parths of this to LAB-XXX and FEAT-XXX)
-**Objective**: Optimize federated failover by differentiating between "Hard Failure" (Offline) and "Soft Latency" (Loading/Processing).
-
-1.  **Discovery Phase**: Use a strict 5s timeout for `/api/tags` to verify the server is alive.
-2.  **Asymmetric TTL**:
-    *   **Success Cache (300s)**: If the host is `PRIMARY_LOCKED`, trust it for 5 minutes. Do not re-ping the network for every turn.
-    *   **Failure Cache (15s)**: If the host is `PRIMARY_OFFLINE`, re-verify it every 15 seconds. Ensure the 4090 can "re-join" the Lab quickly after a reboot.
-3.  **The Wait Mandate**: Once a host is `LOCKED`, the Hub must allow up to 180s for inference to complete before declaring a quality fallback.
-4.  **Airtime Rule**: Any turn exceeding 10s of remote latency **MUST** be interleaved with a Pinky interjection or dynamic tic.
-
-## BKM-027: The Dream Pass Synthesis (TODO: Consider moving this to FEAT-XXX))
-**Objective**: Generate high-fidelity instruction-tuning datasets by utilizing the Sovereign Brain to process raw historical context.
-
-1.  **Instruction Framing**: Use the `[DREAM_PASS]` header to force the Sovereign into a specific persona (e.g., "Lead Engineer").
-2.  **Dataset Integrity**: Instruction pairs must consist of a verified user prompt and a Sovereign-validated technical response.
-3.  **Refinement Gate**: Always run Stage 2 Refinement (regex cleaning) before passing data to the induction adapter.
-4.  **Rationale**: Native weights learn more effectively from "Idealized Logic" than from raw, messy chat history.
-
-
-
 ## BKM-012: The Ultimate Patcher (Archive Node)
 **Objective**: Enable surgical, diff-based edits with mandatory lint-safety.
 **Tool**: `patch_file(filename, diff)` via the Archive Node.
@@ -194,10 +174,6 @@
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
 3.  **Absolute Append**: Do NOT re-write, overwrite, or summarize existing phases of an active sprint plan to 'save space.' New requirements or findings MUST be appended as new phases at the end of the document.
 4.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression. Detail-rich reporting is the standard for intent preservation.
-
-## BKM-021: [DEPRECATED] The "Wall" Audit
-**Status**: MOVED to **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** as the **Silicon Verification Law**.
-**Rationale**: Final stability verification is a mandatory silicon gate, not a behavioral guideline.
 
 ## BKM-022: The Atomic File Swap Protocol (Filesystem Safety)
 **Objective**: Ensure filesystem atomicity for all file updates and prevent race conditions.
