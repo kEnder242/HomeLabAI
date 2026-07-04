@@ -721,14 +721,21 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
             doc_anchor = meta.get("text_anchor", meta.get("text", ""))
             
             rrf_score = meta.get("_rrf_score", 0.0)
-            if target_date:
+            if target_year:
+                c_date = parse_candidate_date(ts)
+                if c_date:
+                    if str(c_date.year) != target_year:
+                        continue  # Skip wrong year
+                    days_diff = abs((c_date - target_date).days)
+                    temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                else:
+                    continue  # Skip undated items when a specific year is requested
+            elif target_date:
                 c_date = parse_candidate_date(ts)
                 if c_date:
                     days_diff = abs((c_date - target_date).days)
-                    # Gaussian weight decay (std dev = 180 days)
                     temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
                 else:
-                    # Default weight for undated items
                     temporal_weight = 0.2
             else:
                 temporal_weight = 1.0
