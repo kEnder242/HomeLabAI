@@ -40,6 +40,10 @@ class CognitiveHub:
         self.current_topic = "INTERFACE"
         self.last_activity = time.time()
         
+        # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
+        self.round_table_memory = []
+        self.turn_thought_trace = {}
+        
         # [Task 6.3] Hygiene: Process Tracking
         self.processed_ids = set()
         self.request_lock = asyncio.Lock()
@@ -110,7 +114,7 @@ class CognitiveHub:
                         blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
                         if any(kw in tool_name.lower() for kw in blocked_keywords):
                             raise ValueError(f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')")
-                    return await session_ref._original_call_tool(tool_name, arguments, **kwargs)
+                    return await session_ref._original_call_tool(tool_name, arguments=arguments, **kwargs)
                     
                 async def wrapped_list_tools(*args, session_ref=session, **kwargs):
                     resp = await session_ref._original_list_tools(*args, **kwargs)
@@ -136,7 +140,7 @@ class CognitiveHub:
                             blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
                             if any(kw in tool_name.lower() for kw in blocked_keywords):
                                 raise ValueError(f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')")
-                        return await session_ref._original_call_tool(tool_name, arguments, **kwargs)
+                        return await session_ref._original_call_tool(tool_name, arguments=arguments, **kwargs)
                         
                     async def wrapped_list_tools(*args, session_ref=session, **kwargs):
                         resp = await session_ref._original_list_tools(*args, **kwargs)
@@ -209,7 +213,7 @@ class CognitiveHub:
         for block in json_blocks:
             try:
                 data = json.loads(block)
-                if "intent" in data or "vibe" in data:
+                if "intent" in data or "vibe" in data or "addressed_to" in data:
                     return data
             except Exception:
                 continue
@@ -272,6 +276,11 @@ class CognitiveHub:
 
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default"):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
+        if hasattr(self, "round_table_memory") and self.round_table_memory:
+            debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(self.round_table_memory)
+            if "[PREVIOUS_DEBATE]" not in query:
+                query += debate_context
+
         if node_id not in self.residents:
             return
         
@@ -320,7 +329,7 @@ class CognitiveHub:
             self.session_buffers[buf_key] = ""
             
             # [Task 9.2] Hub relies on the Node's telemetry queue to populate the Foyer drainer.
-            call_task = asyncio.create_task(node.call_tool("think", {
+            call_task = asyncio.create_task(node.call_tool("think", arguments={
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
@@ -379,6 +388,9 @@ class CognitiveHub:
                     
                 yield full_text
             
+            self.turn_thought_trace[node_id] = full_text
+            if node_id == "thought":
+                self.turn_thought_trace["brain"] = full_text
             self.session_buffers[buf_key] = "" # Clear buffer
             
             # [FEAT-287] Activity Latch
@@ -438,6 +450,7 @@ class CognitiveHub:
 
     async def process_query(self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None):
         """[FEAT-145] Main Reasoning Waterfall."""
+        self.turn_thought_trace = {}
         if request_id is None:
             import uuid
             request_id = uuid.uuid4().hex[:8]
@@ -695,6 +708,19 @@ class CognitiveHub:
             if self.current_interest > 0.5:
                 await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
 
+        # [FEAT-356] Unified Session Ledger: Record turn summary
+        turn_ledger = f"User: {turn}"
+        pinky_res = self.turn_thought_trace.get("pinky")
+        if pinky_res:
+            turn_ledger += f"\nPinky: {pinky_res}"
+        brain_res = self.turn_thought_trace.get("thought") or self.turn_thought_trace.get("brain")
+        if brain_res:
+            turn_ledger += f"\nBrain: {brain_res}"
+        critique_res = self.turn_thought_trace.get("critique")
+        if critique_res:
+            turn_ledger += f"\nPinky Summary: {critique_res}"
+        self.round_table_memory.append(turn_ledger)
+
     async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default"):
         """
         [FEAT-227] The Grounding Gate (V5).
@@ -714,11 +740,37 @@ class CognitiveHub:
             return
             
         logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
-        cooldown_query = (
-            f"Provide a friendly, casual peer critique and summary of the technical output from {source}. "
-            "Address the user directly. Keep it brief (< 40 words)."
+        # [FEAT-356] Pinky as Coherence Judge
+        critique_query = (
+            f"Analyze the following response from {source} for logic errors, hand-waving, technical slop, or contradictions.\n\n"
+            f"[RESPONSE TO EVALUATE]:\n{text}\n\n"
+            "Evaluate its technical coherence and output a JSON block matching this schema:\n"
+            "{\n"
+            "  \"score\": 5, // 1-5 rating of logic/coherence\n"
+            "  \"reasoning\": \"brief explanation of the score\",\n"
+            "  \"slop_found\": false, // true if logic errors or slop exist\n"
+            "  \"retort\": \"a challenging technical retort pointing out logical flaws, or a supportive technical critique summary\"\n"
+            "}\n"
+            "STRICT: Output ONLY valid JSON inside curly braces."
         )
-        
+
+        eval_schema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "coherence_evaluation",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 1, "maximum": 5},
+                        "reasoning": {"type": "string"},
+                        "slop_found": {"type": "boolean"},
+                        "retort": {"type": "string"}
+                    },
+                    "required": ["score", "reasoning", "slop_found", "retort"]
+                }
+            }
+        }
+
         # Vibe-Aware Tone mapping
         vibe = self.current_vibe.upper() if hasattr(self, 'current_vibe') and self.current_vibe else "CASUAL"
         vibe_tone = "Tone guidance: Casual, friendly, peer-to-peer."
@@ -730,26 +782,78 @@ class CognitiveHub:
             vibe_tone = "Tone guidance: Cynical, investigative, auditing telemetry patterns."
         elif vibe == "META":
             vibe_tone = "Tone guidance: Self-aware, observing the lab's state machine."
-        
+
         try:
-            # We call pinky's think tool to generate the summary
-            res_cool = await self.residents["pinky"].call_tool("think", {
-                "query": cooldown_query, 
-                "context": f"Technical Output: {text}",
-                "behavioral_guidance": vibe_tone,
+            # We call pinky's think tool to perform the coherence evaluation
+            res_eval = await self.residents["pinky"].call_tool("think", {
+                "query": critique_query, 
+                "context": f"Technical Output to evaluate:\n{text}",
+                "behavioral_guidance": f"Act as a strict Coherence Critic. Check for logic errors, slop, or inconsistency. {vibe_tone}",
+                "response_format": eval_schema,
                 "request_id": request_id
             })
             
-            cool_text = ""
-            if hasattr(res_cool, 'content') and len(res_cool.content) > 0:
-                cool_text = res_cool.content[0].text
+            eval_text = ""
+            if hasattr(res_eval, 'content') and len(res_eval.content) > 0:
+                eval_text = res_eval.content[0].text
             else:
-                cool_text = str(res_cool)
+                eval_text = str(res_eval)
             
-            # Dispatch as terminal summary to the chat window
-            await self.execute_dispatch(cool_text, "Pinky (Summary)", shutdown_event=shutdown_event, final=True)
+            # Parse evaluation result
+            eval_data = {}
+            match = re.search(r'\{.*\}', eval_text, re.DOTALL)
+            if match:
+                try:
+                    eval_data = json.loads(match.group(0))
+                except Exception:
+                    pass
+            
+            # Default fallback if parsing failed
+            if not eval_data:
+                eval_data = {
+                    "score": 5,
+                    "reasoning": "Coherence check passed implicitly or output formatting failed.",
+                    "slop_found": False,
+                    "retort": eval_text
+                }
+            
+            # Save the critique response to turn_thought_trace for the ledger
+            retort_text = eval_data.get("retort", "")
+            self.turn_thought_trace["critique"] = retort_text
+            
+            # Log evaluations to .round_table_evals.json
+            eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
+            existing_evals = []
+            if os.path.exists(eval_file_path):
+                try:
+                    with open(eval_file_path, "r") as f:
+                        existing_evals = json.load(f)
+                except Exception:
+                    pass
+            
+            new_eval = {
+                "timestamp": time.time(),
+                "source": source,
+                "score": eval_data.get("score", 5),
+                "reasoning": eval_data.get("reasoning", ""),
+                "slop_found": eval_data.get("slop_found", False),
+                "retort": retort_text
+            }
+            existing_evals.append(new_eval)
+            
+            # Atomic write (.tmp + replace)
+            tmp_path = eval_file_path + ".tmp"
+            try:
+                with open(tmp_path, "w") as f:
+                    json.dump(existing_evals, f, indent=2)
+                os.replace(tmp_path, eval_file_path)
+            except Exception as e:
+                logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
+
+            # Dispatch retort as terminal summary to the chat window
+            await self.execute_dispatch(retort_text, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
         except Exception as e:
-            logging.error(f"[HUB] Grounding Gate failed: {e}")
+            logging.error(f"[HUB] Coherence critique failed: {e}")
 
     async def _distill_sovereign_brief(self, raw_context, request_id="default"):
         """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
