@@ -818,11 +818,38 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                                 expansion_triggered = True
                                 break
 
-                    full_truths.append(
-                        f"[ACQUISITION Source: {target_file}]: "
-                        f"Document anchor: {doc_anchor[:200]}... "
-                        f"Use 'read_document(\"{target_file}\")' to see the physical evidence."
-                    )
+                    # Search for the specific matching entry to fetch raw ground truth
+                    matched_entry = None
+                    for entry in file_data:
+                        if doc_anchor[:50] in str(entry):
+                            matched_entry = entry
+                            break
+                    
+                    if matched_entry:
+                        if "synopsis" in matched_entry:
+                            # It is an artifact entry
+                            entry_str = (
+                                f"[ACQUISITION Source: {target_file} Type: {matched_entry.get('type', 'Artifact')} "
+                                f"Rank: {matched_entry.get('rank', 2)}]: "
+                                f"Filename: {matched_entry.get('filename', 'N/A')} | "
+                                f"Synopsis: {matched_entry.get('synopsis', '')} | "
+                                f"Drive ID: {matched_entry.get('drive_id', 'N/A')}"
+                            )
+                        else:
+                            # It is a chronological timeline entry
+                            entry_str = (
+                                f"[ACQUISITION Source: {target_file} Date: {matched_entry.get('date', 'N/A')} "
+                                f"Rank: {matched_entry.get('rank', 2)}]: "
+                                f"Summary: {matched_entry.get('summary', '')} | "
+                                f"Evidence: {matched_entry.get('evidence', '')}"
+                            )
+                        full_truths.append(entry_str)
+                    else:
+                        full_truths.append(
+                            f"[ACQUISITION Source: {target_file}]: "
+                            f"Document anchor: {doc_anchor[:500]}..."
+                        )
+
                     if target_file not in source_files:
                         source_files.append(target_file)
                     continue
