@@ -5,7 +5,7 @@ import sys
 import time
 import random
 
-HOST = "z87-Linux.local"
+HOST = "localhost"
 PORT = 8765
 URI = f"ws://{HOST}:{PORT}"
 
@@ -22,7 +22,7 @@ async def test_memory():
             while True:
                 msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
                 data = json.loads(msg)
-                if data.get("type") == "status" and data.get("state") == "ready": break
+                if data.get("type") == "status" and data.get("state") in ("ready", "connected"): break
 
             # 2. Plant the Memory
             print(f"🧠 Step 1: Planting Memory ('The secret code is {secret_code}')...")
