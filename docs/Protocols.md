@@ -301,3 +301,21 @@
 2.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
 3.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
 4.  **Forensic Review Gate**: After OpenAgent commits changes locally, Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
+5.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format to prevent context drift and ensure correct file/line targets:
+    ```markdown
+    opencode run -m <provider/model> "
+    [GROUNDING CONTEXT]
+    - FeatureTracker: file:///home/jallred/Dev_Lab/Portfolio_Dev/FeatureTracker.md
+    - Protocols BKM: file:///home/jallred/Dev_Lab/HomeLabAI/docs/Protocols.md#BKM-<id>
+    - Active Task: SPRINT_PLAN_SPR_37_0.md#Task-<id>
+
+    [TARGET SPECIFICATION]
+    - File: <absolute_path_to_target_file>
+    - Target Lines/Functions: <target_lines_or_functions>
+    - Modification Details: <exact_changes_required>
+
+    [VERIFICATION GATE]
+    - Test Command: <validation_script_or_pytest_command>
+    - Mandate: You are forbidden from committing unless this test passes.
+    "
+    ```
