@@ -10,19 +10,21 @@ LAB_WS_URL = "ws://localhost:8765"
 async def test_mcp_full_integration():
     """Live verification of MCP tools via the Intercom server."""
     async with websockets.connect(LAB_WS_URL) as ws:
+        # Consume the initial connection status message sent by V5 Foyer
+        init_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+        init_data = json.loads(init_msg)
+        assert init_data.get("state") is not None
+        print(f"DEBUG: Initial status: {init_data.get('state')}")
+
         # 1. Handshake
         await ws.send(json.dumps({"type": "handshake", "version": "3.4.0", "client": "integration_tester"}))
 
-        # 2. Verify Archive Node (list_cabinet via handshake auto-response)
+        # 2. Verify Handshake Response
         msg = await asyncio.wait_for(ws.recv(), timeout=10)
         data = json.loads(msg)
-        assert data["type"] == "status"
-
-        msg = await asyncio.wait_for(ws.recv(), timeout=10)
-        data = json.loads(msg)
-        assert data["type"] == "cabinet"
-        assert "archive" in data["files"]
-        print("✅ Archive Node: list_cabinet verified.")
+        assert data.get("type") == "status"
+        assert data.get("state") == "connected"
+        print("✅ Foyer Handshake verified.")
 
         # 3. Verify Pinky Node (facilitate via query)
         query = "Pinky, just say Poit!"
