@@ -23,7 +23,7 @@ ROLE_TOKENS_PATH = os.path.join(LAB_DIR, "config", "role_tokens.json")
 class BicameralNode:
     """
     [FEAT-145] Bicameral Node: Standardized MCP wrapper for local/remote LLM nodes.
-    Supports Multi-LoRA, Liger-Kernels, and Silicon Health reporting.
+    Supports Multi-LoRA, Liger-Kernels, and Engine Health reporting.
     """
 
     def __init__(self, name, system_prompt):
@@ -40,7 +40,7 @@ class BicameralNode:
             except ValueError:
                 pass
 
-        # [FEAT-220] Silicon Handshake: Consume session token and tag process title
+        # [FEAT-220] Service Handshake: Consume session token and tag process title
         self.session_token = "LOCAL_ONLY"
         if "--session" in sys.argv:
             try:

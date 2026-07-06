@@ -529,7 +529,7 @@ class CognitiveHub:
                         })
                         break
         
-        # [FEAT-350] Silicon Stabilization: Retry loop for small models
+        # [FEAT-350] Engine Stabilization: Retry loop for small models
         for triage_attempt in range(3):
             if t_parsed is not None:
                 break
@@ -542,7 +542,7 @@ class CognitiveHub:
                 
                 # [Task 12.2] Brain Early-Reply: Let Brain fill dead air while waking
                 if not self.get_vram_status():
-                    logging.info("[HUB] Silicon warming. Routing to KENDER immediately.")
+                    logging.info("[HUB] Engine warming. Routing to KENDER immediately.")
                     if triage_attempt == 0:
                         await self.broadcast({
                             "type": "crosstalk", 
@@ -602,16 +602,16 @@ class CognitiveHub:
                     if not is_connection_error:
                         self.consecutive_parse_failures += 1
                         if self.consecutive_parse_failures >= 3:
-                            msg = f"[WARNING] Silicon instability detected (Gibberish). Attempting to maintain baseline. (Consecutive: {self.consecutive_parse_failures})"
+                            msg = f"[WARNING] Engine instability detected (Gibberish). Attempting to maintain baseline. (Consecutive: {self.consecutive_parse_failures})"
                             logging.warning(msg)
                             await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
 
                         if self.consecutive_parse_failures >= 10:
                             if self.hibernate_callback:
-                                msg = "[ALARM] Persistent corruption detected. Triggering H2 Silicon Scythe for reset."
+                                msg = "[ALARM] Persistent corruption detected. Triggering H2 Engine Scythe for reset."
                                 logging.error(msg)
                                 await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
-                                await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Silicon."})
+                                await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Engine."})
                                 asyncio.create_task(self.hibernate_callback(level=2, recover=True))
                     else:
                         logging.warning("[HUB] Triage yielded connection error. Retrying without scythe penalty.")
