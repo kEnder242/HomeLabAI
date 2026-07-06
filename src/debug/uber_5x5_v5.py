@@ -37,7 +37,7 @@ async def evaluate_fidelity(cycle_id, page):
     has_milestones = any(x in full_dom.lower() for x in ["operational", "ready", "connected", "foyer"])
     
     # 2. Nomenclature Check (V5 Node Names)
-    # Pinky is the gateway, The Brain is intuition, Deep Thought is Sovereign.
+    # Pinky is the gateway, The Brain is intuition, Deep Thought is the primary reasoner.
     has_v5_nodes = any(x in full_dom for x in ["Pinky", "The Brain", "Deep Thought"])
     
     # 3. Visible Consensus Check (Task 2.5)

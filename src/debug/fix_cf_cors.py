@@ -21,7 +21,7 @@ def final_attempt():
     url = f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/access/apps/{app_id}"
     
     data = {
-        "name": "Jason Lab - Sovereign",
+        "name": "Jason Lab",
         "domain": "notes.jason-lab.dev",
         "type": "self_hosted",
         "session_duration": "24h",
