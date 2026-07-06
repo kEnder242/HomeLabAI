@@ -159,7 +159,7 @@
 4.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
 5.  **Legacy Support**: `LAB_REST_CURL_CONTROL` (Default: ENABLED) preserves backward compatibility for existing `curl` scripts and remote status indicators while steering the agent toward the high-fidelity Proxy path.
 
-**Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a pkill or shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab's sovereignty."
+**Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a pkill or shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab"
 
 ## BKM-024: Validation-Aware Synchronization
 **Objective**: Ensure the physical Lab state matches the active sprint implementation.

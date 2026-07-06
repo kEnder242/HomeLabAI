@@ -540,7 +540,7 @@ class CognitiveHub:
                     "brain_source": "System"
                 })
                 
-                # [Task 12.2] Sovereign Early-Reply: Let Brain fill dead air while waking
+                # [Task 12.2] Brain Early-Reply: Let Brain fill dead air while waking
                 if not self.get_vram_status():
                     logging.info("[HUB] Silicon warming. Routing to KENDER immediately.")
                     if triage_attempt == 0:
@@ -681,7 +681,7 @@ class CognitiveHub:
         self._boosted_interest = False
 
         if "brain" in target or "deep" in target:
-            # Elevate to Sovereign (Brain & Deep Thought), bypassing Pinky's first turn
+            # Elevate to Brain Node (Brain & Deep Thought), bypassing Pinky's first turn
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
             # Local Response (Pinky First Turn)
@@ -704,7 +704,7 @@ class CognitiveHub:
                     await self.trigger_morning_briefing(request_id=request_id)
                 return
             
-            # Cascade to Sovereign if interest is high
+            # Cascade to Brain Node if interest is high
             if self.current_interest > 0.5:
                 await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
 
@@ -855,15 +855,15 @@ class CognitiveHub:
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
-    async def _distill_sovereign_brief(self, raw_context, request_id="default"):
+    async def _distill_strategic_brief(self, raw_context, request_id="default"):
         """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
         if not raw_context or "brain" not in self.residents:
             return raw_context
             
-        logging.info("[HUB] Context Precision: Distilling raw RAG into Sovereign Brief...")
+        logging.info("[HUB] Context Precision: Distilling raw RAG into Strategic Brief...")
         try:
             prompt = (
-                "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Sovereign Brief'. "
+                "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Strategic Brief'. "
                 "Extract specific platform anchors, validation targets, and known PECI/MSR scars. "
                 "STRICT: NO ROLEPLAY. PROVIDE ONLY THE TECHNICAL SYNTHESIS."
             )
@@ -871,7 +871,7 @@ class CognitiveHub:
             res = await self.residents["brain"].call_tool("think", {
                 "query": prompt, 
                 "context": raw_context,
-                "behavioral_guidance": "Distill for Sovereign Thought.",
+                "behavioral_guidance": "Distill for Strategic Thought.",
                 "request_id": request_id
             })
             
@@ -882,18 +882,18 @@ class CognitiveHub:
                 brief = str(res)
                 
             logging.info(f"[HUB] Distillation complete ({len(brief)} chars).")
-            return f"[SOVEREIGN_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
+            return f"[STRATEGIC_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
         except Exception as e:
             logging.warning(f"[HUB] Context distillation failed: {e}")
             return raw_context
 
     async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
-        """Handles Sovereign (4090) leg of the waterfall."""
+        """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
-        distilled_context = await self._distill_sovereign_brief(raw_context, request_id=request_id)
+        distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 
-        # Dispatch to Sovereign
+        # Dispatch to Brain Node
         # Side-channel Telemetry Relay handles the broadcast.
         # We just need to exhaust the generator to ensure the node task completes.
         dt_response = ""
@@ -904,7 +904,7 @@ class CognitiveHub:
             if shutdown_event and shutdown_event.is_set():
                 break
 
-        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/sovereign output in the main chat pane
+        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/strategic output in the main chat pane
         await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id)
 
     async def _run_triggered_task(self, task_name):
