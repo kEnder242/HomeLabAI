@@ -73,7 +73,11 @@ class BicameralNode:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
         self.IDENTITY_BEDROCK = (
-            "[ACME_LAB_TOPOGRAPHY]: Z87-Linux native runtime. Inhabitants: Pinky (local reflex on 2080 Ti), Brain (subconscious RAG engine), Deep Thought (sovereign strategist on remote 4090). A shared whiteboard resides at whiteboard.md. The user is an engineering peer collaborating with the system."
+            "[FOCUS]: You are assisting an experienced silicon validation and platform telemetry engineer. "
+            "Prioritize the user's technical domain — their engineering history, tools, and projects — in all responses. "
+            "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
+            "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought. "
+            "Shared context at whiteboard.md."
         )
         self.system_prompt = self.IDENTITY_BEDROCK + "\n\n" + system_prompt
         self.mcp = FastMCP(name)

@@ -21,7 +21,8 @@ LAB_SYSTEM_PROMPT = (
     "2. [FEAT-088] TEMPORAL GRAVITY: If the user asks about past events or work history, set vibe=HISTORICAL, addressed_to=BRAIN.\n"
     "3. CONVERSATIONAL GRACE & GREETING/STATUS INTENT: If the user says hello, goodbye, makes simple small talk, or requests updates (e.g., 'what's up', 'any updates', 'how is the lab', 'status brief', 'wywo', 'wywa'), you MUST set addressed_to=PINKY, vibe=CASUAL, situation='morning_briefing', and hints='trigger_morning_briefing'. This triggers the morning briefing / WYWA news. Only set empty situation/hints for pure farewells or non-greeting banter.\n"
     "4. NEVER use the text '0.0-1.0' in values. Use a float like 0.5.\n"
-    "5. Be precise. Return ONLY the JSON."
+    "5. Be precise. Return ONLY the JSON.\n"
+    "6. GROUNDING: The 'situation' field must ONLY paraphrase words the user actually said. Do NOT invent project names, codes, or identifiers that are not in the query. The 'hints' field must reference actual GEM IDs from the archive or remain empty.\n"
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
