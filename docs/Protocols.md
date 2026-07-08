@@ -301,13 +301,13 @@
 2.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
 3.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
 4.  **Forensic Review Gate**: After OpenAgent commits changes locally, Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
-5.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format to prevent context drift and ensure correct file/line targets:
+5.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format. BKM and FEAT context is retrieved from ChromaDB (behavioral_dna / feature_dna collections) rather than injected as raw file content, reducing KV cache pressure on small local models:
     ```markdown
     opencode run -m <provider/model> "
-    [GROUNDING CONTEXT]
-    - FeatureTracker: file:///home/jallred/Dev_Lab/Portfolio_Dev/FeatureTracker.md
-    - Protocols BKM: file:///home/jallred/Dev_Lab/HomeLabAI/docs/Protocols.md#BKM-<id>
-    - Active Task: SPRINT_PLAN_SPR_37_0.md#Task-<id>
+    [GROUNDING CONTEXT — loaded from ChromaDB, not raw file injection]
+    - BKM query:  'how to safely patch files atomically'   → retrieves BKM-011, BKM-012
+    - FEAT query: 'RAPL telemetry silicon validation'       → retrieves FEAT-098, FEAT-115
+    - Active Task: SPRINT_PLAN_SPR_37_0.md#Task-<id>        ← direct pointer (not DNA-managed)
 
     [TARGET SPECIFICATION]
     - File: <absolute_path_to_target_file>
@@ -319,6 +319,7 @@
     - Mandate: You are forbidden from committing unless this test passes.
     "
     ```
+    *   **Note**: Raw file links (`file:///...FeatureTracker.md` and `file:///...Protocols.md`) are now handled via the pre-commit-hook-synced ChromaDB collections (`behavioral_dna`, `feature_dna`). Do not re-inject those full files as context; use targeted semantic queries instead. The sprint plan task pointer remains a direct file link as it is ephemeral and not persisted to DNA.
 6.  **Session Lifecycle Management (sessions vs. run/play)**:
     *   **`opencode run`**: One-shot, ephemeral execution. Appropriate for single atomic tasks with a clear verification gate (e.g., "fix this specific bug and run this test"). Spawns a new session on each invocation.
     *   **`opencode session`** (preferred for sustained phases): Use named, resumable sessions to persist context across multiple related tasks within a phase or sprint.
