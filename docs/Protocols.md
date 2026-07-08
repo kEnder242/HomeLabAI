@@ -319,7 +319,26 @@
     - Mandate: You are forbidden from committing unless this test passes.
     "
     ```
-    
+6.  **Session Lifecycle Management (sessions vs. run/play)**:
+    *   **`opencode run`**: One-shot, ephemeral execution. Appropriate for single atomic tasks with a clear verification gate (e.g., "fix this specific bug and run this test"). Spawns a new session on each invocation.
+    *   **`opencode session`** (preferred for sustained phases): Use named, resumable sessions to persist context across multiple related tasks within a phase or sprint.
+    *   **Naming a session**: The session title displayed in `opencode session list` is set at creation time from the first user message. To create a distinctly named session, the first message must be an explicit phase declaration:
+        ```bash
+        # Start a named session for a specific sprint phase
+        opencode run --print-logs "SESSION: Sprint 37 Phase 2 — Persona Polish. Starting task 6.1: IDENTITY_BEDROCK refactor."
+        # The session ID is then captured from the output (ses_XXXX)
+        ```
+    *   **Resuming a session**: Use `opencode --session <session_id>` or `opencode -c` to resume the most recent session:
+        ```bash
+        opencode --session ses_0c61ebab0ffeRC23pP7kxbiQjU
+        opencode -c  # shorthand for continue last session
+        ```
+    *   **Sprint vs. Phase granularity**: Prefer one session per logical phase (Story or Story group) within a sprint. Avoid single-session-per-sprint as context accumulation over many tasks degrades small model performance. Fork with `--fork` when branching from a stable state:
+        ```bash
+        opencode --session <ses_id> --fork  # branches context at this point
+        ```
+    *   **Session list audit**: Before starting a new phase, run `opencode session list` and identify the last relevant session ID to resume or fork.
+
 ---
 
 ## BKM-035: Lab/Feature Taxonomy Separation Protocol
