@@ -722,14 +722,28 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
             
             rrf_score = meta.get("_rrf_score", 0.0)
             if target_year:
+                # [FEAT-117] Adaptive Range Matching: Extract all 4-digit years to check for ranges
+                entry_years = [int(y) for y in re.findall(r"\b(199[0-9]|20[0-2][0-9])\b", ts)]
+                t_year_int = int(target_year)
+                
+                is_match = False
+                if t_year_int in entry_years:
+                    is_match = True
+                elif len(entry_years) == 2 and entry_years[0] <= t_year_int <= entry_years[1]:
+                    is_match = True
+                elif len(entry_years) == 2 and entry_years[1] <= t_year_int <= entry_years[0]:
+                    is_match = True
+                
+                if not is_match:
+                    continue  # Skip if year doesn't match and isn't in range
+                
+                # Check if we can parse candidate date for Gaussian weight decay
                 c_date = parse_candidate_date(ts)
                 if c_date:
-                    if str(c_date.year) != target_year:
-                        continue  # Skip wrong year
                     days_diff = abs((c_date - target_date).days)
                     temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
                 else:
-                    continue  # Skip undated items when a specific year is requested
+                    temporal_weight = 0.5  # Fallback weight for ranges without specific entry dates
             elif target_date:
                 c_date = parse_candidate_date(ts)
                 if c_date:
@@ -865,6 +879,14 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
 
         # Combine Clipboard + New Truths
         final_text = "\n\n".join(combined_context + ["\n---\n".join(full_truths)])
+        
+        # [FEAT-123] Truth Sentinel sparse data warning
+        if target_year and not full_truths:
+            final_text += (
+                f"\n\n[SYSTEM WARNING]: The historical archives contain NO verified records or accomplishments for the target year {target_year}. "
+                f"Under the Truth Sentinel mandate [FEAT-123], you MUST state that information is sparse or unavailable for this year, "
+                f"and you are forbidden from inventing accomplishments."
+            )
         return json.dumps(
             {"text": final_text, "sources": source_files}
         )
