@@ -573,6 +573,7 @@ class CognitiveHub:
                         "schema": {
                             "type": "object",
                             "properties": {
+                                "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
                                 "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META"]},
                                 "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
                                 "casual": {"type": "number"},
@@ -581,7 +582,7 @@ class CognitiveHub:
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"}
                             },
-                            "required": ["vibe", "domain"]
+                            "required": ["addressed_to", "vibe", "domain"]
                         }
                     }
                 }
@@ -661,14 +662,7 @@ class CognitiveHub:
         self.current_vibe = vibe
         self._wrap_residents_for_sandbox()
         
-        # Determine routing target based on vibe (or explicit addressed_to if provided by role tokens/fallbacks)
-        if "addressed_to" in t_parsed:
-            target = t_parsed["addressed_to"].lower()
-        else:
-            if vibe in ["TECHNICAL", "HISTORICAL", "ANALYTICAL", "FORENSIC"]:
-                target = "brain"
-            else:
-                target = "pinky"
+        target = t_parsed.get("addressed_to", "PINKY").lower()
         
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
