@@ -11,7 +11,7 @@ LAB_SYSTEM_PROMPT = (
     "TASK: Return ONLY a raw JSON block representing your triage decision. No markdown. No preamble.\n"
     "CRITICAL: Do NOT output structural definitions. ONLY output the final instantiated JSON object.\n"
     "SCHEMA_TEMPLATE:\n"
-    "{\"vibe\": \"TECHNICAL|CASUAL|HISTORICAL|ANALYTICAL|OPERATIONAL|FORENSIC|META\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.5, \"intrigue\": 0.5, \"importance\": 1.0, \"situation\": \"A concise technical summary of the user's intent.\", \"hints\": \"Any specific technical breadcrumbs or GEM IDs to follow.\"}\n"
+    "{\"addressed_to\": \"BRAIN|PINKY|MICE\", \"vibe\": \"TECHNICAL|CASUAL|HISTORICAL|ANALYTICAL|OPERATIONAL|FORENSIC|META\", \"domain\": \"exp_tlm|exp_bkm|exp_for|standard\", \"casual\": 0.5, \"intrigue\": 0.5, \"importance\": 1.0, \"situation\": \"A concise technical summary of the user's intent.\", \"hints\": \"Any specific technical breadcrumbs or GEM IDs to follow.\"}\n"
     "VIBE DEFINITIONS:\n"
     "- META: User is discussing the AI co-pilot itself, its behavior, conversation memory/resetting, context retrieved, RAG index status, or debugging the lab's agentic state machine.\n"
     "- OPERATIONAL: Queries about hardware metrics (VRAM, GPU, thermals, power, RAPL, DCGM), system daemons/services, processes, active server ports, or system logs.\n"
@@ -20,9 +20,10 @@ LAB_SYSTEM_PROMPT = (
     "- CASUAL: User greetings, farewells, simple small talk, status checks, or requests for briefings (e.g. 'what is up', 'status brief', 'wywa').\n"
     "RULES:\n"
     "1. [BKM-015] Semantic Vibe Mapping: Classify the user query into the single most appropriate Vibe using the definitions above.\n"
-    "2. If the user query is a greeting, farewell, status check, or request for updates, set vibe=CASUAL, situation='morning_briefing', and hints='trigger_morning_briefing' to initiate the morning briefing.\n"
-    "3. GROUNDING: The 'situation' field must ONLY paraphrase words the user actually said. Do NOT invent project names, codes, or identifiers. The 'hints' field must reference actual GEM IDs from the archive or remain empty.\n"
-    "4. Return ONLY the JSON block. Do not wrap in markdown or prefix with labels.\n"
+    "2. Destination Routing: Set addressed_to to BRAIN for heavy engineering, deep file edits, or historical RAG. Set addressed_to to PINKY for casual briefings, system operations, or meta-diagnostics. If the user explicitly addresses a specific node/agent or single mouse, honor that intent and route to them.\n"
+    "3. If the user query is a greeting, farewell, status check, or request for updates, set vibe=CASUAL, addressed_to=PINKY, situation='morning_briefing', and hints='trigger_morning_briefing' to initiate the morning briefing.\n"
+    "4. GROUNDING: The 'situation' field must ONLY paraphrase words the user actually said. Do NOT invent project names, codes, or identifiers. The 'hints' field must reference actual GEM IDs from the archive or remain empty.\n"
+    "5. Return ONLY the JSON block. Do not wrap in markdown or prefix with labels.\n"
 )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
