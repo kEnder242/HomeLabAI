@@ -343,6 +343,7 @@
         ```bash
         opencode --session <ses_id> --fork  # branches context at this point
         ```
+    *   **Sustained Sprint Sessions (Persistence)**: When the user requests completing the entire sprint in a single session, Sisyphus should reuse the same subagent session ID (`ses_...` returned by `task()`) for subsequent tasks in the sprint rather than starting a fresh subagent session on each task. Sisyphus must maintain a persistent task checklist/ledger inside the session context.
     *   **Session list audit**: Before starting a new phase, run `opencode session list` and identify the last relevant session ID to resume or fork.
 9.  **Playbook Protocol Refinement (Swarm Pain Points)**:
     *   **Strict Verification Gate Enforcement**: Subagents are forbidden from committing code changes if the AST parse (`ast.parse`) or validation tests fail. Committing syntax errors constitutes a severe protocol violation.
@@ -350,6 +351,9 @@
     *   **Delegation-Guiding Prompts**: Prompts sent to subagents must embed strict boundaries (e.g., `MUST DO` / `MUST NOT DO` rules) to prevent local models from losing context or inventing instructions.
     *   **Named Session Enforcement**: Avoid generating sessions with generic titles (e.g. "Greeting" or "New session"). Always use the `SESSION: Sprint XX Story YY` format on the first query of a session.
     *   **VRAM Inversion Strategy**: Evaluate if the local 4090 VRAM should be inverted: instead of running heavy orchestrators locally (which suffer high latency and context limits), utilize cloud endpoints for orchestration and reservation, and load local models (like `qwen2.5-coder`) primarily for *heavy code generation/refactoring*. Evaluate if coding models still require tool usage or if they can rely on unified diff patches.
+10. **DNA Query Translation (Semantic Paraphrasing)**:
+    *   **The Principle**: Sisyphus must not query ChromaDB with raw, conversational user prompts verbatim (e.g. `"I want to edit a file"`).
+    *   **The Practice**: Sisyphus must translate the user's conversational intent into precise domain-specific search query keywords (e.g. `"safe file write"`, `"atomic file patch"`, `"lint gate"`) before querying the `behavioral_dna` and `feature_dna` collections. This ensures maximum retrieval confidence (minimum distance score).
 
 ---
 
