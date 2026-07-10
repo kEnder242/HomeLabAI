@@ -239,7 +239,7 @@
 
 ### 1. Document Architecture
 *   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_X.md`.
-*   **Structure**: Every task MUST include a **How** (the technical implementation path) and a **Why** (the strategic rationale).
+*   **Structure**: Every task MUST include a **How** (the technical implementation path), a **Why** (the strategic rationale), and an **Agent/Category Tag** (e.g., `[hephaestus / unspecified-high]`, `[Sisyphus-Junior / quick]`) to specify execution routing.
 *   **Pointers**: Conductor-level plans (`conductor/tracks/<track_id>/plan.md`) must contain explicit pointers to the Master Sprint Plan and any relevant forensic audits or BKMs.
 
 ### 2. The Planning Phase (The "Greenlight" Gate)
@@ -296,12 +296,17 @@
 **Playbook Reference**: [AGY_TO_OPENAGENT_PLAYBOOK.md](../../Portfolio_Dev/AGY_TO_OPENAGENT_PLAYBOOK.md)
 
 1.  **Role Division**:
-    *   **Orchestrator (Gemini)**: Acts as the *Strategic Guardian of the DNA*. Responsible for updating the Master Plan (`SPRINT_PLAN_SPR_XX_X.md`), defining architectural requirements, auditing code changes via git diffs, and running final integration tests.
+    *   **Orchestrator (Gemini/Claude)**: Acts as the *Strategic Guardian of the DNA*. Responsible for updating the Master Plan (`SPRINT_PLAN_SPR_XX_X.md`), defining architectural requirements, auditing code changes via git diffs, and running final integration tests.
     *   **Swarm (OpenAgent)**: Executes *Tactical Implementation loops*. Responsible for writing codebase logic, updating test files, and running line-by-line debugging iterations.
-2.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
-3.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
-4.  **Forensic Review Gate**: After OpenAgent commits changes locally, Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
-5.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format. BKM and FEAT context is retrieved from ChromaDB (behavioral_dna / feature_dna collections) rather than injected as raw file content, reducing KV cache pressure on small local models:
+2.  **Swarm Agent Category Mapping**:
+    *   **Sisyphus-Junior (quick, visual-engineering, writing)**: Spawned automatically via category overrides. Do **NOT** specify `subagent_type: "Sisyphus-Junior"` directly in task tool parameters as it will error.
+    *   **Plan-Family Restriction**: Plan-family agents (`plan`, `prometheus`) cannot delegate tasks to other plan-family agents via `task()`.
+    *   **Coordinator Restriction**: Coordinator agents (e.g., `prometheus`) own their orchestration loops and are forbidden from being called as subagents. Select worker agents or categories instead.
+3.  **Concurrency Deadlock Prevention**: Ollama provider options must set `"maxConcurrency": 5` (or higher) in `opencode.json`. If set to `1` (serialized), the parent orchestrator and child subagent will deadlock when attempting parallel queries to the local model.
+4.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
+5.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
+6.  **Forensic Review Gate**: After OpenAgent commits changes locally, Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
+7.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format. BKM and FEAT context is retrieved from ChromaDB (behavioral_dna / feature_dna collections) rather than injected as raw file content, reducing KV cache pressure on small local models:
     ```markdown
     opencode run -m <provider/model> "
     [GROUNDING CONTEXT — loaded from ChromaDB, not raw file injection]
@@ -320,7 +325,7 @@
     "
     ```
     *   **Note**: Raw file links (`file:///...FeatureTracker.md` and `file:///...Protocols.md`) are now handled via the pre-commit-hook-synced ChromaDB collections (`behavioral_dna`, `feature_dna`). Do not re-inject those full files as context; use targeted semantic queries instead. The sprint plan task pointer remains a direct file link as it is ephemeral and not persisted to DNA.
-6.  **Session Lifecycle Management (sessions vs. run/play)**:
+8.  **Session Lifecycle Management (sessions vs. run/play)**:
     *   **`opencode run`**: One-shot, ephemeral execution. Appropriate for single atomic tasks with a clear verification gate (e.g., "fix this specific bug and run this test"). Spawns a new session on each invocation.
     *   **`opencode session`** (preferred for sustained phases): Use named, resumable sessions to persist context across multiple related tasks within a phase or sprint.
     *   **Naming a session**: The session title displayed in `opencode session list` is set at creation time from the first user message. To create a distinctly named session, the first message must be an explicit phase declaration:
@@ -339,6 +344,12 @@
         opencode --session <ses_id> --fork  # branches context at this point
         ```
     *   **Session list audit**: Before starting a new phase, run `opencode session list` and identify the last relevant session ID to resume or fork.
+9.  **Playbook Protocol Refinement (Swarm Pain Points)**:
+    *   **Strict Verification Gate Enforcement**: Subagents are forbidden from committing code changes if the AST parse (`ast.parse`) or validation tests fail. Committing syntax errors constitutes a severe protocol violation.
+    *   **DNA Grounding Enforcement**: Swarm agents must query the `feature_dna` collection (grounded in `FeatureTracker.md`) before making edits to ensure they do not introduce regressional bugs or overwrite active rules.
+    *   **Delegation-Guiding Prompts**: Prompts sent to subagents must embed strict boundaries (e.g., `MUST DO` / `MUST NOT DO` rules) to prevent local models from losing context or inventing instructions.
+    *   **Named Session Enforcement**: Avoid generating sessions with generic titles (e.g. "Greeting" or "New session"). Always use the `SESSION: Sprint XX Story YY` format on the first query of a session.
+    *   **VRAM Inversion Strategy**: Evaluate if the local 4090 VRAM should be inverted: instead of running heavy orchestrators locally (which suffer high latency and context limits), utilize cloud endpoints for orchestration and reservation, and load local models (like `qwen2.5-coder`) primarily for *heavy code generation/refactoring*. Evaluate if coding models still require tool usage or if they can rely on unified diff patches.
 
 ---
 
