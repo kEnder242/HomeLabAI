@@ -358,6 +358,9 @@
     *   **The Principle**: Cloud orchestrators (Gemini) must not delegate open-ended logic or design descriptions to local 14B workers. They must compile exact HTML/CSS blocks, BeautifulSoup scripts, or shell templates directly inside the prompt's `[TARGET SPECIFICATION]`.
     *   **The Practice**: This minimizes local token generations, reduces context overhead, avoids structural hallucinations, and allows the user to review the exact code/design inside the Master Sprint Plan prior to execution.
 12. **Mandatory Shell-Based Execution**: All tactical worker delegation must be initiated via the shell-based `opencode` CLI (Method B) rather than using the built-in `invoke_subagent` tool (Method A). The built-in tool is reserved for read-only research tasks or meta-analysis. This ensures all developer tasks are properly registered in the OpenAgent session list and visible in the local TUI/dashboard.
+13. **Socket-Activated Server Hibernation & Warm-Up**:
+    *   **The Principle**: The OpenAgent server daemon (`opencode-core.service`) is socket-activated by `opencode.socket` on port 4096 and configured with `StopWhenUnneeded=true`. When idle, it shuts down (hibernates) to save memory and GPU resources.
+    *   **The Practice**: Before launching a task against the server (via `opencode run --attach http://127.0.0.1:4096/`), Sisyphus must proactively wake the server from hibernation by querying the socket (e.g. running a fast `curl -I http://127.0.0.1:4096/` or `opencode session list | cat`) and waiting 1-2 seconds for initialization to complete before sending the task.
 
 ---
 
