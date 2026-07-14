@@ -77,7 +77,7 @@ async def test_relay_interest_buildup():
     
     pinky.call_tool.return_value = mock_resp("<thought> The user is asking about RAPL-Sim. I will trigger research mode. </thought> Narf! I'm looking into the RAPL-Sim files for you.")
     brain.call_tool.return_value = mock_resp("<thought> RAPL requires MSR tools. </thought> Local intuition: We solved the energy overflow bug in Epoch 2.")
-    thought.call_tool.return_value = mock_resp("Sovereign analysis: The implementation relies on MSR registers for high-fidelity telemetry.")
+    thought.call_tool.return_value = mock_resp("Architect analysis: The implementation relies on MSR registers for high-fidelity telemetry.")
 
     await hub.process_query(query_1)
     print(f"  Resulting Interest: {hub.current_interest:.2f}")

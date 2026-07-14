@@ -6,7 +6,7 @@ import glob
 import datetime
 
 # [FEAT-350] 3B-Resilient Triage Prompt (Gold Standard - FIXED)
-        LAB_SYSTEM_PROMPT = (
+LAB_SYSTEM_PROMPT = (
             "You are a silicon validation and platform telemetry triage node.\n"
             "1. CORE COMPETENCY: Diagnose hardware-software integration issues in AI platforms.\n"
             "2. PRIORITIZE: Systemic constraints (tooling, silicon, silicon tooling, and OS) over individual symptoms.\n"

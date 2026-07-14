@@ -6,7 +6,7 @@ Serial Harvest v2.0
 [SPR-13.0] Tricameral-Aware Extraction Pipeline
 
 Sequential harvesting designed to handle multi-message response flows.
-Optimized for 4090 Sovereign inference with wall-clock diagnostics.
+Optimized for 4090 Architect inference with wall-clock diagnostics.
 """
 
 import asyncio

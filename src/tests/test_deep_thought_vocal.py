@@ -6,7 +6,7 @@ import time
 async def test_brain_vocal():
     """
     [Task 5.2] Certify the 4090 (Brain) handshake logic.
-    Verifies that the Sovereign Brain is resident and vocal.
+    Verifies that the Architect Brain is resident and vocal.
     """
     uri = "ws://localhost:8765"
     print("--- [TASK 5.2] VOCAL HANDSHAKE: DEEP THOUGHT (4090) ---", flush=True)

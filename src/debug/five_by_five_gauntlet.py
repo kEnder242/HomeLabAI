@@ -117,7 +117,7 @@ async def run_single_check(iteration=1):
                         timeout_limit += 30 # Extension for slow silicon
                     print(f"    [UI LOG] {log}")
                 
-                if "Strategic Sovereignty: PRIMARY" in log or "Mind is OPERATIONAL" in log:
+                if "Strategic Architect: PRIMARY" in log or "Mind is OPERATIONAL" in log:
                     print(f"    [UI LOG] {log}")
                     if vllm_seen:
                         success = True

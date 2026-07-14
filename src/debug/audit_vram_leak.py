@@ -54,7 +54,7 @@ async def run_audit_cycle(iteration):
     print(f"[*] Passive VRAM: {decayed_vram}MB")
 
     # 3. Wake
-    print("[*] Triggering Sovereign Wake...")
+    print("[*] Triggering Architect Wake...")
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(HUB_URL) as ws:
             await ws.send_json({"type": "text_input", "content": "[ME] Audit ping."})

@@ -192,7 +192,7 @@ class BicameralNode:
             # [FIX] Filter out non-chat models (embeddings) from fallback
             chat_candidates = [m for m in available_models if not any(x in m.lower() for x in ["nomic", "embed", "bert", "ranker"])]
             if chat_candidates:
-                # Prefer known high-fidelity models for Sovereign
+                # Prefer known high-fidelity models for Architect
                 for fav in ["llama3.1:8b", "llama3.2:3b", "gemma"]:
                     for c in chat_candidates:
                         if fav in c.lower():
@@ -211,7 +211,7 @@ class BicameralNode:
             logging.info(f"[{self.name}] Resolved primary host to local: {target}")
             return target
         
-        # [Task 6.5] Dynamic Discovery for Sovereign IP
+        # [Task 6.5] Dynamic Discovery for Architect IP
         host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
         ip_hint = host_cfg.get("ip_hint")
         if ip_hint:
@@ -379,7 +379,7 @@ class BicameralNode:
                     if f_val > 0.6:
                         stance = "Deep"
                     if f_val > 0.8:
-                        stance = "Sovereign"
+                        stance = "Architect"
                     masked = masked.replace(fuel_match.group(0), f"Resonance: {stance}")
             except Exception:
                 pass

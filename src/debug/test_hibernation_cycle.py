@@ -82,7 +82,7 @@ async def run_cycle(iteration):
         print("[-] FAILURE: VRAM failed to decay.")
         return False
 
-    print("[*] STEP 3: Triggering Sovereign Wake via Intent...")
+    print("[*] STEP 3: Triggering Architect Wake via Intent...")
     # [FEAT-265.20] Boot Patience: Wait for Hub Foyer to open
     foyer_up = False
     for _ in range(12): # 60s max wait for foyer

@@ -5,7 +5,7 @@
 Dream Voice (Stage 3: Persona Synthesis)
 [FEAT-204] CLI Persona Induction
 
-Uses the 4090 Sovereign to generate "Ideal Engineer Responses" 
+Uses the 4090 Architect to generate "Ideal Engineer Responses" 
 for the refined prompts, creating an instruction-tuning dataset.
 """
 
@@ -31,7 +31,7 @@ logging.basicConfig(
 
 
 async def generate_dream_response(websocket, prompt, mode="voice"):
-    """Queries the Sovereign for the ideal 'Engineer Voice' or 'Sentinel Decision'."""
+    """Queries the Architect for the ideal 'Engineer Voice' or 'Sentinel Decision'."""
     if mode == "sentinel":
         dream_query = (
             "[ME] [SENTINEL_DREAM]: Analyze this user query: '{prompt}'. "
@@ -49,7 +49,7 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
     message = {"type": "text_input", "content": dream_query}
     await websocket.send(json.dumps(message))
 
-    # Sovereign wait loop
+    # Architect wait loop
     start_time = asyncio.get_event_loop().time()
     while (asyncio.get_event_loop().time() - start_time) < 120:
         try:

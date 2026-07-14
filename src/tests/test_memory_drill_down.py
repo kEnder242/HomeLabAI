@@ -81,4 +81,4 @@ async def test_multi_resolution_trigger(hub):
     
     assert "[YEARLY]" in params["context"]
     assert "[FOCAL]" in params["context"]
-    print("\n[+] SUCCESS: Multi-Resolution Context injected into Sovereign turn.")
+    print("\n[+] SUCCESS: Multi-Resolution Context injected into Architect turn.")

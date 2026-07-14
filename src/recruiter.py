@@ -77,7 +77,7 @@ class NightlyRecruiter:
     async def calculate_semantic_match(self, jd_text: str) -> Dict:
         """
         [RE-FEAT-167.1] Multi-Vector Scoring Refactor.
-        Tasks the Sovereign Brain with a semantic pass against Team Signatures.
+        Tasks the Architect Brain with a semantic pass against Team Signatures.
         """
         if not self.brain or not jd_text:
             return {"score": 0.5, "bucket": "Unknown", "evidence": "No brain or text available."}
