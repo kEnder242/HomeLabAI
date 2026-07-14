@@ -354,6 +354,9 @@
 10. **DNA Query Translation (Semantic Paraphrasing)**:
     *   **The Principle**: Sisyphus must not query ChromaDB with raw, conversational user prompts verbatim (e.g. `"I want to edit a file"`).
     *   **The Practice**: Sisyphus must translate the user's conversational intent into precise domain-specific search query keywords (e.g. `"safe file write"`, `"atomic file patch"`, `"lint gate"`) before querying the `behavioral_dna` and `feature_dna` collections. This ensures maximum retrieval confidence (minimum distance score).
+11. **Explicit Blueprint Prompting (No-Boilerplate Guardrail)**:
+    *   **The Principle**: Cloud orchestrators (Gemini) must not delegate open-ended logic or design descriptions to local 14B workers. They must compile exact HTML/CSS blocks, BeautifulSoup scripts, or shell templates directly inside the prompt's `[TARGET SPECIFICATION]`.
+    *   **The Practice**: This minimizes local token generations, reduces context overhead, avoids structural hallucinations, and allows the user to review the exact code/design inside the Master Sprint Plan prior to execution.
 
 ---
 
