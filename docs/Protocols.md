@@ -361,6 +361,9 @@
 13. **Socket-Activated Server Hibernation & Warm-Up**:
     *   **The Principle**: The OpenAgent server daemon (`opencode-core.service`) is socket-activated by `opencode.socket` on port 4096 and configured with `StopWhenUnneeded=true`. When idle, it shuts down (hibernates) to save memory and GPU resources.
     *   **The Practice**: Before launching a task against the server (via `opencode run --attach http://127.0.0.1:4096/`), AGY (the parent co-pilot client) must proactively wake the server from hibernation by querying the socket (e.g. running a fast `curl -I http://127.0.0.1:4096/` or `opencode session list | cat`) and waiting 1-2 seconds for initialization to complete before sending the task.
+14. **Narrow Scope & On-Demand Reference Pattern**:
+    *   **The Principle**: Setting a broad parent directory (e.g. `/home/jallred/Dev_Lab`) as the workspace `--dir` causes the codebase crawler to index every file across all submodules, creating a large baseline context (often 40K+ tokens) that easily triggers cloud rate limits.
+    *   **The Practice**: Always target `--dir` to the narrowest active subdirectory (e.g. `--dir /home/jallred/Dev_Lab/HomeLabAI`). If the task requires referencing files outside this scope (like a sprint plan in `Portfolio_Dev`), provide the absolute path using the `file://` scheme directly in the prompt. The server will fetch that file on-demand via its read tools, avoiding the indexing cost of the entire parent directory.
 
 ---
 
