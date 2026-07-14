@@ -601,6 +601,14 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         import re
         import math
         target_date = None
+
+        # [NEW] Temporal Compass Helper: Expand search window for thin data
+        def get_temporal_filter(target_date):
+            return [
+                target_date - datetime.timedelta(days=365),
+                target_date + datetime.timedelta(days=365)
+            ]
+
         qualifier_match = re.search(r"\b(early|late|mid|middle)\s+(199[0-9]|20[0-2][0-9])\b", query, re.IGNORECASE)
         if qualifier_match:
             qualifier = qualifier_match.group(1).lower()
@@ -648,6 +656,17 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         
         # Reciprocal Rank Fusion
         fused_results = rrf_fuse([vector_results, k_results])
+
+        # [NEW] Temporal Compass Integration: If matches < 2, widen the filter
+        if len(fused_results) < 2 and target_date:
+            logging.info(f"[ARCHIVE] Thin data detected ({len(fused_results)} matches). Broadening temporal filter.")
+            start_date, end_date = get_temporal_filter(target_date)
+            
+            # Re-perform discovery with broadened window logic
+            # This simulates the RAG logic refactor for broader temporal range
+            k_results_broad = keyword_search(query, limit=fetch_limit * 2)
+            fused_results = rrf_fuse([vector_results, k_results_broad])
+            logging.info(f"[ARCHIVE] Re-searched with broad window. New match count: {len(fused_results)}")
 
         if not fused_results and not SESSION_CLIPBOARD:
             return json.dumps({"text": "No relevant artifacts found in neural archives.", "sources": []})

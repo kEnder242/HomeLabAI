@@ -42,9 +42,9 @@ async def evaluate_fidelity(cycle_id, page):
     # The 3B model often summarizes the query.
     has_vocal = any(x in full_dom for x in ["<thought>", "2023", "PECISTRESSOR", "validation", "focus"])
     
-    # 3. Check for Brain reachability (Sovereign Bridge)
+    # 3. Check for Brain reachability (Architect Bridge)
     # Support 'Deep Thought' or 'Thought' or 'Brain'
-    has_brain = any(x in full_dom for x in ["Brain", "Thought", "Sovereign", "LAB"])
+    has_brain = any(x in full_dom for x in ["Brain", "Thought", "Architect", "LAB"])
     
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] Pinky Voice: {'✅' if has_vocal else '❌'}")

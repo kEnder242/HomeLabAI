@@ -19,7 +19,7 @@ class MockResident:
 async def test_sovereign_brief_distillation():
     """Verifies Task 2.2: Context Precision."""
     from logic.cognitive_hub import CognitiveHub
-    print("\n--- [TEST] Sovereign Brief Distillation (Task 2.2) ---")
+    print("\n--- [TEST] Architect Brief Distillation (Task 2.2) ---")
     
     residents = {"brain": MockResident("Brain")}
     hub = CognitiveHub(residents, None, None, lambda: True, None)

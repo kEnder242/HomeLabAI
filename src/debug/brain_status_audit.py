@@ -14,7 +14,7 @@ async def audit():
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
-                    if data.get('brain') and 'Strategic Sovereignty' in data.get('brain'):
+                    if data.get('brain') and 'Strategic Architect' in data.get('brain'):
                         print(f"   [RECV] {data.get('brain')}")
                         break
             

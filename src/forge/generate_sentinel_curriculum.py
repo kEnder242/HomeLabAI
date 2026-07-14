@@ -22,7 +22,7 @@ OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "sentinel_v2_curriculum.js
 
 # --- Configuration ---
 SEED_TARGET = 200
-BRAIN_NODE_ID = "brain" # Using Sovereign for generation
+BRAIN_NODE_ID = "brain" # Using Architect for generation
 
 # --- Schema Templates ---
 VIBES = [

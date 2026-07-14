@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Sovereign Prime & Probe (B+A)
+Architect Prime & Probe (B+A)
 [FEAT-212] Direct REST Priming + Hub WebSocket Probing.
 
 This script proves model residency on the 4090 and audits the Hub's triage turns.
@@ -18,14 +18,14 @@ import websockets
 SOVEREIGN_IP = "192.168.1.26"
 OLLAMA_PORT = 11434
 HUB_URI = "ws://localhost:8765"
-MODEL = "llama3.1:8b" # Target Sovereign model
+MODEL = "llama3.1:8b" # Target Architect model
 
 async def prime_4090():
-    print(f"--- [PHASE 1] Priming Sovereign (Direct REST) ---")
+    print(f"--- [PHASE 1] Priming Architect (Direct REST) ---")
     url = f"http://{SOVEREIGN_IP}:{OLLAMA_PORT}/api/generate"
     payload = {
         "model": MODEL,
-        "prompt": "Respond with 'Sovereign Online'.",
+        "prompt": "Respond with 'Architect Online'.",
         "stream": False
     }
     

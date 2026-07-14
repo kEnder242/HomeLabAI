@@ -13,7 +13,7 @@ async def run_integrated_test():
     print("[INIT] Starting Integrated Induction Test...")
     
     # 1. Populate a dummy prompt if empty (or just add one)
-    dummy_task = {"prompt": "[INTEGRATION_TEST]: Explain the importance of the Sovereign Silence hardening."}
+    dummy_task = {"prompt": "[INTEGRATION_TEST]: Explain the importance of the Architect Silence hardening."}
     with open(PROMPT_FILE, "a") as f:
         f.write(json.dumps(dummy_task) + "\n")
     print(f"[DATA] Injected dummy prompt into {PROMPT_FILE}")

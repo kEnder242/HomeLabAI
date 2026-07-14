@@ -16,7 +16,7 @@ async def run_fast_integrated_test():
     print("[INIT] Starting FAST Integrated Induction Test...")
     
     # 1. Create a single-item queue
-    dummy_task = {"prompt": "[INTEGRATION_TEST]: Explain the importance of the Sovereign Silence hardening."}
+    dummy_task = {"prompt": "[INTEGRATION_TEST]: Explain the importance of the Architect Silence hardening."}
     with open(FAST_PROMPT_FILE, "w") as f:
         f.write(json.dumps(dummy_task) + "\n")
     print(f"[DATA] Created fast queue with 1 item: {FAST_PROMPT_FILE}")

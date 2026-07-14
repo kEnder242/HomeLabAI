@@ -33,7 +33,7 @@ async def test_handshake_priming():
                         if content == "Priming Brain...":
                             priming_detected = True
                         
-                        if "Strategic Sovereignty" in str(content) and "ONLINE" in str(content):
+                        if "Strategic Architect" in str(content) and "ONLINE" in str(content):
                             if priming_detected:
                                 print("\n✅ SUCCESS: Handshake Priming Sequence Verified.")
                                 break
