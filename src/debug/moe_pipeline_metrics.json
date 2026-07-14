@@ -1,0 +1,14 @@
+{
+  "intent_classification_start": 1784062968.5559537,
+  "intent_classification_end": 1784062968.8283372,
+  "rag_retrieval_start": 1784062968.8283381,
+  "rag_retrieval_end": 1784062970.2140243,
+  "workspace_context_start": 1784062968.8283384,
+  "workspace_context_end": 1784062970.214026,
+  "model_warming_start": 1784062968.8283553,
+  "model_warming_end": 1784062971.96971,
+  "prompt_compilation_start": 1784062971.969711,
+  "prompt_compilation_end": 1784062972.4110084,
+  "total_pipeline_start": 1784062968.5559494,
+  "total_pipeline_end": 1784062972.4110093
+}
