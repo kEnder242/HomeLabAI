@@ -357,6 +357,7 @@
 11. **Explicit Blueprint Prompting (No-Boilerplate Guardrail)**:
     *   **The Principle**: Cloud orchestrators (Gemini) must not delegate open-ended logic or design descriptions to local 14B workers. They must compile exact HTML/CSS blocks, BeautifulSoup scripts, or shell templates directly inside the prompt's `[TARGET SPECIFICATION]`.
     *   **The Practice**: This minimizes local token generations, reduces context overhead, avoids structural hallucinations, and allows the user to review the exact code/design inside the Master Sprint Plan prior to execution.
+12. **Mandatory Shell-Based Execution**: All tactical worker delegation must be initiated via the shell-based `opencode` CLI (Method B) rather than using the built-in `invoke_subagent` tool (Method A). The built-in tool is reserved for read-only research tasks or meta-analysis. This ensures all developer tasks are properly registered in the OpenAgent session list and visible in the local TUI/dashboard.
 
 ---
 
