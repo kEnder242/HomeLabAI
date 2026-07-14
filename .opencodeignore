@@ -1,0 +1,86 @@
+Portfolio_Dev/.DS_Store
+Portfolio_Dev/__pycache__/
+Portfolio_Dev/*.log
+Portfolio_Dev/.venv/
+Portfolio_Dev/tmp/
+Portfolio_Dev/*.swp
+Portfolio_Dev/
+Portfolio_Dev/# Symlinks/Local Config
+Portfolio_Dev/gemini_settings.json
+Portfolio_Dev/HomeLabAI_Dev
+Portfolio_Dev/
+Portfolio_Dev/# Editors
+Portfolio_Dev/.vscode/
+Portfolio_Dev/
+Portfolio_Dev/# Python
+Portfolio_Dev/*.pyc
+Portfolio_Dev/
+Portfolio_Dev/# Sensitive Documentation
+Portfolio_Dev/Travel_Guide_2026.md
+Portfolio_Dev/monitor/secrets.json
+Portfolio_Dev/monitor/pager_activity.json
+Portfolio_Dev/
+Portfolio_Dev/# Field Notes Data (Private Logs/Indices)
+Portfolio_Dev/field_notes/data/
+Portfolio_Dev/field_notes/data_contaminated_backup/
+HomeLabAI/# Python
+HomeLabAI/__pycache__/
+HomeLabAI/*.py[cod]
+HomeLabAI/*$py.class
+HomeLabAI/.venv/
+HomeLabAI/venv/
+HomeLabAI/*.log
+HomeLabAI/
+HomeLabAI/# IDEs
+HomeLabAI/.vscode/
+HomeLabAI/.idea/
+HomeLabAI/
+HomeLabAI/# Project Specific
+HomeLabAI/server.log
+HomeLabAI/tmp/
+HomeLabAI/*.wav
+HomeLabAI/*.mp3
+HomeLabAI/unsloth_compiled_cache/
+HomeLabAI/unsloth_install.log
+HomeLabAI/*.out
+HomeLabAI/*.pid
+HomeLabAI/outputs/
+HomeLabAI/
+HomeLabAI/# Ignore raw data/models (too big)
+HomeLabAI/models/
+HomeLabAI/data/
+HomeLabAI/
+HomeLabAI/# Secrets (BE CAREFUL)
+HomeLabAI/# my_config.yaml is currently tracked but SCRUBBED. 
+HomeLabAI/# If you add real keys, add it here!
+HomeLabAI/vendor/
+HomeLabAI/logs/forensic_*.json
+HomeLabAI/
+HomeLabAI/# [FEAT-151] Transient Telemetry
+HomeLabAI/logs/trace_*.json
+HomeLabAI/server.log.stale
+HomeLabAI/round_table.lock
+HomeLabAI/.venv*/
+HomeLabAI/src/forge/expertise/*.jsonl
+HomeLabAI/run/
+
+# Root-level Workspace Ignores
+.git/
+.gitmodules
+.omo/
+.sisyphus/
+.gemini/
+.ruff_cache/
+.vscode/
+node_modules/
+unsloth_compiled_cache/
+www_deploy/
+models/
+logs/
+*.log
+*.log.stale
+*.out
+*.bin
+*.efi
+*.patch
+feb11_deep_dive.json

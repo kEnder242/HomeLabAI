@@ -1,0 +1,102 @@
+[
+  {
+    "id": 1,
+    "query": "Write a Python function to check if a string contains duplicate characters.",
+    "expected_expert": "coding"
+  },
+  {
+    "id": 2,
+    "query": "Implement a binary search algorithm in Rust.",
+    "expected_expert": "coding"
+  },
+  {
+    "id": 3,
+    "query": "Refactor this React component to use TypeScript and hooks.",
+    "expected_expert": "coding"
+  },
+  {
+    "id": 4,
+    "query": "Debug this Go program that is crashing with a segmentation fault.",
+    "expected_expert": "coding"
+  },
+  {
+    "id": 5,
+    "query": "Explain how to optimize a SQL query for large datasets.",
+    "expected_expert": "coding"
+  },
+  {
+    "id": 6,
+    "query": "Solve this logic puzzle: If all Bloops are Razzies and all Razzies are Lazzies, are all Bloops definitely Lazzies?",
+    "expected_expert": "deep_reasoning"
+  },
+  {
+    "id": 7,
+    "query": "Prove that the square root of 2 is irrational.",
+    "expected_expert": "deep_reasoning"
+  },
+  {
+    "id": 8,
+    "query": "Explain the halting problem and its implications for computability theory.",
+    "expected_expert": "deep_reasoning"
+  },
+  {
+    "id": 9,
+    "query": "What is the time complexity of the Ford-Fulkerson algorithm for maximum flow?",
+    "expected_expert": "deep_reasoning"
+  },
+  {
+    "id": 10,
+    "query": "How does RSA encryption work at a mathematical level?",
+    "expected_expert": "deep_reasoning"
+  },
+  {
+    "id": 11,
+    "query": "What is your system context or operational history?",
+    "expected_expert": "conversation"
+  },
+  {
+    "id": 12,
+    "query": "Can you summarize the key events from the last 24 hours in the lab?",
+    "expected_expert": "conversation"
+  },
+  {
+    "id": 13,
+    "query": "What are the current active projects in the lab?",
+    "expected_expert": "conversation"
+  },
+  {
+    "id": 14,
+    "query": "How do I access the lab's telemetry dashboard?",
+    "expected_expert": "conversation"
+  },
+  {
+    "id": 15,
+    "query": "What is the status of the current sprint?",
+    "expected_expert": "conversation"
+  },
+  {
+    "id": 16,
+    "query": "What is the RLM pattern or recursive language search strategy in Acme Lab?",
+    "expected_expert": "research"
+  },
+  {
+    "id": 17,
+    "query": "Explain the federated routing architecture proposed in Sprint 39.",
+    "expected_expert": "research"
+  },
+  {
+    "id": 18,
+    "query": "What are the key findings from the latency hiding simulation in Story 1?",
+    "expected_expert": "research"
+  },
+  {
+    "id": 19,
+    "query": "Summarize the design of the MoE+ benchmarking framework from Story 3.",
+    "expected_expert": "research"
+  },
+  {
+    "id": 20,
+    "query": "What are the best practices for implementing a federated inference system?",
+    "expected_expert": "research"
+  }
+]
