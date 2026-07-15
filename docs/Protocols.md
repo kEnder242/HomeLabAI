@@ -312,7 +312,10 @@
     [GROUNDING CONTEXT — loaded from ChromaDB, not raw file injection]
     - BKM query:  'how to safely patch files atomically'   → retrieves BKM-011, BKM-012
     - FEAT query: 'RAPL telemetry silicon validation'       → retrieves FEAT-098, FEAT-115
-    - Active Task: SPRINT_PLAN_SPR_37_0.md#Task-<id>        ← direct pointer (not DNA-managed)
+    - Active Task: SPRINT_PLAN_SPR_40_0.md#Task-<id>        ← direct pointer
+
+    [COORDINATION & DELEGATION MANDATE]
+    - You NEVER work alone when specialists are available. Delegate the raw code edits and CLI verification checks of this task to sisyphus-junior (running locally on KENDER's 4090) to conserve cloud tokens. Focus strictly on plan coordination and diff auditing.
 
     [TARGET SPECIFICATION]
     - File: <absolute_path_to_target_file>
