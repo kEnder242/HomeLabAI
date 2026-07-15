@@ -12,11 +12,13 @@ Outputs:
 """
 
 import json
+import logging
 import time
 import random
 import asyncio
 from typing import List, Dict, Any
 import os
+from prometheus_client import Gauge, start_http_server
 
 # Configuration
 QUERIES_FILE = os.path.join(os.path.dirname(__file__), "moe_queries.json")
@@ -26,6 +28,33 @@ RESULTS_FILE = os.path.join(os.path.dirname(__file__), "moe_benchmark_results.js
 MOCK_ROUTER_LATENCY_MS = 80
 MOCK_ROUTER_ACCURACY = 0.95
 COLD_START_LATENCY_S = 2.0  # Simulated cold start latency
+
+# Prometheus metrics
+moe_router_latency_seconds = Gauge(
+    "moe_router_latency_seconds",
+    "Router decision latency in seconds",
+    ["start_type"],
+)
+moe_warmup_latency_seconds = Gauge(
+    "moe_warmup_latency_seconds",
+    "Expert warmup latency in seconds",
+    ["start_type"],
+)
+moe_expert_latency_seconds = Gauge(
+    "moe_expert_latency_seconds",
+    "Expert execution latency in seconds",
+    ["start_type"],
+)
+moe_total_latency_seconds = Gauge(
+    "moe_total_latency_seconds",
+    "Total end-to-end route latency in seconds",
+    ["start_type"],
+)
+moe_routing_accuracy = Gauge(
+    "moe_routing_accuracy",
+    "Routing accuracy (1.0 = correct, 0.0 = incorrect)",
+    ["start_type"],
+)
 
 
 def load_queries() -> List[Dict[str, Any]]:
@@ -99,6 +128,14 @@ async def benchmark_routing(queries: List[Dict[str, Any]], cold_start: bool) -> 
             "cold_start": cold_start,
         }
         results.append(result)
+        
+        # Update Prometheus gauges (convert ms to seconds)
+        start_type = "cold" if cold_start else "warm"
+        moe_router_latency_seconds.labels(start_type=start_type).set(router_latency / 1000.0)
+        moe_warmup_latency_seconds.labels(start_type=start_type).set(warmup_latency)
+        moe_expert_latency_seconds.labels(start_type=start_type).set(expert_latency_ms / 1000.0)
+        moe_total_latency_seconds.labels(start_type=start_type).set(total_latency_ms / 1000.0)
+        moe_routing_accuracy.labels(start_type=start_type).set(1.0 if routing_result["is_correct"] else 0.0)
     
     return results
 
@@ -173,6 +210,12 @@ def save_results(cold_results: List[Dict[str, Any]], warm_results: List[Dict[str
 
 async def main():
     """Run the benchmark and output results."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    
+    # Start Prometheus metrics server
+    start_http_server(8010)
+    logging.info("Prometheus metrics endpoint active on http://localhost:8010")
+    
     queries = load_queries()
     
     print("Running MoE+ Federated Router Benchmark...")
@@ -189,6 +232,10 @@ async def main():
     # Print summary and save results
     print_tabular_summary(cold_results, warm_results)
     save_results(cold_results, warm_results)
+    
+    # Keep-alive loop so Prometheus can scrape metrics
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":
