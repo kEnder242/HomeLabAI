@@ -654,8 +654,8 @@ class CognitiveHub:
         casual = float(t_parsed.get("casual", 0.5))
         intrigue = float(t_parsed.get("intrigue", 0.5))
         
-        # [FEAT-234] Unified Interest Calculation
-        interest = ((1.0 - casual) * (intrigue + importance)) / 2.0
+        # [FEAT-234] Unified Interest Calculation: Damped casual penalty to prevent conversational veto
+        interest = ((1.0 - (casual * 0.5)) * (intrigue + importance)) / 2.0
         self.current_interest = max(0.0, min(1.0, interest))
         
         vibe = t_parsed.get("vibe", "").upper()

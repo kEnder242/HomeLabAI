@@ -362,16 +362,15 @@ class FoyerRouter:
             self.status.vram_total = data.get("vram_total", self.status.vram_total)
             self.status.ram_pct = data.get("ram_pct", self.status.ram_pct)
             
-            # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently
-            if self.status.vocal:
-                if not self.residents.booted and not self.residents.booting:
-                    logger.info("[FOYER] Physical silicon vocal. Initiating logical boot...")
-                    asyncio.create_task(self.residents.boot_all())
-            else:
-                # [NEW] Hibernate logical nodes when silicon goes silent
+            # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently based on state transitions
+            if self.status.state in ["HIBERNATING", "OFFLINE"]:
                 if self.residents.booted:
-                    logger.info("[FOYER] Physical silicon silent. Hibernating logical nodes...")
+                    logger.info(f"[FOYER] Lab state is {self.status.state}. Hibernating logical nodes...")
                     asyncio.create_task(self.residents.shutdown())
+            elif self.status.state in ["OPERATIONAL"]:
+                if not self.residents.booted and not self.residents.booting:
+                    logger.info("[FOYER] Lab is OPERATIONAL. Initiating logical boot...")
+                    asyncio.create_task(self.residents.boot_all())
             
             return web.Response(status=200)
         except Exception as e:
@@ -828,46 +827,46 @@ class FoyerRouter:
 
         while True:
             try:
-                if self.status.vocal:
-                    # 1. Boot logical nodes if not ready
-                    if not self.residents.booted:
-                        logger.info("Lab is vocal. Booting logical nodes...")
-                        await self.residents.boot_all()
-                    
-                    if os.path.exists(QUEUE_FILE):
-                        size = os.path.getsize(QUEUE_FILE)
-                        if size > last_pos:
-                            with open(QUEUE_FILE, "r") as f:
-                                f.seek(last_pos)
-                                for line in f:
-                                    if not line.strip():
-                                        continue
-                                    try:
-                                        event = IntentEvent.from_json(line)
-                                        if event.status == "PENDING" and event.id not in self.processed_ids:
-                                            # [FIX] Filter out operational signals from reasoning engine
-                                            if event.query.startswith("[OPERATIONAL]"):
-                                                self.processed_ids.append(event.id)
-                                                continue
-
-                                            logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
+                # [FEAT-DECOUPLED] Check for queue changes immediately even if not vocal
+                if os.path.exists(QUEUE_FILE):
+                    size = os.path.getsize(QUEUE_FILE)
+                    if size > last_pos:
+                        # Boot logical nodes on intent if not ready
+                        if not self.residents.booted:
+                            logger.info("New intent detected. Booting logical nodes...")
+                            await self.residents.boot_all()
+                        
+                        with open(QUEUE_FILE, "r") as f:
+                            f.seek(last_pos)
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                try:
+                                    event = IntentEvent.from_json(line)
+                                    if event.status == "PENDING" and event.id not in self.processed_ids:
+                                        # [FIX] Filter out operational signals from reasoning engine
+                                        if event.query.startswith("[OPERATIONAL]"):
                                             self.processed_ids.append(event.id)
-                                            
-                                            # [FIX] Keep WebSocket alive during long node boot
-                                            await self.broadcast({
-                                                "type": "status",
-                                                "state": "SYNCING",
-                                                "message": "Physical silicon ready. Syncing logical nodes...",
-                                                "brain_source": "System",
-                                                "version": LAB_VERSION
-                                            })
-                                            
-                                            # [NEW] Shutdown tracking for this intent
-                                            shutdown_ev = asyncio.Event()
-                                            asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev, request_id=event.id))
-                                    except Exception as e:
-                                        logger.error(f"Intent parse error: {e}")
-                                last_pos = os.path.getsize(QUEUE_FILE) # [FIX] Accurate tailing
+                                            continue
+
+                                        logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
+                                        self.processed_ids.append(event.id)
+                                        
+                                        # [FIX] Keep WebSocket alive during long node boot
+                                        await self.broadcast({
+                                            "type": "status",
+                                            "state": "SYNCING",
+                                            "message": "Physical silicon ready. Syncing logical nodes...",
+                                            "brain_source": "System",
+                                            "version": LAB_VERSION
+                                        })
+                                        
+                                        # [NEW] Shutdown tracking for this intent
+                                        shutdown_ev = asyncio.Event()
+                                        asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev, request_id=event.id))
+                                except Exception as e:
+                                    logger.error(f"Intent parse error: {e}")
+                            last_pos = os.path.getsize(QUEUE_FILE) # [FIX] Accurate tailing
                 
             except Exception as e:
                 logger.error(f"Queue drainer failure: {e}")
