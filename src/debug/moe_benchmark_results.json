@@ -7,8 +7,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1834.610804233825,
-      "total_latency_ms": 3914.610804233825,
+      "expert_latency_ms": 1587.2715785668915,
+      "total_latency_ms": 3667.2715785668915,
       "cold_start": true
     },
     {
@@ -18,8 +18,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 682.1218675544255,
-      "total_latency_ms": 2762.1218675544255,
+      "expert_latency_ms": 1826.1131127081053,
+      "total_latency_ms": 3906.1131127081053,
       "cold_start": true
     },
     {
@@ -29,8 +29,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1603.3687334821357,
-      "total_latency_ms": 3683.3687334821357,
+      "expert_latency_ms": 1386.0937860019144,
+      "total_latency_ms": 3466.0937860019144,
       "cold_start": true
     },
     {
@@ -40,8 +40,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1644.9403064518572,
-      "total_latency_ms": 3724.9403064518574,
+      "expert_latency_ms": 1277.6562303916671,
+      "total_latency_ms": 3357.656230391667,
       "cold_start": true
     },
     {
@@ -51,8 +51,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1100.3372923002696,
-      "total_latency_ms": 3180.33729230027,
+      "expert_latency_ms": 1904.7299237107998,
+      "total_latency_ms": 3984.7299237108,
       "cold_start": true
     },
     {
@@ -62,8 +62,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 596.6736739685144,
-      "total_latency_ms": 2676.6736739685143,
+      "expert_latency_ms": 1336.9639271010483,
+      "total_latency_ms": 3416.9639271010483,
       "cold_start": true
     },
     {
@@ -73,8 +73,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 526.4874207671237,
-      "total_latency_ms": 2606.4874207671237,
+      "expert_latency_ms": 1909.1383187267907,
+      "total_latency_ms": 3989.1383187267907,
       "cold_start": true
     },
     {
@@ -84,8 +84,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1359.1431372117959,
-      "total_latency_ms": 3439.143137211796,
+      "expert_latency_ms": 1953.3945108506164,
+      "total_latency_ms": 4033.3945108506164,
       "cold_start": true
     },
     {
@@ -95,30 +95,30 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1596.8575729032232,
-      "total_latency_ms": 3676.857572903223,
+      "expert_latency_ms": 1497.8946692656637,
+      "total_latency_ms": 3577.8946692656637,
       "cold_start": true
     },
     {
       "query": "How does RSA encryption work at a mathematical level?",
       "expected_expert": "deep_reasoning",
-      "chosen_expert": "research",
-      "is_correct": false,
+      "chosen_expert": "deep_reasoning",
+      "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 837.4470184865297,
-      "total_latency_ms": 2917.4470184865295,
+      "expert_latency_ms": 738.8406338880385,
+      "total_latency_ms": 2818.8406338880386,
       "cold_start": true
     },
     {
       "query": "What is your system context or operational history?",
       "expected_expert": "conversation",
-      "chosen_expert": "coding",
-      "is_correct": false,
+      "chosen_expert": "conversation",
+      "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1378.8519785478757,
-      "total_latency_ms": 3458.8519785478757,
+      "expert_latency_ms": 1578.7408048109364,
+      "total_latency_ms": 3658.7408048109364,
       "cold_start": true
     },
     {
@@ -128,8 +128,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 952.1155624103587,
-      "total_latency_ms": 3032.1155624103585,
+      "expert_latency_ms": 1127.065544497954,
+      "total_latency_ms": 3207.065544497954,
       "cold_start": true
     },
     {
@@ -139,8 +139,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1840.3099909579328,
-      "total_latency_ms": 3920.3099909579328,
+      "expert_latency_ms": 528.8400285166286,
+      "total_latency_ms": 2608.8400285166285,
       "cold_start": true
     },
     {
@@ -150,8 +150,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1090.6475768825135,
-      "total_latency_ms": 3170.6475768825135,
+      "expert_latency_ms": 1370.260378202741,
+      "total_latency_ms": 3450.260378202741,
       "cold_start": true
     },
     {
@@ -161,8 +161,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1627.303679630536,
-      "total_latency_ms": 3707.303679630536,
+      "expert_latency_ms": 1135.6171557972664,
+      "total_latency_ms": 3215.6171557972666,
       "cold_start": true
     },
     {
@@ -172,8 +172,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 885.3225442417456,
-      "total_latency_ms": 2965.3225442417456,
+      "expert_latency_ms": 1908.958388358035,
+      "total_latency_ms": 3988.9583883580353,
       "cold_start": true
     },
     {
@@ -183,8 +183,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 966.4869837184425,
-      "total_latency_ms": 3046.4869837184424,
+      "expert_latency_ms": 1068.1886596268964,
+      "total_latency_ms": 3148.1886596268964,
       "cold_start": true
     },
     {
@@ -194,8 +194,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1395.0831027888971,
-      "total_latency_ms": 3475.083102788897,
+      "expert_latency_ms": 1334.88531891925,
+      "total_latency_ms": 3414.88531891925,
       "cold_start": true
     },
     {
@@ -205,8 +205,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 809.3822904243877,
-      "total_latency_ms": 2889.382290424388,
+      "expert_latency_ms": 1712.6474868200473,
+      "total_latency_ms": 3792.6474868200476,
       "cold_start": true
     },
     {
@@ -216,8 +216,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 2000.0,
-      "expert_latency_ms": 1440.6547458124514,
-      "total_latency_ms": 3520.6547458124514,
+      "expert_latency_ms": 841.4915728520903,
+      "total_latency_ms": 2921.49157285209,
       "cold_start": true
     }
   ],
@@ -229,8 +229,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 488.5057892182771,
-      "total_latency_ms": 568.5057892182771,
+      "expert_latency_ms": 275.2587940045587,
+      "total_latency_ms": 355.2587940045587,
       "cold_start": false
     },
     {
@@ -240,8 +240,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 734.2487527867121,
-      "total_latency_ms": 814.2487527867121,
+      "expert_latency_ms": 715.1297618260069,
+      "total_latency_ms": 795.1297618260069,
       "cold_start": false
     },
     {
@@ -251,19 +251,19 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 257.8572376121764,
-      "total_latency_ms": 337.8572376121764,
+      "expert_latency_ms": 462.04751007897414,
+      "total_latency_ms": 542.0475100789741,
       "cold_start": false
     },
     {
       "query": "Debug this Go program that is crashing with a segmentation fault.",
       "expected_expert": "coding",
-      "chosen_expert": "coding",
-      "is_correct": true,
+      "chosen_expert": "deep_reasoning",
+      "is_correct": false,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 748.4058939999574,
-      "total_latency_ms": 828.4058939999574,
+      "expert_latency_ms": 399.9942855923895,
+      "total_latency_ms": 479.9942855923895,
       "cold_start": false
     },
     {
@@ -273,8 +273,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 587.0788519019819,
-      "total_latency_ms": 667.0788519019819,
+      "expert_latency_ms": 238.77086437632983,
+      "total_latency_ms": 318.7708643763298,
       "cold_start": false
     },
     {
@@ -284,8 +284,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 210.97230730291272,
-      "total_latency_ms": 290.9723073029127,
+      "expert_latency_ms": 572.9585838077296,
+      "total_latency_ms": 652.9585838077296,
       "cold_start": false
     },
     {
@@ -295,8 +295,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 720.3884116989321,
-      "total_latency_ms": 800.3884116989321,
+      "expert_latency_ms": 415.7603961515006,
+      "total_latency_ms": 495.7603961515006,
       "cold_start": false
     },
     {
@@ -306,8 +306,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 795.6736296643171,
-      "total_latency_ms": 875.6736296643171,
+      "expert_latency_ms": 657.1976973514131,
+      "total_latency_ms": 737.1976973514131,
       "cold_start": false
     },
     {
@@ -317,8 +317,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 253.35509132239787,
-      "total_latency_ms": 333.35509132239787,
+      "expert_latency_ms": 695.1570410598424,
+      "total_latency_ms": 775.1570410598424,
       "cold_start": false
     },
     {
@@ -328,8 +328,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 281.22027614960183,
-      "total_latency_ms": 361.22027614960183,
+      "expert_latency_ms": 424.0516076797022,
+      "total_latency_ms": 504.0516076797022,
       "cold_start": false
     },
     {
@@ -339,8 +339,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 393.0054925940566,
-      "total_latency_ms": 473.0054925940566,
+      "expert_latency_ms": 215.78867985751938,
+      "total_latency_ms": 295.78867985751936,
       "cold_start": false
     },
     {
@@ -350,8 +350,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 460.2142967902845,
-      "total_latency_ms": 540.2142967902845,
+      "expert_latency_ms": 566.5100836784707,
+      "total_latency_ms": 646.5100836784707,
       "cold_start": false
     },
     {
@@ -361,8 +361,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 652.3310891932297,
-      "total_latency_ms": 732.3310891932297,
+      "expert_latency_ms": 357.87215216966774,
+      "total_latency_ms": 437.87215216966774,
       "cold_start": false
     },
     {
@@ -372,19 +372,19 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 284.3193200436543,
-      "total_latency_ms": 364.3193200436543,
+      "expert_latency_ms": 777.7924780129841,
+      "total_latency_ms": 857.7924780129841,
       "cold_start": false
     },
     {
       "query": "What is the status of the current sprint?",
       "expected_expert": "conversation",
-      "chosen_expert": "deep_reasoning",
-      "is_correct": false,
+      "chosen_expert": "conversation",
+      "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 422.8129479836663,
-      "total_latency_ms": 502.8129479836663,
+      "expert_latency_ms": 547.7808475743623,
+      "total_latency_ms": 627.7808475743623,
       "cold_start": false
     },
     {
@@ -394,8 +394,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 671.9096768323507,
-      "total_latency_ms": 751.9096768323507,
+      "expert_latency_ms": 793.6364237476447,
+      "total_latency_ms": 873.6364237476447,
       "cold_start": false
     },
     {
@@ -405,8 +405,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 646.0854016401656,
-      "total_latency_ms": 726.0854016401656,
+      "expert_latency_ms": 201.12852728537308,
+      "total_latency_ms": 281.1285272853731,
       "cold_start": false
     },
     {
@@ -416,8 +416,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 312.1838706197917,
-      "total_latency_ms": 392.1838706197917,
+      "expert_latency_ms": 214.6625673548856,
+      "total_latency_ms": 294.6625673548856,
       "cold_start": false
     },
     {
@@ -427,8 +427,8 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 309.33417085075047,
-      "total_latency_ms": 389.33417085075047,
+      "expert_latency_ms": 485.9224449508742,
+      "total_latency_ms": 565.9224449508743,
       "cold_start": false
     },
     {
@@ -438,27 +438,27 @@
       "is_correct": true,
       "router_latency_ms": 80,
       "warmup_latency_ms": 0.0,
-      "expert_latency_ms": 441.18770552365936,
-      "total_latency_ms": 521.1877055236594,
+      "expert_latency_ms": 275.4996734582407,
+      "total_latency_ms": 355.4996734582407,
       "cold_start": false
     }
   ],
   "metrics": {
     "cold_start": {
       "total_queries": 20,
-      "accuracy": 0.9,
+      "accuracy": 1.0,
       "avg_router_latency_ms": 80.0,
       "avg_warmup_latency_ms": 2000.0,
-      "avg_expert_latency_ms": 1208.407314138742,
-      "avg_total_latency_ms": 3288.4073141387425
+      "avg_expert_latency_ms": 1401.239601480669,
+      "avg_total_latency_ms": 3481.239601480669
     },
     "warm_start": {
       "total_queries": 20,
       "accuracy": 0.95,
       "avg_router_latency_ms": 80.0,
       "avg_warmup_latency_ms": 0.0,
-      "avg_expert_latency_ms": 483.5545106864438,
-      "avg_total_latency_ms": 563.5545106864438
+      "avg_expert_latency_ms": 464.64602100092344,
+      "avg_total_latency_ms": 544.6460210009234
     }
   }
 }
