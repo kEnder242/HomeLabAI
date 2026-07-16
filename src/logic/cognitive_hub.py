@@ -582,7 +582,7 @@ class CognitiveHub:
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"}
                             },
-                            "required": ["addressed_to", "vibe", "domain"]
+                            "required": ["addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
                         }
                     }
                 }
