@@ -79,7 +79,9 @@ class BicameralNode:
             "[FOCUS]: You are assisting an experienced silicon validation and platform telemetry engineer. "
             "Prioritize the user's technical domain — their engineering history, tools, and projects — in all responses. "
             "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
-            "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought. "
+            "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought."
+        )
+        self.CONTEXT_VALIDITY = (
             "[CONTEXT_VALIDITY]: If you are asked to analyze, summarize, or reference a specific historical topic or GEM ID, "
             "but the provided context is thin/empty and you have no active tools to retrieve evidence, "
             "you are FORBIDDEN from generating placeholder facts. "
@@ -118,6 +120,8 @@ class BicameralNode:
             Supports real-time token yielding to the Hub for internal waterfall streaming.
             """
             system_override = self.system_prompt
+            if tools:
+                system_override += "\n\n" + self.CONTEXT_VALIDITY
             if behavioral_guidance:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
 
@@ -158,12 +162,12 @@ class BicameralNode:
         Returns an async generator of tokens.
         """
         system_override = self.system_prompt
-        if behavioral_guidance:
-            system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
-
         if tools:
+            system_override += "\n\n" + self.CONTEXT_VALIDITY
             tool_desc = "\n".join([f"- {t}" for t in tools])
             system_override += f"\n\n[HUB_TOOLS]: You have access to these steering tools via the Hub:\n{tool_desc}"
+        if behavioral_guidance:
+            system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
         
         return self.generate_response(query, context, system_override=system_override, source_name=self.name, response_format=response_format)
 
