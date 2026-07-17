@@ -19,6 +19,9 @@ INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 ROLE_TOKENS_PATH = os.path.join(LAB_DIR, "config", "role_tokens.json")
 
+# [SPR-41_5] Tool Log Archive: Append-only record of all tool executions
+TOOL_LOG_PATH = os.path.join(LAB_DIR, "tool_log.md")
+
 
 class BicameralNode:
     """
@@ -77,7 +80,10 @@ class BicameralNode:
             "Prioritize the user's technical domain — their engineering history, tools, and projects — in all responses. "
             "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
             "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought. "
-            "Shared context at whiteboard.md."
+            "[CONTEXT_VALIDITY]: If you are asked to analyze, summarize, or reference a specific historical topic or GEM ID, "
+            "but the provided context is thin/empty and you have no active tools to retrieve evidence, "
+            "you are FORBIDDEN from generating placeholder facts. "
+            "You must output the exact token: [ERROR: CONTEXT_STARVED]."
         )
         self.system_prompt = self.IDENTITY_BEDROCK + "\n\n" + system_prompt
         self.mcp = FastMCP(name)
@@ -114,6 +120,14 @@ class BicameralNode:
             system_override = self.system_prompt
             if behavioral_guidance:
                 system_override += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{behavioral_guidance}"
+
+            # [SPR-41_5] Log tool call to tool_log.md archive
+            params_preview = f"query=\"{query[:80]}\""
+            if tools:
+                params_preview += f", tools_count={len(tools)}"
+            if context:
+                params_preview += f", context_len={len(context)}"
+            self.append_to_tool_log("think", params_preview)
 
             full_response = ""
             # [FEAT-233] Internal Waterfall: Only broadcast tokens to UI if NOT internal.
@@ -511,8 +525,28 @@ class BicameralNode:
         }
         self.telemetry_queue.put(payload)
 
+    def append_to_tool_log(self, tool_name, params_preview="", output_link=""):
+        """[SPR-41_5] Append tool execution record to tool_log.md archive."""
+        try:
+            os.makedirs(os.path.dirname(TOOL_LOG_PATH), exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            parts = [f"- [{timestamp}] [{self.name}] called {tool_name}"]
+            if params_preview:
+                parts.append(f"with params {params_preview}")
+            if output_link:
+                parts.append(f"-> Output at [{output_link}](file://{output_link})")
+            with open(TOOL_LOG_PATH, "a") as f:
+                f.write(" ".join(parts) + "\n")
+        except Exception:
+            pass
+
     def _emit_telemetry(self, request_id, ttft_ms, total_tokens, duration_s, engine_type, model):
         """[FEAT-T20.1] Fire telemetry callback if wired by hub."""
+        # [SPR-41_5] Log generation completion to tool_log.md with trace link
+        trace_path = os.path.join(LAB_DIR, "logs", f"trace_{self.name}.json")
+        params_preview = f"request_id={request_id}, tokens={total_tokens}, duration={duration_s}s"
+        self.append_to_tool_log("think", params_preview, output_link=trace_path)
+
         if callable(self._on_telemetry):
             try:
                 self._on_telemetry({
