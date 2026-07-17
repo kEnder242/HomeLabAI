@@ -38,7 +38,7 @@ async def evaluate_fidelity(cycle_id, page):
     
     # 2. Nomenclature Check (V5 Node Names)
     # Pinky is the gateway, The Brain is intuition, Deep Thought is the primary reasoner.
-    has_v5_nodes = any(x in full_dom for x in ["Pinky", "The Brain", "Deep Thought"])
+    has_v5_nodes = any(x in full_dom for x in ["Pinky", "Brain", "Deep Thought"])
     
     # 3. Visible Consensus Check (Task 2.5)
     # Look for the gold-bordered refinement markers
@@ -101,7 +101,12 @@ async def run_uber_cycle(cycle_id, wait_minutes, p_instance):
         content = await page.inner_text("#chat-console", timeout=120000)
         cl = content.upper()
         # Look for actual message signatures rather than headers
-        if "[DEEP THOUGHT [SID:" in cl or "[THE BRAIN [SID:" in cl or "[PINKY [SID:" in cl:
+        has_sig = False
+        for line in cl.split('\n'):
+            if "[SID:" in line and any(n in line for n in ["PINKY", "BRAIN", "DEEP THOUGHT"]):
+                has_sig = True
+                break
+        if has_sig:
             success = await evaluate_fidelity(cycle_id, page)
             break
         await asyncio.sleep(10)
