@@ -40,6 +40,9 @@ class CognitiveHub:
         self.current_topic = "INTERFACE"
         self.last_activity = time.time()
         
+        # [SPR-41_2] Context Starvation tracking: nodes that returned [ERROR: CONTEXT_STARVED]
+        self.context_starved_nodes = set()
+        
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
         self.turn_thought_trace = {}
@@ -318,7 +321,15 @@ class CognitiveHub:
             guidance = stance
             if behavioral_guidance:
                 guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
-            
+
+            # [Story 3] Vibe-Specific Context Isolation: Wrap RAG context in
+            # <historical_record> tags + inject GROUNDING_PROTOCOL for HISTORICAL/FORENSIC vibes.
+            # Prevents bedrock/operational metadata bleed into past-tense briefs.
+            _vibe = getattr(self, "current_vibe", "TECHNICAL")
+            if _vibe.upper() in ("HISTORICAL", "FORENSIC") and context:
+                context = f"<historical_record>\n{context}\n</historical_record>"
+                guidance += "\nGROUNDING_PROTOCOL: Formulate your response EXCLUSIVELY from the evidence provided inside the <historical_record> tags. Focus your analysis solely on the target events, dates, and validation systems described within these tags."
+
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
             
@@ -387,6 +398,17 @@ class CognitiveHub:
                     logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
                     
                 yield full_text
+            
+            # [SPR-41_2] Context Starvation Detection: if node returned CONTEXT_STARVED, bypass cascade
+            if "[ERROR: CONTEXT_STARVED]" in full_text:
+                self.context_starved_nodes.add(node_id)
+                source_display = source_name or node_id
+                logging.warning(f"[HUB] {source_display} returned CONTEXT_STARVED token.")
+                await self.broadcast({
+                    "type": "crosstalk",
+                    "brain": f"[HUB] ⚠ Context Starvation detected from {source_display}. Cascade bypassed.",
+                    "brain_source": "System"
+                })
             
             self.turn_thought_trace[node_id] = full_text
             if node_id == "thought":
@@ -458,6 +480,9 @@ class CognitiveHub:
         # [NEW] Unified Early Priming
         logging.info(f"[PRIME] Spawning priming task for: {turn[:20]}")
         asyncio.create_task(self._prime_first_try(turn))
+        
+        # [SPR-41_2] Reset context starvation tracker per query
+        self.context_starved_nodes.clear()
         
         # Initialize default vibe for Sandbox Tool Isolation
         self.current_vibe = "TECHNICAL"
@@ -892,6 +917,18 @@ class CognitiveHub:
             logging.warning(f"[HUB] Context distillation failed: {e}")
             return raw_context
 
+    async def _get_node_tools(self, node_id: str) -> list:
+        """[SPR-41_1] Retrieve active tool names from a resident node's MCP server."""
+        node = self.residents.get(node_id)
+        if not node or not hasattr(node, 'mcp'):
+            return []
+        try:
+            mcp_tools = await node.mcp.list_tools()
+            return [t.name for t in mcp_tools]
+        except Exception as e:
+            logging.warning(f"[HUB] Failed to list tools for {node_id}: {e}")
+            return []
+
     async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
@@ -902,13 +939,20 @@ class CognitiveHub:
         # Side-channel Telemetry Relay handles the broadcast.
         # We just need to exhaust the generator to ensure the node task completes.
         dt_response = ""
+        active_tools = await self._get_node_tools("thought")
         async for token in self._process_node_stream(
-            "thought", query, distilled_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
+            "thought", query, distilled_context, "Deep Thought", tools=active_tools, temperature=0.2, request_id=request_id
         ):
             dt_response += token
             if shutdown_event and shutdown_event.is_set():
                 break
 
+        # [SPR-41_2] Skip cascade if context starvation was detected
+        if "thought" in self.context_starved_nodes:
+            self.context_starved_nodes.discard("thought")
+            logging.info("[HUB] Brain leg cascade bypassed due to CONTEXT_STARVED.")
+            return
+        
         # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/strategic output in the main chat pane
         await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id)
 
