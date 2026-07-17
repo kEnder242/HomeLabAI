@@ -1,13 +1,13 @@
-# HomeLabAI: A Bicameral Agentic Workspace & Research Playground
+# HomeLabAI: A Distributed AI Research Environment
 
-HomeLabAI is a federated cognitive sandbox and archive refinement laboratory. It operates as a distributed agentic workspace—integrating Linux hosts, Windows compute nodes, and historical knowledge bases—to facilitate low-latency research, semantic memory extraction, and automated telemetry analysis.
+HomeLabAI is a distributed AI system that integrates Linux and Windows machines with historical data to perform research, extract information from memory, and analyze telemetry.
 
-## The High-Level Vision: Bicameral Mind Topology
+## Architecture Overview: Dual-Component Design
 
-The workspace coordinates cognitive tasks across specialized functional nodes, modeled after the split-brain architecture of the Bicameral Mind:
+The workspace coordinates cognitive tasks across specialized functional nodes:
 
-*   **The Right Hemisphere (Pinky):** The Pragmatic Foil. Grounded in physical telemetry, presence-awareness, and immediate user interaction. This layer manages the "Vibe"—evaluating hardware limitations (VRAM, thermals) using AYPWIP-style literalism.
-*   **The Left Hemisphere (The Brain):** The Sovereign Architect. Strategic, abstract, and logical. Resident on the compute node, this layer manages the "Truth"—handling long-term archive retrieval, complex code generation, and strategic reasoning.
+*   **Right Hemisphere (Telemetry & Interaction):** Manages physical telemetry, presence, and immediate user interaction, evaluating hardware limitations (VRAM, thermals).
+*   **Left Hemisphere (Compute & Reasoning):** Handles long-term data retrieval, complex code generation, and strategic reasoning on the compute node.
 *   **The Systems Guardian (Lab Attendant):** The lifecycle manager. A systemd-managed daemon that controls engine states, manages the VRAM hardware mutex, and prevents hardware thrashing.
 *   **The Sensory Modality (EarNode):** Always-on audio ears powered by NVIDIA NeMo (STT). Provides audio capture and mono 16kHz PCM streaming.
 *   **The Structural Registrar (Architect):** BKM Librarian responsible for formatting technical derivations into the structured BKM Protocol format.
@@ -19,12 +19,12 @@ The workspace coordinates cognitive tasks across specialized functional nodes, m
 
 ---
 
-## The Meta-Agentic Loop: An AI Development Framework
+## AI Development Framework
 
-Developing HomeLabAI using a co-pilot (AGY/Gemini) forms a self-refining, meta-agentic loop. The workspace is not merely a collection of scripts, but a self-documenting agentic framework driven by four core document assets:
+Developing HomeLabAI with a co-pilot (AGY/Gemini) uses a feedback loop. The workspace is an agentic framework documented by four core assets:
 
 1.  **The Agentic Contract (docs/Protocols.md):** Defines the operational rules of engagement for the co-pilot (such as the BKM-004 QQ halt protocol, BKM-006 Heads Down continuity, BKM-009 Checkpointing, and BKM-011 Safe-Scalpel gating). This ensures the assistant acts as a predictable engineering partner.
-2.  **The DNA Matrix (Portfolio_Dev/FeatureTracker.md):** Records active technical capabilities and "Scars"—retrospectives of past engineering failures and hardware constraints (e.g., vLLM BF16 initialization deadlocks on Turing compute). This serves as a durable context anchor that prevents the agent from repeating past regressions.
+2.  **Feature Tracker (Portfolio_Dev/FeatureTracker.md):** Records active technical capabilities and documents past engineering failures and hardware constraints (e.g., vLLM BF16 initialization deadlocks on Turing compute). This prevents the agent from repeating past regressions.
 3.  **The Instrument Ledger (docs/DIAGNOSTIC_SCRIPT_MAP.md):** Catalogues every validation script and test harness, allowing the agent to run verification cycles (such as test_intent_recall.py for semantic intent or test_sandbox.py for tool isolation) before committing logic.
 4.  **The Physical Floor (docs/LAB_INFRASTRUCTURE.md):** Tracks hardware mounts, CUDA drivers, absolute paths, and port mappings.
 

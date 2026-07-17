@@ -1,9 +1,9 @@
-# RESEARCH_SYNTHESIS.md: Cohesive Implementation Roadmap (v2.2)
+# Research Synthesis: Implementation Roadmap
 **Date:** May 20, 2026
 **Status:** DRAFT (Standardized Unified Schema with Git Links)
 
 ## Telescope The Unified Vision
-To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Persistent Memory-First** architecture. We treat the local file system as an external "Long-Term Memory" and use Test-Time Reasoning to maximize the output quality of small local models (Llama-3.2-3B).
+To integrate local (2080 Ti) and remote (4090 Ti) hardware using a memory-first architecture. We treat the local file system as an external "Long-Term Memory" and use Test-Time Reasoning to maximize the output quality of small local models (Llama-3.2-3B).
 
 ---
 
@@ -15,7 +15,7 @@ To bridge the "Bicameral" hardware (Pinky 2080 Ti & Brain 4090 Ti) using a **Per
 | **Agentic-R** | 2601.11888 | Learning to Retrieve: Utility-based ranking. | **Memory Bridge:** `ArchiveMemory` utility ranking [FEAT-080]. | [nodes/archive_node.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/archive_node.py) | **85%** |
 | **TTCS** | 2601.22628 | Test-Time Curriculum: Synthesizer + Solver. | **Quality:** Mitigates repetition loops via Synthesize-then-Solve patterns [FEAT-114]. | [field_notes/ai_engine_v2.py](https://github.com/kEnder242/Portfolio_Dev/blob/main/field_notes/ai_engine_v2.py) | **100%** |
 | **Apple CLaRa** | 2511.18659 | Semantic Compression: 16x-128x density. | **Optimization:** `SemanticCondenser` compresses raw logs [FEAT-073]. | [field_notes/ai_engine_v2.py](https://github.com/kEnder242/Portfolio_Dev/blob/main/field_notes/ai_engine_v2.py) | **100%** |
-| **Liger Kernel** | 2410.10989 | Efficient Triton Kernels for LLM Training. | **Efficiency:** Maximizing 8B residency on 11GB silicon [FEAT-031]. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **100%** |
+| **Liger Kernel** | 2410.10989 | Efficient Triton Kernels for LLM Training. | **Efficiency:** Maximizing 8B residency on 11GB VRAM [FEAT-031]. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **100%** |
 | **RLM** | N/A | Context as a Code-Readable String. | **Discovery:** `peek_related_notes()` logic [FEAT-117]. | [nodes/archive_node.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/archive_node.py) | **100%** |
 | **TTT-Discover** | 2601.16175 | Test-Time Discovery: RL-based optimization. | **Automation:** Planned: RL loops for bug reproduction. | N/A | **0%** |
 | **WideSeek-R1** | N/A | Width Scaling: Parallel subagent orchestration. | **Orchestration:** Planned: Parallel contexts for extraction. | N/A | **0%** |
@@ -42,16 +42,16 @@ These papers or concepts were evaluated and decommissioned during our architectu
 
 ---
 
-## 📊 Research Impact Reality Check (v3.0)
+## 📊 Research Impact Assessment (v3.0)
 
 | Paper | Project Impact | "Same Idea" vs. "Game Changer" | % Architectural Change |
 | :--- | :--- | :--- | :--- |
-| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Game Changer.** This redefined how Pinky "remembers." | **100%** |
-| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Instruction Hardening.** It forces the model to ground its reasoning in specific technical anchors. | **100%** |
-| **Internal Debate** | **Moderated Consensus.** Implemented in v3.1.9 to resolve complex technical contradictions. | **Quality Booster.** Reduces hallucinations by forcing the Brain to critique its own independent reasoning paths. | **100%** |
-| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Mechanism:** Multi-host batch processing for memory consolidation. | **100%** |
-| **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Efficiency Target.** Achieved 80% VRAM reduction to enable massive KV cache pools on 11GB silicon. | **100%** |
-| **AT2QA** | **Iterative Autonomy.** Replacing hand-crafted workflows with tool-decision agency. | **Strategic Pivot.** Allows the Hub to autonomously redirect a search. | **Design** |
+| **FS-Researcher** | **Static Synthesis Core.** We transitioned from stateless LLM calls to a durable, hierarchical file-system memory. | **Significant Impact.** This redefined how the local component stores and retrieves data. | **100%** |
+| **TTCS** | **The Reasoning Loop.** Introduced the "Synthesize-then-Solve" pattern in `ai_engine_v2.py`. | **Improved Reasoning.** It grounds the model's reasoning in specific technical anchors. | **100%** |
+| **Internal Debate** | **Moderated Consensus.** Implemented in v3.1.9 to resolve complex technical contradictions. | **Improved Accuracy.** Reduces hallucinations by enabling self-critique in reasoning. | **100%** |
+| **Dreaming** | **Subconscious Compression.** Using idle Windows cycles to consolidate Pinky's raw logs. | **Process:** Multi-host batch processing for memory consolidation. | **100%** |
+| **Liger-Kernel** | **VRAM Optimization.** Verified on Pinky-Node (2080 Ti). | **Result:** Achieved 80% VRAM reduction to enable larger KV cache pools on 11GB GPUs. | **100%** |
+| **AT2QA** | **Iterative Autonomy.** Replacing hand-crafted workflows with tool-decision agency. | **Improvement:** Enables autonomous search redirection. | **Design** |
 
 ---
 
@@ -99,10 +99,10 @@ To prevent the "Goldmine" from becoming "Sludge":
 
 ---
 
-## 🌌 EPOCH 2: THE COGNITIVE EXPANSION & LOST GEMS PINNING (May 20, 2026)
+## Phase 2: Research Expansion & Key Findings (May 20, 2026)
 *Source: Google Keep Brain Dump (Notes Archive) & Git Commit History Audit (Commit 34a3bd5)*
 
-### 💎 THE GEMS: GAME CHANGERS
+### Key Research Contributions
 *High-impact research that aligns with our Multi-LoRA / 11GB silicon strategy.*
 
 | Research Anchor | ArXiv ID | Theoretical Logic | Lab Implementation [FEAT] | Git Link | Status |
@@ -116,11 +116,11 @@ To prevent the "Goldmine" from becoming "Sludge":
 | **TriAttention** | 2604.04921 | Trigonometric KV compression (10x reduction). | Future optimization for [FEAT-031] VRAM efficiency. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **Active** |
 | **Bonsai-ML** | N/A | High-fidelity fine-tuning for structured reasoning. | Grounds the [FEAT-352] Qwen Pivot strategy. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **Active** |
 | **BKM-015: Bedrock** | N/A | Prefix-cache stability through shared identity strings. | Shared IDENTITY_BEDROCK implementation. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **Live** |
-| **Stoic Strategist** | N/A | Filler stripping ("Certainly!", etc.) & strategic focus. | [FEAT-023] Persona constraint enforcement. | [debug/test_persona_bugs.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_persona_bugs.py) | **Live** |
+| **Filler Stripping & Focus** | N/A | Filler stripping ("Certainly!", etc.) & strategic focus. | [FEAT-023] Persona constraint enforcement. | [debug/test_persona_bugs.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_persona_bugs.py) | **Live** |
 | **VRAM Guard** | N/A | Deep Sleep failover on memory exhaustion. | [FEAT-036] Attendant VRAM characterization. | [debug/test_vram_guard.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_vram_guard.py) | **Live** |
 | **Hierarchical Mind** | N/A | Specialized Architect node for BKM generation. | [FEAT-037] Semantic map generation. | [debug/test_architect_flow.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_architect_flow.py) | **Live** |
 | **Nightly Recruiter** | N/A | Automated resume mapping to active job listings. | [FEAT-038] Recruiter query matching. | [debug/test_recruiter.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_recruiter.py) | **Live** |
-| **Strategic Amygdala** | N/A | Input sentinels gating voice/typing console modes. | [FEAT-032] console barge-in sentinels. | [debug/mic_toggle_audit.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/mic_toggle_audit.py) | **Live** |
-| **Iron Moat** | N/A | Prevent persona bleed / clear visual panels on hello. | [FEAT-033] Persona Isolation boundaries. | [debug/test_persona_logic.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_persona_logic.py) | **Live** |
+| **Input Sentinels** | N/A | Input sentinels gating voice/typing console modes. | [FEAT-032] console barge-in sentinels. | [debug/mic_toggle_audit.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/mic_toggle_audit.py) | **Live** |
+| **Persona Isolation** | N/A | Prevent persona bleed / clear visual panels on hello. | [FEAT-033] Persona Isolation boundaries. | [debug/test_persona_logic.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_persona_logic.py) | **Live** |
 | **Barge-In interrupts** | N/A | Cancel long execution steps via voice/hotkey patterns. | [FEAT-034] ear_poller stream cancellation. | [debug/test_barge_in_logic.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_barge_in_logic.py) | **Live** |
 | **Zombie Port Recovery** | N/A | Monitor WS socket status & restore engine on lockups. | [FEAT-035] Foyer port watchdog. | [debug/test_zombie_recovery.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/debug/test_zombie_recovery.py) | **Live** |

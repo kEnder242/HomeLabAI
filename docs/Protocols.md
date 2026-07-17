@@ -1,8 +1,8 @@
 # Operational Protocols: The Agentic Contract
-**Role: [BKM] - Rules of Behavior & Communication**
+**Role: Behavioral Guidelines**
 
 > [!IMPORTANT]
-> **BEHAVIORAL MANDATE:** This document defines the **Rules of Engagement** for the Gemini CLI Agent. It is the foundational contract for human-AI collaboration. It specifies how the Agent must behave, communicate, and handle state. It is strictly non-technical.
+> **Purpose:** This document defines the operational guidelines for the Gemini CLI Agent. It is the foundational contract for human-AI collaboration. It specifies how the Agent must behave, communicate, and handle state. It is strictly non-technical.
 
 ## BKM-001: The Cold-Start Protocol (Agent Orientation)
 **Objective**: Restore the Agent's technical context after a session break or crash.
@@ -41,25 +41,25 @@
 3.  **The Naming Ceremony**: Explicit agreement on Nouns (Folders, DB Collections) and Verbs (Tool Names).
 4.  **The Contract**: User gives "Greenlight" to a specific path.
 
-## BKM-006: Heads Down / AFK Continuity (The Autonomous Sprint)
+## BKM-006: Autonomous Work Protocol
 **Objective**: Enable deep Agent work cycles during user downtime while maintaining transparency.
 
-1.  **Heads Down Trigger**: Signals the start of an autonomous sprint. The Agent works through the agreed-upon task list (from `ProjectStatus.md` or a specific session goal).
+1.  **Autonomous Work Trigger**: Initiates an independent work cycle. The Agent works through the agreed-upon task list (from `ProjectStatus.md` or a specific session goal).
 2.  **AFK Hint**: User says "AFK" or "Coffee Break" to signal they are stepping away. The Agent should check for any queued tasks or proceed autonomously.
-3.  **High-Fidelity Reasoning**: "Heads Down" does NOT mean "Terse Mode." The Agent should show reasoning between steps and explain "Why" in its tool calls. High visibility and verbosity is the standard for intent preservation and review.
-4.  **Max Momentum**: The Agent must strive to complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
+3.  **Detailed Reasoning**: The agent must provide clear reasoning and explanations for each step during autonomous work. High visibility and verbosity is the standard for intent preservation and review.
+4.  **Efficiency**: The agent should complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
 6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
 
-## BKM-007: The "Heads Up" Report (High-Fidelity Debrief)
+## BKM-007: Work Completion Report
 **Objective**: Restore technical context after a deep work cycle.
 
 1.  **Trigger**: Conclusion of a "Heads Down" sprint.
-2.  **Verbosity**: The report must be detailed and verbose (reversing minimalist CLI compression).
+2.  **Detail**: The report must be comprehensive and clear.
 3.  **Content**:
     *   Summary of all completed items.
     *   Implications: Impact on VRAM, latency, and security.
-    *   The "Path Backwards": Rollback steps if the new silicon is unstable.
+    *   Rollback Plan: Steps to revert changes if the system becomes unstable.
 4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
 
 ## BKM-009: The Checkpoint Protocol (Save State)
@@ -138,7 +138,7 @@
 2.  **Fingerprint**: All log output must be preceded by the unique session fingerprint `[BOOT_HASH:COMMIT:ROLE]` to ensure forensic traceability across the federated lab.
 
 ## BKM-017: Agentic Delegation (Context Preservation)
-*   **Why:** To postpone "Manic Phases" (cognitive overload leading to lossy compression of design documentation).
+*   **Why:** To prevent cognitive overload leading to lossy compression of design documentation.
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
 *   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
@@ -156,11 +156,11 @@
 | **`lab_ignition`** | Lock Clearance | **Emergency Override**: Clears any existing `maintenance.lock` files but does NOT start models. Follow this with `lab_start`. |
 
 3.  **Critical REST**: The REST API (port 9999) is a critical infrastructure layer that enables the `status.html` remote control and provides the backend communication for the MCP Proxy. 
-4.  **The Prohibition**: Manual `pkill`, `kill`, `nohup`, or direct `python3 src/acme_lab.py` execution is strictly **FORBIDDEN**. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
+4.  **Restriction**: Do not use manual `pkill`, `kill`, `nohup`, or direct execution of `python3 src/acme_lab.py`. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
 5.  **Legacy Support**: `LAB_REST_CURL_CONTROL` (Default: ENABLED) preserves backward compatibility for existing `curl` scripts and remote status indicators while steering the agent toward the high-fidelity Proxy path.
 6.  **Code Reload Mandate**: Any codebase modifications made to Foyer routing (`router.py`, `cognitive_hub.py`), node adapters (`loader.py`), or Attendant services must be followed immediately by `sudo systemctl restart lab-attendant.service`. Failing to restart the service after file modifications causes the system to run stale memory footprints, leading to false validation passes.
 
-**Lead Engineer's Mandate (Tool Stewardship)**: "If a tool is broken or lacks a necessary capability, do NOT bypass it with a pkill or shell hack. Fix the tool or extend the API. A bypass is a 'Silicon Scar' that blinds future agents; a fix is a permanent upgrade to the Lab"
+**Tool Stewardship**: If a tool is broken or lacks functionality, fix or extend it. Avoid temporary workarounds that may cause issues later.
 
 ## BKM-024: Validation-Aware Synchronization
 **Objective**: Ensure the physical Lab state matches the active sprint implementation.
@@ -186,7 +186,7 @@
 ## BKM-023: The Surgical Preservation Protocol
 **Objective**: To prevent "Lossy Compression," erasures of technical pedigree, and documentation thrash during architectural refactors.
 
-**Why**: To combat the LLM's natural instinct to simplify and summarize complex history. Treating documentation as "Write-Protected DNA" ensures that technical findings are layered rather than replaced, maintaining the "Silicon Scar" pedigree as the primary defense against agentic state-drift and loss of intent.
+**Purpose**: To preserve detailed technical history and prevent oversimplification, ensuring accurate documentation and continuity.
 
 **Sprint Tasks**: Specifically, sprint task context should be preserved when completing.  We still want to know the 'why' and 'how' context even though they are completed and done.
 
@@ -201,14 +201,14 @@
 *   **Anchor Check**: Ensure "Validation Anchors" (specific IPs, Ports, IDs, kernel settings) are preserved word-for-word in the final output.
 *   **Pedigree Verification**: Compare the "God View" roadmap against previous git commits to ensure no historical phases were compressed or "grouped" into high-level points.
 
-#### **🤕 3. Scars (Known Failures)**
+#### **Known Issues**
 *   **The Compression Trap**: LLMs naturally instinct to "clean up" or "summarize" old tasks to save space—this is a fatal error that leads to the total loss of technical intent.
 *   **The Erasure Regret**: Deleting "Tabled" tasks or previous failures makes the Lab look reactive rather than evolved; the history of the struggle is the source of robustness.
 
 
 
 
-### [BKM-015.1] The Law of Semantic Indirection (The Bones)
+### BKM-015.1: Semantic Indirection Guidelines
 **Context:** Replaces the "Waffling" period (Feb-Mar 2026) where routing was managed via static JSON lists in `intent_anchors.json`. 
 **Why:** Rigid mapping causes "Logic Drift" when new tools are added. The agent must rely on semantic "Vibes" to select its cognitive loadout.
 **The Rule:** No `.py` logic block may map a domain to a tool or adapter via a switch/case or list-matching. All behavioral mapping must be retrieved via vector similarity from the `behavioral_dna` collection.
@@ -219,7 +219,7 @@
 6.  **[BKM-031] Ledger-Only Mandate (Anti-Assassin)**:
     *   **Rule**: The Lab MUST NOT perform broad-spectrum system scans (GPU, Port, or Signature) to identify orphans.
     *   **Mechanism**: All reaping actions MUST be restricted to the **Explicit PID Ledger**.
-    *   **Philosophy**: Better a VRAM leak than an OS-level assassination. If a process is not in the ledger, it does not exist to the Lab. Never use `fuser -k` or `pkill` on system-wide shared resources.
+    *   **Principle**: Avoid aggressive process termination to prevent system instability. Only terminate processes listed in the ledger.
 
 ---
 
@@ -236,7 +236,7 @@
 **Role: [SPRINT] - Planning & Execution Protocol**
 
 > [!IMPORTANT]
-> **PURPOSE:** To ensure transparent, iterative, and high-fidelity project evolution through collaborative planning and surgical execution.
+> **Purpose:** To ensure clear, iterative project development through structured planning and execution.
 
 ### 1. Document Architecture
 *   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_X.md`.
@@ -254,7 +254,7 @@
 
 ### 4. Execution & Validation
 *   **Look First**: Before creating new tools or scripts, the Agent MUST consult `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md` and reuse existing diagnostic infrastructure.
-*   **Surgical Gating**: Every edit must be followed by `ruff check` (linting) to prevent testing "bad code."
+*   **Validation**: Every edit must be followed by `ruff check` to ensure code quality.
 *   **Conductor Delegation**: For complex or high-volume tasks, the Agent should use the Conductor track to delegate work to sub-agents, preserving the primary context window for strategic orchestration.
 
 ## BKM-028: High-Fidelity State Machine Debugging
