@@ -367,8 +367,17 @@ class CognitiveHub:
                     yield new_tokens
                     last_len = len(curr_buffer)
                     
+                    # [SPR-41_2] Context Starvation check: abort immediately if starvation detected
+                    if "[ERROR: CONTEXT_STARVED]" in full_text:
+                        logging.warning(f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting.")
+                        call_task.cancel()
+                        break
+                    
             # Get the final result and any remaining buffer
-            res = await call_task
+            try:
+                res = await call_task
+            except asyncio.CancelledError:
+                res = "[ERROR: CONTEXT_STARVED]"
             curr_buffer = self.session_buffers[buf_key]
             if len(curr_buffer) > last_len:
                 new_tokens = curr_buffer[last_len:]
