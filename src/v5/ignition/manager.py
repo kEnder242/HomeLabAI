@@ -374,6 +374,21 @@ class IgnitionManager:
             except Exception: pass
             await asyncio.sleep(1)
 
+    async def get_foyer_clients(self) -> int:
+        """Query Foyer status to get active client count."""
+        import urllib.request
+        import json
+        try:
+            url = "http://127.0.0.1:8765/status"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=1.0) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    return data.get("connected_clients", 0)
+        except Exception:
+            pass
+        return 0
+
     async def is_engine_active(self) -> bool:
         """
         [FEAT-374] Tiered Idle Verification Pattern
@@ -458,12 +473,21 @@ class IgnitionManager:
                 
                 # 1. AFK Hibernation (Task 4.1)
                 idle_time = time.time() - self.last_activity_time
-                if idle_time > 120 and self.status.state == "OPERATIONAL":
+                foyer_clients = await self.get_foyer_clients()
+                
+                # Double standard timeout: 120s -> 240s
+                # Extra 5 minutes (300s) if there is an active client connection
+                effective_timeout = 240
+                if foyer_clients > 0:
+                    effective_timeout += 300
+
+                if idle_time > effective_timeout and self.status.state == "OPERATIONAL":
                     if await self.is_engine_active():
                         # Reset idle timer because engine is active
                         self.last_activity_time = time.time()
-                        logging.info("[IGNITION] Resetting idle timer due to engine activity.")
+                        logging.info(f"[IGNITION] Resetting idle timer (foyer_clients={foyer_clients}) due to active engine.")
                     else:
+                        logging.info(f"[IGNITION] Idle timeout reached ({idle_time:.1f}s > {effective_timeout}s, foyer_clients={foyer_clients}). Hibernating...")
                         await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
