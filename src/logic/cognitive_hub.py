@@ -608,7 +608,7 @@ class CognitiveHub:
                             "type": "object",
                             "properties": {
                                 "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
-                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META"]},
+                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO"]},
                                 "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
                                 "casual": {"type": "number"},
                                 "intrigue": {"type": "number"},
@@ -706,6 +706,37 @@ class CognitiveHub:
         context = ""
         if vibe == "CASUAL":
             behavioral_guidance = "[MODE]: CONVERSATIONAL (Natural, witty, brief greetings. No technical lecturing.)"
+        elif vibe == "WYWO":
+            # [WYWO] Retrieval: Pull nightly dialogue and subconscious dreams
+            nightly_dialogue = "No recent nightly dialogue recorded."
+            dialogue_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json")
+            if os.path.exists(dialogue_path):
+                try:
+                    with open(dialogue_path, "r") as f:
+                        data = json.load(f)
+                        if data.get("content"):
+                            nightly_dialogue = f"Topic: {data.get('topic')}\nDialogue: {data.get('content')}"
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
+            
+            dreams = "No long-term subconscious dreams found."
+            if "archive" in self.residents:
+                try:
+                    res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 2})
+                    if hasattr(res, 'content') and len(res.content) > 0:
+                        dreams = res.content[0].text
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
+
+            context = (
+                f"[NIGHTLY_DIALOGUE_RECORD]:\n{nightly_dialogue}\n\n"
+                f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
+            )
+            behavioral_guidance = (
+                "[MODE]: STANDUP (Synthesize a high-density, professional summary of recent nightly dialogues "
+                "and subconscious dreams consolidated during nightly runs. Explain what nodes debated, "
+                "the key decisions or validation wisdom stored, and any resulting system changes.)"
+            )
         else:
             # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
             behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
@@ -941,7 +972,36 @@ class CognitiveHub:
     async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
-        raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
+        vibe = triage.get("vibe", "").upper()
+        if vibe == "WYWO":
+            # Construct WYWO context
+            nightly_dialogue = "No recent nightly dialogue recorded."
+            dialogue_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json")
+            if os.path.exists(dialogue_path):
+                try:
+                    with open(dialogue_path, "r") as f:
+                        data = json.load(f)
+                        if data.get("content"):
+                            nightly_dialogue = f"Topic: {data.get('topic')}\nDialogue: {data.get('content')}"
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
+            
+            dreams = "No long-term subconscious dreams found."
+            if "archive" in self.residents:
+                try:
+                    res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 2})
+                    if hasattr(res, 'content') and len(res.content) > 0:
+                        dreams = res.content[0].text
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
+
+            raw_context = (
+                f"[NIGHTLY_DIALOGUE_RECORD]:\n{nightly_dialogue}\n\n"
+                f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
+            )
+        else:
+            raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
+        
         distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 
         # Dispatch to Brain Node
