@@ -107,3 +107,26 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
     # Assert tool_log.md is created and has links
     cat /home/jallred/Dev_Lab/HomeLabAI/tool_log.md
     ```
+
+---
+
+## Retrospective & Post-Mortem: Sprint 41 Integration
+
+### 1. Forensic Rationale
+During the integration validation of Sprint 41, two logical gaps and one packaging omission were identified:
+1.  **Stale Execution State:** Codebase edits were committed, but the persistent `lab-attendant.service` was not restarted, leading to stale memory execution (incorrect query triage).
+2.  **Streaming Overruns:** The starvation override in `cognitive_hub.py` flagged `[ERROR: CONTEXT_STARVED]` but failed to abort the streaming generator, leading to hallucinated text generation.
+3.  **UI Leftovers:** The deprecated `#workspace-container` remained in the Web Intercom's HTML layout because `intercom.html` was omitted from the initial Story 4 deprecation scope, and `build_site.py` was not executed.
+
+### 2. Remediations Executed
+1.  **Lifecycle Restart:** Cycled the service via `sudo systemctl restart lab-attendant.service`.
+2.  **Markup Removal:** Surgically deprecated the `#workspace-container` from `intercom.html` and cleaned up all EasyMDE dependencies in `intercom_v2.js`.
+3.  **Tool Logs in Intercom:** Refactored `intercom.html` and `intercom_v2.js` to mount the `#tool-log-section` container and render live websocket tool call events directly on the client screen.
+4.  **Static Build Refresh:** Compiled and refreshed all templates using `build_site.py`.
+5.  **Idle Timeout Calibration:** Doubled the standard hardware timeout to `240` seconds, doubled Foyer's `--afk-timeout` default parameter to `600` seconds, and implemented a connection-aware extension (+`300` seconds) when clients are active on Foyer.
+6.  **BKM Hardening:** Updated `BKM-018` and `BKM-028` inside `Protocols.md` to establish the **Code Reload Mandate** requiring service restarts after code changes.
+
+### 3. Key Retrospective Learnings
+1.  **Deprecation Auditing:** When feature removal is planned, run a global codebase sweep for all associated selectors to capture unlinked files (e.g., HTML structure wrappers).
+2.  **Exclusivity Testing:** When asserting error states in unit tests, test for strict equality or payload bounds to prevent streaming leakages/hallucinations from passing validation gates.
+3.  **Service Lifecycle Awareness:** Always perform a daemon reset (`systemctl restart`) immediately following core Python modifications.
