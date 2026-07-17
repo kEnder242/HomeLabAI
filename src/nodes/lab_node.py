@@ -15,6 +15,10 @@ LAB_SYSTEM_PROMPT = (
             "5. METRIC ASSIGNMENT: casual (0.0–1.0, how informal the query is), intrigue (0.0–1.0, how novel/unexpected the topic is), importance (0.0–1.0, how critical the topic is to lab integrity). All three are REQUIRED output fields.\n"
             "6. CONSENSUS MECHANISM: When uncertain, query the Brain and Deep Thought nodes for consensus.\n"
             "7. GROUNDING: The 'situation' field must ONLY paraphrase words the user actually said. Do NOT invent project names, codes, or identifiers that are not in the query. The 'hints' field must reference actual GEM IDs from the archive or remain empty.\n"
+            "8. VIBE WYWO (While You Were Out): Assign vibe='WYWO' when the user is asking what the lab nodes have been doing in the user's absence. "
+            "This covers: questions about overnight tasks, nightly dialogues, or subconscious dreams ('what did you dream?', 'what happened last night?', 'any nightly updates?'); "
+            "AND casual open-ended status checks directed at the lab or its nodes ('what's up?', 'what have you been up to?', 'anything new?', 'how's it going?', 'catch me up'). "
+            "Do NOT assign WYWO for specific technical questions — only for open-ended status inquiries where the user wants a summary of recent lab activity.\n"
         )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
