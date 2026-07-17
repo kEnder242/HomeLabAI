@@ -415,7 +415,9 @@ class FoyerRouter:
         return web.json_response({"status": "ONLINE", "version": LAB_VERSION})
 
     async def handle_status(self, request):
-        return web.json_response(self.status.to_dict())
+        status_dict = self.status.to_dict()
+        status_dict["connected_clients"] = len(self.connected_clients)
+        return web.json_response(status_dict)
 
     async def handle_logs(self, request):
         """
