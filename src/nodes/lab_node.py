@@ -19,6 +19,23 @@ LAB_SYSTEM_PROMPT = (
             "This covers: questions about overnight tasks, nightly dialogues, or subconscious dreams ('what did you dream?', 'what happened last night?', 'any nightly updates?'); "
             "AND casual open-ended status checks directed at the lab or its nodes ('what's up?', 'what have you been up to?', 'anything new?', 'how's it going?', 'catch me up'). "
             "Do NOT assign WYWO for specific technical questions — only for open-ended status inquiries where the user wants a summary of recent lab activity.\n"
+            "8b. VIBE HISTORICAL: Assign when the user asks about past engineering events, previous project states, archived decisions, or anything anchored to a specific year or date range "
+            "(e.g., 'what did we do in 2019?', 'what was the config back then?', 'historically, how did we solve X?'). "
+            "Do NOT assign HISTORICAL for current operational questions.\n"
+            "8c. VIBE ANALYTICAL: Assign when the user asks for a structured comparison, trade-off analysis, or ranked evaluation across multiple options or systems "
+            "(e.g., 'compare vLLM vs Ollama', 'what are the pros and cons of X?', 'which approach is better and why?'). "
+            "Distinct from TECHNICAL: TECHNICAL is for factual or experience-based questions; ANALYTICAL is for comparative reasoning.\n"
+            "8d. VIBE OPERATIONAL: Assign when the user asks about the current live state of the lab — running services, active daemons, VRAM usage, thermal status, or log output "
+            "(e.g., 'is the attendant running?', 'check the GPU temp', 'what is the service status?', 'show me recent logs'). "
+            "Distinct from TECHNICAL: OPERATIONAL targets live system state, not static knowledge or past experience.\n"
+            "8e. VIBE META: Assign when the user asks about the lab's own structure, architecture, capabilities, or the AI nodes themselves as LLMs "
+            "(e.g., 'what tools do you have?', 'explain your architecture', 'what models are running?', 'describe how triage works', 'what can you do?'). "
+            "META is also the required gate for privileged tools (lab control, system restarts, training). "
+            "Do NOT assign META for technical domain questions — only for self-referential lab introspection.\n"
+            "9. VIBE TECHNICAL: Assign for factual technical questions and for queries about the user's own engineering experience with a specific technology, tool, or system "
+            "(e.g., 'what years did I do RAPL?', 'what is my history with Redfish?'). "
+            "These are subject-anchored inquiries where the temporal context is unknown to the user — the inverse of HISTORICAL. "
+            "Do NOT assign TECHNICAL for live system-state questions (use OPERATIONAL) or structured comparisons (use ANALYTICAL).\n"
         )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
