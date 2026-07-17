@@ -374,8 +374,8 @@ class IgnitionManager:
             except Exception: pass
             await asyncio.sleep(1)
 
-    async def get_foyer_clients(self) -> int:
-        """Query Foyer status to get active client count."""
+    def get_foyer_clients_sync(self) -> int:
+        """Query Foyer status to get active client count (Synchronous)."""
         import urllib.request
         import json
         try:
@@ -388,6 +388,11 @@ class IgnitionManager:
         except Exception:
             pass
         return 0
+
+    async def get_foyer_clients(self) -> int:
+        """Query Foyer status to get active client count."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_foyer_clients_sync)
 
     async def is_engine_active(self) -> bool:
         """
