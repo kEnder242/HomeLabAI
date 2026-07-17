@@ -326,7 +326,7 @@ class CognitiveHub:
             # <historical_record> tags + inject GROUNDING_PROTOCOL for HISTORICAL/FORENSIC vibes.
             # Prevents bedrock/operational metadata bleed into past-tense briefs.
             _vibe = getattr(self, "current_vibe", "TECHNICAL")
-            if _vibe.upper() in ("HISTORICAL", "FORENSIC") and context:
+            if _vibe.upper() in ("HISTORICAL", "FORENSIC", "TECHNICAL") and context:
                 context = f"<historical_record>\n{context}\n</historical_record>"
                 guidance += "\nGROUNDING_PROTOCOL: Formulate your response EXCLUSIVELY from the evidence provided inside the <historical_record> tags. Focus your analysis solely on the target events, dates, and validation systems described within these tags."
 
