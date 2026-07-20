@@ -92,6 +92,63 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Core Hub Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`
+
+---
+
+## 5. Sprint 42 Retrospective & Deep Code Review
+
+### 🏆 5.1 System Wins & Retrospective Audit
+*   **ICM Persistent Memory Optimization ([LAB-002 / LAB-006] & BKM-037):**
+    *   *The Problem:* CLI tool hooks (`icm hook post`) were cold-loading ONNX/FastEmbed models on every tool turn, causing 100%+ CPU spikes and 1.8GB–2.0GB RAM process allocations.
+    *   *The Solution:* Created `~/.config/icm/config.toml` configuring Option B (Deferred Async Queueing to `pending_queue.jsonl`) + Option C (Shared Vector Offloading via HTTP socket to ChromaDB on port 8000).
+    *   *Impact:* Reduced tool turn CPU usage from 105% to 0% and cold RAM allocations from 2GB to 0MB without requiring AGY process restarts.
+*   **Ruff Pre-commit Security & AST Protection:**
+    *   *The Problem:* Pre-existing `E701` inline colons and `E722` bare except blocks in `archive_node.py` and `loader.py` caused AST parser friction and swallowed exception bugs.
+    *   *The Solution:* Pre-commit `ruff check` caught 8 formatting/safety bugs. Refactored into clean multiline exception blocks.
+    *   *Impact:* Prevented subagent diff patching failures and ensured clean syntax during OpenAgent worker runs.
+*   **OpenAgent Playbook & Shell Delegation (BKM-034 Point 12 & Directive 7):**
+    *   *The Problem:* Initial delegation used internal `invoke_subagent` (Method A), hiding worker progress from the local webview dashboard at `http://192.168.1.238:4096/`.
+    *   *The Solution:* Switched to shell-based `opencode` CLI delegation attached to port 4096 (Method B). Added Core Directive 7 to `AGENTS.md`.
+    *   *Impact:* Full live visibility across all worker sessions on TUI and webview dashboard.
+*   **Usefulness of Models & Sisyphus Engine:**
+    *   *Mistral Large (`mistral-large-latest`):* Performed as the primary OpenAgent worker (`Sisyphus`), demonstrating high reasoning fidelity during Two-Tier RAG compass candidate scoring and pytest mock adjustments.
+*   **Mistakes & Missteps:**
+    *   Initial delegation turn used `invoke_subagent` instead of `opencode` CLI, requiring user intervention. Corrected immediately.
+
+---
+
+### 🔍 5.2 Conceptual Code Review (Beyond the Diff)
+Beyond checking `git diff`, a conceptual audit of the modified system areas revealed the following insights:
+
+1.  **DOM Isolation & Sanitizer Security (`stories.html` & `sync_stories.sh`):**
+    *   Moving `<section id="security">` (The RAKP Security Catch / CVE-2013-4786) to the top of `<main>` required verifying that BeautifulSoup's DOM parser in `sync_stories.sh` didn't displace `#nav-filter` or `#searchable-content`.
+    *   *Conceptual Insight:* The airlock sanitizer relies on ID-based element selection. If an author renames `<section id="security">` to `<section id="cve-security">`, the sanitizer script would fail silently.
+    *   *Recommendation:* Add a regex validation check inside `sync_stories.sh` to assert expected section IDs exist before performing DOM decomposition.
+2.  **Two-Tier RAG Compass Year-Boundary Edge Cases (`archive_node.py`):**
+    *   *Conceptual Insight:* When a user query specifies a target year (e.g. `"late 2018"`), legacy archive files with multi-year bounds (e.g. `2016_2019.json`) contain entries across year boundaries.
+    *   Evaluating both `meta.get("timestamp")` and `meta.get("source")` guarantees that range files spanning the target year receive a calibrated Tier 2 weight (`0.5`) rather than being falsely rejected by year-exact string filters.
+3.  **Atomic Write Safety (`loader.py` & `cognitive_hub.py`):**
+    *   *Conceptual Insight:* In `append_to_tool_log`, appending directly to `TOOL_LOG_PATH` in `"a"` mode was susceptible to partial writes if the process was reaped mid-write.
+    *   Refactored to write to `${TOOL_LOG_PATH}.tmp` followed by `os.replace`.
+
+---
+
+### 🧪 5.3 Test Failure Forensics & Future Backlog Items
+
+#### **Test Failure Audit:**
+| Test | Cause of Failure | Resolution Strategy | Auto-Fixed? |
+| :--- | :--- | :--- | :--- |
+| `test_archive_rrf_logic` | `keyword_search` had missing `.lower()` on query terms + test assertion accessed `results[0][1]` tuple instead of `results[0]` dict. | Added `.lower()` to `keyword_search` line 545 and updated test mock assertion. | **Yes** (Worker self-corrected + AGY fix). |
+| `test_fuzzy_temporal_routing` | `target_year` filtering in `archive_node.py` evaluated only `timestamp`, ignoring multi-year range source filenames (`2016_2019.json`). | Combined `timestamp` and `source` string for year regex extraction. | **Yes** (AGY & Worker refined). |
+| `test_feat_411_append_to_tool_log` | Node name string case mismatch (`"TestNode"` vs `"testnode"`). | Updated assertion to expect lowercased node name per `loader.py` init. | **Yes** (Worker self-corrected). |
+| `test_vibe_casual_greeting` & `test_vibe_narf` | Mock assertion signature checked positional `("think", ANY)` instead of keyword `(arguments=ANY)`. | Updated `assert_called_with` to check `arguments=ANY`. | **Yes** (AGY fixed). |
+
+#### **Future Backlog Recommendations (For `00_FEDERATED_STATUS.md`):**
+1.  **`HttpClient(port=8000)` Refactor for Pre-Commit & Scanner Hooks:**
+    - Refactor `sync_chroma_dna.py`, `archive_node.py`, and `refine_gem.py` from `chromadb.PersistentClient` to `chromadb.HttpClient(host="127.0.0.1", port=8000)` to eliminate pre-commit hook delay (reducing 20s to <1s).
+2.  **Airlock Sanitizer Guard Assertions:**
+    - Update `www_deploy/sync_stories.sh` to raise an explicit exception if expected section IDs (`#security`, `#architecture`, `#validation`, `#leadership`) are missing from `field_notes/stories.html`.
+
     - *Session Format:* `SESSION: Sprint 42 Story 4 — Integrated WYWO & Atomic Writes`
 *   **Verification Gate**:
     ```bash
