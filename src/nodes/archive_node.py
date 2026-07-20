@@ -12,6 +12,7 @@ from infra.montana import reclaim_logger
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
 reclaim_logger(role="ARCHIVE")
+logger = logging.getLogger(__name__)
 
 try:
     from nodes.loader import BicameralNode
@@ -46,10 +47,16 @@ COLLECTION_WISDOM = "long_term_wisdom"
 COLLECTION_DNA = "behavioral_dna"
 
 # Chroma Setup
-chroma_client = chromadb.PersistentClient(path=DB_PATH)
+try:
+    chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
+    chroma_client.heartbeat()
+except Exception:
+    chroma_client = chromadb.PersistentClient(path=DB_PATH)
+
 ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
 
 
 def get_safe_collection(name):
