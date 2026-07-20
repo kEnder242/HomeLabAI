@@ -526,6 +526,8 @@ def keyword_search(query, limit=10):
     if not candidates:
         return []
 
+    import re
+    kw_list = [t for t in query.split() if len(t) > 3]
     results = []
     seen_ids = set()
     
@@ -535,21 +537,23 @@ def keyword_search(query, limit=10):
         try:
             with open(f_path, "r") as f:
                 data = json.load(f)
-                if not isinstance(data, list): continue
+                if not isinstance(data, list):
+                    continue
                 
                 for entry in data:
-                    text_blob = str(entry).lower()
-                    for c in candidates:
-                        if c.lower() in text_blob:
-                            e_id = entry.get("id") or entry.get("filename") or str(entry.get("date", ""))
-                            if e_id and e_id not in seen_ids:
-                                results.append((e_id, {"source": os.path.basename(f_path), "text": str(entry)}))
-                                seen_ids.add(e_id)
-                                break
-                    if len(results) >= limit: break
+                    anchor = entry.get("doc_anchor", entry.get("summary", ""))
+                    if any(kw in str(anchor).lower() for kw in kw_list):
+                        e_id = entry.get("filename", entry.get("summary", "")[:30])
+                        if e_id not in seen_ids:
+                            results.append(entry)
+                            seen_ids.add(e_id)
+                            break
+                    if len(results) >= limit:
+                        break
         except Exception:
             continue
-        if len(results) >= limit: break
+        if len(results) >= limit:
+            break
         
     return results
 
@@ -569,7 +573,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         try:
             with open(graph_path, "r") as f:
                 relations = json.load(f)
-        except:
+        except Exception:
             return ""
             
         matched_relations = []
@@ -741,7 +745,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
             
             rrf_score = meta.get("_rrf_score", 0.0)
             if target_year:
-                # [FEAT-117] Adaptive Range Matching: Extract all 4-digit years to check for ranges
+                # [FEAT-410] Adaptive Temporal RAG Compass: Extract 4-digit years for range guidelines & candidate filtering
                 entry_years = [int(y) for y in re.findall(r"\b(199[0-9]|20[0-2][0-9])\b", ts)]
                 t_year_int = int(target_year)
                 
@@ -828,7 +832,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                     target_file = f"{year_month}.json"
 
                 if target_file and os.path.exists(os.path.join(DATA_DIR, target_file)):
-                    # [FEAT-117/306] Bridge to raw JSON truth
+                    # [FEAT-405] Gems-to-Notes Ground Truth Synthesis: Bridge metadata to physical JSON note entries
                     file_path = os.path.join(DATA_DIR, target_file)
                     with open(file_path, "r") as f:
                         file_data = json.load(f)
@@ -838,9 +842,11 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                         for idx, entry in enumerate(file_data):
                             if doc_anchor[:50] in str(entry):
                                 neighbors = []
-                                if idx > 0: neighbors.append(file_data[idx-1])
-                                neighbors.append(file_data[idx]) # Self
-                                if idx < len(file_data) - 1: neighbors.append(file_data[idx+1])
+                                if idx > 0:
+                                    neighbors.append(file_data[idx-1])
+                                neighbors.append(file_data[idx])  # Self
+                                if idx < len(file_data) - 1:
+                                    neighbors.append(file_data[idx+1])
                                 
                                 for n in neighbors:
                                     n_text = f"[NEIGHBORHOOD_EXPANSION Source: {target_file}]: {json.dumps(n)}"

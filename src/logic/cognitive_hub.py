@@ -322,8 +322,8 @@ class CognitiveHub:
             if behavioral_guidance:
                 guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
 
-            # [Story 3] Vibe-Specific Context Isolation: Wrap RAG context in
-            # <historical_record> tags + inject GROUNDING_PROTOCOL for HISTORICAL/FORENSIC vibes.
+            # [FEAT-407] Vibe-Specific Context Isolation: Wrap RAG context in
+            # <historical_record> tags + inject GROUNDING_PROTOCOL for HISTORICAL/FORENSIC/TECHNICAL vibes.
             # Prevents bedrock/operational metadata bleed into past-tense briefs.
             _vibe = getattr(self, "current_vibe", "TECHNICAL")
             if _vibe.upper() in ("HISTORICAL", "FORENSIC", "TECHNICAL") and context:
@@ -367,7 +367,7 @@ class CognitiveHub:
                     yield new_tokens
                     last_len = len(curr_buffer)
                     
-                    # [SPR-41_2] Context Starvation check: abort immediately if starvation detected
+                    # [FEAT-404] Context Starvation check: abort immediately if starvation detected
                     if "[ERROR: CONTEXT_STARVED]" in full_text:
                         logging.warning(f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting.")
                         call_task.cancel()
@@ -707,7 +707,7 @@ class CognitiveHub:
         if vibe == "CASUAL":
             behavioral_guidance = "[MODE]: CONVERSATIONAL (Natural, witty, brief greetings. No technical lecturing.)"
         elif vibe == "WYWO":
-            # [WYWO] Retrieval: Pull nightly dialogue and subconscious dreams
+            # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
             nightly_dialogue = "No recent nightly dialogue recorded."
             dialogue_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json")
             if os.path.exists(dialogue_path):
@@ -854,7 +854,7 @@ class CognitiveHub:
             vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
         try:
-            # We call pinky's think tool to perform the coherence evaluation
+            # [FEAT-406] Coherence Judge Evaluation: Call Pinky's think tool for evaluation and retort
             res_eval = await self.residents["pinky"].call_tool("think", {
                 "query": critique_query, 
                 "context": f"Technical Output to evaluate:\n{text}",
@@ -1005,8 +1005,7 @@ class CognitiveHub:
         distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 
         # Dispatch to Brain Node
-        # Side-channel Telemetry Relay handles the broadcast.
-        # We just need to exhaust the generator to ensure the node task completes.
+        # [FEAT-408] Tool-Driven Waterfall Cascade: Pass active MCP tools to remote reasoner
         dt_response = ""
         active_tools = await self._get_node_tools("thought")
         async for token in self._process_node_stream(
