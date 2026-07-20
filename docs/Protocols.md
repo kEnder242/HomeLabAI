@@ -123,13 +123,13 @@
     *   **Performance Delta**: (If applicable) Perceived or measured change in latency, VRAM, or responsiveness.
 3.  **Tone**: Professional, direct, and technical. Avoid conversational chitchat.
 
-## BKM-015: Semantic Anchor Protocol (Anti-Drift)
-**Objective**: Eliminate functional drift caused by hard-coded keyword lists.
+## BKM-015: Semantic Anchor Protocol (Anti-Drift & Indirection)
+**Objective**: Eliminate functional drift and rigid logic failures caused by hardcoded keywords or static list-matching.
 
-1.  **Rule of the Ghost Keyword**: No technical keywords or domain-specific anchors (e.g., "RAPL", "ESB2") are allowed in `.py` logic blocks. They must reside in `config/intent_anchors.json` or a dedicated ChromaDB collection.
-2.  **The Vibe-First Mandate**: Any `if/else` logic determining intent or routing must be preceded by a call to a `_classify_vibe()` or `_route_expert_domain()` method that utilizes a semantic pass (Vector or LLM).
-3.  **DNA-First Verification**: A feature is only marked `[COMPLETE]` if its implementation matches the "Mechanism" described in `FeatureTracker.md`. If the mechanism specifies "Sentinel Pass" and the code uses "List-Matching," the status is `[PARTIAL/STALE]`.
-4.  **Retrieval Optimization Exception**: Hardcoded logic (e.g., year-based regex) is permitted strictly for physical retrieval optimization (e.g., opening a specific `YYYY.json` file) AFTER a semantic intent (RECALL) has been established. It must never be used to gate the intent itself or replace semantic classification.
+1.  **Prohibition of Hardcoding (Ghost Keywords)**: No domain keywords, rigid string lists, or static `switch/case` tool-mappings are permitted in `.py` logic blocks. All intent routing and behavioral mappings must be retrieved dynamically via vector similarity from ChromaDB (`behavioral_dna` collection). Static JSON anchor lists (`intent_anchors.json`) are deprecated legacy artifacts.
+2.  **The Vibe-First Mandate**: Every `CognitiveHub` dispatch or intent-routing check must perform a semantic "Vibe Check" (Vector or LLM classifier) before selecting tools, adapters, or cognitive loadouts.
+3.  **DNA-First Verification**: A feature is only certified `[COMPLETE]` if its implementation matches the "Mechanism" described in `FeatureTracker.md`. If the mechanism specifies "Sentinel Pass" and the code uses "List-Matching," the status is `[PARTIAL/STALE]`.
+4.  **Physical Retrieval Exception**: Hardcoded regex (e.g. 4-digit year extraction for `YYYY.json` file loading) is permitted strictly for physical disk retrieval *after* semantic intent has been established. It must never be used to gate intent or replace semantic classification.
 
 ## BKM-016: The Montana Protocol (Logger Control)
 **Objective**: Prevent external library logger hijacking and ensure forensic traceability.
@@ -202,18 +202,6 @@
 *   **Pedigree Verification**: Compare the "God View" roadmap against previous git commits to ensure no historical phases were compressed or "grouped" into high-level points.
 
 #### **Known Issues**
-*   **The Compression Trap**: LLMs naturally instinct to "clean up" or "summarize" old tasks to save space—this is a fatal error that leads to the total loss of technical intent.
-*   **The Erasure Regret**: Deleting "Tabled" tasks or previous failures makes the Lab look reactive rather than evolved; the history of the struggle is the source of robustness.
-
-
-
-
-### BKM-015.1: Semantic Indirection Guidelines
-**Context:** Replaces the "Waffling" period (Feb-Mar 2026) where routing was managed via static JSON lists in `intent_anchors.json`. 
-**Why:** Rigid mapping causes "Logic Drift" when new tools are added. The agent must rely on semantic "Vibes" to select its cognitive loadout.
-**The Rule:** No `.py` logic block may map a domain to a tool or adapter via a switch/case or list-matching. All behavioral mapping must be retrieved via vector similarity from the `behavioral_dna` collection.
-**Trigger:** Every `CognitiveHub` dispatch must first perform a "Vibe Check" against the neural archive.
-
 ---
 
 6.  **[BKM-031] Ledger-Only Mandate (Anti-Assassin)**:
@@ -245,7 +233,7 @@
 
 ### 2. The Planning Phase (The "Greenlight" Gate)
 *   **The Wait**: The Agent is FORBIDDEN from beginning implementation until the User provides a "Greenlight" or "Buy-in" on the proposed Sprint Plan.
-*   **Strategic Inquiry**: Use the Planning Phase to brainstorm "Traps," waffling risks (e.g., hardcoding vs. BKM-015.1), and lost requirements from previous sessions.
+*   **Strategic Inquiry**: Use the Planning Phase to brainstorm "Traps," waffling risks (e.g., hardcoding vs. BKM-015), and lost requirements from previous sessions.
 
 ### 3. Iterative Append Protocol (History over Overwrites)
 *   **Immutability of Early Phases**: Do NOT re-write or summarize existing phases of an active sprint plan to "save space."
@@ -256,6 +244,7 @@
 *   **Look First**: Before creating new tools or scripts, the Agent MUST consult `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md` and reuse existing diagnostic infrastructure.
 *   **Validation**: Every edit must be followed by `ruff check` to ensure code quality.
 *   **Conductor Delegation**: For complex or high-volume tasks, the Agent should use the Conductor track to delegate work to sub-agents, preserving the primary context window for strategic orchestration.
+
 
 ## BKM-028: High-Fidelity State Machine Debugging
 **Objective**: Rapidly validate Hub logic (Lobby -> Ready -> Hibernate) without physical VRAM overhead.
