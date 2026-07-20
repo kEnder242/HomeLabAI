@@ -81,6 +81,7 @@ class BicameralNode:
             "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
             "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought."
         )
+        # [FEAT-404] Context Starvation Protocol definition
         self.CONTEXT_VALIDITY = (
             "[CONTEXT_VALIDITY]: If you are asked to analyze, summarize, or reference a specific historical topic or GEM ID, "
             "but the provided context is thin/empty and you have no active tools to retrieve evidence, "
@@ -274,6 +275,7 @@ class BicameralNode:
         models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
 
         try:
+            # [FEAT-415] Asynchronous Non-Blocking Engine Health Gate
             async with aiohttp.ClientSession() as session:
                 async with session.get(models_url, timeout=5) as r:
                     if r.status != 200:
@@ -511,11 +513,13 @@ class BicameralNode:
         def _relay_worker():
             while True:
                 item = self.telemetry_queue.get()
-                if item is None: break
+                if item is None:
+                    break
                 try:
                     # In V5, Foyer is at 8765
                     requests.post("http://localhost:8765/stream_ingest", json=item, timeout=0.5)
-                except Exception: pass
+                except Exception:
+                    pass
                 self.telemetry_queue.task_done()
         threading.Thread(target=_relay_worker, daemon=True).start()
 
@@ -530,7 +534,7 @@ class BicameralNode:
         self.telemetry_queue.put(payload)
 
     def append_to_tool_log(self, tool_name, params_preview="", output_link=""):
-        """[SPR-41_5] Append tool execution record to tool_log.md archive."""
+        """[FEAT-411] Structured Append-Only Tool Log Archive."""
         try:
             os.makedirs(os.path.dirname(TOOL_LOG_PATH), exist_ok=True)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
