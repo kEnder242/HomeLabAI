@@ -405,3 +405,15 @@
     *   Monitor `node_memory_Active_bytes` vs. `node_memory_MemAvailable_bytes` in Grafana.
     *   Watch `node_vmstat_pswpin` and `node_vmstat_pswpout` to detect active paging (swap thrashing) before a lockup occurs.
     *   Check for high `node_cpu_seconds_total{mode="iowait"}` as a precursor to SSH timeouts.
+
+---
+
+## BKM-037: Persistent Memory Efficiency Protocol (Daemon Embedding & Deferred Extraction)
+**Objective**: Prevent memory thrashing and CPU starvation during high-density OpenAgent developer subagent runs by decoupling synchronous tool execution from heavy vector embedding generation.
+
+1.  **The Principle**: Swarm subagents executing rapid coding tasks (20–30 tool calls/min) must not spawn cold ONNX/PyTorch vector embedding processes on individual tool turns.
+2.  **Execution Rules**:
+    *   **Queue-First Logging**: All OpenAgent tool outputs, shell events, and diff traces must be logged to the lightweight append-only event queue (`pending_queue.jsonl`) without blocking worker execution.
+    *   **Daemon-Only Embeddings**: Vector embedding generation for memory search/ingestion must communicate strictly via HTTP socket to the persistent ChromaDB daemon on port 8000 (or resident FastEmbed service). Cold-starting ONNX models inside CLI hooks is strictly forbidden.
+    *   **Deferred Extraction Sweeps**: Execute `icm extract-pending` at session boundaries, post-sprint reviews, or via background cron tasks to ingest new memory candidates in a single batch.
+
