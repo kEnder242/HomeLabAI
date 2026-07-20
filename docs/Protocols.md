@@ -294,85 +294,43 @@
 ---
 
 ## BKM-034: OpenAgent Delegation & Playbook Protocol
-**Objective**: Establish safe, context-preserving boundary gates for delegating tasks from Gemini (Orchestration) to OpenAgent (Local/Remote Swarm) to minimize token consumption and prevent intent drift.
-**Playbook Reference**: [AGY_TO_OPENAGENT_PLAYBOOK.md](../../Portfolio_Dev/AGY_TO_OPENAGENT_PLAYBOOK.md)
+**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**).
 
 1.  **Role Division**:
-    *   **Orchestrator (Gemini/Claude)**: Acts as the *Strategic Guardian of the DNA*. Responsible for updating the Master Plan (`SPRINT_PLAN_SPR_XX_X.md`), defining architectural requirements, auditing code changes via git diffs, and running final integration tests.
-    *   **Swarm (OpenAgent)**: Executes *Tactical Implementation loops*. Responsible for writing codebase logic, updating test files, and running line-by-line debugging iterations.
-2.  **Swarm Agent Category Mapping**:
-    *   **Sisyphus-Junior (quick, visual-engineering, writing)**: Spawned automatically via category overrides. Do **NOT** specify `subagent_type: "Sisyphus-Junior"` directly in task tool parameters as it will error.
-    *   **Plan-Family Restriction**: Plan-family agents (`plan`, `prometheus`) cannot delegate tasks to other plan-family agents via `task()`.
-    *   **Coordinator Restriction**: Coordinator agents (e.g., `prometheus`) own their orchestration loops and are forbidden from being called as subagents. Select worker agents or categories instead.
-3.  **Concurrency Deadlock Prevention**: Ollama provider options must set `"maxConcurrency": 5` (or higher) in `opencode.json`. If set to `1` (serialized), the parent orchestrator and child subagent will deadlock when attempting parallel queries to the local model.
-4.  **Verification Plan Immutability**: Every task delegated to OpenAgent must have a verbatim, detailed **Verification Plan** detailing the specific tests (e.g., pytest, Playwright) and assertions. OpenAgent is prohibited from marking a task as complete unless the exact verification scripts pass cleanly.
-5.  **Token Conservation Guardrails**: For heavy sequence editing, refactoring, or iterative lint-fixing, the prompt must steer OpenAgent to run locally on the RTX 4090 or Groq/DeepSeek Free tiers to preserve Gemini's rate-limited API tokens.
-6.  **Forensic Review Gate & Git Ownership**: All git staging, branching, and commits must be handled directly by AGY (cloud orchestrator) as part of the post-implementation review and validation gate, rather than delegating Git operations to local subagent workers. Sisyphus-Junior should focus strictly on local file modifications and test verification. Gemini must review the git diffs, run the system-wide diagnostic runner (`gold_master_batch_runner.sh`), and verify the code against `FeatureTracker.md` before final sprint task checkoff.
-7.  **Surgical Handover Prompt Template**: All tasks delegated to OpenAgent must utilize the following structured format. BKM and FEAT context is retrieved from ChromaDB (behavioral_dna / feature_dna collections) rather than injected as raw file content, reducing KV cache pressure on small local models:
-    ```markdown
-    opencode run -m <provider/model> "
-    [GROUNDING CONTEXT — loaded from ChromaDB, not raw file injection]
-    - BKM query:  'how to safely patch files atomically'   → retrieves BKM-011, BKM-012
-    - FEAT query: 'RAPL telemetry silicon validation'       → retrieves FEAT-098, FEAT-115
-    - Active Task: SPRINT_PLAN_SPR_40_0.md#Task-<id>        ← direct pointer
-
-    [COORDINATION & DELEGATION MANDATE]
-    - You NEVER work alone when specialists are available. Delegate the raw code edits and CLI verification checks of this task to sisyphus-junior (running locally on KENDER's 4090) to conserve cloud tokens. Focus strictly on plan coordination and diff auditing.
-
-    [TARGET SPECIFICATION]
-    - File: <absolute_path_to_target_file>
-    - Target Lines/Functions: <target_lines_or_functions>
-    - Modification Details: <exact_changes_required>
-
-    [VERIFICATION GATE]
-    - Test Command: <validation_script_or_pytest_command>
-    - Mandate: You are forbidden from committing unless this test passes.
-    "
-    ```
-    *   **Note**: Raw file links (`file:///...FeatureTracker.md` and `file:///...Protocols.md`) are now handled via the pre-commit-hook-synced ChromaDB collections (`behavioral_dna`, `feature_dna`). Do not re-inject those full files as context; use targeted semantic queries instead. The sprint plan task pointer remains a direct file link as it is ephemeral and not persisted to DNA.
-8.  **Session Lifecycle Management (sessions vs. run/play)**:
-    *   **`opencode run`**: One-shot, ephemeral execution. Appropriate for single atomic tasks with a clear verification gate (e.g., "fix this specific bug and run this test"). Spawns a new session on each invocation.
-    *   **`opencode session`** (preferred for sustained phases): Use named, resumable sessions to persist context across multiple related tasks within a phase or sprint.
-    *   **Naming a session**: The session title displayed in `opencode session list` is set at creation time from the first user message. To create a distinctly named session, the first message must be an explicit phase declaration:
+    *   **Strategic Guardian (Antigravity / Gemini)**: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
+    *   **Tactical Swarm (OpenAgent)**: Executes code modifications, runs unit test iterations (`pytest`), and handles line-by-line file updates.
+2.  **Mandatory Shell-Based Execution (Point 12)**:
+    *   All developer/implementation tasks delegated to OpenAgent must be launched via the shell-based `opencode` CLI attached to port 4096:
         ```bash
-        # Start a named session for a specific sprint phase
-        opencode run --print-logs "SESSION: Sprint 37 Phase 2 — Persona Polish. Starting task 6.1: IDENTITY_BEDROCK refactor."
-        # The session ID is then captured from the output (ses_XXXX)
+        /home/jallred/.opencode/bin/opencode run --dir <target_dir> --attach http://127.0.0.1:4096/ "SESSION: Sprint XX Story YY — <Title>..."
         ```
-    *   **Resuming a session**: Use `opencode --session <session_id>` or `opencode -c` to resume the most recent session:
-        ```bash
-        opencode --session ses_0c61ebab0ffeRC23pP7kxbiQjU
-        opencode -c  # shorthand for continue last session
+    *   `invoke_subagent` is strictly reserved for read-only research tasks. This guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+3.  **Narrow Workspace Scoping & On-Demand Reference**:
+    *   Target the narrowest active project directory (e.g. `--dir /home/jallred/Dev_Lab/HomeLabAI`).
+    *   To reference planning files outside the target workspace, pass direct links using the `file://` scheme in the prompt (e.g. `file:///home/jallred/Dev_Lab/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
+4.  **Standardized Prompt Blueprint**:
+    *   Prompts sent to OpenAgent must be explicit and structured, minimizing local model reasoning drift:
+        ```markdown
+        SESSION: Sprint XX Story YY — <Title>
+        
+        Read the master plan at file://<path_to_sprint_plan>.md#Story-YY.
+
+        [TARGET SPECIFICATION]
+        - File: <absolute_path_to_target_file>
+        - Task Details: <explicit_code_or_logic_changes>
+
+        [VERIFICATION GATE]
+        - Test Command: <pytest_or_validation_script>
+        - Mandate: Do NOT run git commit inside this session. Report completion summary when done.
         ```
-    *   **Sprint vs. Phase granularity**: Prefer one session per logical phase (Story or Story group) within a sprint. Avoid single-session-per-sprint as context accumulation over many tasks degrades small model performance. Fork with `--fork` when branching from a stable state:
-        ```bash
-        opencode --session <ses_id> --fork  # branches context at this point
-        ```
-    *   **Sustained Sprint Sessions (Persistence)**: When the user requests completing the entire sprint in a single session, Sisyphus should reuse the same subagent session ID (`ses_...` returned by `task()`) for subsequent tasks in the sprint rather than starting a fresh subagent session on each task. Sisyphus must maintain a persistent task checklist/ledger inside the session context.
-    *   **Session list audit**: Before starting a new phase, run `opencode session list` and identify the last relevant session ID to resume or fork.
-9.  **Playbook Protocol Refinement (Swarm Pain Points)**:
-    *   **Strict Verification Gate Enforcement**: Subagents are forbidden from committing code changes if the AST parse (`ast.parse`) or validation tests fail. Committing syntax errors constitutes a severe protocol violation.
-    *   **DNA Grounding Enforcement**: Swarm agents must query the `feature_dna` collection (grounded in `FeatureTracker.md`) before making edits to ensure they do not introduce regressional bugs or overwrite active rules.
-    *   **Delegation-Guiding Prompts**: Prompts sent to subagents must embed strict boundaries (e.g., `MUST DO` / `MUST NOT DO` rules) to prevent local models from losing context or inventing instructions.
-    *   **Named Session Enforcement**: Avoid generating sessions with generic titles (e.g. "Greeting" or "New session"). Always use the `SESSION: Sprint XX Story YY` format on the first query of a session.
-    *   **VRAM Inversion Strategy**: Evaluate if the local 4090 VRAM should be inverted: instead of running heavy orchestrators locally (which suffer high latency and context limits), utilize cloud endpoints for orchestration and reservation, and load local models (like `qwen2.5-coder`) primarily for *heavy code generation/refactoring*. Evaluate if coding models still require tool usage or if they can rely on unified diff patches.
-10. **DNA Query Translation (Semantic Paraphrasing)**:
-    *   **The Principle**: Sisyphus must not query ChromaDB with raw, conversational user prompts verbatim (e.g. `"I want to edit a file"`).
-    *   **The Practice**: Sisyphus must translate the user's conversational intent into precise domain-specific search query keywords (e.g. `"safe file write"`, `"atomic file patch"`, `"lint gate"`) before querying the `behavioral_dna` and `feature_dna` collections. This ensures maximum retrieval confidence (minimum distance score).
-11. **Explicit Blueprint Prompting (No-Boilerplate Guardrail)**:
-    *   **The Principle**: Cloud orchestrators (Gemini) must not delegate open-ended logic or design descriptions to local 14B workers. They must compile exact HTML/CSS blocks, BeautifulSoup scripts, or shell templates directly inside the prompt's `[TARGET SPECIFICATION]`.
-    *   **The Practice**: This minimizes local token generations, reduces context overhead, avoids structural hallucinations, and allows the user to review the exact code/design inside the Master Sprint Plan prior to execution.
-12. **Mandatory Shell-Based Execution**: All tactical worker delegation must be initiated via the shell-based `opencode` CLI (Method B) rather than using the built-in `invoke_subagent` tool (Method A). The built-in tool is reserved for read-only research tasks or meta-analysis. This ensures all developer tasks are properly registered in the OpenAgent session list and visible in the local TUI/dashboard.
-13. **Socket-Activated Server Hibernation & Warm-Up**:
-    *   **The Principle**: The OpenAgent server daemon (`opencode-core.service`) is socket-activated by `opencode.socket` on port 4096 and configured with `StopWhenUnneeded=true`. When idle, it shuts down (hibernates) to save memory and GPU resources.
-    *   **The Practice**: Before launching a task against the server (via `opencode run --attach http://127.0.0.1:4096/`), AGY (the parent co-pilot client) must proactively wake the server from hibernation by querying the socket (e.g. running a fast `curl -I http://127.0.0.1:4096/` or `opencode session list | cat`) and waiting 1-2 seconds for initialization to complete before sending the task.
-14. **Narrow Scope & On-Demand Reference Pattern (Token & Context Management)**:
-    *   **Critical Evaluation of the Dual-Directory Design**: Initializing OpenAgent targeting the parent directory `/home/jallred/Dev_Lab` (which spans both the `HomeLabAI` and `Portfolio_Dev` workspaces) is a major design pitfall. Even with `.opencodeignore` active, the collective codebase mapping (file hierarchy, git diffs, branch states, and XML schema trees) compiles a massive baseline context (40K+ tokens) on the very first turn, immediately exhausting TPM quotas on cloud API free tiers (e.g. Gemini's 40K TPM or Groq's 12K TPM).
-    *   **Subdirectory Ignore Bypass Risk**: Launching an OpenAgent session from a subdirectory (e.g., inside `HomeLabAI`) without `.opencodeignore` being present in that specific subdirectory forces the server to traverse and scan unignored virtual environments (like `.venv/` at 88K+ tokens) and node modules. The root `.opencodeignore` is *only* parsed if the session is initialized targeting the root or if a local ignore is present in the targeted subdirectory.
-    *   **On-Demand Reference Practice**: 
-        1. Always target the narrowest active project folder (e.g. `--dir /home/jallred/Dev_Lab/HomeLabAI`).
-        2. To reference planning files located outside the workspace boundary, provide a direct link using the `file://` scheme directly in the prompt (e.g., `file:///home/jallred/Dev_Lab/Portfolio_Dev/SPRINT_PLAN_SPR_39_0.md#Story-1`). The server will fetch that file on-demand via its read tools, avoiding the indexing cost of the rest of the portfolio repository.
-    *   **Relieving the Coordinator (BKM-020 Integration)**: To prevent multiple tool round-trips (which compound context size by sending the 40K baseline back and forth), the prompt must contain detailed implementation context (aligning with BKM-020's "Task Verbosity" principle). Provide explicit blueprints, exact target file paths, timing assertions, and output JSON structures in the initial dispatch. High-density instructions allow the orchestrator (`Sisyphus`) to design, write, and run the worker tests in a single, self-contained turn, preventing multi-turn context inflation.
+5.  **DNA Grounding & Semantic Search**:
+    *   Retrieve BKM and FEAT context via ChromaDB vector collections (`behavioral_dna`, `feature_dna`) on port 8001 rather than injecting raw markdown files.
+    *   Translate conversational user prompts into domain keywords (`"atomic write"`, `"safe file patch"`) before querying vector collections.
+6.  **Forensic Gatekeeper & Git Ownership**:
+    *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
+    *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
+7.  **Deep-Dive Playbook Reference**:
+    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer to **[`Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md)**.
 
 ---
 
