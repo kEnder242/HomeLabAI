@@ -719,6 +719,38 @@ class CognitiveHub:
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
             
+            recruiter_report = "No recruiter report found."
+            recruiter_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
+            if os.path.exists(recruiter_path):
+                try:
+                    with open(recruiter_path, "r") as f:
+                        data = json.load(f)
+                        if data.get("content"):
+                            recruiter_report = f"Topic: {data.get('topic')}\nContent: {data.get('content')}"
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load recruiter report: {e}")
+            
+            system_status = "No system status found."
+            status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
+            if os.path.exists(status_path):
+                try:
+                    with open(status_path, "r") as f:
+                        data = json.load(f)
+                        system_status = f"Status: {data.get('status', 'unknown')}\nDetails: {data.get('details', 'none')}"
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load system status: {e}")
+            
+            pager_activity = "No pager activity found."
+            pager_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+            if os.path.exists(pager_path):
+                try:
+                    with open(pager_path, "r") as f:
+                        data = json.load(f)
+                        if data.get("activity"):
+                            pager_activity = f"Activity: {data.get('activity')}"
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to load pager activity: {e}")
+            
             dreams = "No long-term subconscious dreams found."
             if "archive" in self.residents:
                 try:
@@ -730,6 +762,9 @@ class CognitiveHub:
 
             context = (
                 f"[NIGHTLY_DIALOGUE_RECORD]:\n{nightly_dialogue}\n\n"
+                f"[RECRUITER_REPORT]:\n{recruiter_report}\n\n"
+                f"[SYSTEM_STATUS]:\n{system_status}\n\n"
+                f"[PAGER_ACTIVITY]:\n{pager_activity}\n\n"
                 f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
             )
             behavioral_guidance = (

@@ -50,7 +50,7 @@ async def test_vibe_casual_greeting(hub):
     
     await hub.process_query("Hi there!")
     # Verified as casual greeting (Pinky think tool)
-    hub.residents["pinky"].call_tool.assert_called_with("think", ANY)
+    hub.residents["pinky"].call_tool.assert_called_with("think", arguments=ANY)
     # Check that Brain was NOT called
     assert not hub.residents["brain"].call_tool.called
 
@@ -63,7 +63,7 @@ async def test_vibe_narf(hub):
     hub.execute_dispatch = AsyncMock(return_value=True)
     
     await hub.process_query("Narf!")
-    hub.residents["pinky"].call_tool.assert_called_with("think", ANY)
+    hub.residents["pinky"].call_tool.assert_called_with("think", arguments=ANY)
     assert not hub.residents["brain"].call_tool.called
 
 @pytest.mark.asyncio
