@@ -542,7 +542,7 @@ def keyword_search(query, limit=10):
                 
                 for entry in data:
                     anchor = entry.get("doc_anchor", entry.get("summary", ""))
-                    if any(kw in str(anchor).lower() for kw in kw_list):
+                    if any(kw.lower() in str(anchor).lower() for kw in kw_list):
                         e_id = entry.get("filename", entry.get("summary", "")[:30])
                         if e_id not in seen_ids:
                             results.append(entry)
@@ -740,40 +740,49 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
         # Collect candidates with fuzzy Gaussian weight decay
         scored_candidates = []
         for doc_id, meta in fused_results:
-            ts = str(meta.get("timestamp") or meta.get("date") or meta.get("source", ""))
+            ts = str(meta.get("timestamp") or meta.get("date") or "")
+            source_str = str(meta.get("source", ""))
             doc_anchor = meta.get("text_anchor", meta.get("text", ""))
             
             rrf_score = meta.get("_rrf_score", 0.0)
             if target_year:
-                # [FEAT-410] Adaptive Temporal RAG Compass: Extract 4-digit years for range guidelines & candidate filtering
-                entry_years = [int(y) for y in re.findall(r"\b(199[0-9]|20[0-2][0-9])\b", ts)]
+                # [FEAT-410] Adaptive Temporal RAG Compass: Extract 4-digit years from timestamp, date AND source filename
+                combined_temporal_str = f"{ts} {source_str}"
+                entry_years = [int(y) for y in re.findall(r"\b(199[0-9]|20[0-2][0-9])\b", combined_temporal_str)]
                 t_year_int = int(target_year)
                 
                 is_match = False
                 if t_year_int in entry_years:
                     is_match = True
-                elif len(entry_years) == 2 and entry_years[0] <= t_year_int <= entry_years[1]:
-                    is_match = True
-                elif len(entry_years) == 2 and entry_years[1] <= t_year_int <= entry_years[0]:
+                elif len(entry_years) >= 2 and min(entry_years) <= t_year_int <= max(entry_years):
                     is_match = True
                 
                 if not is_match:
                     continue  # Skip if year doesn't match and isn't in range
                 
-                # Check if we can parse candidate date for Gaussian weight decay
-                c_date = parse_candidate_date(ts)
-                if c_date:
-                    days_diff = abs((c_date - target_date).days)
-                    temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                # Two-Tier RAG Compass Temporal Scoring
+                if meta.get("date"):
+                    c_date = parse_candidate_date(meta.get("date"))
+                    if c_date and target_date:
+                        days_diff = abs((c_date - target_date).days)
+                        temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                    else:
+                        temporal_weight = 1.0
                 else:
-                    temporal_weight = 0.5  # Fallback weight for ranges without specific entry dates
+                    range_match = re.search(r"(\d{4})_(\d{4})\.json", meta.get("source", ""))
+                    temporal_weight = 0.5 if range_match else 0.1
             elif target_date:
-                c_date = parse_candidate_date(ts)
-                if c_date:
-                    days_diff = abs((c_date - target_date).days)
-                    temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                # Two-Tier RAG Compass Temporal Scoring
+                if meta.get("date"):
+                    c_date = parse_candidate_date(meta.get("date"))
+                    if c_date and target_date:
+                        days_diff = abs((c_date - target_date).days)
+                        temporal_weight = math.exp(-((days_diff / 180.0) ** 2))
+                    else:
+                        temporal_weight = 1.0
                 else:
-                    temporal_weight = 0.2
+                    range_match = re.search(r"(\d{4})_(\d{4})\.json", meta.get("source", ""))
+                    temporal_weight = 0.5 if range_match else 0.1
             else:
                 temporal_weight = 1.0
                 
