@@ -319,7 +319,8 @@
     *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
     *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
 7.  **Playbook Reference**:
-    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: **[`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md)**.
+    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](file:///home/jallred/Dev_Lab/Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+
 
 
 ---
