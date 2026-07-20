@@ -70,7 +70,7 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
     - [x] **Task 3.1 (Compass Candidate Refactor)**: Refactor candidate scoring inside `get_context` in `/home/jallred/Dev_Lab/HomeLabAI/src/nodes/archive_node.py` (L743–L775).
     - [x] **Task 3.2 (Tier 1 Scoring)**: Evaluate candidate entry internal `date` attribute (e.g. `date: YYYY-MM-DD`) when present, calculating Gaussian weight decay against query `target_date`.
     - [x] **Task 3.3 (Tier 2 Scoring)**: Fall back to filename range bounds (e.g. `2016_2019.json`) for un-timestamped legacy notes (`weight = 0.5` if range spans target, `0.1` fallback).
-    - [x] **Task 3.4 (Test Suite Verification)**: Run `.venv/bin/pytest src/tests/test_archive_rrf.py -v` and verify zero regressions. on date retrieval.
+    - [x] **Task 3.4 (Test Suite Verification)**: Run `.venv/bin/pytest src/tests/test_archive_rrf.py -v` and verify zero regressions.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Archive & RAG Specialist` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`
@@ -87,8 +87,7 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 *   **Task Checkboxes**:
     - [x] **Task 4.1 (Expand WYWO Aggregation)**: Expand WYWO context in `cognitive_hub.py` (L718–L765) to aggregate `nightly_dialogue.json`, `recruiter_report.json`, `status.json`, and `pager_activity.json`.
     - [x] **Task 4.2 (Atomic Write Enforcement)**: Audit and enforce `.tmp` + `os.replace` atomic writing across loggers in `loader.py`, `cognitive_hub.py`, and `lab_node.py`.
-    - [x] **Task 4.3 (Test Suite Verification)**: Execute `.venv/bin/pytest src/tests/test_vibe_triggers.py src/tests/test_feature_assertions.py -v` and verify 100% green status.cross `cognitive_hub.py`, `loader.py`, `mass_scan.py`, and `nibble_v2.py`.
-    - [x] **Task 4.4 (Integration Testing)**: Run WYWO integration tests.
+    - [x] **Task 4.3 (Test Suite Verification)**: Execute `.venv/bin/pytest src/tests/test_vibe_triggers.py src/tests/test_feature_assertions.py -v` and verify 100% green status.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Core Hub Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`
@@ -180,3 +179,23 @@ Beyond checking `git diff`, a conceptual audit of the modified system areas reve
     ```bash
     cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/pytest src/tests/test_wywo_integration.py -v
     ```
+
+---
+
+### 🚀 Phase 7: Nightly Synthesis & Hibernation Alignment (FEAT-101 / FEAT-416)
+*   **Why:** Running `mass_scan.py` as an infinite 24/7 background loop (`field-notes-nibbler.service`) constantly reset the Lab Attendant's idle timer, preventing H2 Lean Sleep VRAM hibernation and keeping the RTX 2080 Ti continuously awake.
+*   **Target Architecture**:
+    1. **Normal Scan Jobs (On-Demand):** Fast finishing scans (`scan_librarian.py` & `scan_queue.py`) process new files interactively in seconds, then exit immediately to allow full hibernation.
+    2. **Continuous Refinement Scans (2:00 AM Bounded Pass):** Added `--once` flag to `field_notes/mass_scan.py` (executes 1 bounded Epoch: Nibble -> Refine 50 gems -> De-duplicate -> Aggregate years -> Pulse Pager -> Exit).
+    3. **Nightly Systemd Integration:** Grouped deep refinement into `field-notes-nightly.timer` @ 2:00 AM triggering `field-notes-nightly.service`. Disabled continuous daytime `field-notes-nibbler.service`.
+*   **Task Checkboxes**:
+    - [x] **Task 7.1 (`mass_scan.py --once` Implementation)**: Add `--once` CLI argument to `field_notes/mass_scan.py` to break out of the infinite loop after 1 completed Epoch.
+    - [x] **Task 7.2 (Systemd Service Alignment)**: Update `field-notes-nightly.service` to execute `field_notes/mass_scan.py --once`, enable `field-notes-nightly.timer` at 2:00 AM, and disable continuous `field-notes-nibbler.service`.
+    - [x] **Task 7.3 (Feature & Lab Documentation)**: Update `FEAT-101` and register `FEAT-416` in `FeatureTracker.md`.
+*   **Verification Gate**:
+    ```bash
+    # Test mass_scan.py --once execution
+    /home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python field_notes/mass_scan.py --help | grep -q "--once" && echo "Pass" || echo "Fail"
+    systemctl --user status field-notes-nightly.timer
+    ```
+
