@@ -95,13 +95,13 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 
 ---
 
-### Story 5: `HttpClient(port=8000)` Service Offloading Refactor [HomeLabAI & Portfolio_Dev]
-*   **Why**: `sync_chroma_dna.py` (git pre-commit hook), `archive_node.py` (archive node init), and `refine_gem.py` (continuous burn scanner) currently use `chromadb.PersistentClient`, which cold-loads SentenceTransformers and causes 15-20s git pre-commit hook delays. Refactoring to `chromadb.HttpClient(host="127.0.0.1", port=8000)` with a graceful `PersistentClient` fallback reduces connection latency to <15ms.
+### Story 5: `HttpClient(port=8001)` Service Offloading Refactor [HomeLabAI & Portfolio_Dev]
+*   **Why**: `sync_chroma_dna.py` (git pre-commit hook), `archive_node.py` (archive node init), and `refine_gem.py` (continuous burn scanner) currently use `chromadb.PersistentClient`, which cold-loads SentenceTransformers and causes 15-20s git pre-commit hook delays. Refactoring to `chromadb.HttpClient(host="127.0.0.1", port=8001)` with a graceful `PersistentClient` fallback reduces connection latency to <15ms.
 *   **Task Checkboxes**:
-    - [ ] **Task 5.1 (Pre-commit Hook Refactor)**: Refactor `Portfolio_Dev/sync_chroma_dna.py` to attempt `chromadb.HttpClient(host="127.0.0.1", port=8000)` first, with a fallback to `PersistentClient`.
-    - [ ] **Task 5.2 (Archive Node Refactor)**: Refactor `HomeLabAI/src/nodes/archive_node.py` (L45-L60) to connect via `HttpClient(port=8000)` with fallback.
-    - [ ] **Task 5.3 (Continuous Burn Refactor)**: Refactor `Portfolio_Dev/field_notes/refine_gem.py` to route embedding calls to `HttpClient(port=8000)`.
-    - [ ] **Task 5.4 (Verification & Benchmark)**: Verify git pre-commit hook speed (<1s) and test suite pass.
+    - [x] **Task 5.1 (Pre-commit Hook Refactor)**: Refactor `Portfolio_Dev/sync_chroma_dna.py` to attempt `chromadb.HttpClient(host="127.0.0.1", port=8001)` first, with a fallback to `PersistentClient`.
+    - [x] **Task 5.2 (Archive Node Refactor)**: Refactor `HomeLabAI/src/nodes/archive_node.py` (L45-L60) to connect via `HttpClient(port=8001)` with fallback.
+    - [x] **Task 5.3 (Continuous Burn Refactor)**: Refactor `Portfolio_Dev/field_notes/refine_gem.py` to route embedding calls to `HttpClient(port=8001)`.
+    - [x] **Task 5.4 (Verification & Benchmark)**: Verify git pre-commit hook speed (<1s) and test suite pass.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Infrastructure & Performance Specialist` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab`
@@ -111,11 +111,12 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 ### Story 6: Airlock Sanitizer Guard Assertions [www_deploy]
 *   **Why**: `www_deploy/sync_stories.sh` relies on hardcoded ID-based element selection (`#security`, `#architecture`, `#validation`, `#leadership`). Adding regex guard assertions ensures the script raises explicit exceptions if section IDs are missing before performing DOM decomposition.
 *   **Task Checkboxes**:
-    - [ ] **Task 6.1 (Sanitizer Guard Implementation)**: Update `www_deploy/sync_stories.sh` to assert that `#security`, `#architecture`, `#validation`, `#leadership` exist before decomposing DOM elements.
-    - [ ] **Task 6.2 (Verification)**: Run `./sync_stories.sh` and verify clean execution.
+    - [x] **Task 6.1 (Sanitizer Guard Implementation)**: Update `www_deploy/sync_stories.sh` to assert that `#security`, `#architecture`, `#validation`, `#leadership` exist before decomposing DOM elements.
+    - [x] **Task 6.2 (Verification)**: Run `./sync_stories.sh` and verify clean execution.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Airlock & Security Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/www_deploy`
+
 
 
 ---
