@@ -48,11 +48,11 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 ### Story 2: CI/CD Feature Assertion Test Suite (`test_feature_assertions.py`) [HomeLabAI]
 *   **Why**: Code refactorings and model swaps risk silently degrading registered system features (`FEAT-404` to `FEAT-415`). An automated assertion test suite ensures features are continuously validated before commits.
 *   **Task Checkboxes**:
-    - [ ] **Task 2.1 (Suite Creation)**: Create `/home/jallred/Dev_Lab/HomeLabAI/src/tests/test_feature_assertions.py`.
-    - [ ] **Task 2.2 (FEAT-404 Assertion)**: Implement `test_feat_404_context_starvation()` to verify `[ERROR: CONTEXT_STARVED]` emission and mid-stream task abort.
-    - [ ] **Task 2.3 (FEAT-407 Assertion)**: Implement `test_feat_407_historical_record_isolation()` to verify `<historical_record>` XML tag wrapping and `GROUNDING_PROTOCOL` injection for `HISTORICAL` and `TECHNICAL` turns.
-    - [ ] **Task 2.4 (FEAT-409 Assertion)**: Implement `test_feat_409_wywo_vibe_routing()` to verify triage classification of status queries to `WYWO` vibe and context loading from `nightly_dialogue.json`.
-    - [ ] **Task 2.5 (FEAT-411 Assertion)**: Implement `test_feat_411_append_to_tool_log()` to verify structured tool execution logging to `tool_log.md`.
+    - [x] **Task 2.1 (Suite Creation)**: Create `/home/jallred/Dev_Lab/HomeLabAI/src/tests/test_feature_assertions.py`.
+    - [x] **Task 2.2 (FEAT-404 Assertion)**: Implement `test_feat_404_context_starvation()` to verify `[ERROR: CONTEXT_STARVED]` emission and mid-stream task abort.
+    - [x] **Task 2.3 (FEAT-407 Assertion)**: Implement `test_feat_407_historical_record_isolation()` to verify `<historical_record>` XML tag wrapping and `GROUNDING_PROTOCOL` injection for `HISTORICAL` and `TECHNICAL` turns.
+    - [x] **Task 2.4 (FEAT-409 Assertion)**: Implement `test_feat_409_wywo_vibe_routing()` to verify triage classification of status queries to `WYWO` vibe and context loading from `nightly_dialogue.json`.
+    - [x] **Task 2.5 (FEAT-411 Assertion)**: Implement `test_feat_411_append_to_tool_log()` to verify structured tool execution logging to `tool_log.md`.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Silicon Benchmarking & Test Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`
