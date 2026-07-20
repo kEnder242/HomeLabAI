@@ -85,9 +85,10 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 ### Story 4: Integrated WYWO News Cycle & Atomic Write Audit [HomeLabAI]
 *   **Why**: Enhance `WYWO` standup briefings by integrating live job search findings (`recruiter_report.json`), system health (`status.json`), and Pager alerts (`pager_activity.json`). Enforce atomic `.tmp` file writing across all evaluation and log writers.
 *   **Task Checkboxes**:
-    - [ ] **Task 4.1 (WYWO Context Expansion)**: Combine `nightly_dialogue.json`, `recruiter_report.json`, `status.json`, and `pager_activity.json` into the `WYWO` context payload in `cognitive_hub.py` (`process_query`).
-    - [ ] **Task 4.2 (Atomic Write Audit)**: Verify and enforce atomic `.tmp` write-and-replace (`os.replace`) patterns across `cognitive_hub.py`, `loader.py`, `mass_scan.py`, and `nibble_v2.py`.
-    - [ ] **Task 4.3 (Integration Testing)**: Run WYWO integration tests.
+    - [x] **Task 4.1 (Expand WYWO Aggregation)**: Expand WYWO context in `cognitive_hub.py` (L718–L765) to aggregate `nightly_dialogue.json`, `recruiter_report.json`, `status.json`, and `pager_activity.json`.
+    - [x] **Task 4.2 (Atomic Write Enforcement)**: Audit and enforce `.tmp` + `os.replace` atomic writing across loggers in `loader.py`, `cognitive_hub.py`, and `lab_node.py`.
+    - [x] **Task 4.3 (Test Suite Verification)**: Execute `.venv/bin/pytest src/tests/test_vibe_triggers.py src/tests/test_feature_assertions.py -v` and verify 100% green status.cross `cognitive_hub.py`, `loader.py`, `mass_scan.py`, and `nibble_v2.py`.
+    - [x] **Task 4.4 (Integration Testing)**: Run WYWO integration tests.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Core Hub Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`

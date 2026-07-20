@@ -534,7 +534,7 @@ class BicameralNode:
         self.telemetry_queue.put(payload)
 
     def append_to_tool_log(self, tool_name, params_preview="", output_link=""):
-        """[FEAT-411] Structured Append-Only Tool Log Archive."""
+        """[FEAT-411] Structured Append-Only Tool Log Archive with atomic writes."""
         try:
             os.makedirs(os.path.dirname(TOOL_LOG_PATH), exist_ok=True)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -543,10 +543,14 @@ class BicameralNode:
                 parts.append(f"with params {params_preview}")
             if output_link:
                 parts.append(f"-> Output at [{output_link}](file://{output_link})")
-            with open(TOOL_LOG_PATH, "a") as f:
+            
+            # Atomic write: .tmp + os.replace
+            tmp_path = f"{TOOL_LOG_PATH}.tmp"
+            with open(tmp_path, "a") as f:
                 f.write(" ".join(parts) + "\n")
-        except Exception:
-            pass
+            os.replace(tmp_path, TOOL_LOG_PATH)
+        except Exception as e:
+            logging.error(f"[TOOL_LOG] Failed to append to tool log: {e}")
 
     def _emit_telemetry(self, request_id, ttft_ms, total_tokens, duration_s, engine_type, model):
         """[FEAT-T20.1] Fire telemetry callback if wired by hub."""
