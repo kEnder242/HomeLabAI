@@ -191,11 +191,16 @@
 2.  **Resource Limits**: Configured with `MemoryHigh=500M` and `MemoryMax=1000M` to maintain lightweight memory residency.
 3.  **Circuit Breaker Integration**: Configured with `StartLimitIntervalSec=60s` and `StartLimitBurst=3` (BKM-038).
 
-### LAB-009: Field Notes Nightly Subconscious Timer (2:00 AM)
-**Objective**: Automate off-peak subconscious scanning and historical synthesis for the static Field Notes archive.
+### LAB-009: Field Notes Dual-Pipeline Synthesis Daemons (Nibbler & Nightly Timer)
+**Objective**: Delineate continuous load-aware background note processing from scheduled off-peak 2:00 AM maintenance sweeps.
 
-1.  **Architecture**: Managed via systemd user timer `field-notes-nibble.timer` (`OnCalendar=*-*-* 02:00:00`) triggering `field-notes-nibble.service`.
-2.  **Execution**: Runs `field_notes/nibble.py` under the virtual environment (`/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python`) to process new notes without manual intervention.
+1.  **Continuous Slow-Burn Nibbler (`field-notes-nibbler.service`)**:
+    *   **Architecture**: Managed via systemd user service running `field_notes/mass_scan.py` under the virtual environment (`/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python`).
+    *   **Behavior**: Executes a continuous load-aware loop ("every once in a while") that checks CPU load and VRAM utilization before invoking chunk processors (`nibble_v2.py`, `scan_queue.py`).
+2.  **Nightly Maintenance Sweep (`field-notes-nightly.timer`)**:
+    *   **Architecture**: Managed via systemd user timer `field-notes-nightly.timer` (`OnCalendar=*-*-* 02:00:00`) triggering oneshot service `field-notes-nightly.service`.
+    *   **Behavior**: Executes `field_notes/aggregate_years.py` at 2:00 AM daily to synthesize date groupings and clean historical records.
+
 
 
 
