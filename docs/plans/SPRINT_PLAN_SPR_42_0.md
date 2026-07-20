@@ -22,10 +22,10 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
     3. `Silicon Validation Methodology` (replaces `Validation Methodology`)
     4. `Engineering Leadership` (replaces `Engineering Leadership`)
 *   **Task Checkboxes**:
-    - [ ] **Task 1.1 (Main Body Section Swap)**: Swap `<section id="security">` to be the VERY FIRST section inside `<main>` in `field_notes/stories.html`, placing the RAKP CVE story above `architecture`, `validation`, and `leadership`.
-    - [ ] **Task 1.2 (Heading Standardization)**: Update sidebar `<h2>` and main `<section>` headings in `field_notes/stories.html`, `mission-control.js`, `index.html`, `timeline.html`, `files.html`, `research.html`, `protocols.html`.
-    - [ ] **Task 1.3 (Airlock Sanitizer Fix)**: Update `sync_stories.sh` so `www_deploy/stories.html` cleanly renders the top section heading without HTML element displacement or DOM corruption.
-    - [ ] **Task 1.4 (Build & Deploy Verification)**: Execute `sync_stories.sh`, `sync_protocols.sh`, `sync_research.sh`, and `build_site.py`.
+    - [x] **Task 1.1 (Main Body Section Swap)**: Swap `<section id="security">` to be the VERY FIRST section inside `<main>` in `field_notes/stories.html`, placing the RAKP CVE story above `architecture`, `validation`, and `leadership`.
+    - [x] **Task 1.2 (Heading Standardization)**: Update sidebar `<h2>` and main `<section>` headings in `field_notes/stories.html`, `mission-control.js`, `index.html`, `timeline.html`, `files.html`, `research.html`, `protocols.html`.
+    - [x] **Task 1.3 (Airlock Sanitizer Fix)**: Update `sync_stories.sh` so `www_deploy/stories.html` cleanly renders the top section heading without HTML element displacement or DOM corruption.
+    - [x] **Task 1.4 (Build & Deploy Verification)**: Execute `sync_stories.sh`, `sync_protocols.sh`, `sync_research.sh`, and `build_site.py`.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Frontend and Scripting Developer` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/Portfolio_Dev`
