@@ -184,4 +184,18 @@
 2.  **Resource Limits**: Configured with `MemoryHigh=1G` and `MemoryMax=1.5G` to guarantee non-disruptive memory residency on host `z87-Linux`.
 3.  **Circuit Breaker Integration**: Configured with `StartLimitIntervalSec=60s` and `StartLimitBurst=3` (BKM-038). All client scripts (`sync_chroma_dna.py`, `archive_node.py`, `refine_gem.py`) implement a graceful `try HttpClient(port=8001) except Exception: PersistentClient(...)` failover.
 
+### LAB-008: Headroom Token Optimization Proxy (Port 8787)
+**Objective**: Intercept subagent LLM tool outputs to compress context by 60–90% before dispatching queries to model providers.
+
+1.  **Architecture**: Managed via systemd user service `headroom-proxy.service` (`ExecStart=python -m headroom.cli proxy --port 8787`).
+2.  **Resource Limits**: Configured with `MemoryHigh=500M` and `MemoryMax=1000M` to maintain lightweight memory residency.
+3.  **Circuit Breaker Integration**: Configured with `StartLimitIntervalSec=60s` and `StartLimitBurst=3` (BKM-038).
+
+### LAB-009: Field Notes Nightly Subconscious Timer (2:00 AM)
+**Objective**: Automate off-peak subconscious scanning and historical synthesis for the static Field Notes archive.
+
+1.  **Architecture**: Managed via systemd user timer `field-notes-nibble.timer` (`OnCalendar=*-*-* 02:00:00`) triggering `field-notes-nibble.service`.
+2.  **Execution**: Runs `field_notes/nibble.py` under the virtual environment (`/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python`) to process new notes without manual intervention.
+
+
 
