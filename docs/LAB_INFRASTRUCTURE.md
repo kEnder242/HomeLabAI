@@ -177,3 +177,11 @@
 2.  **Deferred Queueing**: Tool outputs are logged to `pending_queue.jsonl` instantly and vectorized asynchronously via `icm extract-pending` during session pauses or idle windows.
 3.  **Efficiency**: Eliminates 100%+ CPU spikes and 1.8GB-2.0GB RAM allocations per subagent turn while retaining 100% cross-session memory integrity.
 
+### LAB-007: ChromaDB HTTP Vector Daemon (Port 8001)
+**Objective**: Maintain a persistent background ChromaDB vector service for sub-second embedding retrieval and git pre-commit hook synchronization.
+
+1.  **Architecture**: Managed via systemd user service `chroma-server.service` (`ExecStart=chroma run --path ~/AcmeLab/chroma_db --port 8001`).
+2.  **Resource Limits**: Configured with `MemoryHigh=1G` and `MemoryMax=1.5G` to guarantee non-disruptive memory residency on host `z87-Linux`.
+3.  **Circuit Breaker Integration**: Configured with `StartLimitIntervalSec=60s` and `StartLimitBurst=3` (BKM-038). All client scripts (`sync_chroma_dna.py`, `archive_node.py`, `refine_gem.py`) implement a graceful `try HttpClient(port=8001) except Exception: PersistentClient(...)` failover.
+
+
