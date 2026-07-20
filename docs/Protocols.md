@@ -283,7 +283,7 @@
 ---
 
 ## BKM-034: OpenAgent Delegation
-**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**).
+**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**). For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
 
 1.  **Role Division**:
     *   **Strategic Guardian (Antigravity / Gemini)**: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
@@ -312,15 +312,13 @@
             - Test Command: <pytest_or_validation_script>
             - Mandate: Do NOT run git commit inside this session. Report completion summary when done.
 
-
 5.  **DNA Grounding & Semantic Search**:
     *   Retrieve BKM and FEAT context via ChromaDB vector collections (`behavioral_dna`, `feature_dna`) on port 8001 rather than injecting raw markdown files.
     *   Translate conversational user prompts into domain keywords (`"atomic write"`, `"safe file patch"`) before querying vector collections.
 6.  **Forensic Gatekeeper & Git Ownership**:
     *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
     *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
-7.  **Playbook Reference**:
-    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+
 
 
 
