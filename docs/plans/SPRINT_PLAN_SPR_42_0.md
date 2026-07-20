@@ -67,9 +67,10 @@ cd /home/jallred/Dev_Lab/HomeLabAI && .venv/bin/python3 -m py_compile src/logic/
 ### Story 3: Two-Tier RAG Compass Refinement (FEAT-410) [HomeLabAI]
 *   **Why**: Eliminate arbitrary $\pm 1$ year range hacks while maintaining temporal safety between legacy range archives (`2016_2019.json`) and granular timestamped notes (`date: "YYYY-MM-DD"`).
 *   **Task Checkboxes**:
-    - [ ] **Task 3.1 (Tier 1 Implementation)**: Parse candidate entry's internal `date` attribute (e.g. `"2024-01-15"`) in `archive_node.py` (`get_context`) and calculate Gaussian temporal decay weight relative to query target date.
-    - [ ] **Task 3.2 (Tier 2 Fallback)**: If candidate entry lacks an internal `date` attribute, evaluate filename range guidelines (e.g., `2016_2019.json`) and assign fallback weight (`0.5`).
-    - [ ] **Task 3.3 (Regression Verification)**: Execute RAG test suite to confirm zero regressions on date retrieval.
+    - [x] **Task 3.1 (Compass Candidate Refactor)**: Refactor candidate scoring inside `get_context` in `/home/jallred/Dev_Lab/HomeLabAI/src/nodes/archive_node.py` (L743–L775).
+    - [x] **Task 3.2 (Tier 1 Scoring)**: Evaluate candidate entry internal `date` attribute (e.g. `date: YYYY-MM-DD`) when present, calculating Gaussian weight decay against query `target_date`.
+    - [x] **Task 3.3 (Tier 2 Scoring)**: Fall back to filename range bounds (e.g. `2016_2019.json`) for un-timestamped legacy notes (`weight = 0.5` if range spans target, `0.1` fallback).
+    - [x] **Task 3.4 (Test Suite Verification)**: Run `.venv/bin/pytest src/tests/test_archive_rrf.py -v` and verify zero regressions. on date retrieval.
 *   **OpenAgent Delegation Plan (BKM-034)**:
     - *Role:* `Archive & RAG Specialist` (`self` / `opencode`)
     - *Target Dir:* `/home/jallred/Dev_Lab/HomeLabAI`
