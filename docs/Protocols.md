@@ -299,19 +299,20 @@
     *   To reference planning files outside the target workspace, pass direct links using the `file://` scheme in the prompt (e.g. `file:///home/jallred/Dev_Lab/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
 4.  **Standardized Prompt Blueprint**:
     *   Prompts sent to OpenAgent must be explicit and structured, minimizing local model reasoning drift:
-        ```markdown
-        SESSION: Sprint XX Story YY — <Title>
-        
-        Read the master plan at file://<path_to_sprint_plan>.md#Story-YY.
 
-        [TARGET SPECIFICATION]
-        - File: <absolute_path_to_target_file>
-        - Task Details: <explicit_code_or_logic_changes>
+            SESSION: Sprint XX Story YY — <Title>
+            
+            Read the master plan at file://<path_to_sprint_plan>.md#Story-YY.
 
-        [VERIFICATION GATE]
-        - Test Command: <pytest_or_validation_script>
-        - Mandate: Do NOT run git commit inside this session. Report completion summary when done.
-        ```
+            [TARGET SPECIFICATION]
+            - File: <absolute_path_to_target_file>
+            - Task Details: <explicit_code_or_logic_changes>
+
+            [VERIFICATION GATE]
+            - Test Command: <pytest_or_validation_script>
+            - Mandate: Do NOT run git commit inside this session. Report completion summary when done.
+
+
 5.  **DNA Grounding & Semantic Search**:
     *   Retrieve BKM and FEAT context via ChromaDB vector collections (`behavioral_dna`, `feature_dna`) on port 8001 rather than injecting raw markdown files.
     *   Translate conversational user prompts into domain keywords (`"atomic write"`, `"safe file patch"`) before querying vector collections.
@@ -319,7 +320,8 @@
     *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
     *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
 7.  **Playbook Reference**:
-    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](file:///home/jallred/Dev_Lab/Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+    *   For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+
 
 
 
