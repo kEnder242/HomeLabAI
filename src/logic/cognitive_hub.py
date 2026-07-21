@@ -554,6 +554,7 @@ class CognitiveHub:
                     if route:
                         turn = turn.replace(token, "").strip()
                         t_parsed = dict(route)
+                        t_parsed["is_explicit_token"] = True
                         logging.info(f"[HUB] Role token '{token}' detected. Direct routing to {t_parsed['addressed_to']}.")
                         await self.broadcast({
                             "type": "crosstalk",
@@ -607,7 +608,7 @@ class CognitiveHub:
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "addressed_to": {"type": "string", "enum": ["BRAIN", "PINKY", "MICE"]},
+                                "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
                                 "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO"]},
                                 "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
                                 "casual": {"type": "number"},
@@ -616,7 +617,7 @@ class CognitiveHub:
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"}
                             },
-                            "required": ["addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
+                            "required": ["vibe", "domain", "casual", "intrigue", "importance"]
                         }
                     }
                 }
@@ -781,8 +782,10 @@ class CognitiveHub:
         # Initialize dynamic interest boost state
         self._boosted_interest = False
 
-        if "brain" in target or "deep" in target:
-            # Elevate to Brain Node (Brain & Deep Thought), bypassing Pinky's first turn
+        # [FEAT-418] Pure Interest Cascade: Direct Brain bypass ONLY on explicit role token (<|BRAIN|>, <|THOUGHT|>)
+        is_explicit = t_parsed.get("is_explicit_token", False) if t_parsed else False
+        if ("brain" in target or "deep" in target) and is_explicit:
+            # Explicitly addressed to Brain by user: Bypass Pinky's first turn
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
             # Local Response (Pinky First Turn)

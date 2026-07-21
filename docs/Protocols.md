@@ -376,3 +376,16 @@
     *   **Hard Restart Cap**: Systemd services and wrapper scripts (`opencode-core.service`, `headroom`) must set `Restart=on-failure`, `StartLimitIntervalSec=60s`, and `StartLimitBurst=3`. Infinite `Restart=always` without backoff is strictly forbidden.
     *   **Request Timeout Ceilings**: All HTTP clients dispatching LLM queries to KENDER (`192.168.1.26:11434`) must enforce a strict `timeout=60s`. A hanging stream must abort the process tree cleanly (`SIGTERM` -> 2s -> `SIGKILL`).
     *   **Socket Eviction**: Upon task completion or cancellation, the orchestrator must verify zero established sockets (`ss -tp | grep 11434`) remain connected to remote compute nodes.
+
+---
+
+## BKM-039: The Pure Interest Cascade Protocol (Unaddressed Query Routing)
+**Objective**: Eliminate pre-emptive agent bypasses and ensure all unaddressed queries flow through the natural Interest Cascade.
+
+1.  **The Principle**: `addressed_to` is strictly reserved for explicit user addressing (e.g. `<|BRAIN|>`, `<|PINKY|>`). Triage must NEVER infer `addressed_to` based on topic complexity, importance, or sentiment.
+2.  **Execution Rules**:
+    *   **Default Recipient**: All unaddressed queries default to `addressed_to: "NONE"`.
+    *   **Un-Gagged Front-Line**: `NONE` queries ALWAYS execute the front-line agent (Pinky) on Turn 1.
+    *   **Cascade Escalation**: `importance` and `intrigue` scale `current_interest`. When `current_interest > 0.5`, the Round Table (Pinky + Brain + Archive) naturally ignites on Turn 2.
+    *   **Prohibition of Pre-Emptive Bypasses**: The Hub must NOT execute direct Brain elevation (`_run_brain_leg`) on Turn 1 unless explicit role tokens are present.
+
