@@ -382,7 +382,7 @@
 ## BKM-035: Virtual Environment Hygiene & Git Curation
 **Objective**: Prevent virtual environment context-bleeding and indexing bloat across subagent swarms.
 
-1. **Single Canonical Venv**: `HomeLabAI/.venv` is the ONLY valid Python environment in the lab. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
+1. **Single Canonical Venv**: The primary canonical Python environment is pre-configured at `/home/jallred/Dev_Lab/HomeLabAI/.venv`. Always activate or use `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python` for all execution. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
 2. **Git Ignore Hardening**: Every workspace repository must explicitly ignore `venv/`, `.venv/`, `env/`, and `*.egg-info/` in its root `.gitignore`.
 3. **Agent Indexing Isolation**: Agentic search/scan tools (e.g., `opencode`, `codex`, `ripgrep`) must respect `.gitignore` to avoid indexing thousands of site-packages files that cause memory ballooning.
 4. **Pre-Commit Verification**: Before staging changes, agents must verify `git status --porcelain` contains no untracked environment or binary build artifacts.
