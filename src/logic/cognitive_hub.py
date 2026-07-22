@@ -600,7 +600,7 @@ class CognitiveHub:
                             break
                         await asyncio.sleep(5.0)
                 
-                # [Task 9.2] Guided Decoding Schema for Triage
+                # [Task 9.2 & FEAT-418] Guided Decoding Schema for Triage
                 triage_schema = {
                     "type": "json_schema",
                     "json_schema": {
@@ -617,13 +617,19 @@ class CognitiveHub:
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"}
                             },
-                            "required": ["vibe", "domain", "casual", "intrigue", "importance"]
+                            "required": ["addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
                         }
                     }
                 }
 
+                triage_mode_context = (
+                    "[MODE]: TRIAGE (Grounding: Casual greetings/quips like 'what's up', 'hey', 'hi' MUST evaluate as "
+                    "addressed_to: PINKY, vibe: CASUAL, importance: 0.1. Direct technical queries set addressed_to: BRAIN. "
+                    "Unaddressed or general queries set addressed_to: NONE.)"
+                )
+
                 async for token in self._process_node_stream(
-                    "lab", turn, "[MODE]: TRIAGE", "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
+                    "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
                 ):
                     t_text += token
 
@@ -779,16 +785,41 @@ class CognitiveHub:
             # Pass the triage hints as context so Pinky has something to synthesize.
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
 
-        # Initialize dynamic interest boost state
-        self._boosted_interest = False
+        # [FEAT-418] The Symmetrical Interest Cascade (Lead Speaker + Interjection Threshold)
+        target_upper = str(target).upper()
+        if target_upper in ["BRAIN", "THOUGHT", "DEEP"]:
+            lead_node = "brain"
+        elif target_upper == "MICE":
+            lead_node = "both"
+        else: # "PINKY" or "NONE"
+            lead_node = "pinky"
 
-        # [FEAT-418] Pure Interest Cascade: Direct Brain bypass ONLY on explicit role token (<|BRAIN|>, <|THOUGHT|>)
-        is_explicit = t_parsed.get("is_explicit_token", False) if t_parsed else False
-        if ("brain" in target or "deep" in target) and is_explicit:
-            # Explicitly addressed to Brain by user: Bypass Pinky's first turn
+        if lead_node == "brain":
+            # Brain leads Turn 1
+            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
+            # Turn 2: Pinky interjects if interest is high
+            if self.current_interest > 0.5:
+                async for token in self._process_node_stream(
+                    "pinky", turn, context, "Pinky (Foil Interjection)", 
+                    tools=[], temperature=0.7, request_id=request_id,
+                    behavioral_guidance="[MODE]: FOIL_INTERJECTION (Brief, witty, intuitive quip following Brain's response.)"
+                ):
+                    if shutdown_event and shutdown_event.is_set():
+                        break
+        elif lead_node == "both":
+            # Both speak on Turn 1 ("Hey mice!")
+            full_pinky_text = ""
+            async for token in self._process_node_stream(
+                "pinky", turn, context, "Pinky (Response)", 
+                tools=[], temperature=0.7, request_id=request_id,
+                behavioral_guidance=behavioral_guidance
+            ):
+                full_pinky_text += token
+                if shutdown_event and shutdown_event.is_set():
+                    break
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
-            # Local Response (Pinky First Turn)
+            # Pinky leads Turn 1 (Default for PINKY or NONE)
             full_pinky_text = ""
             async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
@@ -808,7 +839,7 @@ class CognitiveHub:
                     await self.trigger_morning_briefing(request_id=request_id)
                 return
             
-            # Cascade to Brain Node if interest is high
+            # Turn 2: Brain interjects if interest is high
             if self.current_interest > 0.5:
                 await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
 
