@@ -16,7 +16,7 @@ SRC_DIR = os.path.join(LAB_DIR, "src")
 if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
-from v5.common.types import IntentEvent, LabStatus, LAB_VERSION  # noqa: E402
+from v5.common.types import IntentEvent, LabStatus, LAB_VERSION, SensoryMode  # noqa: E402
 from v5.common.residents import ResidentManager  # noqa: E402
 from logic.cognitive_hub import CognitiveHub  # noqa: E402
 from equipment.sensory_manager import SensoryManager  # noqa: E402
@@ -221,7 +221,9 @@ class FoyerRouter:
             web.post('/wake', self.handle_remote_action),
             web.post('/sleep', self.handle_remote_action),
             web.post('/lock', self.handle_remote_action),
-            web.post('/shutdown', self.handle_remote_action)
+            web.post('/shutdown', self.handle_remote_action),
+            # [LAB-088] EarNode Emergency Deafness: Manual rearm endpoint
+            web.post('/rearm_ear', self.handle_rearm_ear)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -231,6 +233,25 @@ class FoyerRouter:
         action = request.path.lstrip('/')
         await self.enqueue_intent(f"[OPERATIONAL] {action.upper()}", source="REMOTE")
         return web.json_response({"status": "success", "message": f"{action.capitalize()} signal enqueued."})
+
+    async def handle_rearm_ear(self, request):
+        """REST endpoint to manually rearm EarNode after emergency unload. [LAB-088]"""
+        try:
+            if self.status.sensory_mode != SensoryMode.PAUSED:
+                return web.json_response({
+                    "status": "ERROR", 
+                    "message": "EarNode not in rearm-ready state (must be paused after unload)."
+                }, status=400)
+                
+            logger.info("[FOYER] Manual EarNode rearm requested...")
+            success = await self.sensory.rearm_sensory_ear()
+            if success:
+                self.status.sensory_mode = SensoryMode.ACTIVE
+                return web.json_response({"status": "REARMED"})
+            else:
+                return web.json_response({"status": "ERROR", "message": "Failed to rearm EarNode."})
+        except Exception as e:
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def handle_release_nodes(self, request):
         """REST endpoint to gracefully shutdown logical nodes for hibernation."""
@@ -361,6 +382,22 @@ class FoyerRouter:
             self.status.vram_used = data.get("vram_used", self.status.vram_used)
             self.status.vram_total = data.get("vram_total", self.status.vram_total)
             self.status.ram_pct = data.get("ram_pct", self.status.ram_pct)
+            
+            # [LAB-088] EarNode Emergency Deafness: Track available RAM and sensory mode
+            self.status.available_ram = data.get("available_ram", self.status.available_ram)
+            swarm_mode = data.get("swarm_mode", False)
+            heads_down_mode = data.get("heads_down_mode", False)
+            
+            # Trigger unload if RAM < 3.0GB or in Swarm/Heads-Down mode
+            if self.status.available_ram < 3.0 or swarm_mode or heads_down_mode:
+                if self.status.sensory_mode != SensoryMode.DISABLED:
+                    logger.info(f"[FOYER] Triggering EarNode unload: RAM={self.status.available_ram:.1f}GB, Swarm={swarm_mode}, HeadsDown={heads_down_mode}")
+                    await self.sensory.unload_sensory_ear(self.status.available_ram, swarm_mode or heads_down_mode)
+                    self.status.sensory_mode = SensoryMode.DISABLED
+            else:
+                if self.status.sensory_mode == SensoryMode.DISABLED:
+                    logger.info("[FOYER] EarNode rearm conditions met. Ready to restore.")
+                    self.status.sensory_mode = SensoryMode.PAUSED  # Ready for manual rearm
             
             # [FEAT-265.15] Unified Boot: Trigger Ear and logical nodes concurrently based on state transitions
             if self.status.state in ["HIBERNATING", "OFFLINE"]:
