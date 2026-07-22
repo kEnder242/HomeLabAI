@@ -194,9 +194,11 @@ class BicameralNode:
         model_map = self.vram_config.get("model_map", {})
         if env_mod in model_map:
             m = model_map[env_mod].get(engine_type.lower())
-            # Path matching for VLLM
+            # Path/Serving-name matching for VLLM
             if engine_type == "VLLM":
-                if m in available_models or "unified-base" in available_models:
+                if "unified-base" in available_models:
+                    return "unified-base"
+                if m in available_models:
                     return m
             elif m in available_models or not available_models:
                 return m
@@ -602,7 +604,7 @@ class BicameralNode:
                     if r.status != 200:
                         err = await r.text()
                         logging.error(f"[{self.name}] vLLM Error {r.status}: {err}")
-                        yield f"Error: vLLM returned {r.status}"
+                        yield f"Error: vLLM returned {r.status}: {err}"
                         return
 
                     async for line in r.content:

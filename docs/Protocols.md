@@ -377,5 +377,12 @@
     *   **Request Timeout Ceilings**: All HTTP clients dispatching LLM queries to KENDER (`192.168.1.26:11434`) must enforce a strict `timeout=60s`. A hanging stream must abort the process tree cleanly (`SIGTERM` -> 2s -> `SIGKILL`).
     *   **Socket Eviction**: Upon task completion or cancellation, the orchestrator must verify zero established sockets (`ss -tp | grep 11434`) remain connected to remote compute nodes.
 
+---
 
+## BKM-035: Virtual Environment Hygiene & Git Curation
+**Objective**: Prevent virtual environment context-bleeding and indexing bloat across subagent swarms.
 
+1. **Single Canonical Venv**: `HomeLabAI/.venv` is the ONLY valid Python environment in the lab. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
+2. **Git Ignore Hardening**: Every workspace repository must explicitly ignore `venv/`, `.venv/`, `env/`, and `*.egg-info/` in its root `.gitignore`.
+3. **Agent Indexing Isolation**: Agentic search/scan tools (e.g., `opencode`, `codex`, `ripgrep`) must respect `.gitignore` to avoid indexing thousands of site-packages files that cause memory ballooning.
+4. **Pre-Commit Verification**: Before staging changes, agents must verify `git status --porcelain` contains no untracked environment or binary build artifacts.
