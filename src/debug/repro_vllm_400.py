@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 
 VLLM_URL = "http://127.0.0.1:8088/v1/chat/completions"
-MODEL = "llama-3.2-3b-awq"
+MODEL = "unified-base"
 
 async def repro():
     print("--- 🧪 vLLM Fix Verify: Unified User Pattern ---")
