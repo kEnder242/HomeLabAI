@@ -550,9 +550,17 @@ def keyword_search(query, limit=10):
                 for entry in data:
                     anchor = entry.get("doc_anchor", entry.get("summary", ""))
                     if any(kw.lower() in str(anchor).lower() for kw in kw_list):
-                        e_id = entry.get("filename", entry.get("summary", "")[:30])
+                        e_id = str(entry.get("filename") or entry.get("summary", "")[:50])
                         if e_id not in seen_ids:
-                            results.append(entry)
+                            meta_dict = {
+                                "source": os.path.basename(f_path),
+                                "date": entry.get("date", ""),
+                                "type": entry.get("type", "artifact"),
+                                "text_anchor": anchor,
+                                "summary": entry.get("summary", ""),
+                                "evidence": entry.get("evidence", "")
+                            }
+                            results.append((e_id, meta_dict))
                             seen_ids.add(e_id)
                             break
                     if len(results) >= limit:
@@ -853,10 +861,21 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                     with open(file_path, "r") as f:
                         file_data = json.load(f)
                     
+                    # Search for the specific matching entry to fetch raw ground truth
+                    def match_entry(e, anchor):
+                        s_low = str(e).lower()
+                        a_low = str(anchor).lower()
+                        summary = str(e.get('summary') or e.get('synopsis') or '').lower()
+                        if summary and len(summary) > 10 and summary[:30] in a_low:
+                            return True
+                        clean_a = re.sub(r"^\[.*?\]\s*", "", a_low).strip()
+                        clean_a = re.sub(r"^\[.*?\]\s*", "", clean_a).strip()
+                        return clean_a[:30] in s_low or a_low[:30] in s_low
+
                     # Neighborhood Expansion
                     if not expansion_triggered:
                         for idx, entry in enumerate(file_data):
-                            if doc_anchor[:50] in str(entry):
+                            if match_entry(entry, doc_anchor):
                                 neighbors = []
                                 if idx > 0:
                                     neighbors.append(file_data[idx-1])
@@ -876,7 +895,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None) -> str
                     # Search for the specific matching entry to fetch raw ground truth
                     matched_entry = None
                     for entry in file_data:
-                        if doc_anchor[:50] in str(entry):
+                        if match_entry(entry, doc_anchor):
                             matched_entry = entry
                             break
                     

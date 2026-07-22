@@ -1,60 +1,29 @@
-#!/usr/bin/env python3
-"""
-MoE+ Federated Router Benchmark Harness
+"""MoE+ Federated Router Benchmark with single-pass dual cold/warm telemetry."""
 
-Benchmark the federated routing latency (Llama 3B Router -> Pinky -> Brain -> Deep Thought)
-under different start conditions (cold vs. warm starts) to evaluate routing decisions
-and escalation accuracy.
-
-Outputs:
-- Tabular summary of routing accuracy, decision latency, and total route timings.
-- JSON results file: src/debug/moe_benchmark_results.json
-"""
-
+import asyncio
 import json
 import logging
-import time
 import random
-import asyncio
-from typing import List, Dict, Any
-import os
-from prometheus_client import Gauge, start_http_server
+import time
+from typing import Any, Dict, List
 
-# Configuration
-QUERIES_FILE = os.path.join(os.path.dirname(__file__), "moe_queries.json")
-RESULTS_FILE = os.path.join(os.path.dirname(__file__), "moe_benchmark_results.json")
+from prometheus_client import start_http_server
 
-# Mock routing latency and accuracy (fallback if Ollama is offline)
-MOCK_ROUTER_LATENCY_MS = 80
-MOCK_ROUTER_ACCURACY = 0.95
-COLD_START_LATENCY_S = 2.0  # Simulated cold start latency
+from moe_prometheus_gauges import (
+    moe_expert_latency_seconds,
+    moe_router_latency_seconds,
+    moe_routing_accuracy,
+    moe_total_latency_seconds,
+    moe_warmup_latency_seconds,
+)
 
-# Prometheus metrics
-moe_router_latency_seconds = Gauge(
-    "moe_router_latency_seconds",
-    "Router decision latency in seconds",
-    ["start_type"],
-)
-moe_warmup_latency_seconds = Gauge(
-    "moe_warmup_latency_seconds",
-    "Expert warmup latency in seconds",
-    ["start_type"],
-)
-moe_expert_latency_seconds = Gauge(
-    "moe_expert_latency_seconds",
-    "Expert execution latency in seconds",
-    ["start_type"],
-)
-moe_total_latency_seconds = Gauge(
-    "moe_total_latency_seconds",
-    "Total end-to-end route latency in seconds",
-    ["start_type"],
-)
-moe_routing_accuracy = Gauge(
-    "moe_routing_accuracy",
-    "Routing accuracy (1.0 = correct, 0.0 = incorrect)",
-    ["start_type"],
-)
+QUERIES_FILE = "/home/jallred/Dev_Lab/HomeLabAI/src/debug/moe_benchmark_queries.json"
+RESULTS_FILE = "/home/jallred/Dev_Lab/HomeLabAI/src/debug/moe_routing_results.json"
+
+# Mock parameters
+MOCK_ROUTER_LATENCY_MS = 50
+MOCK_ROUTER_ACCURACY = 0.85
+COLD_START_LATENCY_S = 2.0
 
 
 def load_queries() -> List[Dict[str, Any]]:
@@ -69,7 +38,7 @@ def mock_router_decision(query: str, expected_expert: str) -> Dict[str, Any]:
     Returns a dictionary with the decision, latency, and correctness.
     """
     time.sleep(MOCK_ROUTER_LATENCY_MS / 1000)
-    
+
     # Simulate routing accuracy
     if random.random() <= MOCK_ROUTER_ACCURACY:
         chosen_expert = expected_expert
@@ -77,7 +46,7 @@ def mock_router_decision(query: str, expected_expert: str) -> Dict[str, Any]:
         experts = ["coding", "deep_reasoning", "conversation", "research"]
         experts.remove(expected_expert)
         chosen_expert = random.choice(experts)
-    
+
     return {
         "query": query,
         "expected_expert": expected_expert,
@@ -95,77 +64,103 @@ def simulate_expert_warmup(cold_start: bool) -> float:
     return 0.0
 
 
-async def benchmark_routing(queries: List[Dict[str, Any]], cold_start: bool) -> List[Dict[str, Any]]:
+async def benchmark_routing(queries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Benchmark the routing for a list of queries under cold or warm start conditions.
-    Returns a list of results for each query.
+    Single-pass benchmark: simulates both cold and warm starts for each query
+    and emits dual telemetry (cold + warm metrics) in one event per query.
     """
     results = []
-    
+
     for query_data in queries:
         query = query_data["query"]
         expected_expert = query_data["expected_expert"]
-        
-        # Simulate router decision
+
+        # Simulate router decision (shared between cold and warm)
         start_time = time.time()
         routing_result = mock_router_decision(query, expected_expert)
         router_latency = routing_result["router_latency_ms"]
-        
-        # Simulate expert warmup
-        warmup_latency = simulate_expert_warmup(cold_start)
-        
-        # Simulate expert execution (mock latency)
-        expert_latency_ms = random.uniform(500, 2000) if cold_start else random.uniform(200, 800)
-        time.sleep(expert_latency_ms / 1000)
-        
-        total_latency_ms = router_latency + (warmup_latency * 1000) + expert_latency_ms
-        
+
+        # --- Cold start simulation ---
+        cold_warmup_latency = simulate_expert_warmup(cold_start=True)
+        cold_expert_latency_ms = random.uniform(500, 2000)
+        time.sleep(cold_expert_latency_ms / 1000)
+        cold_total_latency_ms = router_latency + (cold_warmup_latency * 1000) + cold_expert_latency_ms
+
+        # --- Warm start simulation ---
+        warm_warmup_latency = simulate_expert_warmup(cold_start=False)
+        warm_expert_latency_ms = random.uniform(200, 800)
+        time.sleep(warm_expert_latency_ms / 1000)
+        warm_total_latency_ms = router_latency + (warm_warmup_latency * 1000) + warm_expert_latency_ms
+
+        # Assemble dual telemetry result
         result = {
-            **routing_result,
-            "warmup_latency_ms": warmup_latency * 1000,
-            "expert_latency_ms": expert_latency_ms,
-            "total_latency_ms": total_latency_ms,
-            "cold_start": cold_start,
+            "query": query,
+            "expected_expert": expected_expert,
+            "chosen_expert": routing_result["chosen_expert"],
+            "cold_start_metrics": {
+                "router_latency_ms": router_latency,
+                "warmup_latency_ms": cold_warmup_latency * 1000,
+                "expert_latency_ms": cold_expert_latency_ms,
+                "total_latency_ms": cold_total_latency_ms,
+                "is_correct": routing_result["is_correct"],
+            },
+            "warm_start_metrics": {
+                "router_latency_ms": router_latency,
+                "warmup_latency_ms": warm_warmup_latency * 1000,
+                "expert_latency_ms": warm_expert_latency_ms,
+                "total_latency_ms": warm_total_latency_ms,
+                "is_correct": routing_result["is_correct"],
+            },
         }
         results.append(result)
-        
-        # Update Prometheus gauges (convert ms to seconds)
-        start_type = "cold" if cold_start else "warm"
-        moe_router_latency_seconds.labels(start_type=start_type).set(router_latency / 1000.0)
-        moe_warmup_latency_seconds.labels(start_type=start_type).set(warmup_latency)
-        moe_expert_latency_seconds.labels(start_type=start_type).set(expert_latency_ms / 1000.0)
-        moe_total_latency_seconds.labels(start_type=start_type).set(total_latency_ms / 1000.0)
-        moe_routing_accuracy.labels(start_type=start_type).set(1.0 if routing_result["is_correct"] else 0.0)
-    
+
+        # Emit dual Prometheus metrics (cold + warm for the same query)
+        for start_type, metrics in [("cold", result["cold_start_metrics"]), ("warm", result["warm_start_metrics"])]:
+            moe_router_latency_seconds.labels(start_type=start_type).set(metrics["router_latency_ms"] / 1000.0)
+            moe_warmup_latency_seconds.labels(start_type=start_type).set(metrics["warmup_latency_ms"] / 1000.0)
+            moe_expert_latency_seconds.labels(start_type=start_type).set(metrics["expert_latency_ms"] / 1000.0)
+            moe_total_latency_seconds.labels(start_type=start_type).set(metrics["total_latency_ms"] / 1000.0)
+            moe_routing_accuracy.labels(start_type=start_type).set(1.0 if metrics["is_correct"] else 0.0)
+
     return results
 
 
 def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate aggregate metrics from benchmark results."""
-    total_queries = len(results)
-    correct_routes = sum(1 for r in results if r["is_correct"])
-    accuracy = correct_routes / total_queries if total_queries > 0 else 0
-    
-    avg_router_latency = sum(r["router_latency_ms"] for r in results) / total_queries
-    avg_warmup_latency = sum(r["warmup_latency_ms"] for r in results) / total_queries
-    avg_expert_latency = sum(r["expert_latency_ms"] for r in results) / total_queries
-    avg_total_latency = sum(r["total_latency_ms"] for r in results) / total_queries
-    
-    return {
-        "total_queries": total_queries,
-        "accuracy": accuracy,
-        "avg_router_latency_ms": avg_router_latency,
-        "avg_warmup_latency_ms": avg_warmup_latency,
-        "avg_expert_latency_ms": avg_expert_latency,
-        "avg_total_latency_ms": avg_total_latency,
+    """Calculate aggregate metrics for both cold and warm start results."""
+    n = len(results)
+
+    def _agg(key: str, prefix: str) -> float:
+        return sum(r[f"{prefix}_start_metrics"][key] for r in results) / n if n > 0 else 0.0
+
+    cold = {
+        "total_queries": n,
+        "correct_routes": sum(1 for r in results if r["cold_start_metrics"]["is_correct"]),
+        "avg_router_latency_ms": _agg("router_latency_ms", "cold"),
+        "avg_warmup_latency_ms": _agg("warmup_latency_ms", "cold"),
+        "avg_expert_latency_ms": _agg("expert_latency_ms", "cold"),
+        "avg_total_latency_ms": _agg("total_latency_ms", "cold"),
     }
+    cold["accuracy"] = cold["correct_routes"] / cold["total_queries"] if cold["total_queries"] > 0 else 0.0
+
+    warm = {
+        "total_queries": n,
+        "correct_routes": sum(1 for r in results if r["warm_start_metrics"]["is_correct"]),
+        "avg_router_latency_ms": _agg("router_latency_ms", "warm"),
+        "avg_warmup_latency_ms": _agg("warmup_latency_ms", "warm"),
+        "avg_expert_latency_ms": _agg("expert_latency_ms", "warm"),
+        "avg_total_latency_ms": _agg("total_latency_ms", "warm"),
+    }
+    warm["accuracy"] = warm["correct_routes"] / warm["total_queries"] if warm["total_queries"] > 0 else 0.0
+
+    return {"cold": cold, "warm": warm}
 
 
-def print_tabular_summary(cold_results: List[Dict[str, Any]], warm_results: List[Dict[str, Any]]) -> None:
-    """Print a tabular summary of benchmark results."""
-    cold_metrics = calculate_metrics(cold_results)
-    warm_metrics = calculate_metrics(warm_results)
-    
+def print_tabular_summary(results: List[Dict[str, Any]]) -> None:
+    """Print a tabular summary of benchmark results for both cold and warm starts."""
+    metrics = calculate_metrics(results)
+    cold_metrics = metrics["cold"]
+    warm_metrics = metrics["warm"]
+
     print("\n" + "=" * 80)
     print("MoE+ Federated Router Benchmark Results".center(80))
     print("=" * 80)
@@ -174,65 +169,67 @@ def print_tabular_summary(cold_results: List[Dict[str, Any]], warm_results: List
     print(f"{'Total Queries':<30} | {cold_metrics['total_queries']:<20} | {warm_metrics['total_queries']:<20}")
     cold_acc = f"{cold_metrics['accuracy'] * 100:.1f}%"
     warm_acc = f"{warm_metrics['accuracy'] * 100:.1f}%"
-    cold_router = f"{cold_metrics['avg_router_latency_ms']:.1f}"
-    warm_router = f"{warm_metrics['avg_router_latency_ms']:.1f}"
-    cold_warmup = f"{cold_metrics['avg_warmup_latency_ms']:.1f}"
-    warm_warmup = f"{warm_metrics['avg_warmup_latency_ms']:.1f}"
-    cold_expert = f"{cold_metrics['avg_expert_latency_ms']:.1f}"
-    warm_expert = f"{warm_metrics['avg_expert_latency_ms']:.1f}"
-    cold_total = f"{cold_metrics['avg_total_latency_ms']:.1f}"
-    warm_total = f"{warm_metrics['avg_total_latency_ms']:.1f}"
-    
     print(f"{'Routing Accuracy':<30} | {cold_acc:<20} | {warm_acc:<20}")
-    print(f"{'Avg Router Latency (ms)':<30} | {cold_router:<20} | {warm_router:<20}")
-    print(f"{'Avg Warmup Latency (ms)':<30} | {cold_warmup:<20} | {warm_warmup:<20}")
-    print(f"{'Avg Expert Latency (ms)':<30} | {cold_expert:<20} | {warm_expert:<20}")
-    print(f"{'Avg Total Latency (ms)':<30} | {cold_total:<20} | {warm_total:<20}")
+    print(f"{'Avg Router Latency (ms)':<30} | {cold_metrics['avg_router_latency_ms']:<20.1f} | {warm_metrics['avg_router_latency_ms']:<20.1f}")
+    print(f"{'Avg Warmup Latency (ms)':<30} | {cold_metrics['avg_warmup_latency_ms']:<20.1f} | {warm_metrics['avg_warmup_latency_ms']:<20.1f}")
+    print(f"{'Avg Expert Latency (ms)':<30} | {cold_metrics['avg_expert_latency_ms']:<20.1f} | {warm_metrics['avg_expert_latency_ms']:<20.1f}")
+    print(f"{'Avg Total Latency (ms)':<30} | {cold_metrics['avg_total_latency_ms']:<20.1f} | {warm_metrics['avg_total_latency_ms']:<20.1f}")
     print("=" * 80 + "\n")
 
 
-def save_results(cold_results: List[Dict[str, Any]], warm_results: List[Dict[str, Any]]) -> None:
+def save_results(results: List[Dict[str, Any]]) -> None:
     """Save benchmark results to a JSON file."""
-    results = {
-        "cold_start": cold_results,
-        "warm_start": warm_results,
-        "metrics": {
-            "cold_start": calculate_metrics(cold_results),
-            "warm_start": calculate_metrics(warm_results),
-        }
+    metrics = calculate_metrics(results)
+
+    output = {
+        "cold_start_metrics": [
+            {
+                "query": r["query"],
+                "expected_expert": r["expected_expert"],
+                "chosen_expert": r["chosen_expert"],
+                **r["cold_start_metrics"],
+            }
+            for r in results
+        ],
+        "warm_start_metrics": [
+            {
+                "query": r["query"],
+                "expected_expert": r["expected_expert"],
+                "chosen_expert": r["chosen_expert"],
+                **r["warm_start_metrics"],
+            }
+            for r in results
+        ],
+        "metrics": metrics,
     }
-    
+
     with open(RESULTS_FILE, "w") as f:
-        json.dump(results, f, indent=2)
-    
+        json.dump(output, f, indent=2)
+
     print(f"Results saved to {RESULTS_FILE}")
 
 
 async def main():
     """Run the benchmark and output results."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    
+
     # Start Prometheus metrics server
     start_http_server(8010)
     logging.info("Prometheus metrics endpoint active on http://localhost:8010")
-    
+
     queries = load_queries()
-    
+
     print("Running MoE+ Federated Router Benchmark...")
     print(f"Loaded {len(queries)} queries from {QUERIES_FILE}")
-    
-    # Run cold start benchmark
-    print("\nBenchmarking Cold Start (keep_alive=0)...")
-    cold_results = await benchmark_routing(queries, cold_start=True)
-    
-    # Run warm start benchmark
-    print("Benchmarking Warm Start...")
-    warm_results = await benchmark_routing(queries, cold_start=False)
-    
+
+    # Single-pass benchmark: both cold and warm in one run
+    print("\nBenchmarking Cold and Warm Start (single-pass)...")
+    results = await benchmark_routing(queries)
+
     # Print summary and save results
-    print_tabular_summary(cold_results, warm_results)
-    save_results(cold_results, warm_results)
-    
+    print_tabular_summary(results)
+    save_results(results)
+
     # Keep-alive loop so Prometheus can scrape metrics
     while True:
         time.sleep(1)

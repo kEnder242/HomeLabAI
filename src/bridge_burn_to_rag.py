@@ -26,7 +26,12 @@ def main():
     trigger_pager("RAG Sync Started: Bridging slow burn artifacts and strategic stories...", source="RAG", severity="INFO")
 
     # 1. Init Chroma
-    chroma_client = chromadb.PersistentClient(path=DB_PATH)
+    try:
+        chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
+        chroma_client.heartbeat()
+    except Exception:
+        chroma_client = chromadb.PersistentClient(path=DB_PATH)
+
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -57,8 +62,20 @@ def main():
                 evidence = event.get('evidence', '')
                 date = event.get('date', 'Unknown')
 
+                domain = event.get('domain', '')
+                if not domain:
+                    text_lower = (summary + ' ' + gem + ' ' + evidence).lower()
+                    if any(k in text_lower for k in ['telemetry', 'prometh', 'dcgm', 'rapl', 'vram', 'power']):
+                        domain = 'exp_tlm'
+                    elif any(k in text_lower for k in ['bkm', 'validation', 'benchmark', 'test', 'verification']):
+                        domain = 'exp_bkm'
+                    elif any(k in text_lower for k in ['forensic', 'crash', 'bf16', 'turing', 'error']):
+                        domain = 'exp_for'
+                    else:
+                        domain = 'sys_arch'
+
                 # High-density content block for RAG
-                content = f"[{date}] {summary}"
+                content = f"[{date}] [{domain}] {summary}"
                 if gem: content += f"\nTECHNICAL GEM: {gem}"
                 if evidence: content += f"\nEVIDENCE: {evidence}"
 
@@ -67,7 +84,7 @@ def main():
                 if not wisdom.get(ids=[event_id])['ids']:
                     wisdom.add(
                         documents=[content],
-                        metadatas=[{"source": fname, "date": date, "type": "artifact"}],
+                        metadatas=[{"source": fname, "date": date, "type": "artifact", "domain": domain}],
                         ids=[event_id]
                     )
                     total_added += 1
