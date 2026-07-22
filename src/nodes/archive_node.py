@@ -6,7 +6,6 @@ import glob
 import subprocess
 import chromadb
 import aiohttp
-from chromadb.utils import embedding_functions
 
 from infra.montana import reclaim_logger
 
@@ -46,24 +45,19 @@ COLLECTION_STREAM = "short_term_stream"
 COLLECTION_WISDOM = "long_term_wisdom"
 COLLECTION_DNA = "behavioral_dna"
 
-# Chroma Setup
+# Chroma Setup (Server-side embedding via ChromaDB HTTP server on port 8001)
 try:
     chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
     chroma_client.heartbeat()
 except Exception:
     chroma_client = chromadb.PersistentClient(path=DB_PATH)
 
-ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-
-
 
 def get_safe_collection(name):
     try:
-        return chroma_client.get_or_create_collection(name=name, embedding_function=ef)
-    except ValueError:
         return chroma_client.get_or_create_collection(name=name)
+    except ValueError:
+        return chroma_client.get_collection(name=name)
 
 
 stream = get_safe_collection(COLLECTION_STREAM)
