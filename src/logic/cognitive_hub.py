@@ -1344,7 +1344,7 @@ class CognitiveHub:
                 logging.error(f"[PRIME] Tic generation failed: {e}")
                 
         if not tic_msg:
-            tic_msg = "Initiating mental synthesis... deep thought in progress."
+            tic_msg = "Listening..."
             
         await self.broadcast({
             "type": "crosstalk",
