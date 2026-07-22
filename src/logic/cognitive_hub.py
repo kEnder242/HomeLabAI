@@ -712,7 +712,8 @@ class CognitiveHub:
         behavioral_guidance = ""
         context = ""
         if vibe == "CASUAL":
-            behavioral_guidance = "[MODE]: CONVERSATIONAL (Natural, witty, brief greetings. No technical lecturing.)"
+            self.current_interest = 0.1
+            behavioral_guidance = "[MODE]: CONVERSATIONAL (Warm, natural, brief. Match user brevity with 1 short sentence. Do not inject unprompted technical jargon unless requested.)"
         elif vibe == "WYWO":
             # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
             nightly_dialogue = "No recent nightly dialogue recorded."
@@ -1004,7 +1005,7 @@ class CognitiveHub:
             prompt = (
                 "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Strategic Brief'. "
                 "Extract specific platform anchors, validation targets, and known PECI/MSR scars. "
-                "STRICT: NO ROLEPLAY. PROVIDE ONLY THE TECHNICAL SYNTHESIS."
+                "Focus strictly on high-density technical facts and grounded validation evidence."
             )
             # Use 'think' to generate distillation
             res = await self.residents["brain"].call_tool("think", {
