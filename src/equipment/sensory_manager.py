@@ -41,20 +41,53 @@ class SensoryManager:
         except Exception as e:
             logging.error(f"[SENSORY] Failed to load EarNode: {e}")
 
-    async def unload(self):
-        """Unload NeMo model and reclaim VRAM. [FEAT-147]"""
+    async def unload_sensory_ear(self, available_ram: float = 0.0, swarm_mode: bool = False):
+        """
+        EarNode taking a break to free up VRAM when system is low on RAM or in Swarm/Heads-Down mode.
+        Preserves CUDA context for quick rearming. [LAB-088]
+        """
         if not self.ear:
-            return
+            logging.debug("[SENSORY] EarNode already unloaded.")
+            return False
             
-        logging.info("[SENSORY] Unloading EarNode...")
+        # Check triggers: RAM < 3.0GB or Swarm/Heads-Down mode
+        if available_ram >= 3.0 and not swarm_mode:
+            logging.debug(f"[SENSORY] EarNode standby: RAM={available_ram:.1f}GB, Swarm={swarm_mode}")
+            return False
+            
+        logging.info("[SENSORY] EarNode taking a break to free up VRAM...")
         try:
-            # Future: Call self.ear.stop() or delete if it supports it
+            # Release NeMo model buffers while preserving CUDA context
             self.ear = None
-            import torch
+            import torch  # type: ignore[import]
             torch.cuda.empty_cache()
-            logging.info("[SENSORY] VRAM Reclaimed.")
+            logging.info("[SENSORY] VRAM reclaimed. EarNode paused.")
+            return True
         except Exception as e:
-            logging.error(f"[SENSORY] Unload failed: {e}")
+            logging.error(f"[SENSORY] Failed to unload EarNode: {e}")
+            return False
+
+    async def rearm_sensory_ear(self):
+        """
+        EarNode back in action! Restores NeMo buffers after manual test request.
+        Preserves CUDA VRAM organization for RTX 2080 Ti. [LAB-088]
+        """
+        if self.ear:
+            logging.debug("[SENSORY] EarNode already active.")
+            return True
+            
+        logging.info("[SENSORY] EarNode rearming...")
+        try:
+            await self.load()  # Restore NeMo model buffers
+            logging.info("[SENSORY] EarNode back in action!")
+            return True
+        except Exception as e:
+            logging.error(f"[SENSORY] Failed to rearm EarNode: {e}")
+            return False
+
+    async def unload(self):
+        """Legacy unload method. Use unload_sensory_ear() for LAB-088 compliance."""
+        await self.unload_sensory_ear()
 
     def process_binary_chunk(self, data):
         """Processes raw PCM audio chunks from WebSocket."""

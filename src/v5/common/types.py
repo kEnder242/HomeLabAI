@@ -1,8 +1,14 @@
 import os
 import json
 from dataclasses import dataclass, field, asdict
+from enum import Enum
 from typing import Dict, Optional
 import time
+
+class SensoryMode(Enum):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    DISABLED = "DISABLED"
 
 # [Task 17.3] Single Source of Versioning
 LAB_VERSION = "5.0.0-foyer"
@@ -42,8 +48,10 @@ class LabStatus:
     vram_used: int = 0
     vram_total: int = 0
     ram_pct: float = 0.0
+    available_ram: float = 0.0  # in GB
     engine_up: bool = False
     vocal: bool = False
+    sensory_mode: SensoryMode = SensoryMode.ACTIVE
     nodes: Dict[str, NodeStatus] = field(default_factory=dict)
     active_intent_id: Optional[str] = None
     recovery_level: int = 0
