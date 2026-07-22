@@ -9,6 +9,7 @@ import threading
 import queue
 import requests
 from mcp.server.fastmcp import FastMCP
+from infra.pager_relay import trigger_pager
 
 # Paths
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -283,12 +284,37 @@ class BicameralNode:
                     if r.status != 200:
                         self._engine_cache = {"type": "NONE"}
                         self._last_probe = time.time()
+                        err_msg = f"vLLM Engine Error ({r.status}): Unreachable models endpoint"
+                        trigger_pager(err_msg, source="VLLM", severity="ERROR")
                         return False, f"Engine {engine_type} unreachable (Status {r.status})"
                     data = await r.json()
                     
                     available = []
                     if engine_type == "VLLM":
                         available = [m["id"] for m in data.get("data", [])]
+                        # [BKM] Vocal Probe Enforcement: Do not trust GET /v1/models (200 OK) alone.
+                        # Execute a real chat completion probe to verify token generation.
+                        probe_url = f"{base_url}/v1/chat/completions"
+                        probe_payload = {
+                            "model": "unified-base",
+                            "messages": [{"role": "user", "content": "Respond with SUCCESS."}],
+                            "max_tokens": 10
+                        }
+                        try:
+                            async with session.post(probe_url, json=probe_payload, timeout=5) as pr:
+                                if pr.status != 200:
+                                    pr_err = await pr.text()
+                                    self._engine_cache = {"type": "NONE"}
+                                    self._last_probe = time.time()
+                                    err_msg = f"vLLM Engine Error ({pr.status}): {pr_err}"
+                                    trigger_pager(err_msg, source="VLLM", severity="ERROR")
+                                    return False, f"Engine VLLM not vocal: {pr_err}"
+                        except Exception as pe:
+                            self._engine_cache = {"type": "NONE"}
+                            self._last_probe = time.time()
+                            err_msg = f"vLLM Vocal Probe Failed: {pe}"
+                            trigger_pager(err_msg, source="VLLM", severity="ERROR")
+                            return False, f"Engine VLLM vocal probe failed: {pe}"
                     else:
                         available = [m["name"] for m in data.get("models", [])]
                     
@@ -604,6 +630,7 @@ class BicameralNode:
                     if r.status != 200:
                         err = await r.text()
                         logging.error(f"[{self.name}] vLLM Error {r.status}: {err}")
+                        trigger_pager(f"vLLM Stream Error ({r.status}): {err}", source="VLLM", severity="ERROR")
                         yield f"Error: vLLM returned {r.status}: {err}"
                         return
 
