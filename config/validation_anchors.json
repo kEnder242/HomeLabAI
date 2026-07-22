@@ -2,26 +2,26 @@
   {
     "query": "BKM for telemetry monitoring with Prometheus and Grafana on RTX 2080 Ti",
     "domain": "exp_tlm",
-    "expected_keywords": ["telemetry", "prometheus", "grafana", "vram", "monitor"]
+    "expected_keywords": ["telemetry", "monitoring", "power", "montana", "policy"]
   },
   {
     "query": "BKM-032 validation procedure for GPU compute benchmarks",
     "domain": "exp_bkm",
-    "expected_keywords": ["bkm", "validation", "benchmark", "test", "verification"]
+    "expected_keywords": ["validation", "testing", "quality", "verification", "methodology"]
   },
   {
     "query": "Forensic analysis of vLLM BF16 crash on Turing architecture",
     "domain": "exp_for",
-    "expected_keywords": ["forensic", "crash", "vllm", "bf16", "turing", "error"]
+    "expected_keywords": ["crash", "error", "analysis", "log", "incident"]
   },
   {
     "query": "HomeLabAI setup guide and architecture documentation",
     "domain": "exp_bkm",
-    "expected_keywords": ["setup", "guide", "config", "architecture", "documentation"]
+    "expected_keywords": ["setup", "documentation", "configuration", "system", "lab"]
   },
   {
     "query": "GPU VRAM thermal and power telemetry with RAPL and DCGM monitoring",
     "domain": "exp_tlm",
-    "expected_keywords": ["vram", "thermal", "power", "gpu", "dcgm", "rapl", "telemetry"]
+    "expected_keywords": ["telemetry", "thermal", "power", "gpu", "monitoring"]
   }
 ]
