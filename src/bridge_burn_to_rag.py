@@ -2,7 +2,6 @@ import json
 import os
 import glob
 import chromadb
-from chromadb.utils import embedding_functions
 import logging
 import hashlib
 import sys
@@ -25,22 +24,17 @@ def main():
     print("--- Bridging 'Slow Burn' Artifacts & Strategic Stories to RAG ---")
     trigger_pager("RAG Sync Started: Bridging slow burn artifacts and strategic stories...", source="RAG", severity="INFO")
 
-    # 1. Init Chroma
+    # 1. Init Chroma (Server-side embedding via ChromaDB HTTP server on port 8001)
     try:
         chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
         chroma_client.heartbeat()
     except Exception:
         chroma_client = chromadb.PersistentClient(path=DB_PATH)
 
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-
-    # Handle collection creation with conflict safety
     try:
-        wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM, embedding_function=ef)
-    except ValueError:
         wisdom = chroma_client.get_or_create_collection(name=COLLECTION_WISDOM)
+    except ValueError:
+        wisdom = chroma_client.get_collection(name=COLLECTION_WISDOM)
 
     # 2. Sync Technical Artifacts (Logs)
     json_files = glob.glob(os.path.join(FIELD_NOTES_DATA, "*.json"))
