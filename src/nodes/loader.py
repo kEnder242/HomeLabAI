@@ -451,7 +451,9 @@ class BicameralNode:
             if est_prompt_tokens + max_tokens > 8100:
                 clamped_max = max(150, 8100 - est_prompt_tokens)
                 if clamped_max < max_tokens:
-                    logging.warning(f"[{self.name}] Clamping max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to respect 8192 limit.")
+                    warn_msg = f"Context Ceiling Clamp: Clamped max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to fit 8192 context limit."
+                    logging.warning(f"[{self.name}] {warn_msg}")
+                    trigger_pager(warn_msg, source="VLLM", severity="WARNING")
                     max_tokens = clamped_max
 
             payload = {
