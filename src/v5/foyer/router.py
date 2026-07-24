@@ -621,7 +621,7 @@ class FoyerRouter:
         socket_id = str(uuid.uuid4())[:8]
         self.connected_clients.add(ws)
         logger.info(f"Client connected: {socket_id}")
-        self.record_pager(f"Client Connected: {socket_id}", source="Foyer")
+        # Note: Routine handshakes logged to stdout only to keep pager_activity.json clean.
         
         # Cancel disconnect timer if it is running
         if self.disconnect_timer is not None:
