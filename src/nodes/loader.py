@@ -446,6 +446,14 @@ class BicameralNode:
             query = f"{query}\n\n---\n[DYNAMIC_CONTEXT]:\n{user_context}"
 
         if engine["type"] == "VLLM":
+            # [SAFETY] Dynamic max_tokens clamp to prevent 8192 token window overflow (HTTP 400)
+            est_prompt_tokens = int((len(system_prompt) + len(query)) / 3.8)
+            if est_prompt_tokens + max_tokens > 8100:
+                clamped_max = max(150, 8100 - est_prompt_tokens)
+                if clamped_max < max_tokens:
+                    logging.warning(f"[{self.name}] Clamping max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to respect 8192 limit.")
+                    max_tokens = clamped_max
+
             payload = {
                 "model": engine["model"],
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
