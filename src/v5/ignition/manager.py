@@ -240,7 +240,9 @@ class IgnitionManager:
         
         # [Task 9.7] Live Telemetry Polling
         try:
-            self.status.ram_pct = psutil.virtual_memory().percent
+            vm = psutil.virtual_memory()
+            self.status.ram_pct = vm.percent
+            self.status.available_ram = round(vm.available / (1024**3), 2)
             import pynvml
             try:
                 pynvml.nvmlInit()
