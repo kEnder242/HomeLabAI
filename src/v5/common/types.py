@@ -85,6 +85,7 @@ class LabStatus:
             "vram_used": self.vram_used,
             "vram_total": self.vram_total,
             "ram_pct": self.ram_pct,
+            "available_ram": self.available_ram,
             "engine_up": self.engine_up,
             "vocal": self.vocal,
             "engine_vocal": self.vocal,
