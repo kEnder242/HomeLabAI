@@ -55,13 +55,19 @@ class SensoryManager:
             logging.debug(f"[SENSORY] EarNode standby: RAM={available_ram:.1f}GB, Swarm={swarm_mode}")
             return False
             
-        logging.info("[SENSORY] EarNode taking a break to free up VRAM...")
+        logging.info("[SENSORY] EarNode taking a break to free up VRAM and RAM...")
         try:
             # Release NeMo model buffers while preserving CUDA context
             self.ear = None
             import torch  # type: ignore[import]
             torch.cuda.empty_cache()
-            logging.info("[SENSORY] VRAM reclaimed. EarNode paused.")
+            import gc, ctypes
+            gc.collect()
+            try:
+                ctypes.CDLL('libc.so.6').malloc_trim(0)
+            except Exception:
+                pass
+            logging.info("[SENSORY] VRAM & OS heap memory reclaimed. EarNode paused.")
             return True
         except Exception as e:
             logging.error(f"[SENSORY] Failed to unload EarNode: {e}")
