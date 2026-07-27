@@ -29,7 +29,7 @@
 ## BKM-004: The QQ Protocol (Quick Question)
 **Objective**: Prevent state drift and over-investigation during collaborative sessions.
 
-1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question**. Fulfillment consists **exclusively** of providing a direct, concise answer.
+1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question (Talk Only)**. Evaluates strictly as conversational text analysis. Fulfillment consists **exclusively** of providing a direct, concise answer.
 2.  **Absolute Halt**: A "QQ" response constitutes 100% completion of the task. Do not proceed to diagnostics, coding, or log-scraping.
 3.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
 
