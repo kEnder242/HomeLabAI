@@ -20,10 +20,7 @@ if [ -z "$MODEL_PATH" ]; then
     fi
 fi
 
-export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
 export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
-export VLLM_USE_V1=${VLLM_USE_V1:-0}
-export VLLM_USE_FLASHINFER_BFLOAT16=0
 export VLLM_USE_FLASHINFER_SAMPLER=0
 
 LORA_LEGACY="/speedy/models/adapters"
@@ -47,10 +44,10 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --port 8088 \
     --served-model-name unified-base \
     --trust-remote-code \
-    --gpu-memory-utilization 0.4 \
-    --max-model-len 8192 \
+    --gpu-memory-utilization 0.55 \
+    --max-model-len 16384 \
     --enable-chunked-prefill \
-    --max-num-batched-tokens 1024 \
+    --max-num-batched-tokens 4096 \
     --max-num-seqs 16 \
     --enforce-eager \
     --attention-backend TRITON_ATTN \
