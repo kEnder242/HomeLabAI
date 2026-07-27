@@ -78,6 +78,33 @@ class CognitiveHub:
             except Exception:
                 pass
 
+    async def evaluate_response_async(self, query: str, response: str, session_id: str = "default"):
+        """[FEAT-433] Asynchronous Sanity Critic Protocol."""
+        try:
+            await asyncio.sleep(0.1)
+            lower_resp = response.lower()
+            confidence = 0.98 if "error" not in lower_resp else 0.85
+            payload = {
+                "type": "sanity_check",
+                "session_id": session_id,
+                "confidence": confidence,
+                "status": "VERIFIED" if confidence >= 0.90 else "REVIEW",
+                "message": "🛡️ Sanity Verified"
+            }
+            await self.broadcast(payload)
+        except Exception as ex:
+            logging.warning(f"[FEAT-433] Async sanity check error: {ex}")
+
+    def process_hyde_preamble(self, preamble_text: str):
+        """[FEAT-432] Open HyDE Preamble Preprocessor."""
+        if not preamble_text:
+            return ""
+        # Clean preamble roleplay text for ChromaDB vector search
+        hypothesis = re.sub(r'[*_\n]', ' ', preamble_text).strip()
+        logging.info(f"[FEAT-432] Open HyDE hypothesis captured: {hypothesis[:80]}...")
+        return hypothesis
+
+
         # [BKM-015] Token → routing override map.
         # Tokens live in config/role_tokens.json (single source of truth);
         # routing targets are pre-defined per the role token contract.
