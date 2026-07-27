@@ -76,11 +76,27 @@ class BicameralNode:
             except Exception as e:
                 logging.warning(f"[{self.name}] Liger application failed: {e}")
 
+        # Load Career Compass Tier 1 Anchor Map Bedrock [FEAT-434]
+        career_compass_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json")
+        tier_1_bedrock = ""
+        if os.path.exists(career_compass_path):
+            try:
+                with open(career_compass_path) as f:
+                    compass_data = json.load(f)
+                    tier_1_map = compass_data.get("tier_1_anchor_map", {})
+                    bullets = []
+                    for era, era_bullets in tier_1_map.items():
+                        bullets.append(f"• {era.replace('_', ' ').title()}: " + "; ".join(era_bullets[:2]))
+                    tier_1_bedrock = "\n[CAREER_COMPASS_BEDROCK]:\n" + "\n".join(bullets)
+            except Exception as e:
+                logging.warning(f"[{self.name}] Failed to load career compass bedrock: {e}")
+
         self.IDENTITY_BEDROCK = (
             "[FOCUS]: You are assisting an experienced silicon validation and platform telemetry engineer. "
             "Prioritize the user's technical domain — their engineering history, tools, and projects — in all responses. "
             "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
             "[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux. Peer nodes available for consensus: Brain, Deep Thought."
+            f"{tier_1_bedrock}"
         )
         # [FEAT-404] Context Starvation Protocol definition
         self.CONTEXT_VALIDITY = (
