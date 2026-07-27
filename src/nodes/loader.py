@@ -446,12 +446,23 @@ class BicameralNode:
             query = f"{query}\n\n---\n[DYNAMIC_CONTEXT]:\n{user_context}"
 
         if engine["type"] == "VLLM":
-            # [SAFETY] Dynamic max_tokens clamp to prevent 8192 token window overflow (HTTP 400)
+            # [SAFETY] Dynamic 16K context ceiling & prompt truncation to prevent 400 Bad Request overflow
+            MAX_CONTEXT = 16384
+            SAFE_CEILING = 16000
             est_prompt_tokens = int((len(system_prompt) + len(query)) / 3.8)
-            if est_prompt_tokens + max_tokens > 8100:
-                clamped_max = max(150, 8100 - est_prompt_tokens)
+            
+            # If prompt alone exceeds 15500 tokens, truncate user query to fit safely
+            if est_prompt_tokens > 15500:
+                allowed_chars = int((15500 - len(system_prompt) / 3.8) * 3.8)
+                if allowed_chars > 200:
+                    query = query[-allowed_chars:]
+                    est_prompt_tokens = int((len(system_prompt) + len(query)) / 3.8)
+                    logging.warning(f"[{self.name}] [FEAT-431] Truncated excess context to {est_prompt_tokens} tokens for 16K vLLM window.")
+
+            if est_prompt_tokens + max_tokens > SAFE_CEILING:
+                clamped_max = max(150, SAFE_CEILING - est_prompt_tokens)
                 if clamped_max < max_tokens:
-                    warn_msg = f"Context Ceiling Clamp: Clamped max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to fit 8192 context limit."
+                    warn_msg = f"Context Ceiling Clamp: Clamped max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to fit 16384 context limit."
                     logging.warning(f"[{self.name}] {warn_msg}")
                     trigger_pager(warn_msg, source="VLLM", severity="WARNING")
                     max_tokens = clamped_max

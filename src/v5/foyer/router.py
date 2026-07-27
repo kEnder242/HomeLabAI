@@ -22,6 +22,7 @@ from logic.cognitive_hub import CognitiveHub  # noqa: E402
 from equipment.sensory_manager import SensoryManager  # noqa: E402
 from infra.pager_relay import trigger_pager  # noqa: E402
 from infra.atomic_io import atomic_write_json  # noqa: E402
+import ctypes
 
 # [Task 4.2] V5 Foyer: The Logic Master
 # Objective: Host the Cognitive Hub and manage logical node lifecycle.
