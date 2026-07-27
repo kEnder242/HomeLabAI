@@ -654,6 +654,36 @@ class BicameralNode:
                 async with session.post(url, json=payload, timeout=120) as r:
                     if r.status != 200:
                         err = await r.text()
+                        # [FEAT-431] Reactive 400 Context Overflow Fallback Retry
+                        if r.status == 400 and ("context length" in err.lower() or "input_tokens" in err.lower()):
+                            logging.warning(f"[{self.name}] [FEAT-431] vLLM 400 Context Overflow caught! Truncating context by 25% and retrying once...")
+                            try:
+                                messages = payload.get("messages", [])
+                                if messages and len(messages) > 1:
+                                    last_msg = messages[-1].get("content", "")
+                                    truncated_len = int(len(last_msg) * 0.75)
+                                    messages[-1]["content"] = last_msg[-truncated_len:]
+                                    payload["messages"] = messages
+                                    payload["max_tokens"] = max(150, payload.get("max_tokens", 500) - 100)
+                                    async with session.post(url, json=payload, timeout=120) as r_retry:
+                                        if r_retry.status == 200:
+                                            async for line in r_retry.content:
+                                                if line:
+                                                    decoded = line.decode('utf-8').strip()
+                                                    if decoded.startswith("data: "):
+                                                        if "[DONE]" in decoded:
+                                                            break
+                                                        try:
+                                                            data = json.loads(decoded[6:])
+                                                            token = data["choices"][0]["delta"].get("content", "")
+                                                            if token:
+                                                                yield token
+                                                        except Exception:
+                                                            continue
+                                            return
+                            except Exception as retry_ex:
+                                logging.error(f"[{self.name}] [FEAT-431] Reactive 400 retry failed: {retry_ex}")
+
                         logging.error(f"[{self.name}] vLLM Error {r.status}: {err}")
                         trigger_pager(f"vLLM Stream Error ({r.status}): {err}", source="VLLM", severity="ERROR")
                         yield f"Error: vLLM returned {r.status}: {err}"
