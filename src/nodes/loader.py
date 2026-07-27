@@ -290,8 +290,12 @@ class BicameralNode:
                     data = await r.json()
                     
                     available = []
+                    max_model_len = 16384
                     if engine_type == "VLLM":
-                        available = [m["id"] for m in data.get("data", [])]
+                        model_objs = data.get("data", [])
+                        available = [m["id"] for m in model_objs]
+                        if model_objs and "max_model_len" in model_objs[0]:
+                            max_model_len = model_objs[0]["max_model_len"]
                         # [BKM] Vocal Probe Enforcement: Do not trust GET /v1/models (200 OK) alone.
                         # Execute a real chat completion probe to verify token generation.
                         probe_url = f"{base_url}/v1/chat/completions"
@@ -317,6 +321,7 @@ class BicameralNode:
                             return False, f"Engine VLLM vocal probe failed: {pe}"
                     else:
                         available = [m["name"] for m in data.get("models", [])]
+                        max_model_len = 32768
                     
                     # [FEAT-320] Adaptive Model Selection: Check what's actually running
                     running_model = None
@@ -336,13 +341,10 @@ class BicameralNode:
                     target = self._resolve_best_model(available, engine_type, running_model=running_model)
                     
                     # [FEAT-339] Model Alias Resolution: Map paths to short IDs
-                    # If target is a path, try to find a short ID in 'available' that matches the root
                     if target.startswith("/") and available:
-                        # Exact path match in available models (vLLM sometimes does this)
                         if target in available:
                             pass 
                         else:
-                            # Try to match by basename or served model names
                             for am in available:
                                 if am == "unified-base" or am in target:
                                     logging.info(f"[{self.name}] Alias Resolved: {target} -> {am}")
@@ -353,7 +355,8 @@ class BicameralNode:
                         "url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", 
                         "model": target, 
                         "type": engine_type,
-                        "available": available
+                        "available": available,
+                        "max_model_len": max_model_len
                     }
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
@@ -446,23 +449,24 @@ class BicameralNode:
             query = f"{query}\n\n---\n[DYNAMIC_CONTEXT]:\n{user_context}"
 
         if engine["type"] == "VLLM":
-            # [SAFETY] Dynamic 16K context ceiling & prompt truncation to prevent 400 Bad Request overflow
-            MAX_CONTEXT = 16384
-            SAFE_CEILING = 16000
+            # [SAFETY] Dynamic context ceiling auto-discovered from active vLLM model metadata
+            MAX_CONTEXT = engine.get("max_model_len", 16384)
+            SAFE_CEILING = max(1000, MAX_CONTEXT - 384)
+            SAFE_PROMPT_HEADROOM = max(800, MAX_CONTEXT - 884)
             est_prompt_tokens = int((len(system_prompt) + len(query)) / 3.8)
             
-            # If prompt alone exceeds 15500 tokens, truncate user query to fit safely
-            if est_prompt_tokens > 15500:
-                allowed_chars = int((15500 - len(system_prompt) / 3.8) * 3.8)
+            # If prompt alone exceeds prompt headroom, dynamically truncate excess context
+            if est_prompt_tokens > SAFE_PROMPT_HEADROOM:
+                allowed_chars = int((SAFE_PROMPT_HEADROOM - len(system_prompt) / 3.8) * 3.8)
                 if allowed_chars > 200:
                     query = query[-allowed_chars:]
                     est_prompt_tokens = int((len(system_prompt) + len(query)) / 3.8)
-                    logging.warning(f"[{self.name}] [FEAT-431] Truncated excess context to {est_prompt_tokens} tokens for 16K vLLM window.")
+                    logging.warning(f"[{self.name}] [FEAT-431] Dynamically truncated excess context to {est_prompt_tokens} tokens for {MAX_CONTEXT} vLLM window.")
 
             if est_prompt_tokens + max_tokens > SAFE_CEILING:
                 clamped_max = max(150, SAFE_CEILING - est_prompt_tokens)
                 if clamped_max < max_tokens:
-                    warn_msg = f"Context Ceiling Clamp: Clamped max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) to fit 16384 context limit."
+                    warn_msg = f"Context Ceiling Clamp: Clamped max_tokens from {max_tokens} to {clamped_max} (Prompt: ~{est_prompt_tokens} tokens) for {MAX_CONTEXT} context limit."
                     logging.warning(f"[{self.name}] {warn_msg}")
                     trigger_pager(warn_msg, source="VLLM", severity="WARNING")
                     max_tokens = clamped_max
