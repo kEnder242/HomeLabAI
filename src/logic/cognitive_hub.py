@@ -649,11 +649,21 @@ class CognitiveHub:
                     }
                 }
 
+                # [FEAT-434] Pre-Triage Rule: Retrospective & Year queries force BRAIN + DEEP_RESEARCH + lab_history
+                lower_turn = turn.lower()
+                has_year = bool(re.search(r'\b(20\d{2}|19\d{2})\b', turn))
+                is_history_query = any(k in lower_turn for k in ["what did i do", "what happened", "search notes", "find notes", "lab history", "retrospective"])
+                
                 triage_mode_context = (
                     "[MODE]: TRIAGE (Grounding: Casual greetings/quips like 'what's up', 'hey', 'hi' MUST evaluate as "
-                    "addressed_to: PINKY, vibe: CASUAL, importance: 0.1. Direct technical queries set addressed_to: BRAIN. "
-                    "Unaddressed or general queries set addressed_to: NONE.)"
+                    "addressed_to: PINKY, vibe: CASUAL, importance: 0.1. "
+                    "Historical, retrospective, or year-based queries (e.g. 'what did I do in 2018') MUST evaluate as "
+                    "addressed_to: BRAIN, vibe: DEEP_RESEARCH, domain: lab_history, importance: 0.9. "
+                    "Direct technical queries set addressed_to: BRAIN. Unaddressed or general queries set addressed_to: NONE.)"
                 )
+                
+                if has_year or is_history_query:
+                    logging.info(f"[HUB] [FEAT-434] Retrospective/Year query detected: '{turn}'. Pre-triage routing to BRAIN (lab_history).")
 
                 async for token in self._process_node_stream(
                     "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
