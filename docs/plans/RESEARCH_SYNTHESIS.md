@@ -28,6 +28,7 @@ To integrate local (2080 Ti) and remote (4090 Ti) hardware using a memory-first 
 | **REDSearcher** | 2602.14234 | Long-Horizon Search Scaling. | **Discovery:** framework for deep technical history discovery. | [nodes/archive_node.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/archive_node.py) | **Design** |
 | **VibeThinker-3B** | 2606.16140 | Verifiable Reasoning / Spectrum-to-Signal. | **Sanity:** Unified local base model for Phase 10 [FEAT-368]. | [nodes/loader.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/loader.py) | **Active** |
 | **MCompassRAG** | 2606.18508 | Metadata as semantic compass. | **Discovery:** Planned: Metadata-guided paragraph RAG. | [nodes/archive_node.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/archive_node.py) | **Design** |
+| **HyDE** | 2212.10496 | Hypothetical Document Embeddings: Pre-generates a hypothetical answer paragraph to bridge short query to dense BKM semantic gap. | **RAG Preprocessor:** Pinky generates open hypothesis string for local ChromaDB vectorization [FEAT-432]. | [nodes/archive_node.py](https://github.com/kEnder242/HomeLabAI/blob/main/src/nodes/archive_node.py) | **0%** |
 
 ---
 
