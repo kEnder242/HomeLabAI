@@ -177,8 +177,14 @@ class FoyerRouter:
         trigger_pager(message, severity=severity, source=source)
 
     async def cleanup(self, app):
-        """[FEAT-339] Clean task release for aiohttp."""
+        """[FEAT-339/FEAT-430] Clean task release for aiohttp with C-Arena Heap Trimming."""
         logger.info("V5 Foyer Router shutting down...")
+        try:
+            import ctypes
+            ctypes.CDLL('libc.so.6').malloc_trim(0)
+            logger.info("[FEAT-430] Executed malloc_trim(0) heap flush.")
+        except Exception as trim_ex:
+            logger.warning(f"[FEAT-430] malloc_trim failed: {trim_ex}")
         try:
             # [FIX] Safeguard against anyio cancel scope drift
             await self.residents.shutdown()
