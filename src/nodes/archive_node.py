@@ -568,13 +568,14 @@ def keyword_search(query, limit=10):
 
 
 @mcp.tool()
-async def get_context(query: str, n_results: int = 3, domain: str = None) -> str:
+async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None) -> str:
     """
-    [FEAT-117] Multi-Stage Retrieval: Discovery -> Acquisition.
-    Stage 1: ChromaDB identifies the metadata anchor.
-    Stage 2: ArchiveNode retrieves the raw JSON truth from filesystem.
-    [Task 3.1] The Clipboard: Integrates session context and expands neighborhoods.
+    [FEAT-116/117/437] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
+    Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
     """
+    vector_query = hyde_vector_text if (hyde_vector_text and len(hyde_vector_text.strip()) > 10) else query
+    fetch_limit = n_results * 2
+
     def get_relational_context(summary):
         graph_path = os.path.join(DATA_DIR, "graph_relations.json")
         if not os.path.exists(graph_path):
