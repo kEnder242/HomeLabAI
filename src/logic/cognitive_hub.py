@@ -591,6 +591,23 @@ class CognitiveHub:
                         })
                         break
         
+        # [FEAT-436] Unified Pre-Reflection & Greeting Short-Circuit Pass
+        raw_lower = turn.strip().lower().strip("!?,.")
+        if raw_lower in ["hi", "hey", "hello", "what's up", "whats up", "good morning", "narf", "yo"]:
+            logging.info("[HUB] Simple greeting detected. Short-circuiting Pre-Reflection in <15 tokens.")
+            t_parsed = {
+                "inferred_intent": "User is greeting the lab.",
+                "addressed_to": "PINKY",
+                "vibe": "CASUAL",
+                "domain": "standard",
+                "casual": 0.9,
+                "intrigue": 0.1,
+                "importance": 0.1,
+                "situation": "Greeting",
+                "hints": "",
+                "hyde_vector_text": ""
+            }
+
         # [FEAT-350] Engine Stabilization: Retry loop for small models
         for triage_attempt in range(3):
             if t_parsed is not None:
@@ -598,7 +615,7 @@ class CognitiveHub:
             try:
                 await self.broadcast({
                     "type": "crosstalk", 
-                    "brain": f"Triage Attempt {triage_attempt+1}...", 
+                    "brain": f"Pre-Reflection Attempt {triage_attempt+1}...", 
                     "brain_source": "System"
                 })
                 
@@ -627,33 +644,36 @@ class CognitiveHub:
                             break
                         await asyncio.sleep(5.0)
                 
-                # [Task 9.2 & FEAT-418] Guided Decoding Schema for Triage
+                # [FEAT-436] Unified Intent-HyDE Guided Decoding Schema
                 triage_schema = {
                     "type": "json_schema",
                     "json_schema": {
-                        "name": "triage_result",
+                        "name": "prereflection_triage_result",
                         "schema": {
                             "type": "object",
                             "properties": {
+                                "inferred_intent": {"type": "string"},
                                 "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
-                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO"]},
-                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard"]},
+                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "DEEP_RESEARCH"]},
+                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history"]},
                                 "casual": {"type": "number"},
                                 "intrigue": {"type": "number"},
                                 "importance": {"type": "number"},
                                 "situation": {"type": "string"},
-                                "hints": {"type": "string"}
+                                "hints": {"type": "string"},
+                                "hyde_vector_text": {"type": "string"}
                             },
-                            "required": ["addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
+                            "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance", "hyde_vector_text"]
                         }
                     }
                 }
 
                 triage_mode_context = (
-                    "[MODE]: TRIAGE (Grounding: Casual greetings/quips like 'what's up', 'hey', 'hi' MUST evaluate as "
-                    "addressed_to: PINKY, vibe: CASUAL, importance: 0.1. "
-                    "Direct technical or historical archive queries set addressed_to: BRAIN, vibe: DEEP_RESEARCH. "
-                    "Unaddressed or general queries set addressed_to: NONE.)"
+                    "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
+                    "Translate user intent ('I think the user is trying to say...').\n"
+                    "For historical/retrospective lookups ('what did I do in 2018', 'search notes for RAS'), set addressed_to: BRAIN, vibe: DEEP_RESEARCH, domain: lab_history, importance: 0.9, and synthesize a dense HyDE vector query in hyde_vector_text.\n"
+                    "For general technical queries, set addressed_to: BRAIN, vibe: TECHNICAL.\n"
+                    "For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1."
                 )
 
                 async for token in self._process_node_stream(
