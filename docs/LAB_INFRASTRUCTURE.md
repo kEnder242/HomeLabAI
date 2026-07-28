@@ -204,7 +204,7 @@
 ### LAB-010: M5 Air MLX Unified Memory Node & Async Judge Protocol (Port 8090)
 **Objective**: Offload 256K context evaluation and asynchronous sanity critique to Node 3 (M5 MacBook Air 32GB Unified Memory / Apple MLX framework).
 
-1.  **Architecture**: REST/WebSocket service running on port 8090 on `m5-air.local` (or `127.0.0.1:8090`). Driven by `src/nodes/mlx_judge_node.py`.
+1.  **Architecture**: REST/WebSocket service running on port 8090 on `M5_AIR` (`192.168.1.46:8090` / `m5-air.local`). Driven by `src/nodes/mlx_judge_node.py`.
 2.  **Un-truncated 256K Evaluation**: Evaluates full 256K turn traces (Jamba 1.5 Mini Mamba-SSM / Qwen 32B MLX) asynchronously in the background without delaying initial UI response streaming on z87-Linux / KENDER 4090.
 3.  **Two-Lane Feedback Loop**:
     *   Factual/Archive errors route to ChromaDB vector store (`:8001`) and `refine_gem.py`.
