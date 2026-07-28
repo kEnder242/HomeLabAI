@@ -201,15 +201,28 @@
     *   **Architecture**: Managed via systemd user timer `field-notes-nightly.timer` (`OnCalendar=*-*-* 02:00:00`) triggering oneshot service `field-notes-nightly.service`.
     *   **Behavior**: Executes `field_notes/aggregate_years.py` at 2:00 AM daily to synthesize date groupings and clean historical records.
 
-### LAB-010: M5 Air MLX Unified Memory Node & Async Judge Protocol (Port 8090)
-**Objective**: Offload 256K context evaluation and asynchronous sanity critique to Node 3 (M5 MacBook Air 32GB Unified Memory / Apple MLX framework).
+### LAB-010: Apple M5 Inference Node Integration & Async Judge Protocol
+**Objective**: Integrate Node 3 (Apple M5 MacBook Air 10-Core CPU, 32GB Unified Memory) into the Round Table topology as an ultra-fast Metal-accelerated OpenAI-compliant REST provider and asynchronous 256K sanity judge.
 
-1.  **Architecture**: REST/WebSocket service running on port 8090 on `M5_AIR` (`192.168.1.46:8090` / `m5-air.local`). Driven by `src/nodes/mlx_judge_node.py`.
-2.  **Un-truncated 256K Evaluation**: Evaluates full 256K turn traces (Jamba 1.5 Mini Mamba-SSM / Qwen 32B MLX) asynchronously in the background without delaying initial UI response streaming on z87-Linux / KENDER 4090.
-3.  **Two-Lane Feedback Loop**:
-    *   Factual/Archive errors route to ChromaDB vector store (`:8001`) and `refine_gem.py`.
-    *   Style/Persona retorts route to offline LoRA dataset (`cli_voice_v1`).
-4.  **Local Tool Execution Moat**: Tool definitions and executions remain 100% local on `z87-Linux` via FastMCP/attendant. Remote nodes emit tool call JSON strings which `z87-Linux` executes locally.
+1.  **Node Hardware & Network Identity**:
+    *   **Host**: Apple M5 MacBook Air (10-Core CPU, 32 GB Unified Memory).
+    *   **Primary IP**: `192.168.1.46` (Wired Ethernet `en5` over Orbi Netgear RBR760 router).
+    *   **Remote Admin SSH**: `ssh jasons-air@192.168.1.46`.
+2.  **Active Software Stack & Ports**:
+    *   **MLX OpenAI REST API Server**: `http://192.168.1.46:8000/v1` (`mlx_lm.server`).
+    *   **Active Model**: `mlx-community/Qwen2.5-Coder-14B-Instruct-4bit`.
+    *   **Open-WebUI Dashboard**: `http://192.168.1.46:3000` (Port 3000 visual management UI).
+3.  **Paths & Environment Relaunch Recipes**:
+    *   **MLX Venv**: `/Users/jallred/.venv-mlx/bin/mlx_lm.server --model mlx-community/Qwen2.5-Coder-14B-Instruct-4bit --host 0.0.0.0 --port 8000`
+    *   **Open-WebUI Venv**: `OPENAI_API_BASE_URL="http://127.0.0.1:8000/v1" WEBUI_AUTH=False ~/.venv-webui/bin/open-webui serve --port 3000 --host 0.0.0.0`
+    *   **Model Storage**: `~/.cache/huggingface/hub/`
+4.  **Async 256K Evaluation & Two-Lane Feedback Loop**:
+    *   Driven by `src/nodes/mlx_judge_node.py`. Evaluates full 256K turn traces asynchronously without delaying initial response streaming.
+    *   **Factual/Archive Feedback**: Corrections route to ChromaDB (`:8001`) and `refine_gem.py`.
+    *   **Style/Persona Feedback**: Retorts route to offline LoRA dataset (`cli_voice_v1`).
+5.  **Local Tool Execution Moat**:
+    *   Tool execution remains 100% local on `z87-Linux` via FastMCP/attendant. Remote nodes emit tool call JSON strings which `z87-Linux` executes locally.
+
 
 
 

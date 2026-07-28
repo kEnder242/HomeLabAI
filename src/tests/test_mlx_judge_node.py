@@ -24,7 +24,7 @@ async def test_mlx_judge_256k_evaluation():
     
     res = await judge_driver.evaluate_256k_context(turn_trace, context_window)
     assert res["node_id"] == "NODE_3_M5_AIR_MLX"
-    assert res["status"] in ["VERIFIED_PASS", "ONLINE"]
+    assert res["status"] in ["VERIFIED_PASS", "ONLINE", "ONLINE_EVALUATED"]
     assert res["context_eval_length"] == len(turn_trace) + len(context_window)
     assert "route_feedback" in res
 

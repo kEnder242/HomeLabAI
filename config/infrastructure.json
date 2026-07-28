@@ -22,7 +22,10 @@
     "hosts": {
         "M5_AIR": {
             "ip_hint": "192.168.1.46",
-            "mlx_port": 8090
+            "mlx_port": 8000,
+            "webui_port": 3000,
+            "ssh_user": "jasons-air",
+            "default_model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit"
         },
         "KENDER": {
             "ip_hint": "192.168.1.26",
