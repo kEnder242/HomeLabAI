@@ -12,7 +12,7 @@ from nodes.loader import BicameralNode
 
 logging.basicConfig(level=logging.INFO, format='[MLX_JUDGE] %(message)s')
 
-MLX_DEFAULT_HOST = os.getenv("MLX_HOST", "http://127.0.0.1:8090")
+MLX_DEFAULT_HOST = os.getenv("MLX_HOST", "http://192.168.1.46:8090")
 MLX_TIMEOUT_SEC = int(os.getenv("MLX_TIMEOUT_SEC", "15"))
 
 MLX_SYSTEM_PROMPT = (

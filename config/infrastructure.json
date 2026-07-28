@@ -20,6 +20,10 @@
         }
     },
     "hosts": {
+        "M5_AIR": {
+            "ip_hint": "192.168.1.46",
+            "mlx_port": 8090
+        },
         "KENDER": {
             "ip_hint": "192.168.1.26",
             "ollama_port": 11434
