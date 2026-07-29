@@ -42,3 +42,8 @@ round_table.lock
 src/forge/expertise/*.jsonl
 run/
 .omo/run-continuation/*.json
+
+# Dynamic Runtime & Test Evaluation Artifacts
+.round_table_evals.json
+tool_log.md
+

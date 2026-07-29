@@ -1,1 +1,0 @@
-- [2026-07-27 13:21:10] [pinky] called think with params request_id=UI_sntbuc, tokens=368, duration=54.46712064743042s -> Output at [/home/jallred/Dev_Lab/HomeLabAI/logs/trace_pinky.json](file:///home/jallred/Dev_Lab/HomeLabAI/logs/trace_pinky.json)
