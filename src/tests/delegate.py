@@ -114,6 +114,18 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             session_id = data["id"]
+            # Set session title via REST PATCH for Web UI visibility
+            try:
+                title_req = urllib.request.Request(
+                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
+                    data=json.dumps({"title": session_title}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="PATCH",
+                )
+                with urllib.request.urlopen(title_req, timeout=5):
+                    pass
+            except Exception:
+                pass
     except Exception as e:
         print(f"[-] Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}")
         sys.exit(1)
