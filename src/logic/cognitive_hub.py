@@ -911,7 +911,7 @@ class CognitiveHub:
         Restores character balance by prompting Pinky to critique or conversationally 
         summarize Deep Thought's technical output directly into the Chat pane.
         """
-        if "pinky" not in self.residents:
+        if "pinky" not in self.residents or source.lower().startswith("pinky"):
             return
         
         # Calculate dynamic scaling based on length
@@ -972,20 +972,14 @@ class CognitiveHub:
             vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
         try:
-            # [FEAT-406] Coherence Judge Evaluation: Call Pinky's think tool for evaluation and retort
-            res_eval = await self.residents["pinky"].call_tool("think", {
-                "query": critique_query, 
-                "context": f"Technical Output to evaluate:\n{text}",
-                "behavioral_guidance": f"Act as a strict Coherence Critic. Check for logic errors, slop, or inconsistency. {vibe_tone}",
-                "response_format": eval_schema,
-                "request_id": request_id
-            })
-            
+            # [FEAT-406] Coherence Judge Evaluation: Stream Pinky's critique
             eval_text = ""
-            if hasattr(res_eval, 'content') and len(res_eval.content) > 0:
-                eval_text = res_eval.content[0].text
-            else:
-                eval_text = str(res_eval)
+            async for token in self._process_node_stream(
+                "pinky", critique_query, f"Technical Output to evaluate:\n{text}", "Pinky (Coherence Critic)",
+                tools=[], temperature=0.2, response_format=eval_schema, request_id=request_id,
+                behavioral_guidance=f"Act as a strict Coherence Critic. Check for logic errors, slop, or inconsistency. {vibe_tone}"
+            ):
+                eval_text += token
             
             # Parse evaluation result
             eval_data = {}
@@ -997,49 +991,49 @@ class CognitiveHub:
                     pass
             
             # Default fallback if parsing failed
-            if not eval_data:
+            if not eval_data and len(eval_text.strip()) > 10:
                 eval_data = {
                     "score": 5,
-                    "reasoning": "Coherence check passed implicitly or output formatting failed.",
+                    "reasoning": "Coherence check passed implicitly.",
                     "slop_found": False,
-                    "retort": eval_text
+                    "retort": eval_text.strip()
                 }
             
-            # Save the critique response to turn_thought_trace for the ledger
-            retort_text = eval_data.get("retort", "")
-            self.turn_thought_trace["critique"] = retort_text
-            
-            # Log evaluations to .round_table_evals.json
-            eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
-            existing_evals = []
-            if os.path.exists(eval_file_path):
+            retort_text = eval_data.get("retort", "").strip() if eval_data else ""
+            if retort_text:
+                self.turn_thought_trace["critique"] = retort_text
+                
+                # Log evaluations to .round_table_evals.json
+                eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
+                existing_evals = []
+                if os.path.exists(eval_file_path):
+                    try:
+                        with open(eval_file_path, "r") as f:
+                            existing_evals = json.load(f)
+                    except Exception:
+                        pass
+                
+                new_eval = {
+                    "timestamp": time.time(),
+                    "source": source,
+                    "score": eval_data.get("score", 5),
+                    "reasoning": eval_data.get("reasoning", ""),
+                    "slop_found": eval_data.get("slop_found", False),
+                    "retort": retort_text
+                }
+                existing_evals.append(new_eval)
+                
+                # Atomic write (.tmp + replace)
+                tmp_path = eval_file_path + ".tmp"
                 try:
-                    with open(eval_file_path, "r") as f:
-                        existing_evals = json.load(f)
-                except Exception:
-                    pass
-            
-            new_eval = {
-                "timestamp": time.time(),
-                "source": source,
-                "score": eval_data.get("score", 5),
-                "reasoning": eval_data.get("reasoning", ""),
-                "slop_found": eval_data.get("slop_found", False),
-                "retort": retort_text
-            }
-            existing_evals.append(new_eval)
-            
-            # Atomic write (.tmp + replace)
-            tmp_path = eval_file_path + ".tmp"
-            try:
-                with open(tmp_path, "w") as f:
-                    json.dump(existing_evals, f, indent=2)
-                os.replace(tmp_path, eval_file_path)
-            except Exception as e:
-                logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
+                    with open(tmp_path, "w") as f:
+                        json.dump(existing_evals, f, indent=2)
+                    os.replace(tmp_path, eval_file_path)
+                except Exception as e:
+                    logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
 
-            # Dispatch retort as terminal summary to the chat window
-            await self.execute_dispatch(retort_text, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
+                # Dispatch retort as terminal summary to the chat window ONLY if non-empty
+                await self.execute_dispatch(retort_text, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
