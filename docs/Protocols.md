@@ -327,7 +327,26 @@
     *   OpenAgent's primary purpose is to **spread out the cost of tokens**. Node KENDER (`192.168.1.26:11434`, `qwen2.5-coder:14b`) is compute-free. Kender cannot delegate, but it CAN write code.
     *   Delegation is considered a **failure** if any delegation changes neuter the swarm, if orchestration fails, or if KENDER is prevented from being used to create code.
 8.  **Delegation Script & Pre-Flight Quota Sentinel**:
-    *   All task dispatches to OpenAgent MUST use [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py), which performs REST session creation on port 4097 (`POST http://127.0.0.1:4097/session`), checks cloud/local provider quotas via `check_cloud_quota()`, and attaches `opencode run --attach http://127.0.0.1:4097/ --session <id>`.
+    *   All task dispatches to OpenAgent MUST use [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py), which performs REST session creation on port 4097 (`POST http://127.0.0.1:4097/session`), checks cloud/local provider quotas via `check_cloud_quota()`, and dispatches prompts via `POST http://127.0.0.1:4097/session/<id>/message`.
+
+9.  **OmO `task()` Delegation Mechanics (CRITICAL — Sprint 48 Scar)**:
+    *   **The Fundamental Model**: `oh-my-openagent` (OmO) defines agents in `~/.config/opencode/oh-my-openagent.json`. Each named agent (`sisyphus-junior`, `prometheus`, `hephaestus`) maps to a specific provider/model. `sisyphus-junior` is bound to `my-windows-4090/qwen2.5-coder:14b` (KENDER, free local inference).
+    *   **Delegation requires a `task()` tool call — narration is NOT delegation**: Sisyphus only routes work to KENDER when it emits a `task(agent="sisyphus-junior", ...)` tool call in its response. Instructing Sisyphus in prose ("delegate to Sisyphus-Junior") without triggering the `task()` tool results in Sisyphus performing all work itself on its own model.
+    *   **Correct prompt pattern to force OmO `task()` dispatch**:
+        ```
+        You are Sisyphus (Lead Orchestrator). Use the task() tool to delegate:
+        task(agent="sisyphus-junior", category="quick", run_in_background=false, prompt="...")
+        task(agent="prometheus", category="deep", run_in_background=false, prompt="...")
+        Do NOT implement code directly. ONLY emit task() calls.
+        ```
+    *   **Audit gate**: After each story, AGY must inspect `GET /session/<id>/message` and verify that `providerID` fields in assistant messages include `my-windows-4090` (KENDER). If all messages show `opencode` or `google` as provider, delegation failed.
+    *   **Config reference**: `~/.config/opencode/oh-my-openagent.json` is the authoritative agent roster. Agents not listed there cannot be delegated to.
+
+10. **Port Separation & Socket Wakeup (Sprint 48 Scar)**:
+    *   **Port 4097** = `codex` REST API backend (system-level systemd service, always running).
+    *   **Port 4096** = OmO web UI proxy (user-level `opencode.socket` + `opencode-proxy.service`, socket-activated with `StopWhenUnneeded=true`). Stops when idle; restarts on first TCP connection.
+    *   **Wakeup**: `delegate.py` calls `wake_web_ui()` which HTTP-GETs `http://127.0.0.1:4096/` before session creation. This triggers `opencode.socket` → `opencode-proxy.service` activation chain. Without this touch, the web UI at `http://192.168.1.238:4096/` is unreachable.
+    *   **Headless REST dispatch**: `opencode run --attach` is a **blocking foreground TUI** requiring an active browser session on port 4096. When the webview is down, `subprocess.run(opencode run --attach)` hangs indefinitely. The correct headless pattern bypasses `opencode run` entirely: `POST http://127.0.0.1:4097/session/<id>/message` with `{"parts":[{"type":"text","text":"<prompt>"}]}`.
 
 
 
