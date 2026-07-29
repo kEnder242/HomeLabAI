@@ -4,6 +4,7 @@ import logging
 import datetime
 import glob
 import subprocess
+import asyncio
 import chromadb
 import aiohttp
 
@@ -610,6 +611,89 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         combined_context = []
         if SESSION_CLIPBOARD:
             combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
+
+        # [Story-3] Multi-Collection Reranker: Query all 5 ChromaDB collections in parallel via HTTP REST API
+        multi_collection_names = [
+            "behavioral_dna", "feature_dna", "career_ledger",
+            "artifact_vault", "lab_journal"
+        ]
+
+        async def _query_one_collection(session, name, query_text, limit):
+            url = f"http://127.0.0.1:8001/api/v1/collections/{name}/query"
+            payload = {
+                "query_texts": [query_text],
+                "n_results": limit,
+                "include": ["metadatas", "distances", "documents"]
+            }
+            try:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data, name
+                    return None, name
+            except Exception:
+                return None, name
+
+        multi_candidates = []
+        try:
+            async with aiohttp.ClientSession() as session:
+                tasks = [
+                    _query_one_collection(session, name, vector_query, fetch_limit)
+                    for name in multi_collection_names
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                for res in results:
+                    if isinstance(res, Exception) or res[0] is None:
+                        continue
+                    data, coll_name = res
+                    docs_list = data.get("documents", [[]])[0] if data.get("documents") else []
+                    metas_list = data.get("metadatas", [[]])[0] if data.get("metadatas") else []
+                    dists_list = data.get("distances", [[]])[0] if data.get("distances") else []
+                    ids_list = data.get("ids", [[]])[0] if data.get("ids") else []
+
+                    for i in range(len(docs_list)):
+                        multi_candidates.append({
+                            "collection": coll_name,
+                            "document": docs_list[i] if i < len(docs_list) else "",
+                            "metadata": metas_list[i] if i < len(metas_list) else {},
+                            "distance": dists_list[i] if i < len(dists_list) else 99.0,
+                            "id": ids_list[i] if i < len(ids_list) else ""
+                        })
+        except Exception:
+            pass
+
+        multi_candidates.sort(key=lambda x: x["distance"])
+        multi_candidates = [c for c in multi_candidates if c["distance"] < 0.45]
+
+        multi_formatted = []
+        for c in multi_candidates[:n_results]:
+            coll = c["collection"]
+            meta = c["metadata"]
+            if coll == "artifact_vault":
+                title = meta.get("title", c.get("id", "Unknown"))
+                gdrive = meta.get("gdrive_link", "")
+                link = f"({gdrive})" if gdrive else ""
+                multi_formatted.append(f"[ARTIFACT: {title}]{link}")
+            elif coll == "career_ledger":
+                era = meta.get("era", "")
+                skill = meta.get("skill", "")
+                label = era or skill or c.get("id", "Unknown")
+                multi_formatted.append(f"[CAREER: {label}]")
+            elif coll == "behavioral_dna":
+                bkm = meta.get("bkm_id", c.get("id", "Unknown"))
+                multi_formatted.append(f"[BEHAVIORAL_DNA: {bkm}]")
+            elif coll == "feature_dna":
+                feat = meta.get("feat_id", c.get("id", "Unknown"))
+                multi_formatted.append(f"[FEATURE_DNA: {feat}]")
+            elif coll == "lab_journal":
+                note = meta.get("note_id", c.get("id", "Unknown"))
+                multi_formatted.append(f"[LAB_JOURNAL: {note}]")
+            else:
+                multi_formatted.append(f"[{coll.upper()}: {c.get('id', 'Unknown')}]")
+
+        if multi_formatted:
+            combined_context.append("[MULTI_COLLECTION_RERANKER]\n" + "\n".join(multi_formatted))
 
         # [FEAT-117] Fuzzy Temporal Compass: Parse temporal target and qualifiers from query
         import re

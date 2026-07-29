@@ -331,16 +331,27 @@
 
 9.  **OmO `task()` Delegation Mechanics (CRITICAL — Sprint 48 Scar)**:
     *   **The Fundamental Model**: `oh-my-openagent` (OmO) defines agents in `~/.config/opencode/oh-my-openagent.json`. Each named agent (`sisyphus-junior`, `prometheus`, `hephaestus`) maps to a specific provider/model. `sisyphus-junior` is bound to `my-windows-4090/qwen2.5-coder:14b` (KENDER, free local inference).
-    *   **Delegation requires a `task()` tool call — narration is NOT delegation**: Sisyphus only routes work to KENDER when it emits a `task(agent="sisyphus-junior", ...)` tool call in its response. Instructing Sisyphus in prose ("delegate to Sisyphus-Junior") without triggering the `task()` tool results in Sisyphus performing all work itself on its own model.
-    *   **Correct prompt pattern to force OmO `task()` dispatch**:
+    *   **All OmO categories already route to KENDER**: `~/.config/opencode/oh-my-openagent.json` maps every category (`quick`, `deep`, `ultrabrain`, `visual-engineering`, etc.) to `my-windows-4090/qwen2.5-coder:14b`. No config change needed — KENDER is the default ground-worker for all delegated `task()` calls.
+    *   **Delegation requires a `task()` tool call — narration is NOT delegation**: Sisyphus only routes work to KENDER when it emits a `task(category="quick", ...)` tool call. Prose instructions ("delegate to Sisyphus-Junior") without a `task()` tool call result in Sisyphus doing all work itself.
+    *   **Sprint 48 Scar — Underspecified task() prompts cause read-only subagents**: When `task()` is called but the prompt inside doesn't explicitly mandate a write/edit tool action, KENDER's subagent will read the target file and report findings without modifying it. Sisyphus then falls back to applying the edit itself via its own `edit` tool — KENDER was technically invoked but performed no write. Fix: every `task()` prompt destined for code edits MUST include `## MUST DO: Use the edit/write tool to apply the change to <path>` as a mandatory section.
+    *   **Correct task() prompt structure for write tasks**:
         ```
-        You are Sisyphus (Lead Orchestrator). Use the task() tool to delegate:
-        task(agent="sisyphus-junior", category="quick", run_in_background=false, prompt="...")
-        task(agent="prometheus", category="deep", run_in_background=false, prompt="...")
-        Do NOT implement code directly. ONLY emit task() calls.
+        task(category="quick", run_in_background=false, prompt=\"\"\"
+        ## 1. TASK
+        Edit <exact file path> — replace <target string> with <replacement>
+        ## 2. EXPECTED OUTCOME
+        - [ ] File <path> modified on disk
+        - [ ] grep '<pattern>' <path> exits 0
+        ## 3. MUST DO
+        - READ the file first to confirm the target string
+        - USE the edit/write tool to apply the change
+        - RUN the grep to verify
+        ## 4. MUST NOT DO
+        - Do NOT only read the file and report — you MUST write the change
+        - Do NOT git commit
+        \"\"\")
         ```
-    *   **Audit gate**: After each story, AGY must inspect `GET /session/<id>/message` and verify that `providerID` fields in assistant messages include `my-windows-4090` (KENDER). If all messages show `opencode` or `google` as provider, delegation failed.
-    *   **Config reference**: `~/.config/opencode/oh-my-openagent.json` is the authoritative agent roster. Agents not listed there cannot be delegated to.
+    *   **Audit gate**: After each story, AGY inspects `GET /session/<id>/message` and checks that `tool` parts include `edit` or `write` invocations from the subagent. If only `read`/`grep` tools appear from the delegated turn, the subagent read-only looped — Sisyphus self-corrected but KENDER did no useful work.
 
 10. **Port Separation & Socket Wakeup (Sprint 48 Scar)**:
     *   **Port 4097** = `codex` REST API backend (system-level systemd service, always running).

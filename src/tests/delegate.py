@@ -154,7 +154,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(msg_req, timeout=300) as resp:
+        with urllib.request.urlopen(msg_req, timeout=600) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             duration = time.time() - start_time
             finish = result.get("info", {}).get("finish", "unknown")
