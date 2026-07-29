@@ -669,11 +669,11 @@ class CognitiveHub:
                 }
 
                 triage_mode_context = (
-                    "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
-                    "Translate user intent ('I think the user is trying to say...').\n"
-                    "For historical/retrospective lookups ('what did I do in 2018', 'search notes for RAS'), set addressed_to: BRAIN, vibe: DEEP_RESEARCH, domain: lab_history, importance: 0.9, and synthesize a dense HyDE vector query in hyde_vector_text.\n"
-                    "For general technical queries, set addressed_to: BRAIN, vibe: TECHNICAL.\n"
-                    "For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1."
+                    '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
+                    "Translate user intent (I think the user is trying to say...).\n"
+                    'For technical, historical, or validation queries, synthesize a 3-part Composite HyDE Vector Query in hyde_vector_text following the exact format:\n'
+                    '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
+                    'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
                 )
 
                 async for token in self._process_node_stream(
