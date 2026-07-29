@@ -144,10 +144,21 @@ Extended capabilities for live research and structured thinking.
 ## 🏗️ 10. Scanner & Synthesis (Background Recovery)
 Surgical tools for the Portfolio_Dev "Face" pipeline. Use these when the Slow Burn stalls or parity is lost.
 
-| Tool | Path | Goal |
-| :--- | :--- | :--- |
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Mass Scan Engine** | `Portfolio_Dev/field_notes/mass_scan.py` | **ACTIVE** | [P9] Continuous background scanner processing the 18-year archive. |
+| **Site Synthesizer** | `Portfolio_Dev/field_notes/build_site.py` | **ACTIVE** | Compiles static search index and cache-busted HTML pages. |
 | **Artifact Sync** | `src/bridge_burn_to_rag.py` | [NEW] Indexes the physical asset catalog (files.html) into RAG. |
-| **Hallway Protocol** | `mass_scan.py --keyword [K]` | Real-time "Deep Retrieval" for targeted technical gaps. |
+
+---
+
+## 🤖 11. Delegation & Swarm Orchestration (BKM-034)
+Helper scripts and execution wrappers for delegating development stories to OpenAgent swarms on port 4096.
+
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Scratch Delegate** | `src/tests/scratch_delegate.py` | **ACTIVE** | [BKM-034] Formats Pre-Grounded Blueprint prompts and invokes `/home/jallred/.opencode/bin/opencode run --dir ... --attach http://127.0.0.1:4096/ --auto` safely via Python `subprocess.run`. |
+| **OpenAgent Handover Playbook** | `Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md` | **ACTIVE** | Master reference guide for model allocation, token ceilings, context bounds, and Orchestrator Non-Coding Mandates. |
 | **Nudge 2024** | `field_notes/nudge_2024.py` | [RECOVERY] Clears hash for 2024 files to force a targeted re-nibble. |
 | **Clean Data** | `field_notes/clean_data.py` | **DANGER.** Wipes the data directory. |
 
