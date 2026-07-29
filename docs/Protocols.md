@@ -288,12 +288,10 @@
 1.  **Role Division**:
     *   **Strategic Guardian (Antigravity / Gemini)**: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
     *   **Tactical Swarm (OpenAgent)**: Executes code modifications, runs unit test iterations (`pytest`), and handles line-by-line file updates.
-2.  **Mandatory Shell-Based Execution (Point 12)**:
-    *   All developer/implementation tasks delegated to OpenAgent must be launched via the shell-based `opencode` CLI attached to port 4096:
-        ```bash
-        opencode run --dir <target_dir> --attach http://127.0.0.1:4096/ "SESSION: Sprint XX Story YY — <Title>..."
-        ```
-    *   `invoke_subagent` is strictly reserved for read-only research tasks. This guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+2.  **Mandatory Swarm Delegation via REST Dispatch**:
+    *   All developer/implementation tasks delegated to OpenAgent must be launched using `python3 src/tests/delegate.py`.
+    *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
+    *   `invoke_subagent` is strictly reserved for read-only research tasks. Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
     *   Target the narrowest active project directory (e.g. `--dir HomeLabAI`).
     *   To reference planning files outside the target workspace, pass direct links using relative paths or the `file://` scheme in the prompt (e.g. `file://<path_to_workspace>/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
@@ -301,7 +299,7 @@
     *   Prompts sent to OpenAgent must follow the Pre-Grounded Blueprint defined in [**OPENAGENT_HANDOVER_PLAYBOOK.md Section 3.3**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md#33-pre-grounded-blueprint--swarm-delegation-prompting):
 
             SESSION: Sprint XX Story YY — <Title>
-            
+
             [PRE-GROUNDED CONTEXT BRIEFING]
             - Architecture & Planning: Sprint plan at file://<path_to_sprint_plan>.md#Story-YY.
             - Scope Guidance: Pre-grounding complete. Skip broad workspace scans; focus directly on target files.
@@ -310,8 +308,24 @@
             - Primary Output Target: <absolute_path_to_target_file>
             - Task Details: <explicit_code_or_logic_changes>
 
-            [SWARM DELEGATION DIRECTIVE]
-            - You are Sisyphus (Lead Manager). Delegate sub-tasks to specialists (`Prometheus`, `Sisyphus-Junior`, `Hephaestus`).
+            [SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
+            You are Sisyphus (Lead Orchestrator). You MUST NOT implement code directly.
+            Emit task() tool calls to delegate implementation and verification work:
+
+              task(category="quick", run_in_background=false, prompt="""
+                ## 1. TASK
+                <exact implementation task>
+                ## 2. EXPECTED OUTCOME
+                - [ ] File <path> modified
+                - [ ] Verification command exits 0
+                ## 3. MUST DO
+                - READ the target file first
+                - USE the edit/write tool to apply the change
+                - RUN verification check
+                ## 4. MUST NOT DO
+                - Do NOT only read and report — you MUST write the change
+                - Do NOT git commit
+              """)
 
             [VERIFICATION GATE]
             - Test Command: <pytest_or_validation_script>
@@ -356,7 +370,8 @@
 10. **Port Separation & Socket Wakeup (Sprint 48 Scar)**:
     *   **Port 4097** = `codex` REST API backend (system-level systemd service, always running).
     *   **Port 4096** = OmO web UI proxy (user-level `opencode.socket` + `opencode-proxy.service`, socket-activated with `StopWhenUnneeded=true`). Stops when idle; restarts on first TCP connection.
-    *   **Wakeup**: `delegate.py` calls `wake_web_ui()` which HTTP-GETs `http://127.0.0.1:4096/` before session creation. This triggers `opencode.socket` → `opencode-proxy.service` activation chain. Without this touch, the web UI at `http://192.168.1.238:4096/` is unreachable.
+    *   **Wakeup**: `delegate.py` calls `wake_web_ui()` which HTTP-GETs `http://127.0.0.1:4096/` before session creation. This triggers `opencode.socket` → `opencode-proxy.service` activation chain.
+    *   **Socket Rate-Limit Hardening**: Set `TriggerLimitIntervalSec=0` under `[Socket]` in `~/.config/systemd/user/opencode.socket`. This prevents systemd from marking `opencode.socket` as `failed (trigger-limit-hit)` during rapid reconnect or wake sequences.
     *   **Headless REST dispatch**: `opencode run --attach` is a **blocking foreground TUI** requiring an active browser session on port 4096. When the webview is down, `subprocess.run(opencode run --attach)` hangs indefinitely. The correct headless pattern bypasses `opencode run` entirely: `POST http://127.0.0.1:4097/session/<id>/message` with `{"parts":[{"type":"text","text":"<prompt>"}]}`.
 
 
@@ -426,3 +441,15 @@
 2. **Git Ignore Hardening**: Every workspace repository must explicitly ignore `venv/`, `.venv/`, `env/`, and `*.egg-info/` in its root `.gitignore`.
 3. **Agent Indexing Isolation**: Agentic search/scan tools (e.g., `opencode`, `codex`, `ripgrep`) must respect `.gitignore` to avoid indexing thousands of site-packages files that cause memory ballooning.
 4. **Pre-Commit Verification**: Before staging changes, agents must verify `git status --porcelain` contains no untracked environment or binary build artifacts.
+
+---
+
+## BKM-039: RAG Taxonomy Separation & HyDE LoRA Tabling Protocol
+**Objective:** Maintain strict separation between Agent Behavioral DNA and User Work History while standardizing prompt synthesis over fine-tuning.
+
+1. **Taxonomy Boundary**:
+   - **Agent DNA (`behavioral_dna`, `feature_dna`)**: System operational instructions, BKM protocols, feature mechanisms.
+   - **User Work History (`career_ledger`, `artifact_vault`, `lab_journal`)**: 18-year technical career history, resume ground truth, hardware validation logs, field notes.
+2. **LoRA Fine-Tuning Tabling Decision**:
+   - HyDE synthesis relies on structured prompt templates (Unified Intent-HyDE) rather than custom LoRA weights.
+   - Prompt-based multi-voice synthesis maintains 100% adaptability without model quantization drift or LoRA reloading overhead.
