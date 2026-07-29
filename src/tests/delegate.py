@@ -139,12 +139,29 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 - Task Details: 
 {details}
 
-[SWARM DELEGATION DIRECTIVE]
-- You are Sisyphus (Lead Manager).
-- Delegate sub-tasks to your internal specialists:
-  • Use `Prometheus` for test structure validation or pre-review.
-  • Use `Sisyphus-Junior` or local tools for code edits.
-  • Use `Hephaestus` for verification and log checks.
+[SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
+You are Sisyphus (Lead Orchestrator). You MUST NOT implement code or write files yourself.
+You MUST emit task() tool calls to delegate implementation and verification work:
+
+task(category="quick", run_in_background=false, prompt=\"\"\"
+## 1. TASK
+Implement target: {file_path}
+Details:
+{details}
+
+## 2. EXPECTED OUTCOME
+- [ ] File {file_path} created/modified on disk
+- [ ] Verification command passes: {verification}
+
+## 3. MUST DO
+- READ existing or reference files first if needed
+- USE the edit or write tool to WRITE the changes to disk at {file_path}
+- RUN verification command: {verification}
+
+## 4. MUST NOT DO
+- Do NOT only read files and report back — you MUST write the changes to disk using the write/edit tool
+- Do NOT git commit
+\"\"\")
 
 [VERIFICATION GATE]
 - Test Command: {verification}
