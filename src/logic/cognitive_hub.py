@@ -619,32 +619,7 @@ class CognitiveHub:
                     "brain_source": "System"
                 })
                 
-                # [Task 12.2] Brain Early-Reply: Let Brain fill dead air while waking
-                if not self.get_vram_status():
-                    logging.info("[HUB] Engine warming. Routing to KENDER immediately.")
-                    if triage_attempt == 0:
-                        await self.broadcast({
-                            "type": "crosstalk", 
-                            "brain": "Lab is warming its anchors. Reaching out to Deep Thought...", 
-                            "brain_source": "System",
-                            "version": LAB_VERSION
-                        })
-                        try:
-                            # Pass to thought node to fill dead air
-                            async for _ in self._process_node_stream(
-                                "thought", turn, "", "Deep Thought", tools=[], temperature=0.7, request_id=request_id
-                            ):
-                                pass
-                        except Exception as e:
-                            logging.warning(f"[HUB] Early-reply failed: {e}")
-                    
-                    wait_limit = 18 if triage_attempt == 0 else 3
-                    for _ in range(wait_limit):
-                        if self.get_vram_status():
-                            break
-                        await asyncio.sleep(5.0)
-                
-                # [FEAT-436] Unified Intent-HyDE Guided Decoding Schema
+                # [FEAT-436] Unified Intent-HyDE Guided Decoding Schema & Context
                 triage_schema = {
                     "type": "json_schema",
                     "json_schema": {
@@ -676,10 +651,35 @@ class CognitiveHub:
                     'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
                 )
 
-                async for token in self._process_node_stream(
-                    "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
-                ):
-                    t_text += token
+                # [Task 12.2] Brain Early-Reply: Route to Deep Thought on KENDER for immediate HyDE synthesis
+                if not self.get_vram_status():
+                    logging.info("[HUB] Engine warming. Synthesizing HyDE via Deep Thought (KENDER) immediately.")
+                    if triage_attempt == 0:
+                        await self.broadcast({
+                            "type": "crosstalk", 
+                            "brain": "Synthesizing Composite HyDE via Deep Thought...", 
+                            "brain_source": "System",
+                            "version": LAB_VERSION
+                        })
+                        try:
+                            # Pass triage context to Deep Thought on KENDER so it produces real HyDE vector
+                            async for token in self._process_node_stream(
+                                "thought", turn, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
+                            ):
+                                t_text += token
+                        except Exception as e:
+                            logging.warning(f"[HUB] Deep Thought HyDE synthesis failed: {e}")
+                    
+                    wait_limit = 6 if triage_attempt == 0 else 2
+                    for _ in range(wait_limit):
+                        if self.get_vram_status():
+                            break
+                        await asyncio.sleep(2.0)
+                else:
+                    async for token in self._process_node_stream(
+                        "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
+                    ):
+                        t_text += token
 
                 logging.info(f"[HUB] Triage Output: {t_text}")
 
