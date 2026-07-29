@@ -291,22 +291,27 @@
 2.  **Mandatory Shell-Based Execution (Point 12)**:
     *   All developer/implementation tasks delegated to OpenAgent must be launched via the shell-based `opencode` CLI attached to port 4096:
         ```bash
-        /home/jallred/.opencode/bin/opencode run --dir <target_dir> --attach http://127.0.0.1:4096/ "SESSION: Sprint XX Story YY — <Title>..."
+        opencode run --dir <target_dir> --attach http://127.0.0.1:4096/ "SESSION: Sprint XX Story YY — <Title>..."
         ```
     *   `invoke_subagent` is strictly reserved for read-only research tasks. This guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
-    *   Target the narrowest active project directory (e.g. `--dir /home/jallred/Dev_Lab/HomeLabAI`).
-    *   To reference planning files outside the target workspace, pass direct links using the `file://` scheme in the prompt (e.g. `file:///home/jallred/Dev_Lab/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
+    *   Target the narrowest active project directory (e.g. `--dir HomeLabAI`).
+    *   To reference planning files outside the target workspace, pass direct links using relative paths or the `file://` scheme in the prompt (e.g. `file://<path_to_workspace>/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
 4.  **Standardized Prompt Blueprint**:
-    *   Prompts sent to OpenAgent must be explicit and structured, minimizing local model reasoning drift:
+    *   Prompts sent to OpenAgent must follow the Pre-Grounded Blueprint defined in [**OPENAGENT_HANDOVER_PLAYBOOK.md Section 3.3**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md#33-pre-grounded-blueprint--swarm-delegation-prompting):
 
             SESSION: Sprint XX Story YY — <Title>
             
-            Read the master plan at file://<path_to_sprint_plan>.md#Story-YY.
+            [PRE-GROUNDED CONTEXT BRIEFING]
+            - Architecture & Planning: Sprint plan at file://<path_to_sprint_plan>.md#Story-YY.
+            - Scope Guidance: Pre-grounding complete. Skip broad workspace scans; focus directly on target files.
 
             [TARGET SPECIFICATION]
-            - File: <absolute_path_to_target_file>
+            - Primary Output Target: <absolute_path_to_target_file>
             - Task Details: <explicit_code_or_logic_changes>
+
+            [SWARM DELEGATION DIRECTIVE]
+            - You are Sisyphus (Lead Manager). Delegate sub-tasks to specialists (`Prometheus`, `Sisyphus-Junior`, `Hephaestus`).
 
             [VERIFICATION GATE]
             - Test Command: <pytest_or_validation_script>
@@ -318,6 +323,11 @@
 6.  **Forensic Gatekeeper & Git Ownership**:
     *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
     *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
+7.  **Token Distribution & Swarm Autonomy Guiding Principle**:
+    *   OpenAgent's primary purpose is to **spread out the cost of tokens**. Node KENDER (`192.168.1.26:11434`, `qwen2.5-coder:14b`) is compute-free. Kender cannot delegate, but it CAN write code.
+    *   Delegation is considered a **failure** if any delegation changes neuter the swarm, if orchestration fails, or if KENDER is prevented from being used to create code.
+8.  **Delegation Script & Pre-Flight Quota Sentinel**:
+    *   All task dispatches to OpenAgent MUST use [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py), which performs REST session creation on port 4097 (`POST http://127.0.0.1:4097/session`), checks cloud/local provider quotas via `check_cloud_quota()`, and attaches `opencode run --attach http://127.0.0.1:4097/ --session <id>`.
 
 
 
@@ -382,7 +392,7 @@
 ## BKM-035: Virtual Environment Hygiene & Git Curation
 **Objective**: Prevent virtual environment context-bleeding and indexing bloat across subagent swarms.
 
-1. **Single Canonical Venv**: The primary canonical Python environment is pre-configured at `/home/jallred/Dev_Lab/HomeLabAI/.venv`. Always activate or use `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python` for all execution. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
+1. **Single Canonical Venv**: The primary canonical Python environment is pre-configured at `HomeLabAI/.venv`. Always activate or use `HomeLabAI/.venv/bin/python` for all execution. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
 2. **Git Ignore Hardening**: Every workspace repository must explicitly ignore `venv/`, `.venv/`, `env/`, and `*.egg-info/` in its root `.gitignore`.
 3. **Agent Indexing Isolation**: Agentic search/scan tools (e.g., `opencode`, `codex`, `ripgrep`) must respect `.gitignore` to avoid indexing thousands of site-packages files that cause memory ballooning.
 4. **Pre-Commit Verification**: Before staging changes, agents must verify `git status --porcelain` contains no untracked environment or binary build artifacts.
