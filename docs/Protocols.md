@@ -142,10 +142,10 @@
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
 *   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
-## BKM-018: The Orchestrator-First Mandate (Attendant V3)
-**Objective**: Prevent "Zombie States" and diagnostic blindness caused by manual process manipulation.
+## BKM-018: The Orchestrator-First Mandate (Attendant V3 & Live Lab Testing)
+**Objective**: Prevent "Zombie States," stale memory footprints, and diagnostic blindness caused by manual process manipulation.
 
-1.  **Service Model**: The Lab Attendant is now a permanent resident service. Direct execution of the orchestration script for hardware control is no longer supported.
+1.  **Service Model**: The Lab Attendant is a permanent resident service (`lab-attendant.service`). Direct execution of the orchestration script for hardware control is not supported.
 2.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
 | Tool | Intent | Physical Action |
 | :--- | :--- | :--- |
@@ -155,19 +155,18 @@
 | **`lab_heartbeat`** | Vitals Audit | **Forensic Truth**: Returns the physical port status, VRAM used/total, and the unique `[BOOT_HASH]` to verify which code version is actually resident. |
 | **`lab_ignition`** | Lock Clearance | **Emergency Override**: Clears any existing `maintenance.lock` files but does NOT start models. Follow this with `lab_start`. |
 
-3.  **Critical REST**: The REST API (port 9999) is a critical infrastructure layer that enables the `status.html` remote control and provides the backend communication for the MCP Proxy. 
-4.  **Restriction**: Do not use manual `pkill`, `kill`, `nohup`, or direct execution of `python3 src/acme_lab.py`. These actions bypass the Attendant's logging, port-reaping, and state-tracking logic.
-5.  **Legacy Support**: `LAB_REST_CURL_CONTROL` (Default: ENABLED) preserves backward compatibility for existing `curl` scripts and remote status indicators while steering the agent toward the high-fidelity Proxy path.
-6.  **Code Reload Mandate**: Any codebase modifications made to Foyer routing (`router.py`, `cognitive_hub.py`), node adapters (`loader.py`), or Attendant services must be followed immediately by `sudo systemctl restart lab-attendant.service`. Failing to restart the service after file modifications causes the system to run stale memory footprints, leading to false validation passes.
+3.  **Critical REST**: The REST API (port 9999 / 8000) is a critical infrastructure layer that enables `status.html` remote control and backend communication for the MCP Proxy.
+4.  **Restriction**: Do not use manual `pkill`, `kill`, `nohup`, or direct execution of `python3 src/acme_lab.py`.
+5.  **Code Reload & Restart Mandate (CRITICAL)**: Any codebase modifications made to Foyer routing (`router.py`, `cognitive_hub.py`), node adapters (`loader.py`, `archive_node.py`), or Attendant services MUST be followed immediately by `sudo systemctl restart lab-attendant.service`. Running integration tests or live queries against a running lab without restarting the service tests stale memory footprints, leading to false validation passes.
+6.  **Live Integration Testing Mandate**: All integration test suites (`test_integration_*.py`, `live_fire_integration.py`) MUST actively target and validate against the live running lab services (`lab-attendant.service` on `:8000`, `chroma-server.service` on `:8001`, and Node KENDER on `:11434`).
+7.  **Non-Blocking HyDE Synthesis**: Triage and HyDE vector generation must NEVER block on local VRAM status or output empty filler. When the local engine is warming (`not get_vram_status()`), `cognitive_hub.py` must route `triage_mode_context` immediately to Deep Thought on KENDER (`192.168.1.26:11434`) for instant 3-part Composite HyDE query synthesis (`[VALIDATION] | [STRATEGY] | [SRE]`).
 
-**Tool Stewardship**: If a tool is broken or lacks functionality, fix or extend it. Avoid temporary workarounds that may cause issues later.
+## BKM-024: Validation-Aware Synchronization & Live Integration
+**Objective**: Ensure the physical Lab state and running daemon processes match active sprint code before testing.
 
-## BKM-024: Validation-Aware Synchronization
-**Objective**: Ensure the physical Lab state matches the active sprint implementation.
-
-1.  **Sync-Gate**: Before any `[LIVE FIRE]` or `[SHAKEDOWN]` test, the Agent must perform a `curl /heartbeat`. 
-2.  **Logic**: If the current `commit` or `model` in the heartbeat does not match the session's active implementation, the Agent MUST trigger a `POST /hard_reset` (or `lab_stop` -> `lab_start`) to synchronize the silicon with the code.
-3.  **State Trust**: Do not assume a background process persisted correctly across a git commit or hard reset. Re-verify liveness before proceeding with test execution.
+1.  **Sync-Gate**: Before running any `[LIVE FIRE]`, `[SHAKEDOWN]`, or integration test (`test_integration_*.py`), the Agent MUST check service liveness (`curl http://127.0.0.1:8000/status` or `lab_heartbeat`).
+2.  **Mandatory Service Reload**: If any file in `src/logic/`, `src/nodes/`, or `src/forge/` was edited during the session, the Agent MUST execute `sudo systemctl restart lab-attendant.service` to flush cached Python processes before executing tests.
+3.  **State Trust**: Do not assume background processes persisted cleanly across git commits or code refactors. Re-verify liveness and run live integration tests after every service restart.
 
 ## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
