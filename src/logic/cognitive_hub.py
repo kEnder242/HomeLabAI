@@ -7,6 +7,63 @@ import time
 import random
 from v5.common.types import LAB_VERSION
 
+# [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
+# Strips conversational framing, filler, and politeness while preserving
+# domain-specific indexing terms (IDs, years, technical keywords).
+_QPR_NOISE_PATTERNS = [
+    # Greetings / attention-getters (trailing \b avoids `yo` matching inside `you`)
+    (r"(?i)\b(?:hey|hi|hello|yo|narf)\b\s*,?\s*", ""),
+    # Meta-cognitive framing
+    (r"(?i)\b(I'm|I am)\s+(just\s+)?(wondering|curious|asking|hoping)\s+", ""),
+    # Soft request preambles
+    (r"(?i)\b(can|could|would|will|do|did)\s+(you|we|I)\s+(please\s+)?(tell|show|find|look|check|help|give|run)\s+(me|us)?\s*", ""),
+    (r"(?i)\b(I want|I need|I'd like|I would like)\s+(to\s+)?(know|find|see|ask|understand|get|check)\s+", ""),
+    (r"(?i)\b(do you know|do we have|is there|are there|can you tell)\s+", ""),
+    # Question openers
+    (r"(?i)\b(what about|how about|what is|what's|what are|what're)\s+", ""),
+    (r"(?i)\b(just\s+)?(trying\s+to\s+)?(figure|understand|remember|recall)\s+", ""),
+    (r"(?i)\b(quick\s+)?question\s*:?\s*", ""),
+    # Filler hedge words
+    (r"(?i)\b(actually|basically|honestly|literally|probably|maybe|perhaps|just|sort of|kind of)\s*,?\s*", ""),
+    # Trailing politeness
+    (r"(?i)\s*,?\s*(please|thanks|thank you|cheers|appreciate it|if possible|if you can|when you get a chance)\s*$", ""),
+]
+
+
+def qpr_refine_query(query: str) -> str:
+    """
+    [FEAT-442] QPR Pre-Retrieval Query De-Noising.
+
+    Strips conversational noise from a raw user query so the remaining
+    terms are dense, domain-specific indexing tokens suitable for
+    ChromaDB vector search.
+
+    Preserves:
+      - Technical identifiers (GEM-XXXX, FEAT-XXX, BKM-XXX)
+      - Year anchors (1998, 2024, etc.)
+      - Domain keywords (telemetry, validation, forensic, PCIe, RAS, etc.)
+      - Core information-bearing nouns/verbs
+
+    Fallback: returns the original trimmed query if refinement would
+    produce an empty or near-empty result (< 3 chars).
+    """
+    if not query or not query.strip():
+        return query
+
+    refined = query.strip()
+    for pattern, replacement in _QPR_NOISE_PATTERNS:
+        refined = re.sub(pattern, replacement, refined)
+
+    # Collapse whitespace and strip leading/trailing punctuation
+    refined = re.sub(r"\s+", " ", refined).strip()
+    refined = refined.strip(" ,;:.!?")
+
+    # Guard against over-stripping
+    if not refined or len(refined) < 3:
+        return query.strip()
+
+    return refined
+
 # [FEAT-T20.2] Lazy import — avoids hard dep if DCGM is absent
 def _get_telemetry_collector():
     try:

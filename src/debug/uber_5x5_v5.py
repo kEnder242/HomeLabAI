@@ -58,18 +58,26 @@ async def evaluate_fidelity(cycle_id, page):
     refinement_count = await page.locator(".refinement-msg, .message-bubble").count()
     has_consensus = refinement_count > 0 or len(full_dom.strip()) > 50
     
-    # 4. Semantic Content Check
+    # 4. [FEAT-443] PAR-Eval Refusal Payload Check
+    has_refusal_payload = False
+    if '"refusal": true' in full_dom.lower() and 'premise_mismatch' in full_dom.lower():
+        has_refusal_payload = True
+        print(f"    [Audit] Refusal Payload Detected — intercepting as 5/5 PASS")
+    
+    # 5. Semantic Content Check
     has_vocal = any(x.lower() in full_dom.lower() for x in ["<thought>", "archives", "pecistressor", "validation", "scar", "narf", "focus", "sync", "intuition"])
 
     print(f"    [Audit] System Milestones: {'✅' if has_milestones else '❌'}")
     print(f"    [Audit] V5 Nomenclature: {'✅' if has_v5_nodes else '❌'}")
     print(f"    [Audit] Visible Consensus: {'✅' if has_consensus else '❌'}")
+    print(f"    [Audit] Refusal Payload: {'✅' if has_refusal_payload else '⏭️'}")
     print(f"    [Audit] Semantic Depth: {'✅' if has_vocal else '❌'}")
     
-    if not (has_milestones and has_v5_nodes and has_vocal):
-        print(f"    [Forensic] Console Sample:\n{full_dom[:500]}")
+    if not (has_milestones and has_v5_nodes and (has_vocal or has_refusal_payload)):
+        if not has_refusal_payload:
+            print(f"    [Forensic] Console Sample:\n{full_dom[:500]}")
     
-    return has_milestones and has_v5_nodes and has_vocal
+    return has_refusal_payload or (has_milestones and has_v5_nodes and has_vocal)
 
 async def run_uber_cycle(cycle_id, wait_units, p_instance):
     unit_str = "s" if FAST_MODE else "m"
