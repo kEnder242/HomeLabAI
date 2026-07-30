@@ -142,11 +142,25 @@
 *   **Rule:** Use specialized sub-agents (`generalist`, `conductor`) for repetitive code execution or surgical implementation tasks. I (the Main Agent) remain the "Guardian of the DNA."
 *   **Constraint:** Sub-agents are **RESTRICTED** from editing design documentation (`*.md`) in `Portfolio_Dev/`. Only the Main Agent conducts "DNA" updates.
 
-## BKM-018: The Orchestrator-First Mandate (Attendant V3 & Live Lab Testing)
-**Objective**: Prevent "Zombie States," stale memory footprints, and diagnostic blindness caused by manual process manipulation.
+## BKM-018: The Orchestrator-First Mandate (Attendant V3 & Live Lab Service Inventory)
+**Objective**: Prevent "Zombie States," stale memory footprints, orphan process collisions, and diagnostic blindness caused by manual process manipulation.
 
-1.  **Service Model**: The Lab Attendant is a permanent resident service (`lab-attendant.service`). Direct execution of the orchestration script for hardware control is not supported.
-2.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
+1.  **Service Model**: All Lab daemons, proxies, and cognitive engines MUST be managed exclusively as systemd resident services. Direct execution of CLI daemons or background scripts outside of systemd (e.g. `nohup`, `&`, or direct `codex serve` execution) is strictly prohibited.
+2.  **Systemd Service Inventory & Topology**:
+| Unit Name | Type | Scope | Port / Path | Purpose & Role |
+| :--- | :--- | :--- | :--- | :--- |
+| **`lab-attendant.service`** | Service | `system` | `:8000` / `:9999` | Acme Lab Attendant & Cognitive Hub Orchestrator (Foyer, ignition, VRAM manager). |
+| **`chroma-server.service`** | Service | `user` | `:8001` | Persistent ChromaDB HTTP Vector Database (5 collections). |
+| **`headroom-proxy.service`** | Service | `user` | `:8787` | Headroom Token Optimization Proxy for subagents. |
+| **`opencode.socket`** | Socket | `user` | `0.0.0.0:4096` | Public Scale-to-Zero LAN Web UI Gateway (`http://192.168.1.238:4096/`). |
+| **`opencode-proxy.service`** | Service | `user` | `:4096` ➔ `:4097` | Systemd Socket Proxy (`StopWhenUnneeded=true`, proxies 4096 to 4097). |
+| **`opencode-core.service`** | Service | `user` | `127.0.0.1:4097` | Core OpenCode/Codex REST engine (`Headroom wrap codex serve`). |
+| **`field-notes.service`** | Service | `system` | `:9001` | Python HTTP Server serving the Field Notes static dashboard. |
+| **`acme-pager.service`** | Service | `system` | `:8501` | Neural Pager Streamlit activity log dashboard. |
+| **`field-notes-nibbler.service`** | Service | `user` | Background | Continuous load-aware note scanner and indexer. |
+| **`field-notes-nightly.timer`** | Timer | `user` | `02:00 AM` | Nightly 2:00 AM note synthesis & date aggregation sweep. |
+
+3.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
 | Tool | Intent | Physical Action |
 | :--- | :--- | :--- |
 | **`lab_start`** | Primary Ignition | **Atomic Scrub**: Executes a PGID-aware purge of all previous Lab processes before launching the Hub and Engine. **No manual cleanup required.** |
@@ -155,11 +169,11 @@
 | **`lab_heartbeat`** | Vitals Audit | **Forensic Truth**: Returns the physical port status, VRAM used/total, and the unique `[BOOT_HASH]` to verify which code version is actually resident. |
 | **`lab_ignition`** | Lock Clearance | **Emergency Override**: Clears any existing `maintenance.lock` files but does NOT start models. Follow this with `lab_start`. |
 
-3.  **Critical REST**: The REST API (port 9999 / 8000) is a critical infrastructure layer that enables `status.html` remote control and backend communication for the MCP Proxy.
-4.  **Restriction**: Do not use manual `pkill`, `kill`, `nohup`, or direct execution of `python3 src/acme_lab.py`.
-5.  **Code Reload & Restart Mandate (CRITICAL)**: Any codebase modifications made to Foyer routing (`router.py`, `cognitive_hub.py`), node adapters (`loader.py`, `archive_node.py`), or Attendant services MUST be followed immediately by `sudo systemctl restart lab-attendant.service`. Running integration tests or live queries against a running lab without restarting the service tests stale memory footprints, leading to false validation passes.
-6.  **Live Integration Testing Mandate**: All integration test suites (`test_integration_*.py`, `live_fire_integration.py`) MUST actively target and validate against the live running lab services (`lab-attendant.service` on `:8000`, `chroma-server.service` on `:8001`, and Node KENDER on `:11434`).
-7.  **Non-Blocking HyDE Synthesis**: Triage and HyDE vector generation must NEVER block on local VRAM status or output empty filler. When the local engine is warming (`not get_vram_status()`), `cognitive_hub.py` must route `triage_mode_context` immediately to Deep Thought on KENDER (`192.168.1.26:11434`) for instant 3-part Composite HyDE query synthesis (`[VALIDATION] | [STRATEGY] | [SRE]`).
+4.  **Critical REST**: The REST API (port 9999 / 8000) is a critical infrastructure layer that enables `status.html` remote control and backend communication for the MCP Proxy.
+5.  **Restriction**: Do not use manual `pkill`, `kill`, `nohup`, or direct CLI execution of `python3 src/acme_lab.py` or `codex serve`.
+6.  **Code Reload & Restart Mandate (CRITICAL)**: Any codebase modifications made to Foyer routing (`router.py`, `cognitive_hub.py`), node adapters (`loader.py`, `archive_node.py`), or Attendant services MUST be followed immediately by `sudo systemctl restart lab-attendant.service`. Running integration tests or live queries against a running lab without restarting the service tests stale memory footprints, leading to false validation passes.
+7.  **Live Integration Testing Mandate**: All integration test suites (`test_integration_*.py`, `live_fire_integration.py`) MUST actively target and validate against the live running lab services (`lab-attendant.service` on `:8000`, `chroma-server.service` on `:8001`, and Node KENDER on `:11434`).
+8.  **Non-Blocking HyDE Synthesis**: Triage and HyDE vector generation must NEVER block on local VRAM status or output empty filler. When the local engine is warming (`not get_vram_status()`), `cognitive_hub.py` must route `triage_mode_context` immediately to Deep Thought on KENDER (`192.168.1.26:11434`) for instant 3-part Composite HyDE query synthesis (`[VALIDATION] | [STRATEGY] | [SRE]`).
 
 ## BKM-024: Validation-Aware Synchronization & Live Integration
 **Objective**: Ensure the physical Lab state and running daemon processes match active sprint code before testing.
