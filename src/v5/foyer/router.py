@@ -24,6 +24,13 @@ from infra.pager_relay import trigger_pager  # noqa: E402
 from infra.atomic_io import atomic_write_json  # noqa: E402
 import ctypes
 
+# [LAB-010] Lazy import — M5 Air may not be available at startup.
+try:
+    from nodes.mlx_judge_node import MLXAsyncJudge as _MLXAsyncJudge
+    _mlx_judge = _MLXAsyncJudge()
+except Exception:
+    _mlx_judge = None
+
 # [Task 4.2] V5 Foyer: The Logic Master
 # Objective: Host the Cognitive Hub and manage logical node lifecycle.
 
@@ -804,6 +811,25 @@ class FoyerRouter:
                             "channel": channel,
                             "request_id": request_id
                         })
+
+                        # [LAB-010] Fire-and-forget async M5 Air judge evaluation.
+                        # Non-blocking: never delays streaming. Result logged only.
+                        if _mlx_judge is not None:
+                            turn_trace = f"SOURCE:{source}\n{content}"
+                            context_window = f"request_id:{request_id}"
+                            async def _run_mlx_judge(tt=turn_trace, cw=context_window, rid=request_id, src=source):
+                                try:
+                                    result = await _mlx_judge.evaluate_256k_context(tt, cw)
+                                    score = result.get("score", 0)
+                                    status = result.get("status", "UNKNOWN")
+                                    logger.info(
+                                        f"[LAB-010][M5 JUDGE] request={rid} source={src} "
+                                        f"status={status} score={score}"
+                                    )
+                                except Exception as je:
+                                    logger.warning(f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}")
+                            asyncio.create_task(_run_mlx_judge())
+
                         del pending_chunks[buf_key]
 
                 self.waterfall_queue.task_done()
