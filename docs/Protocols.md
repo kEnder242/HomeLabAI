@@ -295,16 +295,36 @@
 
 ---
 
-## BKM-034: OpenAgent Delegation
-**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**). For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+## BKM-034: OpenAgent Swarm Delegation
+**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**). For full model allocation matrices, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+
+### 🚀 Primary Dispatch Mechanism: `delegate.py`
+All task dispatches to OpenAgent MUST use the formalized Python dispatcher [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py). Bypassing this script to run raw `opencode run` commands is strictly prohibited. 
+
+**Execution Pattern**:
+```bash
+python3 src/tests/delegate.py \
+  --story <story_num> \
+  --title "<title>" \
+  --file "<target_file>" \
+  --details "<specification_details>" \
+  --verification "<verification_command>" \
+  --dir "<working_directory>"
+```
+
+**Baked-in Boilerplate (No Prompt Clutter Needed)**:
+The `delegate.py` script automatically wraps your inputs into the standard BKM-034 prompt blueprint, injecting:
+1. **Pre-Grounded Context Briefing**: Restricts workspace sweeps and locks scope.
+2. **REST Session Setup**: Wakes `opencode.socket` (`:4096`) and posts to the API engine (`:4097`).
+3. **Strict Swarm Directive**: Mandates that `sisyphus` (lead planner) *MUST NOT* edit files directly, forcing a `task()` hand-off to `sisyphus-junior` (KENDER on port 11434).
 
 1.  **Role Division**:
     *   **Strategic Guardian (Antigravity / Gemini)**: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
     *   **Tactical Swarm (OpenAgent)**: Executes code modifications, runs unit test iterations (`pytest`), and handles line-by-line file updates.
-2.  **Mandatory Swarm Delegation via REST Dispatch**:
-    *   All developer/implementation tasks delegated to OpenAgent must be launched using `python3 src/tests/delegate.py`.
+2.  **REST Socket Architecture**:
     *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
-    *   `invoke_subagent` is strictly reserved for read-only research tasks. Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+    *   Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
     *   Target the narrowest active project directory (e.g. `--dir HomeLabAI`).
     *   To reference planning files outside the target workspace, pass direct links using relative paths or the `file://` scheme in the prompt (e.g. `file://<path_to_workspace>/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
