@@ -26,13 +26,21 @@
     *   **Constraint**: No native `bfloat16` support for fused kernels (use `float16` for Liger).
 *   **Network**: Tailscale MagicDNS active.
 
-## 📡 Bilingual Transport Layer (V2)
-| Protocol | Interface | Port/Path | Role |
-| :--- | :--- | :--- | :--- |
-| **REST** | HTTP | `:9999` | Systemd Lifecycle & VRAM Watchdog. |
-| **MCP** | stdio/SSE | `acme_attendant` | Native Agentic Tool integration. |
-| **Hub** | WebSocket | `:8765` | Bicameral Dispatch & Node Coordination. |
-| **vLLM** | OpenAI API | `:8088` | Unified 3B Base Model inference. |
+## 📡 Transport Layer & Systemd Service Topology (V2)
+| Unit / Protocol | Type | Scope | Port / Path | Purpose & Role |
+| :--- | :--- | :--- | :--- | :--- |
+| **`lab-attendant.service`** | Service | `system` | `:8000` / `:9999` | Acme Lab Attendant & Cognitive Hub Orchestrator (Foyer, ignition, VRAM manager). |
+| **`chroma-server.service`** | Service | `user` | `:8001` | Persistent ChromaDB HTTP Vector Database (5 collections). |
+| **`headroom-proxy.service`** | Service | `user` | `:8787` | Headroom Token Optimization Proxy for subagents. |
+| **`opencode.socket`** | Socket | `user` | `0.0.0.0:4096` | Public Scale-to-Zero LAN Web UI Gateway (`http://192.168.1.238:4096/`). |
+| **`opencode-proxy.service`** | Service | `user` | `:4096` ➔ `:4097` | Systemd Socket Proxy (`StopWhenUnneeded=true`, proxies 4096 to 4097). |
+| **`opencode-core.service`** | Service | `user` | `127.0.0.1:4097` | Core OpenCode/Codex REST engine (`Headroom wrap codex serve`). |
+| **`field-notes.service`** | Service | `system` | `:9001` | Python HTTP Server serving the Field Notes static dashboard. |
+| **`acme-pager.service`** | Service | `system` | `:8501` | Neural Pager Streamlit activity log dashboard. |
+| **`field-notes-nibbler.service`** | Service | `user` | Background | Continuous load-aware note scanner and indexer. |
+| **`field-notes-nightly.timer`** | Timer | `user` | `02:00 AM` | Nightly 2:00 AM note synthesis & date aggregation sweep. |
+| **vLLM Engine** | OpenAI API | `local` | `:8088` | Unified 3B Base Model inference (`llama-3.2-3b-instruct-awq`). |
+| **Bicameral Hub** | WebSocket | `local` | `:8765` | Bicameral Dispatch & Node Coordination. |
 
 ## 🔗 Critical Symlinks
 *   `~/Dev_Lab/models/hf_downloads` -> `/speedy/models` (In progress).
@@ -220,8 +228,14 @@
     *   Driven by `src/nodes/mlx_judge_node.py`. Evaluates full 256K turn traces asynchronously without delaying initial response streaming.
     *   **Factual/Archive Feedback**: Corrections route to ChromaDB (`:8001`) and `refine_gem.py`.
     *   **Style/Persona Feedback**: Retorts route to offline LoRA dataset (`cli_voice_v1`).
-5.  **Local Tool Execution Moat**:
-    *   Tool execution remains 100% local on `z87-Linux` via FastMCP/attendant. Remote nodes emit tool call JSON strings which `z87-Linux` executes locally.
+### LAB-011: OpenAgent Swarm Service Topology (Ports 4096/4097 & Scale-to-Zero)
+**Objective**: Maintain high-fidelity local OpenAgent swarm delegation with Scale-to-Zero idle proxying and zero orphan port collisions.
+
+1.  **Architecture**:
+    *   **Core Engine (`opencode-core.service`)**: Managed as a systemd user service executing `/usr/local/bin/headroom wrap codex -- serve --port 4097 --hostname 127.0.0.1 --mdns false`.
+    *   **Public Gateway (`opencode.socket` + `opencode-proxy.service`)**: Listens on `0.0.0.0:4096` (`TriggerLimitIntervalSec=0`) and proxies incoming LAN traffic on `http://192.168.1.238:4096/` to `127.0.0.1:4097`.
+2.  **Scale-to-Zero Behavior**: `opencode-proxy.service` uses `StopWhenUnneeded=true` and `--exit-idle-time=5m` to gracefully release socket proxies when idle.
+3.  **Strict Lifecycle Mandate**: All service lifecycles MUST be managed strictly via systemd (`systemctl --user start|stop|restart opencode-core.service`). Manual execution of `codex serve` or background CLI daemons (`&`, `nohup`) outside of systemd is strictly prohibited to prevent orphan process collisions on port 4097.
 
 
 
