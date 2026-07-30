@@ -8,12 +8,21 @@ from playwright.async_api import async_playwright
 
 # [FEAT-318] Hardened 5x5 Infrastructure
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
-ATTENDANT_URL = "http://127.0.0.1:8765"
+PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
+ATTENDANT_URL = "http://127.0.0.1:8000"
 STATUS_URL = "http://localhost:9001/intercom.html"
+STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
 
-# Task 20.4: Auth Stability
-# Use the same key used in previous turns
-LAB_KEY = "92e785ba"
+FAST_MODE = "--fast" in sys.argv or os.environ.get("FAST") == "1"
+
+def get_key():
+    import hashlib
+    if os.path.exists(STYLE_CSS):
+        with open(STYLE_CSS, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()[:8]
+    return "92e785ba"
+
+LAB_KEY = get_key()
 
 async def get_lab_status():
     try:
