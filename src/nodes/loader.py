@@ -572,7 +572,11 @@ class BicameralNode:
             )
         except Exception as e:
             logging.error(f"[{self.name}] Generation failed: {e}")
-            yield f"Egad! Logic failure: {e}"
+            err_str = str(e)
+            if "Connect call failed" in err_str or "vLLM connection" in err_str or "ClientConnectorError" in err_str or "Connection failure" in err_str:
+                yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+            else:
+                yield f"Egad! Logic failure: {e}"
 
     def _start_telemetry_relay(self):
         """[FEAT-233.2] Dedicated thread for non-blocking token delivery."""
