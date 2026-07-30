@@ -377,9 +377,9 @@ class BicameralNode:
                     self._last_probe = time.time()
                     return True, f"Online: {target} ({engine_type})"
         except Exception as e:
-            # [FEAT-255.3] Handshake Resilience: Tolerate ZMQ/Transfer errors during boot
+            # [FEAT-255.3] Handshake Resilience: Tolerate ZMQ/Transfer/Connection errors during boot
             err_msg = str(e).lower()
-            if any(k in err_msg for k in ["transfer", "reset", "disconnected", "incomplete", "refused", "eof"]):
+            if any(k in err_msg for k in ["transfer", "reset", "disconnected", "incomplete", "refused", "eof", "connect call failed", "cannot connect", "clientconnectorerror"]):
                 # [FEAT-255.6] Exponential Backoff: Give the larynx time to clear its throat
                 wait_time = getattr(self, "_handshake_backoff", 2)
                 logging.warning(f"[{self.name}] Larynx is warming... (Retrying in {wait_time}s: {e})")
@@ -402,8 +402,8 @@ class BicameralNode:
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
             if not ok:
-                if msg == "WARMING":
-                    yield "[SYSTEM]: Larynx is warming... Narf!"
+                if msg == "WARMING" or "connection failed" in msg.lower() or "connect call failed" in msg.lower():
+                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
                 else:
                     yield f"Error: {msg}"
                 return
@@ -727,7 +727,11 @@ class BicameralNode:
                 yield f"Error: Engine communication broken ({pe})"
             except Exception as e:
                 logging.error(f"[{self.name}] vLLM Connection failed: {e}")
-                yield f"Error: vLLM connection failed: {e}" 
+                err_str = str(e)
+                if any(k in err_str for k in ["Connect call failed", "vLLM connection", "ClientConnectorError", "Connection failure", "Cannot connect to host"]):
+                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                else:
+                    yield f"Error: vLLM connection failed: {e}"
 
     async def _stream_ollama(self, url, payload):
         """[FEAT-233] Ollama token generator."""
@@ -757,7 +761,11 @@ class BicameralNode:
             except Exception as e:
                 self._engine_cache = None  # [FEAT-084] Clear cache on error
                 logging.error(f"[{self.name}] Stream failed: {e}")
-                yield f"Error: Stream failed: {e}"
+                err_str = str(e)
+                if any(k in err_str for k in ["Connect call failed", "ClientConnectorError", "Connection failure", "Cannot connect to host"]):
+                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                else:
+                    yield f"Error: Stream failed: {e}"
 
     def _mirror_trace(self, phase, data, url=None, metadata=None):
         """[FEAT-078] Neural Trace: Persists black-box payloads for auditability."""
