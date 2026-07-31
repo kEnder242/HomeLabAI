@@ -39,6 +39,7 @@ WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
+JUDGE_BACKPRESSURE_PATH = os.path.join(DATA_DIR, "judge_backpressure.jsonl")  # [FEAT-444]
 
 # Configure logging early
 # [BKM-016] Montana Protocol: Log Reclamation
@@ -826,6 +827,30 @@ class FoyerRouter:
                                         f"[LAB-010][M5 JUDGE] request={rid} source={src} "
                                         f"status={status} score={score}"
                                     )
+                                    # [FEAT-444] Write to judge_backpressure.jsonl
+                                    try:
+                                        entry = {
+                                            "timestamp": time.time(),
+                                            "iso_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+                                            "request_id": rid,
+                                            "source": src,
+                                            "turn_trace_length": len(tt),
+                                            "context_window_length": len(cw),
+                                            "score": score,
+                                            "status": status,
+                                            "critique": result.get("critique", ""),
+                                            "route_feedback": result.get("route_feedback", {}),
+                                            "refusal": result.get("refusal", False),
+                                            "refusal_reason": result.get("reason", ""),
+                                            "context_eval_length": result.get("context_eval_length", 0),
+                                            "factual_drift_detected": result.get("factual_drift_detected", None),
+                                            "style_critique": result.get("style_critique", ""),
+                                        }
+                                        os.makedirs(os.path.dirname(JUDGE_BACKPRESSURE_PATH), exist_ok=True)
+                                        with open(JUDGE_BACKPRESSURE_PATH, "a") as jf:
+                                            jf.write(json.dumps(entry, default=str) + "\n")
+                                    except Exception as write_ex:
+                                        logger.warning(f"[FEAT-444][JUDGE] Backpressure write failed (non-fatal): {write_ex}")
                                 except Exception as je:
                                     logger.warning(f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}")
                             asyncio.create_task(_run_mlx_judge())

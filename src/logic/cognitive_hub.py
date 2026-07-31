@@ -849,7 +849,10 @@ class CognitiveHub:
             # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
             behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
             # Pass the triage hints as context so Pinky has something to synthesize.
+            rag_context = await self._fetch_rag_context(turn, t_parsed)
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
+            if rag_context:
+                context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
 
         # [FEAT-418] The Symmetrical Interest Cascade (Lead Speaker + Interjection Threshold)
         target_upper = str(target).upper()
@@ -1098,6 +1101,23 @@ class CognitiveHub:
             logging.warning(f"[HUB] Failed to list tools for {node_id}: {e}")
             return []
 
+    async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
+        """[FEAT-437/442] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
+        from the unified pre-reflection pass into the archive context engine, so retrieval
+        searches the refined domain indexing terms instead of the raw noisy turn."""
+        if "archive" not in self.residents:
+            return ""
+        hyde = str(t_parsed.get("hyde_vector_text", "") or "")
+        try:
+            res = await self.residents["archive"].call_tool(
+                "get_context", {"query": turn, "hyde_vector_text": hyde, "n_results": n_results}
+            )
+            if hasattr(res, 'content') and len(res.content) > 0:
+                return res.content[0].text
+        except Exception as e:
+            logging.error(f"[HUB] RAG context fetch failed: {e}")
+        return ""
+
     async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
@@ -1129,7 +1149,10 @@ class CognitiveHub:
                 f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
             )
         else:
+            rag_context = await self._fetch_rag_context(query, triage)
             raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
+            if rag_context:
+                raw_context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
         
         distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 

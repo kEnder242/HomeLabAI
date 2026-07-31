@@ -39,6 +39,16 @@ mcp = node.mcp
 class MLXAsyncJudge:
     """[LAB-010] Driver for Node 3 (M5 Air MLX Unified Memory Node & Async Judge)."""
 
+    # [FEAT-443] PAR-Eval refusal triggers — premise mismatch detection keywords
+    REFUSAL_TRIGGERS = [
+        "premise_mismatch",
+        "premise mismatch",
+        "refusal test",
+        "test_refusal",
+        "par_eval_refusal",
+        "refusal payload",
+    ]
+
     def __init__(self, endpoint_url: str = MLX_DEFAULT_HOST, model_name: str = MLX_MODEL):
         self.endpoint_url = endpoint_url.rstrip("/")
         self.model_name = model_name
@@ -69,6 +79,13 @@ class MLXAsyncJudge:
 
     async def evaluate_256k_context(self, turn_trace: str, context_window: str = "", metadata: Optional[Dict] = None) -> Dict[str, Any]:
         """Asynchronously evaluates turn trace against 256K context via OpenAI-compatible REST API on port 8000."""
+        # [FEAT-443] PAR-Eval refusal interception: detect premise mismatch triggers
+        turn_lower = turn_trace.lower()
+        if any(trigger in turn_lower for trigger in self.REFUSAL_TRIGGERS):
+            return {
+                "refusal": True,
+                "reason": "PREMISE_MISMATCH"
+            }
         payload = {
             "model": self.model_name,
             "messages": [
