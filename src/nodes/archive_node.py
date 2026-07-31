@@ -568,14 +568,30 @@ def keyword_search(query, limit=10):
     return results
 
 
+def select_vector_query(query: str, hyde_vector_text: str) -> str:
+    """[FEAT-437] Choose the ChromaDB vector query: use the AI-produced HyDE override
+    when it is substantial, otherwise fall back to the raw user query."""
+    if hyde_vector_text and len(hyde_vector_text.strip()) > 10:
+        return hyde_vector_text
+    return query
+
+
 @mcp.tool()
 async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None) -> str:
     """
-    [FEAT-116/117/437] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
+    [FEAT-116/117/437/442] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
     Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
+    [FEAT-442] Query Pre-Flight Refinement is performed by the AI unified pre-reflection pass
+    (FEAT-436), which emits hyde_vector_text; get_context applies the HyDE vector override with
+    distance-based fallback to the raw query when top result distance > 0.45.
     """
-    vector_query = hyde_vector_text if (hyde_vector_text and len(hyde_vector_text.strip()) > 10) else query
+    vector_query = select_vector_query(query, hyde_vector_text)
     fetch_limit = n_results * 2
+
+    # [FEAT-442] QPR is AI-driven (FEAT-436 unified pre-reflection pass): the LLM already
+    # emitted refined domain indexing terms as hyde_vector_text, selected above. No regex
+    # de-noising is performed here.
+    _search_query = vector_query
 
     def get_relational_context(summary):
         graph_path = os.path.join(DATA_DIR, "graph_relations.json")
@@ -634,37 +650,68 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             except Exception:
                 return None, name
 
+        # [FEAT-442] Shared result processor for HyDE fallback re-query
+        def _collect_multi_results(results):
+            collected = []
+            for res in results:
+                if isinstance(res, Exception) or res[0] is None:
+                    continue
+                data, coll_name = res
+                docs_list = data.get("documents", [[]])[0] if data.get("documents") else []
+                metas_list = data.get("metadatas", [[]])[0] if data.get("metadatas") else []
+                dists_list = data.get("distances", [[]])[0] if data.get("distances") else []
+                ids_list = data.get("ids", [[]])[0] if data.get("ids") else []
+
+                for i in range(len(docs_list)):
+                    collected.append({
+                        "collection": coll_name,
+                        "document": docs_list[i] if i < len(docs_list) else "",
+                        "metadata": metas_list[i] if i < len(metas_list) else {},
+                        "distance": dists_list[i] if i < len(dists_list) else 99.0,
+                        "id": ids_list[i] if i < len(ids_list) else ""
+                    })
+            return collected
+
+        async def _query_multi_collections(session, q_text, limit):
+            tasks = [
+                _query_one_collection(session, name, q_text, limit)
+                for name in multi_collection_names
+            ]
+            raw = await asyncio.gather(*tasks, return_exceptions=True)
+            return _collect_multi_results(raw)
+
+        # [FEAT-442] First pass: search with HyDE-refined query
         multi_candidates = []
         try:
             async with aiohttp.ClientSession() as session:
-                tasks = [
-                    _query_one_collection(session, name, vector_query, fetch_limit)
-                    for name in multi_collection_names
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                for res in results:
-                    if isinstance(res, Exception) or res[0] is None:
-                        continue
-                    data, coll_name = res
-                    docs_list = data.get("documents", [[]])[0] if data.get("documents") else []
-                    metas_list = data.get("metadatas", [[]])[0] if data.get("metadatas") else []
-                    dists_list = data.get("distances", [[]])[0] if data.get("distances") else []
-                    ids_list = data.get("ids", [[]])[0] if data.get("ids") else []
-
-                    for i in range(len(docs_list)):
-                        multi_candidates.append({
-                            "collection": coll_name,
-                            "document": docs_list[i] if i < len(docs_list) else "",
-                            "metadata": metas_list[i] if i < len(metas_list) else {},
-                            "distance": dists_list[i] if i < len(dists_list) else 99.0,
-                            "id": ids_list[i] if i < len(ids_list) else ""
-                        })
+                multi_candidates = await _query_multi_collections(session, _search_query, fetch_limit)
         except Exception:
             pass
 
         multi_candidates.sort(key=lambda x: x["distance"])
+
+        # [FEAT-442] HyDE Fallback: if top distance > 0.45, re-query with the raw user query
+        _qpr_fell_back = False
+        if multi_candidates and multi_candidates[0]["distance"] > 0.45 and vector_query != query:
+            logging.info(
+                f"[HYDE] Top distance {multi_candidates[0]['distance']:.3f} > 0.45 threshold. "
+                f"Falling back to raw user query."
+            )
+            multi_candidates = []
+            try:
+                async with aiohttp.ClientSession() as session:
+                    multi_candidates = await _query_multi_collections(session, query, fetch_limit)
+            except Exception:
+                pass
+            multi_candidates.sort(key=lambda x: x["distance"])
+            _qpr_fell_back = True
+
         multi_candidates = [c for c in multi_candidates if c["distance"] < 0.45]
+
+        if _qpr_fell_back:
+            logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < 0.45).")
+        elif vector_query != query:
+            logging.info(f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates.")
 
         multi_formatted = []
         for c in multi_candidates[:n_results]:

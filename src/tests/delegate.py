@@ -140,6 +140,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 {details}
 
 [SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
+MANDATE: Sisyphus MUST NOT write files directly; call task() to delegate all file edits and test generation to sisyphus-junior (KENDER).
 You are Sisyphus (Lead Orchestrator). You MUST NOT implement code or write files yourself.
 You MUST emit task() tool calls to delegate implementation and verification work:
 
@@ -183,7 +184,7 @@ Details:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(msg_req, timeout=600) as resp:
+        with urllib.request.urlopen(msg_req, timeout=1800) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             duration = time.time() - start_time
             finish = result.get("info", {}).get("finish", "unknown")
