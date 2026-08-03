@@ -12,6 +12,7 @@ Usage:
 
 import os
 import sys
+import re
 import hashlib
 import subprocess
 import logging
@@ -44,7 +45,46 @@ def lint_file(file_path):
             return res.returncode == 0, res.stdout + res.stderr
         except Exception:
             return True, "JS Linter (eslint) not found. Skipping."
+    elif file_path.endswith(".html"):
+        return lint_html_inline_js(file_path)
     return True, "No linter defined for this file type."
+
+def lint_html_inline_js(file_path):
+    """Extract inline <script> blocks (no src attr, non-empty) and node --check each.
+
+    Returns (passed, output). Catches the class of error that broke status.html:
+    an unbalanced brace inside inline <script> that a page-level regex/sed misses.
+    """
+    try:
+        with open(file_path, "r") as f:
+            content = f.read()
+    except Exception as e:
+        return False, f"HTML read failed: {e}"
+
+    # Match <script> WITHOUT a src= attribute; non-lazy body up to </script>.
+    blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', content, re.S | re.I)
+    errors = []
+    checked = 0
+    for i, block in enumerate(blocks):
+        if not block.strip():
+            continue
+        checked += 1
+        tmp = f"{file_path}.block{i}.js"
+        try:
+            with open(tmp, "w") as f:
+                f.write(block)
+            res = subprocess.run(["node", "--check", tmp], capture_output=True, text=True)
+            if res.returncode != 0:
+                errors.append(f"<script> block #{i}: {res.stderr.strip()}")
+        except Exception as e:
+            errors.append(f"<script> block #{i}: check error {e}")
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    if errors:
+        return False, f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors)
+    return True, f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked via node --check)."
 
 @mcp.tool()
 async def safe_scalpel(target_file: str, old_string: str, new_string: str, description: str) -> str:
@@ -76,23 +116,33 @@ async def safe_scalpel(target_file: str, old_string: str, new_string: str, descr
     if occurrences > 1:
         return f"❌ Surgical strike aborted: Multiple occurrences ({occurrences}) found. Provide more context."
 
-    # 4. Apply Replacement
-    new_content = content.replace(old_string, new_string, 1)
-    
-    try:
-        with open(target_file, "w") as f:
-            f.write(new_content)
-    except Exception as e:
-        return f"❌ Error writing file: {e}"
+    # 4. Stage New Content & Lint (Report-Only, BKM-011)
+    orig_passed, orig_output = lint_file(target_file)
 
-    # 5. Post-Operation Linting
-    passed, lint_output = lint_file(target_file)
-    
-    status_msg = f"✅ [{description}] applied to {os.path.basename(target_file)}."
-    if not passed:
-        return f"{status_msg}\n\n⚠️ LINT WARNINGS DETECTED:\n{lint_output}"
-    
-    return f"{status_msg}\n\n✨ File is lint-clean."
+    new_content = content.replace(old_string, new_string, 1)
+
+    tmp_path = target_file + ".scalpel_tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            f.write(new_content)
+        new_passed, new_output = lint_file(tmp_path)
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return f"❌ Error staging patch: {e}"
+
+    # Lint is REPORT-ONLY: never blocks the apply. Annotate regressions.
+    os.replace(tmp_path, target_file)
+
+    if new_passed:
+        if orig_passed:
+            return f"✅ [{description}] applied to {os.path.basename(target_file)}.\n\n✨ File is lint-clean."
+        return f"✅ [{description}] applied to {os.path.basename(target_file)}.\n\n⚠️ Pre-existing lint issues unchanged (baseline):\n{orig_output}"
+
+    # New content failed lint: applied anyway, report with regression tag.
+    if orig_passed:
+        return f"✅ [{description}] applied to {os.path.basename(target_file)} (lint REPORT-ONLY).\n\n⚠️ LINT FAILURES INTRODUCED (was clean before):\n{new_output}"
+    return f"✅ [{description}] applied to {os.path.basename(target_file)} (lint REPORT-ONLY).\n\n⚠️ LINT FAILURES (pre-existing baseline):\n{orig_output}\n\nAdditional/new issues:\n{new_output}"
 
 async def run_cli():
     """Standalone CLI implementation."""
