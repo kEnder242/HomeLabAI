@@ -86,16 +86,46 @@ Four documented upstream issues explain the delegation gap:
 | 1 | `task(category="quick")` → write /tmp/opencode/kender_write_test.txt | Subagent returned raw write JSON; file absent on disk | KENDER (qwen2.5-coder) cannot emit tool_calls |
 | 2 | Parallel background investigators (bg_13ce5fd8 omo-internals, bg_112b0ebd KENDER-diagnosis) | Both returned "Task not found" on background_output — likely lost to session compaction/restore | Re-run as needed; core findings recovered via direct investigation |
 | 3 | Direct ollama `/v1/chat/completions` with `write` tool schema | qwen3:14b → proper `tool_calls`; qwen2.5-coder:14b → text-only | **ROOT CAUSE: model limitation** |
-| 4 | (pending) `task(category="quick")` → write test after qwen3:14b swap | | Verify file lands |
+| 4 | `task(category="quick")` → write test after qwen3:14b swap + daemon restart | **FILE LANDED**: `/tmp/opencode/kender_write_test.txt` = "KENDER WRITE TEST OK: 2026-08-02-qwen3" (38B, verified via rtk ls+cat) | ✅ **WRITE FAILURE RESOLVED** — qwen3:14b emits native tool_calls |
+| 5 | `task(category="visual-engineering")` → fix null `term` deref in Portfolio_Dev/field_notes/status.html | Ran 10m29s, transcript drifted into unrelated `lsp_install_decision` calls (svelte/astro/eslint…); **file NEVER touched** (mtime unchanged Jul 30) | ❌ **DELEGATION DERELICTION** — agent did not execute the assigned task; corrective re-fire issued (same session `ses_03e5a8290ffe…`, bg_7a3e83d1) |
+| 6 | (pending) corrective re-fire of Experiment 5 | | Verify guards at lines 1266-1280 + no other unguarded querySelector |
+
+### 7. DELEGATION DERELICTION MODE — NEW OBSERVATION (Experiment 5)
+A `visual-engineering`-category delegation (KENDER/qwen3) **drifted off-task**: instead of editing status.html it burned 10 minutes on LSP server install decisions. Key facts:
+- The agent has full tool access (`permission` all allow) — nothing prevented it from doing the job; it just did the wrong job.
+- **Failure mode**: task-prompts are not hard runtime contracts; a model can wander. This reinforces upstream #3231 (delegation is prompt-directed, not enforced) — but here the prompt WAS explicit and detailed; the model still drifted.
+- **Mitigation used**: continue the SAME session via `task(task_id="ses_...")` with a FAILURE REPORT + verified disk state + MUST/MUST-NOT list. Continuation preserves context at ~0 cost vs fresh spawn.
+- **Lesson for BKM-034**: delegation needs a *verification loop*, not just emission of `task()` — verify the on-disk artifact (mtime/content) after the delegate reports done, and re-fire the same session on failure rather than spawning new.
+
+### 8. ICM DISCOVERY CHAIN (context: #3592 MCP-server-count risk, 4 local MCP + plugin built-ins)
+The ICM memory integration was silently half-working; full diagnosis chain:
+- **PATH root cause**: `icm` (uv tool, `~/.local/bin/icm` v0.10.49) was invisible to opencode-core.service (systemd PATH excludes `~/.local/bin`) → `icm serve` MCP spawn failed silently → `[icm] icm binary not found in PATH — plugin disabled` in daemon log (01:11). rtk worked only because `/usr/local/bin/rtk` symlink pre-existed.
+- **FIX**: `sudo ln -sf ~/.local/bin/icm /usr/local/bin/icm` + daemon restart. Verified: icm_* MCP tools live; plugin loads (01:19+).
+- **Pattern**: ANY uv-tool binary used by a systemd daemon needs a `/usr/local/bin` symlink — PATH assumptions are not enough.
+- **MCP recall `project=""` gotcha**: `icm_memory_recall` defaults the project filter to the daemon's cwd (`/home/jallred`) → returns "No memories found" for memories stored under other project segments. CLI recall (no filter) works. **Fix: always pass `project=""`** (or explicit project) for cross-project recall. Same bug class as engram #146 (MCP server default-filter vs CLI).
+- **"The wiring was already there"**: `~/.config/opencode/plugins/icm.ts` (installed by `icm init --mode hook`, mtime **May 18**) already injects `wake-up` + `recall-project` into the system prompt via `experimental.chat.system.transform` — verified LIVE: the `<user-prompt-submit-hook>` blocks in this session ARE its output (recall-project header + wake-up bullets match CLI byte-for-byte; daemon log `[icm] injected 9 lines of project context` at 01:22/01:42/01:44). The plugin was merely disabled by the PATH issue since install.
+- **Upstream risk #322/#239**: icm 0.10.50 fixes a SessionEnd hook `claude -p` spawn loop (thermal runaway) and per-tool-call extraction memory spikes — **upgrade 0.10.49 → 0.10.50 is pending** (restart-gated).
+- **AGY impact = ZERO**: AGY is a standalone binary with no icm/opencode config refs; the only shared surface is the ICM sqlite store, and all writes were strictly additive.
+
+### 9. AGENT BLOCK CLEANUP — AUDIT RESULT (open code .json, pending user decision)
+`agent` block in `~/.config/opencode/opencode.json` has 3 entries, all redundant or dangerous:
+- `sisyphus` → `qwen2.5-coder:14b`: **stale** — OmO overrides to `deepseek-v4-flash-free` (live model). Removing = zero live change.
+- `sisyphus-junior` → `qwen3:14b`: **duplicate** of OmO's entry. Pure redundancy.
+- `conductor` → `qwen2.5-coder:14b`: **the landmine** — the `opencode-conductor-plugin` is a tools/hooks plugin (reads `./conductor/` dir); it does NOT register the agent. This block entry is the ONLY thing creating the `conductor` agent, pinned to the broken write model. Never invoked in any log (all 58 log matches are this session's own greps).
+- Zero agent files on disk (`agents/` dirs empty) — roster is 100% plugin-registered (17 live agents via 4097 `/agent` API).
+- **Stale alias**: provider `qwen2.5-coder:14b` still aliased `SISYPHUS_JUNIOR` though junior now runs qwen3:14b (alias `SISYPHUS`).
+- **Decision pending**: remove all 3 / repoint conductor to qwen3 / keep as-is (question posed to user, interrupted by ledger request).
 
 ## 🏃 Next Steps (Recommended Actions)
-1. ✅ **APPLIED**: Swap `sisyphus-junior` + all categories → `qwen3:14b` in oh-my-openagent.json (commit `b3262b7`). Verify with write-test delegation (Experiment 4).
-2. **Add `prompt_append` to `agents.sisyphus`** in oh-my-openagent.json with an explicit local delegation policy (per upstream #3231 recommendation) — e.g. "MUST emit task() calls for any multi-file or unfamiliar work; self-execute only trivial single-file edits."
-3. **Verify installed OmO version** includes PR #414 fix (delegation table populated). If old, update plugin.
-4. **Reconcile the config conflict**: `opencode.json` agent.sisyphus-junior = qwen3:14b vs omo = qwen2.5-coder:14b (now resolved to qwen3:14b in both).
-5. **Rewrite BKM-034** with the AGY/OpenAgent dual perspective (AGY = strategic when tokens available; Sisyphus/OpenAgent = tactical backup). Fix stale "codex REST" naming → it is opencode serve on 4097. **DONE — dual-orchestrator rewrite applied + DNA re-synced.**
-6. Optionally explore upstream #3592 mitigation (fewer MCP servers, or confirm task tool remains visible in this install — it IS currently visible, so #3592 is NOT blocking today).
+1. ✅ **APPLIED**: Swap `sisyphus-junior` + all categories → `qwen3:14b` in oh-my-openagent.json (commit `b3262b7`). **VERIFIED** via Experiment 4 (write-test file landed post-restart).
+2. ✅ **APPLIED**: Restart opencode-core.service to load new config + icm symlink fix (write-test v3 proof: "KENDER WRITE TEST OK: 2026-08-02-qwen3").
+3. **In flight**: Experiment 5 corrective re-fire (bg_7a3e83d1) — status.html null-term guards. Verify on-disk mtime + guards, then sweep for other unguarded querySelector.
+4. **Pending**: `prompt_append` to `agents.sisyphus` with explicit delegation policy + verification-loop clause (per #3231 and Experiment 5 dereliction) — "MUST verify on-disk artifact after delegate reports done; re-fire same session on failure."
+5. **Pending**: Agent-block cleanup in opencode.json (Section 9) — await user decision (remove 3 / repoint conductor / keep).
+6. **Pending**: icm 0.10.49 → 0.10.50 upgrade (fixes #322 SessionEnd spawn loop + #239 extraction spikes). Restart-gated; snapshot sqlite DB first.
+7. **DONE**: Rewrite BKM-034 dual-orchestrator (AGY = strategic; Sisyphus/OpenAgent = tactical) + DNA re-sync. Fix stale "codex REST" → opencode serve on 4097.
+8. **Optional**: #3592 mitigation — task tool IS currently visible in this install, so not blocking today; monitor MCP-server count growth.
 
 ---
-**Ledger closed**: Aug 2, 2026. Compiled by Sisyphus during BKM-034 rewrite investigation.
-**Status**: Discovery complete; recommendations pending user approval.
+**Ledger updated**: Aug 2, 2026 (second pass — Experiments 4-6, ICM discovery chain, agent-block audit).
+**Status**: KENDER write failure RESOLVED; delegation verification loop + agent-block cleanup pending; status.html corrective in flight.
