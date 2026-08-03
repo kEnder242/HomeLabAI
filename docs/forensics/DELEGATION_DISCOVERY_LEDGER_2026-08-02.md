@@ -88,7 +88,7 @@ Four documented upstream issues explain the delegation gap:
 | 3 | Direct ollama `/v1/chat/completions` with `write` tool schema | qwen3:14b → proper `tool_calls`; qwen2.5-coder:14b → text-only | **ROOT CAUSE: model limitation** |
 | 4 | `task(category="quick")` → write test after qwen3:14b swap + daemon restart | **FILE LANDED**: `/tmp/opencode/kender_write_test.txt` = "KENDER WRITE TEST OK: 2026-08-02-qwen3" (38B, verified via rtk ls+cat) | ✅ **WRITE FAILURE RESOLVED** — qwen3:14b emits native tool_calls |
 | 5 | `task(category="visual-engineering")` → fix null `term` deref in Portfolio_Dev/field_notes/status.html | Ran 10m29s, transcript drifted into unrelated `lsp_install_decision` calls (svelte/astro/eslint…); **file NEVER touched** (mtime unchanged Jul 30) | ❌ **DELEGATION DERELICTION** — agent did not execute the assigned task; corrective re-fire issued (same session `ses_03e5a8290ffe…`, bg_7a3e83d1) |
-| 6 | (pending) corrective re-fire of Experiment 5 | | Verify guards at lines 1266-1280 + no other unguarded querySelector |
+| 6 | Corrective re-fire of Experiment 5 (same session) | ✅ **LANDED — but introduced a NEW bug**: the `if (term)` guards were added (lines 1268/1283) WITHOUT their closing braces → `SyntaxError: missing } in compound statement at status.html:1561` (broken `<script>` block). Manually re-balanced both blocks (1266-1295); all script blocks now pass `node --check`; served 9001 hash matches local file (`53c08219…`) | ⚠️ **DELEGATION DERELICTION → COMPOUND ERROR** — delegate fixed the null-deref yet shipped an unbalanced-brace regression that broke the page. **Lessons:** (a) `if(X){` wrapping must be balanced; (b) the delegate's on-disk artifact was NOT lint-verified before acceptance — a post-edit `node --check` on extracted `<script>` blocks (which I run manually) would have caught it instantly; (c) the Safe-Scalpel lint gate (see §10) does NOT cover `.html` inline JS → blind spot confirmed |
 
 ### 7. DELEGATION DERELICTION MODE — NEW OBSERVATION (Experiment 5)
 A `visual-engineering`-category delegation (KENDER/qwen3) **drifted off-task**: instead of editing status.html it burned 10 minutes on LSP server install decisions. Key facts:
@@ -116,16 +116,24 @@ The ICM memory integration was silently half-working; full diagnosis chain:
 - **Stale alias**: provider `qwen2.5-coder:14b` still aliased `SISYPHUS_JUNIOR` though junior now runs qwen3:14b (alias `SISYPHUS`).
 - **Decision pending**: remove all 3 / repoint conductor to qwen3 / keep as-is (question posed to user, interrupted by ledger request).
 
+### 10. THE SAFE-SCALPEL LINT-GATE BLIND SPOT (AGY/Gemini patch tool audit)
+AGY/Gemini's own surgical patch tool — the **MCP version exists**: `HomeLabAI/src/debug/system_scalpel.py` (FastMCP stdio server, tool `safe_scalpel(target_file, old_string, new_string, description)`). Safety model: (1) precision check (refuses if old_string has 0/>1 occurrence), (2) atomic single replace, (3) **post-op lint gate** via `lint_file()`.
+- **Critical gap**: `lint_file()` lints `.py` (ruff) and `.js` (eslint) — but for `.html` it returns `(True, "No linter defined for this file type.")` → **silently passes**. Combined with BKM-011's `atomic_patcher.py` (ruff `.py`, `bash -n` `.sh`, nothing else), NEITHER tool would have caught the Experiment-6 missing-brace regression inside `status.html`'s inline `<script>`. The correct gate is `node --check` on extracted inline script blocks (done manually).
+- **Additional flaw**: even when lint fails, `safe_scalpel` only *warns* — it does NOT roll back (contradicts BKM-011 doctrine "rolls back all changes if a lint regression"). BKM-012's `patch_file` via Archive Node DOES roll back (saves original state).
+- **Registration**: scalpel lives in Gemini's world (FastMCP stdio for Gemini CLI); NOT registered in opencode.json `mcp` block (only turbovec/claude-mem/icm/clara-dna). `run_scalpel.py` imports `apply_batch_refinement` which does not exist in `atomic_patcher.py` (stale import).
+- **Recommended mitigation (highest leverage)**: extend `system_scalpel.py` `lint_file()` to extract inline `<script>` from `.html` and run `node --check` per block, failing (and rolling back) on syntax error; optionally register the scalpel as an MCP server in opencode.json so subagents use a lint-gated patcher instead of raw `edit`. Second priority: mandatory post-edit syntax verification in the delegation verification loop (per Experiment-6 compound-error lesson).
+
 ## 🏃 Next Steps (Recommended Actions)
 1. ✅ **APPLIED**: Swap `sisyphus-junior` + all categories → `qwen3:14b` in oh-my-openagent.json (commit `b3262b7`). **VERIFIED** via Experiment 4 (write-test file landed post-restart).
 2. ✅ **APPLIED**: Restart opencode-core.service to load new config + icm symlink fix (write-test v3 proof: "KENDER WRITE TEST OK: 2026-08-02-qwen3").
-3. **In flight**: Experiment 5 corrective re-fire (bg_7a3e83d1) — status.html null-term guards. Verify on-disk mtime + guards, then sweep for other unguarded querySelector.
-4. **Pending**: `prompt_append` to `agents.sisyphus` with explicit delegation policy + verification-loop clause (per #3231 and Experiment 5 dereliction) — "MUST verify on-disk artifact after delegate reports done; re-fire same session on failure."
-5. **Pending**: Agent-block cleanup in opencode.json (Section 9) — await user decision (remove 3 / repoint conductor / keep).
+3. ✅ **RESOLVED**: Experiment 6 corrective re-fire landed guards but broke brace balance (compound error) — manually re-balanced blocks 1266-1295; all 4 script blocks pass `node --check`; served 9001 hash == local (`53c08219…`); fix LIVE.
+4. **Pending**: `prompt_append` to `agents.sisyphus` with explicit delegation policy + verification-loop clause (per #3231 and Experiments 5-6) — "MUST verify on-disk artifact (mtime/content + `node --check`/ruff) after delegate reports done; re-fire same session on failure."
+5. **Pending**: Agent-block cleanup in opencode.json (Section 9) — user decision: **REMOVE ALL 3 ENTRIES** (chosen via question tool; edit not yet applied).
 6. **Pending**: icm 0.10.49 → 0.10.50 upgrade (fixes #322 SessionEnd spawn loop + #239 extraction spikes). Restart-gated; snapshot sqlite DB first.
-7. **DONE**: Rewrite BKM-034 dual-orchestrator (AGY = strategic; Sisyphus/OpenAgent = tactical) + DNA re-sync. Fix stale "codex REST" → opencode serve on 4097.
-8. **Optional**: #3592 mitigation — task tool IS currently visible in this install, so not blocking today; monitor MCP-server count growth.
+7. **Pending**: Extend `system_scalpel.py` lint gate for `.html` inline-JS extraction + `node --check` + rollback-on-fail (Section 10); optionally register scalpel as MCP server in opencode.json.
+8. **DONE**: Rewrite BKM-034 dual-orchestrator (AGY = strategic; Sisyphus/OpenAgent = tactical) + DNA re-sync. Fix stale "codex REST" → opencode serve on 4097.
+9. **Optional**: #3592 mitigation — task tool IS currently visible in this install, so not blocking today; monitor MCP-server count growth.
 
 ---
-**Ledger updated**: Aug 2, 2026 (second pass — Experiments 4-6, ICM discovery chain, agent-block audit).
-**Status**: KENDER write failure RESOLVED; delegation verification loop + agent-block cleanup pending; status.html corrective in flight.
+**Ledger updated**: Aug 3, 2026 (third pass — Experiment 6 resolution + compound-error lesson, §10 Safe-Scalpel lint-gate blind spot).
+**Status**: KENDER write failure RESOLVED; status.html null-deref FIXED + LIVE (was never committed — file staged by user as "human saving intermediary changes" 3af9150); delegation verification loop + scalpel lint-gate extension + agent-block cleanup pending.
