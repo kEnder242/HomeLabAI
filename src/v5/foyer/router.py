@@ -64,6 +64,13 @@ def get_style_key():
 
 class FoyerRouter:
     def __init__(self, trigger_task=None, mode="SERVICE_UNATTENDED", afk_timeout=300, disable_ear=False):
+        try:
+            _hr = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                 capture_output=True, text=True, cwd="/home/jallred/Dev_Lab/HomeLabAI", timeout=5)
+            self.boot_commit = _hr.stdout.strip() if _hr.returncode == 0 and _hr.stdout.strip() else "unknown"
+        except Exception:
+            self.boot_commit = "unknown"
+        self.boot_timestamp = int(time.time())
         self.disable_ear = disable_ear
         # ... existing ...
         if setproctitle:
@@ -228,6 +235,7 @@ class FoyerRouter:
             web.post('/train', self.handle_train_rest),
             web.get('/health', self.handle_health),
             web.get('/status', self.handle_status),
+            web.get('/version', self.handle_version),
             web.get('/logs', self.handle_logs),
             web.get('/sys_metrics', self.handle_sys_metrics),    # [FEAT-T20.5] Live graph feed
             web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
@@ -466,6 +474,13 @@ class FoyerRouter:
     async def handle_health(self, request):
         return web.json_response({"status": "ONLINE", "version": LAB_VERSION})
 
+    async def handle_version(self, request):
+        return web.json_response({
+            "boot_commit": getattr(self, "boot_commit", "unknown"),
+            "boot_timestamp": getattr(self, "boot_timestamp", 0),
+            "service": "lab-attendant",
+        })
+
     async def handle_status(self, request):
         status_dict = self.status.to_dict()
         status_dict["connected_clients"] = len(self.connected_clients)
@@ -510,6 +525,23 @@ class FoyerRouter:
             ram = psutil.virtual_memory()
             ram_pct = ram.percent
 
+            # Swap usage % (defensive: default 0.0 if unreadable)
+            try:
+                swap_pct = psutil.swap_memory().percent
+            except Exception:
+                swap_pct = 0.0
+
+            # Memory pressure avg10 from /proc/pressure/memory (defensive: default 0.0)
+            pressure_pct = 0.0
+            try:
+                with open('/proc/pressure/memory', 'r') as f:
+                    for line in f:
+                        if line.startswith('some'):
+                            pressure_pct = float(line.split('avg10=')[1].split()[0])
+                            break
+            except Exception:
+                pressure_pct = 0.0
+
             # DCGM snapshot (reuse TelemetryCollector singleton)
             gpu_temp = 0.0
             gpu_power = 0.0
@@ -534,6 +566,8 @@ class FoyerRouter:
                 "vram_pct": vram_pct,
                 "gpu_temp_c": round(gpu_temp, 1),
                 "gpu_power_w": round(gpu_power, 1),
+                "swap_pct": round(swap_pct, 1),
+                "pressure_pct": round(pressure_pct, 2),
             })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
