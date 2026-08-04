@@ -568,28 +568,30 @@ def keyword_search(query, limit=10):
     return results
 
 
+def select_vector_query(query: str, hyde_vector_text: str) -> str:
+    """[FEAT-437] Choose the ChromaDB vector query: use the AI-produced HyDE override
+    when it is substantial, otherwise fall back to the raw user query."""
+    if hyde_vector_text and len(hyde_vector_text.strip()) > 10:
+        return hyde_vector_text
+    return query
+
+
 @mcp.tool()
 async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None) -> str:
     """
     [FEAT-116/117/437/442] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
     Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
-    [FEAT-442] Applies QPR pre-retrieval query de-noising before ChromaDB search, with
-    distance-based fallback to the original query if top result distance > 0.45.
+    [FEAT-442] Query Pre-Flight Refinement is performed by the AI unified pre-reflection pass
+    (FEAT-436), which emits hyde_vector_text; get_context applies the HyDE vector override with
+    distance-based fallback to the raw query when top result distance > 0.45.
     """
-    vector_query = hyde_vector_text if (hyde_vector_text and len(hyde_vector_text.strip()) > 10) else query
+    vector_query = select_vector_query(query, hyde_vector_text)
     fetch_limit = n_results * 2
 
-    # [FEAT-442] QPR Pre-Retrieval Query De-Noising: refine noisy queries into indexing terms
+    # [FEAT-442] QPR is AI-driven (FEAT-436 unified pre-reflection pass): the LLM already
+    # emitted refined domain indexing terms as hyde_vector_text, selected above. No regex
+    # de-noising is performed here.
     _search_query = vector_query
-    try:
-        from logic.cognitive_hub import qpr_refine_query
-        _refined = qpr_refine_query(vector_query)
-        if _refined != vector_query:
-            logging.info(f"[QPR] Refined query: '{vector_query[:80]}' -> '{_refined[:80]}'")
-        _search_query = _refined if _refined else vector_query
-    except Exception as exc:
-        logging.debug(f"[QPR] Import/execution skipped ({exc}), using raw query.")
-        _search_query = vector_query
 
     def get_relational_context(summary):
         graph_path = os.path.join(DATA_DIR, "graph_relations.json")
@@ -648,7 +650,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             except Exception:
                 return None, name
 
-        # [FEAT-442] Shared result processor for QPR fallback re-query
+        # [FEAT-442] Shared result processor for HyDE fallback re-query
         def _collect_multi_results(results):
             collected = []
             for res in results:
@@ -678,7 +680,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             raw = await asyncio.gather(*tasks, return_exceptions=True)
             return _collect_multi_results(raw)
 
-        # [FEAT-442] First pass: search with QPR-refined query
+        # [FEAT-442] First pass: search with HyDE-refined query
         multi_candidates = []
         try:
             async with aiohttp.ClientSession() as session:
@@ -688,17 +690,17 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         multi_candidates.sort(key=lambda x: x["distance"])
 
-        # [FEAT-442] QPR Fallback: if top distance > 0.45, re-query with original (unrefined) query
+        # [FEAT-442] HyDE Fallback: if top distance > 0.45, re-query with the raw user query
         _qpr_fell_back = False
-        if multi_candidates and multi_candidates[0]["distance"] > 0.45 and _search_query != vector_query:
+        if multi_candidates and multi_candidates[0]["distance"] > 0.45 and vector_query != query:
             logging.info(
-                f"[QPR] Top distance {multi_candidates[0]['distance']:.3f} > 0.45 threshold. "
-                f"Falling back to original query."
+                f"[HYDE] Top distance {multi_candidates[0]['distance']:.3f} > 0.45 threshold. "
+                f"Falling back to raw user query."
             )
             multi_candidates = []
             try:
                 async with aiohttp.ClientSession() as session:
-                    multi_candidates = await _query_multi_collections(session, vector_query, fetch_limit)
+                    multi_candidates = await _query_multi_collections(session, query, fetch_limit)
             except Exception:
                 pass
             multi_candidates.sort(key=lambda x: x["distance"])
@@ -707,9 +709,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         multi_candidates = [c for c in multi_candidates if c["distance"] < 0.45]
 
         if _qpr_fell_back:
-            logging.info(f"[QPR] Fallback produced {len(multi_candidates)} candidates (distance < 0.45).")
-        elif _search_query != vector_query:
-            logging.info(f"[QPR] Refined query produced {len(multi_candidates)} candidates.")
+            logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < 0.45).")
+        elif vector_query != query:
+            logging.info(f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates.")
 
         multi_formatted = []
         for c in multi_candidates[:n_results]:

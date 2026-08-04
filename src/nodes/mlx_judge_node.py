@@ -86,7 +86,6 @@ class MLXAsyncJudge:
                 "refusal": True,
                 "reason": "PREMISE_MISMATCH"
             }
-
         payload = {
             "model": self.model_name,
             "messages": [

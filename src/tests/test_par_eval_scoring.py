@@ -4,6 +4,7 @@ import json
 import pytest
 import asyncio
 
+# Ensure HomeLabAI/src is on sys.path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from nodes.mlx_judge_node import MLXAsyncJudge
 
@@ -66,7 +67,6 @@ async def test_refusal_payload_structure_is_valid(judge):
     assert len(res) == 2
     assert res["refusal"] is True
     assert res["reason"] == "PREMISE_MISMATCH"
-    # Verify it serializes to valid JSON without error
     serialized = json.dumps(res)
     assert '"refusal": true' in serialized
     assert '"PREMISE_MISMATCH"' in serialized

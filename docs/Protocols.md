@@ -295,16 +295,41 @@
 
 ---
 
-## BKM-034: OpenAgent Delegation
-**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the strategic co-pilot (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**). For full model allocation matrices, session persistence mechanics (`--session`, `--fork`), and historical troubleshooting ledgers, refer directly to the primary reference playbook: [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+## BKM-034: Swarm Delegation — Dual Orchestrator Protocol
+**Objective**: Establish a high-efficiency, token-optimized delegation workflow between TWO interchangeable orchestrators and the tactical developer swarm (**OpenAgent**):
+- **PRIMARY — Antigravity (AGY / Gemini)**: Strategic guardian; used when token budget allows.
+- **BACKUP — Sisyphus (opencode/deepseek-v4-flash-free via OmO)**: This agent; always available; identical swarm contract.
 
-1.  **Role Division**:
-    *   **Strategic Guardian (Antigravity / Gemini)**: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
+For full model allocation matrices, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+
+### 🚀 Primary Dispatch Mechanism: `delegate.py`
+All task dispatches to OpenAgent MUST use the formalized Python dispatcher [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py). Bypassing this script to run raw `opencode run` commands is strictly prohibited. 
+
+**Execution Pattern**:
+```bash
+python3 src/tests/delegate.py \
+  --story <story_num> \
+  --title "<title>" \
+  --file "<target_file>" \
+  --details "<specification_details>" \
+  --verification "<verification_command>" \
+  --dir "<working_directory>"
+```
+
+**Baked-in Boilerplate (No Prompt Clutter Needed)**:
+The `delegate.py` script automatically wraps your inputs into the standard BKM-034 prompt blueprint, injecting:
+1. **Pre-Grounded Context Briefing**: Restricts workspace sweeps and locks scope.
+2. **REST Session Setup**: Wakes `opencode.socket` (`:4096`) and posts to the API engine (`:4097`).
+3. **Strict Swarm Directive**: Mandates that `sisyphus` (lead planner) *MUST NOT* edit files directly, forcing a `task()` hand-off to `sisyphus-junior` (KENDER on port 11434).
+
+1.  **Role Division (Dual Orchestrator)**:
+    *   **Strategic Guardian (Antigravity / Gemini)** [PRIMARY]: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests. Used when the user has token budget for AGY.
+    *   **Sisyphus (OpenCode / deepseek-v4-flash-free)** [BACKUP]: Fills the SAME Strategic Guardian role when AGY is not in play — plans, delegates via `task()`, audits diffs, and commits. MUST NOT write code directly when delegation is viable.
     *   **Tactical Swarm (OpenAgent)**: Executes code modifications, runs unit test iterations (`pytest`), and handles line-by-line file updates.
-2.  **Mandatory Swarm Delegation via REST Dispatch**:
-    *   All developer/implementation tasks delegated to OpenAgent must be launched using `python3 src/tests/delegate.py`.
+2.  **REST Socket Architecture**:
     *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
-    *   `invoke_subagent` is strictly reserved for read-only research tasks. Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+    *   Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
     *   Target the narrowest active project directory (e.g. `--dir HomeLabAI`).
     *   To reference planning files outside the target workspace, pass direct links using relative paths or the `file://` scheme in the prompt (e.g. `file://<path_to_workspace>/Portfolio_Dev/SPRINT_PLAN_SPR_42_0.md#Story-1`).
@@ -350,15 +375,17 @@
 6.  **Forensic Gatekeeper & Git Ownership**:
     *   OpenAgent workers edit files and run test suites locally, but are **prohibited from performing `git commit`**.
     *   The Strategic Guardian inspects `git diff`, verifies `pytest` output, and executes git commits upon task certification.
-7.  **Token Distribution & Swarm Autonomy Guiding Principle**:
-    *   OpenAgent's primary purpose is to **spread out the cost of tokens**. Node KENDER (`192.168.1.26:11434`, `qwen2.5-coder:14b`) is compute-free. Kender cannot delegate, but it CAN write code.
-    *   Delegation is considered a **failure** if any delegation changes neuter the swarm, if orchestration fails, or if KENDER is prevented from being used to create code.
+7.  **Token Distribution & Swarm Autonomy Guiding Principle (✅ RESOLVED Aug 2 2026)**:
+    *   OpenAgent's primary purpose is to **spread out the cost of tokens**. Node KENDER (`192.168.1.26:11434`) is compute-free. KENDER cannot delegate, but it CAN write code — **provided the delegated model supports native `tool_calls`**.
+    *   **Root cause (experiment-verified)**: `qwen2.5-coder:14b` does NOT emit OpenAI-compatible `tool_calls` through ollama's `/v1` endpoint — it returns the tool call as plain text, so the harness never executes it (files never land on disk). `qwen3:14b` DOES emit proper `tool_calls` (verified via direct `/v1/chat/completions` test). This was a **model limitation, NOT a config issue** — opencode's `tools: { "task": true }` is a permission translation, not an allowlist.
+    *   **Fix applied**: `sisyphus-junior`, `general`, and all 8 OmO categories now route to **`my-windows-4090/qwen3:14b`** in `~/.config/opencode/oh-my-openagent.json` (commit `b3262b7`). KENDER is a working write-capable ground worker again.
+    *   Delegation is considered a **failure** if any delegation changes neuter the swarm, if orchestration fails, or if KENDER is prevented from being used to write code.
 8.  **Delegation Script & Pre-Flight Quota Sentinel**:
     *   All task dispatches to OpenAgent MUST use [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py), which performs REST session creation on port 4097 (`POST http://127.0.0.1:4097/session`), checks cloud/local provider quotas via `check_cloud_quota()`, and dispatches prompts via `POST http://127.0.0.1:4097/session/<id>/message`.
 
 9.  **OmO `task()` Delegation Mechanics (CRITICAL — Sprint 48 Scar)**:
     *   **The Fundamental Model**: `oh-my-openagent` (OmO) defines agents in `~/.config/opencode/oh-my-openagent.json`. Each named agent (`sisyphus-junior`, `prometheus`, `hephaestus`) maps to a specific provider/model. `sisyphus-junior` is bound to `my-windows-4090/qwen2.5-coder:14b` (KENDER, free local inference).
-    *   **All OmO categories already route to KENDER**: `~/.config/opencode/oh-my-openagent.json` maps every category (`quick`, `deep`, `ultrabrain`, `visual-engineering`, etc.) to `my-windows-4090/qwen2.5-coder:14b`. No config change needed — KENDER is the default ground-worker for all delegated `task()` calls.
+    *   **All OmO categories route to KENDER (write-capable)**: `~/.config/opencode/oh-my-openagent.json` maps every category (`quick`, `deep`, `ultrabrain`, `visual-engineering`, etc.) to `my-windows-4090/qwen3:14b`. KENDER is the default ground-worker for all delegated `task()` calls and CAN write files to disk (native `tool_calls`, see Point 7).
     *   **Delegation requires a `task()` tool call — narration is NOT delegation**: Sisyphus only routes work to KENDER when it emits a `task(category="quick", ...)` tool call. Prose instructions ("delegate to Sisyphus-Junior") without a `task()` tool call result in Sisyphus doing all work itself.
     *   **Sprint 48 Scar — Underspecified task() prompts cause read-only subagents**: When `task()` is called but the prompt inside doesn't explicitly mandate a write/edit tool action, KENDER's subagent will read the target file and report findings without modifying it. Sisyphus then falls back to applying the edit itself via its own `edit` tool — KENDER was technically invoked but performed no write. Fix: every `task()` prompt destined for code edits MUST include `## MUST DO: Use the edit/write tool to apply the change to <path>` as a mandatory section.
     *   **Correct task() prompt structure for write tasks**:
@@ -378,10 +405,16 @@
         - Do NOT git commit
         \"\"\")
         ```
-    *   **Audit gate**: After each story, AGY inspects `GET /session/<id>/message` and checks that `tool` parts include `edit` or `write` invocations from the subagent. If only `read`/`grep` tools appear from the delegated turn, the subagent read-only looped — Sisyphus self-corrected but KENDER did no useful work.
+    *   **Audit gate**: After each story, the acting orchestrator (AGY or Sisyphus) inspects `GET /session/<id>/message` and checks that `tool` parts include `edit` or `write` invocations from the subagent. If only `read`/`grep` tools appear from the delegated turn, the subagent read-only looped — Sisyphus self-corrected but KENDER did no useful work.
 
-10. **Port Separation & Socket Wakeup (Sprint 48 Scar)**:
-    *   **Port 4097** = `codex` REST API backend (system-level systemd service, always running).
+10. **Known Delegation Failure Modes (Upstream — Aug 2 2026 Discovery)**:
+    *   **Delegation is prompt-directed, not enforced** (upstream #3231): The OmO default install injects "You NEVER work alone when specialists are available" into Sisyphus, but some models still self-execute. Recommended fix: `agents.sisyphus.prompt_append` with an explicit local delegation policy.
+    *   **`task` tool can be deferred behind ToolSearch** (upstream #3592): With many MCP servers connected, OpenCode may hide the `task` tool, silently disabling delegation. Upstream gap — no `toolSearch.alwaysLoad`; `experimental.primary_tools` is NOT the fix. Our install currently keeps `task` visible, but adding MCP servers risks this.
+    *   **Empty delegation table** (upstream #2386): `customAgentSummaries` type mismatch can leave Sisyphus with zero agent awareness, preventing `task(subagent_type=...)` routing. Verify the installed plugin version includes the PR #414 fix.
+    *   **Full investigation**: `docs/forensics/DELEGATION_DISCOVERY_LEDGER_2026-08-02.md`.
+
+11. **Port Separation & Socket Wakeup (Sprint 48 Scar)**:
+    *   **Port 4097** = `opencode serve` REST API backend (system-level `opencode-core.service`, always running; the `/usr/local/bin/codex` binary is a symlink to opencode).
     *   **Port 4096** = OmO web UI proxy (user-level `opencode.socket` + `opencode-proxy.service`, socket-activated with `StopWhenUnneeded=true`). Stops when idle; restarts on first TCP connection.
     *   **Wakeup**: `delegate.py` calls `wake_web_ui()` which HTTP-GETs `http://127.0.0.1:4096/` before session creation. This triggers `opencode.socket` → `opencode-proxy.service` activation chain.
     *   **Socket Rate-Limit Hardening**: Set `TriggerLimitIntervalSec=0` under `[Socket]` in `~/.config/systemd/user/opencode.socket`. This prevents systemd from marking `opencode.socket` as `failed (trigger-limit-hit)` during rapid reconnect or wake sequences.
@@ -447,7 +480,7 @@
 
 ---
 
-## BKM-035: Virtual Environment Hygiene & Git Curation
+## BKM-040: Virtual Environment Hygiene & Git Curation
 **Objective**: Prevent virtual environment context-bleeding and indexing bloat across subagent swarms.
 
 1. **Single Canonical Venv**: The primary canonical Python environment is pre-configured at `HomeLabAI/.venv`. Always activate or use `HomeLabAI/.venv/bin/python` for all execution. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
