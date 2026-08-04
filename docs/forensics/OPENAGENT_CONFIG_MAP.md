@@ -36,6 +36,8 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
 | multimodal-looker | vision | groq 70b | cohere/command-a-vision |
 | general | — | local qwen3:14b | — |
 
+Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
+
 Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
 
 ## The Scars (why we're here — DO NOT REPEAT)
