@@ -322,10 +322,12 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
 2. **REST Session Setup**: Wakes `opencode.socket` (`:4096`) and posts to the API engine (`:4097`).
 3. **Strict Swarm Directive**: Mandates that `sisyphus` (lead planner) *MUST NOT* edit files directly, forcing a `task()` hand-off to `sisyphus-junior` (KENDER on port 11434).
 
-1.  **Role Division (Dual Orchestrator)**:
+1.  **Role Division (Swarm Topology & Dual Orchestrator)**:
     *   **Strategic Guardian (Antigravity / Gemini)** [PRIMARY]: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests. Used when the user has token budget for AGY.
-    *   **Sisyphus (OpenCode / deepseek-v4-flash-free)** [BACKUP]: Fills the SAME Strategic Guardian role when AGY is not in play — plans, delegates via `task()`, audits diffs, and commits. MUST NOT write code directly when delegation is viable.
-    *   **Tactical Swarm (OpenAgent)**: Executes code modifications, runs unit test iterations (`pytest`), and handles line-by-line file updates.
+    *   **Sisyphus (OpenCode / deepseek-v4-flash-free)** [BACKUP]: Lead Orchestrator when AGY is off-path — plans, delegates via `task()`, audits diffs, and commits. MUST NOT write code directly when delegation is viable.
+    *   **Prometheus (Planner / Reviewer)** [`groq/llama-3.3-70b-versatile`]: Strategic planner, pre-flight context auditor, and test suite verifier. Blocked from direct file edits (`disabled_tools`).
+    *   **Atlas (Plan Executor)** [`groq/llama-3.3-70b-versatile`]: Designated Plan Executor for structured `delegate.py` execution dispatches. Transforms context briefings into tactical task blueprints and coordinates subagent execution. Blocked from direct file edits (`disabled_tools`).
+    *   **Sisyphus-Junior (Ground Worker)** [`my-windows-4090/qwen3:14b`]: Executes physical code modifications, line-by-line diffs, and unit test iterations on Node KENDER. Native `tool_calls` enabled.
 2.  **REST Socket Architecture**:
     *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
     *   Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
