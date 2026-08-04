@@ -1,7 +1,8 @@
 """
 [BKM-034 Point 12] OpenAgent Swarm REST Dispatcher & Cloud Quota Sentinel
 Formalized launcher script for orchestrator-to-OpenAgent story delegation.
-Creates a clean session on port 4097, pre-checks cloud rate limits, and attaches opencode run.
+Dispatches dispatches through Atlas (Plan Executor, Groq 70b) and Sisyphus (Lead Orchestrator),
+creating a clean REST session on port 4097, pre-checking cloud rate limits, and dispatching story prompts.
 """
 
 import argparse
