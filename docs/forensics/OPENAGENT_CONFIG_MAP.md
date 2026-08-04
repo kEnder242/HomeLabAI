@@ -22,6 +22,44 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
 
 ## Current Swarm (2026-08-03, google-free hot path)
 
+Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits).
+
+| Agent | Role | Model | Fallback |
+|---|---|---|---|
+| prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
+| sisyphus | orchestrator (me) | deepseek-v4-flash-free | groq 70b |
+| atlas | executor | groq 70b | cohere/command-a-plus |
+| hephaestus | executor | groq 70b | deepseek |
+| sisyphus-junior | delegate | local qwen3:14b (4090) | — |
+| oracle | review | deepseek-free | groq 70b |
+| momus | plan critic | groq 70b | cohere |
+| metis | pre-plan | groq 70b | cohere→deepseek |
+| librarian/explore | research | deepseek-free | groq 70b |
+| multimodal-looker | vision | groq 70b | cohere/command-a-vision |
+| general | — | local qwen3:14b | — |
+
+Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
+
+Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
+
+| Agent | Role | Model | Fallback |
+|---|---|---|---|
+| prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
+| sisyphus | orchestrator (me) | deepseek-v4-flash-free | groq 70b |
+| atlas | executor | groq 70b | cohere/command-a-plus |
+| hephaestus | executor | groq 70b | deepseek |
+| sisyphus-junior | delegate | local qwen3:14b (4090) | — |
+| oracle | review | deepseek-free | groq 70b |
+| momus | plan critic | groq 70b | cohere |
+| metis | pre-plan | groq 70b | cohere→deepseek |
+| librarian/explore | research | deepseek-free | groq 70b |
+| multimodal-looker | vision | groq 70b | cohere/command-a-vision |
+| general | — | local qwen3:14b | — |
+
+Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
+
+Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
+
 | Agent | Role | Model | Fallback |
 |---|---|---|---|
 | prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
@@ -57,5 +95,5 @@ git -C ~/.config/opencode log --oneline -10   # config history (configs ARE git)
 
 ## Status Notes
 - Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, mistral ❌ (401, needs new key).
-- Committed: `f41c52e` (2026-08-03).
+- Committed: (2026-08-03).
 - Google remains DECLARED but unused in hot path (CloudFlash alias kept for manual use).
