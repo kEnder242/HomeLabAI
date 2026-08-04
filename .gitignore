@@ -47,3 +47,6 @@ run/
 .round_table_evals.json
 tool_log.md
 
+
+# OMO planning workspace (untracked scratch)
+.omo/
