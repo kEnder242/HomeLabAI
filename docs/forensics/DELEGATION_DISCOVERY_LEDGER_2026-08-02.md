@@ -137,3 +137,24 @@ AGY/Gemini's own surgical patch tool — the **MCP version exists**: `HomeLabAI/
 ---
 **Ledger updated**: Aug 3, 2026 (third pass — Experiment 6 resolution + compound-error lesson, §10 Safe-Scalpel lint-gate blind spot).
 **Status**: KENDER write failure RESOLVED; status.html null-deref FIXED + LIVE (was never committed — file staged by user as "human saving intermediary changes" 3af9150); delegation verification loop + scalpel lint-gate extension + agent-block cleanup pending.
+
+---
+
+## 📌 AUG 4 ADDENDUM — delegation re-validated; new fragility mode; default route change
+Source: Prometheus delegation evaluation (sprint-44-cleanup), see `docs/plans/sprint-44-cleanup.md` (delegation session log #4/#6/#7) for the full live ledger.
+
+### 1. Sync delegation VERIFIED WORKING (supersedes the Aug 2 "gap" framing)
+- Repeated sync `task(category="quick")` probes (git-map, capability probe, Phase-1 audit) all **landed and returned verified results** — read/write delegation is functional on the rxed qwen3:14b setup. The Aug 2 write-failure and "delegation dereliction" concerns are resolved for the sync path.
+
+### 2. New fragility mode: BACKGROUND sessions die on daemon restart
+- Background (`run_in_background=true`) tasks were **killed en masse** when opencode-core.service restarted — `background_output` returned **"Task not found"** on every bg_ id (exp 14day/sprint44/jellyfin).
+- **Mitigation adopted:** PROBE sync before every phase; prefer sync over background for critical delegates; on restart, re-fire the same session via `task_id` rather than fresh spawn.
+
+### 3. Un-routed delegation default changed
+- `oh-my-openagent.json` `agent_settings.provider` → `opencode` so un-routed delegation resolves to `opencode/deepseek-v4-flash-free` (was `my-windows-4090/qwen3:14b` — avoids KENDER 5-min unload cold-start on simple edits). Commits `e27131c` (config) + `4e7444d` (config-map doc). This supersedes **§5 line 67** ("all 8 categories map to qwen2.5-coder:14b") for the *default/un-routed* path; category-routed paths still map per category config.
+
+### 4. Still open (unchanged from ledger Next Steps)
+- Delegation **verification loop** (Next Step #4) — notably for `.html` inline-JS (Safe-Scalpel lint gap, §10) and bg-task restart fragility.
+- Agent-block cleanup (§9), icm 0.10.50 upgrade (#6), scalpel `.html` lint-gate extension (#7).
+
+**Addendum added**: Aug 4, 2026 (fourth pass — sync re-validation + bg restart fragility + default route change).
