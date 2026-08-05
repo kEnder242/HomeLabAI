@@ -79,6 +79,18 @@ class CognitiveHub:
 
 
     def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None):
+        import subprocess
+        import time
+        # Capture boot commit from repo root
+        try:
+            result = subprocess.run(['git', 'rev-parse', '--short=7', 'HEAD'], capture_output=True, text=True, cwd='/home/jallred/Dev_Lab/HomeLabAI')
+            if result.returncode == 0 and result.stdout.strip():
+                self.boot_commit = result.stdout.strip()
+            else:
+                self.boot_commit = "unknown"
+        except Exception:
+            self.boot_commit = "unknown"
+        self.boot_timestamp = int(time.time())
         from collections import defaultdict
         self.residents = residents
         self.broadcast = broadcast_callback
@@ -134,6 +146,14 @@ class CognitiveHub:
                     self.role_tokens = json.load(f)
             except Exception:
                 pass
+
+    def get_status(self):
+        """Return current system status including boot info."""
+        return {
+            "boot_commit": getattr(self, "boot_commit", "unknown"),
+            "boot_timestamp": getattr(self, "boot_timestamp", 0),
+            "service": "lab-attendant"
+        }
 
     async def evaluate_response_async(self, query: str, response: str, session_id: str = "default"):
         """[FEAT-433] Asynchronous Sanity Critic Protocol."""
