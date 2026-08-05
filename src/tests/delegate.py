@@ -44,12 +44,30 @@ def _log_pager_event(message: str, severity: str = "WARNING"):
         pass
 
 
+def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO"):
+    """Log a step with timestamp to stdout, /tmp/delegate_story_<N>.log, and pager telemetry."""
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    formatted = f"[{ts}] [STORY {story_num}] [{step_name}] {message}"
+    print(formatted, flush=True)
+    
+    # Append to step log file
+    try:
+        log_file = f"/tmp/delegate_story_{story_num}.log"
+        with open(log_file, "a") as f:
+            f.write(formatted + "\n")
+    except Exception:
+        pass
+    
+    if severity in ("WARNING", "CRITICAL"):
+        _log_pager_event(f"[{step_name}] {message}", severity=severity)
+
+
 def check_cloud_quota(provider="opencode"):
     """
     [FEAT-Q01] Quick cloud quota & rate limit sentinel check.
     Pings provider status and notifies orchestrator of rate-limit reset windows.
     """
-    print(f"[*] Pre-flight check: Probing {provider} cloud endpoint status...")
+    print(f"[*] Pre-flight check: Probing {provider} cloud endpoint status...", flush=True)
     try:
         req = urllib.request.Request(
             f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -60,16 +78,16 @@ def check_cloud_quota(provider="opencode"):
             data = json.loads(resp.read().decode("utf-8"))
             session_id = data.get("id")
             if session_id:
-                print(f"[+] OpenCode core engine listening on port {OPENCODE_REST_PORT}. Temp session: {session_id}")
+                print(f"[+] OpenCode core engine listening on port {OPENCODE_REST_PORT}. Temp session: {session_id}", flush=True)
                 return True
     except Exception as e:
-        print(f"[!] Warning: OpenCode core engine check failed: {e}")
+        print(f"[!] Warning: OpenCode core engine check failed: {e}", flush=True)
         _log_pager_event(f"OpenCode core engine pre-flight probe failed: {e}", severity="WARNING")
         return False
     return True
 
 
-DEFAULT_TARGET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+DEFAULT_TARGET_DIR = os.path.expanduser("~/Dev_Lab")
 OPENCODE_BIN = os.path.expanduser("~/.opencode/bin/opencode")
 
 
@@ -81,20 +99,26 @@ def wake_web_ui():
       opencode.socket -> opencode-proxy.service -> codex backend on 4097.
     Without this touch, the web UI at http://192.168.1.238:4096/ is unreachable.
     """
-    print(f"[*] Waking web UI via socket touch on port {OPENCODE_WEB_PORT}...")
+    print(f"[*] Waking web UI via socket touch on port {OPENCODE_WEB_PORT}...", flush=True)
     try:
         req = urllib.request.Request(OPENCODE_WEB_URL)
         with urllib.request.urlopen(req, timeout=10):
             pass
-        print(f"[+] Web UI live at http://192.168.1.238:{OPENCODE_WEB_PORT}/")
+        print(f"[+] Web UI live at http://192.168.1.238:{OPENCODE_WEB_PORT}/", flush=True)
     except Exception as e:
-        print(f"[~] Web UI touch attempted (may need a moment): {e}")
+        print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
 def delegate(story_num, title, file_path, details, verification, target_dir=None, agent="atlas", max_retries=3):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
-    if not target_dir:
+    import random
+    import threading
+
+    if not target_dir or target_dir == os.path.expanduser("~"):
         target_dir = DEFAULT_TARGET_DIR
+    target_dir = os.path.abspath(target_dir)
+
+    log_step(story_num, "START", f"Initiating delegation for '{title}' (file: {file_path})")
 
     # 1. Pre-flight quota check
     check_cloud_quota()
@@ -116,6 +140,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             session_id = data["id"]
+            log_step(story_num, "SESSION_CREATED", f"Created REST session {session_id}")
             # Also send explicit PATCH to ensure title overrides background auto-namer
             try:
                 title_req = urllib.request.Request(
@@ -129,14 +154,12 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
             except Exception:
                 pass
     except Exception as e:
-        print(f"[-] Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}")
-        _log_pager_event(f"Story {story_num} REST session creation failed: {e}", severity="CRITICAL")
+        log_step(story_num, "SESSION_FAILED", f"Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}", severity="CRITICAL")
         sys.exit(1)
 
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
     wake_web_ui()
-    print(f"[+] Session created: {session_id}")
-    print(f"[+] Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
+    log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
     agent_name = agent.capitalize()
     prompt = f"""[PRE-GROUNDED CONTEXT BRIEFING]
@@ -177,57 +200,70 @@ Details:
 - Test Command: {verification}
 - Mandate: Do NOT run git commit inside this session. Report completion summary when done."""
 
-    # [BKM-034 Headless REST Dispatch — Self-Healing 503 Retry Loop]
-    # POST the prompt directly to /session/<id>/message with exponential backoff & jitter for 503/429 errors.
-    print(f"[*] Dispatching Story {story_num} via REST POST to session {session_id} [{agent_name}] on port {OPENCODE_REST_PORT}...")
-    start_time = time.time()
-    
+    # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     msg_payload = json.dumps({
         "parts": [{"type": "text", "text": prompt}]
     }).encode("utf-8")
 
-    import random
     attempt = 0
     while attempt < max_retries:
         attempt += 1
-        try:
-            msg_req = urllib.request.Request(
-                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message",
-                data=msg_payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(msg_req, timeout=1800) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                duration = time.time() - start_time
-                finish = result.get("info", {}).get("finish", "unknown")
-                tokens = result.get("info", {}).get("tokens", {})
-                print(f"[+] Story {story_num} dispatch complete in {duration:.1f}s. finish={finish} tokens={tokens}")
-                print(f"[+] Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
-                return
-        except urllib.error.HTTPError as e:
-            duration = time.time() - start_time
-            if e.code in (502, 503, 504, 429) and attempt < max_retries:
+        log_step(story_num, "DISPATCH_ATTEMPT", f"Dispatching prompt to session {session_id} (Attempt {attempt}/{max_retries})")
+        start_time = time.time()
+        
+        post_result = None
+        post_exception = None
+
+        def _do_post():
+            nonlocal post_result, post_exception
+            try:
+                msg_req = urllib.request.Request(
+                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message",
+                    data=msg_payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(msg_req, timeout=1800) as resp:
+                    post_result = json.loads(resp.read().decode("utf-8"))
+            except Exception as exc:
+                post_exception = exc
+
+        worker = threading.Thread(target=_do_post, daemon=True)
+        worker.start()
+
+        # Heartbeat loop while worker thread is active
+        hb_tick = 0
+        while worker.is_alive():
+            worker.join(timeout=5.0)
+            if worker.is_alive():
+                hb_tick += 1
+                elapsed = int(time.time() - start_time)
+                # Heartbeat stdout line every 5s keeps process output active and prevents silent watchdog timeouts
+                log_step(story_num, "HEARTBEAT", f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log")
+
+        duration = time.time() - start_time
+
+        if post_result is not None:
+            finish = post_result.get("info", {}).get("finish", "unknown")
+            tokens = post_result.get("info", {}).get("tokens", {})
+            log_step(story_num, "COMPLETE", f"Story {story_num} dispatch complete in {duration:.1f}s. finish={finish} tokens={tokens}")
+            log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
+            return
+
+        if post_exception is not None:
+            e = post_exception
+            if isinstance(e, urllib.error.HTTPError) and e.code in (502, 503, 504, 429) and attempt < max_retries:
                 backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
-                msg = f"Story {story_num} HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s..."
-                print(f"[!] {msg}")
-                _log_pager_event(msg, severity="WARNING")
+                msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s..."
+                log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
+                time.sleep(backoff)
+            elif attempt < max_retries:
+                backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
+                msg = f"Dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s..."
+                log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
                 time.sleep(backoff)
             else:
-                print(f"[-] Story {story_num} REST dispatch HTTP error after {duration:.1f}s: {e}")
-                _log_pager_event(f"Story {story_num} REST dispatch failed (HTTP {e.code}) after {duration:.1f}s", severity="CRITICAL")
-                sys.exit(1)
-        except Exception as e:
-            duration = time.time() - start_time
-            if attempt < max_retries:
-                backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
-                msg = f"Story {story_num} dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s..."
-                print(f"[!] {msg}")
-                _log_pager_event(msg, severity="WARNING")
-                time.sleep(backoff)
-            else:
-                print(f"[-] Story {story_num} REST dispatch failed after {duration:.1f}s: {e}")
-                _log_pager_event(f"Story {story_num} REST dispatch failed ({e}) after {duration:.1f}s", severity="CRITICAL")
+                log_step(story_num, "FAILED", f"Dispatch failed after {duration:.1f}s: {e}", severity="CRITICAL")
                 sys.exit(1)
 
 

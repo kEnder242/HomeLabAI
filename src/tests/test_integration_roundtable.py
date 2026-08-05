@@ -7,6 +7,50 @@ import os
 import glob
 import json
 import time
+import sys
+
+# ---------------------------------------------------------------------------
+# [STORY 7] Validation Gate: cognitive_hub.py + archive_node.py syntax/import
+# smoke checks and multi-voice Composite HyDE parsing assertions.
+#
+# These are pure unit tests and run regardless of Round Table endpoint state,
+# so they are declared BEFORE the module-level skipif marker below.
+# ---------------------------------------------------------------------------
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_SRC_DIR = os.path.join(_REPO_ROOT, "src")
+for _p in (_REPO_ROOT, _SRC_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from src.logic.cognitive_hub import CognitiveHub
+from src.nodes.archive_node import parse_multi_voice_hyde
+
+
+def test_story7_cognitive_hub_import_smoke():
+    """[STORY 7] CognitiveHub imports cleanly from src.logic.cognitive_hub."""
+    assert CognitiveHub is not None
+    assert callable(CognitiveHub)
+
+
+def test_story7_parse_multi_voice_hyde_joins_voices():
+    """[STORY 7] Multi-voice Composite HyDE string parses to joined payloads."""
+    result = parse_multi_voice_hyde(
+        "[VALIDATION]: ras | [STRATEGY]: goal | [SRE]: scar"
+    )
+    assert result == "ras goal scar"
+
+
+def test_story7_roundtable_validation_gate():
+    """[STORY 7] Exact roundtable validation behavior verified by the gate."""
+    assert parse_multi_voice_hyde(
+        "[VALIDATION]: ras | [STRATEGY]: goal | [SRE]: scar"
+    ) == "ras goal scar"
+
+
+def test_story7_parse_multi_voice_hyde_fallback_raw():
+    """[STORY 7] Non-multi-voice input falls back to the raw string."""
+    assert parse_multi_voice_hyde("plain query text") == "plain query text"
+
 
 # ---------------------------------------------------------------------------
 # Module-level skip: TCP probes for Round Table endpoints
