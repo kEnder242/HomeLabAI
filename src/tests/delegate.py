@@ -97,10 +97,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     if not target_dir:
         target_dir = DEFAULT_TARGET_DIR
 
-    # 1. Wake web UI (socket activation) so session is visible in browser
-    wake_web_ui()
-
-    # 2. Pre-flight quota check
+    # 1. Pre-flight quota check
     check_cloud_quota()
 
     session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
@@ -135,6 +132,11 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     except Exception as e:
         print(f"[-] Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}")
         sys.exit(1)
+
+    # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
+    wake_web_ui()
+    print(f"[+] Session created: {session_id}")
+    print(f"[+] Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
     agent_name = agent.capitalize()
     prompt = f"""[PRE-GROUNDED CONTEXT BRIEFING]
@@ -197,7 +199,7 @@ Details:
             finish = result.get("info", {}).get("finish", "unknown")
             tokens = result.get("info", {}).get("tokens", {})
             print(f"[+] Story {story_num} dispatch complete in {duration:.1f}s. finish={finish} tokens={tokens}")
-            print(f"[+] Session: http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}")
+            print(f"[+] Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
     except Exception as e:
         duration = time.time() - start_time
         print(f"[-] Story {story_num} REST dispatch failed after {duration:.1f}s: {e}")
