@@ -237,6 +237,7 @@
     *   **Public Gateway (`opencode.socket` + `opencode-proxy.service`)**: Listens on `0.0.0.0:4096` (`TriggerLimitIntervalSec=0`) and proxies incoming LAN traffic on `http://192.168.1.238:4096/` to `127.0.0.1:4097`.
 2.  **Scale-to-Zero Behavior**: `opencode-proxy.service` uses `StopWhenUnneeded=true` and `--exit-idle-time=5m` to gracefully release socket proxies when idle.
 3.  **Strict Lifecycle Mandate**: All service lifecycles MUST be managed strictly via systemd (`systemctl --user start|stop|restart opencode-core.service`). Manual execution of `codex serve` or background CLI daemons (`&`, `nohup`) outside of systemd is strictly prohibited to prevent orphan process collisions on port 4097.
+4.  **Cgroup Hard Memory Shield (Desktop Protection)**: `opencode-core.service` enforces `MemoryMax=1.8G`, `MemorySwapMax=0`, and `OOMScoreAdjust=1000`. This strictly forbids OpenCode from spilling into physical disk swap. If OpenCode exceeds 1.8GB RAM, systemd terminates it cleanly in milliseconds, preserving 100% desktop/RDP stability.
 
 ### LAB-012: Dual-Channel Agent Context Architecture (ICM Hook + CLaRa DNA MCP)
 **Objective**: Guarantee that all builder agents (AGY, OpenAgent) automagically receive grounded FEAT specs, BKM protocols, and infrastructure playbooks in their prompt context before every turn — while maintaining on-demand tool access for deep exact-ID lookups.
