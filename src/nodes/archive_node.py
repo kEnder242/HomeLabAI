@@ -576,17 +576,47 @@ def select_vector_query(query: str, hyde_vector_text: str) -> str:
     return query
 
 
+def _log_rag_telemetry(hyde_used: bool, fell_back: bool, total_candidates: int, collection_hits: dict):
+    """[FEAT-447] Log vector RAG health telemetry and hit rates to status.json."""
+    status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
+    if not os.path.exists(status_path):
+        status_path = os.path.join(DATA_DIR, "status.json")
+    if not os.path.exists(status_path):
+        return
+
+    try:
+        with open(status_path, "r") as f:
+            status_data = json.load(f)
+
+        status_data["rag_telemetry"] = {
+            "timestamp": time.time(),
+            "hyde_used": hyde_used,
+            "hyde_fallback": fell_back,
+            "total_candidates": total_candidates,
+            "distance_threshold": 0.55,
+            "collection_hits": collection_hits
+        }
+
+        tmp_path = status_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(status_data, f, indent=2)
+        os.replace(tmp_path, status_path)
+    except Exception as e:
+        logging.warning(f"[RAG Telemetry] Failed to write telemetry to status.json: {e}")
+
+
 @mcp.tool()
 async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None) -> str:
     """
-    [FEAT-116/117/437/442] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
+    [FEAT-116/117/437/442/447] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
     Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
-    [FEAT-442] Query Pre-Flight Refinement is performed by the AI unified pre-reflection pass
+    [FEAT-442/447] Query Pre-Flight Refinement is performed by the AI unified pre-reflection pass
     (FEAT-436), which emits hyde_vector_text; get_context applies the HyDE vector override with
-    distance-based fallback to the raw query when top result distance > 0.45.
+    calibrated 0.55 distance-based fallback to the raw query when top result distance > 0.55.
     """
     vector_query = select_vector_query(query, hyde_vector_text)
     fetch_limit = n_results * 2
+    DISTANCE_THRESHOLD = 0.55
 
     # [FEAT-442] QPR is AI-driven (FEAT-436 unified pre-reflection pass): the LLM already
     # emitted refined domain indexing terms as hyde_vector_text, selected above. No regex
@@ -680,7 +710,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             raw = await asyncio.gather(*tasks, return_exceptions=True)
             return _collect_multi_results(raw)
 
-        # [FEAT-442] First pass: search with HyDE-refined query
+        # [FEAT-442/447] First pass: search with HyDE-refined query
         multi_candidates = []
         try:
             async with aiohttp.ClientSession() as session:
@@ -690,11 +720,11 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         multi_candidates.sort(key=lambda x: x["distance"])
 
-        # [FEAT-442] HyDE Fallback: if top distance > 0.45, re-query with the raw user query
+        # [FEAT-442/447] HyDE Fallback: if top distance > DISTANCE_THRESHOLD (0.55), re-query with the raw user query
         _qpr_fell_back = False
-        if multi_candidates and multi_candidates[0]["distance"] > 0.45 and vector_query != query:
+        if multi_candidates and multi_candidates[0]["distance"] > DISTANCE_THRESHOLD and vector_query != query:
             logging.info(
-                f"[HYDE] Top distance {multi_candidates[0]['distance']:.3f} > 0.45 threshold. "
+                f"[HYDE] Top distance {multi_candidates[0]['distance']:.3f} > {DISTANCE_THRESHOLD} threshold. "
                 f"Falling back to raw user query."
             )
             multi_candidates = []
@@ -706,12 +736,25 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             multi_candidates.sort(key=lambda x: x["distance"])
             _qpr_fell_back = True
 
-        multi_candidates = [c for c in multi_candidates if c["distance"] < 0.45]
+        multi_candidates = [c for c in multi_candidates if c["distance"] < DISTANCE_THRESHOLD]
 
         if _qpr_fell_back:
-            logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < 0.45).")
+            logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < {DISTANCE_THRESHOLD}).")
         elif vector_query != query:
             logging.info(f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates.")
+
+        # [FEAT-447] Log vector RAG health telemetry and hit rates
+        collection_hits = {}
+        for c in multi_candidates[:n_results]:
+            coll = c["collection"]
+            collection_hits[coll] = collection_hits.get(coll, 0) + 1
+
+        _log_rag_telemetry(
+            hyde_used=(vector_query != query),
+            fell_back=_qpr_fell_back,
+            total_candidates=len(multi_candidates),
+            collection_hits=collection_hits
+        )
 
         multi_formatted = []
         for c in multi_candidates[:n_results]:
