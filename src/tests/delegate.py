@@ -105,11 +105,12 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 
     session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
 
-    # 2. Create a fresh session via REST API on port 4097 with target agent
+    # 2. Create a fresh session via REST API on port 4097 with target agent & title
     try:
         session_payload = {
             "directory": target_dir,
-            "agent": agent
+            "agent": agent,
+            "title": session_title
         }
         req = urllib.request.Request(
             f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -119,7 +120,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             session_id = data["id"]
-            # Set session title via REST PATCH for Web UI visibility
+            # Also send explicit PATCH to ensure title overrides background auto-namer
             try:
                 title_req = urllib.request.Request(
                     f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
