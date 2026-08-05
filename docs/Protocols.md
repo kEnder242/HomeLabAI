@@ -501,3 +501,33 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
 2. **LoRA Fine-Tuning Tabling Decision**:
    - HyDE synthesis relies on structured prompt templates (Unified Intent-HyDE) rather than custom LoRA weights.
    - Prompt-based multi-voice synthesis maintains 100% adaptability without model quantization drift or LoRA reloading overhead.
+
+---
+
+## BKM-041: CLaRa DNA MCP Bridge (Agent-to-ChromaDB Glue)
+**Objective**: Ensure all builder agents (AGY, OpenAgent) have automatic, zero-cost access to the grounded FEAT specs, BKM protocols, and infrastructure playbooks stored in ChromaDB — without requiring manual file searches or prompt injection.
+
+1.  **The Problem**: The Lab's Cognitive Hub (`cognitive_hub.py`) has automagic HyDE-driven ChromaDB retrieval for user-facing queries ([FEAT-181], [FEAT-436]). But the agents that *build* the Lab (AGY/Gemini CLI, OpenAgent/OpenCode) had no equivalent pipeline. They were flying blind on 279+ DNA specs while editing the very code those specs govern.
+
+2.  **The Solution: `clara-dna` MCP Server** (`AcmeLab/src/clara_dna_mcp_server.py`):
+    *   A lightweight FastMCP server that connects to the already-running ChromaDB HTTP daemon on port `8001` (LAB-007) via `chromadb.HttpClient`.
+    *   **Zero VRAM / Zero GPU Cost**: Pure HTTP client wrapper. No local embedding model load required — ChromaDB handles all vector operations server-side.
+    *   **MCP Tools Exposed**:
+        *   `query_dna(collection, query, n_results)`: Semantic search across `behavioral_dna`, `feature_dna`, or `long_term_wisdom`.
+        *   `get_protocol(bkm_id)`: Exact BKM lookup by ID (e.g., `BKM-015`).
+        *   `list_collections()`: Enumerate all ChromaDB collections and document counts.
+
+3.  **Agent Registration** (Both agents MUST have this MCP registered):
+    *   **AGY (Antigravity CLI)**: Registered in `~/.gemini/config/mcp_config.json` under `mcpServers.clara-dna`.
+    *   **OpenAgent (OpenCode)**: Registered in `HomeLabAI/.opencode.json` under `mcp.clara-dna`.
+    *   **Verification**: On session start, confirm `clara-dna` appears in the agent's active MCP tool list. Use `/mcp` in AGY or check `opencode.json` for OpenAgent. If missing, the agent is building the Lab without its DNA blueprint.
+
+4.  **Usage Mandate**:
+    *   Before proposing code changes to any file in `src/logic/`, `src/nodes/`, `src/v5/`, or `src/forge/`, the agent SHOULD query `feature_dna` for the relevant FEAT spec governing that module.
+    *   Before overriding or modifying an operational workflow, the agent SHOULD query `behavioral_dna` for the governing BKM protocol.
+    *   This is a SHOULD (not MUST) to avoid blocking on ChromaDB downtime, but agents that skip DNA lookup risk violating established architectural laws.
+
+5.  **Relationship to Other Systems**:
+    *   **ICM** (`icm store/recall`): Cross-session memory for distilled operational truths. ICM remembers *what happened*; CLaRa DNA knows *what the rules are*.
+    *   **`sync_chroma_dna.py`** (git pre-commit hook): The upstream indexer that keeps ChromaDB DNA current with every commit to `FeatureTracker.md`, `Protocols.md`, and `LAB_INFRASTRUCTURE.md`.
+    *   **Cognitive Hub HyDE** ([FEAT-436]): The Lab's internal automagic retrieval pipeline for user queries. CLaRa DNA MCP is the *external* equivalent for builder agents.
