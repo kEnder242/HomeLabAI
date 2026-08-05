@@ -162,43 +162,15 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
     agent_name = agent.capitalize()
-    prompt = f"""[PRE-GROUNDED CONTEXT BRIEFING]
-- Architecture & Planning: Sprint plan reference for Story-{story_num}.
-- Scope Guidance: Workspace pre-grounded. Perform implementation now. Create and write the file specified below.
+    prompt = f"""[CONTEXT & TARGET SPECIFICATION]
+- Sprint Plan Reference: Story {story_num} ({title})
+- Target Files: {file_path}
 
-[TARGET SPECIFICATION]
-- Primary Output Target: {file_path}
-- Task Details: 
+[FUNCTIONAL REQUIREMENTS]
 {details}
 
-[SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
-MANDATE: {agent_name} MUST NOT write files directly; call task() to delegate all file edits and test generation to sisyphus-junior (KENDER).
-You are {agent_name} (Plan Executor). You MUST NOT implement code or write files yourself.
-You MUST emit task() tool calls to delegate implementation and verification work:
-
-task(category="quick", run_in_background=false, prompt=\"\"\"
-## 1. TASK
-Implement target: {file_path}
-Details:
-{details}
-
-## 2. EXPECTED OUTCOME
-- [ ] File {file_path} created/modified on disk
-- [ ] Verification command passes: {verification}
-
-## 3. MUST DO
-- READ existing or reference files first if needed
-- USE the edit or write tool to WRITE the changes to disk at {file_path}
-- RUN verification command: {verification}
-
-## 4. MUST NOT DO
-- Do NOT only read files and report back — you MUST write the changes to disk using the write/edit tool
-- Do NOT git commit
-\"\"\")
-
-[VERIFICATION GATE]
-- Test Command: {verification}
-- Mandate: Do NOT run git commit inside this session. Report completion summary when done."""
+[NOTE]
+Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."""
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     msg_payload = json.dumps({
