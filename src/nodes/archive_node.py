@@ -568,11 +568,49 @@ def keyword_search(query, limit=10):
     return results
 
 
+# [FEAT-436] Multi-voice Composite HyDE tag markers emitted by the unified
+# pre-reflection pass (cognitive_hub.py triage_schema / triage_mode_context).
+_MULTI_VOICE_TAGS = ("[VALIDATION]", "[STRATEGY]", "[SRE]")
+
+
+def parse_multi_voice_hyde(hyde_vector_text: str) -> str:
+    """[FEAT-436] Parse the 3-part multi-voice Composite HyDE tag format emitted by
+    the unified pre-reflection pass:
+
+        [VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>
+
+    Splits on the '|' separators and strips each '[VOICE]:' marker so the returned
+    text is the clean concatenation of the three voice payloads (no tag/bracket
+    noise polluting the ChromaDB embedding). Falls back to the raw string when it
+    does not look like the multi-voice format.
+    """
+    if "|" not in hyde_vector_text or not any(
+        tag in hyde_vector_text for tag in _MULTI_VOICE_TAGS
+    ):
+        return hyde_vector_text
+
+    parts = []
+    for segment in hyde_vector_text.split("|"):
+        segment = segment.strip()
+        if not segment:
+            continue
+        for tag in _MULTI_VOICE_TAGS:
+            if segment.startswith(tag):
+                segment = segment[len(tag):].lstrip(":").strip()
+                break
+        if segment:
+            parts.append(segment)
+
+    return " ".join(parts) if parts else hyde_vector_text
+
+
 def select_vector_query(query: str, hyde_vector_text: str) -> str:
     """[FEAT-437] Choose the ChromaDB vector query: use the AI-produced HyDE override
-    when it is substantial, otherwise fall back to the raw user query."""
+    when it is substantial, otherwise fall back to the raw user query. The multi-voice
+    Composite HyDE tag format is parsed cleanly (split on '|' / [VALIDATION]/[STRATEGY]/[SRE]
+    markers) rather than being treated as a single flat tag."""
     if hyde_vector_text and len(hyde_vector_text.strip()) > 10:
-        return hyde_vector_text
+        return parse_multi_voice_hyde(hyde_vector_text)
     return query
 
 

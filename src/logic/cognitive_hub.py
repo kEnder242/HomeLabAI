@@ -730,7 +730,10 @@ class CognitiveHub:
                                 "importance": {"type": "number"},
                                 "situation": {"type": "string"},
                                 "hints": {"type": "string"},
-                                "hyde_vector_text": {"type": "string"}
+                                "hyde_vector_text": {
+                                    "type": "string",
+                                    "description": "3-part multi-voice Composite HyDE Vector Query. For technical, historical, or validation queries, synthesize EXACTLY this format: [VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>. For casual quips or greetings, emit an empty string."
+                                }
                             },
                             "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance", "hyde_vector_text"]
                         }
