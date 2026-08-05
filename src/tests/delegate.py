@@ -92,7 +92,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}")
 
 
-def delegate(story_num, title, file_path, details, verification, target_dir=None):
+def delegate(story_num, title, file_path, details, verification, target_dir=None, agent="atlas"):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment."""
     if not target_dir:
         target_dir = DEFAULT_TARGET_DIR
@@ -103,13 +103,17 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     # 2. Pre-flight quota check
     check_cloud_quota()
 
-    session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — {title}"
+    session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
 
-    # 2. Create a fresh session via REST API on port 4097
+    # 2. Create a fresh session via REST API on port 4097 with target agent
     try:
+        session_payload = {
+            "directory": target_dir,
+            "agent": agent
+        }
         req = urllib.request.Request(
             f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
-            data=json.dumps({"directory": target_dir}).encode("utf-8"),
+            data=json.dumps(session_payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -131,6 +135,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
         print(f"[-] Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}")
         sys.exit(1)
 
+    agent_name = agent.capitalize()
     prompt = f"""[PRE-GROUNDED CONTEXT BRIEFING]
 - Architecture & Planning: Sprint plan reference for Story-{story_num}.
 - Scope Guidance: Workspace pre-grounded. Perform implementation now. Create and write the file specified below.
@@ -141,8 +146,8 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 {details}
 
 [SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
-MANDATE: Sisyphus MUST NOT write files directly; call task() to delegate all file edits and test generation to sisyphus-junior (KENDER).
-You are Sisyphus (Lead Orchestrator). You MUST NOT implement code or write files yourself.
+MANDATE: {agent_name} MUST NOT write files directly; call task() to delegate all file edits and test generation to sisyphus-junior (KENDER).
+You are {agent_name} (Plan Executor). You MUST NOT implement code or write files yourself.
 You MUST emit task() tool calls to delegate implementation and verification work:
 
 task(category="quick", run_in_background=false, prompt=\"\"\"
@@ -173,7 +178,7 @@ Details:
     # opencode run --attach is a blocking foreground TUI that requires the webview
     # (port 4096) to be running. When the webview is down, it hangs indefinitely.
     # The correct headless pattern: POST the prompt directly to /session/<id>/message.
-    print(f"[*] Dispatching Story {story_num} via REST POST to session {session_id} on port {OPENCODE_REST_PORT}...")
+    print(f"[*] Dispatching Story {story_num} via REST POST to session {session_id} [{agent_name}] on port {OPENCODE_REST_PORT}...")
     start_time = time.time()
     try:
         msg_payload = json.dumps({
@@ -206,6 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("--details", required=True, help="Detailed requirements")
     parser.add_argument("--verification", required=True, help="Verification command line")
     parser.add_argument("--dir", default=None, help="Target working directory")
+    parser.add_argument("--agent", default="atlas", help="Target agent alias (default: atlas)")
     args = parser.parse_args()
 
-    delegate(args.story, args.title, args.file, args.details, args.verification, target_dir=args.dir)
+    delegate(args.story, args.title, args.file, args.details, args.verification, target_dir=args.dir, agent=args.agent)
