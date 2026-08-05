@@ -120,8 +120,15 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 
     log_step(story_num, "START", f"Initiating delegation for '{title}' (file: {file_path})")
 
-    # 1. Pre-flight quota check
+    # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
+    
+    # Auto-start opencode-core.service if inactive (Scale-to-Zero resilience)
+    try:
+        subprocess.run(["systemctl", "--user", "start", "opencode-core.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.5)
+    except Exception:
+        pass
 
     session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
 
