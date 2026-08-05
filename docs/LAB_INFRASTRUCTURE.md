@@ -181,9 +181,10 @@
 ### LAB-006: ICM Hybrid Memory Pipeline (Daemon Embedding & Async Extraction)
 **Objective**: Optimize persistent memory ingestion during high-density OpenAgent developer subagent runs.
 
-1.  **Architecture**: Decouple synchronous tool calls from ONNX model cold-starts. Vector embeddings are generated via the resident ChromaDB daemon (`port 8000`), avoiding 2GB process spikes.
+1.  **Architecture**: Decouple synchronous tool calls from ONNX model cold-starts. Vector embeddings are generated via the resident ChromaDB daemon (`http://localhost:8001`), avoiding 2GB process spikes.
 2.  **Deferred Queueing**: Tool outputs are logged to `pending_queue.jsonl` instantly and vectorized asynchronously via `icm extract-pending` during session pauses or idle windows.
 3.  **Efficiency**: Eliminates 100%+ CPU spikes and 1.8GB-2.0GB RAM allocations per subagent turn while retaining 100% cross-session memory integrity.
+
 
 ### LAB-007: ChromaDB HTTP Vector Daemon (Port 8001)
 **Objective**: Maintain a persistent background ChromaDB vector service for sub-second embedding retrieval and git pre-commit hook synchronization.
@@ -236,6 +237,19 @@
     *   **Public Gateway (`opencode.socket` + `opencode-proxy.service`)**: Listens on `0.0.0.0:4096` (`TriggerLimitIntervalSec=0`) and proxies incoming LAN traffic on `http://192.168.1.238:4096/` to `127.0.0.1:4097`.
 2.  **Scale-to-Zero Behavior**: `opencode-proxy.service` uses `StopWhenUnneeded=true` and `--exit-idle-time=5m` to gracefully release socket proxies when idle.
 3.  **Strict Lifecycle Mandate**: All service lifecycles MUST be managed strictly via systemd (`systemctl --user start|stop|restart opencode-core.service`). Manual execution of `codex serve` or background CLI daemons (`&`, `nohup`) outside of systemd is strictly prohibited to prevent orphan process collisions on port 4097.
+
+### LAB-012: Dual-Channel Agent Context Architecture (ICM Hook + CLaRa DNA MCP)
+**Objective**: Guarantee that all builder agents (AGY, OpenAgent) automagically receive grounded FEAT specs, BKM protocols, and infrastructure playbooks in their prompt context before every turn — while maintaining on-demand tool access for deep exact-ID lookups.
+
+1.  **Automagic Context Injection Channel (ICM Hook)**:
+    *   **Engine**: ICM (`/home/jallred/.local/bin/icm`) configured via `~/.config/icm/config.toml` (`provider = "chroma"`, `chroma_url = "http://localhost:8001"`).
+    *   **Hook**: Registered under `BeforeAgent` in `~/.gemini/antigravity-cli/settings.json` (`icm hook prompt`).
+    *   **Behavior**: Executes semantic vector similarity searches against ChromaDB `:8001` on every prompt, automagically prepending top matching context to the prompt before turn generation.
+2.  **On-Demand Tool Bridge Channel (CLaRa DNA MCP Server)**:
+    *   **Engine**: `clara-dna` FastMCP server (`AcmeLab/src/clara_dna_mcp_server.py`) using `chromadb.HttpClient` on port `8001`. Zero VRAM, zero GPU, <1MB RAM.
+    *   **Registration**: Registered in `~/.gemini/config/mcp_config.json` (AGY) and `HomeLabAI/.opencode.json` (OpenAgent).
+    *   **Tools**: Exposes `query_dna()`, `get_protocol()`, and `list_collections()`.
+
 
 
 
