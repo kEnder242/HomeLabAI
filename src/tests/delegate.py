@@ -245,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--title", required=True, help="Story title")
     parser.add_argument("--file", required=True, help="Target output file path")
     parser.add_argument("--details", required=True, help="Detailed requirements")
-    parser.add_argument("--verification", required=True, help="Verification command line")
+    parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--agent", default="atlas", help="Target agent alias (default: atlas)")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
