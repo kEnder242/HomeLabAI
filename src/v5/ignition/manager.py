@@ -29,7 +29,20 @@ QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 MAINTENANCE_LOCK = os.path.join(DATA_DIR, "maintenance.lock")
 GEM_REFINER = os.path.join(WORKSPACE_DIR, "field_notes/refine_gem.py")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [IGNITION] - %(levelname)s - %(message)s')
+INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+
+def get_unified_base_model():
+    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.unified-base pointer."""
+    try:
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, "r") as f:
+                data = json.load(f)
+                manifest = data.get("model_manifest", {})
+                unified_key = manifest.get("unified-base", "llama-3.2-3b-awq")
+                return manifest.get(unified_key, unified_key)
+    except Exception:
+        pass
+    return "llama-3.2-3b-awq"
 
 # [FEAT-122] Kernel-Level Visibility
 try:
@@ -149,14 +162,16 @@ class IgnitionManager:
                             kender_ip = infra.get("hosts", {}).get("KENDER", {}).get("ip_hint", kender_ip)
                 except Exception: pass
                 
-                # Ping with a typical sovereign model to force VRAM load
-                payload = {"model": "gemma4:26b", "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+                # Ping KENDER with qwen3:14b to force VRAM load
+                payload = {"model": "qwen3:14b", "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
                 async with aiohttp.ClientSession() as session:
                     async with session.post(f"http://{kender_ip}:11434/api/generate", json=payload, timeout=30) as r:
                         if r.status == 200:
                             logging.info("[IGNITION] KENDER Parallel Warmup SUCCESS.")
+                        else:
+                            logging.info(f"[IGNITION] KENDER offline/unreachable (status {r.status}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()}).")
             except Exception as e:
-                logging.debug(f"[IGNITION] KENDER Parallel Warmup failed/bypassed: {e}")
+                logging.info(f"[IGNITION] KENDER offline/unreachable ({e}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()}).")
         asyncio.create_task(_bg_prime_kender())
         
         try:

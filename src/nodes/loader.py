@@ -24,6 +24,20 @@ ROLE_TOKENS_PATH = os.path.join(LAB_DIR, "config", "role_tokens.json")
 TOOL_LOG_PATH = os.path.join(LAB_DIR, "tool_log.md")
 
 
+def get_unified_base_model():
+    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.unified-base pointer."""
+    try:
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, "r") as f:
+                data = json.load(f)
+                manifest = data.get("model_manifest", {})
+                unified_key = manifest.get("unified-base", "llama-3.2-3b-awq")
+                return manifest.get(unified_key, unified_key)
+    except Exception:
+        pass
+    return "llama-3.2-3b-awq"
+
+
 class BicameralNode:
     """
     [FEAT-145] Bicameral Node: Standardized MCP wrapper for local/remote LLM nodes.
