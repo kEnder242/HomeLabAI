@@ -251,6 +251,108 @@
     *   **Registration**: Registered in `~/.gemini/config/mcp_config.json` (AGY) and `HomeLabAI/.opencode.json` (OpenAgent).
     *   **Tools**: Exposes `query_dna()`, `get_protocol()`, and `list_collections()`.
 
+### LAB-013: ICM Embedding Model Swap (The Real 2GB Memory Reclaim)
+**Objective**: Eliminate the ~2GB resident RAM footprint of `icm serve` by swapping the embedding model weights from the multilingual behemoth to a lightweight English model. This was the *actual* memory-pressure fix — the store data (memories.db) was only ~10MB, and no amount of curation reclaimed the resident weights.
+
+1.  **The One-Liner**: Edit `~/.config/icm/config.toml`, set `[embeddings] model = "Xenova/bge-small-en-v1.5"`, then `systemctl --user restart opencode-core.service` (icm is a child of `codex serve`, no standalone unit).
+2.  **The Core Logic (Critical Key Distinction)**:
+    *   `[embeddings]` (**PLURAL**) = the model weights loaded in-process by `icm serve`.
+    *   `[embedding]` (**SINGULAR**) = the storage provider (`provider = "chroma"`, `chroma_url = "http://localhost:8001"`).
+    *   These are DIFFERENT keys. Changing `[embedding]` does nothing to the resident model.
+3.  **The Measured Result (cold boot)**: `icm serve --compact` RSS **2.07 GB → 16 MB**. Entire `opencode-core` cgroup **3.2 GB → 1.1 GB**, swap.current → 0.
+4.  **The Trigger**: `memory.swap.current` climbing past the 3.0G cgroup limit; `icm serve` RSS ~2GB even after a clean service restart (proving resident weights, not accumulated garbage).
+5.  **The Scars / Gotchas**:
+    *   Model is loaded at **boot only** — config changes are inert until `opencode-core.service` restarts.
+    *   **Dimension mismatch symptom**: if the running server still has old weights (768-dim) and writes into a store expecting new dims (384-dim), you get `Dimension mismatch for inserted vector... Expected 384 dimensions but received 768`. This is the tell that a restart is pending, NOT a store corruption.
+    *   Tradeoff: `bge-small-en` is English-focused. If multilingual recall is ever needed, use `intfloat/multilingual-e5-small` (same shrink principle, keeps languages).
+
+### LAB-014: ZFS Dataset Quotas (Disk Guardrails on rpool)
+**Objective**: Prevent "disk full" incidents from runaway Steam updates (~doubles on patch) and model downloads. The disk-analog of the cgroup MemoryMax shield — implemented natively in ZFS, no daemon needed.
+
+1.  **The One-Liner**:
+    ```bash
+    sudo zfs set quota=200G    rpool/USERDATA/home_xu2wtk/steam
+    sudo zfs set refquota=380G rpool/USERDATA/home_xu2wtk
+    ```
+2.  **The Core Logic**:
+    *   `quota` = dataset + its children (recursive bucket). Used on the leaf `steam` dataset.
+    *   `refquota` = the dataset's OWN referenced data only (children excluded). Used on `home_xu2wtk` so Steam's 200G bucket doesn't count against home's cap.
+    *   Combined ceiling ≈ 580G on the 736G pool, leaving real headroom vs. the "just under the disk" trap.
+3.  **The Math Lesson (the trap avoided)**: A naive `refquota=450G` on home is *above* the pool's physically-free space (~278G) — it would never trigger before the pool itself hits ENOSPC, making it a fake guardrail. Quotas must be sized against **taxable pool space** (pool size − OS/swap/snapshot reserve), not the raw disk number.
+4.  **The Trigger**: Steam patch doubling a 61G game (HL:Alyx / ELDEN RING) transiently; model downloads into `~/.cache/` filling home.
+5.  **The Scars**: Both reversible via `sudo zfs set quota=none <ds>` / `refquota=none`. Existing data is untouched — quotas only block *new* writes over the line.
+
+### LAB-015: sanoid Snapshot Rotation (Home Only, Steam Excluded)
+**Objective**: Automated rollback safety net for `/home` via ZFS snapshots with retention — cheap, diff-based, and explicitly NOT covering Steam (game files are a re-downloadable cache).
+
+1.  **The One-Liner**: `sudo apt-get install -y sanoid` → write `/etc/sanoid/sanoid.conf` → `sudo systemctl enable --now sanoid.timer`.
+2.  **The Core Logic (config)**:
+    ```ini
+    [rpool/USERDATA/home_xu2wtk]
+        use_template = production
+        recursive = no          # ← Steam is a CHILD dataset; this keeps it untouched
+        hourly = 24
+        daily = 14
+        weekly = 8
+        autosnap = yes
+        autoprune = yes
+    ```
+    *   Steam double-locked: `recursive = no` in config **plus** `sudo zfs set com.sun:auto-snapshot=false rpool/USERDATA/home_xu2wtk/steam` (survives future recursive configs).
+    *   `sanoid.service` (take snapshots) runs on a 15-min tick; materialization only at hourly/daily/weekly boundaries. `sanoid-prune.service` runs after and enforces retention.
+3.  **The Base Anchor**: `rpool/USERDATA/home_xu2wtk@base-20260805-221656` — the "base = now" marker. All autosnaps diff from it.
+4.  **The Trigger**: The 10:38 AM freeze incident family — the exact "dev'ed a venv into oblivion" / "bad update" moments that previously meant full rebuild.
+5.  **The Scars**:
+    *   Config file must use the **full dataset name** (`rpool/USERDATA/...`), not the abbreviated `home_xu2wtk` — sanoid matches literals.
+    *   Distro package creates `/etc/sanoid/` lazily; `tee` to it fails on first run if the dir doesn't exist.
+    *   Service runs with `TZ=UTC` (distro unit) — snapshot names carry UTC timestamps; don't be confused by the hour offset.
+
+### LAB-016: ICM Raw Tool-Output Capture — Root Cause & Disable
+**Objective**: Stop ICM's memory store from re-bloating with garbage. The recurring "986 garbage entries" purge loop was caused by raw agent tool-output capture — NOT the ignore-rule deficiency everyone assumed.
+
+1.  **The One-Liner**: Two-file fix —
+    *   `~/.config/icm/config.toml`: replace ineffective `auto_extract = false` with `[extraction] enabled = false / extract_every = 1000000 / store_raw = false`.
+    *   `~/.claude/settings.json`: replace `PostToolUse` command `icm hook post` with `true` (no-op). Backup at `settings.json.bak-icm-capture-20260805212406`.
+2.  **The Core Logic**: `icm serve --compact` (opencode MCP) was auto-storing **every agent tool call's raw output** as a memory, namespaced by cwd-derived topic (`context-Dev_Lab`). Proven live: merely reading a config file created a memory entry. `auto_extract=false` only disabled the *synchronous LLM summary path* — the raw capture gate is `[extraction] enabled / extract_every / store_raw` (binary source: `if (toolCallCount < EXTRACT_EVERY) return`).
+3.  **The Trigger**: `icm` health audit showing 5 topics flagged; store re-bloating 186 → garbage within days of a 986-entry purge.
+4.  **The Scars / Nuance**:
+    *   `icm_memory_store` / `icm store` (explicit MCP path) is SEPARATE and still works — that's the intended way to persist knowledge.
+    *   The running `icm serve` caches config; disable only takes effect after service restart (same restart gotcha as LAB-013).
+    *   This is a **hygiene** fix, not a RAM fix — it stops the *write* disease; the 2GB was never the data (see LAB-013).
+
+### LAB-017: Memory Shield Stack (cgroup Limits + SSH Resilience)
+**Objective**: Contain agent/editor memory hogs inside cgroup fences so swap storms never freeze the desktop or kill SSH — the layered defense proven during the 10:38 AM freeze forensics.
+
+1.  **The One-Liner (drop-ins, persistent across reboot)**:
+    ```bash
+    # opencode-core.service.d/20-memory-limits.conf   + code-server@.service.d/20-memory-limits.conf
+    [Service]
+    MemoryHigh=3.0G    # opencode: 1.5G for code-server
+    MemoryMax=3.5G     # opencode: 2.0G for code-server
+    MemorySwapMax=3.0G # opencode: 1.0G for code-server
+    ```
+    Live-apply without restart: `sudo systemctl set-property --runtime <unit> MemoryMax=... MemoryHigh=... MemorySwapMax=...`
+2.  **The Core Logic (the three layers that keep SSH alive)**:
+    *   **`ssh.socket` socket-activation** — sshd spawns only per-connection; tiny footprint; the listener is kernel-level and unkillable by OOM.
+    *   **`systemd-oomd`** — on pressure, kills the biggest offenders in systemd-managed cgroups. Points the knife at the whale, not your sshd.
+    *   **cgroup limits on opencode/code-server** — pressure stays local to the slice instead of consuming the whole box.
+3.  **The Trigger**: `memory.swap.current` near cap; mouse/RDP freezing under swap reclaim (the original 10:38 AM symptom).
+4.  **The Scars**:
+    *   VS Code's heavy processes are per-connection (`.vscode-server`, `--enable-remote-auto-shutdown`) — the persistent service to cap is `code-server@jallred.service`, not the per-session children.
+    *   `code-tunnel.service` appears enabled in `list-unit-files` but has **no unit file** — a phantom; the real service is the code-server template.
+    *   Auth: `KbdInteractiveAuthentication no`, no PasswordAuthentication override = key-only, root off — the reason the SSH lifeline is safe to rely on.
+
+### LAB-018: claude-mem Removal & Memory Manager Standardization
+**Objective**: Canonicalize the AGY sprint-49 forensics finding — the root cause of the "OpenCode eats 4GB" incidents was the claude-mem plugin, and the durable fix was removal + ICM standardization.
+
+1.  **The One-Liner**: Remove `claude-mem` from `~/.config/opencode/opencode.json`; kill orphan Bun/Python 3.13 processes; designate **ICM (`icm`)** as the sole compiled memory manager.
+2.  **The Core Logic**: claude-mem launched duplicate Python 3.13 `chroma-mcp` vector servers AND Bun worker processes allocating **73GB virtual address space on every tool output event**. Physical RAM hit 95%, triggering swap-reclaim on `/dev/sda5` and freezing RDP/gnome-shell *before* the hard OOM threshold. Post-removal OpenCode footprint: ~4GB → 74MB.
+3.  **The Trigger**: The 10:38 AM freeze + recurring 2GB+ RSS incidents in sprints 47-49, all traced to claude-mem's per-tool-output worker spawning.
+4.  **The Scars**:
+    *   `delegate.py` now auto-starts `opencode-core.service` before dispatch (scale-to-zero left it dead, causing `[SESSION_FAILED] Connection refused` on port 4097).
+    *   Full forensics live in `SPRINT_PLAN_SPR_49_0.md` §4 — this entry is the cross-reference canonicalization.
+
+
+
 
 
 
