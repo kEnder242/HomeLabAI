@@ -130,7 +130,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     except Exception:
         pass
 
-    session_title = f"Sprint 48 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
+    session_title = f"Sprint 49 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
 
     # 2. Create a fresh session via REST API on port 4097 with target agent & title
     try:
