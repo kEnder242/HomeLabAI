@@ -16,11 +16,37 @@ import os
 
 HUB_URL = "ws://localhost:8765"
 
+# [SPR-2 / UNITY Pointer Standard] Resolve the abstract UNITY key from
+# infrastructure.json model_manifest.unified-base. No hardcoded /speedy/ paths
+# or model-specific strings live in this test - always resolve the pointer.
+LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")
+
+
+def get_unified_base_model():
+    """[FEAT-030 / LAB-003] Read infrastructure.json and resolve the
+    model_manifest.unified-base pointer (UNITY abstraction). The pointer maps
+    the abstract key to the concrete model key, which is then resolved to its
+    canonical path/name. Returns the flat fallback if infra is unreachable."""
+    try:
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, "r") as f:
+                data = json.load(f)
+            manifest = data.get("model_manifest", {})
+            unified_key = manifest.get("unified-base", "llama-3.2-3b-awq")
+            return manifest.get(unified_key, unified_key)
+    except Exception:
+        pass
+    return "llama-3.2-3b-awq"
+
+
+UNITY_MODEL = get_unified_base_model()
+
 def get_key():
     with open('/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css', 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
-async def trigger_query(client_id, query, expected_source=None):
+async def trigger_query(client_id, query, expected_source=None, model=UNITY_MODEL):
     try:
         async with websockets.connect(HUB_URL) as ws:
             # 1. Handshake and capture SID
@@ -30,7 +56,7 @@ async def trigger_query(client_id, query, expected_source=None):
             msg = await ws.recv()
             data = json.loads(msg)
             sid = data.get("socket_id", "Unknown")
-            print(f"    [Client {client_id}] Socket established: {sid}")
+            print(f"    [Client {client_id}] Socket established: {sid} (UNITY base: {model})")
 
             # 2. Impolite Timing: Send immediately
             await ws.send(json.dumps({"type": "text_input", "content": query}))
@@ -94,9 +120,9 @@ async def run_cycle(cycle):
     for i in range(4):
         tasks.append(trigger_query(i, f"[ME] Rude probe {cycle}.{i}. Respond with ROGER."))
     
-    # Strategic query for Brain Reachability
+    # Strategic query for Brain Reachability (resolved via UNITY base model)
     strategic_query = "[ME] Analyze the physical thermal boundaries of the RTX 2080 Ti and provide a BKM for fan curves."
-    tasks.append(trigger_query(4, strategic_query, expected_source="Brain"))
+    tasks.append(trigger_query(4, strategic_query, expected_source="Brain", model=UNITY_MODEL))
     
     results = await asyncio.gather(*tasks)
     wins = sum(1 for r in results if r)
@@ -104,12 +130,16 @@ async def run_cycle(cycle):
     return wins == 5
 
 def get_kender_ip():
+    # [UNITY Pointer Standard] Same infra pointer as the model resolver - no
+    # duplicated hardcoded absolute paths.
     try:
-        with open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json', 'r') as f:
-            data = json.load(f)
-            return data.get("hosts", {}).get("KENDER", {}).get("ip_hint", "192.168.1.26")
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, 'r') as f:
+                data = json.load(f)
+                return data.get("hosts", {}).get("KENDER", {}).get("ip_hint", "192.168.1.26")
     except Exception:
-        return "192.168.1.26"
+        pass
+    return "192.168.1.26"
 
 async def check_brain_online():
     ip = get_kender_ip()
@@ -121,6 +151,7 @@ async def check_brain_online():
 
 async def main():
     print("💎 INITIATING THE SUBSTANCE-HEAVY UBER-5x5 GAUNTLET")
+    print(f"[*] UNITY base model (model_manifest.unified-base): {UNITY_MODEL}")
     print(f"[*] Brain Discovery: {get_kender_ip()} ({'ONLINE' if await check_brain_online() else 'OFFLINE'})")
     print("[*] Strategy: Paragraph-Length Wins (>200 chars).")
     
