@@ -342,14 +342,24 @@
     *   Auth: `KbdInteractiveAuthentication no`, no PasswordAuthentication override = key-only, root off — the reason the SSH lifeline is safe to rely on.
 
 ### LAB-018: claude-mem Removal & Memory Manager Standardization
-**Objective**: Canonicalize the AGY sprint-49 forensics finding — the root cause of the "OpenCode eats 4GB" incidents was the claude-mem plugin, and the durable fix was removal + ICM standardization.
+**Objective**: Canonize the record from sprint-49 forensics — the root cause of the "OpenCode eats 4GB" / recurring freeze incidents was the claude-mem plugin, and the durable fix is removal + ICM standardization. Documented here as the actual reproduction commands, including the two install locations.
 
-1.  **The One-Liner**: Remove `claude-mem` from `~/.config/opencode/opencode.json`; kill orphan Bun/Python 3.13 processes; designate **ICM (`icm`)** as the sole compiled memory manager.
-2.  **The Core Logic**: claude-mem launched duplicate Python 3.13 `chroma-mcp` vector servers AND Bun worker processes allocating **73GB virtual address space on every tool output event**. Physical RAM hit 95%, triggering swap-reclaim on `/dev/sda5` and freezing RDP/gnome-shell *before* the hard OOM threshold. Post-removal OpenCode footprint: ~4GB → 74MB.
-3.  **The Trigger**: The 10:38 AM freeze + recurring 2GB+ RSS incidents in sprints 47-49, all traced to claude-mem's per-tool-output worker spawning.
-4.  **The Scars**:
-    *   `delegate.py` now auto-starts `opencode-core.service` before dispatch (scale-to-zero left it dead, causing `[SESSION_FAILED] Connection refused` on port 4097).
-    *   Full forensics live in `SPRINT_PLAN_SPR_49_0.md` §4 — this entry is the cross-reference canonicalization.
+1.  **The One-Liner (the actual kill commands)**:
+    ```bash
+    rm -rf ~/.config/opencode/plugins/*claude-mem*   # opencode plugin glob
+    rm -rf ~/.opencode/plugins/ ~/Dev_Lab/.opencode/plugins/
+    rm -rf ~/.claude-mem/ ~/.cache/opencode/node_modules/
+    pkill -f "claude-mem"
+    ```
+    Designate **ICM (`icm`)** as the sole compiled memory manager.
+2.  **The Core Logic / TWO install locations (the gotcha)**: claude-mem registers as BOTH an opencode plugin AND a Claude-Code plugin. The brute-force commands clear `~/.config/opencode/plugins/`, `.opencode/plugins/`, and the node_modules cache — **but a second install lives in `~/.claude/plugins/cache/thedotmack/claude-mem/`**, registered in `~/.claude/settings.json`. If that stays, its daemon (`worker-service.cjs --daemon` under bun) respawns the `chroma-mcp` bun+uv+python tree and it survives the opencode-side purge — still resident eating RAM. **Check via `pgrep -af claude-mem`**; if the `~/.claude/plugins/cache` daemon is present, `rm -rf ~/.claude/plugins/cache/thedotmack/claude-mem` + remove its entry from `~/.claude/settings.json` and restart the client.
+3.  **Why it mattered**: claude-mem launched duplicate Python 3.13 `chroma-mcp` vector servers AND Bun workers allocating **73GB virtual address space per tool output event**. Physical RAM hit 95%, triggering swap-reclaim on `/dev/sda5` and freezing RDP/gnome-shell *before* the hard OOM threshold. Post-removal OpenCode footprint: ~4GB → 74MB.
+4.  **The Trigger**: The 10:38 AM freeze + recurring 2GB+ RSS in sprints 47-49, traced to claude-mem's per-tool-output worker spawning.
+5.  **The Scars**:
+    *   Remove BOTH registrations (opencode plugin + `~/.claude/settings.json` Claude plugin), not just the opencode dirs.
+    *   Killing the plugin while the daemon is already running requires an explicit `pkill`, `rm -rf` of the cache dir alone doesn't stop the live tree.
+    *   `delegate.py` auto-starts `opencode-core.service` before dispatch (scale-to-zero left it down → `[SESSION_FAILED] Connection refused` on 4097).
+    *   Full forensics in `SPRINT_PLAN_SPR_49_0.md` §4 — entry is the cross-reference canonicalization.
 
 
 
