@@ -173,6 +173,9 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
 - Sprint Plan Reference: Story {story_num} ({title})
 - Target Files: {file_path}
 
+[SWARM DELEGATION MANDATE]
+You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent (such as sisyphus-junior or general).
+
 [FUNCTIONAL REQUIREMENTS]
 {details}
 
