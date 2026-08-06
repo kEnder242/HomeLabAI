@@ -20,63 +20,27 @@ Keys: ~/.local/share/opencode/auth.json  (google, groq, cohere, mistral, 4090)
 ## The Trigger
 OpenAgent spawns subagents → routes by role/category → model string `provider/model` → resolved against embedded registry → key pulled from auth.json → on 503/429/401, falls through `fallback_models` chain.
 
-## Current Swarm (2026-08-03, google-free hot path)
+## Current Swarm (Verified 2026-08-06)
 
-Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits).
-
-| Agent | Role | Model | Fallback |
+| Agent | Role | Primary Model | Fallback Models |
 |---|---|---|---|
-| prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
-| sisyphus | orchestrator (me) | deepseek-v4-flash-free | groq 70b |
-| atlas | executor | groq 70b | cohere/command-a-plus |
-| hephaestus | executor | groq 70b | deepseek |
-| sisyphus-junior | delegate | local qwen3:14b (4090) | — |
-| oracle | review | deepseek-free | groq 70b |
-| momus | plan critic | groq 70b | cohere |
-| metis | pre-plan | groq 70b | cohere→deepseek |
-| librarian/explore | research | deepseek-free | groq 70b |
-| multimodal-looker | vision | groq 70b | cohere/command-a-vision |
-| general | — | local qwen3:14b | — |
+| **prometheus** | strategic planner | `opencode/deepseek-v4-flash-free` | `groq/llama-3.3-70b-versatile`, `cohere/command-a-plus-05-2026` |
+| **sisyphus** | lead orchestrator | `opencode/deepseek-v4-flash-free` | `groq/llama-3.3-70b-versatile` |
+| **atlas** | todo orchestrator | `cohere/command-a-plus-05-2026` | `groq/llama-3.3-70b-versatile` |
+| **hephaestus** | fast triage / repair | `groq/llama-3.3-70b-versatile` | `opencode/deepseek-v4-flash-free` |
+| **sisyphus-junior** | ground worker (KENDER) | `my-windows-4090/qwen3:14b` | `my-windows-4090/qwen3:14b` |
+| **oracle** | deep RAG architect | `opencode/deepseek-v4-flash-free` | `groq/llama-3.3-70b-versatile` |
+| **momus** | pre-commit diff critic | `groq/llama-3.3-70b-versatile` | `cohere/command-a-plus-05-2026` |
+| **metis** | task step refiner | `groq/llama-3.3-70b-versatile` | `cohere/command-a-plus-05-2026`, `opencode/deepseek-v4-flash-free` |
+| **librarian** | doc search | `opencode/deepseek-v4-flash-free` | `groq/llama-3.3-70b-versatile` |
+| **explore** | repo grep / search | `opencode/deepseek-v4-flash-free` | `groq/llama-3.3-70b-versatile` |
+| **multimodal-looker** | UI vision inspector | `cohere/command-a-vision-07-2025` | `cohere/command-a-vision-07-2025` |
+| **general** | local execution worker | `my-windows-4090/qwen3:14b` | `my-windows-4090/qwen3:14b` |
 
-Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
-
-Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
-
-| Agent | Role | Model | Fallback |
-|---|---|---|---|
-| prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
-| sisyphus | orchestrator (me) | deepseek-v4-flash-free | groq 70b |
-| atlas | executor | groq 70b | cohere/command-a-plus |
-| hephaestus | executor | groq 70b | deepseek |
-| sisyphus-junior | delegate | local qwen3:14b (4090) | — |
-| oracle | review | deepseek-free | groq 70b |
-| momus | plan critic | groq 70b | cohere |
-| metis | pre-plan | groq 70b | cohere→deepseek |
-| librarian/explore | research | deepseek-free | groq 70b |
-| multimodal-looker | vision | groq 70b | cohere/command-a-vision |
-| general | — | local qwen3:14b | — |
-
-Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
-
-Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
-
-| Agent | Role | Model | Fallback |
-|---|---|---|---|
-| prometheus | planner | groq/llama-3.3-70b-versatile | cohere/command-a-plus |
-| sisyphus | orchestrator (me) | deepseek-v4-flash-free | groq 70b |
-| atlas | executor | groq 70b | cohere/command-a-plus |
-| hephaestus | executor | groq 70b | deepseek |
-| sisyphus-junior | delegate | local qwen3:14b (4090) | — |
-| oracle | review | deepseek-free | groq 70b |
-| momus | plan critic | groq 70b | cohere |
-| metis | pre-plan | groq 70b | cohere→deepseek |
-| librarian/explore | research | deepseek-free | groq 70b |
-| multimodal-looker | vision | groq 70b | cohere/command-a-vision |
-| general | — | local qwen3:14b | — |
-
-Default (un-routed) delegation: opencode/deepseek-v4-flash-free (changed 2026-08-03 from my-windows-4090/qwen3:14b — avoids KENDERER 5-min unload cold start on simple edits)
-
-Categories (task()): ultrabrain/deep/unspecified-high/visual → groq 70b; artistry/writing → cohere; quick/unspecified-low → deepseek-free.
+**Category Routing (`task()`):**
+- `ultrabrain`, `deep`, `unspecified-high`: `opencode/deepseek-v4-flash-free` (prevents Groq 12k TPM rate-limits on heavy prompt contexts).
+- `quick`: `groq/llama-3.3-70b-versatile` (sub-second 300 tok/s execution for small sub-agent fixes).
+- `artistry`, `writing`: `cohere/command-a-plus-05-2026`.
 
 ## The Scars (why we're here — DO NOT REPEAT)
 
