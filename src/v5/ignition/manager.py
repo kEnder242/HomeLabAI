@@ -273,8 +273,14 @@ class IgnitionManager:
         self.status.recovery_in_progress = self.recovery_in_progress
 
         try:
+            payload = self.status.to_dict()
+            try:
+                from infra.live_telemetry import merge_live_benchmarks
+                merge_live_benchmarks(payload)
+            except Exception:
+                pass
             with open(STATUS_JSON, "w") as f:
-                json.dump(self.status.to_dict(), f, indent=2)
+                json.dump(payload, f, indent=2)
             
             # [Task 6.2] Latency: Async status push
             def _push_update():
