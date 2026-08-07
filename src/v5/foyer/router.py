@@ -157,8 +157,10 @@ class FoyerRouter:
                     from infra.forensic_ledger import ledger
                     if m_type in ["chat", "crosstalk"]:
                         ledger.record_thought(m_source, m_content, role=m_type.upper())
+                except (ImportError, FileNotFoundError):
+                    logger.warning("[FOYER] forensic ledger unavailable", exc_info=True)
                 except Exception:
-                    pass
+                    logger.warning("[FOYER] forensic ledger record failed", exc_info=True)
 
                 message_dict["type"] = m_type
                 message_dict["brain"] = m_content
@@ -215,7 +217,7 @@ class FoyerRouter:
             try:
                 await task
             except (asyncio.CancelledError, Exception):
-                pass
+                logger.warning("[FOYER] task cancellation error", exc_info=True)
 
     def get_vram_status(self, force=False):
         return self.status.vocal
@@ -595,7 +597,7 @@ class FoyerRouter:
                         try:
                             samples.append(json.loads(line))
                         except Exception:
-                            pass
+                            logger.warning("[FOYER] failed to parse sample JSON line", exc_info=True)
             return web.json_response({"samples": samples, "count": len(samples)})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -622,7 +624,7 @@ class FoyerRouter:
                                 continue
                             runs.append(r)
                         except Exception:
-                            pass
+                            logger.warning("[FOYER] failed to parse benchmark run line", exc_info=True)
 
             # Per-model aggregates
             from collections import defaultdict
@@ -974,8 +976,9 @@ class FoyerRouter:
                     })
                     shutdown_ev = asyncio.Event()
                     asyncio.create_task(self.cognitive.process_query(f"[ME] {query}", shutdown_event=shutdown_ev, request_id=request_id))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[FOYER] resident wake failed", exc_info=True)
+                await self.broadcast({"type": "error", "message": "Wake failed: " + str(e)})
             await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
