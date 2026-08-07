@@ -48,17 +48,26 @@ def get_key():
 
 async def trigger_query(client_id, query, expected_source=None, model=UNITY_MODEL):
     try:
+        # Fetch session_token from GET /status for FEAT-426 handshake auth
+        token = ""
+        try:
+            resp = requests.get("http://127.0.0.1:8765/status", timeout=5)
+            if resp.status_code == 200:
+                token = resp.json().get("session_token", "")
+        except Exception:
+            token = get_key()
+
         async with websockets.connect(HUB_URL) as ws:
-            # 1. Handshake and capture SID
-            await ws.send(json.dumps({"type": "handshake", "client": "intercom", "version": "3.8.1"}))
+            # 1. First frame MUST be handshake with valid lab_key token (FEAT-426)
+            await ws.send(json.dumps({"type": "handshake", "lab_key": token, "client": "intercom", "version": "3.8.1"}))
             
-            # Wait for initial status to get SID
-            msg = await ws.recv()
-            data = json.loads(msg)
-            sid = data.get("socket_id", "Unknown")
+            # 2. Server replies with status ack containing socket_id
+            init_msg = await ws.recv()
+            init_data = json.loads(init_msg)
+            sid = init_data.get("socket_id", "Unknown")
             print(f"    [Client {client_id}] Socket established: {sid} (UNITY base: {model})")
 
-            # 2. Impolite Timing: Send immediately
+            # 3. Impolite Timing: Send immediately
             await ws.send(json.dumps({"type": "text_input", "content": query}))
             
             start_t = time.time()
