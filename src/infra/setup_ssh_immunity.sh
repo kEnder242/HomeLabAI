@@ -10,29 +10,39 @@ set -euo pipefail
 #
 # Idempotent: safe to re-run; the drop-in is overwritten each time.
 
-OVERRIDE_DIR="/etc/systemd/system/sshd.service.d"
+# Determine active service name (ssh on Debian/Ubuntu, sshd on RHEL/Fedora)
+SERVICE_NAME="ssh"
+if systemctl list-unit-files | grep -q "sshd.service"; then
+    SERVICE_NAME="sshd"
+fi
+
+OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
 OVERRIDE_FILE="${OVERRIDE_DIR}/override.conf"
 
+# Also write sshd alias directory if different
+ALT_DIR="/etc/systemd/system/sshd.service.d"
+if [[ "${SERVICE_NAME}" == "ssh" ]]; then
+    ALT_DIR="/etc/systemd/system/sshd.service.d"
+else
+    ALT_DIR="/etc/systemd/system/ssh.service.d"
+fi
+
 # (1) Write the drop-in (idempotent overwrite).
-sudo mkdir -p "${OVERRIDE_DIR}"
-sudo tee "${OVERRIDE_FILE}" >/dev/null <<'EOF'
+sudo mkdir -p "${OVERRIDE_DIR}" "${ALT_DIR}"
+sudo tee "${OVERRIDE_FILE}" "${ALT_DIR}/override.conf" >/dev/null <<'EOF'
 [Service]
 OOMScoreAdjust=-1000
 MemoryMin=256M
 CPUSchedulingPolicy=rr
 EOF
 
-# (2) Best-effort daemon-reload so systemd picks up the new drop-in.
-#     NOTE: a full `sudo systemctl restart sshd` may still be needed for the
-#     new OOM/CPU settings to apply to the running sshd process — restart it
-#     at a safe time (it will drop active SSH sessions).
-if ! sudo systemctl daemon-reload 2>/dev/null; then
-    echo "warning: systemctl daemon-reload failed (best-effort; run 'sudo systemctl daemon-reload' manually)" >&2
-fi
+# (2) Daemon-reload and restart active service
+sudo systemctl daemon-reload || true
+sudo systemctl restart "${SERVICE_NAME}" || true
 
 # (3) Verify the effective values.
-if ! actual="$(systemctl show sshd -p OOMScoreAdjust,MemoryMin,CPUSchedulingPolicy)"; then
-    echo "FAIL: could not query systemd for the sshd unit" >&2
+if ! actual="$(systemctl show "${SERVICE_NAME}" -p OOMScoreAdjust,MemoryMin,CPUSchedulingPolicy)"; then
+    echo "FAIL: could not query systemd for the ${SERVICE_NAME} unit" >&2
     exit 1
 fi
 
@@ -60,11 +70,11 @@ while IFS= read -r line; do
             fi
             ;;
         CPUSchedulingPolicy)
-            if [[ "${value}" != "rr" ]]; then
-                echo "MISMATCH: CPUSchedulingPolicy expected 'rr' but got '${value}'" >&2
+            if [[ "${value}" != "rr" && "${value}" != "2" ]]; then
+                echo "MISMATCH: CPUSchedulingPolicy expected 'rr' or '2' but got '${value}'" >&2
                 ok=0
             else
-                echo "OK: CPUSchedulingPolicy=${value}"
+                echo "OK: CPUSchedulingPolicy=${value} (SCHED_RR)"
             fi
             ;;
     esac
