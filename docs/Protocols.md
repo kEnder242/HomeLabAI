@@ -330,6 +330,8 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
     *   **Sisyphus-Junior (Ground Worker)** [`my-windows-4090/qwen3:14b`]: Executes physical code modifications, line-by-line diffs, and unit test iterations on Node KENDER. Native `tool_calls` enabled.
 2.  **REST Socket Architecture**:
     *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
+    *   Pre-flight health probes automatically issue `DELETE /session/<temp_id>` to purge temporary probe sessions, keeping the OpenCode web UI dashboard clean with zero empty `"New session"` entries.
+    *   Session titles are formatted as `Sprint 50 Story <N> (Run <timestamp>) — [ATLAS] <Title>`.
     *   Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
 
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
