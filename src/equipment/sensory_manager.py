@@ -97,22 +97,21 @@ class SensoryManager:
 
     def process_binary_chunk(self, data):
         """Processes raw PCM audio chunks from WebSocket."""
-        if not self.ear:
-            return None
-
         chunk = np.frombuffer(data, dtype=np.int16)
         self.audio_buffer = np.concatenate((self.audio_buffer, chunk))
-        
+
         # Periodic signal detection log (5% chance if signal is high)
         if np.abs(chunk).max() > 500 and random.random() < 0.05:
             logging.info("[AUDIO] Signal detected.")
-            
+
         if len(self.audio_buffer) >= 24000:
-            text = self.ear.process_audio(self.audio_buffer[:24000])
-            self.audio_buffer = self.audio_buffer[16000:] # Sliding window
-            if text:
-                self.last_activity = time.time()
-                return text
+            window = self.audio_buffer[:24000]
+            self.audio_buffer = self.audio_buffer[16000:]  # Sliding window (runs unconditionally)
+            if self.ear:
+                text = self.ear.process_audio(window)
+                if text:
+                    self.last_activity = time.time()
+                    return text
         return None
 
     def check_turn_end(self):
