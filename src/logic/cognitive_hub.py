@@ -923,6 +923,14 @@ class CognitiveHub:
                 f"[PAGER_ACTIVITY]:\n{pager_activity}\n\n"
                 f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
             )
+            # [FEAT-444] Cap transient file-drop context before prompt embedding
+            context = self._truncate_to_tokens(
+                context,
+                doc_id="|".join(
+                    os.path.basename(p)
+                    for p in (dialogue_path, recruiter_path, status_path, pager_path)
+                ),
+            )
             behavioral_guidance = (
                 "[MODE]: STANDUP (Synthesize a high-density, professional summary of recent nightly dialogues "
                 "and subconscious dreams consolidated during nightly runs. Explain what nodes debated, "
@@ -1182,7 +1190,12 @@ class CognitiveHub:
         """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
         if not raw_context or "brain" not in self.residents:
             return raw_context
-            
+
+        # [FEAT-444] Cap raw context before it is embedded into the brief prompt
+        raw_context = self._truncate_to_tokens(
+            raw_context, doc_id=self._extract_doc_id(raw_context)
+        )
+
         logging.info("[HUB] Context Precision: Distilling raw RAG into Strategic Brief...")
         try:
             prompt = (
@@ -1222,6 +1235,55 @@ class CognitiveHub:
             logging.warning(f"[HUB] Failed to list tools for {node_id}: {e}")
             return []
 
+    def _truncate_to_tokens(self, text, max_tokens=2500, doc_id=""):
+        """[FEAT-444] vLLM context stability: cap assembled context at ~max_tokens.
+
+        Tokens are approximated as chars/4 (max_chars = max_tokens * 4). When the
+        budget is exceeded, keep the first 40% and last 60% of the char budget,
+        separated by a `[MORE: <doc_id>...]` link note. No-op under the cap.
+        """
+        if not text:
+            return text
+        max_chars = max_tokens * 4
+        if len(text) <= max_chars:
+            return text
+        link = f"[MORE: {doc_id}...]" if doc_id else "[MORE: ...]"
+        head_budget = int(max_chars * 0.4)
+        tail_budget = max_chars - head_budget
+        # Reserve room for the link note + "\n\n" separators so the result never exceeds max_chars
+        overhead = len(link) + 4
+        if tail_budget > overhead:
+            tail_budget -= overhead
+        else:
+            tail_budget = 0
+            head_budget = max(0, max_chars - overhead)
+        head = text[:head_budget].rstrip()
+        tail = text[-tail_budget:].lstrip() if tail_budget > 0 else ""
+        if link in head:
+            # Link already carried by the head; do not duplicate it
+            truncated = f"{head}\n\n{tail}"
+        else:
+            truncated = f"{head}\n\n{link}\n\n{tail}"
+        if len(truncated) > max_chars:
+            truncated = truncated[:max_chars]
+        logging.info(
+            f"[HUB] Context truncated to {max_tokens} tokens "
+            f"({len(text)} -> {len(truncated)} chars) for vLLM stability."
+        )
+        return truncated
+
+    def _extract_doc_id(self, text):
+        """[FEAT-444] Pull the first source doc id from RAG context for link notes."""
+        if not text:
+            return ""
+        src_match = re.search(r'"sources"\s*:\s*\["([^"]+)"', text)
+        if src_match:
+            return src_match.group(1)
+        src_match = re.search(r"Source:\s*([^\s\]]+)", text)
+        if src_match:
+            return src_match.group(1)
+        return ""
+
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
         """[FEAT-437/442] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
         from the unified pre-reflection pass into the archive context engine, so retrieval
@@ -1240,6 +1302,10 @@ class CognitiveHub:
             if hasattr(res, 'content') and len(res.content) > 0:
                 result_text = res.content[0].text
                 if result_text:
+                    # [FEAT-444] Cap RAG context before it enters any prompt
+                    result_text = self._truncate_to_tokens(
+                        result_text, doc_id=self._extract_doc_id(result_text)
+                    )
                     self._rag_cache[cache_key] = result_text
                     if len(self._rag_cache) > 128:
                         self._rag_cache.pop(next(iter(self._rag_cache)))
