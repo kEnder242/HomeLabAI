@@ -92,7 +92,7 @@ class CognitiveHub:
         except Exception:
             self.boot_commit = "unknown"
         self.boot_timestamp = int(time.time())
-        from collections import defaultdict
+        from collections import defaultdict, deque
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
@@ -120,7 +120,7 @@ class CognitiveHub:
         self._rag_cache = {}
         
         # [Task 6.3] Hygiene: Process Tracking
-        self.processed_ids = set()
+        self.processed_ids = deque(maxlen=1000)
         self.request_lock = asyncio.Lock()
         
         # [FEAT-350] Gibberish Guard: Stable Baseline
@@ -626,7 +626,7 @@ class CognitiveHub:
             if request_id in self.processed_ids:
                 logging.warning(f"[HUB_GUARD] REJECTED redundant request: {request_id}")
                 return
-            self.processed_ids.add(request_id)
+            self.processed_ids.append(request_id)
             logging.info(f"[HUB_GUARD] ACCEPTED request: {request_id}")
         
         # [Task 9.7] Direct Intent Overrides
