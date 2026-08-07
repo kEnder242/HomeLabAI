@@ -864,6 +864,8 @@ class FoyerRouter:
         
         # [Task 14.2] Isolated buffers by (request_id, source)
         pending_chunks = defaultdict(str)
+        chunk_timestamps = {}
+        _judge_semaphore = asyncio.Semaphore(2)
 
         while True:
             try:
@@ -875,6 +877,7 @@ class FoyerRouter:
                 request_id = data.get("request_id", "default")
                 
                 buf_key = (request_id, source)
+                chunk_timestamps[buf_key] = time.time()
 
                 if token:
                     pending_chunks[buf_key] += token
@@ -898,49 +901,59 @@ class FoyerRouter:
                             "request_id": request_id
                         })
 
-                        # [LAB-010] Fire-and-forget async M5 Air judge evaluation.
-                        # Non-blocking: never delays streaming. Result logged only.
+                        # [LAB-010/LAB-096] Judge Evaluation with Semaphore (max 2 concurrent)
                         if _mlx_judge is not None:
                             turn_trace = f"SOURCE:{source}\n{content}"
                             context_window = f"request_id:{request_id}"
                             async def _run_mlx_judge(tt=turn_trace, cw=context_window, rid=request_id, src=source):
                                 try:
-                                    result = await _mlx_judge.evaluate_256k_context(tt, cw)
-                                    score = result.get("score", 0)
-                                    status = result.get("status", "UNKNOWN")
-                                    logger.info(
-                                        f"[LAB-010][M5 JUDGE] request={rid} source={src} "
-                                        f"status={status} score={score}"
-                                    )
-                                    # [FEAT-444] Write to judge_backpressure.jsonl
-                                    try:
-                                        entry = {
-                                            "timestamp": time.time(),
-                                            "iso_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-                                            "request_id": rid,
-                                            "source": src,
-                                            "turn_trace_length": len(tt),
-                                            "context_window_length": len(cw),
-                                            "score": score,
-                                            "status": status,
-                                            "critique": result.get("critique", ""),
-                                            "route_feedback": result.get("route_feedback", {}),
-                                            "refusal": result.get("refusal", False),
-                                            "refusal_reason": result.get("reason", ""),
-                                            "context_eval_length": result.get("context_eval_length", 0),
-                                            "factual_drift_detected": result.get("factual_drift_detected", None),
-                                            "style_critique": result.get("style_critique", ""),
-                                        }
-                                        os.makedirs(os.path.dirname(JUDGE_BACKPRESSURE_PATH), exist_ok=True)
-                                        with open(JUDGE_BACKPRESSURE_PATH, "a") as jf:
-                                            jf.write(json.dumps(entry, default=str) + "\n")
-                                    except Exception as write_ex:
-                                        logger.warning(f"[FEAT-444][JUDGE] Backpressure write failed (non-fatal): {write_ex}")
+                                    async with _judge_semaphore:
+                                        result = await _mlx_judge.evaluate_256k_context(tt, cw)
+                                        score = result.get("score", 0)
+                                        status = result.get("status", "UNKNOWN")
+                                        logger.info(
+                                            f"[LAB-010][M5 JUDGE] request={rid} source={src} "
+                                            f"status={status} score={score}"
+                                        )
+                                        # [FEAT-444] Write to judge_backpressure.jsonl
+                                        try:
+                                            entry = {
+                                                "timestamp": time.time(),
+                                                "iso_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+                                                "request_id": rid,
+                                                "source": src,
+                                                "turn_trace_length": len(tt),
+                                                "context_window_length": len(cw),
+                                                "score": score,
+                                                "status": status,
+                                                "critique": result.get("critique", ""),
+                                                "route_feedback": result.get("route_feedback", {}),
+                                                "refusal": result.get("refusal", False),
+                                                "refusal_reason": result.get("reason", ""),
+                                                "context_eval_length": result.get("context_eval_length", 0),
+                                                "factual_drift_detected": result.get("factual_drift_detected", None),
+                                                "style_critique": result.get("style_critique", ""),
+                                            }
+                                            os.makedirs(os.path.dirname(JUDGE_BACKPRESSURE_PATH), exist_ok=True)
+                                            with open(JUDGE_BACKPRESSURE_PATH, "a") as jf:
+                                                jf.write(json.dumps(entry, default=str) + "\n")
+                                        except Exception as write_ex:
+                                            logger.warning(f"[FEAT-444][JUDGE] Backpressure write failed (non-fatal): {write_ex}")
                                 except Exception as je:
                                     logger.warning(f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}")
                             asyncio.create_task(_run_mlx_judge())
 
                         del pending_chunks[buf_key]
+                        if buf_key in chunk_timestamps:
+                            del chunk_timestamps[buf_key]
+
+                # [LAB-095] TTL Sweeper: Clean orphaned pending_chunks keys inactive > 30 seconds
+                now_ts = time.time()
+                stale_keys = [k for k, ts in chunk_timestamps.items() if now_ts - ts > 30]
+                for k in stale_keys:
+                    logger.warning(f"[LAB-095] TTL Purge orphaned waterfall buffer key: {k}")
+                    del pending_chunks[k]
+                    del chunk_timestamps[k]
 
                 self.waterfall_queue.task_done()
 
@@ -958,8 +971,8 @@ class FoyerRouter:
                 
                 # Random character tics
                 if self.status.vocal and random.random() < 0.1:
-                    await self.broadcast({"type": "crosstalk", "brain": random.choice(tics), "brain_source": "Pinky"})
-            await asyncio.sleep(10)
+                    await self.broadcast({"type": "chat", "brain": random.choice(tics), "brain_source": "Pinky", "channel": "chat"})
+            await asyncio.sleep(30)
 
     async def ear_poller_loop(self):
         """[FEAT-259.1] Global Sensory Sentinel."""
@@ -982,11 +995,16 @@ class FoyerRouter:
             await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
-        """[FEAT-266] Periodic Maintenance (Nibbler)."""
+        """[FEAT-266/LAB-096] Periodic Maintenance & Heap Scavenger Loop."""
         logger.info("Scheduled tasks loop active.")
         last_nibble_time = 0
         while True:
             try:
+                # [LAB-096] Heap Scavenger: Periodic garbage collection every 60s
+                collected = gc.collect()
+                if collected > 0:
+                    logger.debug(f"[LAB-096][GC] Scavenger collected {collected} unreachable objects.")
+
                 # 1. Periodic Nibble (Artifact Scanning) - DISABLED for Gauntlet
                 if False and time.time() - last_nibble_time > 600:
                     last_nibble_time = time.time()
