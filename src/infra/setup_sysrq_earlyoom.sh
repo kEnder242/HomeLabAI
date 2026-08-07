@@ -10,7 +10,10 @@ set -euo pipefail
 #                                    (e.g. Alt+SysRq+REISUB reboot, OOM-kill).
 #   - earlyoom sentinel           -> kills the worst OOM offender when available
 #                                    RAM < 5% and available swap < 10%
-#                                    (EARLYOOM_ARGS="--mem 5 --swap 10").
+#                                    (EARLYOOM_ARGS="--mem 5 --swap 10 -N <notifier>").
+#   - Neural Pager hook (-N)      -> earlyoom runs earlyoom_pager_notifier.sh on
+#                                    every kill, exporting EARLYOOM_PID/NAME/MEM/SWAP
+#                                    to log a CRITICAL record to pager_activity.json.
 #
 # BKM Trigger:  OOM freeze / unresponsive host under memory pressure; run during
 #               infra hardening to guarantee a recovery path (SysRq) and an
@@ -55,12 +58,15 @@ fi
 #     EARLYOOM_ARGS flag semantics (earlyoom(1)):
 #       --mem PERCENT   kill when available RAM falls below PERCENT (default 10)
 #       --swap PERCENT  kill when available swap falls below PERCENT (default 10)
+#       -N COMMAND      notify command: run on each kill; earlyoom exports
+#                       EARLYOOM_PID/NAME/MEM/SWAP to it (Neural Pager hook ->
+#                       earlyoom_pager_notifier.sh, logs CRITICAL to the ledger).
 #       --prefer/--avoid: bias which processes are killed (intentionally omitted;
 #                         keep the sentinel simple and distro-agnostic).
 sudo mkdir -p "${EARLYOOM_DROPIN_DIR}"
 sudo tee "${EARLYOOM_DROPIN}" >/dev/null <<'EOF'
 [Service]
-Environment=EARLYOOM_ARGS=--mem 5 --swap 10
+Environment=EARLYOOM_ARGS=--mem 5 --swap 10 -N /home/jallred/Dev_Lab/HomeLabAI/src/infra/earlyoom_pager_notifier.sh
 EOF
 
 # (5) Best-effort daemon-reload + enable + restart so the drop-in applies.
