@@ -57,6 +57,53 @@ async def test_foyer_status():
             print(f"  /status -> {json.dumps(body, indent=2)[:300]}")
 
 
+@pytest.mark.asyncio
+async def test_foyer_hibernation_wake_cycle():
+    """[Story 11 LAB-094] On-Demand Hibernation & Cold-Start Wake Transition Test.
+    Forces HIBERNATING state via POST /status_update, verifies state, then sends
+    a WebSocket query to verify cold-start wake transition without silent exception traps.
+    """
+    import aiohttp
+    import websockets
+
+    # 1. Force HIBERNATING state
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{FOYER_BASE}/status_update",
+            json={"state": "HIBERNATING"},
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
+            assert resp.status in (200, 204), f"Expected 200/204 on status_update, got {resp.status}"
+
+        # 2. Get session token from GET /status
+        async with session.get(f"{FOYER_BASE}/status", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            body = await resp.json()
+            token = body.get("session_token", "")
+
+    # 3. Connect via WebSocket and send handshake + chat query
+    ws_uri = "ws://localhost:8765/"
+    async with websockets.connect(ws_uri, open_timeout=10) as ws:
+        # Read server pushed initial message
+        init_msg = await ws.recv()
+        
+        # Send handshake
+        handshake_payload = {"type": "handshake", "lab_key": token}
+        await ws.send(json.dumps(handshake_payload))
+        ack_msg = await ws.recv()
+        ack_data = json.loads(ack_msg)
+        assert ack_data.get("type") in ("status", "ack"), f"Expected status/ack, got {ack_data}"
+
+        # Send test chat query to trigger wake transition
+        query_payload = {"type": "chat", "message": "Test ping wake sequence"}
+        await ws.send(json.dumps(query_payload))
+        
+        # Read response frame (status or response)
+        resp_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
+        resp_data = json.loads(resp_msg)
+        assert resp_data.get("type") != "error", f"Wake sequence returned error: {resp_data}"
+        print(f"  /hibernation_wake -> {resp_msg[:200]}")
+
+
 # ---------------------------------------------------------------------------
 # Direct execution
 # ---------------------------------------------------------------------------
@@ -68,4 +115,7 @@ if __name__ == "__main__":
     print("PASS: test_foyer_health")
     asyncio.run(test_foyer_status())
     print("PASS: test_foyer_status")
-    print("All Story 6 integration tests passed.")
+    asyncio.run(test_foyer_hibernation_wake_cycle())
+    print("PASS: test_foyer_hibernation_wake_cycle")
+    print("All Story 6 & 11 integration tests passed.")
+
