@@ -251,14 +251,25 @@ Apply code modifications to {file_path} only. Silicon validation and testing wil
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
-    parser.add_argument("--story", required=True, type=int, help="Story number")
-    parser.add_argument("--title", required=True, help="Story title")
-    parser.add_argument("--file", required=True, help="Target output file path")
-    parser.add_argument("--details", required=True, help="Detailed requirements")
+    parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
+    _retro_mode = "--retrospective" in sys.argv
+    parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
+    parser.add_argument("--title", required=not _retro_mode, help="Story title")
+    parser.add_argument("--file", required=not _retro_mode, help="Target output file path")
+    parser.add_argument("--details", required=not _retro_mode, help="Detailed requirements")
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
     args = parser.parse_args()
+
+    if args.retrospective:
+        # [BKM-034 Point 13] Retrospective stage: synthesize DELEGATION_RETROSPECTIVE.md and exit.
+        _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _src_dir not in sys.path:
+            sys.path.insert(0, _src_dir)
+        from infra.delegate_retrospective import run_retrospective
+        run_retrospective()
+        sys.exit(0)
 
     delegate(
         args.story,
