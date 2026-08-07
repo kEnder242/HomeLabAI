@@ -119,7 +119,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
-def delegate(story_num, title, file_path, details, verification, target_dir=None, agent="atlas", max_retries=3):
+def delegate(story_num, title, file_path, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute"):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -128,7 +128,11 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
         target_dir = DEFAULT_TARGET_DIR
     target_dir = os.path.abspath(target_dir)
 
-    log_step(story_num, "START", f"Initiating delegation for '{title}' (file: {file_path})")
+    # Route agent based on mode
+    if mode in ("plan", "investigate"):
+        agent = "prometheus"
+
+    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (file: {file_path})")
 
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
@@ -140,7 +144,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     except Exception:
         pass
 
-    session_title = f"Sprint 50 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
+    session_title = f"Sprint {sprint_num} Story {story_num} (Run {int(time.time())}) — [{mode.upper()}:{agent.upper()}] {title}"
 
     # 2. Create a fresh session via REST API on port 4097 with target agent & title
     try:
@@ -178,13 +182,36 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     wake_web_ui()
     log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
-    agent_name = agent.capitalize()
+    # Build dynamic prompt blueprint based on mode
+    if mode == "plan":
+        mandate_block = """[READ-ONLY PLANNING DIRECTIVE — NO CODE EDITS]
+You are Prometheus (Lead Architect). You MUST NOT edit files, run code modifications, or emit file edit tool calls.
+Inspect the target files and output a structured plan:
+  1. ROOT CAUSE & ARCHITECTURAL IMPACT
+  2. TARGET FILES & EXACT SYMBOL ANCHORS
+  3. PROPOSED FIX OPTIONS (Option A vs Option B with trade-offs)
+  4. VERIFICATION STRATEGY & RISK RATING"""
+        note_block = f"[NOTE] Output the architecture plan in markdown only. Apply ZERO file edits. Execution will be performed in a separate story."
+    elif mode == "investigate":
+        mandate_block = """[READ-ONLY INVESTIGATION DIRECTIVE — NO CODE EDITS]
+You are Prometheus (Lead Investigator). You MUST NOT edit files or run code modifications.
+Inspect tracebacks, logs, and target code files. Output a structured diagnostic report:
+  1. ERROR TRACEBACK AUDIT
+  2. REPRODUCTION STEPS
+  3. IDENTIFIED BOTTLENECK / RACE CONDITION
+  4. RECOMMENDED REMEDIATION"""
+        note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
+    else:
+        mandate_block = """[SWARM DELEGATION MANDATE]
+You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent (such as sisyphus-junior or general)."""
+        note_block = f"[NOTE] Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
+
     prompt = f"""[CONTEXT & TARGET SPECIFICATION]
 - Sprint Plan Reference: Story {story_num} ({title})
 - Target Files: {file_path}
+- Delegation Mode: {mode.upper()}
 
-[SWARM DELEGATION MANDATE]
-You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent (such as sisyphus-junior or general).
+{mandate_block}
 
 [FUNCTIONAL REQUIREMENTS]
 {details}
@@ -192,8 +219,7 @@ You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and e
 [HANDOVER REFLECTION]
 As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 
-[NOTE]
-Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."""
+{note_block}"""
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     msg_payload = json.dumps({
@@ -241,7 +267,7 @@ Apply code modifications to {file_path} only. Silicon validation and testing wil
         if post_result is not None:
             finish = post_result.get("info", {}).get("finish", "unknown")
             tokens = post_result.get("info", {}).get("tokens", {})
-            log_step(story_num, "COMPLETE", f"Story {story_num} dispatch complete in {duration:.1f}s. finish={finish} tokens={tokens}")
+            log_step(story_num, "COMPLETE", f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}")
             log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
             return
 
@@ -266,10 +292,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
     parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
     _retro_mode = "--retrospective" in sys.argv
+    parser.add_argument("--sprint", required=not _retro_mode, type=int, default=50, help="Sprint number (e.g. 50)")
     parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
     parser.add_argument("--title", required=not _retro_mode, help="Story title")
     parser.add_argument("--file", required=not _retro_mode, help="Target output file path")
     parser.add_argument("--details", required=not _retro_mode, help="Detailed requirements")
+    parser.add_argument("--mode", choices=["execute", "plan", "investigate"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), or investigate (read-only diagnostic)")
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
@@ -290,7 +318,9 @@ if __name__ == "__main__":
         args.file,
         args.details,
         args.verification,
+        sprint_num=args.sprint,
         target_dir=args.dir,
         agent="atlas",
-        max_retries=args.retries
+        max_retries=args.retries,
+        mode=args.mode
     )
