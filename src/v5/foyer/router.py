@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ import uuid
 import random
 import aiohttp
 from aiohttp import web
+import numpy as np
 import sys
 import subprocess
 
@@ -771,6 +773,15 @@ class FoyerRouter:
             if not self.connected_clients and self.mode == "DEBUG_BRAIN":
                 logger.info(f"[FOYER] No clients connected. Starting {self.afk_timeout}s idle shutdown timer.")
                 self.disconnect_timer = asyncio.create_task(self.delayed_shutdown(self.afk_timeout))
+
+            # Disconnect memory reclaim: flush audio ring-buffer and force GC.
+            # Defensive — a failure here must never break the disconnect/timer path.
+            try:
+                self.sensory.audio_buffer = np.zeros(0, dtype=np.int16)
+                gc.collect()
+                logger.info("[FOYER] Disconnect cleanup: audio ring-buffer flushed and gc.collect() invoked.")
+            except Exception as exc:
+                logger.warning(f"[FOYER] Disconnect cleanup failed (non-blocking): {exc}")
             
         return ws
 
