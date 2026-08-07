@@ -79,6 +79,16 @@ def check_cloud_quota(provider="opencode"):
             session_id = data.get("id")
             if session_id:
                 print(f"[+] OpenCode core engine listening on port {OPENCODE_REST_PORT}. Temp session: {session_id}", flush=True)
+                # [CLEANUP] Purge temporary probe session so it does not leave an empty "New session" entry in OpenCode dashboard
+                try:
+                    del_req = urllib.request.Request(
+                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
+                        method="DELETE"
+                    )
+                    with urllib.request.urlopen(del_req, timeout=3):
+                        pass
+                except Exception:
+                    pass
                 return True
     except Exception as e:
         print(f"[!] Warning: OpenCode core engine check failed: {e}", flush=True)
@@ -130,7 +140,7 @@ def delegate(story_num, title, file_path, details, verification, target_dir=None
     except Exception:
         pass
 
-    session_title = f"Sprint 49 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
+    session_title = f"Sprint 50 Story {story_num} (Run {int(time.time())}) — [{agent.upper()}] {title}"
 
     # 2. Create a fresh session via REST API on port 4097 with target agent & title
     try:
