@@ -189,12 +189,8 @@ You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and e
 [FUNCTIONAL REQUIREMENTS]
 {details}
 
-[DELEGATION RETROSPECTIVE & FEEDBACK]
-Upon completing this task, evaluate the delegation instructions you received and provide a concise Retrospective Feedback section in your final output covering:
-1. INACCURACIES: Identify any inaccurate filepaths, symbol names, or system assumptions in the prompt.
-2. THRASH: Describe any wasted effort, exploration loops, or trial-and-error you encountered.
-3. MISSING CONTEXT: Note any missing context or hidden constraints that would have accelerated execution if known up front.
-4. DELEGATION ADVICE: Provide 1 actionable recommendation to improve future delegation prompts for this component.
+[HANDOVER REFLECTION]
+As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 
 [NOTE]
 Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."""
