@@ -484,6 +484,9 @@ class FoyerRouter:
     async def handle_status(self, request):
         status_dict = self.status.to_dict()
         status_dict["connected_clients"] = len(self.connected_clients)
+        # [FEAT-426] Expose the session token so the browser client can present it
+        # as the WS handshake `lab_key` (browsers cannot set custom WS headers).
+        status_dict["session_token"] = self.session_token
         return web.json_response(status_dict)
 
     async def handle_logs(self, request):
@@ -664,6 +667,17 @@ class FoyerRouter:
 
     async def handle_websocket(self, ws_request):
         # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
+        # [FEAT-426] Origin Security Guard: browsers cannot set custom WS headers,
+        # so the authoritative check is the handshake-frame `lab_key` below. The
+        # pre-prepare header check is defense-in-depth for non-browser clients:
+        # a PRESENT-but-invalid X-Lab-Key header is rejected with 403; an absent
+        # header is allowed through to the handshake-frame check (browser case).
+        presented_key = ws_request.headers.get("X-Lab-Key", "")
+        if presented_key and presented_key != self.session_token:
+            peer = ws_request.remote
+            logger.warning(f"[FOYER] Rejected WS connection from {peer}: missing/invalid X-Lab-Key")
+            raise web.HTTPForbidden(reason="missing or invalid X-Lab-Key")
+
         ws = web.WebSocketResponse(heartbeat=300.0)
         await ws.prepare(ws_request)
         
@@ -680,6 +694,8 @@ class FoyerRouter:
             
         await ws.send_str(json.dumps(self.status.to_dict()))
         
+        authenticated = False  # [FEAT-426] First frame must be a valid handshake.
+        
         try:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
@@ -687,12 +703,29 @@ class FoyerRouter:
                     m_type = data.get("type")
                     
                     if m_type == "handshake":
+                        # [FEAT-426] Origin Security Guard: the browser WebSocket
+                        # API cannot set custom headers, so the X-Lab-Key rides the
+                        # first frame as `lab_key` and must match the session token.
+                        if not authenticated:
+                            if data.get("lab_key") != self.session_token:
+                                peer = ws_request.remote
+                                logger.warning(f"[FOYER] Rejected WS connection from {peer}: missing/invalid X-Lab-Key")
+                                await ws.close(code=1008, message=b"missing or invalid X-Lab-Key")
+                                break
+                            authenticated = True
+                            logger.info(f"[FOYER] WS client authenticated: {socket_id}")
                         await ws.send_str(json.dumps({
                             "type": "status", 
                             "state": "connected", 
                             "socket_id": socket_id,
                             "version": LAB_VERSION
                         }))
+                    elif not authenticated:
+                        # [FEAT-426] Any frame before a valid handshake is refused.
+                        peer = ws_request.remote
+                        logger.warning(f"[FOYER] Rejected WS connection from {peer}: first frame was not an authenticated handshake")
+                        await ws.close(code=1008, message=b"missing or invalid X-Lab-Key")
+                        break
                     elif m_type == "text_input":
                         query = data.get("content")
                         req_id = data.get("request_id")
@@ -716,6 +749,11 @@ class FoyerRouter:
                         active = data.get("active", False)
                         logger.info(f"Mic state changed: {active}")
                 elif msg.type == aiohttp.WSMsgType.BINARY:
+                    if not authenticated:
+                        # [FEAT-426] Refuse audio before an authenticated handshake.
+                        logger.warning(f"[FOYER] Rejected WS connection from {ws_request.remote}: binary frame before authenticated handshake")
+                        await ws.close(code=1008, message=b"Unauthorized")
+                        break
                     text = self.sensory.process_binary_chunk(msg.data)
                     if text:
                         await self.broadcast({
@@ -1013,7 +1051,8 @@ class FoyerRouter:
             logger.error(f"[FOYER] Failed to write status.json with active domain {domain}: {e}")
 
     def run(self):
-        web.run_app(self.app, port=PORT)
+        # [FEAT-426] Explicit loopback binding: the Foyer WS must never listen on 0.0.0.0.
+        web.run_app(self.app, host="127.0.0.1", port=PORT)
 
 if __name__ == "__main__":
     router = FoyerRouter()
