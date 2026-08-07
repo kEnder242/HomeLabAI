@@ -364,6 +364,13 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
             - Primary Output Target: <absolute_path_to_target_file>
             - Task Details: <explicit_code_or_logic_changes>
 
+            [DELEGATION RETROSPECTIVE & FEEDBACK]
+            Upon completing this task, evaluate the delegation instructions you received and provide a concise Retrospective Feedback section in your final output covering:
+            1. INACCURACIES: Identify any inaccurate filepaths, symbol names, or system assumptions in the prompt.
+            2. THRASH: Describe any wasted effort, exploration loops, or trial-and-error you encountered.
+            3. MISSING CONTEXT: Note any missing context or hidden constraints that would have accelerated execution if known up front.
+            4. DELEGATION ADVICE: Provide 1 actionable recommendation to improve future delegation prompts for this component.
+
             [SWARM DELEGATION DIRECTIVE — TASK() CALLS ONLY]
             You are Sisyphus (Lead Orchestrator). You MUST NOT implement code directly.
             Emit task() tool calls to delegate implementation and verification work:
