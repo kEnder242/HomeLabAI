@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -115,6 +116,8 @@ class CognitiveHub:
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
         self.turn_thought_trace = {}
+        # [FEAT-441-Cache] Lightweight RAG response cache (max 128, LRU eviction)
+        self._rag_cache = {}
         
         # [Task 6.3] Hygiene: Process Tracking
         self.processed_ids = set()
@@ -1005,6 +1008,44 @@ class CognitiveHub:
             turn_ledger += f"\nPinky Summary: {critique_res}"
         self.round_table_memory.append(turn_ledger)
 
+        # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
+        try:
+            journal_entry = {"ts": int(time.time()), "dialogue": turn_ledger}
+            self._persist_journal_ledger(journal_entry)
+        except Exception as e:
+            logging.error(f"[HUB] Journal ledger persistence failed: {e}")
+
+    def _persist_journal_ledger(self, entry: dict):
+        """[FEAT-441] Append one spoken-dialogue entry to the 24-hour JSONL journal.
+
+        Non-fatal by contract: any persistence failure is logged and swallowed so
+        the live dialogue turn is never interrupted.
+        """
+        journal_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/journal_ledger.jsonl")
+        try:
+            os.makedirs(os.path.dirname(journal_path), exist_ok=True)
+            surviving = []
+            if os.path.exists(journal_path):
+                with open(journal_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            parsed = json.loads(line)
+                        except Exception:
+                            continue
+                        if int(time.time()) - parsed.get("ts", 0) <= 86400:
+                            surviving.append(parsed)
+            surviving.append(entry)
+            tmp_path = journal_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                for parsed in surviving:
+                    f.write(json.dumps(parsed, ensure_ascii=False) + "\n")
+            os.replace(tmp_path, journal_path)
+        except Exception as e:
+            logging.error(f"[HUB] Journal ledger write failed: {e}")
+
     async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default"):
         """
         [FEAT-227] The Grounding Gate (V5).
@@ -1188,12 +1229,21 @@ class CognitiveHub:
         if "archive" not in self.residents:
             return ""
         hyde = str(t_parsed.get("hyde_vector_text", "") or "")
+        # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
+        cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
+        if cache_key in self._rag_cache:
+            return self._rag_cache[cache_key]
         try:
             res = await self.residents["archive"].call_tool(
                 "get_context", {"query": turn, "hyde_vector_text": hyde, "n_results": n_results}
             )
             if hasattr(res, 'content') and len(res.content) > 0:
-                return res.content[0].text
+                result_text = res.content[0].text
+                if result_text:
+                    self._rag_cache[cache_key] = result_text
+                    if len(self._rag_cache) > 128:
+                        self._rag_cache.pop(next(iter(self._rag_cache)))
+                return result_text
         except Exception as e:
             logging.error(f"[HUB] RAG context fetch failed: {e}")
         return ""
