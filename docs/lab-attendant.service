@@ -6,6 +6,9 @@ After=network.target
 TimeoutStopSec=30
 KillMode=mixed
 LimitMEMLOCK=infinity
+MemoryMax=4G
+MemoryHigh=3.5G
+ManagedOOMPreference=kill
 Environment="LAB_MODE=VLLM"
 Environment="LAB_MODEL=MEDIUM"
 Environment="VLLM_ATTENTION_BACKEND=TRITON_ATTN"
