@@ -863,15 +863,27 @@ class FoyerRouter:
             raise
 
     async def _spawn_deep_thought_preamble(self, query, source, request_id=None):
-        # [FEAT-455] Zero-Latency Un-blocked Async Preamble: spawned un-gated on
-        # WebSocket text_input receipt. Broadcasts the Deep Thought pre-reflection
-        # crosstalk FIRST (instant UI feedback), THEN performs the enqueue the
-        # inline path used to do. Never gated on boot state, request_lock, or VRAM
-        # — queue_drainer owns those gates downstream.
+        # [FEAT-452/455] Zero-Latency Un-blocked Async Preamble & Fast Offline HyDE Map Gating:
+        # Evaluates raw query text against the 4-Domain HyDE Map Contract (exp_tlm, exp_bkm,
+        # exp_for, lab_history). If no domain match (casual turn), bypasses HyDE crosstalk immediately.
         try:
+            query_lower = str(query or "").lower()
+            domain_keywords = [
+                "pcie", "rapl", "msr", "nvidia", "sensor", "telemetry", "power", "thermal",
+                "bkm", "playbook", "diagnostic", "systemd", "script", "command",
+                "panic", "oom", "traceback", "crash", "log", "backpressure", "scavenger",
+                "history", "career", "archive", "sprint", "milestone", "retrospective"
+            ]
+            is_domain_match = any(kw in query_lower for kw in domain_keywords)
+
+            if is_domain_match:
+                crosstalk_msg = "Deep Thought: Domain match detected. Synthesizing Composite HyDE..."
+            else:
+                crosstalk_msg = "Deep Thought: Casual greeting/query detected. Bypassing HyDE..."
+
             preamble = {
                 "type": "crosstalk",
-                "brain": "Deep Thought pre-reflecting...",
+                "brain": crosstalk_msg,
                 "brain_source": "Deep Thought",
                 "channel": "insight",
                 "final": False,
