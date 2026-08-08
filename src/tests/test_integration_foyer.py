@@ -98,7 +98,7 @@ async def test_foyer_hibernation_wake_cycle():
         await ws.send(json.dumps(query_payload))
         
         # Read response frame (status or response)
-        resp_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
+        resp_msg = await asyncio.wait_for(ws.recv(), timeout=20.0)
         resp_data = json.loads(resp_msg)
         assert resp_data.get("type") != "error", f"Wake sequence returned error: {resp_data}"
         print(f"  /hibernation_wake -> {resp_msg[:200]}")

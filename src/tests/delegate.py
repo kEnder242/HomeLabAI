@@ -14,6 +14,12 @@ import time
 import urllib.error
 import urllib.request
 
+# [LAB-099] Thermal & Thread Safety: Limit C-extension worker threads to prevent 8-core CPU thermal overload
+os.environ["OMP_NUM_THREADS"] = "2"
+os.environ["OPENBLAS_NUM_THREADS"] = "2"
+os.environ["MKL_NUM_THREADS"] = "2"
+os.environ["TORCH_NUM_THREADS"] = "2"
+
 OPENCODE_REST_PORT = 4097
 OPENCODE_WEB_PORT = 4096
 OPENCODE_ATTACH_URL = f"http://127.0.0.1:{OPENCODE_REST_PORT}/"

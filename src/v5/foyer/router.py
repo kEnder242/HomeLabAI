@@ -995,11 +995,27 @@ class FoyerRouter:
             await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
-        """[FEAT-266/LAB-096] Periodic Maintenance & Heap Scavenger Loop."""
+        """[FEAT-266/LAB-096/LAB-099] Periodic Maintenance, Heap Scavenger & Thermal Guard Loop."""
         logger.info("Scheduled tasks loop active.")
         last_nibble_time = 0
         while True:
             try:
+                # [LAB-099] Thermal Guard: Monitor CPU package thermal zones (thermal_zone0 / thermal_zone3)
+                try:
+                    for tz in ["/sys/class/thermal/thermal_zone3/temp", "/sys/class/thermal/thermal_zone0/temp"]:
+                        if os.path.exists(tz):
+                            with open(tz, "r") as tf:
+                                t_milli = int(tf.read().strip())
+                                if t_milli >= 78000:  # 78°C
+                                    logger.warning(
+                                        f"[LAB-099][THERMAL ALERT] CPU package temp high ({t_milli/1000:.1f}°C). "
+                                        f"Cooling down background loops 15s..."
+                                    )
+                                    await asyncio.sleep(15)
+                                    break
+                except Exception as t_ex:
+                    logger.warning(f"[LAB-099] Thermal probe warning: {t_ex}")
+
                 # [LAB-096] Heap Scavenger: Periodic garbage collection every 60s
                 collected = gc.collect()
                 if collected > 0:
