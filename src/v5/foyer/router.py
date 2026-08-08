@@ -733,7 +733,12 @@ class FoyerRouter:
                     elif m_type == "text_input":
                         query = data.get("content")
                         req_id = data.get("request_id")
-                        await self.enqueue_intent(query, source=f"WS_{socket_id}", request_id=req_id)
+                        # [FEAT-455] Zero-Latency Un-blocked Async Preamble: the receive
+                        # loop must return instantly — never await file I/O or the
+                        # broadcast inline. The Deep Thought preamble + enqueue run as
+                        # an un-gated background task (no boot/wake/VRAM gating here;
+                        # queue_drainer owns those gates).
+                        asyncio.create_task(self._spawn_deep_thought_preamble(query, source=f"WS_{socket_id}", request_id=req_id))
                     elif m_type == "workspace_save":
                         fn = data.get("filename")
                         content = data.get("content")
@@ -856,6 +861,28 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"Failed to enqueue: {e}")
             raise
+
+    async def _spawn_deep_thought_preamble(self, query, source, request_id=None):
+        # [FEAT-455] Zero-Latency Un-blocked Async Preamble: spawned un-gated on
+        # WebSocket text_input receipt. Broadcasts the Deep Thought pre-reflection
+        # crosstalk FIRST (instant UI feedback), THEN performs the enqueue the
+        # inline path used to do. Never gated on boot state, request_lock, or VRAM
+        # — queue_drainer owns those gates downstream.
+        try:
+            preamble = {
+                "type": "crosstalk",
+                "brain": "Deep Thought pre-reflecting...",
+                "brain_source": "Deep Thought",
+                "channel": "insight",
+                "final": False,
+                "version": LAB_VERSION
+            }
+            if request_id:
+                preamble["request_id"] = request_id
+            await self.broadcast(preamble)
+            await self.enqueue_intent(query, source=source, request_id=request_id)
+        except Exception as e:
+            logger.error(f"[FEAT-455] Deep Thought preamble failed: {e}")
 
     async def waterfall_drainer(self):
         """[Task 12.3] Drains internal token buffer into final Pop messages for UI."""
