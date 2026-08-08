@@ -36,18 +36,17 @@ def _make_hub():
 # 1. Persona Boundary Assertions (FEAT-451)
 # ---------------------------------------------------------------------------
 def test_deep_thought_persona_spec_forbids_pinky_tics():
-    """Verify BRAIN_PERSONA_SPEC explicitly forbids Pinky catchphrases."""
-    assert "STRICTLY FORBIDDEN: emitting Pinky catchphrases" in BRAIN_PERSONA_SPEC
-    assert "'Narf!'" in BRAIN_PERSONA_SPEC
-    assert "'Poit!'" in BRAIN_PERSONA_SPEC
-    assert "'Zort!'" in BRAIN_PERSONA_SPEC
+    """Verify BRAIN_PERSONA_SPEC uses positive Brain persona grounding."""
+    assert "Sharing the Brain's right-hemisphere architecture" in BRAIN_PERSONA_SPEC
+    assert "Narf" not in BRAIN_PERSONA_SPEC
+    assert "Poit" not in BRAIN_PERSONA_SPEC
 
 
 def test_deep_thought_preamble_no_pinky_tics():
     """Negative assertion: Deep Thought persona spec text does not contain Pinky tics."""
-    assert "STRICTLY FORBIDDEN" in BRAIN_PERSONA_SPEC
-    assert "Narf" not in BRAIN_PERSONA_SPEC.split("STRICTLY FORBIDDEN")[0]
-    assert "Poit" not in BRAIN_PERSONA_SPEC.split("STRICTLY FORBIDDEN")[0]
+    assert "calm, strategic, and clinical" in BRAIN_PERSONA_SPEC
+    assert "Narf" not in BRAIN_PERSONA_SPEC
+    assert "Poit" not in BRAIN_PERSONA_SPEC
 
 
 # ---------------------------------------------------------------------------

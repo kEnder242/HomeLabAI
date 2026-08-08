@@ -417,7 +417,8 @@ class BicameralNode:
             ok, msg = await self.ping_engine()
             if not ok:
                 if msg == "WARMING" or "connection failed" in msg.lower() or "connect call failed" in msg.lower():
-                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                    prefix = "Narf! " if self.name == "Pinky" else ""
+                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
                 else:
                     yield f"Error: {msg}"
                 return
@@ -531,7 +532,7 @@ class BicameralNode:
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "thought": {"type": "string", "description": "Your persona interjection (e.g., Narf!) and thought process."},
+                                "thought": {"type": "string", "description": "Your internal thought process and reasoning."},
                                 "tool_name": {"type": "string", "description": "The name of the tool to use"},
                                 "arguments": {"type": "object", "description": "Arguments for the tool"}
                             },
@@ -588,7 +589,8 @@ class BicameralNode:
             logging.error(f"[{self.name}] Generation failed: {e}")
             err_str = str(e)
             if "Connect call failed" in err_str or "vLLM connection" in err_str or "ClientConnectorError" in err_str or "Connection failure" in err_str:
-                yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                prefix = "Narf! " if self.name == "Pinky" else ""
+                yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
             else:
                 yield f"Egad! Logic failure: {e}"
 
@@ -743,7 +745,8 @@ class BicameralNode:
                 logging.error(f"[{self.name}] vLLM Connection failed: {e}")
                 err_str = str(e)
                 if any(k in err_str for k in ["Connect call failed", "vLLM connection", "ClientConnectorError", "Connection failure", "Cannot connect to host"]):
-                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                    prefix = "Narf! " if self.name == "Pinky" else ""
+                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
                 else:
                     yield f"Error: vLLM connection failed: {e}"
 
@@ -777,7 +780,8 @@ class BicameralNode:
                 logging.error(f"[{self.name}] Stream failed: {e}")
                 err_str = str(e)
                 if any(k in err_str for k in ["Connect call failed", "ClientConnectorError", "Connection failure", "Cannot connect to host"]):
-                    yield "Narf! The local engine is warming its anchors right now. Re-connecting momentarily!"
+                    prefix = "Narf! " if self.name == "Pinky" else ""
+                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
                 else:
                     yield f"Error: Stream failed: {e}"
 
