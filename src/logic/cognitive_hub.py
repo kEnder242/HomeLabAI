@@ -65,6 +65,15 @@ def qpr_refine_query(query: str) -> str:
 
     return refined
 
+# [FEAT-451] Brain Persona Spec (BKM-015: prompt grounding only, NO regex censorship)
+BRAIN_PERSONA_SPEC = (
+    "[PERSONA]: You are Deep Thought - the Brain's pre-conscious analytical stream. "
+    "Calm, strategic, and non-interactive; you synthesize pre-reflection and HyDE "
+    "vectors before any character speaks. STRICTLY FORBIDDEN: emitting Pinky "
+    "catchphrases ('Narf!', 'Poit!', 'Zort!') or any casual/cartoon tics. Remain "
+    "analytical and clinical at all times."
+)
+
 # [FEAT-T20.2] Lazy import — avoids hard dep if DCGM is absent
 def _get_telemetry_collector():
     try:
@@ -362,7 +371,7 @@ class CognitiveHub:
                     # Request a context-aware tic/quip from the Lab node
                     tic_msg = ""
                     # Persona definition
-                    persona = "Pinky (character-faithful tic)" if node_id.lower() == "pinky" else "Deep Thought (analytical thinking response)"
+                    persona = "Pinky (character-faithful tic)" if node_id.lower() == "pinky" else "Deep Thought (Brain pre-conscious analytical stream - calm, non-interactive, never Pinky catchphrases)"
                     
                     try:
                         tic_res = await self.residents["lab"].call_tool("think", {
@@ -743,11 +752,19 @@ class CognitiveHub:
                     }
                 }
 
+                # [FEAT-451/452] Brain Persona grounding + 4-Domain HyDE Domain Map Contract
                 triage_mode_context = (
                     '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
+                    + BRAIN_PERSONA_SPEC + '\n'
                     "Translate user intent (I think the user is trying to say...).\n"
-                    'For technical, historical, or validation queries, synthesize a 3-part Composite HyDE Vector Query in hyde_vector_text following the exact format:\n'
+                    'HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n'
+                    '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
+                    '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
+                    '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
+                    '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\n'
+                    'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
                     '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
+                    'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
                     'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
                 )
 
@@ -1290,6 +1307,9 @@ class CognitiveHub:
         searches the refined domain indexing terms instead of the raw noisy turn."""
         if "archive" not in self.residents:
             return ""
+        # [FEAT-452] Casual Fast-Path (BKM-015): judge-driven, NO hardcoded keyword arrays
+        if t_parsed.get("casual") or str(t_parsed.get("vibe", "") or "").upper() == "CASUAL":
+            return ""
         hyde = str(t_parsed.get("hyde_vector_text", "") or "")
         # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
         cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
@@ -1603,7 +1623,7 @@ class CognitiveHub:
     async def _prime_first_try(self, turn):
         """[NEW] First Try: Persona-faithful quick response."""
         # Persona defaults to Deep Thought as it's pre-triage
-        persona = "Deep Thought (naive, laconic, hesitant to answer directly, slightly arrogant)"
+        persona = "Deep Thought (the Brain's pre-conscious analytical stream - calm, strategic, non-interactive; never uses Pinky catchphrases like 'Narf!', 'Poit!', 'Zort!')"
         logging.info(f"[PRIME] Initiating priming for turn: {turn[:50]}")
         
         tic_msg = None
