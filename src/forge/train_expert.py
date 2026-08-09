@@ -15,8 +15,9 @@ except ImportError:
 
 def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"):
     """
-    [FORGE-02] Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
-    Standardized on Qwen2.5 for superior performance.
+    [FEAT-160] Pedigree Refinement Pipeline & [FORGE-02]
+    Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
+    Standardized on Llama-3.2-3B-Instruct for superior performance.
     """
     print(f"Starting training on {dataset_path} -> {output_dir} ({steps} steps)")
     if FastLanguageModel is None:
