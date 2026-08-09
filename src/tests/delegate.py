@@ -208,8 +208,8 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
-        mandate_block = """[SWARM DELEGATION MANDATE]
-You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent (such as sisyphus-junior or general)."""
+        mandate_block = """[STORY {story_num}: {title}]
+You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent using category="quick" or category="unspecified-high" (e.g. task(category="quick", prompt="..."))."""
         note_block = f"[NOTE] Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
     prompt = f"""[CONTEXT & TARGET SPECIFICATION]
