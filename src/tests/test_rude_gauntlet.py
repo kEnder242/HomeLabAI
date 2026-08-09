@@ -61,19 +61,28 @@ async def trigger_query(client_id, query):
     try:
         token = get_session_token()
         async with websockets.connect(HUB_URL) as ws:
+            # Read server pushed init message
+            init_msg = await ws.recv()
+            
+            # Send handshake
             await ws.send(json.dumps({"type": "handshake", "lab_key": token}))
-            # Immediate prompt - No waiting for operational signal
-            await ws.send(json.dumps({"type": "text_input", "content": query}))
+            ack_msg = await ws.recv()
+            
+            # Immediate prompt via V5 chat payload format
+            await ws.send(json.dumps({"type": "chat", "message": query}))
             
             start_t = time.time()
-            while time.time() - start_t < 180: # 3-minute window for cold H2 wake
+            while time.time() - start_t < 180: # 3-minute window for cold wake
                 msg = await ws.recv()
                 data = json.loads(msg)
                 
-                if data.get('brain_source') in ['Pinky', 'Shadow', 'Lab']:
-                    text = str(data.get('brain', ''))
-                    if any(x in text.upper() for x in ['ROGER', 'PINKY', 'ACME', 'POIT', 'NARF', 'ZORT']):
-                        print(f"    [Client {client_id}] SUCCESS: {text[:40]}...")
+                # Check for V5 crosstalk/thought/speech payload or legacy brain field
+                speaker = data.get('speaker') or data.get('source') or data.get('brain_source') or ''
+                text = str(data.get('content') or data.get('text') or data.get('brain') or '')
+                
+                if speaker in ['Pinky', 'Brain', 'Shadow', 'Lab', 'Deep Thought'] or data.get('type') in ['crosstalk', 'thought', 'speech', 'chat']:
+                    if any(x in text.upper() for x in ['ROGER', 'PINKY', 'ACME', 'POIT', 'NARF', 'ZORT', 'CHECK', 'TEST']):
+                        print(f"    [Client {client_id}] SUCCESS ({speaker}): {text[:40]}...")
                         return True
                     if '[GIBBERISH]' in text:
                         print(f"    [Client {client_id}] FAIL: Physical corruption detected!")
