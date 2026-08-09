@@ -5,6 +5,11 @@ import logging
 import os
 import time
 import uuid
+# [STORY-5] Cold-start wake thread caps: bound BLAS/ML worker threads to 2
+os.environ["OMP_NUM_THREADS"] = "2"
+os.environ["OPENBLAS_NUM_THREADS"] = "2"
+os.environ["MKL_NUM_THREADS"] = "2"
+os.environ["TORCH_NUM_THREADS"] = "2"
 import random
 import aiohttp
 from aiohttp import web
@@ -434,7 +439,7 @@ class FoyerRouter:
             elif self.status.state in ["OPERATIONAL"]:
                 if not self.residents.booted and not self.residents.booting:
                     logger.info("[FOYER] Lab is OPERATIONAL. Initiating logical boot...")
-                    asyncio.create_task(self.residents.boot_all())
+                    self._launch_resident_boot_async()
             
             return web.Response(status=200)
         except Exception as e:
@@ -1040,6 +1045,7 @@ class FoyerRouter:
         while True:
             try:
                 # [LAB-099] Thermal Guard: Monitor CPU package thermal zones (thermal_zone0 / thermal_zone3)
+                thermal_halt = False
                 try:
                     for tz in ["/sys/class/thermal/thermal_zone3/temp", "/sys/class/thermal/thermal_zone0/temp"]:
                         if os.path.exists(tz):
@@ -1051,9 +1057,14 @@ class FoyerRouter:
                                         f"Cooling down background loops 15s..."
                                     )
                                     await asyncio.sleep(15)
+                                    thermal_halt = True
                                     break
                 except Exception as t_ex:
                     logger.warning(f"[LAB-099] Thermal probe warning: {t_ex}")
+
+                # [STORY-3-5] Skip gc.collect/nibble maintenance when thermal halt engaged
+                if thermal_halt:
+                    continue
 
                 # [LAB-096] Heap Scavenger: Periodic garbage collection every 60s
                 collected = gc.collect()
@@ -1074,6 +1085,15 @@ class FoyerRouter:
             
             await asyncio.sleep(60)
 
+    def _launch_resident_boot_async(self):
+        """[STORY-3-5] Guarded detached background boot: never block the drainer loop."""
+        if getattr(self.residents, "booted", False) or getattr(self.residents, "booting", False):
+            return
+        try:
+            asyncio.create_task(self.residents.boot_all())
+        except Exception as e:
+            logger.error("[FOYER] Background resident boot failed: %s", e, exc_info=True)
+
     async def queue_drainer(self):
         """[Task 4.3] Neural Queue Drainer."""
         logger.info(f"Queue drainer active (Token: {self.session_token}).")
@@ -1090,7 +1110,7 @@ class FoyerRouter:
                         # Boot logical nodes on intent if not ready
                         if not self.residents.booted:
                             logger.info("New intent detected. Booting logical nodes...")
-                            await self.residents.boot_all()
+                            self._launch_resident_boot_async()
                         
                         with open(QUEUE_FILE, "r") as f:
                             f.seek(last_pos)
