@@ -10,6 +10,49 @@ import requests
 
 HUB_URL = "ws://localhost:8765"
 
+# --- [FEAT-342] Browser-status HTTP poller + thermal guardrail (additive) ---
+
+def _read_raw_temp():
+    """Read the first readable sysfs thermal sensor, raw millidegrees C."""
+    for zone in ("thermal_zone2", "thermal_zone3", "thermal_zone0"):
+        path = f"/sys/class/thermal/{zone}/temp"
+        try:
+            with open(path, "r") as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
+
+def read_cpu_temp_c():
+    """CPU temp in degC (sysfs is millidegrees: 27800 => 27.8 C), or None."""
+    raw = _read_raw_temp()
+    return raw / 1000.0 if raw is not None else None
+
+async def http_browser_poller(stop_event):
+    """Simulate intercom.html browser load: poll GET /status every 1.0s."""
+    hits = 0
+    failed_once = False
+    while not stop_event.is_set():
+        try:
+            resp = await asyncio.to_thread(requests.get, "http://localhost:8765/status", timeout=5)
+            if resp.status_code == 200:
+                hits += 1
+                try:
+                    keys = list(resp.json().keys())
+                except Exception:
+                    keys = []
+                trimmed = [k for k in keys if k in ("session_token", "state", "status")] or keys[:3]
+                print(f"[HTTP] poll OK: {resp.status_code} keys={trimmed}")
+            elif not failed_once:
+                print(f"[HTTP] poll failed: HTTP {resp.status_code}")
+                failed_once = True
+        except Exception as e:
+            if not failed_once:
+                print(f"[HTTP] poll failed: {e}")
+                failed_once = True
+        await asyncio.sleep(1.0)
+    return hits
+
 def get_session_token():
     resp = requests.get("http://localhost:8765/status", timeout=5)
     return resp.json().get("session_token", "")
@@ -49,13 +92,54 @@ async def run_cycle(cycle):
     
     # 2. Fire Rude Storm (5 concurrent queries to sleeping lab)
     print(f"    [Action] Launching 5-node 'Wake-on-Intent' storm...")
+    
+    # Thermal baseline (raw millidegrees + degC) right before the storm
+    raw_start = _read_raw_temp()
+    start_temp = read_cpu_temp_c()
+    if start_temp is not None:
+        print(f"[Thermal] raw={raw_start} => {start_temp:.1f} C")
+    else:
+        print("[Thermal] WARN: no readable sysfs temp sensor; guardrail skipped")
+    
+    # Background HTTP poller (browser-status path) during the storm
+    stop_event = asyncio.Event()
+    poller_task = asyncio.create_task(http_browser_poller(stop_event))
+    
     tasks = []
     for i in range(5):
         tasks.append(trigger_query(i, f"[ME] Rude Check {cycle}.{i}. Respond with ROGER."))
     
-    results = await asyncio.gather(*tasks)
+    try:
+        results = await asyncio.gather(*tasks)
+    finally:
+        # Clean-cancellation guarantee: stop, cancel, swallow CancelledError
+        stop_event.set()
+        poller_task.cancel()
+        try:
+            await poller_task
+        except asyncio.CancelledError:
+            pass
+    
     wins = sum(1 for r in results if r)
     print(f"    [Result] Cycle {cycle} Wins: {wins}/5")
+    
+    # Thermal check after the storm: max of start/end samples, ceiling 78.0 C
+    raw_end = _read_raw_temp()
+    end_temp = read_cpu_temp_c()
+    if end_temp is not None:
+        print(f"[Thermal] raw={raw_end} => {end_temp:.1f} C")
+    samples = [t for t in (start_temp, end_temp) if t is not None]
+    if samples:
+        max_temp = max(samples)
+        try:
+            assert max_temp < 78.0, f"THERMAL THRESHOLD EXCEEDED: {max_temp} degC"
+        except AssertionError:
+            print(f"[Thermal] GUARDRAIL FAIL: max temp {max_temp:.1f} C >= 78.0 C")
+            return False
+        print(f"[Thermal] max temp: {max_temp:.1f} C (OK)")
+    else:
+        print("[Thermal] WARN: no readable sysfs temp sensor; guardrail skipped")
+    
     return wins == 5
 
 async def main():
