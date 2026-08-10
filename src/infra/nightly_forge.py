@@ -40,7 +40,7 @@ def quiesce_vllm():
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
     return False
 
-def re-ignite_vllm():
+def re_ignite_vllm():
     """[FEAT-213] Re-ignite Foyer & vLLM post-training."""
     logger.info("[FEAT-213] Re-igniting Foyer state to OPERATIONAL...")
     try:
@@ -96,7 +96,7 @@ def main():
         run_unsloth_forge()
     finally:
         # 4. Re-ignite Foyer
-        re-ignite_vllm()
+        re_ignite_vllm()
         
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
 

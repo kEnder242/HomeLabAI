@@ -125,7 +125,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
-def delegate(story_num, title, file_path, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute"):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute", target_files=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -138,7 +138,8 @@ def delegate(story_num, title, file_path, details, verification, sprint_num=50, 
     if mode in ("plan", "investigate"):
         agent = "prometheus"
 
-    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (file: {file_path})")
+    _target_display = target_files if target_files else reference_file
+    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (reference: {reference_file}, target: {_target_display})")
 
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
@@ -208,13 +209,16 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
-        mandate_block = """[STORY {story_num}: {title}]
+        mandate_block = f"""[STORY {story_num}: {title}]
 You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent using category="quick" or category="unspecified-high" (e.g. task(category="quick", prompt="..."))."""
-        note_block = f"[NOTE] Apply code modifications to {file_path} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
+        _edit_scope = target_files if target_files else reference_file
+        note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
+    _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
     prompt = f"""[CONTEXT & TARGET SPECIFICATION]
-- Sprint Plan Reference: Story {story_num} ({title})
-- Target Files: {file_path}
+- Sprint Plan Reference: {reference_file}
+- Story: {story_num} ({title})
+{_target_files_line}
 - Delegation Mode: {mode.upper()}
 
 {mandate_block}
@@ -301,7 +305,8 @@ if __name__ == "__main__":
     parser.add_argument("--sprint", required=not _retro_mode, type=int, default=50, help="Sprint number (e.g. 50)")
     parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
     parser.add_argument("--title", required=not _retro_mode, help="Story title")
-    parser.add_argument("--file", required=not _retro_mode, help="Target output file path")
+    parser.add_argument("--reference", required=not _retro_mode, help="Sprint plan / context reference document (read-only context for Atlas)")
+    parser.add_argument("--target", default=None, help="Actual file(s) Atlas is permitted to edit (omit to default to --reference). Separate multiple paths with commas.")
     parser.add_argument("--details", required=not _retro_mode, help="Detailed requirements")
     parser.add_argument("--mode", choices=["execute", "plan", "investigate"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), or investigate (read-only diagnostic)")
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
@@ -321,12 +326,13 @@ if __name__ == "__main__":
     delegate(
         args.story,
         args.title,
-        args.file,
+        args.reference,
         args.details,
         args.verification,
         sprint_num=args.sprint,
         target_dir=args.dir,
         agent="atlas",
         max_retries=args.retries,
-        mode=args.mode
+        mode=args.mode,
+        target_files=args.target,
     )
