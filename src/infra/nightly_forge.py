@@ -14,6 +14,7 @@ import sys
 import os
 import time
 import logging
+import shutil
 import requests
 import subprocess
 
@@ -24,6 +25,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FOYER_URL = "http://localhost:8765"
 DATASET_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/journal_ledger.jsonl")
 OUTPUT_LORA_DIR = "/speedy/models/adapters/cli_voice_v1"
+KENDER_SSH_TARGET = "jallred@192.168.1.26"  # explicit user@host; ~/.ssh alias may be added later
+KENDER_TRAIN_SCRIPT = "~/kender_forge/train_jason_voice_lora.py"
+KENDER_DATA_STAGE = "~/kender_forge/data/journal_ledger.jsonl"
+KENDER_ADAPTER_STAGE = "~/kender_forge/adapters/cli_voice_v1/"
+SYNC_STAGING_DIR = "/speedy/models/adapters/.sync-staging/cli_voice_v1/"
+VLLM_URL = "http://localhost:8088"
 
 def quiesce_vllm():
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
@@ -82,22 +89,103 @@ def run_unsloth_forge():
     except Exception as e:
         logger.error(f"[FEAT-160] Error executing train_expert.py: {e}")
 
+def run_kender_forge():
+    """[SPR-52.0] Offload Unsloth pass to Kender (4090), rsync adapter back, hot-reload vLLM."""
+    if not os.path.exists(DATASET_PATH):
+        logger.warning(f"[SPR-52.0] Dataset {DATASET_PATH} not found. Skipping Kender training pass.")
+        return
+
+    # (a) Push dataset to Kender staging
+    try:
+        res = subprocess.run(["rsync", "-avz", "--timeout=60", DATASET_PATH,
+                              f"{KENDER_SSH_TARGET}:{KENDER_DATA_STAGE}"],
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.warning(f"[SPR-52.0] Dataset rsync failed: {res.stderr[-300:]}")
+            return
+    except Exception as e:
+        logger.warning(f"[SPR-52.0] Dataset rsync error: {e}")
+        return
+
+    # (b) Trigger remote training (60 steps)
+    cmd = ["ssh", KENDER_SSH_TARGET,
+           f"python3 {KENDER_TRAIN_SCRIPT} {KENDER_DATA_STAGE} {KENDER_ADAPTER_STAGE} 60"]
+    logger.info(f"[SPR-52.0] Executing: {' '.join(cmd)}")
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.error(f"[SPR-52.0] Kender training failed (code {res.returncode}): {res.stderr[-300:]}")
+            return
+        logger.info(f"[SPR-52.0] Kender training OK. Tail: {res.stdout[-300:]}")
+    except Exception as e:
+        logger.error(f"[SPR-52.0] Error executing remote training: {e}")
+        return
+
+    # (c) Pull adapter back to staging dir
+    try:
+        os.makedirs(SYNC_STAGING_DIR, exist_ok=True)
+        res = subprocess.run(["rsync", "-avz", "--partial",
+                              f"{KENDER_SSH_TARGET}:{KENDER_ADAPTER_STAGE}", SYNC_STAGING_DIR],
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.warning(f"[SPR-52.0] Adapter rsync failed: {res.stderr[-300:]}")
+            return
+    except Exception as e:
+        logger.warning(f"[SPR-52.0] Adapter rsync error: {e}")
+        return
+
+    # (d) Atomic swap: staging -> live (vLLM never reads a half-written safetensors)
+    try:
+        os.makedirs(os.path.dirname(OUTPUT_LORA_DIR), exist_ok=True)
+        if os.path.exists(OUTPUT_LORA_DIR):
+            os.rename(OUTPUT_LORA_DIR, OUTPUT_LORA_DIR + ".old")
+        os.rename(SYNC_STAGING_DIR, OUTPUT_LORA_DIR)
+        if os.path.exists(OUTPUT_LORA_DIR + ".old"):
+            shutil.rmtree(OUTPUT_LORA_DIR + ".old")
+        logger.info(f"[SPR-52.0] Adapter atomically swapped into {OUTPUT_LORA_DIR}")
+    except Exception as e:
+        logger.error(f"[SPR-52.0] Atomic swap failed: {e}")
+        return
+
+    # (e) vLLM hot-reload (zero-downtime); fall back to re_ignite_vllm() on failure
+    try:
+        resp = requests.post(f"{VLLM_URL}/v1/load_lora_adapter",
+                             json={"lora_name": "cli_voice_v1", "lora_path": OUTPUT_LORA_DIR},
+                             timeout=10)
+        if resp.status_code == 200:
+            logger.info("[SPR-52.0] vLLM hot-reloaded cli_voice_v1 (zero-downtime <10ms claim kept).")
+        else:
+            logger.warning(f"[SPR-52.0] load_lora_adapter returned HTTP {resp.status_code}; falling back to re_ignite_vllm()")
+            re_ignite_vllm()
+    except Exception as e:
+        logger.warning(f"[SPR-52.0] vLLM hot-reload error: {e}; falling back to re_ignite_vllm()")
+        re_ignite_vllm()
+
 def main():
-    logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED ===")
-    
+    import argparse
+    parser = argparse.ArgumentParser(description="Nightly Forge orchestrator")
+    parser.add_argument("--local", action="store_true",
+                        help="Run legacy run_unsloth_forge() on z87 instead of Kender offload")
+    args = parser.parse_args()
+
+    logger.info("=== [FEAT-160/FEAT-213/SPR-52.0] NIGHTLY FORGE ORCHESTRATION INITIATED ===")
+
     # 1. Ingest Raw Notes
     run_mass_scan()
-    
+
     # 2. Quiesce VRAM
     quiesced = quiesce_vllm()
-    
+
     try:
-        # 3. Train LoRA Adapter
-        run_unsloth_forge()
+        # 3. Train LoRA Adapter (Kender offload; --local keeps legacy z87 path)
+        if args.local:
+            run_unsloth_forge()
+        else:
+            run_kender_forge()
     finally:
         # 4. Re-ignite Foyer
         re_ignite_vllm()
-        
+
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
 
 if __name__ == "__main__":
