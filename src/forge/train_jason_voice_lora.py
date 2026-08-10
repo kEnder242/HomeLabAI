@@ -55,11 +55,12 @@ def train_jason_voice_lora(dataset_path: str, output_dir: str, steps: int = 60,
         # [FIX] Robust key detection to handle diverse datasets (Sentinel vs Voice vs History)
         available_keys = list(examples.keys())
 
+        # Determine which fields to use
         instr_key = "instruction" if "instruction" in available_keys else ("prompt" if "prompt" in available_keys else None)
         out_key = "output" if "output" in available_keys else ("response" if "response" in available_keys else ("text" if "text" in available_keys else None))
 
         if not instr_key or not out_key:
-            print(f"DATASET SCHEMA ERROR: Found keys {available_keys}")
+            print(f"❌ DATASET SCHEMA ERROR: Found keys {available_keys}")
             raise KeyError("Missing required keys. Needs 'instruction' or 'prompt' and 'output' or 'response'.")
 
         instructions = examples[instr_key]
