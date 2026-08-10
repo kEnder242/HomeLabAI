@@ -48,6 +48,29 @@ QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 JUDGE_BACKPRESSURE_PATH = os.path.join(DATA_DIR, "judge_backpressure.jsonl")  # [FEAT-444]
 
+# [SPR-52.0 / Task 52.3] 5-Stage Division of Labor Orchestration
+DIVISION_OF_LABOR_STAGES = (
+    ("stage1_kender_triage",  "Deep Thought / Lab Node (Kender · t=0)", "Preamble & Triage"),
+    ("stage2_pinky_hyde",     "Pinky (vLLM + LoRA)",                    "HyDE & Persona Alignment"),
+    ("stage3_brain_query",    "Brain (Right Hemisphere)",               "Short Technical Answer / ChromaDB"),
+    ("stage4_dt_synthesis",   "Deep Thought (Kender)",                  "Strategic Synthesis (importance >= 0.7)"),
+    ("stage5_pinky_review",   "Pinky (Sanity / Vibe Check)",            "Out-Loud Delivery -> Waterfall Drainer"),
+)
+STAGE_SOURCE_MAP = {
+    "Deep Thought": "stage1_kender_triage",
+    "Lab (Triage)": "stage1_kender_triage",
+    "Pinky":        "stage2_pinky_hyde",
+    "Brain":        "stage3_brain_query",
+}
+STAGE_TIMEOUTS = {
+    "stage1_kender_triage": 45,
+    "stage2_pinky_hyde":    30,
+    "stage3_brain_query":   30,
+    "stage4_dt_synthesis":  60,
+    "stage5_pinky_review":  20,
+}
+STAGE_LEDGER_PATH = os.path.join(DATA_DIR, "foyer_stage_ledger.jsonl")
+
 # Configure logging early
 # [BKM-016] Montana Protocol: Log Reclamation
 from infra.montana import reclaim_logger  # noqa: E402
@@ -97,6 +120,9 @@ class FoyerRouter:
         # [Task 6.3] Hygiene: Global Process Tracking
         from collections import deque
         self.processed_ids = deque(maxlen=1000)
+        # [SPR-52.0 / Task 52.3] Stage-hook registry for the 5-Stage Division of Labor
+        self.stage_hooks = {sid: [] for sid, _, _ in DIVISION_OF_LABOR_STAGES}
+        self.stage_memory = {}  # request_id -> {stage_id: status}
         
         self.status = LabStatus()
         self.cognitive = CognitiveHub(
@@ -200,6 +226,124 @@ class FoyerRouter:
     def record_pager(self, message, severity="INFO", source="Foyer"):
         """[Task 9.9] Centralized Pager Logging."""
         trigger_pager(message, severity=severity, source=source)
+
+    def register_stage_hook(self, stage_id, hook):
+        """[SPR-52.0 / Task 52.3] Register a callable fired on stage transitions."""
+        if stage_id not in self.stage_hooks:
+            raise KeyError(f"Unknown stage: {stage_id}")
+        self.stage_hooks[stage_id].append(hook)
+
+    async def _emit_stage_progress(self, stage_id, request_id, status, detail=""):
+        """[SPR-52.0 / Task 52.3] Non-fatal stage transition: broadcast + ledger + hooks.
+
+        NEVER raises into the caller. Stage hooks are observer callbacks
+        (fire-and-forget); a bad hook only logs a warning.
+        """
+        try:
+            stage_node, stage_purpose = next(
+                ((s[1], s[2]) for s in DIVISION_OF_LABOR_STAGES if s[0] == stage_id),
+                (stage_id, ""),
+            )
+            self.stage_memory.setdefault(request_id, {})[stage_id] = status
+            try:
+                os.makedirs(os.path.dirname(STAGE_LEDGER_PATH), exist_ok=True)
+                with open(STAGE_LEDGER_PATH, "a") as f:
+                    f.write(json.dumps({
+                        "ts": time.time(),
+                        "request_id": request_id,
+                        "stage": stage_id,
+                        "node": stage_node,
+                        "purpose": stage_purpose,
+                        "status": status,
+                        "detail": detail,
+                    }, default=str) + "\n")
+            except Exception as e:
+                logger.warning(f"[SPR-52.0] Stage ledger append failed: {e}")
+            stage_index = next((i for i, s in enumerate(DIVISION_OF_LABOR_STAGES) if s[0] == stage_id), 0) + 1
+            await self.broadcast({
+                "type": "crosstalk",
+                "channel": "stage",
+                "stage": stage_id,
+                "stage_index": stage_index,
+                "stage_total": len(DIVISION_OF_LABOR_STAGES),
+                "node": stage_node,
+                "purpose": stage_purpose,
+                "stage_status": status,
+                "detail": detail,
+                "brain": f"[STAGE {stage_index}/5] {stage_purpose} — {status}",
+                "brain_source": "Foyer",
+                "request_id": request_id,
+                "version": LAB_VERSION,
+            })
+            for hook in self.stage_hooks.get(stage_id, []):
+                try:
+                    hook(request_id, status, detail)
+                except Exception as e:
+                    logger.warning(f"[SPR-52.0] Stage hook error ({stage_id}): {e}")
+        except Exception as e:
+            logger.warning(f"[SPR-52.0] Stage progress emission failed (non-fatal): {e}")
+
+    async def _stream_pinky_fallback(self, request_id):
+        """[SPR-52.0 / Task 52.3] Graceful degradation: guarantee UI delivery on failure."""
+        try:
+            await self.broadcast({
+                "type": "chat",
+                "brain": "The pipeline hit a snag mid-synthesis. Retrying via Pinky's direct line...",
+                "brain_source": "Pinky",
+                "final": True,
+                "channel": "chat",
+                "request_id": request_id,
+            })
+        except Exception as e:
+            logger.warning(f"[SPR-52.0] Pinky fallback emit failed: {e}")
+
+    async def run_division_of_labor(self, query, source="REST", request_id=None):
+        """[SPR-52.0 / Task 52.3] 5-Stage Division of Labor orchestrator.
+
+        Wraps the Cognitive Hub waterfall with per-stage hooks and graceful
+        error containment. Stage 1 (Kender triage) is idempotent: the WS path
+        emits STARTED at t=0 via _spawn_deep_thought_preamble; REST paths emit
+        it here. Stages 2-4 progress is deduced from incoming node streams via
+        STAGE_SOURCE_MAP in handle_stream_ingest. Stage 5 completes when the
+        waterfall drainer flushes the final Pop for this request_id.
+        """
+        if request_id is None:
+            import uuid
+            request_id = uuid.uuid4().hex[:8]
+
+        # Stage 1: Preamble & Triage (Kender · t=0, local fallback)
+        if self.stage_memory.get(request_id, {}).get("stage1_kender_triage") is None:
+            await self._emit_stage_progress("stage1_kender_triage", request_id, "STARTED")
+
+        kender_online = False
+        try:
+            thought = self.residents.get_node("thought")
+            if thought is not None:
+                res = await asyncio.wait_for(thought.call_tool("ping_engine", {"force": False}), timeout=5.0)
+                if getattr(res, "content", None):
+                    kender_online = '"success": true' in res.content[0].text
+        except Exception as e:
+            logger.warning(f"[SPR-52.0][STAGE1] Kender ping failed — local fallback engaged: {e}")
+        await self._emit_stage_progress(
+            "stage1_kender_triage", request_id, "COMPLETED",
+            detail="kender_online" if kender_online else "local_fallback",
+        )
+
+        # Stages 2-4 run inside the hub; guarded by a total-budget timeout.
+        shutdown_ev = asyncio.Event()
+        try:
+            await asyncio.wait_for(
+                self.cognitive.process_query(query, shutdown_event=shutdown_ev, request_id=request_id),
+                timeout=STAGE_TIMEOUTS["stage4_dt_synthesis"] * 4,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"[SPR-52.0] Division of Labor exceeded total budget for {request_id}")
+            await self._emit_stage_progress("stage4_dt_synthesis", request_id, "FAILED", detail="total_timeout")
+            await self._stream_pinky_fallback(request_id)
+        except Exception as e:
+            logger.error(f"[SPR-52.0] Division of Labor failed for {request_id}: {e}")
+            await self._emit_stage_progress("stage5_pinky_review", request_id, "FAILED", detail=str(e)[:200])
+            await self._stream_pinky_fallback(request_id)
 
     async def cleanup(self, app):
         """[FEAT-339/FEAT-430] Clean task release for aiohttp with C-Arena Heap Trimming."""
@@ -820,6 +964,10 @@ class FoyerRouter:
                 "final": data.get("final", False),
                 "request_id": data.get("request_id", "default")
             })
+            # [SPR-52.0 / Task 52.3] Stage 2-4 hooks: deduce progress from node streams
+            stage_id = STAGE_SOURCE_MAP.get(data.get("source", ""))
+            if stage_id and data.get("final"):
+                await self._emit_stage_progress(stage_id, data.get("request_id", "default"), "COMPLETED")
             return web.Response(status=200)
         except Exception as e:
             logger.error(f"Stream ingest error: {e}")
@@ -880,6 +1028,13 @@ class FoyerRouter:
                 "history", "career", "archive", "sprint", "milestone", "retrospective"
             ]
             is_domain_match = any(kw in query_lower for kw in domain_keywords)
+
+            # [SPR-52.0 / Task 52.3] Stage 1: t=0 triage entry hook (WS path)
+            if not self.stage_memory.get(request_id, {}).get("stage1_kender_triage"):
+                await self._emit_stage_progress(
+                    "stage1_kender_triage", request_id, "STARTED",
+                    detail="domain_match" if is_domain_match else "casual_bypass",
+                )
 
             if is_domain_match:
                 crosstalk_msg = "Deep Thought: Domain match detected. Synthesizing Composite HyDE..."
@@ -944,6 +1099,10 @@ class FoyerRouter:
                             "channel": channel,
                             "request_id": request_id
                         })
+
+                        # [SPR-52.0 / Task 52.3] Stage 5: contract completion (idempotent)
+                        if self.stage_memory.get(request_id, {}).get("stage5_pinky_review") is None:
+                            await self._emit_stage_progress("stage5_pinky_review", request_id, "COMPLETED")
 
                         # [LAB-010/LAB-096] Judge Evaluation with Semaphore (max 2 concurrent)
                         if _mlx_judge is not None:
@@ -1139,7 +1298,8 @@ class FoyerRouter:
                                         
                                         # [NEW] Shutdown tracking for this intent
                                         shutdown_ev = asyncio.Event()
-                                        asyncio.create_task(self.cognitive.process_query(event.query, shutdown_event=shutdown_ev, request_id=event.id))
+                                        # [SPR-52.0 / Task 52.3] Dispatch via 5-Stage orchestrator
+                                        asyncio.create_task(self.run_division_of_labor(event.query, source=event.source, request_id=event.id))
                                 except Exception as e:
                                     logger.error(f"Intent parse error: {e}")
                             last_pos = os.path.getsize(QUEUE_FILE) # [FIX] Accurate tailing
