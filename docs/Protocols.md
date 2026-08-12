@@ -296,11 +296,12 @@
 ---
 
 ## BKM-034: Swarm Delegation — Dual Orchestrator Protocol
-**Objective**: Establish a high-efficiency, token-optimized delegation workflow between TWO interchangeable orchestrators and the tactical developer swarm (**OpenAgent**):
-- **PRIMARY — Antigravity (AGY / Gemini)**: Strategic guardian; used when token budget allows.
-- **BACKUP — Sisyphus (opencode/deepseek-v4-flash-free via OmO)**: This agent; always available; identical swarm contract.
+**Objective**: Establish a high-efficiency, token-optimized delegation workflow between TWO interchangeable strategic orchestrators and the tactical developer swarm (**OpenAgent**):
+- **PRIMARY — Antigravity (AGY / Gemini)**: Strategic guardian & master planner.
+- **TASK ORCHESTRATOR — Atlas (Plan Executor & Task Orchestrator)**: Primary OpenAgent Task Orchestrator for `delegate.py` story dispatches; emits `task()` calls to sub-agents.
+- **DIAGNOSTIC PLANNER — Prometheus**: Read-only strategic planner and diagnostic investigator (`delegate.py --mode plan/investigate`).
 
-For full model allocation matrices, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+For full model allocation matrices and fallback chains, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
 
 ### 🚀 Primary Dispatch Mechanism: `delegate.py`
 All task dispatches to OpenAgent MUST use the formalized Python dispatcher [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py). Bypassing this script to run raw `opencode run` commands is strictly prohibited. 
@@ -310,10 +311,12 @@ All task dispatches to OpenAgent MUST use the formalized Python dispatcher [**sr
 python3 src/tests/delegate.py \
   --story <story_num> \
   --title "<title>" \
-  --file "<target_file>" \
+  --reference "<sprint_plan_path>" \
+  --target "<target_file_path>" \
   --details "<specification_details>" \
   --verification "<verification_command>" \
-  --dir "<working_directory>"
+  --dir "<working_directory>" \
+  --mode execute
 ```
 
 **Baked-in Boilerplate (No Prompt Clutter Needed)**:
