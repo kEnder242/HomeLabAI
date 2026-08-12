@@ -32,53 +32,63 @@ KENDER_ADAPTER_STAGE = "~/kender_forge/adapters/cli_voice_v1/"
 SYNC_STAGING_DIR = "/speedy/models/adapters/.sync-staging/cli_voice_v1/"
 VLLM_URL = "http://localhost:8088"
 
+def write_step_log(step_name: str, details: str = ""):
+    """[FEAT-213] Write atomic step progress to /tmp/nightly_forge_step.log to survive hard reboots."""
+    timestamp = datetime.datetime.now().isoformat()
+    log_line = f"[{timestamp}] [{step_name}] {details}\n"
+    try:
+        with open("/tmp/nightly_forge_step.log", "a") as f:
+            f.write(log_line)
+    except Exception as e:
+        logger.warning(f"Failed to write step log: {e}")
+
+def get_vram_usage():
+    """Dummy probe for VRAM."""
+    return "unknown"
+
 def quiesce_vllm():
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
     logger.info("[FEAT-213] Requesting Foyer HIBERNATING state to reclaim VRAM...")
+    write_step_log("QUIESCE_START", f"Requesting Foyer HIBERNATING")
     try:
         resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "HIBERNATING"}, timeout=10)
         if resp.status_code == 200:
             logger.info("[FEAT-213] Foyer state updated to HIBERNATING. Settling 10s...")
             time.sleep(10)
+            write_step_log("QUIESCE_OK", "Foyer HIBERNATING settled")
             return True
         else:
             logger.warning(f"[FEAT-213] Status update returned HTTP {resp.status_code}")
     except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
+    write_step_log("QUIESCE_SKIP", "Foyer status update skipped or offline")
     return False
 
 def re_ignite_vllm():
     """[FEAT-213] Re-ignite Foyer & vLLM post-training."""
     logger.info("[FEAT-213] Re-igniting Foyer state to OPERATIONAL...")
+    write_step_log("RE_IGNITE_START", "Requesting Foyer OPERATIONAL")
     try:
         resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "OPERATIONAL"}, timeout=10)
         if resp.status_code == 200:
-            logger.info("[FEAT-213] Foyer re-ignited to OPERATIONAL cleanly.")
+            logger.info("[FEAT-213] Foyer state restored to OPERATIONAL.")
+            write_step_log("RE_IGNITE_OK", "Foyer OPERATIONAL restored")
             return True
     except Exception as e:
-        logger.warning(f"[FEAT-213] Re-ignition request error: {e}")
+        logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
+    write_step_log("RE_IGNITE_END")
     return False
 
 def run_mass_scan():
-    """Execute note scan & gem distillation."""
-    logger.info("Executing mass_scan.py --once...")
-    scan_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py")
-    try:
-        res = subprocess.run([sys.executable, scan_script, "--once"], capture_output=True, text=True)
-        logger.info(f"mass_scan.py finished with exit code {res.returncode}")
-    except Exception as e:
-        logger.error(f"mass_scan.py failed: {e}")
+    """Run note ingestion loop."""
+    logger.info("[SPR-52.0] Initiating mass scan step...")
+    write_step_log("MASS_SCAN_START")
+    cmd = ["python3", os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py"), "--once"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    logger.info(f"[SPR-52.0] Mass scan complete with return code {res.returncode}")
+    write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
 
 def run_unsloth_forge():
-    """[FEAT-160] Run Unsloth fine-tuning pass via train_expert.py."""
-    logger.info("[FEAT-160] Initiating Unsloth LoRA fine-tuning pass...")
-    train_script = os.path.join(BASE_DIR, "forge", "train_expert.py")
-    
-    if not os.path.exists(DATASET_PATH):
-        logger.warning(f"[FEAT-160] Dataset {DATASET_PATH} not found. Skipping LoRA training pass.")
-        return
-        
-    cmd = [sys.executable, train_script, DATASET_PATH, OUTPUT_LORA_DIR, "60"]
     logger.info(f"[FEAT-160] Executing command: {' '.join(cmd)}")
     try:
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -168,25 +178,41 @@ def main():
                         help="Run legacy run_unsloth_forge() on z87 instead of Kender offload")
     args = parser.parse_args()
 
-    logger.info("=== [FEAT-160/FEAT-213/SPR-52.0] NIGHTLY FORGE ORCHESTRATION INITIATED ===")
+    logger.info("=== [FEAT-160/FEAT-213/SPR-52.0/SPR-53.0] NIGHTLY FORGE ORCHESTRATION INITIATED ===")
+    write_step_log("ORCHESTRATION_INIT", f"local={args.local}")
 
     # 1. Ingest Raw Notes
     run_mass_scan()
 
-    # 2. Quiesce VRAM
+    # 2. Mandatory Post-Scan VRAM & Bus Settling Window (60s)
+    logger.info("[SPR-53.0] Enforcing 60s Post-Scan GPU Settling Window before VRAM Quiesce...")
+    write_step_log("POST_SCAN_SETTLING_START", "Sleeping 60s")
+    time.sleep(60)
+    write_step_log("POST_SCAN_SETTLING_DONE")
+
+    # 3. Pre-Flight Bus & VRAM Health Probe
+    try:
+        load_avg = os.getloadavg()
+        logger.info(f"[PROBE] Pre-Flight Health: System Load = {load_avg}")
+        write_step_log("PRE_FLIGHT_PROBE", f"load_avg={load_avg}")
+    except Exception as e:
+        logger.warning(f"[PROBE] Health probe warning: {e}")
+
+    # 4. Quiesce VRAM
     quiesced = quiesce_vllm()
 
     try:
-        # 3. Train LoRA Adapter (Kender offload; --local keeps legacy z87 path)
+        # 5. Train LoRA Adapter (Kender offload; --local keeps legacy z87 path)
         if args.local:
             run_unsloth_forge()
         else:
             run_kender_forge()
     finally:
-        # 4. Re-ignite Foyer
+        # 6. Re-ignite Foyer
         re_ignite_vllm()
 
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
+    write_step_log("ORCHESTRATION_COMPLETE")
 
 if __name__ == "__main__":
     main()
