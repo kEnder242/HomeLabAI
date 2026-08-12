@@ -155,12 +155,13 @@ Surgical tools for the Portfolio_Dev "Face" pipeline. Use these when the Slow Bu
 ## 🤖 11. Delegation & Swarm Orchestration (BKM-034)
 Helper scripts and execution wrappers for delegating development stories to OpenAgent swarms on port 4096.
 
-| Tool | Path | V4 Status | Goal |
-| :--- | :--- | :--- | :--- |
-| **Scratch Delegate** | `src/tests/scratch_delegate.py` | **ACTIVE** | [BKM-034] Formats Pre-Grounded Blueprint prompts and invokes `/home/jallred/.opencode/bin/opencode run --dir ... --attach http://127.0.0.1:4096/ --auto` safely via Python `subprocess.run`. |
-| **OpenAgent Handover Playbook** | `Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md` | **ACTIVE** | Master reference guide for model allocation, token ceilings, context bounds, and Orchestrator Non-Coding Mandates. |
+| **Delegation Launcher** | `src/tests/delegate.py` | **ACTIVE** | [BKM-034/BKM-042] [GOLD] Standard OpenAgent story dispatch harness via port 4097 REST API. Supports `--reference`, `--target`, `--mode`, and `--verification`. |
+| **Live Lab Gauntlet** | `src/tests/run_live_lab_gauntlet.sh` | **ACTIVE** | [SPR-53.0] [GOLD] Unified non-mocked integration test runner calling live endpoints (`:8088`, `:8765`, `:9090`, `:11434`). |
+| **Adapter Swap Test** | `src/tests/test_vllm_adapter_swap.py` | **ACTIVE** | [SPR-52.0] Verifies zero-downtime hot-reload contract for `cli_voice_v1` LoRA adapter on vLLM. |
+| **Scratch Delegate** | `src/tests/scratch_delegate.py` | **LEGACY** | [BKM-034] Legacy CLI wrapper; replaced by REST API `delegate.py`. |
+| **OpenAgent Handover Playbook** | `Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md` | **ACTIVE** | Master reference guide for model allocation, hardware topology, Delegation Map, and VRAM safety nets. |
 | **Nudge 2024** | `field_notes/nudge_2024.py` | [RECOVERY] Clears hash for 2024 files to force a targeted re-nibble. |
 | **Clean Data** | `field_notes/clean_data.py` | **DANGER.** Wipes the data directory. |
 
 ---
-**Usage**: Before concluding any session, run `src/debug/gold_master_batch_runner.sh` to certify the baseline.
+**Usage**: Before concluding any session, run `src/tests/run_live_lab_gauntlet.sh` or `src/debug/gold_master_batch_runner.sh` to certify the baseline.
