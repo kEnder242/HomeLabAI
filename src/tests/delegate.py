@@ -210,7 +210,8 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-You are Atlas (Task Orchestrator). You MUST manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent using category="quick" or category="unspecified-high" (e.g. task(category="quick", prompt="..."))."""
+You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent.
+ROUTING: Omit the category parameter for all standard tasks to route them to the primary local ground worker. Assign category="quick" only for targeted micro-edits."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
