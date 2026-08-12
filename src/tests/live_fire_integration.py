@@ -3,15 +3,29 @@ import websockets
 import json
 import sys
 import time
+import requests
 
 async def live_fire_test():
     uri = "ws://localhost:8765"
     print(f"🚀 Initializing Strategic Live Fire: {uri}")
-    
+
+    # [SPR-52.4] Fetch per-boot session_token from /status before WS connect
     try:
-        async with websockets.connect(uri) as ws:
+        status = requests.get("http://localhost:8765/status", timeout=5).json()
+        lab_key = status.get("session_token", "")
+    except Exception as e:
+        print(f"❌ Failed to fetch session_token from /status: {e}")
+        sys.exit(1)
+
+    print(f"🔑 Got session_token: {lab_key[:4]}****")
+
+    try:
+        async with websockets.connect(
+            uri,
+            additional_headers={"X-Lab-Key": lab_key},
+        ) as ws:
             # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "3.8.1", "client": "grounded_integrator"}))
+            await ws.send(json.dumps({"type": "handshake", "version": "3.8.1", "client": "grounded_integrator", "lab_key": lab_key}))
             print("📡 Handshake Sent.")
             
             # 2. Wait for Hub Ready
