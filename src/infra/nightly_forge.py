@@ -90,15 +90,26 @@ def run_mass_scan():
     write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
 
 def run_unsloth_forge():
+    """[FEAT-160] Run Unsloth LoRA fine-tuning locally on z87 (--local path)."""
+    train_script = os.path.join(BASE_DIR, "forge", "train_expert.py")
+    cmd = [
+        sys.executable, train_script,
+        "--dataset", DATASET_PATH,
+        "--output", OUTPUT_LORA_DIR,
+    ]
+    write_step_log("UNSLOTH_FORGE_START", f"cmd={' '.join(cmd)}")
     logger.info(f"[FEAT-160] Executing command: {' '.join(cmd)}")
     try:
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             logger.info("[FEAT-160] LoRA training pass completed successfully.")
+            write_step_log("UNSLOTH_FORGE_COMPLETE", "returncode=0")
         else:
             logger.error(f"[FEAT-160] LoRA training failed with code {res.returncode}: {res.stderr[-300:]}")
+            write_step_log("UNSLOTH_FORGE_FAILED", f"returncode={res.returncode}")
     except Exception as e:
         logger.error(f"[FEAT-160] Error executing train_expert.py: {e}")
+        write_step_log("UNSLOTH_FORGE_ERROR", str(e))
 
 def run_kender_forge():
     """[SPR-52.0] Offload Unsloth pass to Kender (4090), rsync adapter back, hot-reload vLLM."""
