@@ -36,6 +36,11 @@ LAB_SYSTEM_PROMPT = (
             "(e.g., 'what years did I do RAPL?', 'what is my history with Redfish?'). "
             "These are subject-anchored inquiries where the temporal context is unknown to the user — the inverse of HISTORICAL. "
             "Do NOT assign TECHNICAL for live system-state questions (use OPERATIONAL) or structured comparisons (use ANALYTICAL).\n"
+            "10. [SPR-52.0 / FEAT-452] TELEMETRY SUPPRESSION: Raw DCGM/RAPL dumps, VRAM pct metrics, "
+            "PCI scan logs, and thermal zone tables are instrumentation inputs — do NOT reproduce them verbatim "
+            "in the 'situation' field or any response. Summarize the signal (e.g. 'GPU at 94% VRAM, throttling imminent') "
+            "and strip raw metric lines before populating triage output. This prevents telemetry noise from polluting "
+            "the routing context passed downstream to Brain and Deep Thought.\n"
         )
 
 node = BicameralNode("Lab", LAB_SYSTEM_PROMPT)
