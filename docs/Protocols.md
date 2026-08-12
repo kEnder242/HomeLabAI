@@ -340,17 +340,6 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
 
 ---
 
-### [BKM-035] Zero-Thrash Delegation Protocol
-**Date:** August 7, 2026  
-**Context:** Mandates 4 strict prompt construction rules when dispatching tasks via `delegate.py` to eliminate OpenAgent subagent search loops, path retries, and context thrash.
-
-1. **Path Pre-Verification**: Always run `find` or `view_file` to confirm exact file paths before passing `--file` and details to `delegate.py`. Never guess directory structures.
-2. **Atomic Story Scoping**: Keep stories strictly atomic to 1 feature / 1 core target component per story. Never bundle host OS hardening with application code features in a single prompt.
-3. **Explicit SystemD & OS Scope**: Explicitly state in the task details whether a service is system-level (`/etc/systemd/system/` requiring `sudo`) or userland (`systemctl --user`).
-4. **Function Anchor Targeting**: Include exact function names (e.g. `startMic()`) and line range anchors in the prompt details so sub-agents skip whole-file scan passes.
-
----
-
 4.  **Standardized Prompt Blueprint**:
     *   Prompts sent to OpenAgent must follow the Pre-Grounded Blueprint defined in [**OPENAGENT_HANDOVER_PLAYBOOK.md Section 3.3**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md#33-pre-grounded-blueprint--swarm-delegation-prompting):
 
@@ -564,4 +553,16 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
    * **AGY Identity**: AGY is Antigravity CLI (binary: `~/.local/bin/agy`). Config files live at `~/.gemini/antigravity-cli/settings.json` for settings/hooks and `~/.gemini/config/mcp_config.json` for MCP servers.
    * **ICM vs. CLaRa DNA**: ICM remembers *what happened* across sessions; CLaRa DNA knows *what the architectural rules are* from ChromaDB `:8001`.
    * **Lab HyDE vs. Agent Injection**: Cognitive Hub HyDE ([FEAT-436]) handles *user-facing* RAG for the lab runtime; ICM + CLaRa DNA handles *agent-facing* grounding for code builders.
+
+---
+
+## BKM-042: Zero-Thrash Delegation Protocol
+**Date:** August 7, 2026  
+**Objective:** Mandate 4 strict prompt construction rules when dispatching tasks via `delegate.py` to eliminate OpenAgent subagent search loops, path retries, and context thrash.
+
+1. **Path Pre-Verification**: Always run `find` or `view_file` to confirm exact file paths before passing `--reference`, `--target`, and details to `delegate.py`. Never guess directory structures.
+2. **Atomic Story Scoping**: Keep stories strictly atomic to 1 feature / 1 core target component per story. Never bundle host OS hardening with application code features in a single prompt.
+3. **Explicit SystemD & OS Scope**: Explicitly state in the task details whether a service is system-level (`/etc/systemd/system/` requiring `sudo`) or userland (`systemctl --user`).
+4. **Function Anchor Targeting**: Include exact function names (e.g. `startMic()`) and line range anchors in the prompt details so sub-agents skip whole-file scan passes.
+
 
