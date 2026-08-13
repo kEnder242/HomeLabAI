@@ -73,6 +73,23 @@ BRAIN_PERSONA_SPEC = (
     "and system architecture before any character speaks."
 )
 
+# [FEAT-437] 3-Tier HyDE Failover Cascade tier identifiers
+DEEP_THOUGHT_REMOTE = "deep_thought_remote"
+PINKY_LOCAL_VLLM = "pinky_local_vllm"
+DIRECT_RAW_QUERY = "direct_raw_query"
+
+HYDE_SYNTHESIS_PROMPT = (
+    "Synthesize a 3-part Composite HyDE Vector Query for the given user query.\n"
+    "Format EXACTLY: [VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n"
+    "Gate the synthesis by the 4-Domain HyDE Map Contract:\n"
+    "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n"
+    "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n"
+    "  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n"
+    "  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\n"
+    "If the intent does NOT map to the 4 domains, respond with an empty string.\n"
+    "Output ONLY the HyDE vector string, no preamble, no explanation."
+)
+
 # [FEAT-T20.2] Lazy import — avoids hard dep if DCGM is absent
 def _get_telemetry_collector():
     try:
@@ -1300,6 +1317,37 @@ class CognitiveHub:
             return src_match.group(1)
         return ""
 
+    async def resolve_hyde_vector(self, query: str, triage_result: dict, timeout: float = 8.0) -> tuple:
+        """[FEAT-437] 3-Tier HyDE Failover Cascade: (vector_text, tier)."""
+        # Tier 1: Deep Thought on Kender (RTX 4090)
+        if "thought" in self.residents:
+            try:
+                res = await asyncio.wait_for(
+                    self.residents["thought"].call_tool(
+                        "deep_think", {"task": HYDE_SYNTHESIS_PROMPT, "context": query}
+                    ),
+                    timeout=timeout,
+                )
+                if hasattr(res, "content") and len(res.content) > 0:
+                    text = res.content[0].text
+                    if text and len(text.strip()) > 10:
+                        logging.info(f"[FEAT-437][TIER1] Deep Thought HyDE: {text.strip()[:80]!r}")
+                        return text.strip(), DEEP_THOUGHT_REMOTE
+            except asyncio.TimeoutError:
+                logging.warning(f"[FEAT-437][TIER1] Deep Thought timed out after {timeout}s - falling back to Tier 2")
+            except Exception as e:
+                logging.warning(f"[FEAT-437][TIER1] Deep Thought unavailable ({e}) - falling back to Tier 2")
+
+        # Tier 2: local vLLM triage hyde_vector_text (current live path)
+        hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
+        if len(hyde_text.strip()) > 10:
+            logging.info("[FEAT-437][TIER2] Kender unavailable; using triage hyde_vector_text")
+            return hyde_text.strip(), PINKY_LOCAL_VLLM
+
+        # Tier 3: zero-dependency floor - raw query passthrough, never crashes
+        logging.info("[FEAT-437][TIER3] No HyDE available; passing raw query as ChromaDB vector")
+        return query.strip(), DIRECT_RAW_QUERY
+
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
         """[FEAT-437/442] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
         from the unified pre-reflection pass into the archive context engine, so retrieval
@@ -1309,7 +1357,7 @@ class CognitiveHub:
         # [FEAT-452] Casual Fast-Path (BKM-015): judge-driven, NO hardcoded keyword arrays
         if t_parsed.get("casual") or str(t_parsed.get("vibe", "") or "").upper() == "CASUAL":
             return ""
-        hyde = str(t_parsed.get("hyde_vector_text", "") or "")
+        hyde, _hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
         # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
         cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
         if cache_key in self._rag_cache:
