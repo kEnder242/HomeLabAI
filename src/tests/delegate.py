@@ -125,7 +125,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute", target_files=None):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute", target_files=None, session_id=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -153,37 +153,40 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     session_title = f"Sprint {sprint_num} Story {story_num} (Run {int(time.time())}) — [{mode.upper()}:{agent.upper()}] {title}"
 
-    # 2. Create a fresh session via REST API on port 4097 with target agent & title
-    try:
-        session_payload = {
-            "directory": target_dir,
-            "agent": agent,
-            "title": session_title
-        }
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
-            data=json.dumps(session_payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            session_id = data["id"]
-            log_step(story_num, "SESSION_CREATED", f"Created REST session {session_id}")
-            # Also send explicit PATCH to ensure title overrides background auto-namer
-            try:
-                title_req = urllib.request.Request(
-                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
-                    data=json.dumps({"title": session_title}).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="PATCH",
-                )
-                with urllib.request.urlopen(title_req, timeout=5):
+    # 2. Attach to existing session or create a fresh session via REST API on port 4097
+    if session_id:
+        log_step(story_num, "SESSION_REUSED", f"Reusing existing REST session {session_id}")
+    else:
+        try:
+            session_payload = {
+                "directory": target_dir,
+                "agent": agent,
+                "title": session_title
+            }
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
+                data=json.dumps(session_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                session_id = data["id"]
+                log_step(story_num, "SESSION_CREATED", f"Created REST session {session_id}")
+                # Also send explicit PATCH to ensure title overrides background auto-namer
+                try:
+                    title_req = urllib.request.Request(
+                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
+                        data=json.dumps({"title": session_title}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="PATCH",
+                    )
+                    with urllib.request.urlopen(title_req, timeout=5):
+                        pass
+                except Exception:
                     pass
-            except Exception:
-                pass
-    except Exception as e:
-        log_step(story_num, "SESSION_FAILED", f"Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}", severity="CRITICAL")
-        sys.exit(1)
+        except Exception as e:
+            log_step(story_num, "SESSION_FAILED", f"Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}", severity="CRITICAL")
+            sys.exit(1)
 
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
     wake_web_ui()
@@ -302,7 +305,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
     parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
     _retro_mode = "--retrospective" in sys.argv
-    parser.add_argument("--sprint", required=not _retro_mode, type=int, default=50, help="Sprint number (e.g. 50)")
+    parser.add_argument("--sprint", required=not _retro_mode, type=int, default=53, help="Sprint number (e.g. 53)")
     parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
     parser.add_argument("--title", required=not _retro_mode, help="Story title")
     parser.add_argument("--reference", required=not _retro_mode, help="Sprint plan / context reference document (read-only context for Atlas)")
@@ -312,10 +315,10 @@ if __name__ == "__main__":
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
+    parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations")
     args = parser.parse_args()
 
     if args.retrospective:
-        # [BKM-034 Point 13] Retrospective stage: synthesize DELEGATION_RETROSPECTIVE.md and exit.
         _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if _src_dir not in sys.path:
             sys.path.insert(0, _src_dir)
@@ -335,4 +338,5 @@ if __name__ == "__main__":
         max_retries=args.retries,
         mode=args.mode,
         target_files=args.target,
+        session_id=args.session_id,
     )
