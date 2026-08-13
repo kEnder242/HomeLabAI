@@ -1340,12 +1340,16 @@ class CognitiveHub:
 
         # Tier 2: local vLLM triage hyde_vector_text (current live path)
         hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
-        if len(hyde_text.strip()) > 10:
+        if len(hyde_text.strip()) > 5:
             logging.info("[FEAT-437][TIER2] Kender unavailable; using triage hyde_vector_text")
             return hyde_text.strip(), PINKY_LOCAL_VLLM
 
-        # Tier 3: zero-dependency floor - raw query passthrough, never crashes
-        logging.info("[FEAT-437][TIER3] No HyDE available; passing raw query as ChromaDB vector")
+        # Tier 3: Judge-driven non-match / zero-dependency floor
+        if len(hyde_text.strip()) <= 5:
+            logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
+            return "", DIRECT_RAW_QUERY
+
+        logging.info("[FEAT-437][TIER3] Passing raw query as ChromaDB vector")
         return query.strip(), DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
@@ -1354,10 +1358,10 @@ class CognitiveHub:
         searches the refined domain indexing terms instead of the raw noisy turn."""
         if "archive" not in self.residents:
             return ""
-        # [FEAT-452] Casual Fast-Path (BKM-015): judge-driven, NO hardcoded keyword arrays
-        if t_parsed.get("casual") or str(t_parsed.get("vibe", "") or "").upper() == "CASUAL":
-            return ""
         hyde, _hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
+        # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB
+        if not hyde:
+            return ""
         # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
         cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
         if cache_key in self._rag_cache:
