@@ -236,12 +236,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
-    # MANDATE: Explicitly include "agent": agent ("atlas") in the per-message REST payload.
-    # WITHOUT THIS FIELD: opencode-core overrides session defaults and falls back to Sisyphus.
-    # WITH THIS FIELD: Atlas (Plan Executor & Swarm Conductor) takes the turn directly and
-    # emits task() calls to delegate file edits down to specialist sub-agents as designed.
+    # Session agent ("atlas") is assigned at session creation time via POST /session body: {"agent": "atlas"}.
     msg_payload = json.dumps({
-        "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
     }).encode("utf-8")
 
