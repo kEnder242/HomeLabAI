@@ -236,6 +236,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     msg_payload = json.dumps({
+        "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
     }).encode("utf-8")
 
