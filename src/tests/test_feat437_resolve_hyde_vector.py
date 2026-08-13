@@ -77,32 +77,32 @@ async def test_tier1_exception_falls_to_tier2():
 
 @pytest.mark.asyncio
 async def test_tier3_raw_query_fallback():
-    """Tier 3: no thought node, empty triage -> raw query passthrough, no crash."""
+    """Tier 3: no thought node, empty triage -> empty vector (non-match / casual bypass BKM-015), no crash."""
     hub = _make_hub()
     vec, tier = await hub.resolve_hyde_vector("raw query", {})
     assert tier == DIRECT_RAW_QUERY
-    assert vec == "raw query"
+    assert vec == ""
 
 
 @pytest.mark.asyncio
 async def test_tier2_short_hyde_falls_to_tier3():
-    """Length gate (>10 chars): short triage hyde does not satisfy Tier 2."""
+    """Length gate (>5 chars): short triage hyde does not satisfy Tier 2."""
     hub = _make_hub()
-    vec, tier = await hub.resolve_hyde_vector("query", {"hyde_vector_text": "short"})
+    vec, tier = await hub.resolve_hyde_vector("query", {"hyde_vector_text": "tiny"})
     assert tier == DIRECT_RAW_QUERY
-    assert vec == "query"
+    assert vec == ""
 
 
 @pytest.mark.asyncio
 async def test_tier1_empty_response_falls_to_tier3():
-    """Kender returns empty text -> skipped; empty triage -> Tier 3."""
+    """Kender returns empty text -> skipped; empty triage -> Tier 3 empty vector."""
     hub = _make_hub()
     hub.residents["thought"] = _thought_mock(
         return_value=MagicMock(content=[MagicMock(text="   ")])
     )
     vec, tier = await hub.resolve_hyde_vector("query", {})
     assert tier == DIRECT_RAW_QUERY
-    assert vec == "query"
+    assert vec == ""
 
 
 @pytest.mark.asyncio
