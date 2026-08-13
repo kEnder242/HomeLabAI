@@ -134,9 +134,17 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         target_dir = DEFAULT_TARGET_DIR
     target_dir = os.path.abspath(target_dir)
 
-    # Route agent based on mode
+    # Map short agent names to exact registered OpenCode agent display names
+    AGENT_MAP = {
+        "atlas": "Atlas - Plan Executor",
+        "prometheus": "Prometheus - Plan Builder",
+        "sisyphus": "Sisyphus - Ultraworker",
+    }
     if mode in ("plan", "investigate"):
-        agent = "prometheus"
+        agent_key = "prometheus"
+    else:
+        agent_key = "atlas"
+    agent = AGENT_MAP.get(agent_key, agent_key)
 
     _target_display = target_files if target_files else reference_file
     log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (reference: {reference_file}, target: {_target_display})")
