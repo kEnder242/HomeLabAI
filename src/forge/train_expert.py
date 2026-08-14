@@ -54,23 +54,27 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
     dataset = load_dataset("json", data_files=dataset_path, split="train")
 
     def formatting_prompts_func(examples):
-        # [FIX] Robust key detection to handle diverse datasets (Sentinel vs Voice vs History)
+        # [FIX] Robust key detection to handle diverse datasets (Sentinel vs Voice vs History vs Journal Ledger)
         available_keys = list(examples.keys())
         
         # Determine which fields to use
         instr_key = "instruction" if "instruction" in available_keys else ("prompt" if "prompt" in available_keys else None)
         out_key = "output" if "output" in available_keys else ("response" if "response" in available_keys else ("text" if "text" in available_keys else None))
         
-        if not instr_key or not out_key:
-            print(f"❌ DATASET SCHEMA ERROR: Found keys {available_keys}")
-            raise KeyError("Missing required keys. Needs 'instruction' or 'prompt' and 'output' or 'response'.")
-
-        instructions = examples[instr_key]
-        outputs      = examples[out_key]
         texts = []
-        for instruction, output in zip(instructions, outputs):
-            text = f"User: {instruction}\n\nAssistant: {output}" + tokenizer.eos_token
-            texts.append(text)
+        if "dialogue" in available_keys:
+            dialogues = examples["dialogue"]
+            for d in dialogues:
+                texts.append(str(d) + tokenizer.eos_token)
+        elif instr_key and out_key:
+            instructions = examples[instr_key]
+            outputs      = examples[out_key]
+            for instruction, output in zip(instructions, outputs):
+                text = f"User: {instruction}\n\nAssistant: {output}" + tokenizer.eos_token
+                texts.append(text)
+        else:
+            print(f"❌ DATASET SCHEMA ERROR: Found keys {available_keys}")
+            raise KeyError("Missing required keys. Needs 'instruction'/'prompt'/'output' or 'dialogue'.")
         return { "text" : texts, }
 
     dataset = dataset.map(formatting_prompts_func, batched = True,)
