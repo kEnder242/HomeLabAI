@@ -413,15 +413,30 @@ class BicameralNode:
 
     async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.1, use_lora=True, tools=None, response_format=None, request_id="default"):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
+        # [FEAT-462] Warming Anchor Hold-The-Line Loop
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):
             ok, msg = await self.ping_engine()
             if not ok:
                 if msg == "WARMING" or "connection failed" in msg.lower() or "connect call failed" in msg.lower():
                     prefix = "Narf! " if self.name == "Pinky" else ""
-                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
+                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!\n"
+                    
+                    # Hold the line and retry ping_engine for up to 60 seconds
+                    warmed = False
+                    for _ in range(20): # 20 iterations * 3s = 60s
+                        await asyncio.sleep(3)
+                        ok, msg = await self.ping_engine()
+                        if ok:
+                            warmed = True
+                            logging.info(f"[{self.name}] [FEAT-462] Engine warm-up complete! Resuming generation.")
+                            break
+                    
+                    if not warmed:
+                        yield f"\n[{self.name}] Engine failed to finish warming within 60s. Please retry momentarily."
+                        return
                 else:
                     yield f"Error: {msg}"
-                return
+                    return
 
         engine = self._engine_cache
         if engine.get("type") == "NONE":
