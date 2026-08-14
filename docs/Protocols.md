@@ -326,16 +326,18 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
 3. **Strict Swarm Directive**: Mandates that `sisyphus` (lead planner) *MUST NOT* edit files directly, forcing a `task()` hand-off to `sisyphus-junior` (KENDER on port 11434).
 
 1.  **Role Division (Swarm Topology & Dual Orchestrator)**:
-    *   **Strategic Guardian (Antigravity / Gemini)** [PRIMARY]: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests. Used when the user has token budget for AGY.
-    *   **Sisyphus (OpenCode / deepseek-v4-flash-free)** [BACKUP]: Lead Orchestrator when AGY is off-path — plans, delegates via `task()`, audits diffs, and commits. MUST NOT write code directly when delegation is viable.
-    *   **Prometheus (Planner / Reviewer)** [`groq/llama-3.3-70b-versatile`]: Strategic planner, pre-flight context auditor, and test suite verifier. Blocked from direct file edits (`disabled_tools`).
-    *   **Atlas (Plan Executor)** [`groq/llama-3.3-70b-versatile`]: Designated Plan Executor for structured `delegate.py` execution dispatches. Transforms context briefings into tactical task blueprints and coordinates subagent execution. Blocked from direct file edits (`disabled_tools`).
-    *   **Sisyphus-Junior (Ground Worker)** [`my-windows-4090/qwen3:14b`]: Executes physical code modifications, line-by-line diffs, and unit test iterations on Node KENDER. Native `tool_calls` enabled.
-2.  **REST Socket Architecture**:
-    *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`), triggers socket warm-up on port 4096 (`wake_web_ui()`), and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
-    *   Pre-flight health probes automatically issue `DELETE /session/<temp_id>` to purge temporary probe sessions, keeping the OpenCode web UI dashboard clean with zero empty `"New session"` entries.
-    *   Session titles are formatted as `Sprint 50 Story <N> (Run <timestamp>) — [ATLAS] <Title>`.
+    *   **Strategic Guardian (Antigravity / Gemini)** [PRIMARY]: Maintains the Master Sprint Plan (`SPRINT_PLAN_SPR_XX_X.md`), defines architecture, conducts post-implementation git diff reviews, and runs system integration tests.
+    *   **Atlas (Plan Executor & Swarm Conductor)** [`openrouter/nvidia/nemotron-3.5-lightning:free`]: Designated OpenAgent Swarm Conductor for `delegate.py` execution dispatches. Evaluates the `[IDENTITY ASSERTION & HARD-STOP GUARD]`, confirms its persona, manages the execution lifecycle, and emits `task()` calls to delegate file modifications to sub-agents (`hephaestus` / `sisyphus-junior`).
+    *   **Prometheus (Plan Builder & Diagnostic Investigator)** [`openrouter/nvidia/nemotron-3.5-lightning:free`]: Read-only strategic planner and diagnostic investigator (`delegate.py --mode plan/investigate`). Blocked from direct file edits (`disabled_tools`).
+    *   **Sisyphus (Ultraworker & Fallback Worker)** [`openrouter/nvidia/nemotron-3.5-lightning:free`]: Standalone ultraworker. When invoked directly or handed an Atlas task via identity mismatch, Sisyphus detects `[IDENTITY ASSERTION & HARD-STOP GUARD]`, halts execution with 0 file edits, and outputs a `[HANDOVER REFLECTION]`.
+    *   **Sisyphus-Junior / Hephaestus (Ground Workers)** [`my-m5-air` / `my-windows-4090`]: Local MLX/Ollama ground workers executing line-by-line file modifications and unit tests.
+2.  **REST Socket Architecture & Persona Binding**:
+    *   `delegate.py` creates a REST session on port 4097 (`POST http://127.0.0.1:4097/session`) and dispatches the prompt via `POST http://127.0.0.1:4097/session/<id>/message`.
+    *   **CRITICAL REST BINDING RULE**: Both `POST /session` AND `POST /session/<id>/message` MUST explicitly include `"agent": "Atlas - Plan Executor"` (or exact registered display name). Omitting `"agent"` from the message payload causes OpenCode to fall back to `Sisyphus - Ultraworker`, triggering the Hard-Stop Guard.
+    *   Pre-flight health probes issue `DELETE /session/<temp_id>` to purge temporary probe sessions, keeping the OpenCode web UI dashboard clean.
+    *   Session titles are formatted as `Sprint XX Story N — [EXECUTE:ATLAS] <Title>`.
     *   Using `delegate.py` guarantees all active worker sessions render live on the local TUI and webview dashboard at `http://192.168.1.238:4096/`.
+    *   *Retrospective Reference*: See `HISTORICAL_VERIFICATION_SPR50_53.md` and ICM entry `01M00WJ8W33ET7ZCD3VWMGNDNR` for full diagnostic resolution on OpenCode REST persona binding.
 
 3.  **Narrow Workspace Scoping & On-Demand Reference**:
     *   Target the narrowest active project directory (e.g. `--dir HomeLabAI`).

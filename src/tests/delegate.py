@@ -134,10 +134,13 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         target_dir = DEFAULT_TARGET_DIR
     target_dir = os.path.abspath(target_dir)
 
+    # Map short agent names to exact registered OpenCode agent display names.
+    # OpenCode binds the system prompt persona identity from these display strings.
+    # Using short keys (e.g. 'atlas') causes fallback to default 'Sisyphus - Ultraworker'.
     AGENT_MAP = {
-        "atlas": "atlas",
-        "prometheus": "prometheus",
-        "sisyphus": "sisyphus",
+        "atlas": "Atlas - Plan Executor",
+        "prometheus": "Prometheus - Plan Builder",
+        "sisyphus": "Sisyphus - Ultraworker",
     }
     if not agent or agent == "atlas":
         if mode in ("plan", "investigate"):
@@ -223,6 +226,10 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
+[IDENTITY ASSERTION & HARD-STOP GUARD]
+You MUST be Atlas (Plan Executor & Swarm Conductor). Check your persona identity immediately.
+If you are NOT Atlas (e.g. Sisyphus, Prometheus, or an unassigned worker node), DO NOT perform any file edits or bash commands. Immediately halt execution, output the [HANDOVER REFLECTION] block below explaining the persona mismatch, and return immediately.
+
 You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent.
 ROUTING: Omit the category parameter for all standard tasks to route them to the primary local ground worker. Assign category="quick" only for targeted micro-edits."""
         _edit_scope = target_files if target_files else reference_file
@@ -247,8 +254,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
-    # Session agent ("atlas") is assigned at session creation time via POST /session body: {"agent": "atlas"}.
+    # Session agent ("Atlas - Plan Executor") must be passed in BOTH POST /session and POST /session/<id>/message payloads.
     msg_payload = json.dumps({
+        "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
     }).encode("utf-8")
 
