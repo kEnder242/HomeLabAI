@@ -1053,26 +1053,26 @@ class FoyerRouter:
                 preamble["request_id"] = request_id
             await self.broadcast(preamble)
 
-            # If casual greeting bypass, emit immediate friendly greeting preamble from Pinky
+            # If casual greeting bypass, emit analytical readiness preamble from Deep Thought on insight channel
             if not is_domain_match:
-                casual_greetings = [
-                    "Narf! Hey there! What can I help you with today?",
-                    "Zort! Ready when you are! What's on your mind?",
-                    "Poit! System operational. How can I assist?",
-                    "Egad! Hello there! What are we working on today?"
+                casual_reflections = [
+                    "Analyzing query parameters... standing by for instructions.",
+                    "Casual greeting acknowledged. Ready for telemetry or plan dispatch.",
+                    "System operational. Awaiting command parameters.",
+                    "Standing by for task specification."
                 ]
                 import random
-                pinky_greeting = {
+                dt_greeting = {
                     "type": "crosstalk",
-                    "brain": random.choice(casual_greetings),
-                    "brain_source": "Pinky",
-                    "channel": "chat",
+                    "brain": random.choice(casual_reflections),
+                    "brain_source": "Deep Thought",
+                    "channel": "insight",
                     "final": False,
                     "version": LAB_VERSION
                 }
                 if request_id:
-                    pinky_greeting["request_id"] = request_id
-                await self.broadcast(pinky_greeting)
+                    dt_greeting["request_id"] = request_id
+                await self.broadcast(dt_greeting)
 
             await self.enqueue_intent(query, source=source, request_id=request_id)
         except Exception as e:
