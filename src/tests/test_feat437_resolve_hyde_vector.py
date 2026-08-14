@@ -125,13 +125,11 @@ async def test_fetch_rag_context_tier1_flows_to_get_context():
 
 @pytest.mark.asyncio
 async def test_tier1_log_emitted(caplog):
-    """Server log contract: [FEAT-437][TIER1] on Kender hit."""
+    """Server log contract: [FEAT-437][TIER1] on Pinky LoRA hit."""
     caplog.set_level(logging.INFO)
     hub = _make_hub()
-    hub.residents["thought"] = _thought_mock(
-        return_value=MagicMock(content=[MagicMock(text=TIER1_TEXT)])
-    )
-    await hub.resolve_hyde_vector("query", {})
+    triage = {"hyde_vector_text": TIER1_TEXT}
+    await hub.resolve_hyde_vector("query", triage)
     assert "[FEAT-437][TIER1]" in caplog.text
 
 
