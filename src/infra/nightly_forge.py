@@ -44,8 +44,23 @@ def write_step_log(step_name: str, details: str = ""):
         logger.warning(f"Failed to write step log: {e}")
 
 def get_vram_usage():
-    """Dummy probe for VRAM."""
-    return "unknown"
+    """Probe actual VRAM usage via nvidia-smi."""
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,nounits,nounits"],
+            capture_output=True, text=True, timeout=10
+        )
+        if res.returncode == 0:
+            lines = res.stdout.strip().splitlines()
+            if len(lines) >= 2:
+                return int(lines[-1].strip())
+            if lines:
+                val = lines[0].strip()
+                if val != "memory.total [MiB]":
+                    return int(val)
+        return 0
+    except Exception:
+        return 0
 
 def quiesce_vllm():
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
