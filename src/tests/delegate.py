@@ -134,16 +134,18 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         target_dir = DEFAULT_TARGET_DIR
     target_dir = os.path.abspath(target_dir)
 
-    # Map short agent names to exact registered OpenCode agent display names
     AGENT_MAP = {
         "atlas": "atlas",
         "prometheus": "prometheus",
         "sisyphus": "sisyphus",
     }
-    if mode in ("plan", "investigate"):
-        agent_key = "prometheus"
+    if not agent or agent == "atlas":
+        if mode in ("plan", "investigate"):
+            agent_key = "prometheus"
+        else:
+            agent_key = "atlas"
     else:
-        agent_key = "atlas"
+        agent_key = agent
     agent = AGENT_MAP.get(agent_key, agent_key)
 
     _target_display = target_files if target_files else reference_file
@@ -221,9 +223,8 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-[IDENTITY ASSERTION & HARD-STOP GUARD]
-You MUST be Atlas (Plan Executor & Swarm Conductor). Check your persona identity immediately.
-If you are NOT Atlas (e.g. Sisyphus, Prometheus, or an unassigned worker node), DO NOT perform any file edits or bash commands. Immediately halt execution, output the [HANDOVER REFLECTION] block below explaining the persona mismatch, and return immediately."""
+You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent.
+ROUTING: Omit the category parameter for all standard tasks to route them to the primary local ground worker. Assign category="quick" only for targeted micro-edits."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
@@ -327,6 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
+    parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations")
     args = parser.parse_args()
 
@@ -346,7 +348,7 @@ if __name__ == "__main__":
         args.verification,
         sprint_num=args.sprint,
         target_dir=args.dir,
-        agent="atlas",
+        agent=args.agent,
         max_retries=args.retries,
         mode=args.mode,
         target_files=args.target,
