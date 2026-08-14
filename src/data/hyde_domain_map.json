@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "synthesis_prompt": "Synthesize a 3-part Composite HyDE Vector Query for the given user query.\nFormat EXACTLY: [VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\nGate the synthesis by the 4-Domain HyDE Map Contract:\n  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\nIf the intent does NOT map to the 4 domains, respond with an empty string.\nOutput ONLY the HyDE vector string, no preamble, no explanation.",
+  "domains": {
+    "exp_tlm": {
+      "name": "Silicon Telemetry",
+      "description": "PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors."
+    },
+    "exp_bkm": {
+      "name": "SRE playbooks",
+      "description": "Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies."
+    },
+    "exp_for": {
+      "name": "Forensic Logs",
+      "description": "Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis."
+    },
+    "lab_history": {
+      "name": "18-Year Archive",
+      "description": "historical project notes (2005-2025), career milestones, past sprint retrospectives."
+    }
+  }
+}
