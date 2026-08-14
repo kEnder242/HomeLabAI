@@ -1371,7 +1371,13 @@ class CognitiveHub:
 
     async def resolve_hyde_vector(self, query: str, triage_result: dict, timeout: float = 8.0) -> tuple:
         """[FEAT-437] 3-Tier HyDE Failover Cascade: (vector_text, tier)."""
-        # Tier 1: Deep Thought on Kender (RTX 4090)
+        # Tier 1: Pinky local vLLM (holds cli_voice_v1 LoRA weights fine-tuned on 18-year archive)
+        hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
+        if len(hyde_text.strip()) > 5:
+            logging.info(f"[FEAT-437][TIER1] Pinky LoRA HyDE: {hyde_text.strip()[:80]!r}")
+            return hyde_text.strip(), PINKY_LOCAL_VLLM
+
+        # Tier 2: Deep Thought on Kender (RTX 4090) fallback if local vLLM text missing
         if "thought" in self.residents:
             try:
                 res = await asyncio.wait_for(
@@ -1383,26 +1389,16 @@ class CognitiveHub:
                 if hasattr(res, "content") and len(res.content) > 0:
                     text = res.content[0].text
                     if text and len(text.strip()) > 10:
-                        logging.info(f"[FEAT-437][TIER1] Deep Thought HyDE: {text.strip()[:80]!r}")
+                        logging.info(f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {text.strip()[:80]!r}")
                         return text.strip(), DEEP_THOUGHT_REMOTE
             except asyncio.TimeoutError:
-                logging.warning(f"[FEAT-437][TIER1] Deep Thought timed out after {timeout}s - falling back to Tier 2")
+                logging.warning(f"[FEAT-437][TIER2] Deep Thought timed out after {timeout}s")
             except Exception as e:
-                logging.warning(f"[FEAT-437][TIER1] Deep Thought unavailable ({e}) - falling back to Tier 2")
+                logging.warning(f"[FEAT-437][TIER2] Deep Thought unavailable ({e})")
 
-        # Tier 2: local vLLM triage hyde_vector_text (current live path)
-        hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
-        if len(hyde_text.strip()) > 5:
-            logging.info("[FEAT-437][TIER2] Kender unavailable; using triage hyde_vector_text")
-            return hyde_text.strip(), PINKY_LOCAL_VLLM
-
-        # Tier 3: Judge-driven non-match / zero-dependency floor
-        if len(hyde_text.strip()) <= 5:
-            logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
-            return "", DIRECT_RAW_QUERY
-
-        logging.info("[FEAT-437][TIER3] Passing raw query as ChromaDB vector")
-        return query.strip(), DIRECT_RAW_QUERY
+        # Tier 3: Judge-driven non-match / zero-dependency floor (BKM-015)
+        logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
+        return "", DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
         """[FEAT-437/442/454] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
