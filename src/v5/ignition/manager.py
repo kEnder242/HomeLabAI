@@ -503,9 +503,9 @@ class IgnitionManager:
                 idle_time = time.time() - self.last_activity_time
                 foyer_clients = await self.get_foyer_clients()
                 
-                # Double standard timeout: 120s -> 240s
-                # Extra 5 minutes (300s) if there is an active client connection
-                effective_timeout = 240
+                # [FEAT-455] Extended Idle Window: 600s (10 min) base timeout
+                # Extra 5 minutes (300s) if there is an active client connection (total 900s / 15 min)
+                effective_timeout = 600
                 if foyer_clients > 0:
                     effective_timeout += 300
 
