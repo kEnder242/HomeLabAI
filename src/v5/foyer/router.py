@@ -1052,6 +1052,28 @@ class FoyerRouter:
             if request_id:
                 preamble["request_id"] = request_id
             await self.broadcast(preamble)
+
+            # If casual greeting bypass, emit immediate friendly greeting preamble from Pinky
+            if not is_domain_match:
+                casual_greetings = [
+                    "Narf! Hey there! What can I help you with today?",
+                    "Zort! Ready when you are! What's on your mind?",
+                    "Poit! System operational. How can I assist?",
+                    "Egad! Hello there! What are we working on today?"
+                ]
+                import random
+                pinky_greeting = {
+                    "type": "crosstalk",
+                    "brain": random.choice(casual_greetings),
+                    "brain_source": "Pinky",
+                    "channel": "chat",
+                    "final": False,
+                    "version": LAB_VERSION
+                }
+                if request_id:
+                    pinky_greeting["request_id"] = request_id
+                await self.broadcast(pinky_greeting)
+
             await self.enqueue_intent(query, source=source, request_id=request_id)
         except Exception as e:
             logger.error(f"[FEAT-455] Deep Thought preamble failed: {e}")
