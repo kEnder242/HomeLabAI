@@ -22,7 +22,7 @@ RESULT=$?
 echo "Test 2: $(if [ $RESULT -eq 0 ]; then echo 'PASS'; else echo 'FAIL'; fi)" >> $LOGFILE
 
 echo "Test 3: test_live_fire_triage.py" >> $LOGFILE
-python test_live_fire_triage.py >> $LOGFILE 2>&1
+python ../debug/test_live_fire_triage.py >> $LOGFILE 2>&1
 RESULT=$?
 echo "Test 3: $(if [ $RESULT -eq 0 ]; then echo 'PASS'; else echo 'FAIL'; fi)" >> $LOGFILE
 
