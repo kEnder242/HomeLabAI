@@ -107,14 +107,27 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
     print(f"Saved adapter to {output_dir}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python train_expert.py <dataset_jsonl> <output_lora_dir> [steps] [base_model]")
+    import argparse
+    parser = argparse.ArgumentParser(description="Unsloth LoRA Expert Fine-Tuning")
+    parser.add_argument("pos_dataset", nargs="?", default=None, help="Dataset JSONL path (positional)")
+    parser.add_argument("pos_output", nargs="?", default=None, help="Output LoRA dir (positional)")
+    parser.add_argument("pos_steps", nargs="?", type=int, default=None, help="Training steps (positional)")
+    parser.add_argument("pos_model", nargs="?", default=None, help="Base model (positional)")
+    parser.add_argument("--dataset", default=None, help="Dataset JSONL path")
+    parser.add_argument("--output", default=None, help="Output LoRA dir")
+    parser.add_argument("--steps", type=int, default=60, help="Training steps")
+    parser.add_argument("--model", default=None, help="Base model")
+    args = parser.parse_args()
+
+    dataset_in = args.dataset or args.pos_dataset
+    output_out = args.output or args.pos_output
+    steps_in = args.steps or (args.pos_steps if args.pos_steps is not None else 60)
+    model_in = args.model or args.pos_model
+
+    if not dataset_in or not output_out:
+        print("Usage: python train_expert.py --dataset <dataset_jsonl> --output <output_lora_dir> [--steps N] [--model M]")
         sys.exit(1)
-    
-    dataset_in = sys.argv[1]
-    output_out = sys.argv[2]
-    steps_in = int(sys.argv[3]) if len(sys.argv) > 3 else 60
-    model_in = sys.argv[4] if len(sys.argv) > 4 else None
+
     if not model_in:
         try:
             import json
@@ -129,8 +142,13 @@ if __name__ == "__main__":
                         model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
         except Exception:
             pass
-    
+
     if not model_in:
-        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
-        
-    train_expert(dataset_in, output_out, steps=steps_in, model_name=model_in)
+        model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
+
+    train_expert(
+        dataset_path=dataset_in,
+        output_dir=output_out,
+        steps=steps_in,
+        model_name=model_in,
+    )
