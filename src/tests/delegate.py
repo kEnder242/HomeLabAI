@@ -136,9 +136,9 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     # Map short agent names to exact registered OpenCode agent display names
     AGENT_MAP = {
-        "atlas": "Atlas - Plan Executor",
-        "prometheus": "Prometheus - Plan Builder",
-        "sisyphus": "Sisyphus - Ultraworker",
+        "atlas": "atlas",
+        "prometheus": "prometheus",
+        "sisyphus": "sisyphus",
     }
     if mode in ("plan", "investigate"):
         agent_key = "prometheus"
