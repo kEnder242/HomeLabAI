@@ -225,6 +225,30 @@ class CognitiveHub:
             except Exception:
                 pass
 
+        # [BKM-015] Token → routing override map.
+        # Tokens live in config/role_tokens.json (single source of truth);
+        # routing targets are pre-defined per the role token contract.
+        self._token_routes = {
+            "<|PINKY|>":   {"addressed_to": "PINKY",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.5, "casual": 0.3, "intrigue": 0.5},
+            "<|BRAIN|>":   {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
+            "<|THOUGHT|>": {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
+        }
+
+        self.auditor = None  # [FEAT-190] The Judge
+
+        # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
+        try:
+            self._tel_collector = _get_telemetry_collector()
+        except Exception:
+            self._tel_collector = None
+        for node in self.residents.values():
+            if hasattr(node, '_on_telemetry'):
+                node._on_telemetry = self._collect_telemetry
+            # Also wire on the underlying BicameralNode if wrapped
+            underlying = getattr(node, '_node', node)
+            if underlying is not node and hasattr(underlying, '_on_telemetry'):
+                underlying._on_telemetry = self._collect_telemetry
+
     def get_status(self):
         """Return current system status including boot info."""
         return {
@@ -258,28 +282,6 @@ class CognitiveHub:
         hypothesis = re.sub(r'[*_\n]', ' ', preamble_text).strip()
         logging.info(f"[FEAT-432] Open HyDE hypothesis captured: {hypothesis[:80]}...")
         return hypothesis
-
-
-        # [BKM-015] Token → routing override map.
-        # Tokens live in config/role_tokens.json (single source of truth);
-        # routing targets are pre-defined per the role token contract.
-        self._token_routes = {
-            "<|PINKY|>":   {"addressed_to": "PINKY",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.5, "casual": 0.3, "intrigue": 0.5},
-            "<|BRAIN|>":   {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
-            "<|THOUGHT|>": {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
-        }
-
-        self.auditor = None  # [FEAT-190] The Judge
-
-        # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
-        self._tel_collector = _get_telemetry_collector()
-        for node in self.residents.values():
-            if hasattr(node, '_on_telemetry'):
-                node._on_telemetry = self._collect_telemetry
-            # Also wire on the underlying BicameralNode if wrapped
-            underlying = getattr(node, '_node', node)
-            if underlying is not node and hasattr(underlying, '_on_telemetry'):
-                underlying._on_telemetry = self._collect_telemetry
 
     def _wrap_residents_for_sandbox(self):
         """[Task 1.3] Wraps call_tool and list_tools on all resident sessions to enforce sandbox."""
