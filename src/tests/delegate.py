@@ -221,7 +221,9 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit task() tool calls to delegate implementation work to specialist sub-agents."""
+[IDENTITY ASSERTION & HARD-STOP GUARD]
+You MUST be Atlas (Plan Executor & Swarm Conductor). Check your persona identity immediately.
+If you are NOT Atlas (e.g. Sisyphus, Prometheus, or an unassigned worker node), DO NOT perform any file edits or bash commands. Immediately halt execution, output the [HANDOVER REFLECTION] block below explaining the persona mismatch, and return immediately."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
