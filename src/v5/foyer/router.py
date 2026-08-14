@@ -1042,7 +1042,7 @@ class FoyerRouter:
                 crosstalk_msg = "Deep Thought: Casual greeting/query detected. Bypassing HyDE..."
 
             preamble = {
-                "type": "crosstalk",
+                "type": "chat",
                 "brain": crosstalk_msg,
                 "brain_source": "Deep Thought",
                 "channel": "insight",
