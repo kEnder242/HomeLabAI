@@ -1405,37 +1405,56 @@ class CognitiveHub:
         return query.strip(), DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
-        """[FEAT-437/442] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
+        """[FEAT-437/442/454] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
         from the unified pre-reflection pass into the archive context engine, so retrieval
         searches the refined domain indexing terms instead of the raw noisy turn."""
         if "archive" not in self.residents:
             return ""
-        hyde, _hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
+        hyde, hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
         # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB
         if not hyde:
             return ""
         # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
         cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
+        result_text = ""
         if cache_key in self._rag_cache:
-            return self._rag_cache[cache_key]
-        try:
-            res = await self.residents["archive"].call_tool(
-                "get_context", {"query": turn, "hyde_vector_text": hyde, "n_results": n_results}
-            )
-            if hasattr(res, 'content') and len(res.content) > 0:
-                result_text = res.content[0].text
-                if result_text:
-                    # [FEAT-444] Cap RAG context before it enters any prompt
-                    result_text = self._truncate_to_tokens(
-                        result_text, doc_id=self._extract_doc_id(result_text)
-                    )
-                    self._rag_cache[cache_key] = result_text
-                    if len(self._rag_cache) > 128:
-                        self._rag_cache.pop(next(iter(self._rag_cache)))
-                return result_text
-        except Exception as e:
-            logging.error(f"[HUB] RAG context fetch failed: {e}")
-        return ""
+            result_text = self._rag_cache[cache_key]
+        else:
+            try:
+                res = await self.residents["archive"].call_tool(
+                    "get_context", {"query": turn, "hyde_vector_text": hyde, "n_results": n_results}
+                )
+                if hasattr(res, 'content') and len(res.content) > 0:
+                    result_text = res.content[0].text
+                    if result_text:
+                        # [FEAT-444] Cap RAG context before it enters any prompt
+                        result_text = self._truncate_to_tokens(
+                            result_text, doc_id=self._extract_doc_id(result_text)
+                        )
+                        self._rag_cache[cache_key] = result_text
+                        if len(self._rag_cache) > 128:
+                            self._rag_cache.pop(next(iter(self._rag_cache)))
+            except Exception as e:
+                logging.error(f"[HUB] RAG context fetch failed: {e}")
+
+        # [FEAT-454] Broadcast RAG Eval payload to Web Intercom for + click expanders
+        if result_text:
+            try:
+                doc_id = self._extract_doc_id(result_text) or "archive_context"
+                await self.broadcast({
+                    "type": "rag_eval",
+                    "query": turn,
+                    "hyde": hyde,
+                    "tier": str(hyde_tier),
+                    "doc_id": doc_id,
+                    "snippet": result_text[:400] + ("..." if len(result_text) > 400 else ""),
+                    "full_context": result_text,
+                    "n_results": n_results
+                })
+            except Exception as ex:
+                logging.warning(f"[FEAT-454] RAG eval broadcast warning: {ex}")
+
+        return result_text
 
     async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
         """Handles Brain (4090) leg of the waterfall."""
