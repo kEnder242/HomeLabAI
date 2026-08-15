@@ -154,7 +154,7 @@ def _get_telemetry_collector():
 class CognitiveHub:
 
 
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None):
+    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None, get_lab_state=None, is_deep_thought_reachable=None):
         import subprocess
         import time
         # Capture boot commit from repo root
@@ -172,6 +172,8 @@ class CognitiveHub:
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
         self.get_vram_status = get_vram_status
+        self.get_lab_state = get_lab_state
+        self.is_deep_thought_reachable = is_deep_thought_reachable
         self.trigger_morning_briefing_cb = trigger_morning_briefing
         self.last_prime_callback = last_prime_callback
         self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
@@ -836,24 +838,45 @@ class CognitiveHub:
                     'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
                 )
 
-                # [Task 12.2] Brain Early-Reply: Route to Deep Thought on KENDER for immediate HyDE synthesis
-                if not self.get_vram_status():
-                    logging.info("[HUB] Engine warming. Synthesizing HyDE via Deep Thought (KENDER) immediately.")
-                    if triage_attempt == 0:
-                        await self.broadcast({
-                            "type": "crosstalk", 
-                            "brain": "Synthesizing Composite HyDE via Deep Thought...", 
-                            "brain_source": "System",
-                            "version": LAB_VERSION
-                        })
+                # [Task 12.2] Brain Early-Reply: Route to Deep Thought for immediate HyDE synthesis
+                # [FEAT-028] Deep Thought gating: HIBERNATING -> zero remote traffic.
+                # Reachability is decided by the ping->API probe, NOT local vocal state.
+                lab_state = ""
+                if self.get_lab_state:
+                    try:
+                        lab_state = self.get_lab_state() or ""
+                    except Exception:
+                        lab_state = ""
+                hibernating = (lab_state == "HIBERNATING")
+
+                if not hibernating and not self.get_vram_status():
+                    # Engine warming (non-hibernating): route to Deep Thought only if reachable
+                    dt_ready = False
+                    if self.is_deep_thought_reachable:
                         try:
-                            # Pass triage context to Deep Thought on KENDER so it produces real HyDE vector
-                            async for token in self._process_node_stream(
-                                "thought", turn, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
-                            ):
-                                t_text += token
+                            dt_ready = await self.is_deep_thought_reachable()
                         except Exception as e:
-                            logging.warning(f"[HUB] Deep Thought HyDE synthesis failed: {e}")
+                            logging.warning(f"[HUB] Deep Thought reachability probe failed: {e}")
+                            dt_ready = False
+                    if dt_ready:
+                        logging.info("[HUB] Engine warming. Synthesizing HyDE via Deep Thought immediately.")
+                        if triage_attempt == 0:
+                            await self.broadcast({
+                                "type": "crosstalk", 
+                                "brain": "Synthesizing Composite HyDE via Deep Thought...", 
+                                "brain_source": "System",
+                                "version": LAB_VERSION
+                            })
+                            try:
+                                # Pass triage context to Deep Thought so it produces real HyDE vector
+                                async for token in self._process_node_stream(
+                                    "thought", turn, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
+                                ):
+                                    t_text += token
+                            except Exception as e:
+                                logging.warning(f"[HUB] Deep Thought HyDE synthesis failed: {e}")
+                    else:
+                        logging.info("[HUB] Engine warming, Deep Thought unreachable. Falling back to local triage.")
                     
                     wait_limit = 6 if triage_attempt == 0 else 2
                     for _ in range(wait_limit):
@@ -861,6 +884,8 @@ class CognitiveHub:
                             break
                         await asyncio.sleep(2.0)
                 else:
+                    if hibernating:
+                        logging.info("[HUB] Lab HIBERNATING. Skipping Deep Thought HyDE (zero remote traffic).")
                     async for token in self._process_node_stream(
                         "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
                     ):
@@ -1740,13 +1765,23 @@ class CognitiveHub:
 
     async def _prime_first_try(self, turn):
         """[NEW] First Try: Persona-faithful quick response."""
+        # [FEAT-028] Hibernation gate: no remote Deep Thought traffic while hibernating
+        lab_state = ""
+        if self.get_lab_state:
+            try:
+                lab_state = self.get_lab_state() or ""
+            except Exception:
+                lab_state = ""
+        if lab_state == "HIBERNATING":
+            logging.info("[PRIME] Hibernating. Skipping Deep Thought priming (zero remote traffic).")
+            return None
         # Persona defaults to Deep Thought as it's pre-triage
         persona = "Deep Thought (the Brain's pre-conscious analytical stream - calm, strategic, non-interactive; never uses Pinky catchphrases like 'Narf!', 'Poit!', 'Zort!')"
         logging.info(f"[PRIME] Initiating priming for turn: {turn[:50]}")
         
         tic_msg = None
         
-        # Opportunistic check: if KENDER is immediately available, try to get a quip.
+        # Opportunistic check: if Deep Thought is immediately available, try to get a quip.
         if "thought" in self.residents:
             try:
                 logging.info(f"[PRIME] Calling 'think' tool for persona: {persona}")
