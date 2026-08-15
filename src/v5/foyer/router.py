@@ -16,6 +16,7 @@ from aiohttp import web
 import numpy as np
 import sys
 import subprocess
+import socket
 
 # Add src to path
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -47,6 +48,7 @@ DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 JUDGE_BACKPRESSURE_PATH = os.path.join(DATA_DIR, "judge_backpressure.jsonl")  # [FEAT-444]
+INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")  # [FEAT-028] Deep Thought topology
 
 # [SPR-52.0 / Task 52.3] 5-Stage Division of Labor Orchestration
 DIVISION_OF_LABOR_STAGES = (
@@ -92,6 +94,33 @@ def get_style_key():
             return hashlib.md5(f.read()).hexdigest()[:8]
     return "default_key"
 
+def resolve_thought_url():
+    """[FEAT-028] Resolves Deep Thought heartbeat URL from infrastructure config."""
+    try:
+        if os.path.exists(INFRA_CONFIG):
+            with open(INFRA_CONFIG, "r") as f:
+                infra = json.load(f)
+            primary = (
+                infra.get("nodes", {}).get("thought", {}).get("primary", "localhost")
+            )
+            host_cfg = infra.get("hosts", {}).get(primary, {})
+            ip_hint = host_cfg.get("ip_hint", "127.0.0.1")
+            port = host_cfg.get("ollama_port", 11434)
+
+            # Dynamic resolution: DNS first, fall back to config hint
+            try:
+                ip = socket.gethostbyname(primary)
+                logging.debug(f"[RESOLVE] Brain host '{primary}' -> {ip}")
+            except Exception:
+                ip = ip_hint
+                logging.debug(f"[RESOLVE] DNS failed for '{primary}'. Using hint: {ip}")
+
+            return f"http://{ip}:{port}/api/tags"
+    except Exception as e:
+        logging.error(f"[RESOLVE] Failed to resolve Brain URL: {e}")
+        return ""
+    return "http://localhost:11434/api/tags"
+
 class FoyerRouter:
     def __init__(self, trigger_task=None, mode="SERVICE_UNATTENDED", afk_timeout=300, disable_ear=False):
         try:
@@ -125,11 +154,20 @@ class FoyerRouter:
         self.stage_memory = {}  # request_id -> {stage_id: status}
         
         self.status = LabStatus()
+        # [FEAT-028] Deep Thought health-tracking state (restored from V4 acme_lab.py)
+        self.thought_online = False
+        self._last_brain_fail = 0
+        self._last_brain_ping = 0
+        self._last_brain_prime = 0
+        self._priming_in_progress = False
+        self._last_thought_fail = 0
         self.cognitive = CognitiveHub(
             self.residents.residents, 
             self.broadcast, 
             self.sensory, 
             get_vram_status=self.get_vram_status,
+            get_lab_state=self.get_lab_state,
+            is_deep_thought_reachable=self.is_deep_thought_reachable,
             trigger_morning_briefing=self.trigger_morning_briefing,
             waterfall_queue=self.waterfall_queue,
             set_active_domain=self.update_active_domain
@@ -369,7 +407,200 @@ class FoyerRouter:
                 logger.warning("[FOYER] task cancellation error", exc_info=True)
 
     def get_vram_status(self, force=False):
+        """[BKM-039] Local engine vocal status (vLLM speaking/outputting).
+
+        NOTE: This is a LOCAL node check. It is NOT a remote reachability probe.
+        Use `is_deep_thought_reachable()` for remote Deep Thought availability.
+        """
         return self.status.vocal
+
+    def get_lab_state(self):
+        """[FEAT-028] Returns the current lab state string (OPERATIONAL/WAKING/HIBERNATING/...)."""
+        return getattr(self.status, "state", "UNKNOWN")
+
+    async def is_deep_thought_reachable(self, force=False):
+        """[FEAT-028] Tier 1: Ping->API reachability probe for Deep Thought (remote primary).
+
+        Order: TCP socket ping first (fails fast), THEN /api/tags API check.
+        Reachable == socket connects AND API returns 200 with a non-empty model list.
+        [BKM-026] 60s failure penalty box: after a failure, suppress probes for 60s.
+        """
+        now = time.time()
+        if not hasattr(self, "_last_thought_fail"):
+            self._last_thought_fail = 0
+        if not force and (now - self._last_thought_fail < 60):
+            return False
+
+        target_url = resolve_thought_url()
+        if not target_url:
+            return False
+
+        # --- Step 1: TCP socket ping (fails fast) ---
+        try:
+            from urllib.parse import urlparse
+            _u = urlparse(target_url)
+            host, port = _u.hostname, _u.port or 11434
+            _reader, _writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=2.0
+            )
+            _writer.close()
+            try:
+                await _writer.wait_closed()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"[HEALTH] Deep Thought socket ping failed: {e}")
+            self._last_thought_fail = now
+            return False
+
+        # --- Step 2: Light API Check ---
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(target_url, timeout=aiohttp.ClientTimeout(total=2.0)) as r:
+                    if r.status != 200:
+                        self._last_thought_fail = now
+                        return False
+                    data = await r.json()
+                    models = [m.get("name") for m in data.get("models", [])]
+                    if not models:
+                        self._last_thought_fail = now
+                        return False
+            return True
+        except Exception as e:
+            logger.debug(f"[HEALTH] Deep Thought API check failed: {e}")
+            self._last_thought_fail = now
+            return False
+
+    async def check_thought_health(self, force=False):
+        """[FEAT-265.31/FEAT-028] State-Aware Deep Thought probe: ping->API + Heavy Prime (GPU Wake)."""
+        # [FEAT-344] Sovereignty Gate: Suppress probes during raw silicon boot / hibernation.
+        state = getattr(self.status, "state", "UNKNOWN")
+        if state in ["BOOTING", "INIT", "HIBERNATING"]:
+            logger.debug(f"[HEALTH] Sovereignty Gate: Aborting probe during {state}.")
+            return
+
+        now = time.time()
+        if not hasattr(self, "_last_brain_fail"):
+            self._last_brain_fail = 0
+        if not hasattr(self, "_last_brain_ping"):
+            self._last_brain_ping = 0
+
+        # [BKM-026] 60s Failure Penalty Box
+        if not force and not self.thought_online and (now - self._last_brain_fail < 60):
+            return
+
+        try:
+            target_url = resolve_thought_url()
+            async with aiohttp.ClientSession() as session:
+                # Tier 1: Light API Check (Status only)
+                try:
+                    async with session.get(target_url, timeout=2.0) as r:
+                        is_reachable = r.status == 200
+                        if not is_reachable:
+                            if self.thought_online:
+                                logger.info("[HEALTH] Deep Thought Offline. Entering 60s penalty box.")
+                                await self.broadcast({
+                                    "type": "crosstalk",
+                                    "brain": "Strategic Sovereignty: DEEP THOUGHT (Primary Offline)",
+                                    "brain_source": "System",
+                                    "version": LAB_VERSION
+                                })
+                            self.thought_online = False
+                            self._last_brain_fail = now
+                            return
+
+                        data = await r.json()
+                        models = [m.get("name") for m in data.get("models", [])]
+                        if not models:
+                            self.thought_online = False
+                            return
+
+                        # [FIX] Distinguish transition vs stable state
+                        if not self.thought_online:
+                            logger.info("[BRAIN] Strategic Sovereignty: PRIMARY (Online)")
+                            await self.broadcast({
+                                "type": "crosstalk",
+                                "brain": "Strategic Sovereignty: PRIMARY",
+                                "brain_source": "System",
+                                "version": LAB_VERSION
+                            })
+                        self.thought_online = True  # API is at least talking
+                except Exception as e:
+                    if self.thought_online:
+                        logger.info(f"[HEALTH] Deep Thought Offline. Entering 60s penalty box. (Error: {e})")
+                        await self.broadcast({
+                            "type": "crosstalk",
+                            "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
+                            "brain_source": "System",
+                            "version": LAB_VERSION
+                        })
+                    self.thought_online = False
+                    self._last_brain_fail = now
+                    return
+
+                # --- Tier 2: Heavy Prime (GPU Wake) ---
+                # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
+                is_restoring = state in ["WAKING", "BOOTING"]
+                if len(self.connected_clients) == 0 and not force:
+                    logger.debug("[HEALTH] Heavy Prime Bypassed: No clients connected to foyer.")
+                    return
+
+                # [FEAT-285] Cooldown Management
+                last_prime_delta = now - getattr(self, "_last_brain_prime", 0)
+                should_prime = force or is_restoring or (last_prime_delta > 120)
+                if not should_prime:
+                    logger.debug(f"[HEALTH] Heavy Prime Bypassed: Cooldown active ({int(last_prime_delta)}s < 120s).")
+                    return
+
+                # [FEAT-286.2] Strict Latching: Only one active background prime
+                if getattr(self, "_priming_in_progress", False):
+                    logger.debug("[HEALTH] Heavy Prime Bypassed: Task already in progress.")
+                    return
+
+                # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
+                probe_model = models[0] if models else "llama3.1:8b"  # Fallback to 8B standard
+                preferred = ["llama3.1:8b", "mixtral:8x7b", "gemma2:2b"]
+                for p in preferred:
+                    if p in models:
+                        probe_model = p
+                        break
+
+                logger.info(f"[HEALTH] Initiating Heavy Prime on Deep Thought: {probe_model} (Force={force}, Restoring={is_restoring})")
+
+                p_url = target_url.replace("/api/tags", "/api/generate")
+                payload = {"model": probe_model, "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+
+                # [BKM] Parallel Execution: Generation probe runs in background to prevent Hub hangs
+                self._priming_in_progress = True
+
+                async def _bg_prime():
+                    try:
+                        async with aiohttp.ClientSession() as p_session:
+                            async with p_session.post(p_url, json=payload, timeout=30) as pr:
+                                if pr.status == 200:
+                                    logger.info(f"[HEALTH] Strategic Sovereign SUCCESS: {probe_model} is resident in VRAM.")
+                                    self._last_brain_prime = time.time()
+                                else:
+                                    logger.error(f"[HEALTH] Heavy Prime Failed on Deep Thought ({pr.status})")
+                    except Exception as pe:
+                        logger.error(f"[HEALTH] Heavy Prime Exception (Deep Thought): {pe}")
+                    finally:
+                        self._priming_in_progress = False
+
+                asyncio.create_task(_bg_prime())
+
+        except Exception as e:
+            logger.debug(f"[HEALTH] Overall brain probe failed: {e}")
+
+    async def thought_health_loop(self):
+        """[FEAT-028] Periodic Deep Thought health probe: ping->API every 20s, Heavy Prime per FEAT-285."""
+        logger.info("[HEALTH] Deep Thought health loop active.")
+        while True:
+            try:
+                await self.check_thought_health()
+            except Exception as e:
+                logger.warning(f"[HEALTH] thought_health_loop iteration failed: {e}")
+            await asyncio.sleep(20)
 
     async def trigger_morning_briefing(self):
         logger.info("Triggering Morning Briefing...")
@@ -623,6 +854,8 @@ class FoyerRouter:
         asyncio.create_task(self.queue_drainer())
         asyncio.create_task(self.waterfall_drainer())
         asyncio.create_task(self.broadcast_worker())
+        # [FEAT-028] Periodic Deep Thought (remote) health probe: ping->API + Heavy Prime
+        asyncio.create_task(self.thought_health_loop())
 
     async def handle_health(self, request):
         return web.json_response({"status": "ONLINE", "version": LAB_VERSION})

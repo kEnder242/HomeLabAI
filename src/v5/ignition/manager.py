@@ -92,19 +92,18 @@ class IgnitionManager:
                 text = line.decode().strip()
                 
                 # Pattern Matching for "Interleaved" logs
-                # Focus on interesting events and errors
+                # [USER DIRECTIVE] Show what the lab is doing - do NOT filter out
+                # internal lab chatter (python3/acme_foyer/acme_ignition).
                 if any(x in text for x in ["Started", "Stopped", "error", "failed", "offline", "online"]):
-                    # Ignore internal lab chatter (already logged via record_pager)
-                    if not any(x in text for x in ["python3", "acme_foyer", "acme_ignition"]):
-                        # Extract source (crude heuristic)
-                        try:
-                            parts = text.split("z87-Linux ")
-                            if len(parts) > 1:
-                                content = parts[1]
-                                source = content.split("[")[0].split(":")[0].strip()
-                                msg = content.split(": ", 1)[1] if ":" in content else content
-                                self.record_pager(msg[:200], source=source)
-                        except Exception: pass
+                    # Extract source (crude heuristic)
+                    try:
+                        parts = text.split("z87-Linux ")
+                        if len(parts) > 1:
+                            content = parts[1]
+                            source = content.split("[")[0].split(":")[0].strip()
+                            msg = content.split(": ", 1)[1] if ":" in content else content
+                            self.record_pager(msg[:200], source=source)
+                    except Exception: pass
         except Exception as e:
             logging.error(f"[IGNITION] Journal monitor failed: {e}")
 
