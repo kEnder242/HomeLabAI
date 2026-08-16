@@ -380,6 +380,11 @@ class FoyerRouter:
             await self._stream_pinky_fallback(request_id)
         except Exception as e:
             logger.error(f"[SPR-52.0] Division of Labor failed for {request_id}: {e}")
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[PIPELINE ERROR] Division of Labor failed ({request_id}): {e}",
+                "brain_source": "System"
+            })
             await self._emit_stage_progress("stage5_pinky_review", request_id, "FAILED", detail=str(e)[:200])
             await self._stream_pinky_fallback(request_id)
 
@@ -624,11 +629,17 @@ class FoyerRouter:
             web.get('/sys_metrics', self.handle_sys_metrics),    # [FEAT-T20.5] Live graph feed
             web.get('/telemetry_kpi', self.handle_telemetry_kpi),  # [FEAT-T20.3]
             web.get('/benchmarks_kpi', self.handle_benchmarks_kpi),  # [FEAT-T21.2]
-            # [FEAT-143] Remote Control endpoints
+            # [FEAT-143] Remote Control endpoints (Standard & Cloudflare /attendant/ Path Prefix)
             web.post('/wake', self.handle_remote_action),
             web.post('/sleep', self.handle_remote_action),
             web.post('/lock', self.handle_remote_action),
             web.post('/shutdown', self.handle_remote_action),
+            web.post('/attendant/wake', self.handle_remote_action),
+            web.post('/attendant/sleep', self.handle_remote_action),
+            web.post('/attendant/lock', self.handle_remote_action),
+            web.post('/attendant/shutdown', self.handle_remote_action),
+            web.get('/attendant/status', self.handle_status),
+            web.get('/attendant/version', self.handle_version),
             # [LAB-088] EarNode Emergency Deafness: Manual rearm endpoint
             web.post('/rearm_ear', self.handle_rearm_ear)
         ])
@@ -637,7 +648,8 @@ class FoyerRouter:
 
     async def handle_remote_action(self, request):
         """REST endpoint for remote control UI."""
-        action = request.path.lstrip('/')
+        path = request.path.replace('/attendant/', '/')
+        action = path.lstrip('/')
         await self.enqueue_intent(f"[OPERATIONAL] {action.upper()}", source="REMOTE")
         return web.json_response({"status": "success", "message": f"{action.capitalize()} signal enqueued."})
 
@@ -1298,6 +1310,11 @@ class FoyerRouter:
             await self.enqueue_intent(query, source=source, request_id=request_id)
         except Exception as e:
             logger.error(f"[FEAT-459] Deep Thought preamble failed: {e}")
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[PREAMBLE ERROR] Preamble synthesis failed: {e}",
+                "brain_source": "System"
+            })
 
     async def waterfall_drainer(self):
         """[Task 12.3] Drains internal token buffer into final Pop messages for UI."""
