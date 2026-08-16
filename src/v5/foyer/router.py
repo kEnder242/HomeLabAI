@@ -1249,34 +1249,43 @@ class FoyerRouter:
             raise
 
     async def _spawn_deep_thought_preamble(self, query, source, request_id=None):
-        # [FEAT-452/455] Zero-Latency Un-blocked Async Preamble & Fast Offline HyDE Map Gating:
-        # Evaluates raw query text against the 4-Domain HyDE Map Contract (exp_tlm, exp_bkm,
-        # exp_for, lab_history). If no domain match (casual turn), bypasses HyDE crosstalk immediately.
+        # [FEAT-459] Unified Async Deep Thought Preamble & HyDE Fusion:
+        # Calls Deep Thought on KENDER (or fallback) to synthesize a single JSON
+        # payload with `is_casual`, `greeting`, and `hyde_vector`. Completely
+        # eliminates Python domain regex checks and static casual_reflections lists
+        # in compliance with BKM-015.
         try:
-            query_lower = str(query or "").lower()
-            domain_keywords = [
-                "pcie", "rapl", "msr", "nvidia", "sensor", "telemetry", "power", "thermal",
-                "bkm", "playbook", "diagnostic", "systemd", "script", "command",
-                "panic", "oom", "traceback", "crash", "log", "backpressure", "scavenger",
-                "history", "career", "archive", "sprint", "milestone", "retrospective"
-            ]
-            is_domain_match = any(kw in query_lower for kw in domain_keywords)
-
             # [SPR-52.0 / Task 52.3] Stage 1: t=0 triage entry hook (WS path)
             if not self.stage_memory.get(request_id, {}).get("stage1_kender_triage"):
                 await self._emit_stage_progress(
                     "stage1_kender_triage", request_id, "STARTED",
-                    detail="domain_match" if is_domain_match else "casual_bypass",
+                    detail="unified_llm_synthesis"
                 )
 
-            if is_domain_match:
-                crosstalk_msg = "Deep Thought: Domain match detected. Synthesizing Composite HyDE..."
-            else:
-                crosstalk_msg = "Deep Thought: Casual greeting/query detected. Bypassing HyDE..."
+            # Invoke unified LLM synthesis from Cognitive Hub
+            hyde_result = await self.cognitive.synthesize_hyde_vector(query)
+            
+            is_casual = False
+            greeting_msg = "Deep Thought: System operational. Awaiting command parameters."
+            
+            # Robust JSON extraction from Deep Thought LLM response
+            if hyde_result:
+                try:
+                    m = re.search(r'(\{.*\})', hyde_result, re.DOTALL)
+                    if m:
+                        data = json.loads(m.group(1))
+                        is_casual = data.get("is_casual", False)
+                        if data.get("greeting"):
+                            greeting_msg = data.get("greeting")
+                    elif "[VALIDATION]" in hyde_result:
+                        is_casual = False
+                        greeting_msg = "Deep Thought: Technical domain match detected. Synthesizing Composite HyDE..."
+                except Exception:
+                    pass
 
             preamble = {
                 "type": "chat",
-                "brain": crosstalk_msg,
+                "brain": f"[DEEP THOUGHT]: {greeting_msg}",
                 "brain_source": "Deep Thought",
                 "channel": "insight",
                 "final": False,
@@ -1286,30 +1295,9 @@ class FoyerRouter:
                 preamble["request_id"] = request_id
             await self.broadcast(preamble)
 
-            # If casual greeting bypass, emit analytical readiness preamble from Deep Thought on insight channel
-            if not is_domain_match:
-                casual_reflections = [
-                    "Analyzing query parameters... standing by for instructions.",
-                    "Casual greeting acknowledged. Ready for telemetry or plan dispatch.",
-                    "System operational. Awaiting command parameters.",
-                    "Standing by for task specification."
-                ]
-                import random
-                dt_greeting = {
-                    "type": "crosstalk",
-                    "brain": random.choice(casual_reflections),
-                    "brain_source": "Deep Thought",
-                    "channel": "insight",
-                    "final": False,
-                    "version": LAB_VERSION
-                }
-                if request_id:
-                    dt_greeting["request_id"] = request_id
-                await self.broadcast(dt_greeting)
-
             await self.enqueue_intent(query, source=source, request_id=request_id)
         except Exception as e:
-            logger.error(f"[FEAT-455] Deep Thought preamble failed: {e}")
+            logger.error(f"[FEAT-459] Deep Thought preamble failed: {e}")
 
     async def waterfall_drainer(self):
         """[Task 12.3] Drains internal token buffer into final Pop messages for UI."""
