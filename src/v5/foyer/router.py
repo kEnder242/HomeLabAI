@@ -1509,9 +1509,10 @@ class FoyerRouter:
                 if os.path.exists(QUEUE_FILE):
                     size = os.path.getsize(QUEUE_FILE)
                     if size > last_pos:
-                        # Boot logical nodes on intent if not ready
-                        if not self.residents.booted:
-                            logger.info("New intent detected. Booting logical nodes...")
+                        # [FEAT-283] Neural Buffer: Cache pre-wake intents received during cold-boot
+                        is_cold_boot = not self.residents.booted
+                        if is_cold_boot:
+                            logger.info("[FEAT-283] Pre-wake intent detected during cold boot. Initiating resident node ignition...")
                             self._launch_resident_boot_async()
                         
                         with open(QUEUE_FILE, "r") as f:
@@ -1530,7 +1531,7 @@ class FoyerRouter:
                                         logger.info(f"Draining Intent: {event.id} ({event.query[:20]}...)")
                                         self.processed_ids.append(event.id)
                                         
-                                        # [FIX] Keep WebSocket alive during long node boot
+                                        # Keep WebSocket alive during node boot
                                         await self.broadcast({
                                             "type": "status",
                                             "state": "SYNCING",
@@ -1539,10 +1540,16 @@ class FoyerRouter:
                                             "version": LAB_VERSION
                                         })
                                         
-                                        # [NEW] Shutdown tracking for this intent
-                                        shutdown_ev = asyncio.Event()
-                                        # [SPR-52.0 / Task 52.3] Dispatch via 5-Stage orchestrator
-                                        asyncio.create_task(self.run_division_of_labor(event.query, source=event.source, request_id=event.id))
+                                        # [FEAT-283] Neural Buffer Replay: Wait for node boot if cold, then dispatch
+                                        async def _dispatch_buffered_intent(evt_query, evt_src, evt_id):
+                                            if not self.residents.booted:
+                                                logger.info(f"[FEAT-283] Neural Buffer holding prompt '{evt_query[:20]}...' until node ignition finishes...")
+                                                while not self.residents.booted:
+                                                    await asyncio.sleep(0.5)
+                                                logger.info(f"[FEAT-283] Silicon booted! Replaying buffered prompt '{evt_query[:20]}...' to Division of Labor.")
+                                            await self.run_division_of_labor(evt_query, source=evt_src, request_id=evt_id)
+
+                                        asyncio.create_task(_dispatch_buffered_intent(event.query, event.source, event.id))
                                 except Exception as e:
                                     logger.error(f"Intent parse error: {e}")
                             last_pos = os.path.getsize(QUEUE_FILE) # [FIX] Accurate tailing
