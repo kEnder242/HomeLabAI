@@ -41,17 +41,29 @@ async def run_cycle(cycle_id, wait_mins, p_instance):
     send_t = time.time()
     await page.keyboard.press("Enter")
     
+    warming_pop_t = None
     success = False
     while time.time() - send_t < 180:
-        # Check for first brain message
-        count = await page.locator(".brain-msg").count()
-        if count > 0:
-            ttft = time.time() - send_t
-            text = await page.locator(".brain-msg .msg-body").last.inner_text()
-            print(f"    [🏆] SUCCESS: TTFT = {ttft:.2f}s | Length = {len(text)} chars.")
-            success = True
+        # Get all current brain messages to scan for the warming pop vs real answer
+        messages = await page.locator(".brain-msg .msg-body").all_inner_texts()
+        
+        for text in messages:
+            if "warming its anchors" in text.lower() and warming_pop_t is None:
+                warming_pop_t = time.time() - send_t
+                print(f"    [🔥] Warming Pop Latency = {warming_pop_t*1000:.0f}ms (target <100ms)")
+            elif "warming its anchors" not in text.lower() and len(text) > 0:
+                # This is a real answer
+                ttft = time.time() - send_t
+                print(f"    [🏆] SUCCESS: TTFT = {ttft:.2f}s | Length = {len(text)} chars.")
+                success = True
+                break
+        
+        if success:
             break
         await asyncio.sleep(2)
+
+    if warming_pop_t is None:
+        print("    [ℹ️] Engine already warm — warming pop skipped (not a failure).")
     
     await browser.close()
     return success

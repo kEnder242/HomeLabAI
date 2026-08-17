@@ -178,7 +178,9 @@ class BicameralNode:
                 # Pass sampling parameters for small model stability
                 # [FEAT-339] Use LoRA by default, but allow override for stability
                 async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools, response_format=response_format, request_id=request_id):
-                    full_response += token
+                    if "The local engine is warming its anchors" not in token:
+                        full_response += token
+                    
                     if stream_source:
                         self._broadcast_token(token, stream_source, request_id=request_id)
                 
@@ -419,7 +421,7 @@ class BicameralNode:
             if not ok:
                 if msg == "WARMING" or "connection failed" in msg.lower() or "connect call failed" in msg.lower():
                     prefix = "Narf! " if self.name == "Pinky" else ""
-                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!\n"
+                    yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
                     
                     # Hold the line and retry ping_engine for up to 60 seconds
                     warmed = False
