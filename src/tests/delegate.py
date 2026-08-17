@@ -276,7 +276,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         "parts": [{"type": "text", "text": prompt}]
     }
     if "Atlas" in agent or "Prometheus" in agent:
-        msg_dict["model"] = {"providerID": "google", "modelID": "gemini-2.5-flash"}
+        msg_dict["model"] = {"providerID": "opencode", "modelID": "deepseek-v4-flash-free"}
 
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
