@@ -107,6 +107,21 @@ DEFAULT_TARGET_DIR = os.path.expanduser("~/Dev_Lab")
 OPENCODE_BIN = os.path.expanduser("~/.opencode/bin/opencode")
 
 
+def wake_m5_air():
+    """[BKM-039] Send Wake-on-LAN Magic Packet to macOS M5-Air to prevent sleep timeouts."""
+    import socket
+    m5_mac = "00:e0:4c:0a:0b:ad".replace(":", "").replace("-", "")
+    data = bytes.fromhex("FF" * 6 + m5_mac * 16)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            s.sendto(data, ("192.168.1.255", 9))
+            s.sendto(data, ("192.168.1.46", 9))
+        print("[*] [WOL] Sent Wake-on-LAN Magic Packet to M5-Air (192.168.1.46).", flush=True)
+    except Exception as e:
+        print(f"[!] [WOL] Magic Packet broadcast failed (non-fatal): {e}", flush=True)
+
+
 def wake_web_ui():
     """
     [BKM-034 Socket Wakeup] opencode.socket is a user-level systemd socket unit
@@ -115,6 +130,7 @@ def wake_web_ui():
       opencode.socket -> opencode-proxy.service -> codex backend on 4097.
     Without this touch, the web UI at http://192.168.1.238:4096/ is unreachable.
     """
+    wake_m5_air()
     print(f"[*] Waking web UI via socket touch on port {OPENCODE_WEB_PORT}...", flush=True)
     try:
         req = urllib.request.Request(OPENCODE_WEB_URL)
@@ -255,10 +271,14 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
     # Session agent ("Atlas - Plan Executor") must be passed in BOTH POST /session and POST /session/<id>/message payloads.
-    msg_payload = json.dumps({
+    msg_dict = {
         "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
-    }).encode("utf-8")
+    }
+    if "Atlas" in agent or "Prometheus" in agent:
+        msg_dict["model"] = {"providerID": "google", "modelID": "gemini-2.5-flash"}
+
+    msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     attempt = 0
     while attempt < max_retries:

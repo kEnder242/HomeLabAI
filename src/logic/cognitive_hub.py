@@ -1380,6 +1380,32 @@ class CognitiveHub:
             return src_match.group(1)
         return ""
 
+    async def synthesize_preamble_quip(self, query: str, timeout: float = 3.0) -> str:
+        """[FEAT-459 / Story 54.6] Fast Reflex Preamble Quip:
+        Uses shallow think tool (<15 words) from Deep Thought with a 3.0s timeout.
+        Eliminates 8s timeouts and redundant Pass-1 HyDE synthesis."""
+        if "thought" in self.residents and await self.is_deep_thought_reachable():
+            try:
+                res = await asyncio.wait_for(
+                    self.residents["thought"].call_tool("think", {"query": query, "context": ""}),
+                    timeout=timeout,
+                )
+                if hasattr(res, "content") and len(res.content) > 0:
+                    text = res.content[0].text
+                    if text and len(text.strip()) > 0:
+                        return text.strip()
+            except asyncio.TimeoutError:
+                logging.warning(f"[FEAT-459] Deep Thought think timed out after {timeout}s")
+            except Exception as e:
+                logging.warning(f"[FEAT-459] Deep Thought think unavailable: {e}")
+
+        # Local fallback quip
+        return "Deep Thought: System operational. Awaiting command parameters."
+
+    async def synthesize_hyde_vector(self, query: str) -> str:
+        """[FEAT-459 / Story 54.6] Alias for preamble quip synthesis."""
+        return await self.synthesize_preamble_quip(query)
+
     async def resolve_hyde_vector(self, query: str, triage_result: dict, timeout: float = 8.0) -> tuple:
         """[FEAT-437] 3-Tier HyDE Failover Cascade: (vector_text, tier)."""
         # Tier 1: Pinky local vLLM (holds cli_voice_v1 LoRA weights fine-tuned on 18-year archive)
