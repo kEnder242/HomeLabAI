@@ -1261,58 +1261,66 @@ class FoyerRouter:
             raise
 
     async def _spawn_deep_thought_preamble(self, query, source, request_id=None):
-        # [FEAT-459] Unified Async Deep Thought Preamble & HyDE Fusion:
-        # Calls Deep Thought on KENDER (or fallback) to synthesize a single JSON
-        # payload with `is_casual`, `greeting`, and `hyde_vector`. Completely
-        # eliminates Python domain regex checks and static casual_reflections lists
-        # in compliance with BKM-015.
+        # [FEAT-459 / Sprint 54 Story 5] Non-Blocking Intent Ignition Fork:
+        # Enqueue intent at millisecond zero so vLLM/engine ignition starts immediately,
+        # while deep thought synthesis and insight broadcast run in parallel as a background task.
         try:
-            # [SPR-52.0 / Task 52.3] Stage 1: t=0 triage entry hook (WS path)
-            if not self.stage_memory.get(request_id, {}).get("stage1_kender_triage"):
-                await self._emit_stage_progress(
-                    "stage1_kender_triage", request_id, "STARTED",
-                    detail="unified_llm_synthesis"
-                )
-
-            # Invoke unified LLM synthesis from Cognitive Hub
-            hyde_result = await self.cognitive.synthesize_hyde_vector(query)
-            
-            is_casual = False
-            greeting_msg = "Deep Thought: System operational. Awaiting command parameters."
-            
-            # Robust JSON extraction from Deep Thought LLM response
-            if hyde_result:
-                try:
-                    m = re.search(r'(\{.*\})', hyde_result, re.DOTALL)
-                    if m:
-                        data = json.loads(m.group(1))
-                        is_casual = data.get("is_casual", False)
-                        if data.get("greeting"):
-                            greeting_msg = data.get("greeting")
-                    elif "[VALIDATION]" in hyde_result:
-                        is_casual = False
-                        greeting_msg = "Deep Thought: Technical domain match detected. Synthesizing Composite HyDE..."
-                except Exception:
-                    pass
-
-            preamble = {
-                "type": "chat",
-                "brain": f"[DEEP THOUGHT]: {greeting_msg}",
-                "brain_source": "Deep Thought",
-                "channel": "insight",
-                "final": False,
-                "version": LAB_VERSION
-            }
-            if request_id:
-                preamble["request_id"] = request_id
-            await self.broadcast(preamble)
-
+            # [Story 54.5] Step 1: Millisecond zero intent queueing (non-blocking)
             await self.enqueue_intent(query, source=source, request_id=request_id)
+
+            # [Story 54.5] Step 2: Spawn parallel background preamble synthesis & broadcast
+            async def _run_synthesis_and_broadcast():
+                try:
+                    if not self.stage_memory.get(request_id, {}).get("stage1_kender_triage"):
+                        await self._emit_stage_progress(
+                            "stage1_kender_triage", request_id, "STARTED",
+                            detail="unified_llm_synthesis"
+                        )
+
+                    hyde_result = await self.cognitive.synthesize_hyde_vector(query)
+                    
+                    is_casual = False
+                    greeting_msg = "Deep Thought: System operational. Awaiting command parameters."
+                    
+                    if hyde_result:
+                        try:
+                            m = re.search(r'(\{.*\})', hyde_result, re.DOTALL)
+                            if m:
+                                data = json.loads(m.group(1))
+                                is_casual = data.get("is_casual", False)
+                                if data.get("greeting"):
+                                    greeting_msg = data.get("greeting")
+                            elif "[VALIDATION]" in hyde_result:
+                                is_casual = False
+                                greeting_msg = "Deep Thought: Technical domain match detected. Synthesizing Composite HyDE..."
+                        except Exception:
+                            pass
+
+                    preamble = {
+                        "type": "chat",
+                        "brain": f"[DEEP THOUGHT]: {greeting_msg}",
+                        "brain_source": "Deep Thought",
+                        "channel": "insight",
+                        "final": False,
+                        "version": LAB_VERSION
+                    }
+                    if request_id:
+                        preamble["request_id"] = request_id
+                    await self.broadcast(preamble)
+                except Exception as inner_e:
+                    logger.error(f"[FEAT-459] Background preamble synthesis failed: {inner_e}")
+                    await self.broadcast({
+                        "type": "crosstalk",
+                        "brain": f"[PREAMBLE ERROR] Preamble synthesis failed: {inner_e}",
+                        "brain_source": "System"
+                    })
+
+            asyncio.create_task(_run_synthesis_and_broadcast())
         except Exception as e:
-            logger.error(f"[FEAT-459] Deep Thought preamble failed: {e}")
+            logger.error(f"[FEAT-459] Deep Thought intent ignition failed: {e}")
             await self.broadcast({
                 "type": "crosstalk",
-                "brain": f"[PREAMBLE ERROR] Preamble synthesis failed: {e}",
+                "brain": f"[IGNITION ERROR] Intent enqueue failed: {e}",
                 "brain_source": "System"
             })
 
@@ -1339,7 +1347,20 @@ class FoyerRouter:
                 chunk_timestamps[buf_key] = time.time()
 
                 if token:
-                    pending_chunks[buf_key] += token
+                    # [Story 54.7] Standalone t=0 Warming Pop:
+                    # If token is a warming status notice from loader.py, pop it immediately
+                    # to the chat console and do not concatenate into the eventual response buffer.
+                    if "The local engine is warming its anchors" in token:
+                        await self.broadcast({
+                            "type": "chat",
+                            "brain": token.strip(),
+                            "brain_source": source,
+                            "final": True,
+                            "channel": "chat",
+                            "request_id": request_id
+                        })
+                    else:
+                        pending_chunks[buf_key] += token
                 
                 if final:
                     # [Task 12.3] Flush entire accumulated string immediately
