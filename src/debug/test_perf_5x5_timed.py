@@ -46,7 +46,10 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         is_cold = True
 
     # 2. Clean Incognito Browser Context (Zero History Residue)
-    browser = await p_instance.chromium.launch(headless=True)
+    browser = await p_instance.chromium.launch(
+        headless=True,
+        args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    )
     context = await browser.new_context(storage_state=None)
     page = await context.new_page()
     
@@ -60,7 +63,7 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         await page.wait_for_selector("#text-input", timeout=10000)
         
         # 3. Snapshot Baseline Message Count Before Sending Query
-        baseline_count = await page.locator(".message").count()
+        baseline_count = await page.evaluate("() => document.querySelectorAll('.message').length")
         
         await page.fill("#text-input", query)
         
@@ -76,15 +79,21 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         success = False
         
         while time.time() - send_t < 180:
-            current_elements = await page.locator(".message").all()
-            new_elements = current_elements[baseline_count:]
+            try:
+                new_elements = await page.evaluate(f"""() => {{
+                    const all = Array.from(document.querySelectorAll('.message'));
+                    return all.slice({baseline_count}).map(el => ({{
+                        src: (el.querySelector('.msg-source')?.innerText || '').trim(),
+                        body: (el.querySelector('.msg-body')?.innerText || '').trim()
+                    }}));
+                }}""")
+            except Exception:
+                await asyncio.sleep(1)
+                continue
             
-            for el in new_elements:
-                src_count = await el.locator(".msg-source").count()
-                body_count = await el.locator(".msg-body").count()
-                
-                src = (await el.locator(".msg-source").inner_text()).strip() if src_count > 0 else ""
-                body = (await el.locator(".msg-body").inner_text()).strip() if body_count > 0 else ""
+            for item in new_elements:
+                src = item.get("src", "")
+                body = item.get("body", "")
                 src_lower = src.lower()
                 body_lower = body.lower()
                 
@@ -104,7 +113,7 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
             
             if success:
                 break
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)
 
         # 5. Report Cycle Verdict
         if success:
