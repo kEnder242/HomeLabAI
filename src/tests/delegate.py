@@ -247,7 +247,6 @@ You MUST be Atlas (Plan Executor & Swarm Conductor). Check your persona identity
 If you are NOT Atlas (e.g. Sisyphus, Prometheus, or an unassigned worker node), DO NOT perform any file edits or bash commands. Immediately halt execution, output the [HANDOVER REFLECTION] block below explaining the persona mismatch, and return immediately.
 
 You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent.
-ROUTING: Omit the category parameter for all standard tasks to route them to the primary local ground worker. Assign category="quick" only for targeted micro-edits.
 TOOL GUIDANCE: Sub-agents should use the MCP safe_patch tool (or python3 HomeLabAI/src/debug/atomic_patcher.py) for regex-tolerant, lint-verified surgical code edits instead of brittle exact-string edits."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
