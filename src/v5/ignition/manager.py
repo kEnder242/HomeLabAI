@@ -341,8 +341,6 @@ class IgnitionManager:
         """[Task 4.3] Monitors the foyer queue for new intent."""
         logging.info("[IGNITION] Queue watcher started.")
         last_pos = 0
-        if os.path.exists(QUEUE_FILE):
-            last_pos = os.path.getsize(QUEUE_FILE)
 
         while True:
             try:
@@ -557,7 +555,7 @@ class IgnitionManager:
                             self.record_pager("Full Induction Cycle [COMPLETE]", source="Induction")
                         finally:
                             self._release_vram_lock()
-                            self.status.timestamp = time.time() 
+                            self.status.timestamp = time.time()
                     else:
                         logging.warning("[ALARM] Silicon busy (Mutex Locked). Deferring induction.")
                         self.last_induction_date = None

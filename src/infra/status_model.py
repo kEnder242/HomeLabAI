@@ -16,6 +16,7 @@ class StatusModel:
     Source of truth for the dashboard.
     """
     def __init__(self):
+        """Initialize status model with default operational state."""
         self.state = {
             "physical": {
                 "status": "OFFLINE",
@@ -23,7 +24,9 @@ class StatusModel:
                 "vram_total_mib": 11264,
                 "engine_active": False,
                 "lab_active": False,
-                "last_heartbeat": None
+                "last_heartbeat": None,
+                "state_changed_at": None,
+                "state_duration_s": 0.0
             },
             "logical": {
                 "persona": "The Shadow",
