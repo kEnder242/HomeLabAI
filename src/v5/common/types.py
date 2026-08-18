@@ -44,6 +44,7 @@ class NodeStatus:
 class LabStatus:
     state: str = "HIBERNATING"
     timestamp: float = field(default_factory=time.time)
+    state_changed_at: float = field(default_factory=time.time)
     version: str = LAB_VERSION
     vram_used: int = 0
     vram_total: int = 0
@@ -58,9 +59,16 @@ class LabStatus:
     recovery_in_progress: bool = False
     active_domain: Optional[str] = None
 
+    def __setattr__(self, name, value):
+        if name == "state" and hasattr(self, "state") and getattr(self, "state") != value:
+            super().__setattr__("state_changed_at", time.time())
+        super().__setattr__(name, value)
+
     def to_dict(self):
         # [Task 9.7] UI Compatibility Layer (V3 -> V5 Bridge)
         vram_pct = (self.vram_used / self.vram_total * 100) if self.vram_total > 0 else 0
+        now = time.time()
+        state_duration = max(0.0, now - self.state_changed_at) if getattr(self, "state_changed_at", 0) > 0 else 0.0
         
         # Discover style key
         style_key = "38637b40" # Fallback
@@ -76,6 +84,9 @@ class LabStatus:
 
         return {
             "state": self.state,
+            "state_changed_at": getattr(self, "state_changed_at", self.timestamp),
+            "state_changed_iso": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(getattr(self, "state_changed_at", self.timestamp))),
+            "state_duration_s": round(state_duration, 1),
             "status": "ONLINE" if self.state == "OPERATIONAL" else (
                 "HIBERNATING (VRAM Free)" if self.state == "HIBERNATING" else self.state
             ),

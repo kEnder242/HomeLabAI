@@ -796,6 +796,8 @@ class FoyerRouter:
             data = await request.json()
             # Update local status object
             self.status.state = data.get("state", self.status.state)
+            if "state_changed_at" in data:
+                self.status.state_changed_at = data["state_changed_at"]
             self.status.vocal = data.get("vocal", self.status.vocal)
             self.status.engine_up = data.get("engine_up", self.status.engine_up)
             self.status.vram_used = data.get("vram_used", self.status.vram_used)
