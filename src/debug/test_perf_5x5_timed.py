@@ -61,6 +61,11 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         
         query = "[ME] [STRATEGIC] Analyze the lab architecture."
         await page.wait_for_selector("#text-input", timeout=10000)
+        # Explicitly wait for WebSocket connection to be fully OPEN before sending
+        try:
+            await page.wait_for_function("() => (window.ws && window.ws.readyState === 1) || document.querySelector('#connection-dot.connected')", timeout=15000)
+        except Exception:
+            await asyncio.sleep(2.0)
         
         # 3. Snapshot Baseline Message Count Before Sending Query
         baseline_count = await page.evaluate("() => document.querySelectorAll('.message').length")
