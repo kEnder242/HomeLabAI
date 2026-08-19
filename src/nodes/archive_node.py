@@ -47,7 +47,21 @@ COLLECTION_STREAM = "short_term_stream"
 COLLECTION_WISDOM = "long_term_wisdom"
 COLLECTION_DNA = "behavioral_dna"
 
-# Chroma Setup (Server-side embedding via ChromaDB HTTP server on port 8001)
+# Chroma Setup (FastEmbed CPU-only ONNX embeddings: 0 MB GPU VRAM, ~20ms latency)
+_fastembed_model = None
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """[FEAT-ONNX] Compute embeddings strictly on CPU via FastEmbed (0 MB GPU VRAM)."""
+    global _fastembed_model
+    if _fastembed_model is None:
+        try:
+            from fastembed import TextEmbedding
+            _fastembed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        except Exception as e:
+            logger.error(f"[ARCHIVE] FastEmbed initialization error: {e}")
+            raise
+    return [vec.tolist() for vec in _fastembed_model.embed(texts)]
+
 try:
     chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
     chroma_client.heartbeat()
@@ -419,6 +433,7 @@ async def save_interaction(query: str, response: str) -> str:
         doc = f"User: {query}\nAssistant: {response}"
         stream.add(
             documents=[doc],
+            embeddings=embed_texts([doc]),
             metadatas=[{"timestamp": ts, "type": "turn"}],
             ids=[f"turn_{ts}"],
         )
@@ -438,6 +453,7 @@ async def dream(summary: str, sources: list[str]) -> str:
         # 1. Store the high-density wisdom
         wisdom.add(
             documents=[summary],
+            embeddings=embed_texts([summary]),
             metadatas=[{"timestamp": ts, "type": "insight", "count": len(sources)}],
             ids=[f"wisdom_{ts}"],
         )
@@ -486,6 +502,7 @@ async def scribble_note(query: str, response: str) -> str:
         # For simplicity, adding to stream with a cache tag
         stream.add(
             documents=[response],
+            embeddings=embed_texts([response]),
             metadatas=[{"query": query, "timestamp": ts, "type": "cache"}],
             ids=[f"cache_{ts}"],
         )
@@ -869,12 +886,13 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         # Stage 1: Hybrid Discovery (RRF)
         vector_results = []
-        res_w = wisdom.query(query_texts=[query], n_results=fetch_limit)
+        q_vecs = embed_texts([query])
+        res_w = wisdom.query(query_embeddings=q_vecs, n_results=fetch_limit)
         for i, doc in enumerate(res_w.get("documents", [[]])[0]):
             meta = res_w.get("metadatas", [[]])[0][i]
             vector_results.append((doc[:100], {**meta, "text_anchor": doc}))
 
-        res_s = stream.query(query_texts=[query], n_results=fetch_limit)
+        res_s = stream.query(query_embeddings=q_vecs, n_results=fetch_limit)
         for i, doc in enumerate(res_s.get("documents", [[]])[0]):
             meta = res_s.get("metadatas", [[]])[0][i]
             vector_results.append((doc[:100], {**meta, "text_anchor": doc}))
@@ -1319,7 +1337,8 @@ async def query_vibe(query_text: str) -> str:
     Returns the target adapter and behavioral guidance.
     """
     try:
-        results = dna.query(query_texts=[query_text], n_results=1)
+        q_vec = embed_texts([query_text])
+        results = dna.query(query_embeddings=q_vec, n_results=1)
         if not results["ids"][0]:
             return json.dumps({"adapter": "standard", "guidance": "Follow standard operating protocols."})
         
@@ -1345,12 +1364,14 @@ async def retrospective_audit(interaction_log: str, domain: str, adapter: str, v
     try:
         # Use simple date-based ID
         anchor_id = f"retro_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        doc_str = interaction_log[:500]
         
         # We store the interaction summary as the anchor document
         # The Hub will use semantic similarity to find this retro-fit later
         dna.add(
             ids=[anchor_id],
-            documents=[interaction_log[:500]], # ChromaDB doc limit/efficiency
+            documents=[doc_str],
+            embeddings=embed_texts([doc_str]),
             metadatas=[{
                 "domain": domain,
                 "adapter": adapter,
