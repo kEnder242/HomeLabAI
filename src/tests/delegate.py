@@ -150,11 +150,12 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         target_dir = DEFAULT_TARGET_DIR
     target_dir = os.path.abspath(target_dir)
 
-    # Map short agent names to exact registered OpenCode agent display names.
+    # Map short agent names to exact registered OpenCode agent names.
     AGENT_MAP = {
-        "atlas": "Atlas - Plan Executor",
-        "prometheus": "Prometheus - Plan Builder",
-        "sisyphus": "Sisyphus - Ultraworker",
+        "atlas": "atlas",
+        "prometheus": "prometheus",
+        "sisyphus": "sisyphus",
+        "sisyphus-junior": "sisyphus-junior",
     }
     if not agent or agent == "sisyphus":
         if mode in ("plan", "investigate"):
@@ -162,7 +163,7 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         else:
             agent_key = "sisyphus"
     else:
-        agent_key = agent
+        agent_key = agent.lower()
     agent = AGENT_MAP.get(agent_key, agent_key)
 
     _target_display = target_files if target_files else reference_file
@@ -187,7 +188,6 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         try:
             session_payload = {
                 "directory": target_dir,
-                "agent": agent,
                 "title": session_title
             }
             req = urllib.request.Request(
@@ -265,11 +265,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
     msg_dict = {
-        "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
     }
-    if any(k in agent for k in ("Atlas", "Prometheus", "Sisyphus")):
-        msg_dict["model"] = {"providerID": "opencode", "modelID": "deepseek-v4-flash-free"}
 
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 

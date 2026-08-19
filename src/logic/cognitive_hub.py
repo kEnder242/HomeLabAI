@@ -610,7 +610,9 @@ class CognitiveHub:
             
             self.turn_thought_trace[node_id] = full_text
             if node_id == "thought":
-                self.turn_thought_trace["brain"] = full_text
+                # [FEAT-470] Legacy backfill: alias Deep Thought -> "brain" only when the local
+                # Brain (shadow_brain_v2) leg did not already record its own synthesis.
+                self.turn_thought_trace.setdefault("brain", full_text)
             self.session_buffers[buf_key] = "" # Clear buffer
             
             # [FEAT-287] Activity Latch
@@ -1529,16 +1531,40 @@ class CognitiveHub:
         
         distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 
-        # Dispatch to Brain Node
-        # [FEAT-408] Tool-Driven Waterfall Cascade: Pass active MCP tools to remote reasoner
+        # [FEAT-470] Step 3: Local Brain-LoRA Waterfall Handoff (shadow_brain_v2 on vLLM port 8088).
+        # Stream The Brain's local technical baseline BEFORE remote escalation to Deep Thought.
+        brain_response = ""
+        if "brain" in self.residents:
+            brain_tools = await self._get_node_tools("brain")
+            async for token in self._process_node_stream(
+                "brain", query, distilled_context, "Brain (Local Baseline)",
+                tools=brain_tools, temperature=0.2, request_id=request_id
+            ):
+                brain_response += token
+                if shutdown_event and shutdown_event.is_set():
+                    break
+
+        # Step 4: Remote escalation to Deep Thought (Kender), passing the query, distilled
+        # strategic brief, AND the local Brain synthesis as grounding context upstream.
         dt_response = ""
-        active_tools = await self._get_node_tools("thought")
-        async for token in self._process_node_stream(
-            "thought", query, distilled_context, "Deep Thought", tools=active_tools, temperature=0.2, request_id=request_id
-        ):
-            dt_response += token
-            if shutdown_event and shutdown_event.is_set():
-                break
+        thought_reachable = "thought" in self.residents
+        if thought_reachable and self.is_deep_thought_reachable:
+            try:
+                thought_reachable = await self.is_deep_thought_reachable()
+            except Exception as e:
+                logging.warning(f"[HUB] Deep Thought reachability probe failed: {e}")
+                thought_reachable = False
+        if thought_reachable:
+            thought_context = distilled_context
+            if brain_response:
+                thought_context += f"\n\n[LOCAL_BRAIN_BASELINE]:\n{brain_response}"
+            active_tools = await self._get_node_tools("thought")
+            async for token in self._process_node_stream(
+                "thought", query, thought_context, "Deep Thought", tools=active_tools, temperature=0.2, request_id=request_id
+            ):
+                dt_response += token
+                if shutdown_event and shutdown_event.is_set():
+                    break
 
         # [SPR-41_2] Skip cascade if context starvation was detected
         if "thought" in self.context_starved_nodes:
@@ -1546,9 +1572,13 @@ class CognitiveHub:
             logging.info("[HUB] Brain leg cascade bypassed due to CONTEXT_STARVED.")
             return
         
-        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/strategic output in the main chat pane
+        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final strategic output.
+        # [FEAT-470] Evaluate whichever strategic response the waterfall produced (Deep Thought if
+        # reachable, otherwise the local Brain baseline) against the raw grounding context.
+        strategic_response = dt_response or brain_response
+        strategic_source = "Deep Thought" if dt_response else "Brain (Local Baseline)"
         rag_payload = raw_context if 'raw_context' in locals() else ""
-        await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
+        await self.evaluate_grounding(strategic_source, strategic_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
