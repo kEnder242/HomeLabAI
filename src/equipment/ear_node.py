@@ -35,9 +35,9 @@ class EarNode:
         self.model = None
         self.cuda_graph_failed = False # Flag to prevent recursive sledgehammering
 
-        # --- Stub model loading if EAR_NODE_STUB_MODEL is set ---
-        if os.environ.get("EAR_NODE_STUB_MODEL") == "1":
-            logging.warning("👂 EarNode: Model loading stubbed by EAR_NODE_STUB_MODEL=1 environment variable.")
+        # --- Stub model loading if disabled ---
+        if os.environ.get("EAR_NODE_STUB_MODEL", "1") == "1" or os.environ.get("DISABLE_EAR_NODE", "1") == "1":
+            logging.info("👂 EarNode: Model loading disabled (Text-Only Mode, 0 MB GPU VRAM).")
             self.model = None # Ensure model is explicitly None
             self.full_transcript = ""
             self.last_speech_time = time.time()
