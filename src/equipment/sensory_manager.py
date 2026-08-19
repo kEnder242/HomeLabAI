@@ -25,6 +25,10 @@ class SensoryManager:
         if self.ear:
             return
             
+        if os.environ.get("DISABLE_EAR_NODE", "1") == "1" or os.environ.get("EAR_NODE_STUB_MODEL", "1") == "1":
+            logging.info("[SENSORY] EarNode is DISABLED (Text-Only Mode active, 0 MB GPU VRAM consumed).")
+            return
+            
         try:
             s_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if s_dir not in sys.path:
