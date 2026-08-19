@@ -1150,7 +1150,7 @@ class CognitiveHub:
         except Exception as e:
             logging.error(f"[HUB] Journal ledger write failed: {e}")
 
-    async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default"):
+    async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default", rag_context=""):
         """
         [FEAT-227] The Grounding Gate (V5).
         Restores character balance by prompting Pinky to critique or conversationally 
@@ -1169,9 +1169,11 @@ class CognitiveHub:
             return
             
         logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
-        # [FEAT-356] Pinky as Coherence Judge
+        # [FEAT-356] Pinky as Coherence Judge with Real RAG Evidence
+        evidence_block = f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n" if rag_context else ""
         critique_query = (
-            f"Analyze the following response from {source} for logic errors, hand-waving, technical slop, or contradictions.\n\n"
+            f"Analyze the following response from {source} for logic errors, hand-waving, technical slop, or contradictions against the underlying evidence.\n\n"
+            f"{evidence_block}"
             f"[RESPONSE TO EVALUATE]:\n{text}\n\n"
             "Evaluate its technical coherence and output a JSON block matching this schema:\n"
             "{\n"
@@ -1545,7 +1547,8 @@ class CognitiveHub:
             return
         
         # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final technical/strategic output in the main chat pane
-        await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id)
+        rag_payload = raw_context if 'raw_context' in locals() else ""
+        await self.evaluate_grounding("Deep Thought", dt_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
