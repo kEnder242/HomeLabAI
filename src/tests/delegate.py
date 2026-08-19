@@ -141,7 +141,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="atlas", max_retries=3, mode="execute", target_files=None, session_id=None):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -151,18 +151,16 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     target_dir = os.path.abspath(target_dir)
 
     # Map short agent names to exact registered OpenCode agent display names.
-    # OpenCode binds the system prompt persona identity from these display strings.
-    # Using short keys (e.g. 'atlas') causes fallback to default 'Sisyphus - Ultraworker'.
     AGENT_MAP = {
         "atlas": "Atlas - Plan Executor",
         "prometheus": "Prometheus - Plan Builder",
         "sisyphus": "Sisyphus - Ultraworker",
     }
-    if not agent or agent == "atlas":
+    if not agent or agent == "sisyphus":
         if mode in ("plan", "investigate"):
             agent_key = "prometheus"
         else:
-            agent_key = "atlas"
+            agent_key = "sisyphus"
     else:
         agent_key = agent
     agent = AGENT_MAP.get(agent_key, agent_key)
@@ -242,12 +240,8 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-[IDENTITY ASSERTION & HARD-STOP GUARD]
-You MUST be Atlas (Plan Executor & Swarm Conductor). Check your persona identity immediately.
-If you are NOT Atlas (e.g. Sisyphus, Prometheus, or an unassigned worker node), DO NOT perform any file edits or bash commands. Immediately halt execution, output the [HANDOVER REFLECTION] block below explaining the persona mismatch, and return immediately.
-
-You are Atlas (Plan Executor & Task Orchestrator). Manage the execution lifecycle and emit a task() tool call to delegate physical file edits and code modifications to a specialist sub-agent.
-TOOL GUIDANCE: Sub-agents should use the MCP safe_patch tool (or python3 HomeLabAI/src/debug/atomic_patcher.py) for regex-tolerant, lint-verified surgical code edits instead of brittle exact-string edits."""
+You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
+TOOL GUIDANCE: Always prefer the MCP safe_patch tool for regex-tolerant, lint-verified surgical code edits instead of brittle exact-string edits. If safe_patch is unavailable, use targeted bash scripts."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
@@ -270,12 +264,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
-    # Session agent ("Atlas - Plan Executor") must be passed in BOTH POST /session and POST /session/<id>/message payloads.
     msg_dict = {
         "agent": agent,
         "parts": [{"type": "text", "text": prompt}]
     }
-    if "Atlas" in agent or "Prometheus" in agent:
+    if any(k in agent for k in ("Atlas", "Prometheus", "Sisyphus")):
         msg_dict["model"] = {"providerID": "opencode", "modelID": "deepseek-v4-flash-free"}
 
     msg_payload = json.dumps(msg_dict).encode("utf-8")
@@ -356,7 +349,7 @@ if __name__ == "__main__":
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
-    parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
+    parser.add_argument("--agent", default="sisyphus", help="Target agent persona override for testing (default: sisyphus)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations")
     args = parser.parse_args()
 
