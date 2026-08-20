@@ -1,6 +1,7 @@
 """
 [BKM-034 Point 13] Automated Delegation Retrospective Stage
 Synthesizes a post-sprint DELEGATION_RETROSPECTIVE.md from the /tmp/delegate_story_*.log
+# [FEAT-065] Cross-Platform Synchronization
 step logs produced by delegate.py, cross-referencing live REST session metrics from the
 OpenAgent core engine (127.0.0.1:4097), and comparing each story's DECLARED target path
 # [FEAT-075] Content Immutability (The 18-Year Lock)

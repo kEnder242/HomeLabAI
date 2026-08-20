@@ -7,6 +7,7 @@ class TestFederatedFailover(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.node = BicameralNode("Brain", "Test Prompt")
 
+# [FEAT-093] Dynamic Environment Portability
     @patch("nodes.loader.resolve_ip")
     @patch("aiohttp.ClientSession.get")
     async def test_kender_offline_fallback_to_local(self, mock_get, mock_resolve):

@@ -63,6 +63,7 @@ def main():
                         domain = 'exp_tlm'
                     elif any(k in text_lower for k in ['bkm', 'validation', 'benchmark', 'test', 'verification']):
                         domain = 'exp_bkm'
+# [FEAT-369] Turing JIT Path Resilience
                     elif any(k in text_lower for k in ['forensic', 'crash', 'bf16', 'turing', 'error']):
                         domain = 'exp_for'
                     else:

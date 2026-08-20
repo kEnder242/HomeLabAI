@@ -18,6 +18,7 @@ async def test_banter_decay():
     # Trigger one loop iteration (we'll simulate the logic inside the test)
     # Logic: idle_time = time.time() - self.last_activity
     # if idle_time > 60: banter_backoff += 1 else: banter_backoff = 0
+# [FEAT-066] The "Temporal Moat" (Context Aging)
     # reflex_ttl = 1.0 + (banter_backoff * 0.5)
     
     def simulate_reflex(lab_obj):

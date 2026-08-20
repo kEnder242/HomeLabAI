@@ -1,3 +1,6 @@
+# [FEAT-466] Crosstalk Bar Orchestrator Error Telemetry
+# [FEAT-463] Same-Origin Tunnel Remote Control Routing & Telemetry
+# [FEAT-416] Single-Epoch Nightly Refinement Sweeper
 """MoE+ Federated Router Benchmark with single-pass dual cold/warm telemetry."""
 
 import asyncio
@@ -64,6 +67,7 @@ def simulate_expert_warmup(cold_start: bool) -> float:
     return 0.0
 
 
+# [FEAT-414] MoE+ Latency-Hiding Telemetry Stack & Preamble Fill
 async def benchmark_routing(queries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Single-pass benchmark: simulates both cold and warm starts for each query

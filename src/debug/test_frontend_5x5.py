@@ -23,6 +23,7 @@ async def trigger_cycle(cycle_id, p_instance):
     print(f"\n[*] Starting Uber-Cycle {cycle_id}/5...")
     key = get_key()
     
+# [FEAT-085] Intelligent Keep-Alive
     # 1. Physical H2 Hibernation (Ensures clean silicon but keeps process alive for Wake-on-Intent)
     print("    [Action] Executing Physical H2 Hibernation via Attendant...")
     requests.post(f"{ATTENDANT_URL}/hibernate?level=2&key={key}")

@@ -11,6 +11,7 @@ export NCCL_P2P_DISABLE=1
     --gpu-memory-utilization 0.5 \
     --enforce-eager \
     --enable-lora --max-loras 4 \
+# [FEAT-154] Environmental Awareness Node (The Lab Actor)
     --lora-modules lab_sentinel_v1=/speedy/models/adapters/lab_sentinel_v1 cli_voice_v1=/speedy/models/adapters/cli_voice_v1 shadow_brain_v2=/speedy/models/adapters/shadow_brain_v2 lab_history_v1=/speedy/models/adapters/lab_history_v1 \
     &> /home/jallred/Dev_Lab/HomeLabAI/vllm_manual.log &
 

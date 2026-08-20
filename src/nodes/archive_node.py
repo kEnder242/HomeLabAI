@@ -444,6 +444,7 @@ async def save_interaction(query: str, response: str) -> str:
 
 
 @mcp.tool()
+# [FEAT-403] Dream Pass Synthesis (Fine-Tuning Prep)
 async def dream(summary: str, sources: list[str]) -> str:
     """
     Consolidates synthesized wisdom into long-term memory and purges sources.

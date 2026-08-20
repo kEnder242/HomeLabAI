@@ -7,6 +7,7 @@ DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts") # Needed for cleaning up tes
 @pytest.mark.asyncio
 async def test_clipboard_logic(archive_client):
     """
+# [FEAT-245] Identity Shielding (Semantic Isolation)
     Tests the semantic clipboard (cache) functionality of the archive node.
     """
     session = archive_client # Use the client provided by the fixture

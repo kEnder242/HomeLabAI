@@ -3,6 +3,7 @@
 
 """
 Documentation Distiller
+# [FEAT-161] Synthetic Character Distillation
 [FEAT-T21.1] Generating synthetic Q&A pairs from markdown documentation/BKMs
 using the active vLLM base engine.
 """

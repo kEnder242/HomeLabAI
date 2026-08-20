@@ -2,6 +2,7 @@
 [FEAT-454] Sprint 51 Escapes & Dual-Flow Hibernation Test Suite.
 
 Verifies:
+# [FEAT-118] Resonant Oracle (Magic 8-Ball Preambles)
   1. Persona Boundary: Deep Thought preambles never output Pinky catchphrases ('Narf!', 'Poit!', 'Zort!').
   2. Dual-Flow HyDE vs Casual:
      - Casual flow ("hello") sets casual=True, vibe=CASUAL, hyde_vector_text="", and skips RAG.

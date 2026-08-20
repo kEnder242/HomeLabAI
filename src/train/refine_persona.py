@@ -1,5 +1,8 @@
 """
 [FEAT-160] The Pedigree Burn: LoRA Fine-Tuning Pipeline
+# [FEAT-220.1] Physical Scavenging (Process Adoption)
+# [FEAT-257] Physical Pre-Flight Purge (Nuclear Assassin)
+# [FEAT-119] The Blacklist Law (Process-Strict Lifecycle) [SCAR #3]
 This script orchestrates the Unsloth fine-tuning process to encode the distilled 
 18-year engineering pedigree into physical LoRA adapters for the 2080 Ti.
 """

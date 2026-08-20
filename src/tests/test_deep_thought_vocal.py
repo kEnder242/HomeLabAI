@@ -5,6 +5,7 @@ import time
 
 async def test_brain_vocal():
     """
+# [FEAT-368] Vocal Handshake
     [Task 5.2] Certify the 4090 (Brain) handshake logic.
     Verifies that the Architect Brain is resident and vocal.
     """

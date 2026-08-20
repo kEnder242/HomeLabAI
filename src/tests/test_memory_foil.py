@@ -10,11 +10,14 @@ async def test_persistent_foil_memory():
     # Setup Hub with Mock Residents
     residents = {
         "pinky": MagicMock(),
+# [FEAT-249.4] Shadow Mute Recovery [FOR REVIEW]
+# [FEAT-158] Grounded Shadow Protocol
         "shadow": MagicMock(),
         "brain": MagicMock(),
         "lab": MagicMock()
     }
     
+# [FEAT-372] Pre-Emptive Sensory Boot
     # Mock Constructor Args
     broadcast = AsyncMock()
     sensory = MagicMock()

@@ -2,6 +2,7 @@ import torch
 import logging
 
 # Configure logging
+# [FEAT-199] Hub-Level CORS Support
 logging.basicConfig(level=logging.INFO)
 
 def test_liger():
@@ -18,6 +19,7 @@ def test_liger():
         apply_liger_kernel_to_llama()
 
         # 2. Check for Token (Requires login, skipping for now, just checking logic)
+# [FEAT-083] Smaller Sovereign (8B Priority)
         # We will use a smaller dummy check if the library is functional
         print("Liger-Kernel logic check complete. Library is imported and patch function is available.")
 

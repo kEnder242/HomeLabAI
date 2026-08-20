@@ -2,6 +2,7 @@
 #!/usr/bin/env python3
 """
 [FEAT-160] Pedigree Refinement Pipeline & [FEAT-213] Autonomous Forge (VRAM Handover)
+# [FEAT-136] Safe-Pilot Autonomous Ignition [SCAR #4]
 Nightly Maintenance, Quiesce, Unsloth Training & Re-ignition Orchestrator (2:00 AM).
 
 Execution Flow:

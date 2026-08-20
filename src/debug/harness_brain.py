@@ -10,6 +10,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from nodes.brain_node import node
 from nodes.brain_node import BRAIN_SYSTEM_PROMPT
 
+# [FEAT-211] Shadow Archivist (Proactive Context Grafting)
+# [FEAT-114] Sovereign Bridge (Handover Context)
+# [FEAT-057] Deep Context (Amnesia Removal)
 async def run_experiment(name, query, context="", behavioral_guidance="", system_prompt_override=None):
     print(f"\n{'='*60}\n🧪 EXPERIMENT: {name}\n{'='*60}")
     

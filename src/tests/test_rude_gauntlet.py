@@ -77,6 +77,7 @@ async def trigger_query(client_id, query):
                 data = json.loads(msg)
                 
                 # Check for V5 crosstalk/thought/speech payload or legacy brain field
+# [FEAT-244] Speaker Masking
                 speaker = data.get('speaker') or data.get('source') or data.get('brain_source') or ''
                 text = str(data.get('content') or data.get('text') or data.get('brain') or '')
                 

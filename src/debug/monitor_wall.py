@@ -13,6 +13,7 @@ def get_vram():
     except Exception:
         return 0
 
+# [FEAT-048] Monitor Task with Tics
 def monitor():
     print(f"--- 🩺 Forensic Watcher: Target {WALL_MIB}MiB ---")
     start_time = time.time()

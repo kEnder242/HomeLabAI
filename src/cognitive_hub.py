@@ -6,6 +6,7 @@ class CognitiveHub:
     def __init__(self):
         self.context = {}
 
+# [FEAT-108] Inter-Agent Handover Signal
     def process_signal(self, signal: str) -> None:
         """Process a signal and update context"""
         if signal.startswith('/topic reset'):

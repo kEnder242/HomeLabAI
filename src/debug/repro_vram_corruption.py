@@ -40,6 +40,7 @@ async def main():
     time.sleep(10)
     
     # 2. Fire Burst
+# [FEAT-370] Boot Storm Mitigation
     print("[*] Launching 2-node ignition storm...")
     tasks = []
     # Two nodes with 0.2s gap to hit the await window

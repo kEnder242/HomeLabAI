@@ -141,6 +141,7 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
+# [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
 def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random

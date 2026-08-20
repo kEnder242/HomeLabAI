@@ -1,7 +1,13 @@
 """[Story 5] Real-Time Audio Streaming Memory Benchmark
 =======================================================
+# [FEAT-429] Foyer Disconnect Memory Reclaim Sentinel
+# [FEAT-188] Resonant Memory (Bicameral Momentum)
+# [FEAT-059] Real-Time PCM Audio Streaming
+# [FEAT-056] MIB Memory Wipe (Neuralyzer)
 Live-fire memory profile of the Foyer server's WebSocket audio uplink
 (ws://127.0.0.1:8765/): streams ~60 s of simulated real-time PCM audio
+# [FEAT-102] Nuclear Cache Busting
+# [FEAT-063] Cache-Busting Deployment
 (Float32 440 Hz sine -> Signed Int16, 4096 samples @ 16 kHz) as BINARY
 frames and profiles process RSS, system swap/RAM, and (optionally) vLLM
 VRAM/KV-cache allocation via pynvml + /metrics before/during/after.

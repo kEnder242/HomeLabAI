@@ -1,6 +1,7 @@
 import json
 import os
 import pynvml
+# [FEAT-031] Logger Isolation (The Montana Fix)
 from infra.montana import reclaim_logger
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe

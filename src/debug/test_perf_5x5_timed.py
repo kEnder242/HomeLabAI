@@ -31,6 +31,7 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
     if wait_mins > 0:
         await asyncio.sleep(wait_mins * 60)
     
+# [FEAT-254] VRAM Pre-Flight Gate
     # 1. Pre-flight Lab State Probe (Story 54.10 awareness)
     status = get_lab_status()
     if status:

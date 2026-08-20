@@ -6,6 +6,7 @@ from test_utils import ensure_smart_lab, ATTENDANT_URL
 
 @pytest.mark.asyncio
 async def test_lab_attendant_full_cycle():
+# [FEAT-171] Intelligent Lifecycle Matrix (Disconnect vs. Close)
     """Tests the full lifecycle of the lab server via the attendant API."""
     # [FEAT-125] Use Smart-Reuse utility
     print("\n🏁 [STEP 1] Ensuring Lab is up and synchronized...")

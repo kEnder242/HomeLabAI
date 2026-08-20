@@ -67,6 +67,7 @@ async def test_waterfall_buffering():
         broadcasts.append(data)
 
     # Simplified waterfall_drainer logic
+# [FEAT-413] Decoupled Queue Drainer & Node Boot Mutex
     async def drainer():
         from collections import defaultdict
         ui_buffers = defaultdict(str)

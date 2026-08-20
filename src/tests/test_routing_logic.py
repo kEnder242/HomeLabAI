@@ -1,4 +1,5 @@
 import pytest
+# [FEAT-034] Barge-In Logic (Interrupts)
 from logic.cognitive_hub import CognitiveHub
 
 @pytest.fixture
@@ -14,6 +15,7 @@ def hub():
 @pytest.mark.skip(reason="Legacy V4 local router replaced by V5 Lab Triage Node")
 @pytest.mark.asyncio
 async def test_route_expert_domain(hub):
+# [FEAT-236] Relay Route Awareness
     # Telemetry
     route = await hub._route_expert_domain("what is the rapl reading?")
     assert route in ["exp_tlm", "exp_for"]
