@@ -20,6 +20,7 @@ BUILD_VERSION = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # "Thinking" Config
 PINKY_URL = "http://localhost:11434/api/generate"
+# [FEAT-081] Hemispheric Decoupling
 PINKY_MODEL = "llama3.1:8b"  # Local 2080 Ti
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
 BRAIN_MODEL = "llama3:latest" # Windows 4090 Ti
@@ -37,6 +38,7 @@ PINKY_SYSTEM_PROMPT = (
     "Do not try to solve complex problems yourself. You will mess it up."
 )
 
+# [FEAT-109] Synthesis of Authority
 BRAIN_SYSTEM_PROMPT = (
     "You are The Brain, a genius mouse bent on world domination through efficient home lab automation. "
     "You reside on a powerful Windows GPU. You are arrogant, verbose, and precise. "

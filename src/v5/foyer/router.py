@@ -1188,6 +1188,7 @@ class FoyerRouter:
             
         return ws
 
+# [FEAT-412] Connection-Aware Idle Hibernation Deferral
     async def delayed_shutdown(self, delay):
         try:
             await asyncio.sleep(delay)

@@ -1,3 +1,4 @@
+# [FEAT-060] Multi-Pane Workspace (EasyMDE)
 import asyncio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client

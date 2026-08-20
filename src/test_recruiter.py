@@ -1,6 +1,7 @@
 import asyncio
 import os
 import pytest
+# [FEAT-038] Nightly Recruiter
 import recruiter
 
 @pytest.mark.asyncio

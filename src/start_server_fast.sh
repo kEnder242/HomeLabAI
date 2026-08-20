@@ -4,6 +4,7 @@ HOST_DNS="z87-Linux.local"
 
 # 1. Resolve IP once to avoid mDNS thrashing in loops
 echo "🔍 Resolving $HOST_DNS..."
+# [FEAT-144] Native Health Ping
 HOST_IP=$(ping -c 1 $HOST_DNS | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
 if [ -z "$HOST_IP" ]; then

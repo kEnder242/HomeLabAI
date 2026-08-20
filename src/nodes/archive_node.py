@@ -27,6 +27,7 @@ DRAFTS_DIR = os.path.join(WORKSPACE_DIR, "docs/drafts")
 WHITEBOARD_DIR = os.path.join(WORKSPACE_DIR, "whiteboard")
 FIELD_NOTES_DIR = os.path.join(WORKSPACE_DIR, "field_notes")
 DATA_DIR = os.path.join(FIELD_NOTES_DIR, "data")
+# [FEAT-115] The Ultimate Patcher (Soft Fail)
 RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
 STYLE_CSS = os.path.join(FIELD_NOTES_DIR, "style.css")
 SEMANTIC_MAP_FILE = os.path.join(DATA_DIR, "semantic_map.json")

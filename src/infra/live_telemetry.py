@@ -121,6 +121,7 @@ def _parse_scalar(text: str, metric_name: str) -> Optional[float]:
     """
     if _parse_prometheus is not None:
         return _parse_prometheus(text, metric_name)
+# [FEAT-261] Traceable Awakening (Mandatory Reasoning)
     # Local fallback if telemetry_collector is unavailable for some reason.
     for line in text.splitlines():
         line = line.strip()

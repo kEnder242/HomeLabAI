@@ -38,6 +38,7 @@ async def ensure_engine_ready():
         r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=5)
         status = r.json()
         
+# [FEAT-235] Operational Shortcut (Direct Execution)
         if status.get("state") == "OPERATIONAL" or status.get("vocal"):
             logging.info("[DREAM] Lab is already operational.")
             # Retrieve model from vitals
@@ -120,6 +121,7 @@ class DreamManager:
         
         # Consolidation
         logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
+# [FEAT-126] Yearly Summary Injection
         await self.archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
         logging.info("✅ Dream Cycle Finished. The Lab has evolved.")
 

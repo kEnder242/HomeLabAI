@@ -102,6 +102,7 @@ def main():
             sys.exit(1)
 
         running = current_status.get('foyer_up', False)
+# [FEAT-165] Resident Handshake Gate
         ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
         mode = current_status.get('engine_mode', 'UNKNOWN')
         lab_pid = current_status.get('lab_pid', 'N/A')

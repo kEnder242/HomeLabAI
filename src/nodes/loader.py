@@ -38,6 +38,7 @@ def get_unified_base_model():
     return "llama-3.2-3b-awq"
 
 
+# [FEAT-435] Evergreen Career Compass Memory Ledger
 class BicameralNode:
     """
     [FEAT-145] Bicameral Node: Standardized MCP wrapper for local/remote LLM nodes.
