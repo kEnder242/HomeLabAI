@@ -21,6 +21,7 @@ FILES=("src/acme_lab.py" "src/intercom.py" "src/mic_test.py")
 for file in "${FILES[@]}"; do
     if [ -f "$file" ]; then
         echo "   Updating $file..."
+# [FEAT-062] Protocol Handshake (Version Sync)
         sed -i "s/^VERSION = .*/VERSION = \"$NEW_VER\"/" "$file"
     else
         echo "⚠️  Warning: $file not found."
@@ -31,6 +32,7 @@ done
 TEST_FILES=("src/test_intercom_flow.py" "src/test_memory_integration.py" "src/test_shutdown.py")
 for file in "${TEST_FILES[@]}"; do
     if [ -f "$file" ]; then
+# [FEAT-087] Intelligent Handshake Priming
         echo "   Updating handshake in $file..."
         sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VER\"/" "$file"
     fi

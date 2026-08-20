@@ -36,6 +36,7 @@ node = BicameralNode("MLXJudgeNode", MLX_SYSTEM_PROMPT)
 mcp = node.mcp
 
 
+# [FEAT-439] M5 Air MLX Offloading & Async Sanity Judge Protocol
 class MLXAsyncJudge:
     """[LAB-010] Driver for Node 3 (M5 Air MLX Unified Memory Node & Async Judge)."""
 

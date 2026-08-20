@@ -59,6 +59,7 @@ async def close_lab() -> str:
     })
 
 @mcp.tool()
+# [FEAT-037] Hierarchical Mind (The Architect)
 async def generate_bkm(topic: str, category: str = "validation") -> str:
     """The Blueprint Generator: Creates a high-density BKM template."""
     template = f"""# BKM: {topic.upper()}
@@ -109,6 +110,7 @@ async def build_semantic_map() -> str:
         pillars_kw = {
             "validation": ["validation", "validate", "test", "verification", "verify", "fuzz", "regression", "checking", "check", "assert", "dttc", "qa"],
             "automation": ["automation", "automate", "script", "tool", "pipeline", "jenkins", "build", "ci/cd", "cron", "workflow", "subprocess", "pexpect"],
+# [FEAT-457] FeatureTracker Alignment & Submodule Synchronization
             "architecture": ["architecture", "design", "structure", "microservice", "infrastructure", "topology", "uml", "spec", "platform", "submodule", "agentic"],
             "telemetry": ["telemetry", "monitor", "prometheus", "grafana", "rapl", "msr", "power", "thermal", "load", "sensory", "logging", "metric", "dcgm"]
         }

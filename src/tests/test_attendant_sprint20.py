@@ -27,6 +27,7 @@ async def test_wait_ready_timeout_extension(attendant):
 
 @pytest.mark.asyncio
 async def test_hibernation_logging_forensic(attendant):
+# [FEAT-249.3] Verified Hibernation (VRAM Polling)
     """Verify Task 5: Forensic logging in mcp_hibernate."""
     # Success response for prefix reset
     mock_resp_ok = AsyncMock()

@@ -15,6 +15,7 @@ thought_history: List[Dict] = []
 
 
 @mcp.tool()
+# [FEAT-197] Sequential Thinking (The Chain)
 def sequential_thinking(
     thought: str,
     thought_number: int,

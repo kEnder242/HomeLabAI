@@ -1,5 +1,7 @@
 from typing import Dict
 
+# [FEAT-207] Bicameral Airtime (Tricameral Sync)
+# [FEAT-077] Fidelity Gate (Quality Gate)
 class CognitiveHub:
     def __init__(self):
         self.context = {}

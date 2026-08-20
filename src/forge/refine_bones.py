@@ -36,6 +36,7 @@ logging.basicConfig(
 )
 
 
+# [FEAT-203] Bicameral Bridge: Neural Signal Extraction
 def bridge_signal_clean(text):
     """Refined JSON extraction logic from the experiment."""
     if "{" not in text:

@@ -68,8 +68,10 @@ async def test_heartbeat_deferral(lab):
     mock_session.get.return_value = mock_resp
     mock_session.__aenter__.return_value = mock_session
     
+# [FEAT-113] DNS Trap Recovery
     with patch("src.acme_lab.resolve_brain_url", return_value="http://localhost"):
         with patch("aiohttp.ClientSession", return_value=mock_session):
+# [FEAT-186] The "Pre-warm" Lobby (Predictive Warm-up)
             await lab.check_brain_health(force=False)
             assert mock_session.get.called
             assert lab.brain_online is True

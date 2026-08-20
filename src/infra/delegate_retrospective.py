@@ -3,6 +3,7 @@
 Synthesizes a post-sprint DELEGATION_RETROSPECTIVE.md from the /tmp/delegate_story_*.log
 step logs produced by delegate.py, cross-referencing live REST session metrics from the
 OpenAgent core engine (127.0.0.1:4097), and comparing each story's DECLARED target path
+# [FEAT-075] Content Immutability (The 18-Year Lock)
 against the ACTUAL git diff footprint to detect path-search thrash.
 
 Class 1 design: pure stdlib only, read-only REST GETs with a short timeout and graceful
