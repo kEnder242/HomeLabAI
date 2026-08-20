@@ -1,6 +1,7 @@
 """Canary tests for the OpenAgent swarm delegation mechanism (Story 999).
 
 Validates that the delegate.py launcher contract (payload structure and
+# [FEAT-090] Non-Blocking Parallel Dispatch
 completion status) is intact so the orchestrator can successfully dispatch
 file edits to subagents and verify completion.
 """

@@ -5,6 +5,7 @@
 Gemini Prompt De-duplicator
 [FEAT-204] CLI Persona Induction (Stage 2.5)
 
+# [FEAT-208] Manifest Authority
 Prunes the refined prompt manifest using:
 1. Exact Hashing (Fast removal of identical prompts).
 2. Fuzzy Similarity (Levenshtein distance via 'thefuzz').

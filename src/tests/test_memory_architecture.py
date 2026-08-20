@@ -5,7 +5,9 @@ Verifies:
   1. journal_ledger spoken-only dialogue filtering & 24h retention contract.
   2. _rag_cache SHA256 hashing & LRU eviction (maxlen <= 128).
   3. sensory_manager unconditional sliding-window buffer trim (<= 24000 samples).
+# [FEAT-072] Morning Briefing
   4. dream_node 2-stage memory consolidation & WYWO briefing.
+# [FEAT-184] The "Amygdala" Weight (Sentinel v2.1)
   5. processed_ids deque maxlen=1000 eviction.
   6. _truncate_to_tokens sentinel context cap (<= 2500 tokens).
 """

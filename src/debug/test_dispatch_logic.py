@@ -13,6 +13,7 @@ class DispatchTester:
         # Minimized mock logic for the test
         pass
 
+# [FEAT-371] Robust Token Extraction (Multi-Source)
     def execute_dispatch_actual(self, raw_text, source):
         """Production Logic (Extracted from cognitive_hub.py)."""
         if "Brain" in source:

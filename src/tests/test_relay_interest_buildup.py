@@ -4,6 +4,7 @@ import time
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# [FEAT-200] UI Debug Visibility
 # Configure logging for forensic visibility
 logging.basicConfig(level=logging.INFO)
 

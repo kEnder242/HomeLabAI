@@ -10,6 +10,7 @@ from acme_lab import AcmeLab
 async def debug_kender():
     lab = AcmeLab()
     print("--- [DEBUG] Verifying KENDER Connection ---")
+# [FEAT-082] Neural Priming
     await lab.check_brain_health(force=True)
     print(f"Brain Online: {lab.brain_online}")
     if lab.brain_online:

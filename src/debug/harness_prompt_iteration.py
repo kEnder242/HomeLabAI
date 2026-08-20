@@ -6,6 +6,8 @@ import sys
 
 VLLM_URL = "http://localhost:8088/v1/chat/completions"
 
+# [FEAT-260] Fast-Path STUB Engine (Model Proxy)
+# [FEAT-187] CLaRa Model Re-training (Unified 3B Refinement)
 def test_prompt(system_prompt, user_query, temperature=0.2, repetition_penalty=1.2, model="unified-base"):
     payload = {
         "model": model,

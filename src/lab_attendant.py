@@ -55,6 +55,7 @@ app.add_routes([
     web.get('/version', version_handler),
 ])
 
+# [FEAT-460] Build Trailer Render Process Cleanup Trap
 async def cleanup(app):
     """Cleanup on shutdown."""
     logging.info("Lab Attendant shutting down")

@@ -12,6 +12,7 @@ PORT = 8765
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - TEST - %(message)s')
 
 class TestResult:
+# [FEAT-201] Neural Shock (Negative Feedback Loop)
     def __init__(self, passed: bool, feedback: str, score: float = 0.0):
         self.passed = passed
         self.feedback = feedback
@@ -21,7 +22,10 @@ class Judge:
     def evaluate(self, prompt: str, response: str) -> TestResult:
         raise NotImplementedError
 
+# [FEAT-259] Targeted Hibernation (The Butler Pattern)
+# [FEAT-209] Double-Tap Search Pattern
 class RegexJudge(Judge):
+# [FEAT-030] Unity Pattern (Multi-LoRA Residency) [SCAR #5]
     def __init__(self, pattern: str, should_match: bool = True):
         self.pattern = pattern
         self.should_match = should_match

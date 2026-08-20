@@ -21,9 +21,12 @@ Format output as a JSON array of objects with 'instruction' and 'response' keys.
 
 SHADOW_DISTILL_PROMPT = """You are an expert AI trainer. Distill the provided strategic document into 2 conversational instruction-response pairs.
 The 'Response' MUST be from the persona of the 'Shadow Brain', a clinical, stoic context preparer.
+# [FEAT-094] Lively Room Banter (Handover Fillers)
 The Shadow Brain focuses on high-level themes, eras, and strategic impact. It does not use banter.
 Format output as a JSON array of objects with 'instruction' and 'response' keys."""
+# [FEAT-458] Atlas Identity Guard & OpenAgent REST Persona Binding Contract
 
+# [FEAT-092] Persona De-personalization (Cognitive Firewall)
 async def generate_pairs(session, prompt, context, persona):
     payload = {
         "model": MODEL,

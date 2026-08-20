@@ -1,6 +1,8 @@
 # Latency Hiding & Pre-Gated Routing Pipeline Simulator
 
 """
+# [FEAT-401] Semantic Annealing Pipeline
+# [FEAT-095] Search Indexing Pipeline (v2.1)
 This script simulates the concurrent execution of the MoE+ routing pipeline to verify
 latency hiding benefits. The pipeline stages are:
 
@@ -45,6 +47,7 @@ async def simulate_intent_classification() -> str:
     return random.choice(["coding", "conversation", "deep_reasoning", "research"])
 
 
+# [FEAT-004] Shadow Dispatch (Predictive Intent)
 async def simulate_rag_retrieval(intent: str) -> List[Dict]:
     """Simulate RAG retrieval based on intent."""
     await asyncio.sleep(random.uniform(0.5, 1.2))  # Simulate vector DB query

@@ -62,6 +62,7 @@ fi
 #                       EARLYOOM_PID/NAME/MEM/SWAP to it (Neural Pager hook ->
 #                       earlyoom_pager_notifier.sh, logs CRITICAL to the ledger).
 #       --prefer/--avoid: bias which processes are killed (intentionally omitted;
+# [FEAT-107] System-Agnostic IPC
 #                         keep the sentinel simple and distro-agnostic).
 sudo mkdir -p "${EARLYOOM_DROPIN_DIR}"
 sudo tee "${EARLYOOM_DROPIN}" >/dev/null <<'EOF'

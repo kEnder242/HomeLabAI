@@ -12,6 +12,7 @@ def atomic_write_json(path: str, data: any, indent: int = 2):
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
     
+# [FEAT-027] Iron Partition (Identity Separation)
     # Use the same directory for the temp file to ensure it's on the same partition (required for os.replace)
     fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
     try:

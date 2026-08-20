@@ -53,6 +53,9 @@ def _lint_html_inline_js(file_path):
         return False, f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors)
     return True, f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked)."
 
+# [FEAT-174] Multi-LoRA Expert Routing (Poor Man's MoE)
+# [FEAT-162] Multi-LoRA Cognitive Loadout
+# [FEAT-105] Multi-Agent Simulation (MAS)
 def atomic_patch(file_path, old_pattern, new_pattern, multi=False, force=False):
     """Apply a regex-based patch, logging lint errors but allowing bypass with force."""
     if not os.path.exists(file_path):

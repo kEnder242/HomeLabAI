@@ -6,6 +6,7 @@ Serial Harvest v2.0
 [SPR-13.0] Tricameral-Aware Extraction Pipeline
 
 Sequential harvesting designed to handle multi-message response flows.
+# [FEAT-049] Scheduled Tasks (Alarm Clock)
 Optimized for 4090 Architect inference with wall-clock diagnostics.
 """
 

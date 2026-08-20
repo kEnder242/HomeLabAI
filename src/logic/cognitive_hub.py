@@ -14,6 +14,7 @@ from v5.common.types import LAB_VERSION
 _QPR_NOISE_PATTERNS = [
     # Greetings / attention-getters (trailing \b avoids `yo` matching inside `you`)
     (r"(?i)\b(?:hey|hi|hello|yo|narf)\b\s*,?\s*", ""),
+# [FEAT-111] Cognitive Identity Lock
     # Meta-cognitive framing
     (r"(?i)\b(I'm|I am)\s+(just\s+)?(wondering|curious|asking|hoping)\s+", ""),
     # Soft request preambles
@@ -415,6 +416,7 @@ class CognitiveHub:
         """[FEAT-267] Display periodic 'Tics' (e.g., Narf!) during long node runs."""
         task = asyncio.create_task(coro)
         
+# [FEAT-053] Contextual Tics
         # Start a background tic broadcaster
         async def _tic_loop():
             current_delay = 5.0

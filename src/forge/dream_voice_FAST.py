@@ -29,6 +29,7 @@ logging.basicConfig(
 )
 
 
+# [FEAT-425] Standalone WebSocket RSS Memory Profiler
 async def generate_dream_response(websocket, prompt, mode="voice"):
     """Queries the Architect for the ideal 'Engineer Voice' or 'Sentinel Decision'."""
     if mode == "sentinel":

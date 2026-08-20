@@ -31,6 +31,7 @@ VIBES = [
 ]
 
 async def generate_curriculum():
+# [FEAT-189] Vibe-Driven Tool Pruning
     """[FEAT-246] LLM-driven Reverse Vibe Check Generator."""
     logging.info(f"Initiating curriculum generation for {SEED_TARGET} pairs...")
     

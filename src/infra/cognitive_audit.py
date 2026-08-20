@@ -10,6 +10,8 @@ class CognitiveAudit:
     def __init__(self, resident_node):
         self.node = resident_node
 
+# [FEAT-086] Tiered Brain Response (Preamble)
+# [FEAT-076] Sovereign Response Verification
     async def audit_technical_truth(self, query: str, response: str, constraints: str) -> bool:
         """
         Asks the peer node to judge the technical accuracy of an output.
@@ -21,6 +23,7 @@ class CognitiveAudit:
             f"RESPONSE: {response}\n"
             f"CONSTRAINTS: {constraints}\n\n"
             f"RULES: Output ONLY 'PASS' if the response satisfies the query and constraints. "
+# [FEAT-070] Hallucination Shunting
             f"Output ONLY 'FAIL' if there is a technical hallucination or logical inconsistency. "
             f"No conversational filler."
         )
