@@ -210,17 +210,7 @@ def main():
     logger.info("=== [FEAT-160/FEAT-213/SPR-52.0/SPR-53.0] NIGHTLY FORGE ORCHESTRATION INITIATED ===")
     write_step_log("ORCHESTRATION_INIT", f"local={args.local}")
 
-    # 1. Housekeeping Phase: Ingest Raw Notes & Refine Search Index
-    logger.info("[NIGHTLY STEP 1/4] Initiating Note Ingestion & Mass Scan...")
-    run_mass_scan()
-
-    # 2. Cooldown Phase 1: 30s CPU & Disk Quiesce Window
-    logger.info("[NIGHTLY COOLDOWN 1] Enforcing 30s Post-Scan CPU & Bus Settling Window...")
-    write_step_log("POST_SCAN_SETTLING_START", "Sleeping 30s")
-    time.sleep(30)
-    write_step_log("POST_SCAN_SETTLING_DONE")
-
-    # 3. Pre-Flight System & RAM Health Telemetry
+    # 1. Pre-Flight System & RAM Health Telemetry
     try:
         load_avg = os.getloadavg()
         mem_info = shutil.disk_usage("/")
@@ -229,31 +219,35 @@ def main():
     except Exception as e:
         logger.warning(f"[PROBE] Health probe warning: {e}")
 
-    # 4. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
-    logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce...")
+    # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
+    logger.info("[NIGHTLY STEP 1/3] Requesting Foyer VRAM Quiesce for Training...")
     quiesced = quiesce_vllm()
 
-    # 5. Cooldown Phase 2: 15s VRAM Drain Settling Window
-    logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-VRAM Quiesce...")
+    # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
+    logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
     write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
     time.sleep(15)
 
     try:
-        # 6. Heavy Phase (STRICTLY AT VERY END): Unsloth LoRA Training Pass
-        logger.info("[NIGHTLY STEP 3/4 - HEAVY END TASK] Executing Unsloth LoRA Fine-Tuning Pass...")
+        # 4. LoRA Training Pass
+        logger.info("[NIGHTLY STEP 2/3 - FORGE] Executing Unsloth LoRA Fine-Tuning Pass...")
         if args.local:
             run_unsloth_forge()
         else:
             run_kender_forge()
             
-        # 7. Cooldown Phase 3: 15s Post-Training Thermal Settling Window
-        logger.info("[NIGHTLY COOLDOWN 3] Settling 15s post-training thermal cooldown...")
+        # 5. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
+        logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown...")
         write_step_log("TRAINING_SETTLING", "Sleeping 15s")
         time.sleep(15)
     finally:
-        # 8. Re-Ignition Phase: Restore Foyer OPERATIONAL state
-        logger.info("[NIGHTLY STEP 4/4] Re-igniting Foyer state to OPERATIONAL...")
+        # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
+        logger.info("[NIGHTLY STEP 3/3] Re-igniting Foyer state to OPERATIONAL...")
         re_ignite_vllm()
+
+    # 7. Note Ingestion & Mass Scan Phase (End of Sequence)
+    logger.info("[NIGHTLY END STEP] Initiating Note Ingestion, Gem Refinement (capped at 25), & Mass Scan...")
+    run_mass_scan()
 
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
     write_step_log("ORCHESTRATION_COMPLETE")
