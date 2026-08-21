@@ -205,6 +205,22 @@ def run_kender_forge():
         logger.warning(f"[SPR-52.0] vLLM hot-reload error: {e}; falling back to re_ignite_vllm()")
         re_ignite_vllm()
 
+def run_dream_cycle():
+    """[FEAT-067 / VIBE-005] Run Subconscious Dreaming pass across newly refined Rank 4/5 gems."""
+    logger.info("[DREAM] Initiating Subconscious Dreaming Cycle on refined archive gems...")
+    write_step_log("DREAM_CYCLE_START")
+    dream_script = os.path.join(BASE_DIR, "dream_cycle.py")
+    if os.path.exists(dream_script):
+        try:
+            res = subprocess.run([sys.executable, dream_script], capture_output=True, text=True, timeout=900)
+            logger.info(f"[DREAM] Subconscious Dreaming completed with return code {res.returncode}")
+            write_step_log("DREAM_CYCLE_COMPLETE", f"returncode={res.returncode}")
+        except Exception as e:
+            logger.warning(f"[DREAM] Dreaming cycle warning: {e}")
+            write_step_log("DREAM_CYCLE_ERROR", str(e))
+    else:
+        logger.info("[DREAM] dream_cycle.py not found; skipping dream pass.")
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Nightly Forge orchestrator")
@@ -225,7 +241,7 @@ def main():
         logger.warning(f"[PROBE] Health probe warning: {e}")
 
     # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
-    logger.info("[NIGHTLY STEP 1/3] Requesting Foyer VRAM Quiesce for Training...")
+    logger.info("[NIGHTLY STEP 1/4] Requesting Foyer VRAM Quiesce for Training...")
     quiesced = quiesce_vllm()
 
     # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
@@ -234,8 +250,8 @@ def main():
     time.sleep(15)
 
     try:
-        # 4. LoRA Training Pass
-        logger.info("[NIGHTLY STEP 2/3 - FORGE] Executing Unsloth LoRA Fine-Tuning Pass...")
+        # 4. Heavy LoRA Training Pass (02:00 AM)
+        logger.info("[NIGHTLY STEP 2/4 - FORGE] Executing Unsloth LoRA Fine-Tuning Pass...")
         if args.local:
             run_unsloth_forge()
         else:
@@ -247,12 +263,16 @@ def main():
         time.sleep(15)
     finally:
         # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
-        logger.info("[NIGHTLY STEP 3/3] Re-igniting Foyer state to OPERATIONAL...")
+        logger.info("[NIGHTLY STEP 3/4] Re-igniting Foyer state to OPERATIONAL...")
         re_ignite_vllm()
 
-    # 7. Note Ingestion & Mass Scan Phase (End of Sequence)
-    logger.info("[NIGHTLY END STEP] Initiating Note Ingestion, Gem Refinement (capped at 25), & Mass Scan...")
+    # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
+    logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")
     run_mass_scan()
+
+    # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
+    logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
+    run_dream_cycle()
 
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
     write_step_log("ORCHESTRATION_COMPLETE")
