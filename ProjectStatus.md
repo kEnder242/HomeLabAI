@@ -22,13 +22,14 @@
 | **Bicameral Hub** | ✅ READY | [FEAT-160] Induction Step 6 integration active. |
 | **EarNode (STT)** | ✅ STABLE | NeMo resident; Load-first VRAM prioritization [FEAT-145]. |
 
-## Active Sprint: SPR-14.0 "The Eternal Forge" (Mar 17, 2026)
-**Objective: Integrate autonomous nightly LoRA training into the Lab cycle.**
-**Current Sprint:** **[Sprint Plan: The Eternal Forge](../Portfolio_Dev/SPRINT_PLAN_SPR_14_0.md)**
+## Active Sprint: SPR-58.0 "Relational Mesh & HyDE-Jeopardy" (Aug 21, 2026)
+**Objective: Autonomous LoRA induction, Tri-Field Gem schema, and hybrid dense-sparse retrieval.**
+**Current Sprint:** **[Sprint Plan: SPR-58.0](../Portfolio_Dev/SPRINT_PLAN_SPR_58_0.md)**
 
 **Status Summary:**
-*   **Phase 1 (Handshake)**: [COMPLETE] Attendant-to-Node REST bridge and Step 6 logic standing.
-*   **Phase 2 (Hardening)**: [ACTIVE] Negative Triage Generation and VRAM Guard verified.
-*   **Phase 3 (Burn-In)**: [COMPLETE] 5-Step Smoke test verified autonomous handover.
+*   **Phase 1 (Autonomous Nightly Forge)**: [COMPLETE] REST VRAM quiesce (`POST /release_nodes`), Unsloth LoRA on RTX 2080 Ti with `libnvJitLink.so.13` preloading, and REST re-ignition (`POST /wake`) 100% verified.
+*   **Phase 2 (Tri-Field Gem Schema)**: [COMPLETE] `refine_gem.py` updated to extract `trigger_context`, `technical_gem`, and `anchors` grounded in Query2Doc and Self-RAG.
+*   **Phase 3 (Curriculum Distillation)**: [COMPLETE] `distill_journal_ledger()` expanded from 13 $\rightarrow$ 593 bidirectional dialogue pairs covering 18 years of notes and standalone code artifacts.
+*   **Phase 4 (Shakedown Certification)**: [COMPLETE] 7/7 unit and integration tests passing (`test_forge_distillation_unit.py` and `test_nightly_forge_shakedown.py`).
 
 *Refer to the Feature Tracker for permanent technical DNA.*
