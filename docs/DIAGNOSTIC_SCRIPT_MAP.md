@@ -164,16 +164,13 @@ Helper scripts and execution wrappers for delegating development stories to Open
 
 ---
 
-## 🧬 12. Nightly Forge, Gem Refinement & Distillation (Sprint 58)
-Autonomous weight induction, Tri-Field Gem schema, and hybrid dense-sparse shakedown suites.
+## 🧬 12. Nightly Forge & Distillation Diagnostics (Sprint 58)
+Diagnostic and shakedown instruments validating the production infrastructure (`src/infra/nightly_forge.py`, `refine_gem.py`, and `mass_scan.py`).
 
 | Tool | Path | V4 Status | Goal |
 | :--- | :--- | :--- | :--- |
 | **Forge Distillation Unit** | `src/tests/test_forge_distillation_unit.py` | **ACTIVE** | [SPR-58.0] [GOLD] Unit test suite verifying Tri-Field schema parsing, backward compatibility, code artifact Jeopardy pairs, and 590+ dataset integrity. |
 | **Nightly Forge Shakedown** | `src/tests/test_nightly_forge_shakedown.py` | **ACTIVE** | [SPR-58.0] [GOLD] Full end-to-end integration shakedown verifying module imports, REST quiesce/re-ignite contracts, train_expert dataset mapping, and dreaming subprocess handling. |
-| **Nightly Orchestrator** | `src/infra/nightly_forge.py` | **ACTIVE** | [FEAT-160/FEAT-213] Master 2:00 AM – 6:00 AM orchestrator chaining VRAM Quiesce -> Unsloth LoRA -> Mass Scan -> Subconscious Dreaming -> WYWO. |
-| **Tri-Field Gem Refiner** | `Portfolio_Dev/field_notes/refine_gem.py` | **ACTIVE** | [FEAT-448] Upgrades raw archive events to Rank 4 with `summary`, `trigger_context`, `technical_gem`, and `anchors`. |
-| **Dataset Auto-Distiller** | `Portfolio_Dev/field_notes/mass_scan.py` | **ACTIVE** | [FEAT-161] Step 6 TLC bridge extracting 593+ bidirectional dialogue pairs into `journal_ledger.jsonl`. |
 
 ---
 **Usage**: Before concluding any session, run `src/tests/test_forge_distillation_unit.py` and `src/tests/test_nightly_forge_shakedown.py` to certify the baseline.
