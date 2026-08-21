@@ -33,7 +33,7 @@
 2.  **Absolute Halt**: A "QQ" response constitutes 100% completion of the task. Do not proceed to diagnostics, coding, or log-scraping.
 3.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
 
-## BKM-005: The Design Studio (Greenlight before Silicon Change)
+## BKM-005: The Design Studio (Greenlight before Code Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
 
 1.  **The Pitch**: Agent summarizes the goal in one sentence.
@@ -72,7 +72,7 @@
 4.  **Persistence**: `git add .` and `git commit` with a semantic message. (NEVER push).
 5.  **Handover**: Provide a 1-sentence summary of "Where we are" and "What to do next."
 
-## BKM-010: Silicon Co-Pilot (Interactive Mode)
+## BKM-010: Debug Co-Pilot (Interactive Mode)
 **Objective**: Maintain diagnostic fidelity during live user/agent collaboration.
 **Trigger**: "Interactive Demo", "Co-Pilot Mode", or live debugging requests.
 
@@ -265,7 +265,7 @@
 1.  **The STUB Engine**: Utilize `engine="STUB"` to bypass 90s vLLM load times. To boot the system service in STUB mode, use `sudo systemctl edit lab-attendant.service` and add `Environment="LAB_TEST_STUB=1"`.
 2.  **Fast Hibernation**: Set `afk_timeout=60` in `acme_lab.py` to observe auto-hibernation cycles in 1 minute.
 3.  **Traceability**: Always check `status.json` or the Attendant journal for the `reason` field to verify which trigger caused an ignition.
-4.  **Silicon Reset**: Use `sudo systemctl restart lab-attendant.service` to ensure a perfectly clean slate between tests. The `on_shutdown` hook ensures all session orphans are reaped.
+4.  **Server Reset**: Use `sudo systemctl restart lab-attendant.service` to ensure a perfectly clean slate between tests. The `on_shutdown` hook ensures all session orphans are reaped.
 5.  **Hot-Reload Prevention**: The state machine does not support dynamic code reloading. Always execute `sudo systemctl restart lab-attendant.service` after editing files before running any inject verification scripts.
 
 ---
