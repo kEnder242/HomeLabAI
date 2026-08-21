@@ -1,5 +1,6 @@
 #!/bin/bash
 # [FEAT-137] vLLM 0.17.0 Infrastructure
+# [FEAT-030] Unity Pattern (Multi-LoRA Shared 3B Base Residency)
 # --- vLLM Sovereign Base Startup ---
 # [Task 17.2] Registry Authority Restored
 MODEL_PATH=${1:-}
