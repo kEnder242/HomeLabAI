@@ -66,14 +66,18 @@ def get_vram_usage():
 
 def quiesce_vllm():
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
-    logger.info("[FEAT-213] Requesting Foyer HIBERNATING state to reclaim VRAM...")
-    write_step_log("QUIESCE_START", f"Requesting Foyer HIBERNATING")
+    logger.info("[FEAT-213] Requesting Foyer /release_nodes and SHUTDOWN state to reclaim VRAM...")
+    write_step_log("QUIESCE_START", "Requesting Foyer /release_nodes & SHUTDOWN")
     try:
-        resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "HIBERNATING"}, timeout=10)
+        # Step 1: Release all resident models from VRAM
+        requests.post(f"{FOYER_URL}/release_nodes", timeout=10)
+        # Step 2: Signal SHUTDOWN state to the Foyer state machine
+        requests.post(f"{FOYER_URL}/shutdown", timeout=10)
+        resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
         if resp.status_code == 200:
-            logger.info("[FEAT-213] Foyer state updated to HIBERNATING. Settling 10s...")
+            logger.info("[FEAT-213] Foyer nodes released and state set to SHUTDOWN. Settling 10s...")
             time.sleep(10)
-            write_step_log("QUIESCE_OK", "Foyer HIBERNATING settled")
+            write_step_log("QUIESCE_OK", "Foyer SHUTDOWN settled (VRAM evicted)")
             return True
         else:
             logger.warning(f"[FEAT-213] Status update returned HTTP {resp.status_code}")
@@ -85,8 +89,9 @@ def quiesce_vllm():
 def re_ignite_vllm():
     """[FEAT-213] Re-ignite Foyer & vLLM post-training."""
     logger.info("[FEAT-213] Re-igniting Foyer state to OPERATIONAL...")
-    write_step_log("RE_IGNITE_START", "Requesting Foyer OPERATIONAL")
+    write_step_log("RE_IGNITE_START", "Requesting Foyer /wake & OPERATIONAL")
     try:
+        requests.post(f"{FOYER_URL}/wake", timeout=10)
         resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "OPERATIONAL"}, timeout=10)
         if resp.status_code == 200:
             logger.info("[FEAT-213] Foyer state restored to OPERATIONAL.")
