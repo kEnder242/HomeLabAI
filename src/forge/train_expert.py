@@ -1,7 +1,18 @@
 import os
 import sys
+import ctypes
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+# Preload CUDA 13 runtime libraries from pip virtualenv
+_cu13_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
+if os.path.exists(_cu13_dir):
+    _nvjit = os.path.join(_cu13_dir, "libnvJitLink.so.13")
+    if os.path.exists(_nvjit):
+        try:
+            ctypes.CDLL(_nvjit, mode=ctypes.RTLD_GLOBAL)
+        except Exception:
+            pass
 
 try:
     from unsloth import FastLanguageModel
