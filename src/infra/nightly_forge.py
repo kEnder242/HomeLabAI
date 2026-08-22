@@ -32,11 +32,17 @@ KENDER_SSH_TARGET = "jallred@192.168.1.26"  # explicit user@host; ~/.ssh alias m
 KENDER_TRAIN_SCRIPT = "~/kender_forge/train_jason_voice_lora.py"
 KENDER_DATA_STAGE = "~/kender_forge/data/journal_ledger.jsonl"
 KENDER_ADAPTER_STAGE = "~/kender_forge/adapters/cli_voice_v1/"
-SYNC_STAGING_DIR = "/speedy/models/adapters/.sync-staging/cli_voice_v1/"
-VLLM_URL = "http://localhost:8088"
+try:
+    from infra.pager_relay import trigger_pager
+except ImportError:
+    try:
+        from src.infra.pager_relay import trigger_pager
+    except ImportError:
+        def trigger_pager(message, severity="INFO", source="System"):
+            pass
 
-def write_step_log(step_name: str, details: str = ""):
-    """[FEAT-213] Write atomic step progress to /tmp/nightly_forge_step.log to survive hard reboots."""
+def write_step_log(step_name: str, details: str = "", severity: str = "INFO"):
+    """[FEAT-213 / BKM-014] Write atomic step progress to /tmp/nightly_forge_step.log and Neural Pager."""
     timestamp = datetime.datetime.now().isoformat()
     log_line = f"[{timestamp}] [{step_name}] {details}\n"
     try:
@@ -44,6 +50,24 @@ def write_step_log(step_name: str, details: str = ""):
             f.write(log_line)
     except Exception as e:
         logger.warning(f"Failed to write step log: {e}")
+
+    # Broadcast significant milestones to Neural Pager & status.html interleaved logs
+    milestones = {
+        "ORCHESTRATION_INIT": "Nightly Maintenance & Forge Pipeline Initiated",
+        "QUIESCE_OK": "Foyer VRAM Quiesced (Models Evicted for Training)",
+        "UNSLOTH_FORGE_START": "Unsloth LoRA Fine-Tuning Pass Started (RTX 2080 Ti)",
+        "UNSLOTH_FORGE_COMPLETE": "LoRA Fine-Tuning Completed (Adapter Saved to cli_voice_v1)",
+        "UNSLOTH_FORGE_FAILED": f"LoRA Fine-Tuning Failed: {details}",
+        "RE_IGNITE_OK": "Foyer State Restored to OPERATIONAL (LoRA Active)",
+        "MASS_SCAN_START": "Mass Scan & Gem Refinement Window Active (03:00 - 05:00 AM)",
+        "MASS_SCAN_COMPLETE": "Mass Scan & Gem Refinement Window Completed",
+        "DREAM_CYCLE_START": "Subconscious Dreaming Pass Initiated",
+        "DREAM_CYCLE_COMPLETE": "Subconscious Dreaming Cycle Completed",
+        "ORCHESTRATION_COMPLETE": "Nightly Maintenance & Forge Pipeline Completed Successfully"
+    }
+    if step_name in milestones:
+        sev = "WARNING" if ("FAIL" in step_name or "ERROR" in step_name) else severity
+        trigger_pager(milestones[step_name], severity=sev, source="Nightly Forge")
 
 def get_vram_usage():
     """Probe actual VRAM usage via nvidia-smi."""
