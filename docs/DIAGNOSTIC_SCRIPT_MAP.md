@@ -169,8 +169,9 @@ Diagnostic and shakedown instruments validating the production infrastructure (`
 
 | Tool | Path | V4 Status | Goal |
 | :--- | :--- | :--- | :--- |
+| **Agentic-R Retrieval Test** | `src/tests/test_agentic_r_retrieval.py` | **ACTIVE** | [SPR-58.0] [GOLD] Unit test suite verifying Maximal Marginal Relevance (MMR) novelty re-ranking and Ripgrep autonomous search pivot. |
 | **Forge Distillation Unit** | `src/tests/test_forge_distillation_unit.py` | **ACTIVE** | [SPR-58.0] [GOLD] Unit test suite verifying Tri-Field schema parsing, backward compatibility, code artifact Jeopardy pairs, and 590+ dataset integrity. |
 | **Nightly Forge Shakedown** | `src/tests/test_nightly_forge_shakedown.py` | **ACTIVE** | [SPR-58.0] [GOLD] Full end-to-end integration shakedown verifying module imports, REST quiesce/re-ignite contracts, train_expert dataset mapping, and dreaming subprocess handling. |
 
 ---
-**Usage**: Before concluding any session, run `src/tests/test_forge_distillation_unit.py` and `src/tests/test_nightly_forge_shakedown.py` to certify the baseline.
+**Usage**: Before concluding any session, run `src/tests/test_agentic_r_retrieval.py`, `src/tests/test_forge_distillation_unit.py`, and `src/tests/test_nightly_forge_shakedown.py` to certify the baseline.

@@ -634,33 +634,96 @@ def select_vector_query(query: str, hyde_vector_text: str) -> str:
     return query
 
 
-def _log_rag_telemetry(hyde_used: bool, fell_back: bool, total_candidates: int, collection_hits: dict):
-    """[FEAT-447] Log vector RAG health telemetry and hit rates to status.json."""
-    status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
-    if not os.path.exists(status_path):
-        status_path = os.path.join(DATA_DIR, "status.json")
-    if not os.path.exists(status_path):
-        return
+def compute_mmr_ranking(candidates: list, n_results: int = 3, lambda_param: float = 0.7) -> list:
+    """[FEAT-450 / Story 58.1] Maximal Marginal Relevance (MMR) Utility Re-Ranking.
+    ArXiv: 2601.11888 (Agentic-R).
+    Balances semantic relevance against marginal information novelty to eliminate
+    redundant context chunks."""
+    if not candidates:
+        return []
+    if len(candidates) <= n_results:
+        return candidates
 
-    try:
-        with open(status_path, "r") as f:
-            status_data = json.load(f)
+    import re
+    def _tokenize(text: str) -> set:
+        return set(re.findall(r"\w+", text.lower()))
 
-        status_data["rag_telemetry"] = {
-            "timestamp": time.time(),
-            "hyde_used": hyde_used,
-            "hyde_fallback": fell_back,
-            "total_candidates": total_candidates,
-            "distance_threshold": 0.55,
-            "collection_hits": collection_hits
-        }
+    for c in candidates:
+        c["sim"] = 1.0 / (1.0 + max(0.0, c.get("distance", 1.0)))
+        doc_str = c.get("document", "")
+        meta_str = json.dumps(c.get("metadata", {}))
+        c["tokens"] = _tokenize(f"{doc_str} {meta_str}")
 
-        tmp_path = status_path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(status_data, f, indent=2)
-        os.replace(tmp_path, status_path)
-    except Exception as e:
-        logging.warning(f"[RAG Telemetry] Failed to write telemetry to status.json: {e}")
+    selected = [candidates[0]]
+    remaining = candidates[1:]
+
+    while len(selected) < n_results and remaining:
+        best_score = -float("inf")
+        best_idx = 0
+        for i, cand in enumerate(remaining):
+            max_sim_to_selected = 0.0
+            for sel in selected:
+                intersection = len(cand["tokens"] & sel["tokens"])
+                union = len(cand["tokens"] | sel["tokens"])
+                overlap = intersection / union if union > 0 else 0.0
+                if overlap > max_sim_to_selected:
+                    max_sim_to_selected = overlap
+
+            mmr_score = lambda_param * cand["sim"] - (1.0 - lambda_param) * max_sim_to_selected
+            if mmr_score > best_score:
+                best_score = mmr_score
+                best_idx = i
+
+        selected.append(remaining.pop(best_idx))
+
+    return selected
+
+
+def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
+    """[FEAT-451 / Story 58.2] Autonomous Search Pivot Loop via fast Ripgrep.
+    ArXiv: 2601.11888 (Agentic-R).
+    Fires when ChromaDB vector distance is weak (>0.50) or returns 0 matches.
+    Hunts for exact hardware anchors across field_notes/data/ and raw notes."""
+    import re
+    tokens = re.findall(r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query)
+    stop_words = {"THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY", "DID", "JASON", "ARE", "YOU"}
+    anchors = [t for t in tokens if t.upper() not in stop_words and len(t) > 2]
+    if not anchors:
+        anchors = [w for w in query.split() if len(w) > 4 and w.lower() not in {"about", "there", "where", "which"}]
+
+    if not anchors:
+        return ""
+
+    data_dirs = [
+        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
+        os.path.expanduser("~/knowledge_base")
+    ]
+
+    hits = []
+    seen_lines = set()
+    for anchor in anchors[:3]:
+        for d in data_dirs:
+            if not os.path.exists(d):
+                continue
+            try:
+                cmd = ["rg", "-i", "-m", str(max_matches), "--no-heading", "-N", anchor, d]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
+                if res.returncode == 0 and res.stdout.strip():
+                    for line in res.stdout.strip().split("\n"):
+                        clean_line = line.strip()
+                        if clean_line and clean_line not in seen_lines and len(clean_line) < 300:
+                            seen_lines.add(clean_line)
+                            hits.append(f"- [{anchor}] {clean_line}")
+                            if len(hits) >= max_matches:
+                                break
+            except Exception:
+                pass
+        if len(hits) >= max_matches:
+            break
+
+    if hits:
+        return "[AGENTIC_R_GREP_PIVOT]:\n" + "\n".join(hits)
+    return ""
 
 
 @mcp.tool()
@@ -801,9 +864,18 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         elif vector_query != query:
             logging.info(f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates.")
 
+        # [FEAT-450 / Story 58.1] Maximal Marginal Relevance (MMR) Diversity Re-Ranking
+        multi_candidates = compute_mmr_ranking(multi_candidates, n_results=n_results)
+
+        # [FEAT-451 / Story 58.2] Autonomous Grep Search Pivot Loop (Agentic-R)
+        if not multi_candidates or (multi_candidates and multi_candidates[0]["distance"] > 0.50):
+            pivot_evidence = execute_grep_search_pivot(query)
+            if pivot_evidence:
+                combined_context.append(pivot_evidence)
+
         # [FEAT-447] Log vector RAG health telemetry and hit rates
         collection_hits = {}
-        for c in multi_candidates[:n_results]:
+        for c in multi_candidates:
             coll = c["collection"]
             collection_hits[coll] = collection_hits.get(coll, 0) + 1
 
@@ -815,7 +887,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         )
 
         multi_formatted = []
-        for c in multi_candidates[:n_results]:
+        for c in multi_candidates:
             coll = c["collection"]
             meta = c["metadata"]
             if coll == "artifact_vault":
