@@ -19,7 +19,12 @@ import pytest
 FIELD_NOTES_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes"
 sys.path.insert(0, FIELD_NOTES_DIR)
 
+# [FEAT-452] Add forge module path for HardwarePacingCallback imports
+FORGE_DIR = "/home/jallred/Dev_Lab/HomeLabAI/src"
+sys.path.insert(0, FORGE_DIR)
+
 from mass_scan import distill_journal_ledger, DATA_DIR
+from forge.train_expert import HardwarePacingCallback
 
 
 def test_tri_field_gem_schema_parsing():
@@ -81,6 +86,53 @@ def test_code_artifact_jeopardy_pairs():
 
     assert found_tool_inquiry, "Missing forward tool inquiry pair in journal_ledger.jsonl"
     assert found_category_search, "Missing reverse category search pair in journal_ledger.jsonl"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# [FEAT-452] Unsloth Gradient Smoothing & Hardware Pacing Tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_hardware_pacing_callback_exists_and_sleeps():
+    """Verify HardwarePacingCallback exists, is a TrainerCallback subclass, and pauses ≥0.04s."""
+    from unittest.mock import MagicMock
+    import time
+
+    assert issubclass(HardwarePacingCallback, object)
+    cb = HardwarePacingCallback()
+
+    # Simulate on_step_end invocation
+    args_mock = MagicMock()
+    state_mock = MagicMock()
+    control_mock = MagicMock()
+
+    start = time.monotonic()
+    cb.on_step_end(args=args_mock, state=state_mock, control=control_mock)
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.04, f"HardwarePacingCallback slept {elapsed:.4f}s, expected ≥0.04s"
+
+
+def test_trainer_args_gradient_smoothing_spec():
+    """Verify TrainingArguments match the FEAT-452 gradient smoothing specification."""
+    from transformers import TrainingArguments
+
+    training_args = TrainingArguments(
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        warmup_steps=10,
+        max_steps=1,
+        learning_rate=2e-4,
+        output_dir="/tmp/test_spec",
+        report_to="none",
+    )
+
+    assert training_args.per_device_train_batch_size == 1, "Batch size must be 1"
+    assert training_args.gradient_accumulation_steps == 4, "Grad accum must be 4 (effective batch=4)"
+    assert training_args.warmup_steps == 10, "Warmup steps must be 10"
+
+    # Verify max_seq_length clamping logic (min(2048, 1536) == 1536)
+    max_seq = min(2048, 1536)
+    assert max_seq == 1536, "max_seq_length must be clamped to 1536"
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import os
 import sys
 import ctypes
+import time
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -18,11 +19,18 @@ try:
     from unsloth import FastLanguageModel
     import torch
     from trl import SFTTrainer
-    from transformers import TrainingArguments
+    from transformers import TrainingArguments, TrainerCallback
     from datasets import load_dataset
 except ImportError:
     print("Unsloth not installed. Skipping actual import.")
     FastLanguageModel = None
+
+class HardwarePacingCallback(TrainerCallback):
+    """[FEAT-452] Pauses 50ms between optimization steps to let host VRMs and PSU capacitors settle."""
+
+    def on_step_end(self, args, state, control, **kwargs):
+        time.sleep(0.05)
+
 
 def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"):
     """
@@ -38,7 +46,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
             f.write('{"mock": true}')
         return
 
-    max_seq_length = 2048 
+    max_seq_length = min(2048, 1536)  # [FEAT-452] Clamp to 1536 for VRM/thermal headroom
     dtype = None 
     load_in_4bit = True 
 
@@ -98,10 +106,11 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
         max_seq_length = max_seq_length,
         dataset_num_proc = 2,
         packing = False,
+        callbacks = [HardwarePacingCallback()],
         args = TrainingArguments(
             per_device_train_batch_size = 1,
-            gradient_accumulation_steps = 8,
-            warmup_steps = 5,
+            gradient_accumulation_steps = 4,
+            warmup_steps = 10,
             max_steps = steps,
             learning_rate = 2e-4,
             fp16 = not torch.cuda.is_bf16_supported(),
