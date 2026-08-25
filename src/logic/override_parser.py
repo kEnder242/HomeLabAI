@@ -94,7 +94,12 @@ async def parse_override_with_resident(
     prompt = _EXTRACTION_PROMPT.format(turn=turn)
 
     try:
-        raw = await resident_caller(prompt)
+        if hasattr(resident_caller, "think") and callable(resident_caller.think):
+            raw = await resident_caller.think(prompt, internal=True)
+        elif callable(resident_caller):
+            raw = await resident_caller(prompt)
+        else:
+            return None
     except Exception:  # noqa: BLE001 – resident failures must not propagate
         return None
 
@@ -138,15 +143,19 @@ def save_override_to_file(
     gem_id:
         Identifier to key the updates under (e.g. ``GEM-0142``).
     updates:
-        Dict of field → value to merge.
+        Dictionary of field updates (e.g. ``{"rank": 5}``).
     overrides_path:
-        Optional override for the destination file. Defaults to
+        Optional path to ``overrides.json``. Defaults to
         ``~/Dev_Lab/Portfolio_Dev/field_notes/data/overrides.json``.
 
     Returns
     -------
-    ``True`` on success, ``False`` on any I/O or serialisation error.
+    True on successful write, False otherwise.
     """
+    clean_updates = {k: v for k, v in updates.items() if v is not None}
+    if not clean_updates:
+        return True
+
     dest = Path(overrides_path) if overrides_path else _DEFAULT_OVERRIDES_PATH
 
     # Ensure parent directory exists.
@@ -163,7 +172,7 @@ def save_override_to_file(
 
     overrides: dict = existing.setdefault("overrides", {})
     merged: dict = overrides.setdefault(gem_id, {})
-    merged.update(updates)
+    merged.update(clean_updates)
 
     # Atomic write: serialise → write tmp → os.replace.
     tmp_path = dest.with_suffix(dest.suffix + ".tmp")
