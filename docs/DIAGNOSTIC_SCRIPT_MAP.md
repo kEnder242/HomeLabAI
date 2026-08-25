@@ -197,3 +197,24 @@ PYTHONPATH=. .venv/bin/pytest src/tests/test_sprint59_integration.py \
                              src/tests/test_interest_speculative_prefetch.py \
                              src/tests/test_floating_oracle.py
 ```
+
+---
+
+## 14. Sprint 60 Modular Satellite Decompositions & Boundary Test Suites (SPR-60.0)
+
+| Script Path | Purpose & Mechanics | Core Triggers & Verification |
+| :--- | :--- | :--- |
+| `src/tests/test_override_parser.py` | **Override Parser Satellite Unit Suite [FEAT-145/REF-01]**<br>Tests query intent detection (`GEM-xxxx`/`BKM-xxx`), resident JSON extraction, and atomic disk persistence (`overrides.json`). | `pytest src/tests/test_override_parser.py` (28 unit tests, <0.25s) |
+| `src/tests/test_maintenance_sweeper.py` | **Maintenance Sweeper Satellite Unit Suite [LAB-095/096/099/REF-02]**<br>Tests CPU package thermal zones (`/sys/class/thermal`), heap garbage collection (`gc.collect()`), and safe TTL buffer pruning without `KeyError`. | `pytest src/tests/test_maintenance_sweeper.py` (23 unit tests, <0.40s) |
+| `src/tests/test_audio_pipeline.py` | **Audio Pipeline Satellite Unit Suite [FEAT-059/LAB-088/REF-03]**<br>Tests signed int16 PCM buffer conversions, 24000/16000 sliding window extraction, and int32-widened peak amplitude detection. | `pytest src/tests/test_audio_pipeline.py` (19 unit tests, <0.30s) |
+| `src/tests/test_sprint60_integration.py` | **Sprint 60 In-Process Integration Gauntlet**<br>Validates the interaction of all three decoupled satellites with core orchestrators (`CognitiveHub`, `SensoryManager`, `router.py`). | `pytest src/tests/test_sprint60_integration.py` (4 integration tests) |
+| `src/tests/test_live_sprint60_e2e.py` | **Sprint 60 Live-Fire Service Integration Suite (Story 60.5)**<br>Executes authenticated WebSocket transactions (`ws://127.0.0.1:8765`), sending live overrides, binary PCM frames, and heartbeat checks against the active running daemon. | `python3 src/tests/test_live_sprint60_e2e.py` (Live WebSocket) |
+
+---
+**Sprint 60 Certification Runner**:
+```bash
+PYTHONPATH=. .venv/bin/pytest src/tests/test_override_parser.py \
+                             src/tests/test_maintenance_sweeper.py \
+                             src/tests/test_audio_pipeline.py \
+                             src/tests/test_sprint60_integration.py
+```
