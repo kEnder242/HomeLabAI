@@ -1430,17 +1430,16 @@ class FoyerRouter:
                                     logger.warning(f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}")
                             asyncio.create_task(_run_mlx_judge())
 
-                        del pending_chunks[buf_key]
-                        if buf_key in chunk_timestamps:
-                            del chunk_timestamps[buf_key]
+                        pending_chunks.pop(buf_key, None)
+                        chunk_timestamps.pop(buf_key, None)
 
                 # [LAB-095] TTL Sweeper: Clean orphaned pending_chunks keys inactive > 30 seconds
                 now_ts = time.time()
-                stale_keys = [k for k, ts in chunk_timestamps.items() if now_ts - ts > 30]
+                stale_keys = [k for k, ts in list(chunk_timestamps.items()) if now_ts - ts > 30]
                 for k in stale_keys:
                     logger.warning(f"[LAB-095] TTL Purge orphaned waterfall buffer key: {k}")
-                    del pending_chunks[k]
-                    del chunk_timestamps[k]
+                    pending_chunks.pop(k, None)
+                    chunk_timestamps.pop(k, None)
 
                 self.waterfall_queue.task_done()
 
