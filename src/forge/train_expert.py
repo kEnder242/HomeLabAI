@@ -26,9 +26,9 @@ except ImportError:
     FastLanguageModel = None
 
 class HardwarePacingCallback(TrainerCallback):
-    """[FEAT-452] Pauses 60.0s (full 1-minute settling window) between optimization steps to let host VRMs, PSU capacitors, and GPU silicon cool to idle baseline."""
+    """[FEAT-452] Pauses 5.0s between optimization steps to let host VRMs, PSU capacitors, and GPU silicon settle to baseline."""
 
-    def __init__(self, delay_sec: float = 60.0):
+    def __init__(self, delay_sec: float = 5.0):
         self.delay_sec = delay_sec
 
     def on_step_end(self, args, state, control, **kwargs):
@@ -37,7 +37,7 @@ class HardwarePacingCallback(TrainerCallback):
         print("⚡ [HARDWARE PACING] Hardware settled to baseline. Initiating next optimization pulse.\n", flush=True)
 
 
-def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit", pacing_delay: float = 60.0):
+def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit", pacing_delay: float = 5.0):
     """
     [FEAT-160] Pedigree Refinement Pipeline & [FORGE-02]
     Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", default=None, help="Output LoRA dir")
     parser.add_argument("--steps", type=int, default=60, help="Training steps")
     parser.add_argument("--model", default=None, help="Base model")
-    parser.add_argument("--pacing-delay", type=float, default=60.0, help="Hardware settling delay in seconds between steps (default: 60.0s)")
+    parser.add_argument("--pacing-delay", type=float, default=5.0, help="Hardware settling delay in seconds between steps (default: 5.0s)")
     args = parser.parse_args()
 
     dataset_in = args.dataset or args.pos_dataset
