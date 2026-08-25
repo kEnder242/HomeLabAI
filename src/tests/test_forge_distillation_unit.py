@@ -93,20 +93,22 @@ def test_code_artifact_jeopardy_pairs():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_hardware_pacing_callback_exists_and_sleeps():
-    """Verify HardwarePacingCallback exists, is a TrainerCallback subclass, and pauses ≥0.04s."""
+    """Verify HardwarePacingCallback exists, defaults to 60.0s, and pauses correctly."""
     from unittest.mock import MagicMock
     import time
 
     assert issubclass(HardwarePacingCallback, object)
-    cb = HardwarePacingCallback()
+    default_cb = HardwarePacingCallback()
+    assert default_cb.delay_sec == 60.0, "Default hardware pacing delay must be 60.0s (1 full minute)"
 
-    # Simulate on_step_end invocation
+    # Test short execution with explicit fast delay
+    fast_cb = HardwarePacingCallback(delay_sec=0.05)
     args_mock = MagicMock()
-    state_mock = MagicMock()
+    state_mock = MagicMock(global_step=1, max_steps=10)
     control_mock = MagicMock()
 
     start = time.monotonic()
-    cb.on_step_end(args=args_mock, state=state_mock, control=control_mock)
+    fast_cb.on_step_end(args=args_mock, state=state_mock, control=control_mock)
     elapsed = time.monotonic() - start
 
     assert elapsed >= 0.04, f"HardwarePacingCallback slept {elapsed:.4f}s, expected ≥0.04s"

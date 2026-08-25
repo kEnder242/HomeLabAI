@@ -26,21 +26,26 @@ except ImportError:
     FastLanguageModel = None
 
 class HardwarePacingCallback(TrainerCallback):
-    """[FEAT-452] Pauses 50ms between optimization steps to let host VRMs and PSU capacitors settle."""
+    """[FEAT-452] Pauses 60.0s (full 1-minute settling window) between optimization steps to let host VRMs, PSU capacitors, and GPU silicon cool to idle baseline."""
+
+    def __init__(self, delay_sec: float = 60.0):
+        self.delay_sec = delay_sec
 
     def on_step_end(self, args, state, control, **kwargs):
-        time.sleep(0.05)
+        print(f"\n⏱️ [HARDWARE PACING] Step {state.global_step}/{state.max_steps} complete. Settling hardware for {self.delay_sec}s...", flush=True)
+        time.sleep(self.delay_sec)
+        print("⚡ [HARDWARE PACING] Hardware settled to baseline. Initiating next optimization pulse.\n", flush=True)
 
 
-def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"):
+def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit", pacing_delay: float = 60.0):
     """
     [FEAT-160] Pedigree Refinement Pipeline & [FORGE-02]
     Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
     Standardized on Llama-3.2-3B-Instruct for superior performance.
     """
-    print(f"Starting training on {dataset_path} -> {output_dir} ({steps} steps)")
+    print(f"Starting training on {dataset_path} -> {output_dir} ({steps} steps, pacing_delay={pacing_delay}s)", flush=True)
     if FastLanguageModel is None:
-        print("Mocking training completion since Unsloth is missing.")
+        print("Mocking training completion since Unsloth is missing.", flush=True)
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
             f.write('{"mock": true}')
@@ -55,6 +60,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
         max_seq_length = max_seq_length,
         dtype = dtype,
         load_in_4bit = load_in_4bit,
+        low_cpu_mem_usage = True,
     )
 
     model = FastLanguageModel.get_peft_model(
@@ -106,7 +112,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
         max_seq_length = max_seq_length,
         dataset_num_proc = 2,
         packing = False,
-        callbacks = [HardwarePacingCallback()],
+        callbacks = [HardwarePacingCallback(delay_sec=pacing_delay)],
         args = TrainingArguments(
             per_device_train_batch_size = 1,
             gradient_accumulation_steps = 4,
@@ -128,7 +134,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name
     trainer.train()
     
     model.save_pretrained(output_dir)
-    print(f"Saved adapter to {output_dir}")
+    print(f"✅ [FORGE COMPLETE] Adapter successfully trained and saved to {output_dir}", flush=True)
 
 if __name__ == "__main__":
     import argparse
@@ -141,15 +147,17 @@ if __name__ == "__main__":
     parser.add_argument("--output", default=None, help="Output LoRA dir")
     parser.add_argument("--steps", type=int, default=60, help="Training steps")
     parser.add_argument("--model", default=None, help="Base model")
+    parser.add_argument("--pacing-delay", type=float, default=60.0, help="Hardware settling delay in seconds between steps (default: 60.0s)")
     args = parser.parse_args()
 
     dataset_in = args.dataset or args.pos_dataset
     output_out = args.output or args.pos_output
     steps_in = args.steps or (args.pos_steps if args.pos_steps is not None else 60)
     model_in = args.model or args.pos_model
+    pacing_delay_in = args.pacing_delay
 
     if not dataset_in or not output_out:
-        print("Usage: python train_expert.py --dataset <dataset_jsonl> --output <output_lora_dir> [--steps N] [--model M]")
+        print("Usage: python train_expert.py --dataset <dataset_jsonl> --output <output_lora_dir> [--steps N] [--model M] [--pacing-delay S]")
         sys.exit(1)
 
     if not model_in:
@@ -175,4 +183,5 @@ if __name__ == "__main__":
         output_dir=output_out,
         steps=steps_in,
         model_name=model_in,
+        pacing_delay=pacing_delay_in,
     )
