@@ -266,7 +266,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     # [BKM-034 Headless REST Dispatch — Threaded Heartbeat Loop & Step-Logging]
     # Ref: Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md (Section 1: Swarm Topology & BKM-034 Point 12)
     msg_dict = {
-        "parts": [{"type": "text", "text": prompt}]
+        "parts": [{"type": "text", "text": prompt}],
+        "model": {"providerID": "openrouter", "modelID": "deepseek/deepseek-chat:free"}
     }
 
     msg_payload = json.dumps(msg_dict).encode("utf-8")
