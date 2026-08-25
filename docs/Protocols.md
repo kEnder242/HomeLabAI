@@ -435,9 +435,13 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
     *   **Socket Rate-Limit Hardening**: Set `TriggerLimitIntervalSec=0` under `[Socket]` in `~/.config/systemd/user/opencode.socket`. This prevents systemd from marking `opencode.socket` as `failed (trigger-limit-hit)` during rapid reconnect or wake sequences.
     *   **Headless REST dispatch**: `opencode run --attach` is a **blocking foreground TUI** requiring an active browser session on port 4096. When the webview is down, `subprocess.run(opencode run --attach)` hangs indefinitely. The correct headless pattern bypasses `opencode run` entirely: `POST http://127.0.0.1:4097/session/<id>/message` with `{"parts":[{"type":"text","text":"<prompt>"}]}`.
 
-
-
-
+12. **Mandatory Post-Delegation ICM Capture Protocol (The Handover Feedback Loop)**:
+    *   **The Problem**: Subagents provide candid `[HANDOVER REFLECTION]` feedback on prompt ambiguity, missing context, and linter/LSP gaps, but unless codified into persistent memory, subsequent delegation turns repeat the same friction.
+    *   **The Mandate**: Immediately upon story completion and test certification, the Orchestrator MUST execute an ICM store with the subagent reflection and any post-dispatch resolution:
+        ```bash
+        icm store -t errors-resolved -c "Story <N> Delegation Reflection: <what tripped the subagent up, prompt adjustments needed, linter/import fixes applied>." -i high -k "delegation,openagent,prompt-tuning,<subsystem>"
+        ```
+    *   **Enforcement Gate**: No sprint story is certified until its delegation reflection has been ingested into persistent ICM memory.
 
 ---
 
