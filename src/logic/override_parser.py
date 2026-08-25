@@ -96,6 +96,12 @@ async def parse_override_with_resident(
     try:
         if hasattr(resident_caller, "think") and callable(resident_caller.think):
             raw = await resident_caller.think(prompt, internal=True)
+        elif hasattr(resident_caller, "call_tool") and callable(resident_caller.call_tool):
+            res = await resident_caller.call_tool("think", {"prompt": prompt, "query": prompt})
+            if hasattr(res, "content") and res.content:
+                raw = res.content[0].text
+            else:
+                raw = str(res)
         elif callable(resident_caller):
             raw = await resident_caller(prompt)
         else:
