@@ -49,8 +49,8 @@ _SHALLOW_TURN_PATTERNS = [
     r"(?i)^(?:hey|hi|hello|yo|narf|good\s+(?:morning|afternoon|evening))\b[\s!,.]*$",
     # Greeting + address: "hey pinky", "hi brain"
     r"(?i)^(?:hey|hi|hello|yo)\s+(?:pinky|brain|deep\s*thought)\b[\s!,.]*$",
-    # Greeting + soft opener: "hey, how are you", "hi, what's up"
-    r"(?i)^(?:hey|hi|hello|yo)\b[\s!,.]+(?:how\s+(?:are|r)\s+(?:you|it\s+going)|what'?s\s+up|sup|how'?s\s+it\s+going)\b",
+    # Greeting + soft opener: "hey, how are you", "hi, what's up", "hey pinky, how are things"
+    r"(?i)^(?:hey|hi|hello|yo)(?:\s+(?:pinky|brain|deep\s*thought|mice))?\b[\s!,.]+(?:how\s+(?:are|r)\s+(?:you|things|it\s+going)|what'?s\s+up|sup|how'?s\s+(?:it\s+going|things))\b",
     # ── Open-Ended Inquiries ──────────────────────────────────────────────
     # Status checks: "how are things", "what's the status"
     # Note: how's → how'?s? handles the contraction (no \s+ between how and apostrophe)
@@ -280,6 +280,7 @@ def build_floating_candidate_pool(
     validation_scar: Optional[str] = None,
     scan_progress: Optional[str] = None,
     dream_synthesis: Optional[str] = None,
+    auto_harvest: bool = False,
 ) -> str:
     """
     [FEAT-458] Assemble up to 3 ambient context candidates into a floating
@@ -293,6 +294,7 @@ def build_floating_candidate_pool(
         validation_scar: Optional scar digest from harvest_validation_scar.
         scan_progress:   Optional progress digest from harvest_mass_scan_progress.
         dream_synthesis: Optional dream digest from harvest_subconscious_dream.
+        auto_harvest:    If True, automatically harvest missing candidates from disk.
 
     Returns:
         A formatted prompt block string. Always returns a valid block even
@@ -300,12 +302,16 @@ def build_floating_candidate_pool(
     """
     candidates = []
 
-    if validation_scar:
-        candidates.append(validation_scar)
-    if scan_progress:
-        candidates.append(scan_progress)
-    if dream_synthesis:
-        candidates.append(dream_synthesis)
+    scar = validation_scar if validation_scar is not None else (harvest_validation_scar() if auto_harvest else None)
+    prog = scan_progress if scan_progress is not None else (harvest_mass_scan_progress() if auto_harvest else None)
+    dream = dream_synthesis if dream_synthesis is not None else (harvest_subconscious_dream() if auto_harvest else None)
+
+    if scar:
+        candidates.append(scar)
+    if prog:
+        candidates.append(prog)
+    if dream:
+        candidates.append(dream)
 
     header = "[FLOATING_CANDIDATES]"
     instruction = (
