@@ -96,6 +96,19 @@ def test_train_expert_dataset_mapper_with_live_ledger():
         assert "User:" in formatted_text
 
 
+def test_re_ignite_vllm_connection_timeout_graceful():
+    """[FEAT-453] Assert re_ignite_vllm() handles connection timeouts gracefully (returns False, no raise)."""
+    with patch.object(nightly_forge.requests, "post") as mock_post:
+        mock_post.side_effect = nightly_forge.requests.exceptions.ConnectionError("Connection refused")
+        result = nightly_forge.re_ignite_vllm()
+        assert result is False
+
+    with patch.object(nightly_forge.requests, "post") as mock_post:
+        mock_post.side_effect = nightly_forge.requests.exceptions.Timeout("Read timed out")
+        result = nightly_forge.re_ignite_vllm()
+        assert result is False
+
+
 def test_dream_cycle_subprocess_handling():
     """Verify that run_dream_cycle handles errors and status logs gracefully."""
     with patch("subprocess.run") as mock_run:
