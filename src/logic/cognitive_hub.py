@@ -7,6 +7,8 @@ import re
 import time
 import random
 from v5.common.types import LAB_VERSION
+from logic.feedback_interceptor import is_critique, record_feedback, generate_refinement_prompt
+from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -369,7 +371,7 @@ class CognitiveHub:
             # If text is non-empty prose (> 15 chars), synthesize a fallback triage object
             clean_str = text.strip()
             if len(clean_str) > 15 and not ("Error:" in clean_str or "vLLM connection" in clean_str or "Connect call failed" in clean_str):
-                logging.info(f"[HUB] Non-JSON prose triage synthesized into fallback structure.")
+                logging.info("[HUB] Non-JSON prose triage synthesized into fallback structure.")
                 return {
                     "inferred_intent": clean_str[:100],
                     "addressed_to": "PINKY" if any(w in clean_str.lower() for w in ["pinky", "hi", "hello", "crash"]) else "BRAIN",
@@ -740,6 +742,30 @@ class CognitiveHub:
         logging.info(f"[HUB] Triage starting for query: {turn[:40]}...")
         t_text = ""
         t_parsed = None
+
+        # [FEAT-456 / BKM-035] The Fourth Wall Feedback Loop Interception
+        if is_critique(turn):
+            logging.info(f"[HUB] [BKM-035] Fourth Wall critique detected: '{turn[:60]}'")
+            flawed_output = ""
+            if self.turn_thought_trace.get("pinky"):
+                flawed_output = self.turn_thought_trace.get("pinky")
+            elif self.round_table_memory:
+                flawed_output = self.round_table_memory[-1]
+
+            record_feedback(query=turn, flawed_output=flawed_output, user_correction=turn)
+            refinement_prompt = generate_refinement_prompt(turn)
+
+            await self.broadcast({
+                "type": "thought_stream",
+                "source": "Pinky (Feedback)",
+                "token": refinement_prompt,
+                "final": True,
+                "request_id": request_id
+            })
+
+            turn_ledger = f"User (Critique): {turn}\nPinky (Refinement): {refinement_prompt}"
+            self.round_table_memory.append(turn_ledger)
+            return
         
         # [BKM-015] Role Token Routing: Bypass LLM triage if query contains a role token
         if self.role_tokens:
@@ -958,12 +984,18 @@ class CognitiveHub:
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
         
-        # [Task 15.1] Conversational Grace Override & [Task 18.3] Pinky Un-gagging
+        # [Task 15.1] Conversational Grace Override & [FEAT-458] Floating Validation Oracle
         behavioral_guidance = ""
         context = ""
-        if vibe == "CASUAL":
+
+        if vibe == "CASUAL" or is_shallow_turn(turn):
             self.current_interest = 0.1
-            behavioral_guidance = "[MODE]: CONVERSATIONAL (Warm, natural, brief. Match user brevity with 1 short sentence. Do not inject unprompted technical jargon unless requested.)"
+            candidate_pool = build_floating_candidate_pool()
+            context = candidate_pool
+            behavioral_guidance = (
+                "[MODE]: CONVERSATIONAL (Warm, natural, brief. Match user brevity with 1 short sentence. "
+                "If appropriate for user inquiry, weave in one candidate from [FLOATING_CANDIDATES] to prompt the user rather than giving generic small talk.)"
+            )
         elif vibe == "WYWO":
             # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
             nightly_dialogue = "No recent nightly dialogue recorded."
