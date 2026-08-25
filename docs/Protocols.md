@@ -570,4 +570,32 @@ The `delegate.py` script automatically wraps your inputs into the standard BKM-0
 3. **Explicit SystemD & OS Scope**: Explicitly state in the task details whether a service is system-level (`/etc/systemd/system/` requiring `sudo`) or userland (`systemctl --user`).
 4. **Function Anchor Targeting**: Include exact function names (e.g. `startMic()`) and line range anchors in the prompt details so sub-agents skip whole-file scan passes.
 
+---
+
+## BKM-035: The Fourth Wall Feedback Protocol (Semantic Critique & Validation Ledger Auto-Population)
+**Objective**: Transform user natural language disagreements and conversational corrections into instant, permanent evaluation failure tests and rubric constraints without brittle UI vote buttons or rigid keyword matches.
+
+1. **The Language-First Mandate**:
+   * The user is the ultimate domain expert and oracle. When the user speaks to the "fourth wall" or expresses disagreement (e.g., *"Wait, that's wrong, RAPL MSR 0x610 is PKG limit, not DRAM"* or *"Pinky, note that your triage missed the AER register"*), the system must intercept this semantically rather than treating it as a new ungrounded topic.
+   * **BKM-015 Anti-Hardcoding Rule**: Intent detection for user critiques MUST use semantic vector classification (`GROUNDING_CORRECTION` intent), never rigid keyword string matching.
+
+2. **In-Session Behavioral Flow (Interactive Refinement Prompt)**:
+   * **Acknowledgment**: Pinky acknowledges the correction in-character with high brevity (e.g. *"Narf! Got it, MSR 0x610 is the PKG energy limit."*).
+   * **Refinement Inquiry**: Pinky asks one targeted follow-up question to clarify boundary conditions, register masks, or reproduction steps (e.g. *"Should I clamp the default power limit window to 28 seconds for Haswell?"*).
+   * **No Defensiveness**: The agent must never argue, hallucinate justifications, or provide conversational filler when corrected.
+
+3. **Downstream Ledger & Distillation Automation**:
+   * **Automated Failure Record**: Write an instant `FAIL` entry to `Portfolio_Dev/field_notes/data/validation_ledger.jsonl`:
+     ```json
+     {
+       "timestamp": "ISO-8601",
+       "query": "<original_user_query>",
+       "verdict": "FAIL",
+       "flawed_output": "<previous_assistant_response>",
+       "ground_truth": "<user_correction_text>",
+       "source": "CO_PILOT_FOURTH_WALL"
+     }
+     ```
+   * **Rubric Tuning (Netflix Pattern)**: Automatically append the user's assertion as a ground-truth boolean constraint to the Universal Epistemic Evaluator.
+
 
