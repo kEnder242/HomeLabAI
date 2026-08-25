@@ -1081,6 +1081,12 @@ class CognitiveHub:
                     break
             await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
         else:
+            # [FEAT-457] Single-Layer Speculative Context Pre-fetch:
+            # Launch Brain's RAG context retrieval immediately in the background while Pinky speaks.
+            brain_prefetch_task = None
+            if "brain" in self.residents or "thought" in self.residents:
+                brain_prefetch_task = asyncio.create_task(self._fetch_rag_context(turn, t_parsed))
+
             # Pinky leads Turn 1 (Default for PINKY or NONE)
             full_pinky_text = ""
             async for token in self._process_node_stream(
@@ -1094,6 +1100,8 @@ class CognitiveHub:
             
             # Intercept morning briefing tool call from Pinky's response
             if "trigger_morning_briefing" in full_pinky_text:
+                if brain_prefetch_task and not brain_prefetch_task.done():
+                    brain_prefetch_task.cancel()
                 logging.info("[HUB] Intercepted trigger_morning_briefing tool call from Pinky's response.")
                 if trigger_briefing_callback:
                     await trigger_briefing_callback()
@@ -1103,7 +1111,13 @@ class CognitiveHub:
             
             # Turn 2: Brain interjects if interest is high
             if self.current_interest > 0.5:
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
+                logging.info(f"[HUB] [FEAT-457] Interest high ({self.current_interest:.2f} > 0.5): Triggering Brain interjection with pre-fetched context.")
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, prefetch_task=brain_prefetch_task)
+            else:
+                # Preemption: Interest is low, cleanly cancel/discard speculative pre-fetch without penalty
+                if brain_prefetch_task and not brain_prefetch_task.done():
+                    brain_prefetch_task.cancel()
+                    logging.info(f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context.")
 
         # [FEAT-356] Unified Session Ledger: Record turn summary
         turn_ledger = f"User: {turn}"
@@ -1498,7 +1512,7 @@ class CognitiveHub:
 
         return result_text
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default"):
+    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         vibe = triage.get("vibe", "").upper()
@@ -1529,7 +1543,15 @@ class CognitiveHub:
                 f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
             )
         else:
-            rag_context = await self._fetch_rag_context(query, triage)
+            if prefetch_task:
+                try:
+                    rag_context = await prefetch_task
+                except Exception as ex:
+                    logging.warning(f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}")
+                    rag_context = await self._fetch_rag_context(query, triage)
+            else:
+                rag_context = await self._fetch_rag_context(query, triage)
+
             raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
             if rag_context:
                 raw_context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
