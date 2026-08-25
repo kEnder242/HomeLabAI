@@ -174,4 +174,26 @@ Diagnostic and shakedown instruments validating the production infrastructure (`
 | **Nightly Forge Shakedown** | `src/tests/test_nightly_forge_shakedown.py` | **ACTIVE** | [SPR-58.0] [GOLD] Full end-to-end integration shakedown verifying module imports, REST quiesce/re-ignite contracts, train_expert dataset mapping, and dreaming subprocess handling. |
 
 ---
-**Usage**: Before concluding any session, run `src/tests/test_agentic_r_retrieval.py`, `src/tests/test_forge_distillation_unit.py`, and `src/tests/test_nightly_forge_shakedown.py` to certify the baseline.
+
+## 🛰️ 13. Modular Satellite & Epistemic Instruments (Sprint 59)
+Diagnostic and verification test suites validating the Sprint 59 Modular Satellite architecture, deterministic evaluation batteries, and live co-pilot feedback loops.
+
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Sprint 59 Integration Suite** | `src/tests/test_sprint59_integration.py` | **ACTIVE** | [SPR-59.0] [GOLD] Full-loop integration test suite validating Fourth Wall critique interception, Floating Oracle candidate pool injection, live AST context compaction, and Epistemic evaluator consistency (4/4 tests). |
+| **Universal Epistemic Evaluator** | `src/tests/test_binary_evaluator_unit.py` | **ACTIVE** | [SPR-59.0] [FEAT-454] Unit test suite verifying 0% score drift and deterministic Rank = min(5, 1+sum(bool)) across 5 boolean checks (31/31 tests). |
+| **AST Context Compiler Unit** | `src/tests/test_context_compiler.py` | **ACTIVE** | [SPR-59.0] [FEAT-455] Unit test suite verifying AST symbol extraction, function body stripping, >50% token compaction, and cross-module dependency trees (22/22 tests). |
+| **Fourth Wall Interceptor Unit** | `src/tests/test_feedback_interceptor.py` | **ACTIVE** | [SPR-59.0] [FEAT-456/BKM-035] Unit test suite verifying linguistic critique detection, BKM-022 atomic JSONL write, and in-character refinement prompt generation (30/30 tests). |
+| **Floating Validation Oracle Unit** | `src/tests/test_floating_oracle.py` | **ACTIVE** | [SPR-59.0] [FEAT-458] Unit test suite verifying candidate harvesting, missing-file fallbacks, candidate pool formatting, and shallow turn classification (53/53 tests). |
+| **Speculative Pre-fetch Unit** | `src/tests/test_interest_speculative_prefetch.py` | **ACTIVE** | [SPR-59.0] [FEAT-457] Unit test suite verifying Turn 1 background RAG pre-fetch and interest preemption (2/2 tests). |
+
+---
+**Standard Certification Runner**:
+```bash
+PYTHONPATH=. .venv/bin/pytest src/tests/test_sprint59_integration.py \
+                             src/tests/test_binary_evaluator_unit.py \
+                             src/tests/test_context_compiler.py \
+                             src/tests/test_feedback_interceptor.py \
+                             src/tests/test_interest_speculative_prefetch.py \
+                             src/tests/test_floating_oracle.py
+```
