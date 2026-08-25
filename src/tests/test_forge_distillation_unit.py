@@ -99,7 +99,7 @@ def test_hardware_pacing_callback_exists_and_sleeps():
 
     assert issubclass(HardwarePacingCallback, object)
     default_cb = HardwarePacingCallback()
-    assert default_cb.delay_sec == 60.0, "Default hardware pacing delay must be 60.0s (1 full minute)"
+    assert default_cb.delay_sec == 5.0, "Default hardware pacing delay must be 5.0s"
 
     # Test short execution with explicit fast delay
     fast_cb = HardwarePacingCallback(delay_sec=0.05)
