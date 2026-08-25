@@ -88,6 +88,8 @@ def is_shallow_turn(query: str) -> bool:
         return False
 
     normalized = query.strip()
+    # Strip client-side transcript tags like [ME] or [USER]
+    normalized = re.sub(r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE).strip()
 
     # Questions ending with "?" are generally NOT shallow turns unless they
     # match a status-check pattern (handled below).
