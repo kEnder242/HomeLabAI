@@ -1,4 +1,6 @@
 {
+    "idle_eviction_enabled": false,
+    "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
     "nodes": {
         "thought": {
