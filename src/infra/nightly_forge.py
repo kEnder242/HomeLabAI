@@ -84,6 +84,52 @@ def get_vram_usage():
     except Exception:
         return 0
 
+def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
+    """[LAB-109] Pre-flight GPU power limit check. Returns True if power limit is within bounds.
+
+    Queries nvidia-smi for current power.limit. If exceeds max_limit_watts,
+    attempts to clamp to 165W via sudo. Logs warning if non-root and cannot
+    apply corrective action.
+    """
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=power.limit", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10
+        )
+        if res.returncode != 0:
+            logger.warning("[LAB-109] nvidia-smi power query failed; skipping power limit check.")
+            return True  # Non-fatal: don't block forge on missing GPU
+        lines = res.stdout.strip().splitlines()
+        if not lines:
+            logger.warning("[LAB-109] No GPU detected by nvidia-smi; skipping power limit check.")
+            return True
+        current_limit = float(lines[0].strip())
+        logger.info(f"[LAB-109] GPU power limit detected: {current_limit}W (max allowed: {max_limit_watts}W)")
+        if current_limit > max_limit_watts:
+            logger.warning(f"[LAB-109] Power limit {current_limit}W exceeds safe threshold {max_limit_watts}W. Attempting clamp to 165W...")
+            write_step_log("GPU_POWER_CAP_WARNING", f"current={current_limit}W exceeds {max_limit_watts}W")
+            try:
+                clamp_res = subprocess.run(
+                    ["sudo", "nvidia-smi", "-pl", "165"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if clamp_res.returncode == 0:
+                    logger.info("[LAB-109] GPU power limit successfully clamped to 165W.")
+                    write_step_log("GPU_POWER_CAP_APPLIED", "clamped to 165W")
+                    return True
+                else:
+                    logger.warning(f"[LAB-109] Failed to clamp power limit: {clamp_res.stderr.strip()}")
+                    write_step_log("GPU_POWER_CAP_FAILED", clamp_res.stderr.strip()[:200])
+                    return False
+            except PermissionError:
+                logger.warning("[LAB-109] Non-root: cannot apply sudo nvidia-smi -pl 165. Run as root or install gpu-power-limit.service.")
+                write_step_log("GPU_POWER_CAP_SKIPPED", "non-root, no sudo access")
+                return False
+        return True
+    except Exception as e:
+        logger.warning(f"[LAB-109] Power limit verification error: {e}")
+        return True  # Non-fatal
+
 def quiesce_vllm():
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
     logger.info("[FEAT-213] Requesting Foyer /release_nodes and SHUTDOWN state to reclaim VRAM...")
@@ -182,8 +228,14 @@ def main():
     except Exception as e:
         logger.warning(f"[PROBE] Health probe warning: {e}")
 
+    # 1b. [LAB-109] GPU Power Limit Pre-Flight Check
+    logger.info("[NIGHTLY STEP 1b] GPU Power Limit Verification...")
+    gpu_power_ok = verify_gpu_power_limit(max_limit_watts=170)
+    if not gpu_power_ok:
+        logger.warning("[LAB-109] GPU power limit verification failed. Forge will proceed but hardware may be at risk.")
+
     # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
-    logger.info("[NIGHTLY STEP 1/4] Requesting Foyer VRAM Quiesce for Training...")
+    logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce for Training...")
     quiesced = quiesce_vllm()
 
     # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
