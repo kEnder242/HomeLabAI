@@ -1,0 +1,18 @@
+# [LAB-109] Silicon Power Capping & Hardware Surge Protection
+# Enforces 165W TDP on RTX 2080 Ti at boot to prevent PSU over-current trips.
+# Installed to: /etc/systemd/system/gpu-power-limit.service
+# Enable:  sudo systemctl enable gpu-power-limit.service
+# Status:  systemctl status gpu-power-limit.service
+
+[Unit]
+Description=GPU Power Limit Cap (165W TDP) — Hardware Surge Protection
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nvidia-smi -pl 165
+
+[Install]
+WantedBy=multi-user.target
