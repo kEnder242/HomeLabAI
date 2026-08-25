@@ -137,5 +137,34 @@ def test_trainer_args_gradient_smoothing_spec():
     assert max_seq == 1536, "max_seq_length must be clamped to 1536"
 
 
+def test_record_forge_telemetry_exports_valid_json(tmp_path):
+    """Verify record_forge_telemetry writes metrics file and structured telemetry correctly."""
+    from forge.train_expert import record_forge_telemetry
+    import json
+
+    out_dir = str(tmp_path / "lora_test")
+    step_metrics = [
+        {"step": 1, "loss": 5.1, "grad_norm": 1.7, "learning_rate": 0.0, "epoch": 0.8},
+        {"step": 2, "loss": 3.4, "grad_norm": 2.1, "learning_rate": 1e-4, "epoch": 1.0},
+    ]
+
+    record_forge_telemetry(
+        output_dir=out_dir,
+        steps=2,
+        runtime_s=12.5,
+        pacing_delay=5.0,
+        step_metrics=step_metrics
+    )
+
+    metrics_file = tmp_path / "lora_test" / "training_metrics.json"
+    assert metrics_file.exists(), "training_metrics.json must be created"
+    with open(metrics_file, "r") as f:
+        data = json.load(f)
+    assert data["total_steps"] == 2
+    assert data["start_loss"] == 5.1
+    assert data["final_loss"] == 3.4
+    assert len(data["steps"]) == 2
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
