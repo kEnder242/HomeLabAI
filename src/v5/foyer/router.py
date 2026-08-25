@@ -1298,7 +1298,7 @@ class FoyerRouter:
                             pass
 
                     preamble = {
-                        "type": "chat",
+                        "type": "crosstalk",
                         "brain": f"[DEEP THOUGHT]: {greeting_msg}",
                         "brain_source": "Deep Thought",
                         "channel": "insight",
