@@ -9,6 +9,7 @@ import random
 from v5.common.types import LAB_VERSION
 from logic.feedback_interceptor import is_critique, record_feedback, generate_refinement_prompt
 from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
+from logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -710,13 +711,9 @@ class CognitiveHub:
 
 
 
-        # [Goal 5] Override Detection: Scan for override indicators (matching GEM-xxxx)
-        import re
-        gem_match = re.search(r"\b(GEM-[a-fA-F0-9]{4})\b", turn, re.IGNORECASE)
-        is_correction = any(kw in turn.lower() for kw in ["correct", "wrong", "fix", "override", "change", "update"])
-        
-        if gem_match and is_correction:
-            gem_id = gem_match.group(1).upper()
+        # [Goal 5/FEAT-145] Override Detection: Scan for override indicators (matching GEM-xxxx / BKM-xxx)
+        is_override, gem_id = is_override_query(turn)
+        if is_override and gem_id:
             logging.info(f"[HUB] Goal 5: Override intent detected for {gem_id} in query: {turn}")
             
             # Start background crosstalk notify
@@ -727,10 +724,11 @@ class CognitiveHub:
             })
             
             # Parse the override
-            updates = await self._parse_override_with_resident(gem_id, turn)
+            node = self.residents.get("pinky") or self.residents.get("brain")
+            updates = await parse_override_with_resident(gem_id, turn, node)
             if updates:
                 # Save override
-                self._save_override_to_file(gem_id, updates)
+                save_override_to_file(gem_id, updates)
                 confirm_msg = f"[SYSTEM]: Correction registered for {gem_id}. Applied updates: {updates}. This override will be active during the next compile."
             else:
                 confirm_msg = f"[SYSTEM]: Correction detected for {gem_id}, but failed to extract fields. No updates applied."

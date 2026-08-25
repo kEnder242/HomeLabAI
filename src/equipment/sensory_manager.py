@@ -6,6 +6,7 @@ import numpy as np
 import random
 import time
 from infra.montana import reclaim_logger
+from equipment.audio_pipeline import AudioPipeline
 
 class SensoryManager:
     """
@@ -65,7 +66,8 @@ class SensoryManager:
             self.ear = None
             import torch  # type: ignore[import]
             torch.cuda.empty_cache()
-            import gc, ctypes
+            import gc
+            import ctypes
             gc.collect()
             try:
                 ctypes.CDLL('libc.so.6').malloc_trim(0)
@@ -101,16 +103,16 @@ class SensoryManager:
 
     def process_binary_chunk(self, data):
         """Processes raw PCM audio chunks from WebSocket."""
-        chunk = np.frombuffer(data, dtype=np.int16)
+        chunk = AudioPipeline.pcm_to_numpy(data)
         self.audio_buffer = np.concatenate((self.audio_buffer, chunk))
 
         # Periodic signal detection log (5% chance if signal is high)
-        if np.abs(chunk).max() > 500 and random.random() < 0.05:
+        if AudioPipeline.is_signal_detected(chunk, threshold=500) and random.random() < 0.05:
             logging.info("[AUDIO] Signal detected.")
 
-        if len(self.audio_buffer) >= 24000:
-            window = self.audio_buffer[:24000]
-            self.audio_buffer = self.audio_buffer[16000:]  # Sliding window (runs unconditionally)
+        window, remaining = AudioPipeline.slice_sliding_window(self.audio_buffer, 24000, 16000)
+        if window is not None:
+            self.audio_buffer = remaining
             if self.ear:
                 text = self.ear.process_audio(window)
                 if text:

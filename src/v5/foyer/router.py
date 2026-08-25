@@ -3,6 +3,7 @@ import gc
 import json
 import logging
 import os
+import re
 import time
 import uuid
 # [STORY-5] Cold-start wake thread caps: bound BLAS/ML worker threads to 2
@@ -30,7 +31,7 @@ from logic.cognitive_hub import CognitiveHub  # noqa: E402
 from equipment.sensory_manager import SensoryManager  # noqa: E402
 from infra.pager_relay import trigger_pager  # noqa: E402
 from infra.atomic_io import atomic_write_json  # noqa: E402
-import ctypes
+from v5.foyer.maintenance_sweeper import MaintenanceSweeper  # noqa: E402
 
 # [LAB-010] Lazy import — M5 Air may not be available at startup.
 try:
@@ -1282,7 +1283,6 @@ class FoyerRouter:
 
                     hyde_result = await self.cognitive.synthesize_hyde_vector(query)
                     
-                    is_casual = False
                     greeting_msg = "Deep Thought: System operational. Awaiting command parameters."
                     
                     if hyde_result:
@@ -1290,11 +1290,9 @@ class FoyerRouter:
                             m = re.search(r'(\{.*\})', hyde_result, re.DOTALL)
                             if m:
                                 data = json.loads(m.group(1))
-                                is_casual = data.get("is_casual", False)
                                 if data.get("greeting"):
                                     greeting_msg = data.get("greeting")
                             elif "[VALIDATION]" in hyde_result:
-                                is_casual = False
                                 greeting_msg = "Deep Thought: Technical domain match detected. Synthesizing Composite HyDE..."
                         except Exception:
                             pass
@@ -1434,12 +1432,9 @@ class FoyerRouter:
                         chunk_timestamps.pop(buf_key, None)
 
                 # [LAB-095] TTL Sweeper: Clean orphaned pending_chunks keys inactive > 30 seconds
-                now_ts = time.time()
-                stale_keys = [k for k, ts in list(chunk_timestamps.items()) if now_ts - ts > 30]
-                for k in stale_keys:
+                purged_keys = MaintenanceSweeper.prune_ttl_buffer(pending_chunks, chunk_timestamps, max_age_s=30.0)
+                for k in purged_keys:
                     logger.warning(f"[LAB-095] TTL Purge orphaned waterfall buffer key: {k}")
-                    pending_chunks.pop(k, None)
-                    chunk_timestamps.pop(k, None)
 
                 self.waterfall_queue.task_done()
 
@@ -1487,29 +1482,17 @@ class FoyerRouter:
         while True:
             try:
                 # [LAB-099] Thermal Guard: Monitor CPU package thermal zones (thermal_zone0 / thermal_zone3)
-                thermal_halt = False
-                try:
-                    for tz in ["/sys/class/thermal/thermal_zone3/temp", "/sys/class/thermal/thermal_zone0/temp"]:
-                        if os.path.exists(tz):
-                            with open(tz, "r") as tf:
-                                t_milli = int(tf.read().strip())
-                                if t_milli >= 78000:  # 78°C
-                                    logger.warning(
-                                        f"[LAB-099][THERMAL ALERT] CPU package temp high ({t_milli/1000:.1f}°C). "
-                                        f"Cooling down background loops 15s..."
-                                    )
-                                    await asyncio.sleep(15)
-                                    thermal_halt = True
-                                    break
-                except Exception as t_ex:
-                    logger.warning(f"[LAB-099] Thermal probe warning: {t_ex}")
-
-                # [STORY-3-5] Skip gc.collect/nibble maintenance when thermal halt engaged
+                thermal_halt, temp_c = MaintenanceSweeper.check_cpu_thermal_throttle(threshold_milli=78000)
                 if thermal_halt:
+                    logger.warning(
+                        f"[LAB-099][THERMAL ALERT] CPU package temp high ({temp_c:.1f}°C). "
+                        f"Cooling down background loops 15s..."
+                    )
+                    await asyncio.sleep(15)
                     continue
 
                 # [LAB-096] Heap Scavenger: Periodic garbage collection every 60s
-                collected = gc.collect()
+                collected = MaintenanceSweeper.run_heap_scavenger()
                 if collected > 0:
                     logger.debug(f"[LAB-096][GC] Scavenger collected {collected} unreachable objects.")
 
