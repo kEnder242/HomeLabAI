@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import datetime
-import time
 import glob
 import subprocess
 import asyncio
@@ -19,6 +18,19 @@ try:
     from nodes.loader import BicameralNode
 except ImportError:
     from loader import BicameralNode
+
+try:
+    from nodes.lab_dna_router import (
+        get_collection_priorities,
+        filter_candidate_context,
+        format_lab_dna_tag
+    )
+except ImportError:
+    from lab_dna_router import (
+        get_collection_priorities,
+        filter_candidate_context,
+        format_lab_dna_tag
+    )
 
 # --- Configuration ---
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -727,13 +739,14 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
 
 
 @mcp.tool()
-async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None) -> str:
+async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None, vibe: str = None) -> str:
     """
-    [FEAT-116/117/437/442/447] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
+    [FEAT-116/117/437/442/447/469] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
     Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
     [FEAT-442/447] Query Pre-Flight Refinement is performed by the AI unified pre-reflection pass
     (FEAT-436), which emits hyde_vector_text; get_context applies the HyDE vector override with
     calibrated 0.55 distance-based fallback to the raw query when top result distance > 0.55.
+    [FEAT-467/469] Negative RAG Gateway: Applies get_collection_priorities and filter_candidate_context.
     """
     vector_query = select_vector_query(query, hyde_vector_text)
     fetch_limit = n_results * 2
@@ -779,11 +792,8 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         if SESSION_CLIPBOARD:
             combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
 
-        # [Story-3] Multi-Collection Reranker: Query all 5 ChromaDB collections in parallel via HTTP REST API
-        multi_collection_names = [
-            "behavioral_dna", "feature_dna", "career_ledger",
-            "artifact_vault", "lab_journal"
-        ]
+        # [Story-3 / FEAT-469] Multi-Collection Reranker: Dynamically routed collections via lab_dna_router
+        multi_collection_names = get_collection_priorities(vibe, domain)
 
         async def _query_one_collection(session, name, query_text, limit):
             url = f"http://127.0.0.1:8001/api/v1/collections/{name}/query"
@@ -857,7 +867,13 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             multi_candidates.sort(key=lambda x: x["distance"])
             _qpr_fell_back = True
 
-        multi_candidates = [c for c in multi_candidates if c["distance"] < DISTANCE_THRESHOLD]
+        # [FEAT-467/469] Zero Context Gate & Candidate Filtering
+        multi_candidates = filter_candidate_context(
+            multi_candidates,
+            vibe=vibe,
+            domain=domain,
+            max_distance=DISTANCE_THRESHOLD
+        )
 
         if _qpr_fell_back:
             logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < {DISTANCE_THRESHOLD}).")
@@ -879,38 +895,18 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             coll = c["collection"]
             collection_hits[coll] = collection_hits.get(coll, 0) + 1
 
-        _log_rag_telemetry(
-            hyde_used=(vector_query != query),
-            fell_back=_qpr_fell_back,
-            total_candidates=len(multi_candidates),
-            collection_hits=collection_hits
+        logger.info(
+            f"[RAG TELEMETRY] hyde_used={vector_query != query}, fell_back={_qpr_fell_back}, "
+            f"total_candidates={len(multi_candidates)}, collection_hits={collection_hits}"
         )
 
         multi_formatted = []
         for c in multi_candidates:
             coll = c["collection"]
             meta = c["metadata"]
-            if coll == "artifact_vault":
-                title = meta.get("title", c.get("id", "Unknown"))
-                gdrive = meta.get("gdrive_link", "")
-                link = f"({gdrive})" if gdrive else ""
-                multi_formatted.append(f"[ARTIFACT: {title}]{link}")
-            elif coll == "career_ledger":
-                era = meta.get("era", "")
-                skill = meta.get("skill", "")
-                label = era or skill or c.get("id", "Unknown")
-                multi_formatted.append(f"[CAREER: {label}]")
-            elif coll == "behavioral_dna":
-                bkm = meta.get("bkm_id", c.get("id", "Unknown"))
-                multi_formatted.append(f"[BEHAVIORAL_DNA: {bkm}]")
-            elif coll == "feature_dna":
-                feat = meta.get("feat_id", c.get("id", "Unknown"))
-                multi_formatted.append(f"[FEATURE_DNA: {feat}]")
-            elif coll == "lab_journal":
-                note = meta.get("note_id", c.get("id", "Unknown"))
-                multi_formatted.append(f"[LAB_JOURNAL: {note}]")
-            else:
-                multi_formatted.append(f"[{coll.upper()}: {c.get('id', 'Unknown')}]")
+            doc = c.get("document", "")
+            tag_entry = format_lab_dna_tag(coll, meta, doc)
+            multi_formatted.append(tag_entry)
 
         if multi_formatted:
             combined_context.append("[MULTI_COLLECTION_RERANKER]\n" + "\n".join(multi_formatted))

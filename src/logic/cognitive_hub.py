@@ -10,6 +10,18 @@ from v5.common.types import LAB_VERSION
 from logic.feedback_interceptor import is_critique, record_feedback, generate_refinement_prompt
 from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
 from logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
+from logic.triage_engine import (
+    SpeakerRegistry,
+    extract_latest_user_query,
+    scrub_hyde_vector,
+    classify_vibe_and_domain
+)
+from nodes.pinky_critic_persona import (
+    build_critic_prompt,
+    parse_critic_payload,
+    format_chat_delivery,
+    format_crosstalk_telemetry
+)
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -190,6 +202,9 @@ class CognitiveHub:
         self.processed_ids = deque(maxlen=1000)
         self.request_lock = asyncio.Lock()
         
+        # [FEAT-471] Dynamic Speaker Registry for Demarcation Sanitization
+        self.speaker_registry = SpeakerRegistry()
+
         # [FEAT-350] Gibberish Guard: Stable Baseline
         self.consecutive_parse_failures = 0
         self.lora_enabled = True
@@ -634,10 +649,11 @@ class CognitiveHub:
             logging.error(f"[HUB] Stream from {node_id} failed: {e}")
 
     async def execute_dispatch(self, text, source_name, shutdown_event=None, retry_count=0, final=False):
-        """Dispatches a finalized block to the UI."""
+        """Dispatches a finalized block to the UI, stripped of redundant speaker prefixes."""
+        clean_text = self.speaker_registry.sanitize(text) if hasattr(self, "speaker_registry") else text
         await self.broadcast({
             "type": "chat",
-            "brain": text,
+            "brain": clean_text,
             "brain_source": source_name,
             "final": final
         })
@@ -783,8 +799,11 @@ class CognitiveHub:
                         })
                         break
         
+        # [FEAT-468/471] Extract clean user query from demarcated speaker history
+        clean_user_query = extract_latest_user_query(turn)
+
         # [FEAT-436] Unified Pre-Reflection & Greeting Short-Circuit Pass
-        raw_lower = turn.strip().lower().strip("!?,.")
+        raw_lower = clean_user_query.strip().lower().strip("!?,.")
         if raw_lower in ["hi", "hey", "hello", "what's up", "whats up", "good morning", "narf", "yo"]:
             logging.info("[HUB] Simple greeting detected. Short-circuiting Pre-Reflection in <15 tokens.")
             t_parsed = {
@@ -805,10 +824,11 @@ class CognitiveHub:
             if t_parsed is not None:
                 break
             try:
+                # [FEAT-460] Triage reflection attributed directly to Brain (Insight)
                 await self.broadcast({
                     "type": "crosstalk", 
                     "brain": f"Pre-Reflection Attempt {triage_attempt+1}...", 
-                    "brain_source": "System"
+                    "brain_source": "Brain (Insight)"
                 })
                 
                 # [FEAT-436] Unified Intent-HyDE Guided Decoding Schema & Context
@@ -822,7 +842,7 @@ class CognitiveHub:
                                 "inferred_intent": {"type": "string"},
                                 "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
                                 "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "DEEP_RESEARCH"]},
-                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history"]},
+                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal"]},
                                 "casual": {"type": "number"},
                                 "intrigue": {"type": "number"},
                                 "importance": {"type": "number"},
@@ -880,13 +900,13 @@ class CognitiveHub:
                             await self.broadcast({
                                 "type": "crosstalk", 
                                 "brain": "Synthesizing Composite HyDE via Deep Thought...", 
-                                "brain_source": "System",
+                                "brain_source": "Brain (Insight)",
                                 "version": LAB_VERSION
                             })
                             try:
                                 # Pass triage context to Deep Thought so it produces real HyDE vector
                                 async for token in self._process_node_stream(
-                                    "thought", turn, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
+                                    "thought", clean_user_query, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
                                 ):
                                     t_text += token
                             except Exception as e:
@@ -903,7 +923,7 @@ class CognitiveHub:
                     if hibernating:
                         logging.info("[HUB] Lab HIBERNATING. Skipping Deep Thought HyDE (zero remote traffic).")
                     async for token in self._process_node_stream(
-                        "lab", turn, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
+                        "lab", clean_user_query, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
                     ):
                         t_text += token
 
@@ -936,11 +956,19 @@ class CognitiveHub:
 
                 self.consecutive_parse_failures = 0 # Reset on success
                 self.triage_failures = 0 # [FIX] Reset on successful parse
+                
+                # [FEAT-467/468/469] Post-process triage with meta-lexicon classifier & HyDE template scrubber
+                vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_clean)
+                t_clean["vibe"] = vibe_override
+                t_clean["domain"] = domain_override
+                if "hyde_vector_text" in t_clean:
+                    t_clean["hyde_vector_text"] = scrub_hyde_vector(t_clean["hyde_vector_text"])
+
                 t_parsed = t_clean
                 await self.broadcast({
                     "type": "crosstalk",
-                    "brain": f"[HUB] Triage successful. Vibe: {t_parsed.get('vibe')}",
-                    "brain_source": "System",
+                    "brain": f"[HUB] Triage successful. Vibe: {t_parsed.get('vibe')}, Domain: {t_parsed.get('domain')}",
+                    "brain_source": "Brain (Insight)",
                     "version": LAB_VERSION
                 })
                 break
@@ -1220,20 +1248,12 @@ class CognitiveHub:
             return
             
         logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
-        # [FEAT-356] Pinky as Coherence Judge with Real RAG Evidence
+        # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Summary Blend
         evidence_block = f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n" if rag_context else ""
-        critique_query = (
-            f"Analyze the following response from {source} for logic errors, hand-waving, technical slop, or contradictions against the underlying evidence.\n\n"
-            f"{evidence_block}"
-            f"[RESPONSE TO EVALUATE]:\n{text}\n\n"
-            "Evaluate its technical coherence and output a JSON block matching this schema:\n"
-            "{\n"
-            "  \"score\": 5, // 1-5 rating of logic/coherence\n"
-            "  \"reasoning\": \"brief explanation of the score\",\n"
-            "  \"slop_found\": false, // true if logic errors or slop exist\n"
-            "  \"retort\": \"a challenging technical retort pointing out logical flaws, or a supportive technical critique summary\"\n"
-            "}\n"
-            "STRICT: Output ONLY valid JSON inside curly braces."
+        critique_query = build_critic_prompt(
+            user_query=text,
+            technical_summary=evidence_block or text,
+            persona_name="Pinky"
         )
 
         eval_schema = {
@@ -1270,7 +1290,7 @@ class CognitiveHub:
             vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
         try:
-            # [FEAT-406] Coherence Judge Evaluation: Stream Pinky's critique
+            # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique
             eval_text = ""
             async for token in self._process_node_stream(
                 "pinky", critique_query, f"Technical Output to evaluate:\n{text}", "Pinky (Coherence Critic)",
@@ -1279,59 +1299,59 @@ class CognitiveHub:
             ):
                 eval_text += token
             
-            # Parse evaluation result
-            eval_data = {}
-            match = re.search(r'\{.*\}', eval_text, re.DOTALL)
-            if match:
+            # [FEAT-470] Parse structured critic payload
+            critic_res = parse_critic_payload(eval_text)
+            
+            # Log evaluations to .round_table_evals.json
+            eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
+            existing_evals = []
+            if os.path.exists(eval_file_path):
                 try:
-                    eval_data = json.loads(match.group(0))
+                    with open(eval_file_path, "r") as f:
+                        existing_evals = json.load(f)
                 except Exception:
                     pass
             
-            # Default fallback if parsing failed
-            if not eval_data and len(eval_text.strip()) > 10:
-                eval_data = {
-                    "score": 5,
-                    "reasoning": "Coherence check passed implicitly.",
-                    "slop_found": False,
-                    "retort": eval_text.strip()
-                }
+            new_eval = {
+                "timestamp": time.time(),
+                "source": source,
+                "score": critic_res.score,
+                "reasoning": critic_res.reasoning,
+                "slop_found": critic_res.slop_found,
+                "retort": critic_res.retort
+            }
+            existing_evals.append(new_eval)
             
-            retort_text = eval_data.get("retort", "").strip() if eval_data else ""
-            if retort_text:
-                self.turn_thought_trace["critique"] = retort_text
-                
-                # Log evaluations to .round_table_evals.json
-                eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
-                existing_evals = []
-                if os.path.exists(eval_file_path):
-                    try:
-                        with open(eval_file_path, "r") as f:
-                            existing_evals = json.load(f)
-                    except Exception:
-                        pass
-                
-                new_eval = {
-                    "timestamp": time.time(),
-                    "source": source,
-                    "score": eval_data.get("score", 5),
-                    "reasoning": eval_data.get("reasoning", ""),
-                    "slop_found": eval_data.get("slop_found", False),
-                    "retort": retort_text
-                }
-                existing_evals.append(new_eval)
-                
-                # Atomic write (.tmp + replace)
-                tmp_path = eval_file_path + ".tmp"
-                try:
-                    with open(tmp_path, "w") as f:
-                        json.dump(existing_evals, f, indent=2)
-                    os.replace(tmp_path, eval_file_path)
-                except Exception as e:
-                    logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
+            # Atomic write (.tmp + replace)
+            tmp_path = eval_file_path + ".tmp"
+            try:
+                with open(tmp_path, "w") as f:
+                    json.dump(existing_evals, f, indent=2)
+                os.replace(tmp_path, eval_file_path)
+            except Exception as e:
+                logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
 
-                # Dispatch retort as terminal summary to the chat window ONLY if non-empty
-                await self.execute_dispatch(retort_text, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
+            # [FEAT-470] Broadcast internal diagnostic telemetry frame to CROSSTALK
+            telemetry_frame = format_crosstalk_telemetry(
+                source="Pinky",
+                target=source,
+                payload=new_eval
+            )
+            await self.broadcast({
+                "type": "crosstalk",
+                "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
+                "brain_source": "Pinky (Coherence Critic)",
+                "telemetry": telemetry_frame
+            })
+
+            # [FEAT-470] Blend cartoon quip + agreed summary for out-loud delivery (banning robotic boilerplate)
+            chat_delivery = format_chat_delivery(
+                cartoon_retort=critic_res.retort,
+                technical_summary=critic_res.reasoning
+            )
+            if chat_delivery:
+                self.turn_thought_trace["critique"] = chat_delivery
+                await self.execute_dispatch(chat_delivery, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
@@ -1507,8 +1527,16 @@ class CognitiveHub:
             result_text = self._rag_cache[cache_key]
         else:
             try:
+                vibe_val = str(t_parsed.get("vibe", ""))
+                domain_val = str(t_parsed.get("domain", ""))
                 res = await self.residents["archive"].call_tool(
-                    "get_context", {"query": turn, "hyde_vector_text": hyde, "n_results": n_results}
+                    "get_context", {
+                        "query": turn,
+                        "hyde_vector_text": hyde,
+                        "n_results": n_results,
+                        "vibe": vibe_val,
+                        "domain": domain_val
+                    }
                 )
                 if hasattr(res, 'content') and len(res.content) > 0:
                     result_text = res.content[0].text

@@ -69,6 +69,10 @@ def _strip_speaker_prefix(text: str) -> str:
 _BANNED_PHRASES: list[str] = [
     "A well-crafted response",
     "Here is a well-crafted response",
+    "well-crafted response",
+    "well crafted response",
+    "well-crafted",
+    "well crafted",
     "I hope this helps",
     "Let me know if you have any questions",
     "In conclusion",
@@ -256,14 +260,19 @@ def format_chat_delivery(
     retort = _strip_speaker_prefix(cartoon_retort)
     summary = _strip_speaker_prefix(technical_summary)
 
-    # Strip banned phrases from the retort
+    # Strip banned phrases from both retort and summary
     for phrase in bans:
-        # Case-insensitive removal of the phrase at the start or anywhere
         pattern = re.compile(re.escape(phrase), re.IGNORECASE)
         retort = pattern.sub("", retort).strip()
+        summary = pattern.sub("", summary).strip()
+
+    # Clean residual punctuation at boundaries
+    retort = re.sub(r"^[\s.,;:!?\-]+", "", retort).strip()
+    summary = re.sub(r"^[\s.,;:!?\-]+", "", summary).strip()
 
     # Collapse any double-blanks left by removal
     retort = re.sub(r"\s{2,}", " ", retort).strip()
+    summary = re.sub(r"\s{2,}", " ", summary).strip()
 
     if not retort and not summary:
         return ""
@@ -281,11 +290,13 @@ def format_chat_delivery(
 
 def format_crosstalk_telemetry(
     *,
-    source_persona: str,
-    target_persona: str,
+    source_persona: str = "Pinky",
+    target_persona: str = "Brain",
     payload: dict[str, Any],
     prompt: str = "",
     raw_response: str = "",
+    source: str | None = None,
+    target: str | None = None,
 ) -> dict[str, Any]:
     """Wrap a critic exchange into a crosstalk telemetry envelope.
 
@@ -304,15 +315,21 @@ def format_crosstalk_telemetry(
         The prompt that was sent to the LLM (optional, for audit).
     raw_response:
         The raw LLM response (optional, for audit).
+    source:
+        Optional alias for source_persona.
+    target:
+        Optional alias for target_persona.
 
     Returns
     -------
     A telemetry envelope dict with standard fields.
     """
+    src = source if source is not None else source_persona
+    tgt = target if target is not None else target_persona
     return {
         "crosstalk": True,
-        "source": source_persona,
-        "target": target_persona,
+        "source": src,
+        "target": tgt,
         "payload": payload,
         "prompt": prompt,
         "raw_response": raw_response,
