@@ -58,6 +58,8 @@ def is_critique(query: str) -> bool:
         return False
 
     normalized = query.strip()
+    # Strip client-side transcript tags like [ME] or [USER]
+    normalized = re.sub(r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE).strip()
 
     # If it ends with a question mark and isn't a direct "Wait / No" objection, treat as question
     if normalized.endswith("?") and not re.search(r"(?i)^(?:wait|no\b)", normalized):
