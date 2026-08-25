@@ -990,7 +990,7 @@ class CognitiveHub:
 
         if vibe == "CASUAL" or is_shallow_turn(turn):
             self.current_interest = 0.1
-            candidate_pool = build_floating_candidate_pool()
+            candidate_pool = build_floating_candidate_pool(auto_harvest=True)
             context = candidate_pool
             behavioral_guidance = (
                 "[MODE]: CONVERSATIONAL (Warm, natural, brief. Match user brevity with 1 short sentence. "
