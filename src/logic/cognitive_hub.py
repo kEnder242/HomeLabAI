@@ -1076,6 +1076,13 @@ class CognitiveHub:
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
             if rag_context:
                 context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
+                # [FEAT-485] Epistemological Archival Reasoning Protocol
+                if "[ARCHIVAL_EVIDENCE]" in rag_context:
+                    behavioral_guidance += (
+                        " EPISTEMOLOGICAL_PROTOCOL: The provided [ARCHIVAL_EVIDENCE] contains temporal scarcity diagnostics from the 18-year archive. "
+                        "Synthesize these facts: if an entity was active in other years but has 0 records in the queried year, deduce and state definitively "
+                        "that the entity was NOT present/active during that target year. State the true active years from the evidence and conclude without passive conversational hedging or asking for clarification."
+                    )
             else:
                 # [FEAT-475] Zero-Context & Negative Implication Protocol:
                 # In a comprehensive 18-year archive, absence of records for a target year/entity
