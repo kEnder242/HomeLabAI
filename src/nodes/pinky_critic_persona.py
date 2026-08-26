@@ -150,7 +150,15 @@ class CriticResult:
 
     cartoon_retort: str
     critique_suggestions: list[str]
+    score: int = 5
+    reasoning: str = ""
+    slop_found: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def retort(self) -> str:
+        """Alias for :attr:`cartoon_retort` for backward compatibility."""
+        return self.cartoon_retort
 
 
 def parse_critic_payload(raw_response: str) -> CriticResult:
@@ -216,9 +224,17 @@ def _coerce_result(data: dict[str, Any]) -> CriticResult:
     else:
         suggestions = [str(suggestions_raw)] if suggestions_raw else []
 
+    # Extract optional telemetry fields with safe defaults
+    score = int(data.get("score", 5)) if data.get("score") is not None else 5
+    reasoning = str(data.get("reasoning", "")).strip() if data.get("reasoning") else ""
+    slop_found = bool(data.get("slop_found", False))
+
     return CriticResult(
         cartoon_retort=retort,
         critique_suggestions=suggestions,
+        score=score,
+        reasoning=reasoning,
+        slop_found=slop_found,
         raw=data,
     )
 

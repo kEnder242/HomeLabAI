@@ -188,6 +188,29 @@ class TestParseCriticPayload:
         result = parse_critic_payload('["not", "a", "dict"]')
         assert "not a dict" in result.cartoon_retort.lower() or len(result.cartoon_retort) > 0
 
+    def test_coerce_result_with_telemetry_fields(self) -> None:
+        """_coerce_result extracts score, reasoning, slop_found from JSON payload."""
+        payload = json.dumps({
+            "cartoon_retort": "Narf!",
+            "critique_suggestions": ["Check thermals"],
+            "score": 2,
+            "reasoning": "Thermal throttling detected",
+            "slop_found": True,
+        })
+        result = parse_critic_payload(payload)
+        assert result.score == 2
+        assert result.reasoning == "Thermal throttling detected"
+        assert result.slop_found is True
+        assert result.cartoon_retort == "Narf!"
+
+    def test_coerce_result_missing_telemetry_defaults(self) -> None:
+        """_coerce_result uses defaults when telemetry fields are missing."""
+        payload = json.dumps({"cartoon_retort": "Yo"})
+        result = parse_critic_payload(payload)
+        assert result.score == 5
+        assert result.reasoning == ""
+        assert result.slop_found is False
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. format_chat_delivery
@@ -346,6 +369,32 @@ class TestEdgeCases:
         """CriticResult is a proper dataclass with defaults."""
         cr = CriticResult(cartoon_retort="test", critique_suggestions=[])
         assert cr.raw == {}
+
+    def test_critique_result_defaults(self) -> None:
+        """CriticResult has correct default values for new telemetry fields."""
+        cr = CriticResult(cartoon_retort="Narf!", critique_suggestions=[])
+        assert cr.score == 5
+        assert cr.reasoning == ""
+        assert cr.slop_found is False
+
+    def test_critique_result_explicit_fields(self) -> None:
+        """CriticResult accepts explicit score, reasoning, slop_found."""
+        cr = CriticResult(
+            cartoon_retort="Zort!",
+            critique_suggestions=["Check VRAM"],
+            score=3,
+            reasoning="VRAM is tight",
+            slop_found=True,
+        )
+        assert cr.score == 3
+        assert cr.reasoning == "VRAM is tight"
+        assert cr.slop_found is True
+
+    def test_critique_result_retort_property(self) -> None:
+        """CriticResult.retort property returns cartoon_retort."""
+        cr = CriticResult(cartoon_retort="Hello", critique_suggestions=[])
+        assert cr.retort == "Hello"
+        assert cr.retort == cr.cartoon_retort
 
     def test_roundtrip_parse_format(self) -> None:
         """parse_critic_payload output feeds into format_chat_delivery."""
