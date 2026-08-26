@@ -332,12 +332,14 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 },
                 "domain": {
                     "type": "string",
-                    "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history"],
+                    "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal"],
                 },
                 "casual": {"type": "number"},
                 "intrigue": {"type": "number"},
                 "importance": {"type": "number"},
                 "hyde_vector_text": {"type": "string"},
+                "situation": {"type": "string"},
+                "hints": {"type": "string"},
             },
             "required": [
                 "inferred_intent",
@@ -347,8 +349,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 "casual",
                 "intrigue",
                 "importance",
-                "hyde_vector_text",
-            ],
+                            ],
         },
     },
 }
