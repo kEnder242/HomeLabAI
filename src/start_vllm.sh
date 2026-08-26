@@ -46,8 +46,8 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --port 8088 \
     --served-model-name unified-base \
     --trust-remote-code \
-    --gpu-memory-utilization 0.70 \
-    --max-model-len 16384 \
+    --gpu-memory-utilization 0.55 \
+    --max-model-len 8192 \
     --enable-chunked-prefill \
     --max-num-batched-tokens 4096 \
     --max-num-seqs 16 \

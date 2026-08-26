@@ -210,7 +210,7 @@ def test_tri_node_evaluation_fallback():
                     if flag]
 
     if not online_nodes:
-        pytest.skip("No nodes are online — cannot run evaluation test.")
+        pytest.fail("No nodes are online — cannot run evaluation test.")
 
     results = []
     for node_name in online_nodes:
@@ -256,7 +256,7 @@ def test_tri_node_logging():
     log_files = glob.glob(log_pattern)
 
     if not log_files:
-        pytest.skip(f"No evaluation_batch_*.log files found in {LOG_DIR}")
+        pytest.fail(f"No evaluation_batch_*.log files found in {LOG_DIR}")
 
     # Sort by modification time (newest first)
     log_files.sort(key=os.path.getmtime, reverse=True)

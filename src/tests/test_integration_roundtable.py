@@ -93,13 +93,13 @@ async def test_rest_inject_produces_response():
 @pytest.mark.asyncio
 async def test_roundtable_transcript_logged():
     if not _FOYER_UP:
-        pytest.skip("Foyer service is offline — cannot verify transcript logging")
+        pytest.fail("Foyer service is offline — cannot verify transcript logging")
 
     logs_dir = "/home/jallred/Dev_Lab/HomeLabAI/logs/"
     log_files = glob.glob(os.path.join(logs_dir, "evaluation_batch_*.log"))
 
     if not log_files:
-        pytest.skip("No evaluation_batch_*.log files found — logs may not have been generated yet")
+        pytest.fail("No evaluation_batch_*.log files found — logs may not have been generated yet")
 
     # Sort files by modification time (newest first)
     log_files.sort(key=os.path.getmtime, reverse=True)
