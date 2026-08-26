@@ -1,7 +1,10 @@
 import pytest
 import asyncio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client # Import stdio_client
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client # Import stdio_client
+except ImportError:
+    ClientSession = StdioServerParameters = stdio_client = None
 import sys
 import os
 
