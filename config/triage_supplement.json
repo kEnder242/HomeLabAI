@@ -1,0 +1,5 @@
+{
+    "_schema_version": "1.0.0",
+    "_description": "Dynamic Route Incubation Sandbox – mouse-defined candidate routes. Routes are prefixed with MOUSE_DEF: and incubated here before promotion to core triage_policy.json.",
+    "candidates": {}
+}
