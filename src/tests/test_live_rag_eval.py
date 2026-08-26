@@ -44,11 +44,11 @@ async def wait_for_ready_and_vocal(status_url: str = STATUS_URL, timeout: float 
 
 async def send_and_collect_turn(ws, query_text: str, timeout: float = 30.0) -> list[dict]:
     """Send a text query frame and collect received JSON frames until round table completes."""
-    msg_id = str(uuid.uuid4())
+    req_id = str(uuid.uuid4())[:8]
     payload = {
-        "type": "USER_INPUT",
-        "message_id": msg_id,
-        "text": query_text,
+        "type": "text_input",
+        "content": query_text,
+        "request_id": req_id,
     }
     await ws.send_str(json.dumps(payload))
     frames = []
@@ -61,10 +61,12 @@ async def send_and_collect_turn(ws, query_text: str, timeout: float = 30.0) -> l
                 data = json.loads(msg.data)
                 frames.append(data)
                 frame_type = data.get("type", "")
-                if frame_type in ("ROUND_TABLE_CONSENSUS", "TURN_COMPLETE", "PINKY_CRITIC"):
-                    # Check if Pinky Critic was received
-                    if any(f.get("type") in ("PINKY_CRITIC", "ROUND_TABLE_CONSENSUS") for f in frames):
-                        break
+                if frame_type in ("crosstalk", "progress", "stage_progress"):
+                    content = data.get("brain", "")
+                    if any(term in content for term in ("Consensus", "Review", "Sovereignty", "Insight")):
+                        # Check if response stream reached completion
+                        if len(frames) >= 2:
+                            break
             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                 break
         except asyncio.TimeoutError:
@@ -77,30 +79,39 @@ async def send_and_collect_turn(ws, query_text: str, timeout: float = 30.0) -> l
 async def test_live_cognitive_rag_anchors():
     """Execute end-to-end cognitive RAG gauntlet over live WebSocket."""
     if not CONFIG_PATH.exists():
-        pytest.skip(f"Validation anchors config missing: {CONFIG_PATH}")
+        pytest.fail(f"Validation anchors config missing: {CONFIG_PATH}")
     
     with open(CONFIG_PATH, "r") as f:
         anchors = json.load(f)
 
-    # Pre-flight check
-    is_ready = await wait_for_ready_and_vocal(STATUS_URL, timeout=3.0)
-    if not is_ready:
-        # Fallback check on WS port HTTP endpoint
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BASE_HTTP_URL}/status", timeout=aiohttp.ClientTimeout(total=2.0)) as resp:
-                    is_ready = (resp.status == 200)
-        except Exception:
-            is_ready = False
+    # 1. Probe status and fetch session token
+    session_token = ""
+    is_ready = False
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{BASE_HTTP_URL}/status", timeout=aiohttp.ClientTimeout(total=3.0)) as resp:
+                if resp.status == 200:
+                    status_data = await resp.json()
+                    session_token = status_data.get("session_token", "")
+                    is_ready = True
+    except Exception as e:
+        pytest.fail(f"Lab Attendant status endpoint unreachable on {BASE_HTTP_URL}: {e}")
 
     if not is_ready:
-        pytest.skip("Live Lab Attendant / Intercom WebSocket server is not running on 8765/8000")
+        pytest.fail("Live Lab Attendant / Intercom server is not running on 8765")
 
     async with aiohttp.ClientSession() as session:
-        # Connect to websocket
-        ws_url = f"ws://127.0.0.1:8765/ws"
+        # 2. Connect to Foyer WebSocket endpoint
+        ws_url = f"ws://127.0.0.1:8765/hub"
         try:
             async with session.ws_connect(ws_url, timeout=aiohttp.ClientTimeout(total=5.0)) as ws:
+                # 3. Authenticated Handshake (FEAT-426)
+                await ws.send_str(json.dumps({"type": "handshake", "lab_key": session_token}))
+                
+                # Receive initial status
+                handshake_resp = await asyncio.wait_for(ws.receive(), timeout=3.0)
+                assert handshake_resp.type == aiohttp.WSMsgType.TEXT
+                
                 # Test top 3 representative anchors
                 test_anchors = [a for a in anchors if a.get("id") in ("VAL-01", "VAL-02", "VAL-08")]
                 if not test_anchors:
@@ -110,16 +121,7 @@ async def test_live_cognitive_rag_anchors():
                     query = anchor["query"]
                     frames = await send_and_collect_turn(ws, query, timeout=20.0)
                     
-                    frame_types = [f.get("type") for f in frames]
-                    logging.info(f"Anchor {anchor['id']} received frame types: {frame_types}")
-                    
-                    # Assert frame flow
+                    logging.info(f"Anchor {anchor['id']} received {len(frames)} frames")
                     assert len(frames) > 0, f"Expected frames for query: {query}"
-                    
-                    # Verify Triage frame if emitted
-                    triage_frames = [f for f in frames if f.get("type") == "TRIAGE"]
-                    if triage_frames:
-                        triage_data = triage_frames[0].get("data", {})
-                        assert "vibe" in triage_data or "domain" in triage_data
         except Exception as e:
-            pytest.skip(f"WebSocket connection failed to {ws_url}: {e}")
+            pytest.fail(f"WebSocket communication failed on {ws_url}: {e}")

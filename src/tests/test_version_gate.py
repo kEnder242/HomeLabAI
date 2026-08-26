@@ -7,8 +7,8 @@ def test_version_gate():
     """
     try:
         ver_resp = requests.get("http://127.0.0.1:8765/version", timeout=3)
-    except requests.exceptions.RequestException:
-        pytest.skip("Lab Attendant unreachable on port 8765")
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"Lab Attendant unreachable on port 8765: {e}")
         
     assert ver_resp.status_code == 200
     
@@ -19,8 +19,8 @@ def test_version_gate():
     
     try:
         stat_resp = requests.get("http://127.0.0.1:8765/status", timeout=3)
-    except requests.exceptions.RequestException:
-        pytest.skip("Lab Attendant unreachable on port 8765 for /status")
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"Lab Attendant unreachable on port 8765 for /status: {e}")
         
     assert stat_resp.status_code == 200
     
