@@ -506,3 +506,31 @@
 4. **Anchor 4: Surgical Delta & Concrete Output Template**:
    * Must provide concrete dataclass, dictionary schema, and return type examples rather than abstract prose instructions.
    * *Purpose*: Completely eliminates "design-by-inference" where subagents invent incompatible dictionary keys.
+
+---
+
+## BKM-044: Lab Attendant Ignition & Quiescence Law (Zero Direct Hardware Bypassing)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                         BKM-044: LAB ATTENDANT IGNITION STANDARD                         │
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│  ❌ FORBIDDEN: Direct manual shell execution of start_vllm.sh, python router.py,        │
+│                or backgrounding unmanaged engine daemons.                                │
+│                                                                                          │
+│  ✅ MANDATORY: All engine state transitions (Wake/Sleep/Ignite) MUST be dispatched       │
+│                exclusively through the Lab Attendant REST API (Port 8765):               │
+│                                                                                          │
+│    1. Wake / Ignite:     curl -X POST http://127.0.0.1:8765/wake                         │
+│    2. Sleep / Free VRAM: curl -X POST http://127.0.0.1:8765/sleep                        │
+│    3. State Poll:        curl -s http://127.0.0.1:8765/status | jq .state                │
+│                                                                                          │
+│  SILICON RULES:                                                                          │
+│  - Respect the 60s Quiescence Window [FEAT-136] between state transitions.               │
+│  - VRAM Utilization floor is capped at 0.55 (8k context) to protect the physical Xorg   │
+│    display server running on the primary RTX 2080 Ti adapter.                            │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+

@@ -1,4 +1,13 @@
 #!/bin/bash
+# [BKM-044] Attendant Authority Gate: Direct invocation is strictly forbidden.
+# All engine ignitions must be initiated through the Lab Attendant API.
+if [ -z "$LAB_ATTENDANT_SPAWN" ] && [ "$1" != "--force" ]; then
+    echo "❌ [BKM-044] ERROR: Direct vLLM ignition is forbidden."
+    echo "👉 You MUST transition state via the Lab Attendant: curl -X POST http://127.0.0.1:8765/wake"
+    echo "💡 To override for manual silicon debugging, pass --force."
+    exit 1
+fi
+
 # [FEAT-137] vLLM 0.17.0 Infrastructure
 # [FEAT-030] Unity Pattern (Multi-LoRA Shared 3B Base Residency)
 # --- vLLM Sovereign Base Startup ---
