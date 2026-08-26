@@ -177,7 +177,8 @@ class IgnitionManager:
             # Physical hardware ignition
             vllm_script = os.path.join(LAB_DIR, "src/start_vllm.sh")
             env = os.environ.copy()
-            logging.info(f"[IGNITION] Spawning vLLM engine via {vllm_script}...")
+            env["LAB_ATTENDANT_SPAWN"] = "1"
+            logging.info(f"[IGNITION] Spawning vLLM engine via {vllm_script} (Attendant Authorized)...")
             
             # We run it detached so it survives the manager script block
             subprocess.Popen(["bash", vllm_script], cwd=LAB_DIR, env=env)
