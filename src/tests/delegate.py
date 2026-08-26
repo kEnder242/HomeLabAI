@@ -8,6 +8,7 @@ creating a clean REST session on port 4097, pre-checking cloud rate limits, and 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -315,6 +316,45 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             tokens = post_result.get("info", {}).get("tokens", {})
             log_step(story_num, "COMPLETE", f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}")
             log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
+
+            # [BKM-033 / BKM-034] Extract and display execution response & Handover Reflection directly from in-flight chunk
+            parts = post_result.get("parts", [])
+            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+            full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
+
+            if full_text:
+                print("\n" + "═" * 80, flush=True)
+                print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
+                print("═" * 80, flush=True)
+                print(full_text, flush=True)
+                print("═" * 80 + "\n", flush=True)
+
+                # Attempt automatic ICM ingestion
+                try:
+                    reflection_match = re.search(
+                        r"(?:\[HANDOVER REFLECTION\]|\*\*Handover Reflection:\*\*)\s*(.+)",
+                        full_text,
+                        re.DOTALL | re.IGNORECASE,
+                    )
+                    reflection_text = reflection_match.group(1).strip() if reflection_match else full_text[:400]
+                    icm_content = f"Story {story_num} ({title}) Delegation Reflection: {reflection_text}"
+                    subprocess.run(
+                        [
+                            "icm", "store",
+                            "-t", "errors-resolved",
+                            "-c", icm_content,
+                            "-i", "high",
+                            "-k", f"delegation,openagent,prompt-tuning,story-{story_num},sprint-{sprint_num}"
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                except Exception:
+                    pass
+            else:
+                print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk.", flush=True)
+
             return
 
         if post_exception is not None:
