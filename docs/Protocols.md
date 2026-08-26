@@ -308,10 +308,10 @@
 
 2. **The 4-Anchor Prompt Standard ([BKM-043])**:
    Every delegation prompt passed in `--details` MUST explicitly specify:
+   * **Grep-Stable Code Anchor**: Exact target file, target function/class, and approximate line number with a grep fallback string (e.g. `"In field_notes/evaluate_rag.py, edit inside def main() starting around line 260; grep 'async def main' if lines shifted"`).
    * **Import Anchor**: Root namespace convention (`"PYTHONPATH=src: use 'from logic.x import y'"`).
    * **Path Anchor**: Directory resilience (`"Use Path(__file__).resolve().parent... fallback for configs"`).
-   * **Exact Signatures**: Constructor kwargs, dataclass fields, and string prefix contracts (e.g. `MOUSE_DEF:`).
-   * **Output Template**: Concrete return dict/dataclass examples to eliminate design-by-inference.
+   * **Surgical Delta & Output Template**: Exact signatures and concrete return dict/dataclass examples to eliminate design-by-inference.
 
 3. **Git Forensic Ownership Gate**:
    * Subagent workers edit files and run local test suites, but are **strictly prohibited from executing `git commit`**.
