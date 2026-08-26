@@ -23,6 +23,7 @@ from nodes.pinky_critic_persona import (
     format_crosstalk_telemetry
 )
 from logic.speculative_triage import SpeculativeTriageRelay
+from logic.triage_policy_loader import TriagePolicyLoader
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -244,13 +245,16 @@ class CognitiveHub:
 
         self.auditor = None  # \[FEAT-190\] The Judge
 
-        # \[SPR-64_1\] Speculative Triage Relay initialization
-        # Default t_warm=0.5 -> head_start_window=1.0s
+        # [FEAT-484] Declarative Triage Policy Loader
+        self.policy_loader = TriagePolicyLoader()
+
+        # [SPR-64_1] Speculative Triage Relay initialization
+        # Default t_warm=1.25 -> head_start_window=2.5s
         self.triage_relay = SpeculativeTriageRelay(
             broadcast_callback=self.broadcast,
             kender_fn=self._dispatch_kender_triage,
             vllm_fn=self._dispatch_vllm_triage,
-            t_warm=0.5
+            t_warm=1.25
         )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
@@ -951,17 +955,27 @@ class CognitiveHub:
             return
 
         # 2. Routing Phase
+        vibe = t_parsed.get("vibe", "").upper()
+        self.current_vibe = vibe
+        self._wrap_residents_for_sandbox()
+        
         importance = float(t_parsed.get("importance", 0.5))
         casual = float(t_parsed.get("casual", 0.5))
         intrigue = float(t_parsed.get("intrigue", 0.5))
         
-        # [FEAT-234] Unified Interest Calculation: Damped casual penalty to prevent conversational veto
-        interest = ((1.0 - (casual * 0.5)) * (intrigue + importance)) / 2.0
-        self.current_interest = max(0.0, min(1.0, interest))
-        
-        vibe = t_parsed.get("vibe", "").upper()
-        self.current_vibe = vibe
-        self._wrap_residents_for_sandbox()
+        # [FEAT-484 / Springboard Pattern] Declarative Policy Springboard
+        # Applies declarative importance_floor and interest_boost from config/triage_policy.json
+        # while preserving the LLM's dynamic evaluation of turn nuance and complexity.
+        springboard = self.policy_loader.get_vibe_springboard(vibe) if hasattr(self, "policy_loader") and self.policy_loader else {"importance_floor": 0.0, "interest_boost": 0.0}
+        importance_floor = springboard.get("importance_floor", 0.0)
+        interest_boost = springboard.get("interest_boost", 0.0)
+
+        effective_importance = max(importance, importance_floor)
+        base_interest = ((1.0 - (casual * 0.5)) * (intrigue + effective_importance)) / 2.0
+        final_interest = min(1.0, max(0.0, base_interest + interest_boost))
+        self.current_interest = final_interest
+        t_parsed["effective_importance"] = effective_importance
+        t_parsed["calculated_interest"] = final_interest
         
         target = t_parsed.get("addressed_to", "PINKY").lower()
         
@@ -972,8 +986,8 @@ class CognitiveHub:
         behavioral_guidance = ""
         context = ""
 
-        if vibe == "CASUAL" or is_shallow_turn(turn):
-            self.current_interest = 0.1
+        if vibe == "CASUAL":
+            self.current_interest = min(self.current_interest, 0.1)
             candidate_pool = build_floating_candidate_pool(auto_harvest=True)
             context = candidate_pool
             behavioral_guidance = (

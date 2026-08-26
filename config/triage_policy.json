@@ -8,6 +8,8 @@
             "default_domain": "standard",
             "rag": null,
             "importance": 0.1,
+            "importance_floor": 0.1,
+            "interest_boost": 0.0,
             "examples": [
                 "how are things?",
                 "how are you doing?",
@@ -22,7 +24,9 @@
             "enabled": true,
             "default_domain": "standard",
             "rag": null,
-            "importance": 0.6
+            "importance": 0.6,
+            "importance_floor": 0.5,
+            "interest_boost": 0.1
         },
         "WYWO": {
             "description": "'While You Were Out' Standup Briefing – briefing the user on lab activity, engineering events, and subconscious dream synthesis during user absence.",
@@ -34,14 +38,18 @@
                 "allowed_collections": ["dream_cache", "stream_log"],
                 "max_distance": 0.85
             },
-            "importance": 0.85
+            "importance": 0.85,
+            "importance_floor": 0.8,
+            "interest_boost": 0.15
         },
         "META": {
             "description": "Lab-internal meta queries – infrastructure status, resident agent health, system component diagnostics (vllm, attendant, foyer, audio_pipeline).",
             "enabled": true,
             "default_domain": "lab_internal",
             "rag": null,
-            "importance": 0.65
+            "importance": 0.65,
+            "importance_floor": 0.6,
+            "interest_boost": 0.1
         },
         "OPERATIONAL": {
             "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
@@ -53,7 +61,9 @@
                 "allowed_collections": ["behavioral_dna", "artifact_vault"],
                 "max_distance": 0.75
             },
-            "importance": 0.85
+            "importance": 0.85,
+            "importance_floor": 0.75,
+            "interest_boost": 0.15
         },
         "FORENSIC": {
             "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
@@ -65,7 +75,9 @@
                 "allowed_collections": ["career_ledger", "artifact_vault"],
                 "max_distance": 0.70
             },
-            "importance": 0.95
+            "importance": 0.95,
+            "importance_floor": 0.85,
+            "interest_boost": 0.15
         },
         "TECHNICAL": {
             "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
@@ -77,7 +89,9 @@
                 "allowed_collections": ["behavioral_dna", "artifact_vault", "career_ledger"],
                 "max_distance": 0.70
             },
-            "importance": 0.90
+            "importance": 0.90,
+            "importance_floor": 0.75,
+            "interest_boost": 0.15
         },
         "HISTORICAL": {
             "description": "18-year career archive – timeline queries, era lookups, project retrospectives, historical engineering decisions.",
@@ -89,14 +103,18 @@
                 "allowed_collections": ["career_ledger", "long_term_wisdom"],
                 "max_distance": 0.80
             },
-            "importance": 0.90
+            "importance": 0.90,
+            "importance_floor": 0.80,
+            "interest_boost": 0.15
         },
         "ANALYTICAL": {
             "description": "Comparative, trade-off, architectural analysis with high objectivity.",
             "enabled": true,
             "default_domain": "standard",
             "rag": null,
-            "importance": 0.7
+            "importance": 0.7,
+            "importance_floor": 0.65,
+            "interest_boost": 0.1
         }
     }
 }
