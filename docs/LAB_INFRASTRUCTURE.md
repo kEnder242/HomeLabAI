@@ -336,9 +336,8 @@
     *   **`systemd-oomd`** — on pressure, kills the biggest offenders in systemd-managed cgroups. Points the knife at the whale, not your sshd.
     *   **cgroup limits on opencode/code-server** — pressure stays local to the slice instead of consuming the whole box.
 3.  **The Trigger**: `memory.swap.current` near cap; mouse/RDP freezing under swap reclaim (the original 10:38 AM symptom).
-4.  **The Scars**:
-    *   VS Code's heavy processes are per-connection (`.vscode-server`, `--enable-remote-auto-shutdown`) — the persistent service to cap is `code-server@jallred.service`, not the per-session children.
-    *   `code-tunnel.service` appears enabled in `list-unit-files` but has **no unit file** — a phantom; the real service is the code-server template.
+    *   VS Code's Remote-SSH processes are per-connection (`~/.vscode-server/`, `--enable-remote-auto-shutdown`) and communicate via `/tmp/code-*` sockets.
+    *   `code-tunnel.service` is an active **systemd user unit** (`~/.config/systemd/user/code-tunnel.service` -> `/home/jallred/.vscode/cli/code-tunnel.service`), managing the persistent Microsoft Dev Tunnel named `z87-linux` (cluster: `usw2`) with dedicated state in `~/.vscode/cli/`. It was previously mislabeled as a phantom unit because audits checked `/etc/systemd/system/` (system scope) rather than `systemctl --user`.
     *   Auth: `KbdInteractiveAuthentication no`, no PasswordAuthentication override = key-only, root off — the reason the SSH lifeline is safe to rely on.
 
 ### LAB-018: claude-mem Removal & Memory Manager Standardization
