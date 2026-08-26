@@ -557,7 +557,7 @@ class TestTriageEngine:
         resident = _MockResident(triage_json)
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("[Pinky] Hello Pinky", resident_caller=resident)
         )
 
@@ -574,7 +574,7 @@ class TestTriageEngine:
         resident = _MockResidentWithTool(triage_json)
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Check PCIe AER error count", resident_caller=resident)
         )
 
@@ -591,7 +591,7 @@ class TestTriageEngine:
         resident = _MockResident(triage_json)
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage(
                 "What is the audio_pipeline status?",
                 resident_caller=resident,
@@ -612,7 +612,7 @@ class TestTriageEngine:
         resident = _MockResident(triage_json)
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Analyze PCIe errors on node 1", resident_caller=resident)
         )
 
@@ -622,7 +622,7 @@ class TestTriageEngine:
     def test_evaluate_triage_none_resident_fallback(self) -> None:
         """None resident_caller produces fallback triage."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Check lab status", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -642,7 +642,7 @@ class TestTriageEngine:
             {"role": "assistant", "name": "Pinky", "content": "Earlier answer"},
         ]
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Follow-up question", history=history, resident_caller=resident)
         )
 
@@ -658,7 +658,7 @@ class TestTriageEngine:
         resident = _MockResident(triage_json)
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("[ME] Check the lab status", resident_caller=resident)
         )
 
@@ -670,7 +670,7 @@ class TestTriageEngine:
         resident = _MockResident("This is not JSON at all, just random gibberish text")
         engine = TriageEngine()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Check lab status", resident_caller=resident)
         )
 
@@ -690,7 +690,7 @@ class TestTriageEngine:
             return triage_json
 
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("Test query", resident_caller=_mock_resident)
         )
         assert result["vibe"] == "CASUAL"
@@ -718,7 +718,7 @@ class TestGreetingFastPath:
     def test_greeting_how_are_things(self) -> None:
         """'how are things?' returns CASUAL without invoking the LLM."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("how are things?", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -729,7 +729,7 @@ class TestGreetingFastPath:
     def test_greeting_hello(self) -> None:
         """'hello' returns CASUAL fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("hello", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -738,7 +738,7 @@ class TestGreetingFastPath:
     def test_greeting_whats_up(self) -> None:
         """'what's up?' returns CASUAL fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("what's up?", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -747,7 +747,7 @@ class TestGreetingFastPath:
     def test_greeting_good_morning(self) -> None:
         """'good morning' returns CASUAL fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("good morning", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -756,7 +756,7 @@ class TestGreetingFastPath:
     def test_greeting_hi(self) -> None:
         """'hi' returns CASUAL fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("hi", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -764,7 +764,7 @@ class TestGreetingFastPath:
     def test_greeting_how_are_you(self) -> None:
         """'how are you?' returns CASUAL fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("how are you?", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -772,7 +772,7 @@ class TestGreetingFastPath:
     def test_greeting_with_prefix_stripped(self) -> None:
         """'[ME] hello' strips prefix then matches greeting fast-path."""
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("[ME] hello", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
@@ -787,7 +787,7 @@ class TestGreetingFastPath:
             return '{"vibe": "CASUAL", "domain": "standard"}'
 
         engine = TriageEngine()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate_triage("how are you doing?", resident_caller=_counting_resident)
         )
         assert result["vibe"] == "CASUAL"
@@ -805,7 +805,7 @@ class TestWYWOClassification:
     def test_wywo_what_did_you_do_while_i_was_out(self) -> None:
         """'what did you do while I was out?' -> WYWO."""
         engine = TriageEngine()
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.evaluate_triage(
                 "what did you do while I was out?",
                 resident_caller=None,
