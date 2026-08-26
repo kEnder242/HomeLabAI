@@ -1,0 +1,79 @@
+{
+    "_schema_version": "1.0.0",
+    "_description": "Declarative Triage Policy Engine – production vibe-to-domain routing rules. Conversational/supervisory vibes omit RAG fields. Retrieval vibes define target_domain, traversal, allowed_collections, and max_distance.",
+    "vibes": {
+        "CASUAL": {
+            "description": "Conversational chat – greetings, small talk, off-topic banter.",
+            "enabled": true,
+            "default_domain": "standard",
+            "rag": null
+        },
+        "SUPERVISORY": {
+            "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges.",
+            "enabled": true,
+            "default_domain": "standard",
+            "rag": null
+        },
+        "WYWO": {
+            "description": "Wake You With Oneirics – dream stream recall, subconscious pattern mining.",
+            "enabled": true,
+            "default_domain": "dream_stream",
+            "rag": {
+                "target_domain": "dream_stream",
+                "traversal": "STREAM_REPLAY",
+                "allowed_collections": ["dream_cache", "stream_log"],
+                "max_distance": 0.85
+            }
+        },
+        "META": {
+            "description": "Lab-internal meta queries – infrastructure, resident status, system health.",
+            "enabled": true,
+            "default_domain": "lab_internal",
+            "rag": null
+        },
+        "OPERATIONAL": {
+            "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis.",
+            "enabled": true,
+            "default_domain": "exp_bkm",
+            "rag": {
+                "target_domain": "exp_bkm",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": ["behavioral_dna", "artifact_vault"],
+                "max_distance": 0.75
+            }
+        },
+        "FORENSIC": {
+            "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems.",
+            "enabled": true,
+            "default_domain": "exp_for",
+            "rag": {
+                "target_domain": "exp_for",
+                "traversal": "TIME_FIRST",
+                "allowed_collections": ["career_ledger", "artifact_vault"],
+                "max_distance": 0.70
+            }
+        },
+        "TECHNICAL": {
+            "description": "Technical deep-dive – silicon telemetry, PCIe errors, thermal/power analysis.",
+            "enabled": true,
+            "default_domain": "exp_tlm",
+            "rag": {
+                "target_domain": "exp_tlm",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": ["behavioral_dna", "artifact_vault", "career_ledger"],
+                "max_distance": 0.70
+            }
+        },
+        "HISTORICAL": {
+            "description": "18-year career archive – timeline queries, era lookups, project retrospectives.",
+            "enabled": true,
+            "default_domain": "lab_history",
+            "rag": {
+                "target_domain": "lab_history",
+                "traversal": "TIME_FIRST",
+                "allowed_collections": ["career_ledger", "long_term_wisdom"],
+                "max_distance": 0.80
+            }
+        }
+    }
+}
