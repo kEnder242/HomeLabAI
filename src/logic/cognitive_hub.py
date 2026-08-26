@@ -1307,13 +1307,13 @@ class CognitiveHub:
             await self.broadcast({
                 "type": "crosstalk",
                 "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
-                "brain_source": "Pinky (Coherence Critic)",
+                "brain_source": "System (Critic Telemetry)",
                 "telemetry": telemetry_frame
             })
 
             # [FEAT-470] Blend cartoon quip + agreed summary for out-loud delivery (banning robotic boilerplate)
             chat_delivery = format_chat_delivery(
-                cartoon_retort=critic_res.retort,
+                cartoon_retort=critic_res.cartoon_retort,
                 technical_summary=critic_res.reasoning
             )
             if chat_delivery:
