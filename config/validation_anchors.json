@@ -1,27 +1,82 @@
 [
   {
-    "query": "BKM for telemetry monitoring with Prometheus and Grafana on RTX 2080 Ti",
-    "domain": "exp_tlm",
-    "expected_keywords": ["telemetry", "monitoring", "power", "montana", "policy"]
+    "id": "VAL-01",
+    "query": "What are the PCIe AER uncorrectable error status mask register offsets and bit definitions?",
+    "domain": "silicon_validation",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["PCIe", "AER", "uncorrectable", "error status", "mask register", "offset", "bit definitions", "UE Status", "UE Mask"],
+    "ground_truth_summary": "PCIe Advanced Error Reporting (AER) defines uncorrectable error status and mask registers at capability offset + 0x04 (Uncorrectable Error Status) and + 0x08 (Uncorrectable Error Mask). Key bits include Data Link Protocol Error (bit 4), Poisoned TLP (bit 12), Flow Control Protocol Error (bit 13), Completion Timeout (bit 14), Unexpected Completion (bit 16), Malformed TLP (bit 18), ECRC Error (bit 19), Atomic Unsupported (bit 21). The mask register blocks errors from being reported to the root complex."
   },
   {
-    "query": "BKM-032 validation procedure for GPU compute benchmarks",
-    "domain": "exp_bkm",
-    "expected_keywords": ["validation", "testing", "quality", "verification", "methodology"]
+    "id": "VAL-02",
+    "query": "How does the team interact with MCTP services on OpenBMC using peci_cmds and RdEndpointConfigPCILocal?",
+    "domain": "silicon_validation",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["MCTP", "OpenBMC", "peci_cmds", "RdEndpointConfigPCILocal", "PECI", "Management Component Transport Protocol", "BMC", "out-of-band"],
+    "ground_truth_summary": "MCTP (Management Component Transport Protocol) services on OpenBMC are accessed via peci_cmds utility which issues PECI (Platform Environment Control Interface) commands to the BMC. RdEndpointConfigPCILocal is a PECI command used to read PCI endpoint configuration locally through the BMC's PECI-over-MCTP transport, enabling out-of-band device discovery and configuration without OS-level access. The peci_cmds tool wraps raw PECI transactions sent over the MCTP backend to the BMC firmware."
   },
   {
-    "query": "Forensic analysis of vLLM BF16 crash on Turing architecture",
-    "domain": "exp_for",
-    "expected_keywords": ["crash", "error", "analysis", "log", "incident"]
+    "id": "VAL-03",
+    "query": "What platform configuration and fmod was used for the Oakstream 1-socket simulation?",
+    "domain": "silicon_validation",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["Oakstream", "simulation", "1-socket", "fmod", "platform configuration", "QEMU", "firmware model", "SiVal"],
+    "ground_truth_summary": "Oakstream 1-socket simulation used a QEMU-based platform configuration with a firmware model (fmod) that emulated a single-socket server platform for pre-silicon validation. The fmod defined the memory map, PCIe topology, and BMC integration points for the Oakstream platform. The 1-socket configuration simplified the NUMA topology to a single domain, enabling focused validation of core silicon features before multi-socket scaling was introduced."
   },
   {
-    "query": "HomeLabAI setup guide and architecture documentation",
-    "domain": "exp_bkm",
-    "expected_keywords": ["setup", "documentation", "configuration", "system", "lab"]
+    "id": "VAL-04",
+    "query": "What were the key challenges and deliverables during 2018 Intel Federal PAE bring-up?",
+    "domain": "silicon_validation",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["2018", "Intel Federal", "PAE", "bring-up", "challenges", "deliverables", "platform", "silicon", "FPGA"],
+    "ground_truth_summary": "The 2018 Intel Federal PAE (Platform Architecture Engineering) bring-up involved pre-silicon platform validation challenges including FPGA-based emulation of the target silicon, PCIe and memory subsystem initialization, BMC firmware integration, and thermal/power delivery validation for federal-grade platform specifications. Key deliverables included validated firmware images, platform bring-up checklists, silicon errata documentation, and readiness gates for the federal platform production ramp."
   },
   {
-    "query": "GPU VRAM thermal and power telemetry with RAPL and DCGM monitoring",
-    "domain": "exp_tlm",
-    "expected_keywords": ["telemetry", "thermal", "power", "gpu", "monitoring"]
+    "id": "VAL-05",
+    "query": "Which RAPL MSR register defines the Package Energy Status limit (MSR 0x610) vs DRAM energy (MSR 0x618)?",
+    "domain": "platform_telemetry",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["RAPL", "MSR", "0x610", "0x618", "Package Energy", "DRAM", "power limit", "Running Average Power Limit", "energy status"],
+    "ground_truth_summary": "Intel RAPL (Running Average Power Limit) uses MSR 0x610 for PKG_POWER_LIMIT (Package power limit configuration) which defines the sustained and short-term power envelopes for the entire package. MSR 0x618 is DRAM_POWER_LIMIT which defines power limits for the DRAM subsystem independently. MSR 0x611 is PKG_ENERGY_STATUS (accumulated package energy counter) and MSR 0x619 is DRAM_ENERGY_STATUS. The distinction is critical: 0x610/0x611 govern package-level power while 0x618/0x619 govern DRAM-specific power telemetry."
+  },
+  {
+    "id": "VAL-06",
+    "query": "How does DCGM export RTX 2080 Ti GPU power draw, VRAM, and thermals to Prometheus on port 9400?",
+    "domain": "platform_telemetry",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["DCGM", "Prometheus", "RTX 2080 Ti", "GPU", "power draw", "VRAM", "thermals", "port 9400", "dcgm-exporter", "metrics"],
+    "ground_truth_summary": "NVIDIA DCGM (Data Center GPU Manager) exports GPU metrics via dcgm-exporter which listens on port 9400 as a Prometheus scrape target. Key metrics include DCGM_FI_DEV_POWER_USAGE (power draw in watts), DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE (VRAM utilization), DCGM_FI_DEV_GPU_TEMP (core temperature), and DCGM_FI_DEV_MEMORY_TEMP (HBM/memory temperature). The dcgm-exporter service is configured with custom CSV fields and runs as a systemd service, exposing a /metrics HTTP endpoint for Prometheus collection."
+  },
+  {
+    "id": "VAL-07",
+    "query": "How does Kernel BDI strict_limit=1 and max_ratio=1 prevent USB FAT32 writeback deadlocks?",
+    "domain": "platform_telemetry",
+    "target_collection": "artifact_vault",
+    "expected_keywords": ["Kernel", "BDI", "strict_limit", "max_ratio", "USB", "FAT32", "writeback", "deadlock", "LAB-111", "backing_dev_info"],
+    "ground_truth_summary": "Kernel BDI (Backing Device Info) parameters strict_limit=1 and max_ratio=1 prevent USB FAT32 writeback deadlocks by bounding the maximum dirty page ratio to 1% of total memory (max_ratio=1) and enforcing that limit strictly (strict_limit=1). Without these limits, the kernel's writeback subsystem can accumulate unbounded dirty pages for USB-mounted FAT32 filesystems, which lack journaling and have slow write speeds. This causes the writeback flusher to stall holding page locks, blocking foreground I/O and creating a deadlock chain. Setting strict_limit=1 forces the kernel to throttle dirty page creation immediately when the threshold is hit, preventing the stall cascade. Documented as LAB-111."
+  },
+  {
+    "id": "VAL-08",
+    "query": "What are the 4 mandatory prompt anchors required when delegating tasks via delegate.py?",
+    "domain": "lab_architecture",
+    "target_collection": "behavioral_dna",
+    "expected_keywords": ["BKM-043", "delegate.py", "4 anchors", "prompt anchors", "delegation", "mandatory", "story", "title", "file", "details"],
+    "ground_truth_summary": "BKM-043 defines 4 mandatory prompt anchors for delegate.py task dispatch: (1) --story <N> (numeric story ID for tracking), (2) --title \"...\" (brief task description), (3) --file \"...\" (target file or workspace path), (4) --details \"...\" (full implementation specification). An optional 5th anchor --verification \"...\" specifies the verification command. The formalized launcher pattern via delegate.py POSTs directly to the REST API on port 4097, bypassing the TUI entirely to prevent the socket-activated TUI hang (StopWhenUnneeded=true on port 4096)."
+  },
+  {
+    "id": "VAL-09",
+    "query": "What is the three-tier lifecycle for mouse-owned candidate routes (Incubation, Evaluation, Solidification)?",
+    "domain": "lab_architecture",
+    "target_collection": "feature_dna",
+    "expected_keywords": ["FEAT-472", "three-tier", "lifecycle", "Incubation", "Evaluation", "Solidification", "candidate routes", "route incubation", "sandbox"],
+    "ground_truth_summary": "FEAT-472 defines a three-tier route incubation lifecycle for mouse-owned candidate routes: (1) Incubation - new candidate routes enter a sandboxed evaluation tier where they are tested in isolation without affecting production traffic; (2) Evaluation - routes that pass incubation criteria are promoted to live evaluation where they receive real queries and their performance metrics (latency, accuracy, collection coverage) are tracked; (3) Solidification - routes that meet quality thresholds in evaluation are promoted to production-grade, receiving full integration with the LabDNARouter and TraversalDispatcher. Each tier has explicit promotion criteria and failure rollback paths."
+  },
+  {
+    "id": "VAL-10",
+    "query": "Why does the lab default to Zero Context for conversational/supervisory turns rather than default career history?",
+    "domain": "lab_architecture",
+    "target_collection": "feature_dna",
+    "expected_keywords": ["FEAT-467", "Zero Context", "default", "conversational", "supervisory", "gated", "on-demand RAG", "context", "cost", "latency"],
+    "ground_truth_summary": "FEAT-467 implements gated on-demand RAG by defaulting to Zero Context for conversational and supervisory turns. The rationale: injecting full career history context into every casual or supervisory exchange wastes tokens, increases latency, introduces irrelevant noise that degrades response quality, and incurs unnecessary compute cost. Zero Context means the system responds without retrieval unless the query is classified as TECHNICAL or HISTORICAL by the TriageEngine, at which point the LabDNARouter activates targeted multi-collection retrieval. This gating mechanism ensures retrieval is invoked only when semantically warranted, not as a blanket default."
   }
 ]
