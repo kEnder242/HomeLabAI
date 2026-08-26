@@ -5,13 +5,9 @@ Tests:
     1. TOPIC_FIRST mode - keyword prioritization and collection routing
     2. TIME_FIRST mode - temporal anchor extraction and bounds
     3. STREAM_REPLAY mode - short-term stream targeting
-    4. DREAM_CACHE mode - dream/subconscious targeting
-    5. COMPOSITE_HYDE mode - combined topic + temporal
-    6. TEMPORAL_FILTER mode - pure temporal bounds
-    7. COMPONENT_LOOKUP mode - feature/BKM/GEM ID extraction
-    8. format_traversal_query - main entry point
-    9. resolve_collection_scope - vibe/domain/mode collection routing
-    10. Helper functions - extract_temporal_anchors, extract_component_ids
+    4. format_traversal_query - main entry point
+    5. resolve_collection_scope - vibe/domain/mode collection routing
+    6. Helper functions - extract_temporal_anchors
 """
 
 import sys
@@ -23,10 +19,8 @@ from src.logic.traversal_dispatcher import (
     format_traversal_query,
     resolve_collection_scope,
     extract_temporal_anchors,
-    extract_component_ids,
     get_temporal_bounds,
     is_temporal_query,
-    is_component_query,
 )
 
 
@@ -115,10 +109,10 @@ class TestTimeFirstMode:
         assert result["boost_career_ledger"] is True
 
 
-# ─── STREAM_REPLAY / DREAM_CACHE Mode Tests ─────────────────────────────────
+# ─── STREAM_REPLAY Mode Tests ────────────────────────────────────────────────
 
 class TestStreamReplayMode:
-    """Test STREAM_REPLAY and DREAM_CACHE modes - short-term targeting."""
+    """Test STREAM_REPLAY mode - short-term stream targeting."""
 
     def test_stream_replay_targets_short_term(self):
         """Verify STREAM_REPLAY only targets short_term_stream."""
@@ -138,94 +132,6 @@ class TestStreamReplayMode:
             "recent chat", "STREAM_REPLAY", metadata={"session_limit": 20}
         )
         assert result["session_limit"] == 20
-
-    def test_dream_cache_dream_mode(self):
-        """Verify DREAM_CACHE sets dream_mode flag."""
-        result = format_traversal_query("what did I dream about", "DREAM_CACHE")
-        assert result["mode"] == "DREAM_CACHE"
-        assert result["dream_mode"] is True
-        assert result["exclude_career_notes"] is True
-
-    def test_dream_cache_default_limit(self):
-        """Verify DREAM_CACHE default session_limit is 5."""
-        result = format_traversal_query("dreams", "DREAM_CACHE")
-        assert result["session_limit"] == 5
-
-
-# ─── COMPOSITE_HYDE Mode Tests ──────────────────────────────────────────────
-
-class TestCompositeHydeMode:
-    """Test COMPOSITE_HYDE mode - combined topic + temporal."""
-
-    def test_composite_hyde_merges_collections(self):
-        """Verify COMPOSITE_HYDE includes collections from both TOPIC and TIME."""
-        result = format_traversal_query("silicon work in 2018", "COMPOSITE_HYDE")
-        assert result["mode"] == "COMPOSITE_HYDE"
-        # Should have collections from both modes
-        assert "artifact_vault" in result["collections"]
-        assert "behavioral_dna" in result["collections"]
-        assert "career_ledger" in result["collections"]
-
-    def test_composite_hyde_has_temporal_bounds(self):
-        """Verify COMPOSITE_HYDE extracts temporal bounds from query."""
-        result = format_traversal_query("FEAT-117 in 2024", "COMPOSITE_HYDE")
-        assert result["temporal_bounds"] is not None
-        assert result["temporal_bounds"]["start_year"] == 2024
-
-    def test_composite_hyde_boost_flags(self):
-        """Verify all boost flags are set in COMPOSITE_HYDE."""
-        result = format_traversal_query("silicon validation 2024", "COMPOSITE_HYDE")
-        assert result["boost_artifact_vault"] is True
-        assert result["boost_behavioral_dna"] is True
-        assert result["boost_career_ledger"] is True
-
-
-# ─── TEMPORAL_FILTER Mode Tests ─────────────────────────────────────────────
-
-class TestTemporalFilterMode:
-    """Test TEMPORAL_FILTER mode - pure temporal bounds."""
-
-    def test_temporal_filter_pure_bounds(self):
-        """Verify TEMPORAL_FILTER sets filter_only flag."""
-        result = format_traversal_query("2020-2022", "TEMPORAL_FILTER")
-        assert result["mode"] == "TEMPORAL_FILTER"
-        assert result["filter_only"] is True
-        assert result["temporal_bounds"] is not None
-
-    def test_temporal_filter_no_enriched_terms(self):
-        """Verify TEMPORAL_FILTER returns empty enriched_terms."""
-        result = format_traversal_query("around 2019", "TEMPORAL_FILTER")
-        assert result["enriched_terms"] == []
-
-
-# ─── COMPONENT_LOOKUP Mode Tests ────────────────────────────────────────────
-
-class TestComponentLookupMode:
-    """Test COMPONENT_LOOKUP mode - feature/BKM/GEM ID extraction."""
-
-    def test_component_lookup_feat_id(self):
-        """Verify FEAT IDs are extracted."""
-        result = format_traversal_query("tell me about FEAT-117", "COMPONENT_LOOKUP")
-        assert result["mode"] == "COMPONENT_LOOKUP"
-        assert "FEAT-117" in result["feature_ids"]
-        assert result["has_components"] if "has_components" in result else True
-
-    def test_component_lookup_bkm_id(self):
-        """Verify BKM IDs are extracted."""
-        result = format_traversal_query("BKM-034 protocol", "COMPONENT_LOOKUP")
-        assert "BKM-034" in result["feature_ids"]
-
-    def test_component_lookup_multiple_ids(self):
-        """Verify multiple IDs are extracted from a single query."""
-        result = format_traversal_query(
-            "FEAT-117 and BKM-034 and GEM-999", "COMPONENT_LOOKUP"
-        )
-        assert len(result["feature_ids"]) == 3
-
-    def test_component_lookup_component_types(self):
-        """Verify component types like 'node' and 'engine' are extracted."""
-        result = format_traversal_query("the archive node", "COMPONENT_LOOKUP")
-        assert "node" in result["component_types"]
 
 
 # ─── format_traversal_query Entry Point Tests ───────────────────────────────
@@ -295,11 +201,6 @@ class TestResolveCollectionScope:
     def test_stream_replay_mode_returns_short_term(self):
         """Verify STREAM_REPLAY mode always returns short_term_stream."""
         collections = resolve_collection_scope("TECHNICAL", None, "STREAM_REPLAY")
-        assert collections == ["short_term_stream"]
-
-    def test_dream_cache_mode_returns_short_term(self):
-        """Verify DREAM_CACHE mode always returns short_term_stream."""
-        collections = resolve_collection_scope("HISTORICAL", None, "DREAM_CACHE")
         assert collections == ["short_term_stream"]
 
     def test_historical_vibe_boosts_career_ledger(self):
@@ -376,42 +277,10 @@ class TestExtractTemporalAnchors:
         assert result["sprints"] == []
 
 
-class TestExtractComponentIds:
-    """Test component ID extraction helper."""
-
-    def test_extracts_feat_id(self):
-        """Verify FEAT-NNN extraction."""
-        result = extract_component_ids("FEAT-117 is important")
-        assert "FEAT-117" in result["feature_ids"]
-        assert result["has_components"] is True
-
-    def test_extracts_bkm_id(self):
-        """Verify BKM-NNN extraction."""
-        result = extract_component_ids("follow BKM-034")
-        assert "BKM-034" in result["feature_ids"]
-
-    def test_extracts_gem_id(self):
-        """Verify GEM-NNN extraction."""
-        result = extract_component_ids("GEM-999")
-        assert "GEM-999" in result["feature_ids"]
-
-    def test_extracts_component_types(self):
-        """Verify component type extraction."""
-        result = extract_component_ids("the archive node and triage engine")
-        assert "node" in result["component_types"]
-        assert "engine" in result["component_types"]
-
-    def test_no_components(self):
-        """Verify empty result for query with no components."""
-        result = extract_component_ids("just a normal query")
-        assert result["has_components"] is False
-        assert result["feature_ids"] == []
-
-
 # ─── Convenience Function Tests ─────────────────────────────────────────────
 
 class TestConvenienceFunctions:
-    """Test get_temporal_bounds, is_temporal_query, is_component_query."""
+    """Test get_temporal_bounds, is_temporal_query."""
 
     def test_get_temporal_bounds_with_year(self):
         """Verify get_temporal_bounds returns bounds for year query."""
@@ -434,13 +303,3 @@ class TestConvenienceFunctions:
         """Verify is_temporal_query returns False for non-temporal queries."""
         assert is_temporal_query("silicon validation") is False
         assert is_temporal_query("BKM-034 protocol") is False
-
-    def test_is_component_query_true(self):
-        """Verify is_component_query returns True for component queries."""
-        assert is_component_query("FEAT-117 details") is True
-        assert is_component_query("BKM-034 steps") is True
-
-    def test_is_component_query_false(self):
-        """Verify is_component_query returns False for non-component queries."""
-        assert is_component_query("2018 work") is False
-        assert is_component_query("hello") is False

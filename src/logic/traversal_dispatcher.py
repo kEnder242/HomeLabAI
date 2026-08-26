@@ -6,10 +6,7 @@ retrieval pipeline. Supports bidirectional query synthesis:
 
   - TOPIC_FIRST: Keyword / Silicon Spec → Epochs / Gems / BKMs
   - TIME_FIRST: Time / Era / Year Anchor → Keywords / Narratives
-  - STREAM_REPLAY / DREAM_CACHE: Short-term dream stream (zero career notes)
-  - COMPOSITE_HYDE: Combined topic + temporal dimensions
-  - TEMPORAL_FILTER: Pure temporal bounds filtering
-  - COMPONENT_LOOKUP: Feature / component ID lookup
+  - STREAM_REPLAY: Short-term stream (zero career notes)
 
 BKM-015 Compliant: zero third-party dependencies beyond the Python standard library.
 Class 1 Design: no test-framework imports in production code.
@@ -29,10 +26,6 @@ class TraversalMode(str, Enum):
     TOPIC_FIRST = "TOPIC_FIRST"
     TIME_FIRST = "TIME_FIRST"
     STREAM_REPLAY = "STREAM_REPLAY"
-    DREAM_CACHE = "DREAM_CACHE"
-    COMPOSITE_HYDE = "COMPOSITE_HYDE"
-    TEMPORAL_FILTER = "TEMPORAL_FILTER"
-    COMPONENT_LOOKUP = "COMPONENT_LOOKUP"
 
 
 # ─── Collection Scope Constants ─────────────────────────────────────────────
@@ -42,10 +35,6 @@ _MODE_COLLECTIONS: dict[TraversalMode, list[str]] = {
     TraversalMode.TOPIC_FIRST: ["artifact_vault", "behavioral_dna"],
     TraversalMode.TIME_FIRST: ["career_ledger", "artifact_vault"],
     TraversalMode.STREAM_REPLAY: ["short_term_stream"],
-    TraversalMode.DREAM_CACHE: ["short_term_stream"],
-    TraversalMode.COMPOSITE_HYDE: ["artifact_vault", "behavioral_dna", "career_ledger"],
-    TraversalMode.TEMPORAL_FILTER: ["career_ledger", "artifact_vault"],
-    TraversalMode.COMPONENT_LOOKUP: ["artifact_vault", "behavioral_dna"],
 }
 
 # Keyword families for TOPIC_FIRST synthesis
@@ -62,10 +51,6 @@ _TOPIC_KEYWORD_FAMILIES: dict[str, list[str]] = {
 _YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
 _SPRINT_PATTERN = re.compile(r"(?i)\bsprint\s+(\d+)\b")
 _ERA_PATTERN = re.compile(r"(?i)\b(early|mid|late|recent|current)\s*(career|phase|era|period)\b")
-
-# Component lookup patterns
-_FEATURE_PATTERN = re.compile(r"(?i)\b(FEAT-\d+|BKM-\d+|GEM-\d+|VIBE-\d+)\b")
-_COMPONENT_PATTERN = re.compile(r"(?i)\b(node|module|engine|adapter|hub|router|dispatcher)\b")
 
 
 # ─── Temporal Extraction ────────────────────────────────────────────────────
@@ -102,28 +87,6 @@ def extract_temporal_anchors(query: str) -> dict[str, Any]:
         "has_temporal": bool(years or sprints or eras),
     }
 
-
-def extract_component_ids(query: str) -> dict[str, Any]:
-    """
-    Extract feature/BKM/GEM component IDs from query.
-
-    Args:
-        query: The raw user query string.
-
-    Returns:
-        Dict with keys:
-          - feature_ids: list of str IDs (e.g. ["FEAT-117", "BKM-034"])
-          - component_types: list of str component names (e.g. ["node", "engine"])
-          - has_components: bool indicating any component reference found
-    """
-    feature_ids = _FEATURE_PATTERN.findall(query)
-    component_types = _COMPONENT_PATTERN.findall(query)
-
-    return {
-        "feature_ids": list(set(feature_ids)),
-        "component_types": list(set(component_types)),
-        "has_components": bool(feature_ids or component_types),
-    }
 
 
 # ─── Query Formatting ───────────────────────────────────────────────────────
@@ -245,110 +208,6 @@ def _build_stream_replay_query(query: str, metadata: dict[str, Any] | None = Non
     }
 
 
-def _build_dream_cache_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    Build a DREAM_CACHE traversal query targeting dream/subconscious history.
-
-    Alias for STREAM_REPLAY with dream-specific collection targeting.
-    """
-    meta = metadata or {}
-    session_limit = meta.get("session_limit", 5)
-
-    return {
-        "query_text": query,
-        "enriched_terms": [query],
-        "mode": TraversalMode.DREAM_CACHE.value,
-        "collections": ["short_term_stream"],
-        "temporal_bounds": None,
-        "session_limit": session_limit,
-        "exclude_career_notes": True,
-        "dream_mode": True,
-    }
-
-
-def _build_composite_hyde_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    Build a COMPOSITE_HYDE traversal query combining topic + temporal dimensions.
-
-    Merges TOPIC_FIRST keyword enrichment with TIME_FIRST temporal bounds.
-    """
-    topic_result = _build_topic_first_query(query, metadata)
-    time_result = _build_time_first_query(query, metadata)
-
-    return {
-        "query_text": query,
-        "enriched_terms": topic_result["enriched_terms"] + time_result["enriched_terms"],
-        "mode": TraversalMode.COMPOSITE_HYDE.value,
-        "collections": list(set(
-            topic_result["collections"] + time_result["collections"]
-        )),
-        "temporal_bounds": time_result["temporal_bounds"],
-        "boost_artifact_vault": True,
-        "boost_behavioral_dna": True,
-        "boost_career_ledger": True,
-    }
-
-
-def _build_temporal_filter_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    Build a TEMPORAL_FILTER traversal query for pure temporal bounds filtering.
-    """
-    temporal = extract_temporal_anchors(query)
-    meta = metadata or {}
-
-    temporal_bounds = None
-    if temporal["years"]:
-        temporal_bounds = {
-            "type": "year_range",
-            "start_year": min(temporal["years"]),
-            "end_year": max(temporal["years"]),
-        }
-    elif temporal["sprints"]:
-        temporal_bounds = {
-            "type": "sprint_range",
-            "sprints": temporal["sprints"],
-        }
-    elif temporal["eras"]:
-        temporal_bounds = {
-            "type": "era",
-            "eras": temporal["eras"],
-        }
-
-    if "temporal_bounds" in meta:
-        temporal_bounds = meta["temporal_bounds"]
-
-    return {
-        "query_text": query,
-        "enriched_terms": [],
-        "mode": TraversalMode.TEMPORAL_FILTER.value,
-        "collections": _MODE_COLLECTIONS[TraversalMode.TEMPORAL_FILTER],
-        "temporal_bounds": temporal_bounds,
-        "filter_only": True,
-    }
-
-
-def _build_component_lookup_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    Build a COMPONENT_LOOKUP traversal query for feature/BKM/GEM ID lookup.
-    """
-    components = extract_component_ids(query)
-    meta = metadata or {}
-
-    # Allow metadata to override feature IDs
-    feature_ids = components["feature_ids"]
-    if "feature_ids" in meta:
-        feature_ids = meta["feature_ids"]
-
-    return {
-        "query_text": query,
-        "enriched_terms": feature_ids + components["component_types"],
-        "mode": TraversalMode.COMPONENT_LOOKUP.value,
-        "collections": _MODE_COLLECTIONS[TraversalMode.COMPONENT_LOOKUP],
-        "temporal_bounds": None,
-        "feature_ids": feature_ids,
-        "component_types": components["component_types"],
-    }
-
 
 # ─── Mode Dispatch Table ────────────────────────────────────────────────────
 
@@ -356,10 +215,6 @@ _MODE_BUILDERS: dict[TraversalMode, Any] = {
     TraversalMode.TOPIC_FIRST: _build_topic_first_query,
     TraversalMode.TIME_FIRST: _build_time_first_query,
     TraversalMode.STREAM_REPLAY: _build_stream_replay_query,
-    TraversalMode.DREAM_CACHE: _build_dream_cache_query,
-    TraversalMode.COMPOSITE_HYDE: _build_composite_hyde_query,
-    TraversalMode.TEMPORAL_FILTER: _build_temporal_filter_query,
-    TraversalMode.COMPONENT_LOOKUP: _build_component_lookup_query,
 }
 
 
@@ -458,8 +313,8 @@ def resolve_collection_scope(
     if vibe_lower in ("CASUAL", "SUPERVISORY", "META"):
         return ["short_term_stream"]
 
-    # STREAM_REPLAY and DREAM_CACHE always target short-term only
-    if mode in (TraversalMode.STREAM_REPLAY, TraversalMode.DREAM_CACHE):
+    # STREAM_REPLAY always targets short-term only
+    if mode == TraversalMode.STREAM_REPLAY:
         return ["short_term_stream"]
 
     # HISTORICAL vibe boosts career_ledger
@@ -530,8 +385,3 @@ def get_temporal_bounds(query: str) -> dict[str, Any] | None:
 def is_temporal_query(query: str) -> bool:
     """Check if a query contains temporal anchors (years, sprints, eras)."""
     return extract_temporal_anchors(query)["has_temporal"]
-
-
-def is_component_query(query: str) -> bool:
-    """Check if a query contains component/feature ID references."""
-    return extract_component_ids(query)["has_components"]
