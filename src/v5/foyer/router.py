@@ -141,6 +141,7 @@ class FoyerRouter:
         self.afk_timeout = afk_timeout
         self.disconnect_timer = None
         self.session_token = uuid.uuid4().hex[:8]
+        self.session_horizon_ts = self.boot_timestamp
         self.residents = ResidentManager(self.session_token)
         self.sensory = SensoryManager(self.broadcast)
         self.waterfall_queue = asyncio.Queue()
@@ -888,6 +889,8 @@ class FoyerRouter:
         # [FEAT-426] Expose the session token so the browser client can present it
         # as the WS handshake `lab_key` (browsers cannot set custom WS headers).
         status_dict["session_token"] = self.session_token
+        status_dict["boot_commit"] = getattr(self, "boot_commit", "unknown")
+        status_dict["boot_timestamp"] = getattr(self, "boot_timestamp", 0)
         return web.json_response(status_dict)
 
     async def handle_logs(self, request):
@@ -1114,11 +1117,14 @@ class FoyerRouter:
                                 await ws.close(code=1008, message=b"missing or invalid X-Lab-Key")
                                 break
                             authenticated = True
-                            logger.info(f"[FOYER] WS client authenticated: {socket_id}")
+                            self.session_horizon_ts = int(time.time())
+                            logger.info(f"[FOYER] WS client authenticated: {socket_id} (Token: {self.session_token}, Horizon: {self.session_horizon_ts})")
                         await ws.send_str(json.dumps({
                             "type": "status", 
                             "state": "connected", 
                             "socket_id": socket_id,
+                            "session_token": self.session_token,
+                            "session_horizon_ts": self.session_horizon_ts,
                             "version": LAB_VERSION
                         }))
                     elif not authenticated:

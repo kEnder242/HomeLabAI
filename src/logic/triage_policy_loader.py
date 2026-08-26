@@ -33,6 +33,11 @@ _OPTIONAL_RAG_FIELDS: frozenset[str] = frozenset({
     "max_distance",
 })
 
+_OPTIONAL_VIBE_FIELDS: frozenset[str] = frozenset({
+    "importance",
+    "examples",
+})
+
 
 class TriagePolicyError(Exception):
     """Raised when the policy file is missing, malformed, or schema-invalid."""

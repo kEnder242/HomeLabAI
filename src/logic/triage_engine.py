@@ -279,6 +279,15 @@ def classify_vibe_and_domain(
     if is_meta_lexicon(query):
         return _META_DOMAIN_OVERRIDES["vibe"], _META_DOMAIN_OVERRIDES["domain"]
 
+    # 3. WYWO standup briefing heuristic – detect before greeting since WYWO
+    #    queries may contain words like "what's up" that overlap greetings.
+    if _WYWO_RE.search(query):
+        return "WYWO", "dream_stream"
+
+    # 4. CASUAL greeting heuristic – colloquial pleasantries bypass LLM
+    if _GREETING_RE.search(query):
+        return "CASUAL", "standard"
+
     vibe = str(parsed_json.get("vibe", "CASUAL")).upper()
     domain = str(parsed_json.get("domain", "standard"))
 
@@ -361,6 +370,36 @@ _GREETING_SHORT_CIRCUIT: set[str] = {
     "narf",
     "yo",
 }
+
+# ── Fast-path heuristic patterns ─────────────────────────────────────────
+# CASUAL greeting regex: matches colloquial pleasantries that require no
+# lab context and should bypass the heavy LLM classification prompt.
+_GREETING_RE: re.Pattern[str] = re.compile(
+    r"^(?:"
+    r"how(?:'?re|'?s|\s+(?:are|is))\s+(?:things|you(?:rself)?(?:\s+doing)?|it\s+going|everything|life)\b|"
+    r"what(?:'s|\s+is)\s+up\b|"
+    r"good\s+(?:morning|afternoon|evening)\b|"
+    r"hey|hi|hello|yo|howdy|sup|narf|what'?s\s+new"
+    r")\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+
+# WYWO standup briefing regex: matches queries requesting a summary of
+# lab activity during user absence — 'While You Were Out' protocol.
+_WYWO_RE: re.Pattern[str] = re.compile(
+    r"(?:"
+    r"what\s+(?:did\s+(?:you|the\s+lab)\s+)?(?:do|happen|go\s+on|transpire)\s+"
+    r"(?:while\s+(?:i\s+)?(?:was\s+)?(?:out|away|gone|offline|sleeping|afk)|"
+    r"since\s+(?:i|last))\b|"
+    r"give\s+(?:me\s+)?(?:the\s+)?(?:stand[- ]?up|briefing|summary|update|recap|roundup)"
+    r"(?:\s+(?:briefing|summary|update|recap|roundup))*\b|"
+    r"(?:while\s+you\s+were\s+out|wywo)\s*(?:briefing|summary|update|recap)?\s*[.!?]?\s*$|"
+    r"what\s+did\s+i\s+miss\b|"
+    r"catch\s+me\s+up\b|"
+    r"(?:what|happened)\s+while\s+i\s+was\s+(?:away|out|gone|offline|sleeping)\b"
+    r")\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
 
 
 class TriageEngine:
@@ -500,6 +539,19 @@ class TriageEngine:
         """
         # 1. Clean the incoming turn
         clean_turn = self.registry.sanitize(turn)
+
+        # 1a. Fast-path: greeting heuristic skips the LLM entirely
+        if _GREETING_RE.search(clean_turn):
+            return {
+                "inferred_intent": "greeting",
+                "addressed_to": "PINKY",
+                "vibe": "CASUAL",
+                "domain": "standard",
+                "casual": 0.95,
+                "intrigue": 0.05,
+                "importance": 0.1,
+                "hyde_vector_text": "",
+            }
 
         # 2. Build the mode context + conversation block
         mode_ctx = self._build_triage_mode_context()
