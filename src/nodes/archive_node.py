@@ -998,7 +998,8 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             # Re-perform discovery with broadened window logic
             # This simulates the RAG logic refactor for broader temporal range
             k_results_broad = keyword_search(query, limit=fetch_limit * 2)
-            fused_results = rrf_fuse([vector_results, k_results_broad])
+            if k_results_broad:
+                fused_results = rrf_fuse([vector_results, k_results_broad, fused_results])
             logging.info(f"[ARCHIVE] Re-searched with broad window. New match count: {len(fused_results)}")
 
         if not fused_results and not SESSION_CLIPBOARD:
@@ -1068,6 +1069,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         # Collect candidates with fuzzy Gaussian weight decay
         scored_candidates = []
+        out_of_era_matches = []
         for doc_id, meta in fused_results:
             ts = str(meta.get("timestamp") or meta.get("date") or "")
             source_str = str(meta.get("source", ""))
@@ -1077,7 +1079,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             if target_year:
                 # [FEAT-410] Adaptive Temporal RAG Compass: Extract 4-digit years from timestamp, date AND source filename
                 combined_temporal_str = f"{ts} {source_str}"
-                entry_years = [int(y) for y in re.findall(r"\b(199[0-9]|20[0-2][0-9])\b", combined_temporal_str)]
+                entry_years = [int(y) for y in re.findall(r"(?:^|[^0-9])(199[0-9]|20[0-2][0-9])(?=[^0-9]|$)", combined_temporal_str)]
                 t_year_int = int(target_year)
                 
                 is_match = False
@@ -1087,6 +1089,8 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     is_match = True
                 
                 if not is_match:
+                    if entry_years:
+                        out_of_era_matches.append((entry_years, meta.get("summary") or doc_anchor[:120], source_str))
                     continue  # Skip if year doesn't match and isn't in range
                 
                 # Two-Tier RAG Compass Temporal Scoring
@@ -1252,17 +1256,33 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             logging.error(f"[ARCHIVE] Failed to log RAG event to pager: {pe}")
 
         # Combine Clipboard + New Truths
-        final_text = "\n\n".join(combined_context + ["\n---\n".join(full_truths)])
+        base_parts = [c for c in (combined_context + (["\n---\n".join(full_truths)] if full_truths else [])) if c]
+        final_text = "\n\n".join(base_parts)
         
-        # [FEAT-123] Truth Sentinel sparse data warning
-        if target_year and not full_truths:
-            final_text += (
-                f"\n\n[SYSTEM WARNING]: The historical archives contain NO verified records or accomplishments for the target year {target_year}. "
-                f"Under the Truth Sentinel mandate [FEAT-123], you MUST state that information is sparse or unavailable for this year, "
-                f"and you are forbidden from inventing accomplishments."
-            )
+        # [FEAT-123 / FEAT-485] Temporal Scarcity Diagnostic & Epistemological Envelope
+        if target_year and not candidates:
+            if out_of_era_matches:
+                matched_years = sorted(list(set(y for match in out_of_era_matches for y in match[0])))
+                sample_snips = [f"[{', '.join(str(y) for y in m[0])}]: {m[1][:100]}" for m in out_of_era_matches[:2]]
+                clean_entity = re.sub(r"\b(was|is|really|in|the|during|\d{4})\b", "", query, flags=re.I).strip(" ?.,'\"") or query
+                final_text += (
+                    f"\n\n[ARCHIVAL_EVIDENCE]:\n"
+                    f"- Query Entity: '{clean_entity}'\n"
+                    f"- Target Year Evaluated: {target_year} (0 records found in 18-year archive)\n"
+                    f"- Archival Timeline Distribution: Verified matches exist in years {matched_years} -> {'; '.join(sample_snips)}\n"
+                    f"- Temporal Scarcity Diagnostic: Target entity was active in {matched_years}, but confirmed ABSENT in target year {target_year}."
+                )
+                return json.dumps(
+                    {"found": True, "context": final_text, "reason": f"Temporal scarcity diagnosed: Entity active in {matched_years}, absent in {target_year}.", "sources": source_files}
+                )
+            else:
+                final_text += (
+                    f"\n\n[SYSTEM WARNING]: The historical archives contain NO verified records or accomplishments for the target year {target_year}. "
+                    f"Under the Truth Sentinel mandate [FEAT-123], you MUST state that information is sparse or unavailable for this year, "
+                    f"and you are forbidden from inventing accomplishments."
+                )
         return json.dumps(
-            {"found": True, "context": final_text, "sources": source_files}
+            {"found": True if full_truths or "[ARCHIVAL_EVIDENCE]" in final_text else (bool(combined_context)), "context": final_text, "sources": source_files}
         )
     except Exception as e:
         return json.dumps({"found": False, "context": "", "reason": f"Search Error: {e}", "sources": []})

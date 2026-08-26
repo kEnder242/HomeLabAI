@@ -1,16 +1,9 @@
-"""
-[FEAT-475] Unit Tests for Zero-Context Thresholding & HyDE Force-Flag Removal
-
-Covers:
-    1. Empty HyDE vector handling (select_vector_query, parse_multi_voice_hyde)
-    2. Zero-Context distance gating (filter_candidate_context → get_context envelope)
-    3. Empty collection returning found: False
-    4. Good match returning found: True with context
-    5. Downstream zero-context generation behavior (behavioral_guidance injection)
-    6. Triage schema no longer requires hyde_vector_text
-"""
-
 from __future__ import annotations
+import sys
+from unittest.mock import MagicMock
+for mod in ["chromadb", "aiohttp", "fastmcp", "fastembed", "nodes.loader", "loader"]:
+    if mod not in sys.modules:
+        sys.modules[mod] = MagicMock()
 
 import json
 from unittest.mock import patch, MagicMock, AsyncMock
