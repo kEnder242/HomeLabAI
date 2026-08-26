@@ -32,6 +32,21 @@ except ImportError:
         format_lab_dna_tag
     )
 
+try:
+    from logic.traversal_dispatcher import (
+        format_traversal_query,
+        resolve_collection_scope,
+    )
+except ImportError:
+    try:
+        from traversal_dispatcher import (
+            format_traversal_query,
+            resolve_collection_scope,
+        )
+    except ImportError:
+        format_traversal_query = None  # type: ignore
+        resolve_collection_scope = None  # type: ignore
+
 # --- Configuration ---
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 LAB_DIR = os.path.expanduser("~/Dev_Lab/HomeLabAI")
@@ -792,8 +807,11 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         if SESSION_CLIPBOARD:
             combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
 
-        # [Story-3 / FEAT-469] Multi-Collection Reranker: Dynamically routed collections via lab_dna_router
-        multi_collection_names = get_collection_priorities(vibe, domain)
+        # [Story-3 / FEAT-469 / FEAT-467] Multi-Collection & Traversal Dispatcher
+        if resolve_collection_scope:
+            multi_collection_names = resolve_collection_scope(vibe, domain)
+        else:
+            multi_collection_names = get_collection_priorities(vibe, domain)
 
         async def _query_one_collection(session, name, query_text, limit):
             url = f"http://127.0.0.1:8001/api/v1/collections/{name}/query"
