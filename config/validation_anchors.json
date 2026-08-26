@@ -5,7 +5,7 @@
     "domain": "silicon_validation",
     "target_collection": "artifact_vault",
     "expected_keywords": ["PCIe", "AER", "uncorrectable", "error status", "mask register", "offset", "bit definitions", "UE Status", "UE Mask"],
-    "ground_truth_summary": "PCIe Advanced Error Reporting (AER) defines uncorrectable error status and mask registers at capability offset + 0x04 (Uncorrectable Error Status) and + 0x08 (Uncorrectable Error Mask). Key bits include Data Link Protocol Error (bit 4), Poisoned TLP (bit 12), Flow Control Protocol Error (bit 13), Completion Timeout (bit 14), Unexpected Completion (bit 16), Malformed TLP (bit 18), ECRC Error (bit 19), Atomic Unsupported (bit 21). The mask register blocks errors from being reported to the root complex."
+    "ground_truth_summary": "PCIe Advanced Error Reporting (AER) defines uncorrectable error status and mask registers at capability offset + 0x04 (Uncorrectable Error Status) and + 0x08 (Uncorrectable Error Mask). Key bits include Data Link Protocol Error (bit 4), Poisoned TLP (bit 12), Flow Control Protocol Error (bit 13), Completion Timeout (bit 14), Unexpected Completion (bit 16), Malformed TLP (bit 18), ECRC Error (bit 19), Atomic Unsupported (bit 21). The UE Status register (at +0x04) latches individual error sources, and the UE Mask register (at +0x08) blocks errors from being reported to the root complex."
   },
   {
     "id": "VAL-02",
@@ -21,7 +21,7 @@
     "domain": "silicon_validation",
     "target_collection": "artifact_vault",
     "expected_keywords": ["Oakstream", "simulation", "1-socket", "fmod", "platform configuration", "QEMU", "firmware model", "SiVal"],
-    "ground_truth_summary": "Oakstream 1-socket simulation used a QEMU-based platform configuration with a firmware model (fmod) that emulated a single-socket server platform for pre-silicon validation. The fmod defined the memory map, PCIe topology, and BMC integration points for the Oakstream platform. The 1-socket configuration simplified the NUMA topology to a single domain, enabling focused validation of core silicon features before multi-socket scaling was introduced."
+    "ground_truth_summary": "Oakstream 1-socket simulation used a QEMU-based platform configuration with a firmware model (fmod) that emulated a single-socket server platform for pre-silicon validation. The fmod defined the memory map, PCIe topology, and BMC integration points for the Oakstream platform. The 1-socket configuration simplified the NUMA topology to a single domain, enabling focused SiVal validation of core silicon features before multi-socket scaling was introduced."
   },
   {
     "id": "VAL-04",
@@ -61,7 +61,7 @@
     "domain": "lab_architecture",
     "target_collection": "behavioral_dna",
     "expected_keywords": ["BKM-043", "delegate.py", "4 anchors", "prompt anchors", "delegation", "mandatory", "story", "title", "file", "details"],
-    "ground_truth_summary": "BKM-043 defines 4 mandatory prompt anchors for delegate.py task dispatch: (1) --story <N> (numeric story ID for tracking), (2) --title \"...\" (brief task description), (3) --file \"...\" (target file or workspace path), (4) --details \"...\" (full implementation specification). An optional 5th anchor --verification \"...\" specifies the verification command. The formalized launcher pattern via delegate.py POSTs directly to the REST API on port 4097, bypassing the TUI entirely to prevent the socket-activated TUI hang (StopWhenUnneeded=true on port 4096)."
+    "ground_truth_summary": "BKM-043 defines 4 mandatory prompt anchors for delegate.py task dispatch: (1) --story <N> (numeric story ID for tracking), (2) --title \"...\" (brief task description), (3) --file \"...\" (target file or workspace path), (4) --details \"...\" (full implementation specification). An optional 5th anchor --verification \"...\" specifies the verification command. The formalized launcher pattern via delegate.py POSTs directly to the REST API on port 4097, bypassing the TUI entirely to prevent the socket-activated TUI hang (StopWhenUnneeded=true on port 4096). The delegation anchors ensure every task dispatch carries full context for autonomous execution."
   },
   {
     "id": "VAL-09",
