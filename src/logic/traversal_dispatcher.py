@@ -422,8 +422,8 @@ def format_traversal_query(
 
 def resolve_collection_scope(
     vibe: str,
-    domain: str | None,
-    traversal_mode: str | TraversalMode,
+    domain: str | None = None,
+    traversal_mode: str | TraversalMode = TraversalMode.TOPIC_FIRST,
 ) -> list[str]:
     """
     Resolve the target collection scope based on vibe, domain, and traversal mode.
