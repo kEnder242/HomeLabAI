@@ -35,6 +35,8 @@ _OPTIONAL_RAG_FIELDS: frozenset[str] = frozenset({
 
 _OPTIONAL_VIBE_FIELDS: frozenset[str] = frozenset({
     "importance",
+    "importance_floor",
+    "interest_boost",
     "examples",
 })
 
@@ -178,6 +180,16 @@ class TriagePolicyLoader:
             return None
         return rule.get("rag")
 
+    def get_vibe_springboard(self, vibe: str) -> dict[str, float]:
+        """[FEAT-484] Return declarative importance_floor and interest_boost for the vibe."""
+        rule = self.get_vibe_rule(vibe)
+        if rule is None:
+            return {"importance_floor": 0.0, "interest_boost": 0.0}
+        return {
+            "importance_floor": float(rule.get("importance_floor", 0.0)),
+            "interest_boost": float(rule.get("interest_boost", 0.0)),
+        }
+
     def validate_policy_schema(self, policy: dict[str, Any]) -> list[str]:
         """Validate a policy dict against the expected schema.
 
@@ -213,6 +225,15 @@ class TriagePolicyLoader:
             # enabled must be bool
             if "enabled" in rule and not isinstance(rule["enabled"], bool):
                 errors.append(f"Vibe '{name}' 'enabled' must be boolean")
+
+            # [FEAT-484] Springboard numeric validation
+            for s_field in ("importance_floor", "interest_boost", "importance"):
+                if s_field in rule and rule[s_field] is not None:
+                    val = rule[s_field]
+                    if not isinstance(val, (int, float)):
+                        errors.append(f"Vibe '{name}' '{s_field}' must be numeric")
+                    elif not (0.0 <= float(val) <= 1.0):
+                        errors.append(f"Vibe '{name}' '{s_field}' must be in [0.0, 1.0]")
 
             # RAG validation (optional)
             rag = rule.get("rag")
