@@ -481,6 +481,28 @@
        "source": "CO_PILOT_FOURTH_WALL"
      }
      ```
-   * **Rubric Tuning (Netflix Pattern)**: Automatically append the user's assertion as a ground-truth boolean constraint to the Universal Epistemic Evaluator.
+    * **Rubric Tuning (Netflix Pattern)**: Automatically append the user's assertion as a ground-truth boolean constraint to the Universal Epistemic Evaluator.
 
+---
 
+## BKM-043: Master 4-Anchor Prompt Standard (Surgical Code Anchoring)
+**Date:** August 25, 2026  
+**Objective**: Eliminate subagent design-by-inference, whole-file re-scan thrash, and import/path errors by enforcing 4 mandatory, grep-resilient anchors in every delegation payload.
+
+1. **Anchor 1: Grep-Stable Code Anchor**:
+   * Must specify exact target file, target function/class, and approximate line number with a grep fallback string.
+   * *Formula*: `"In <file>, edit inside def <func>() starting around line <N> (grep: '<unique_signature>' if lines shifted)"`.
+   * *Purpose*: Prevents subagents from whole-file re-reading or getting lost when prior edits shift line numbers.
+
+2. **Anchor 2: Import & Root Namespace Anchor**:
+   * Must specify explicit root namespace convention.
+   * *Formula*: `"PYTHONPATH=src: use 'from logic.x import y'` (never relative `..` or `src.logic.x`)"`.
+   * *Purpose*: Eliminates Python module resolution mismatches across workspaces.
+
+3. **Anchor 3: Path Resilience Anchor**:
+   * Must mandate stdlib `pathlib.Path(__file__).resolve().parent...` fallbacks for all configuration and asset file reads.
+   * *Purpose*: Eliminates `FileNotFoundError` when commands run from different working directories.
+
+4. **Anchor 4: Surgical Delta & Concrete Output Template**:
+   * Must provide concrete dataclass, dictionary schema, and return type examples rather than abstract prose instructions.
+   * *Purpose*: Completely eliminates "design-by-inference" where subagents invent incompatible dictionary keys.
