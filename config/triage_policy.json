@@ -83,6 +83,13 @@
                 "allowed_collections": ["career_ledger", "long_term_wisdom"],
                 "max_distance": 0.80
             }
+        },
+        "ANALYTICAL": {
+            "description": "Comparative, trade-off, architectural analysis with high objectivity.",
+            "enabled": true,
+            "default_domain": "standard",
+            "rag": null,
+            "importance": 0.7
         }
     }
 }
