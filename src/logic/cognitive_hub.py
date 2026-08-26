@@ -1077,11 +1077,13 @@ class CognitiveHub:
             if rag_context:
                 context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
             else:
-                # [FEAT-475] Zero-Context: No RAG context available. Instruct models to
-                # respond from live telemetry or acknowledge unrecorded state rather than
-                # hallucinating historical fallback notes.
+                # [FEAT-475] Zero-Context & Negative Implication Protocol:
+                # In a comprehensive 18-year archive, absence of records for a target year/entity
+                # means it was NOT active in that period. State absence directly instead of asking for clarification.
                 behavioral_guidance += (
                     " ZERO_CONTEXT_PROTOCOL: No relevant historical notes were found for this query. "
+                    "In this 18-year archive, the absence of records for a requested entity or year indicates it was NOT present/active during that timeframe. "
+                    "State definitively that no records exist in the archive rather than passively asking for clarification. "
                     "Do NOT invent or hallucinate legacy records, dates, or accomplishments. "
                     "Respond purely from live telemetry or explicitly acknowledge unrecorded state."
                 )
