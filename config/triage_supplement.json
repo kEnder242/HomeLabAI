@@ -1,5 +1,18 @@
 {
+    "_description": "Dynamic Route Incubation Sandbox \u2013 mouse-defined candidate routes. Routes are prefixed with MOUSE_DEF: and incubated here before promotion to core triage_policy.json.",
     "_schema_version": "1.0.0",
-    "_description": "Dynamic Route Incubation Sandbox – mouse-defined candidate routes. Routes are prefixed with MOUSE_DEF: and incubated here before promotion to core triage_policy.json.",
-    "candidates": {}
+    "candidates": {
+        "MOUSE_DEF:live_thermal_check": {
+            "created_at": 1787706843.6053073,
+            "creator": "Brain",
+            "enabled": true,
+            "feedback_log": [],
+            "hit_count": 0,
+            "intent": "Direct query for GPU thermal and power telemetry",
+            "last_used": 0.0,
+            "success_count": 0,
+            "target_domain": "live_telemetry",
+            "traversal_mode": "TOPIC_FIRST"
+        }
+    }
 }
