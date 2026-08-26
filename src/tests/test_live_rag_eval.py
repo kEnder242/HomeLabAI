@@ -84,27 +84,25 @@ async def test_live_cognitive_rag_anchors():
     with open(CONFIG_PATH, "r") as f:
         anchors = json.load(f)
 
-    # 1. Probe status and fetch session token
+    # 1. Probe status, assert vocality, and fetch session token
     session_token = ""
-    is_ready = False
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{BASE_HTTP_URL}/status", timeout=aiohttp.ClientTimeout(total=3.0)) as resp:
-                if resp.status == 200:
-                    status_data = await resp.json()
-                    session_token = status_data.get("session_token", "")
-                    is_ready = True
+                if resp.status != 200:
+                    pytest.fail(f"Lab Attendant /status returned HTTP {resp.status}")
+                status_data = await resp.json()
+                session_token = status_data.get("session_token", "")
+                if not status_data.get("vocal", False):
+                    pytest.fail(f"Lab is not vocal (state={status_data.get('state')}, vocal={status_data.get('vocal')})")
     except Exception as e:
-        pytest.fail(f"Lab Attendant status endpoint unreachable on {BASE_HTTP_URL}: {e}")
-
-    if not is_ready:
-        pytest.fail("Live Lab Attendant / Intercom server is not running on 8765")
+        pytest.fail(f"Lab Attendant unreachable on {BASE_HTTP_URL}: {e}")
 
     async with aiohttp.ClientSession() as session:
         # 2. Connect to Foyer WebSocket endpoint
         ws_url = f"ws://127.0.0.1:8765/hub"
         try:
-            async with session.ws_connect(ws_url, timeout=aiohttp.ClientTimeout(total=5.0)) as ws:
+            async with session.ws_connect(ws_url, timeout=aiohttp.ClientWSTimeout(ws_close=5.0)) as ws:
                 # 3. Authenticated Handshake (FEAT-426)
                 await ws.send_str(json.dumps({"type": "handshake", "lab_key": session_token}))
                 

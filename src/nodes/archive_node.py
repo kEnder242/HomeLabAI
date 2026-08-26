@@ -1002,9 +1002,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             logging.info(f"[ARCHIVE] Re-searched with broad window. New match count: {len(fused_results)}")
 
         if not fused_results and not SESSION_CLIPBOARD:
-            return json.dumps({"text": "No relevant artifacts found in neural archives.", "sources": []})
+            return json.dumps({"found": False, "context": "", "reason": "No relevant historical notes found.", "sources": []})
         elif not fused_results:
-             return json.dumps({"text": "\n\n".join(combined_context), "sources": []})
+             return json.dumps({"found": False, "context": "\n\n".join(combined_context), "reason": "Clipboard context only; no archive matches.", "sources": []})
 
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
@@ -1262,10 +1262,10 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                 f"and you are forbidden from inventing accomplishments."
             )
         return json.dumps(
-            {"text": final_text, "sources": source_files}
+            {"found": True, "context": final_text, "sources": source_files}
         )
     except Exception as e:
-        return json.dumps({"text": f"Search Error: {e}", "sources": []})
+        return json.dumps({"found": False, "context": "", "reason": f"Search Error: {e}", "sources": []})
 
 
 @mcp.tool()

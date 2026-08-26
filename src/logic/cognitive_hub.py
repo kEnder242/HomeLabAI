@@ -22,6 +22,7 @@ from nodes.pinky_critic_persona import (
     format_chat_delivery,
     format_crosstalk_telemetry
 )
+from logic.speculative_triage import SpeculativeTriageRelay
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -241,7 +242,16 @@ class CognitiveHub:
             "<|THOUGHT|>": {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
         }
 
-        self.auditor = None  # [FEAT-190] The Judge
+        self.auditor = None  # \[FEAT-190\] The Judge
+
+        # \[SPR-64_1\] Speculative Triage Relay initialization
+        # Default t_warm=0.5 -> head_start_window=1.0s
+        self.triage_relay = SpeculativeTriageRelay(
+            broadcast_callback=self.broadcast,
+            kender_fn=self._dispatch_kender_triage,
+            vllm_fn=self._dispatch_vllm_triage,
+            t_warm=0.5
+        )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
         try:
@@ -256,8 +266,28 @@ class CognitiveHub:
             if underlying is not node and hasattr(underlying, '_on_telemetry'):
                 underlying._on_telemetry = self._collect_telemetry
 
+
+    async def _dispatch_kender_triage(self, query, context, triage_schema, request_id):
+        """[SPR-64_1] Dispatch triage to Remote Kender (Deep Thought)."""
+        t_text = ""
+        async for token in self._process_node_stream(
+            "thought", query, context, "Deep Thought (Triage)", tools=[], temperature=0.2, response_format=triage_schema, request_id=request_id
+        ):
+            t_text += token
+        return self.bridge_signal_clean(t_text)
+
+    async def _dispatch_vllm_triage(self, query, context, triage_schema, request_id):
+        """[SPR-64_1] Dispatch triage to Local vLLM (Lab)."""
+        t_text = ""
+        async for token in self._process_node_stream(
+            "lab", query, context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
+        ):
+            t_text += token
+        return self.bridge_signal_clean(t_text)
+
     def get_status(self):
         """Return current system status including boot info."""
+
         return {
             "boot_commit": getattr(self, "boot_commit", "unknown"),
             "boot_timestamp": getattr(self, "boot_timestamp", 0),
@@ -819,167 +849,95 @@ class CognitiveHub:
                 "hyde_vector_text": ""
             }
 
-        # [FEAT-350] Engine Stabilization: Retry loop for small models
-        for triage_attempt in range(3):
-            if t_parsed is not None:
-                break
-            try:
-                # [FEAT-460] Triage reflection attributed directly to Brain (Insight)
-                await self.broadcast({
-                    "type": "crosstalk", 
-                    "brain": f"Pre-Reflection Attempt {triage_attempt+1}...", 
-                    "brain_source": "Brain (Insight)"
-                })
-                
-                # [FEAT-436] Unified Intent-HyDE Guided Decoding Schema & Context
-                triage_schema = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "prereflection_triage_result",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "inferred_intent": {"type": "string"},
-                                "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
-                                "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "DEEP_RESEARCH"]},
-                                "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal"]},
-                                "casual": {"type": "number"},
-                                "intrigue": {"type": "number"},
-                                "importance": {"type": "number"},
-                                "situation": {"type": "string"},
-                                "hints": {"type": "string"},
-                                "hyde_vector_text": {
-                                    "type": "string",
-                                    "description": "3-part multi-voice Composite HyDE Vector Query. For technical, historical, or validation queries, synthesize EXACTLY this format: [VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>. For casual quips or greetings, emit an empty string."
-                                }
-                            },
-                            "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance", "hyde_vector_text"]
+        # [SPR-64_1] Speculative Triage Relay: Kender vs Local vLLM
+        triage_schema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "prereflection_triage_result",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "inferred_intent": {"type": "string"},
+                        "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
+                        "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "DEEP_RESEARCH"]},
+                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal"]},
+                        "casual": {"type": "number"},
+                        "intrigue": {"type": "number"},
+                        "importance": {"type": "number"},
+                        "situation": {"type": "string"},
+                        "hints": {"type": "string"},
+                        "hyde_vector_text": {
+                            "type": "string",
+                            "description": "3-part multi-voice Composite HyDE Vector Query."
                         }
-                    }
+                    },
+                    "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
                 }
+            }
+        }
 
-                # [FEAT-451/452] Brain Persona grounding + 4-Domain HyDE Domain Map Contract
-                triage_mode_context = (
-                    '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
-                    + BRAIN_PERSONA_SPEC + '\n'
-                    "Translate user intent (I think the user is trying to say...).\n"
-                    'HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n'
-                    '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
-                    '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
-                    '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
-                    '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\n'
-                    'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
-                    '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
-                    'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
-                    'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
+        triage_mode_context = (
+            '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
+            + BRAIN_PERSONA_SPEC + '\n'
+            "Translate user intent (I think the user is trying to say...).\n"
+            'HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n'
+            '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
+            '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
+            '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
+            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\n'
+            'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
+            '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
+            'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
+            'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
+        )
+
+        # Execute relay
+        winner = None
+        for attempt in range(3):
+            try:
+                t_parsed, winner = await self.triage_relay.relay(
+                    clean_user_query, triage_mode_context, triage_schema, request_id
                 )
-
-                # [Task 12.2] Brain Early-Reply: Route to Deep Thought for immediate HyDE synthesis
-                # [FEAT-028] Deep Thought gating: HIBERNATING -> zero remote traffic.
-                # Reachability is decided by the ping->API probe, NOT local vocal state.
-                lab_state = ""
-                if self.get_lab_state:
-                    try:
-                        lab_state = self.get_lab_state() or ""
-                    except Exception:
-                        lab_state = ""
-                hibernating = (lab_state == "HIBERNATING")
-
-                if not hibernating and not self.get_vram_status():
-                    # Engine warming (non-hibernating): route to Deep Thought only if reachable
-                    dt_ready = False
-                    if self.is_deep_thought_reachable:
-                        try:
-                            dt_ready = await self.is_deep_thought_reachable()
-                        except Exception as e:
-                            logging.warning(f"[HUB] Deep Thought reachability probe failed: {e}")
-                            dt_ready = False
-                    if dt_ready:
-                        logging.info("[HUB] Engine warming. Synthesizing HyDE via Deep Thought immediately.")
-                        if triage_attempt == 0:
-                            await self.broadcast({
-                                "type": "crosstalk", 
-                                "brain": "Synthesizing Composite HyDE via Deep Thought...", 
-                                "brain_source": "Brain (Insight)",
-                                "version": LAB_VERSION
-                            })
-                            try:
-                                # Pass triage context to Deep Thought so it produces real HyDE vector
-                                async for token in self._process_node_stream(
-                                    "thought", clean_user_query, triage_mode_context, "Deep Thought", tools=[], temperature=0.2, request_id=request_id
-                                ):
-                                    t_text += token
-                            except Exception as e:
-                                logging.warning(f"[HUB] Deep Thought HyDE synthesis failed: {e}")
-                    else:
-                        logging.info("[HUB] Engine warming, Deep Thought unreachable. Falling back to local triage.")
-                    
-                    wait_limit = 6 if triage_attempt == 0 else 2
-                    for _ in range(wait_limit):
-                        if self.get_vram_status():
-                            break
-                        await asyncio.sleep(2.0)
-                else:
-                    if hibernating:
-                        logging.info("[HUB] Lab HIBERNATING. Skipping Deep Thought HyDE (zero remote traffic).")
-                    async for token in self._process_node_stream(
-                        "lab", clean_user_query, triage_mode_context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
-                    ):
-                        t_text += token
-
-                logging.info(f"[HUB] Triage Output: {t_text}")
-
-                t_clean = self.bridge_signal_clean(t_text)
-                if not t_clean:
-                    # [FIX] Do NOT scythe if it's a connection error (vLLM is just slow)
-                    is_connection_error = "vLLM connection failed" in t_text or "Error:" in t_text
-                    
-                    if not is_connection_error:
-                        self.consecutive_parse_failures += 1
-                        if self.consecutive_parse_failures >= 3:
-                            msg = f"[WARNING] Engine instability detected (Gibberish). Attempting to maintain baseline. (Consecutive: {self.consecutive_parse_failures})"
-                            logging.warning(msg)
-                            await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
-
-                        if self.consecutive_parse_failures >= 10:
-                            if self.hibernate_callback:
-                                msg = "[ALARM] Persistent corruption detected. Triggering H2 Engine Scythe for reset."
-                                logging.error(msg)
-                                await self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"})
-                                await self.broadcast({"type": "status", "state": "recovery", "message": "AUTONOMOUS_RECOVERY: Resetting Engine."})
-                                asyncio.create_task(self.hibernate_callback(level=2, recover=True))
-                    else:
-                        logging.warning("[HUB] Triage yielded connection error. Retrying without scythe penalty.")
-
-                    logging.error(f"[HUB] TRIAGE_PARSE_FAILURE: Raw output follows:\n{t_text}")
-                    raise ValueError("TRIAGE_PARSE_FAILURE")
-
-                self.consecutive_parse_failures = 0 # Reset on success
-                self.triage_failures = 0 # [FIX] Reset on successful parse
-                
-                # [FEAT-467/468/469] Post-process triage with meta-lexicon classifier & HyDE template scrubber
-                vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_clean)
-                t_clean["vibe"] = vibe_override
-                t_clean["domain"] = domain_override
-                if "hyde_vector_text" in t_clean:
-                    t_clean["hyde_vector_text"] = scrub_hyde_vector(t_clean["hyde_vector_text"])
-
-                t_parsed = t_clean
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": f"[HUB] Triage successful. Vibe: {t_parsed.get('vibe')}, Domain: {t_parsed.get('domain')}",
-                    "brain_source": "Brain (Insight)",
-                    "version": LAB_VERSION
-                })
-                break
+                if t_parsed:
+                    break
             except Exception as e:
-                logging.warning(f"[HUB] Triage Attempt {triage_attempt+1} failed: {e}")
-                t_text = ""
+                logging.warning(f"[HUB] Triage Attempt {attempt+1} failed: {e}")
                 await asyncio.sleep(2)
 
         if not t_parsed:
             logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
             t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
+            winner = "fallback"
+        
+        # Post-process triage
+        vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_parsed)
+        t_parsed["vibe"] = vibe_override
+        t_parsed["domain"] = domain_override
+        if "hyde_vector_text" in t_parsed:
+            t_parsed["hyde_vector_text"] = scrub_hyde_vector(t_parsed["hyde_vector_text"])
+
+        # [SPR-64_1] Console Routing Metadata
+        routing_meta = self.triage_relay.get_console_metadata(winner)
+        t_parsed["_console_channel"] = routing_meta["channel"]
+        t_parsed["_console_source"] = routing_meta["source"]
+        t_parsed["_console_target"] = routing_meta["console"]
+        
+        await self.broadcast({
+            "type": "crosstalk",
+            "brain": f"[HUB] Triage successful (Winner: {winner}). Vibe: {t_parsed.get('vibe')}, Domain: {t_parsed.get('domain')}",
+            "brain_source": routing_meta["source"],
+            "version": LAB_VERSION
+        })
+        
+        # Emit triage message to the respective console
+        await self.broadcast({
+            "type": "chat",
+            "brain": f"Triage: {t_parsed.get('situation', 'No situation')}",
+            "brain_source": routing_meta["source"],
+            "channel": routing_meta["channel"],
+            "final": True,
+            "version": LAB_VERSION
+        })
 
         # [Triage Intent Gate] Check if triage output requests morning briefing
         hints = str(t_parsed.get("hints", "")).lower()
@@ -1104,6 +1062,15 @@ class CognitiveHub:
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
             if rag_context:
                 context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
+            else:
+                # [FEAT-475] Zero-Context: No RAG context available. Instruct models to
+                # respond from live telemetry or acknowledge unrecorded state rather than
+                # hallucinating historical fallback notes.
+                behavioral_guidance += (
+                    " ZERO_CONTEXT_PROTOCOL: No relevant historical notes were found for this query. "
+                    "Do NOT invent or hallucinate legacy records, dates, or accomplishments. "
+                    "Respond purely from live telemetry or explicitly acknowledge unrecorded state."
+                )
 
         # [FEAT-418] The Symmetrical Interest Cascade (Lead Speaker + Interjection Threshold)
         target_upper = str(target).upper()
@@ -1541,6 +1508,20 @@ class CognitiveHub:
                 if hasattr(res, 'content') and len(res.content) > 0:
                     result_text = res.content[0].text
                     if result_text:
+                        # [FEAT-475] Parse structured zero-context envelope from archive_node.
+                        # New format: {"found": bool, "context": str, "reason": str, "sources": list}
+                        # Legacy format: raw string or {"text": str, "sources": list}
+                        try:
+                            envelope = json.loads(result_text)
+                            if isinstance(envelope, dict) and "context" in envelope:
+                                if not envelope.get("found", True):
+                                    logging.info(f"[HUB] Zero-Context envelope received: {envelope.get('reason', 'unknown')}")
+                                    result_text = ""  # Suppress unfound context
+                                else:
+                                    result_text = envelope["context"]
+                        except (json.JSONDecodeError, TypeError):
+                            pass  # Legacy raw string — use as-is
+                    if result_text:
                         # [FEAT-444] Cap RAG context before it enters any prompt
                         result_text = self._truncate_to_tokens(
                             result_text, doc_id=self._extract_doc_id(result_text)
@@ -1613,6 +1594,9 @@ class CognitiveHub:
             raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
             if rag_context:
                 raw_context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
+            else:
+                # [FEAT-475] Zero-Context: Signal to Brain that no historical archive was retrieved.
+                raw_context += "\n\n[ZERO_CONTEXT]: No relevant historical notes found. Respond from live telemetry only."
         
         distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
 

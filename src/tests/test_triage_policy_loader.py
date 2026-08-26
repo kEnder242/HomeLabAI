@@ -2,12 +2,13 @@
 [FEAT-467] Unit Tests for Declarative Triage Policy Loader
 
 Covers:
-    1. Policy loading – happy path, missing file, invalid JSON, schema errors
-    2. Vibe rule lookup – exact, case-insensitive, missing
-    3. Active vibes – filtering, empty policy
-    4. Schema validation – required fields, RAG validation, edge cases
-    5. Hot reload – mtime detection, missing file, parse failure
-    6. RAG config – present, absent, partial, malformed
+    1. Policy loading - happy path, missing file, invalid JSON, schema errors
+    2. Vibe rule lookup - exact, case-insensitive, missing
+    3. Active vibes - filtering, empty policy
+    4. Schema validation - required fields, RAG validation, edge cases
+    5. Hot reload - mtime detection, missing file, parse failure
+    6. RAG config - present, absent, partial, malformed
+    7. Production config grounding - WYWO definition, CASUAL importance
 """
 
 from __future__ import annotations
@@ -26,17 +27,20 @@ from src.logic.triage_policy_loader import (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 VALID_POLICY: dict[str, Any] = {
     "_schema_version": "1.0.0",
     "vibes": {
         "CASUAL": {
-            "description": "Conversational chat",
+            "description": "Colloquial greetings and pleasantries",
             "enabled": True,
             "default_domain": "standard",
+            "rag": None,
+            "importance": 0.1,
+            "examples": ["how are things?", "hello", "good morning"],
         },
         "SUPERVISORY": {
             "description": "Supervisory feedback loop",
@@ -44,7 +48,7 @@ VALID_POLICY: dict[str, Any] = {
             "default_domain": "standard",
         },
         "WYWO": {
-            "description": "Dream stream recall",
+            "description": "'While You Were Out' Standup Briefing",
             "enabled": True,
             "default_domain": "dream_stream",
             "rag": {
@@ -123,9 +127,9 @@ def loader(tmp_policy_file: Path) -> TriagePolicyLoader:
     return ld
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 1. Policy Loading
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestLoadPolicy:
@@ -191,9 +195,9 @@ class TestLoadPolicy:
         assert ld._policy is original
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 2. Vibe Rule Lookup
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestGetVibeRule:
@@ -225,9 +229,9 @@ class TestGetVibeRule:
         assert ld.get_vibe_rule("CASUAL") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 3. Active Vibes
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestGetActiveVibes:
@@ -271,9 +275,9 @@ class TestGetActiveVibes:
         assert ld.get_active_vibes() == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 4. Schema Validation
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestValidatePolicySchema:
@@ -433,9 +437,9 @@ class TestValidatePolicySchema:
         assert len(errors) >= 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 5. Hot Reload
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestHotReload:
@@ -507,9 +511,9 @@ class TestHotReload:
         assert ld._policy is original
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 6. RAG Configuration
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestGetRagConfig:
@@ -560,9 +564,9 @@ class TestGetRagConfig:
         assert "artifact_vault" in rag["allowed_collections"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 7. Integration with Production Config
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+# 7. Production Config Grounding
+# ===========================================================================
 
 
 class TestProductionConfig:
@@ -600,3 +604,114 @@ class TestProductionConfig:
             rag = self._prod_loader.get_rag_config(vibe)
             if rag and "traversal" in rag:
                 assert rag["traversal"] in {"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"}
+
+    def test_production_wywo_is_standup_briefing(self) -> None:
+        """WYWO description is grounded as 'While You Were Out' Standup Briefing."""
+        rule = self._prod_loader.get_vibe_rule("WYWO")
+        assert rule is not None
+        desc = rule["description"].lower()
+        assert "while you were out" in desc or "standup" in desc or "briefing" in desc
+
+    def test_production_casual_has_importance(self) -> None:
+        """CASUAL vibe includes importance field for fast-path classification."""
+        rule = self._prod_loader.get_vibe_rule("CASUAL")
+        assert rule is not None
+        assert "importance" in rule
+        assert rule["importance"] == 0.1
+
+    def test_production_casual_has_examples(self) -> None:
+        """CASUAL vibe includes examples of genuine greeting queries."""
+        rule = self._prod_loader.get_vibe_rule("CASUAL")
+        assert rule is not None
+        assert "examples" in rule
+        examples = rule["examples"]
+        assert isinstance(examples, list)
+        assert len(examples) >= 3
+        # Verify at least one genuine greeting example
+        examples_lower = [e.lower() for e in examples]
+        assert any("how are" in e for e in examples_lower), "CASUAL examples should include greeting patterns"
+
+    def test_production_technical_silicon_grounding(self) -> None:
+        """TECHNICAL description mentions silicon telemetry domain."""
+        rule = self._prod_loader.get_vibe_rule("TECHNICAL")
+        assert rule is not None
+        desc = rule["description"].lower()
+        assert "silicon" in desc or "telemetry" in desc or "pcie" in desc
+
+    def test_production_forensic_log_grounding(self) -> None:
+        """FORENSIC description mentions log analysis domain."""
+        rule = self._prod_loader.get_vibe_rule("FORENSIC")
+        assert rule is not None
+        desc = rule["description"].lower()
+        assert "log" in desc or "crash" in desc or "forensic" in desc
+
+    def test_production_operational_sre_grounding(self) -> None:
+        """OPERATIONAL description mentions SRE/BKM domain."""
+        rule = self._prod_loader.get_vibe_rule("OPERATIONAL")
+        assert rule is not None
+        desc = rule["description"].lower()
+        assert "sre" in desc or "bkm" in desc or "diagnostic" in desc or "playbook" in desc
+
+
+# ===========================================================================
+# 8. Optional Fields Acceptance
+# ===========================================================================
+
+
+class TestOptionalFields:
+    """Vibe rules may include optional metadata fields like importance and examples."""
+
+    def test_importance_field_accepted(self, tmp_path: Path) -> None:
+        """Schema validation accepts vibes with importance field."""
+        policy = {
+            "vibes": {
+                "TEST": {
+                    "description": "test vibe",
+                    "enabled": True,
+                    "default_domain": "std",
+                    "importance": 0.5,
+                }
+            }
+        }
+        f = tmp_path / "p.json"
+        f.write_text(json.dumps(policy), encoding="utf-8")
+        ld = TriagePolicyLoader(policy_path=f)
+        errors = ld.validate_policy_schema(policy)
+        assert errors == []
+
+    def test_examples_field_accepted(self, tmp_path: Path) -> None:
+        """Schema validation accepts vibes with examples field."""
+        policy = {
+            "vibes": {
+                "TEST": {
+                    "description": "test vibe",
+                    "enabled": True,
+                    "default_domain": "std",
+                    "examples": ["query one", "query two"],
+                }
+            }
+        }
+        f = tmp_path / "p.json"
+        f.write_text(json.dumps(policy), encoding="utf-8")
+        ld = TriagePolicyLoader(policy_path=f)
+        errors = ld.validate_policy_schema(policy)
+        assert errors == []
+
+    def test_both_optional_fields_together(self, tmp_path: Path) -> None:
+        """Schema validation accepts vibes with both importance and examples."""
+        policy = {
+            "vibes": {
+                "TEST": {
+                    "description": "test vibe",
+                    "enabled": True,
+                    "default_domain": "std",
+                    "importance": 0.1,
+                    "examples": ["how are things?", "hello"],
+                }
+            }
+        }
+        f = tmp_path / "p.json"
+        f.write_text(json.dumps(policy), encoding="utf-8")
+        ld = TriagePolicyLoader(policy_path=f)
+        errors = ld.validate_policy_schema(policy)
+        assert errors == []

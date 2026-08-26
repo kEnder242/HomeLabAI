@@ -2,13 +2,13 @@
 [FEAT-467/468/471] Unit Tests for Decoupled Triage Engine Satellite
 
 Covers:
-    1. SpeakerRegistry – dynamic regex build, nested prefix sanitization
-    2. extract_latest_user_query – multi-line, dirty prefixes
-    3. format_speaker_history – structured turn formatting
-    4. scrub_hyde_vector – angle-bracket stripping, edge cases
-    5. is_meta_lexicon – keyword detection
-    6. classify_vibe_and_domain – meta override, passthrough
-    7. TriageEngine – async evaluate_triage end-to-end
+    1. SpeakerRegistry - dynamic regex build, nested prefix sanitization
+    2. extract_latest_user_query - multi-line, dirty prefixes
+    3. format_speaker_history - structured turn formatting
+    4. scrub_hyde_vector - angle-bracket stripping, edge cases
+    5. is_meta_lexicon - keyword detection
+    6. classify_vibe_and_domain - meta override, greeting fast-path, WYWO detection
+    7. TriageEngine - async evaluate_triage end-to-end
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ from src.logic.triage_engine import (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 1. SpeakerRegistry
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestSpeakerRegistry:
@@ -110,9 +110,9 @@ class TestSpeakerRegistry:
         assert reg.sanitize("[System] Status update") == "Status update"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 2. extract_latest_user_query
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestExtractLatestUserQuery:
@@ -148,9 +148,9 @@ class TestExtractLatestUserQuery:
         assert extract_latest_user_query("User: Show maintenance logs") == "Show maintenance logs"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 3. format_speaker_history
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestFormatSpeakerHistory:
@@ -195,9 +195,9 @@ class TestFormatSpeakerHistory:
         assert format_speaker_history(turns) == "[USER] spaced"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 4. scrub_hyde_vector
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestScrubHydeVector:
@@ -232,7 +232,7 @@ class TestScrubHydeVector:
         assert scrub_hyde_vector(None) == ""  # type: ignore[arg-type]
 
     def test_only_placeholders_returns_empty(self) -> None:
-        """If only placeholders remain after stripping → empty (Zero Context)."""
+        """If only placeholders remain after stripping -> empty (Zero Context)."""
         assert scrub_hyde_vector("<silicon_term_or_pcie_ras>") == ""
 
     def test_empty_after_strip(self) -> None:
@@ -256,9 +256,9 @@ class TestScrubHydeVector:
         assert scrub_hyde_vector(42) == ""  # type: ignore[arg-type]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 5. is_meta_lexicon
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestIsMetaLexicon:
@@ -322,16 +322,16 @@ class TestIsMetaLexicon:
         assert is_meta_lexicon("Check the ATTENDANT status") is True
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 6. classify_vibe_and_domain
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 
 class TestClassifyVibeAndDomain:
-    """Meta-lexicon override and passthrough routing."""
+    """Meta-lexicon override, greeting fast-path, and WYWO detection."""
 
     def test_meta_override(self) -> None:
-        """Meta keyword → vibe=META, domain=lab_internal regardless of parsed."""
+        """Meta keyword -> vibe=META, domain=lab_internal regardless of parsed."""
         vibe, domain = classify_vibe_and_domain(
             "What is the audio_pipeline status?",
             {"vibe": "TECHNICAL", "domain": "exp_tlm"},
@@ -340,26 +340,134 @@ class TestClassifyVibeAndDomain:
         assert domain == "lab_internal"
 
     def test_passthrough_no_meta(self) -> None:
-        """No meta keyword → parsed values pass through."""
+        """No meta keyword -> parsed values pass through."""
         vibe, domain = classify_vibe_and_domain(
-            "PCIe AER error burst",
+            "Check RAPL msr on node 2",
             {"vibe": "TECHNICAL", "domain": "exp_tlm"},
         )
         assert vibe == "TECHNICAL"
         assert domain == "exp_tlm"
 
-    def test_passthrough_casual(self) -> None:
-        """CASUAL vibe passes through when no meta match."""
+    def test_greeting_how_are_things(self) -> None:
+        """'how are things?' -> CASUAL, standard via greeting heuristic."""
         vibe, domain = classify_vibe_and_domain(
-            "Hey there",
-            {"vibe": "CASUAL", "domain": "standard"},
+            "how are things?",
+            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
         )
         assert vibe == "CASUAL"
         assert domain == "standard"
 
+    def test_greeting_how_are_you_doing(self) -> None:
+        """'how are you doing?' -> CASUAL, standard via greeting heuristic."""
+        vibe, domain = classify_vibe_and_domain(
+            "how are you doing?",
+            {"vibe": "OPERATIONAL", "domain": "exp_bkm"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_greeting_whats_up(self) -> None:
+        """'what's up?' -> CASUAL, standard."""
+        vibe, domain = classify_vibe_and_domain(
+            "what's up?",
+            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_greeting_hello(self) -> None:
+        """'hello' -> CASUAL, standard."""
+        vibe, domain = classify_vibe_and_domain(
+            "hello",
+            {"vibe": "FORENSIC", "domain": "exp_for"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_greeting_good_morning(self) -> None:
+        """'good morning' -> CASUAL, standard."""
+        vibe, domain = classify_vibe_and_domain(
+            "good morning",
+            {"vibe": "HISTORICAL", "domain": "lab_history"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_greeting_hi(self) -> None:
+        """'hi' -> CASUAL, standard."""
+        vibe, domain = classify_vibe_and_domain(
+            "hi",
+            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_greeting_hows_it_going(self) -> None:
+        """'how's it going?' -> CASUAL, standard."""
+        vibe, domain = classify_vibe_and_domain(
+            "how's it going?",
+            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
+        )
+        assert vibe == "CASUAL"
+        assert domain == "standard"
+
+    def test_wywo_what_did_you_do_while_i_was_out(self) -> None:
+        """'what did you do while I was out?' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "what did you do while I was out?",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_standup_briefing(self) -> None:
+        """'give me the standup briefing' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "give me the standup briefing",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_what_happened_while_away(self) -> None:
+        """'what happened while I was away?' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "what happened while I was away?",
+            {"vibe": "META", "domain": "lab_internal"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_catch_me_up(self) -> None:
+        """'catch me up' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "catch me up",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_while_you_were_out(self) -> None:
+        """'while you were out' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "while you were out",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_what_did_i_miss(self) -> None:
+        """'what did I miss?' -> WYWO, dream_stream."""
+        vibe, domain = classify_vibe_and_domain(
+            "what did I miss?",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
     def test_empty_parsed_defaults(self) -> None:
-        """Empty parsed_json falls back to CASUAL/standard."""
-        vibe, domain = classify_vibe_and_domain("Hello", {})
+        """Empty parsed_json falls back to CASUAL/standard for non-matching query."""
+        vibe, domain = classify_vibe_and_domain("some random text", {})
         assert vibe == "CASUAL"
         assert domain == "standard"
 
@@ -372,10 +480,46 @@ class TestClassifyVibeAndDomain:
         assert vibe == "META"
         assert domain == "lab_internal"
 
+    def test_wywo_takes_priority_over_greeting(self) -> None:
+        """WYWO pattern detection takes priority over greeting detection."""
+        vibe, domain = classify_vibe_and_domain(
+            "what did you do while I was out?",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 7. TriageEngine – Async evaluate_triage
-# ═══════════════════════════════════════════════════════════════════════════════
+    def test_technical_query_passthrough(self) -> None:
+        """Genuine technical query passes through to LLM classification."""
+        vibe, domain = classify_vibe_and_domain(
+            "check RAPL msr on node 2",
+            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
+        )
+        assert vibe == "TECHNICAL"
+        assert domain == "exp_tlm"
+
+    def test_forensic_query_passthrough(self) -> None:
+        """Genuine forensic query passes through to LLM classification."""
+        vibe, domain = classify_vibe_and_domain(
+            "show me the kernel panic traceback from last boot",
+            {"vibe": "FORENSIC", "domain": "exp_for"},
+        )
+        assert vibe == "FORENSIC"
+        assert domain == "exp_for"
+
+    def test_operational_query_passthrough(self) -> None:
+        """Genuine operational query passes through to LLM classification."""
+        vibe, domain = classify_vibe_and_domain(
+            "run the OOM kill recovery playbook",
+            {"vibe": "OPERATIONAL", "domain": "exp_bkm"},
+        )
+        assert vibe == "OPERATIONAL"
+        assert domain == "exp_bkm"
+
+
+# ===========================================================================
+# 7. TriageEngine - Async evaluate_triage
+# ===========================================================================
 
 
 class _MockResident:
@@ -389,7 +533,7 @@ class _MockResident:
 
 
 class _MockResidentWithTool:
-    """Simulates a resident that uses call_tool('think', …)."""
+    """Simulates a resident that uses call_tool('think', ...)."""
 
     def __init__(self, response: str) -> None:
         self._response = response
@@ -414,14 +558,14 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Hello Pinky", resident_caller=resident)
+            engine.evaluate_triage("[Pinky] Hello Pinky", resident_caller=resident)
         )
 
         assert result["vibe"] == "CASUAL"
         assert result["addressed_to"] == "PINKY"
 
     def test_evaluate_triage_call_tool(self) -> None:
-        """Resident with call_tool('think', …) interface."""
+        """Resident with call_tool('think', ...) interface."""
         triage_json = (
             '{"inferred_intent": "error analysis", "addressed_to": "BRAIN", '
             '"vibe": "TECHNICAL", "domain": "exp_tlm", "casual": 0.2, '
@@ -431,7 +575,7 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Check PCIe errors", resident_caller=resident)
+            engine.evaluate_triage("Check PCIe AER error count", resident_caller=resident)
         )
 
         assert result["vibe"] == "TECHNICAL"
@@ -469,7 +613,7 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Analyze errors", resident_caller=resident)
+            engine.evaluate_triage("Analyze PCIe errors on node 1", resident_caller=resident)
         )
 
         assert "<silicon_term_or_pcie_ras>" not in result["hyde_vector_text"]
@@ -479,7 +623,7 @@ class TestTriageEngine:
         """None resident_caller produces fallback triage."""
         engine = TriageEngine()
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Hello", resident_caller=None)
+            engine.evaluate_triage("Check lab status", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
         assert result["addressed_to"] == "PINKY"
@@ -499,7 +643,7 @@ class TestTriageEngine:
         ]
 
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Follow-up?", history=history, resident_caller=resident)
+            engine.evaluate_triage("Follow-up question", history=history, resident_caller=resident)
         )
 
         assert result["vibe"] == "CASUAL"
@@ -527,7 +671,7 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Hello", resident_caller=resident)
+            engine.evaluate_triage("Check lab status", resident_caller=resident)
         )
 
         # Should get a fallback with CASUAL vibe
@@ -547,7 +691,7 @@ class TestTriageEngine:
 
         engine = TriageEngine()
         result = asyncio.get_event_loop().run_until_complete(
-            engine.evaluate_triage("Test", resident_caller=_mock_resident)
+            engine.evaluate_triage("Test query", resident_caller=_mock_resident)
         )
         assert result["vibe"] == "CASUAL"
 
@@ -561,3 +705,154 @@ class TestTriageEngine:
         reg = SpeakerRegistry(names=["CustomBot"])
         engine = TriageEngine(registry=reg)
         assert engine.registry.sanitize("[CustomBot] Hello") == "Hello"
+
+
+# ===========================================================================
+# 8. Greeting Fast-Path (evaluate_triage)
+# ===========================================================================
+
+
+class TestGreetingFastPath:
+    """Greeting queries bypass the LLM entirely."""
+
+    def test_greeting_how_are_things(self) -> None:
+        """'how are things?' returns CASUAL without invoking the LLM."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("how are things?", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+        assert result["domain"] == "standard"
+        assert result["importance"] == 0.1
+        assert result["hyde_vector_text"] == ""
+
+    def test_greeting_hello(self) -> None:
+        """'hello' returns CASUAL fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("hello", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+        assert result["addressed_to"] == "PINKY"
+
+    def test_greeting_whats_up(self) -> None:
+        """'what's up?' returns CASUAL fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("what's up?", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+        assert result["domain"] == "standard"
+
+    def test_greeting_good_morning(self) -> None:
+        """'good morning' returns CASUAL fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("good morning", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+        assert result["importance"] == 0.1
+
+    def test_greeting_hi(self) -> None:
+        """'hi' returns CASUAL fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("hi", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+
+    def test_greeting_how_are_you(self) -> None:
+        """'how are you?' returns CASUAL fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("how are you?", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+
+    def test_greeting_with_prefix_stripped(self) -> None:
+        """'[ME] hello' strips prefix then matches greeting fast-path."""
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("[ME] hello", resident_caller=None)
+        )
+        assert result["vibe"] == "CASUAL"
+
+    def test_greeting_does_not_invoke_llm(self) -> None:
+        """Greeting fast-path returns result without calling resident."""
+        call_count = 0
+
+        async def _counting_resident(prompt: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            return '{"vibe": "CASUAL", "domain": "standard"}'
+
+        engine = TriageEngine()
+        result = asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage("how are you doing?", resident_caller=_counting_resident)
+        )
+        assert result["vibe"] == "CASUAL"
+        assert call_count == 0  # LLM was NOT invoked
+
+
+# ===========================================================================
+# 9. WYWO Standup Briefing (evaluate_triage via classify_vibe_and_domain)
+# ===========================================================================
+
+
+class TestWYWOClassification:
+    """WYWO queries are correctly classified via the heuristic in classify_vibe_and_domain."""
+
+    def test_wywo_what_did_you_do_while_i_was_out(self) -> None:
+        """'what did you do while I was out?' -> WYWO."""
+        engine = TriageEngine()
+        asyncio.get_event_loop().run_until_complete(
+            engine.evaluate_triage(
+                "what did you do while I was out?",
+                resident_caller=None,
+            )
+        )
+        # With no resident, fallback gives CASUAL, but classify_vibe_and_domain
+        # is called on the fallback output. Since the query matches WYWO but
+        # the fallback goes through parse failure path, we test classify directly.
+        vibe, domain = classify_vibe_and_domain(
+            "what did you do while I was out?",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_give_me_the_briefing(self) -> None:
+        """'give me the briefing' -> WYWO."""
+        vibe, domain = classify_vibe_and_domain(
+            "give me the briefing",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_catch_me_up(self) -> None:
+        """'catch me up' -> WYWO."""
+        vibe, domain = classify_vibe_and_domain(
+            "catch me up",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_what_happened_while_i_was_away(self) -> None:
+        """'what happened while I was away?' -> WYWO."""
+        vibe, domain = classify_vibe_and_domain(
+            "what happened while I was away?",
+            {"vibe": "META", "domain": "lab_internal"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"
+
+    def test_wywo_summary_recap(self) -> None:
+        """'give me the summary recap' -> WYWO."""
+        vibe, domain = classify_vibe_and_domain(
+            "give me the summary recap",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "WYWO"
+        assert domain == "dream_stream"

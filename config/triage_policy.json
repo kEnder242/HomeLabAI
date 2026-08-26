@@ -3,19 +3,28 @@
     "_description": "Declarative Triage Policy Engine – production vibe-to-domain routing rules. Conversational/supervisory vibes omit RAG fields. Retrieval vibes define target_domain, traversal, allowed_collections, and max_distance.",
     "vibes": {
         "CASUAL": {
-            "description": "Conversational chat – greetings, small talk, off-topic banter.",
+            "description": "Colloquial greetings and pleasantries – 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
             "enabled": true,
             "default_domain": "standard",
-            "rag": null
+            "rag": null,
+            "importance": 0.1,
+            "examples": [
+                "how are things?",
+                "how are you doing?",
+                "what's up?",
+                "hello",
+                "good morning",
+                "hi"
+            ]
         },
         "SUPERVISORY": {
-            "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges.",
+            "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
             "enabled": true,
             "default_domain": "standard",
             "rag": null
         },
         "WYWO": {
-            "description": "Wake You With Oneirics – dream stream recall, subconscious pattern mining.",
+            "description": "'While You Were Out' Standup Briefing – briefing the user on lab activity, engineering events, and subconscious dream synthesis during user absence.",
             "enabled": true,
             "default_domain": "dream_stream",
             "rag": {
@@ -26,13 +35,13 @@
             }
         },
         "META": {
-            "description": "Lab-internal meta queries – infrastructure, resident status, system health.",
+            "description": "Lab-internal meta queries – infrastructure status, resident agent health, system component diagnostics (vllm, attendant, foyer, audio_pipeline).",
             "enabled": true,
             "default_domain": "lab_internal",
             "rag": null
         },
         "OPERATIONAL": {
-            "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis.",
+            "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
             "enabled": true,
             "default_domain": "exp_bkm",
             "rag": {
@@ -43,7 +52,7 @@
             }
         },
         "FORENSIC": {
-            "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems.",
+            "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
             "enabled": true,
             "default_domain": "exp_for",
             "rag": {
@@ -54,7 +63,7 @@
             }
         },
         "TECHNICAL": {
-            "description": "Technical deep-dive – silicon telemetry, PCIe errors, thermal/power analysis.",
+            "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
             "enabled": true,
             "default_domain": "exp_tlm",
             "rag": {
@@ -65,7 +74,7 @@
             }
         },
         "HISTORICAL": {
-            "description": "18-year career archive – timeline queries, era lookups, project retrospectives.",
+            "description": "18-year career archive – timeline queries, era lookups, project retrospectives, historical engineering decisions.",
             "enabled": true,
             "default_domain": "lab_history",
             "rag": {
