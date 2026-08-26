@@ -222,6 +222,21 @@ def is_meta_lexicon(query: str) -> bool:
     return bool(_META_KEYWORDS & tokens)
 
 
+try:
+    from logic.triage_policy_loader import TriagePolicyLoader
+    from logic.route_incubator import RouteIncubator
+except ImportError:
+    try:
+        from triage_policy_loader import TriagePolicyLoader
+        from route_incubator import RouteIncubator
+    except ImportError:
+        TriagePolicyLoader = None  # type: ignore
+        RouteIncubator = None  # type: ignore
+
+_DEFAULT_POLICY_LOADER = TriagePolicyLoader() if TriagePolicyLoader else None
+_DEFAULT_INCUBATOR = RouteIncubator() if RouteIncubator else None
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 6. classify_vibe_and_domain
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -235,27 +250,44 @@ _META_DOMAIN_OVERRIDES: dict[str, str] = {
 def classify_vibe_and_domain(
     query: str,
     parsed_json: dict[str, Any],
+    policy_loader: Any | None = None,
+    incubator: Any | None = None,
 ) -> tuple[str, str]:
-    """Enforce ``vibe="META"`` and ``domain="lab_internal"`` when the lexicon matches.
+    """Enforce vibe and domain mapping against declarative policy and sandbox incubator.
 
-    When :func:`is_meta_lexicon` detects live-lab keywords the system
-    overrides whatever vibe/domain the LLM triage emitted, preventing
-    misrouting of infrastructure queries into career-history or forensic
-    pipelines.
-
-    Parameters
-    ----------
-    query:
-        The raw user query.
-    parsed_json:
-        The LLM-produced triage JSON (must contain ``"vibe"`` and
-        ``"domain"`` keys).
+    Checks:
+      1. Active candidate sandbox routes in RouteIncubator (FEAT-472).
+      2. Hardcoded meta-lexicon detection (is_meta_lexicon).
+      3. Validated declarative policy from TriagePolicyLoader (FEAT-467).
     """
+    inc = incubator or _DEFAULT_INCUBATOR
+    loader = policy_loader or _DEFAULT_POLICY_LOADER
+
+    # 1. Check sandbox candidate routes
+    if inc:
+        try:
+            candidates = inc.get_candidate_routes(active_only=True)
+            q_lower = query.lower()
+            for cand_name, cand_data in candidates.items():
+                clean_name = cand_name.lower().replace("mouse_def:", "")
+                if clean_name in q_lower:
+                    return cand_name, cand_data.get("target_domain", "sandbox")
+        except Exception:
+            pass
+
+    # 2. Check meta lexicon
     if is_meta_lexicon(query):
         return _META_DOMAIN_OVERRIDES["vibe"], _META_DOMAIN_OVERRIDES["domain"]
 
     vibe = str(parsed_json.get("vibe", "CASUAL")).upper()
     domain = str(parsed_json.get("domain", "standard"))
+
+    # 3. Check declarative policy loader
+    if loader:
+        rule = loader.get_vibe_rule(vibe)
+        if rule and domain == "standard" and "target_domain" in rule:
+            domain = rule["target_domain"]
+
     return vibe, domain
 
 

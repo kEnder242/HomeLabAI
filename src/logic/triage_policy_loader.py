@@ -55,11 +55,16 @@ class TriagePolicyLoader:
     _DEFAULT_RELATIVE_PATH: str = "config/triage_policy.json"
 
     def __init__(self, policy_path: str | Path | None = None) -> None:
+        self._explicit_path = policy_path is not None
         if policy_path is not None:
             self._policy_path: Path = Path(policy_path)
         else:
-            # Resolve relative to the caller's working directory
-            self._policy_path = Path(self._DEFAULT_RELATIVE_PATH)
+            rel = Path(self._DEFAULT_RELATIVE_PATH)
+            if not rel.exists():
+                fallback = Path(__file__).resolve().parent.parent.parent / self._DEFAULT_RELATIVE_PATH
+                if fallback.exists():
+                    rel = fallback
+            self._policy_path = rel
 
         self._policy: dict[str, Any] | None = None
         self._last_mtime: float = 0.0
@@ -92,30 +97,23 @@ class TriagePolicyLoader:
         target = Path(path) if path is not None else self._policy_path
 
         if not target.exists():
-            raise TriagePolicyError(
-                f"Policy file not found: {target}"
-            )
+            raise TriagePolicyError(f"Triage policy file not found: {target}")
 
         try:
-            raw = target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise TriagePolicyError(
-                f"Failed to read policy file {target}: {exc}"
-            ) from exc
-
-        try:
-            policy = json.loads(raw)
+            with open(target, "r", encoding="utf-8") as f:
+                raw = json.load(f)
         except json.JSONDecodeError as exc:
-            raise TriagePolicyError(
-                f"Invalid JSON in policy file {target}: {exc}"
-            ) from exc
+            raise TriagePolicyError(f"Invalid JSON in {target}: {exc}") from exc
+        except OSError as exc:
+            raise TriagePolicyError(f"Cannot read {target}: {exc}") from exc
 
-        errors = self.validate_policy_schema(policy)
+        errors = self.validate_policy_schema(raw)
         if errors:
             raise TriagePolicyError(
-                f"Schema validation failed for {target}: {'; '.join(errors)}"
+                f"Schema validation failed for {target}:\n" + "\n".join(f"  - {e}" for e in errors)
             )
 
+        policy = raw
         self._policy = policy
         self._last_mtime = target.stat().st_mtime
         self._last_load_time = time.monotonic()
@@ -125,18 +123,13 @@ class TriagePolicyLoader:
         return policy
 
     def get_vibe_rule(self, vibe: str) -> dict[str, Any] | None:
-        """Retrieve the rule dict for a specific vibe.
+        """Retrieve the rule dict for a specific vibe."""
+        if self._policy is None and not self._explicit_path:
+            try:
+                self.load_policy()
+            except Exception:
+                return None
 
-        Parameters
-        ----------
-        vibe:
-            Case-insensitive vibe name (e.g. ``"FORENSIC"``).
-
-        Returns
-        -------
-        The vibe rule dict, or ``None`` if the vibe is not defined in the
-        policy.
-        """
         if self._policy is None:
             return None
 
@@ -144,13 +137,13 @@ class TriagePolicyLoader:
         return vibes.get(vibe.upper())
 
     def get_active_vibes(self) -> list[str]:
-        """Return sorted list of enabled vibe names.
+        """Return sorted list of enabled vibe names."""
+        if self._policy is None and not self._explicit_path:
+            try:
+                self.load_policy()
+            except Exception:
+                return []
 
-        Returns
-        -------
-        A sorted list of uppercase vibe name strings that have
-        ``"enabled": true`` in the policy.
-        """
         if self._policy is None:
             return []
 
