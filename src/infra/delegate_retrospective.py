@@ -31,9 +31,11 @@ DEFAULT_OUT = os.path.join(DEFAULT_TARGET_DIR, "DELEGATION_RETROSPECTIVE.md")
 DEFAULT_LOOKBEHIND = 5
 
 _LINE_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[STORY (\d+)\] \[([A-Z_]+)\] (.*)$")
-_START_RE = re.compile(r"Initiating delegation for '(?P<title>.+?)' \(file: (?P<file>[^)]+)\)")
+_START_RE = re.compile(
+    r"Initiating delegation (?:\([A-Z]+\) )?(?:for Sprint \d+ )?'(?P<title>.+?)' \((?:reference: [^,]+, )?(?:target|file): (?P<file>[^)]+)\)"
+)
 _SESSION_RE = re.compile(r"Created REST session (\S+)")
-_COMPLETE_RE = re.compile(r"Story \d+ dispatch complete in (?P<dur>[\d.]+)s\. finish=(?P<finish>\S+) tokens=(?P<tokens>.*)$")
+_COMPLETE_RE = re.compile(r"Story \d+ dispatch (?:\([A-Z]+\) )?complete in (?P<dur>[\d.]+)s\. finish=(?P<finish>\S+) tokens=(?P<tokens>.*)$")
 
 
 def _parse_ts(ts_str):
@@ -272,9 +274,18 @@ def _paths_aligned(declared, actual):
     return os.path.basename(d) == os.path.basename(a)
 
 
-def score_path_alignment(story, actual_files):
+def score_path_alignment(story, actual_files, target_dir=DEFAULT_TARGET_DIR):
     """Score declared-vs-actual path coverage; flag THRASH on divergence or sprawl."""
-    declared = [d.lstrip("./") for d in story["declared_files"]]
+    raw_declared = []
+    for d in story["declared_files"]:
+        for item in d.split(","):
+            raw_declared.append(item.strip())
+
+    declared = []
+    for d in raw_declared:
+        clean = os.path.relpath(d, target_dir) if os.path.isabs(d) else d
+        declared.append(clean.lstrip("./"))
+
     actual = [a.lstrip("./") for a in actual_files]
     matched = [d for d in declared if any(_paths_aligned(d, a) for a in actual)]
     coverage = len(matched) / len(declared) if declared else 1.0
@@ -304,6 +315,32 @@ def _md_escape(text):
 
 def _tokens_str(tok):
     return f"in={tok.get('input', 0)} out={tok.get('output', 0)}"
+
+
+def fetch_handover_reflection(session_id):
+    """Fetch handover reflection from the session messages endpoint."""
+    if not session_id or session_id == "-":
+        return None
+    url = f"http://127.0.0.1:4097/session/{session_id}/message"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "delegate-retrospective"})
+        with urllib.request.urlopen(req, timeout=REST_TIMEOUT) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                for msg in reversed(data):
+                    parts = msg.get("parts", [])
+                    for p in parts:
+                        text = p.get("text", "")
+                        match = re.search(
+                            r"(?:\[HANDOVER REFLECTION\]|\*\*Handover Reflection:\*\*|### 🪨 Handover Reflection)\s*(.+)",
+                            text,
+                            re.DOTALL | re.IGNORECASE,
+                        )
+                        if match:
+                            return match.group(1).strip()
+    except Exception:
+        pass
+    return None
 
 
 def synthesize_retrospective(stories, actual_files, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND):
@@ -337,7 +374,20 @@ def synthesize_retrospective(stories, actual_files, target_dir=DEFAULT_TARGET_DI
             f"| {num} | {title} | {target} | {sid} | {tok} | {cost} | {dur} | {retries} | {child_str} | {verdict} |"
         )
 
-    lines += ["", "## Path Divergence Summary", ""]
+    lines += ["", "## 📢 Subagent Handover Reflections & Distilled Prompt Scars", ""]
+    has_reflections = False
+    for num in sorted(stories):
+        st = stories[num]
+        sid = st.get("session_id")
+        reflection = fetch_handover_reflection(sid)
+        if reflection:
+            has_reflections = True
+            lines.append(f"### Story {num}: {st['title'] or f'Story {num}'}")
+            lines.append(f"> {reflection}\n")
+    if not has_reflections:
+        lines.append("No in-flight handover reflections recorded for current session set.\n")
+
+    lines += ["## Path Divergence Summary", ""]
     diverged = [st for st in stories.values() if (st.get("thrash") or {}).get("verdict") == "THRASH"]
     if diverged:
         for st in diverged:
@@ -385,6 +435,40 @@ def atomic_write_text(path, content):
         raise
 
 
+PLAYBOOK_PATH = os.path.join(DEFAULT_TARGET_DIR, "Portfolio_Dev", "OPENAGENT_HANDOVER_PLAYBOOK.md")
+
+
+def update_playbook_ledger(stories, playbook_path=PLAYBOOK_PATH):
+    """Append distilled sprint scars directly to OPENAGENT_HANDOVER_PLAYBOOK.md."""
+    if not os.path.exists(playbook_path):
+        return
+    try:
+        with open(playbook_path, "r") as f:
+            content = f.read()
+
+        new_scars = []
+        for num in sorted(stories):
+            st = stories[num]
+            sid = st.get("session_id")
+            reflection = fetch_handover_reflection(sid)
+            if reflection and len(reflection) > 30 and not reflection.startswith("As an execution peer"):
+                clean_ref = reflection.replace("\n", " ")
+                if clean_ref[:50] not in content:
+                    new_scars.append(f"- **Story {num} Reflection:** {clean_ref}")
+
+        if new_scars and "### 5.3 Retrospective Ledger" in content:
+            scar_block = "\n".join(new_scars) + "\n"
+            updated = content.replace(
+                "### 5.3 Retrospective Ledger\n",
+                f"### 5.3 Retrospective Ledger\n{scar_block}",
+            )
+            with open(playbook_path, "w") as f:
+                f.write(updated)
+            print(f"[RETRO] Appended {len(new_scars)} new scars to {playbook_path}")
+    except Exception as e:
+        print(f"[RETRO] Note: could not update playbook ledger: {e}")
+
+
 def run_retrospective(out_path=DEFAULT_OUT, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND):
     """Full pipeline: parse logs -> fetch REST metrics -> git actuals -> score -> write markdown."""
     stories = parse_all_logs()
@@ -392,9 +476,10 @@ def run_retrospective(out_path=DEFAULT_OUT, target_dir=DEFAULT_TARGET_DIR, lookb
     enrich_with_session_metrics(stories, sessions)
     actual_files = fetch_git_actuals(target_dir, lookbehind)
     for st in stories.values():
-        st["thrash"] = score_path_alignment(st, actual_files)
+        st["thrash"] = score_path_alignment(st, actual_files, target_dir=target_dir)
     md = synthesize_retrospective(stories, actual_files, target_dir, lookbehind)
     atomic_write_text(out_path, md + "\n")
+    update_playbook_ledger(stories)
     print(
         f"[RETRO] Wrote {os.path.abspath(out_path)} "
         f"({len(stories)} stories, {len(sessions)} sessions from REST)"
