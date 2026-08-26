@@ -21,7 +21,8 @@
             "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
             "enabled": true,
             "default_domain": "standard",
-            "rag": null
+            "rag": null,
+            "importance": 0.6
         },
         "WYWO": {
             "description": "'While You Were Out' Standup Briefing – briefing the user on lab activity, engineering events, and subconscious dream synthesis during user absence.",
@@ -32,13 +33,15 @@
                 "traversal": "STREAM_REPLAY",
                 "allowed_collections": ["dream_cache", "stream_log"],
                 "max_distance": 0.85
-            }
+            },
+            "importance": 0.85
         },
         "META": {
             "description": "Lab-internal meta queries – infrastructure status, resident agent health, system component diagnostics (vllm, attendant, foyer, audio_pipeline).",
             "enabled": true,
             "default_domain": "lab_internal",
-            "rag": null
+            "rag": null,
+            "importance": 0.65
         },
         "OPERATIONAL": {
             "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
@@ -49,7 +52,8 @@
                 "traversal": "TOPIC_FIRST",
                 "allowed_collections": ["behavioral_dna", "artifact_vault"],
                 "max_distance": 0.75
-            }
+            },
+            "importance": 0.85
         },
         "FORENSIC": {
             "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
@@ -60,7 +64,8 @@
                 "traversal": "TIME_FIRST",
                 "allowed_collections": ["career_ledger", "artifact_vault"],
                 "max_distance": 0.70
-            }
+            },
+            "importance": 0.95
         },
         "TECHNICAL": {
             "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
@@ -71,7 +76,8 @@
                 "traversal": "TOPIC_FIRST",
                 "allowed_collections": ["behavioral_dna", "artifact_vault", "career_ledger"],
                 "max_distance": 0.70
-            }
+            },
+            "importance": 0.90
         },
         "HISTORICAL": {
             "description": "18-year career archive – timeline queries, era lookups, project retrospectives, historical engineering decisions.",
@@ -82,7 +88,8 @@
                 "traversal": "TIME_FIRST",
                 "allowed_collections": ["career_ledger", "long_term_wisdom"],
                 "max_distance": 0.80
-            }
+            },
+            "importance": 0.90
         },
         "ANALYTICAL": {
             "description": "Comparative, trade-off, architectural analysis with high objectivity.",

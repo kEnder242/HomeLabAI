@@ -6,7 +6,7 @@ class SpeculativeTriageRelay:
     [SPR-64_1] Speculative Triage Relay with Kender Priority Window.
     Races Remote Kender (Ollama) and Local vLLM for the fastest triage JSON.
     """
-    def __init__(self, broadcast_callback, kender_fn, vllm_fn, t_warm=0.5):
+    def __init__(self, broadcast_callback, kender_fn, vllm_fn, t_warm=1.25):
         self.broadcast = broadcast_callback
         self.kender_fn = kender_fn
         self.vllm_fn = vllm_fn
