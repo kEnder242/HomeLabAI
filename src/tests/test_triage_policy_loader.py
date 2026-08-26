@@ -107,6 +107,13 @@ VALID_POLICY: dict[str, Any] = {
                 "max_distance": 0.80,
             },
         },
+        "ANALYTICAL": {
+            "description": "Comparative, trade-off, architectural analysis with high objectivity.",
+            "enabled": True,
+            "default_domain": "standard",
+            "rag": None,
+            "importance": 0.7,
+        },
     },
 }
 
@@ -140,7 +147,7 @@ class TestLoadPolicy:
         ld = TriagePolicyLoader(policy_path=tmp_policy_file)
         policy = ld.load_policy()
         assert "vibes" in policy
-        assert len(policy["vibes"]) == 8
+        assert len(policy["vibes"]) == 9
 
     def test_load_caches_result(self, tmp_policy_file: Path) -> None:
         """Second load returns the same cached dict."""
@@ -238,11 +245,12 @@ class TestGetActiveVibes:
     """Filtering enabled vibes."""
 
     def test_all_enabled(self, loader: TriagePolicyLoader) -> None:
-        """All 8 standard vibes are enabled in the test policy."""
+        """All 9 standard vibes are enabled in the test policy."""
         active = loader.get_active_vibes()
-        assert len(active) == 8
+        assert len(active) == 9
         assert "CASUAL" in active
         assert "HISTORICAL" in active
+        assert "ANALYTICAL" in active
 
     def test_sorted_output(self, loader: TriagePolicyLoader) -> None:
         """Active vibes are returned in sorted order."""
@@ -259,7 +267,7 @@ class TestGetActiveVibes:
         ld = TriagePolicyLoader(policy_path=f)
         ld.load_policy()
         assert "CASUAL" not in ld.get_active_vibes()
-        assert len(ld.get_active_vibes()) == 7
+        assert len(ld.get_active_vibes()) == 8
 
     def test_empty_vibes_returns_empty(self, tmp_path: Path) -> None:
         """An empty vibes dict returns empty list."""
@@ -581,10 +589,10 @@ class TestProductionConfig:
         self._prod_loader = TriagePolicyLoader(policy_path=prod_path)
         self._prod_loader.load_policy()
 
-    def test_production_has_all_eight_vibes(self) -> None:
-        """Production config defines all 8 standard vibes."""
+    def test_production_has_all_nine_vibes(self) -> None:
+        """Production config defines all 9 standard vibes."""
         active = self._prod_loader.get_active_vibes()
-        expected = {"CASUAL", "SUPERVISORY", "WYWO", "META", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL"}
+        expected = {"CASUAL", "SUPERVISORY", "WYWO", "META", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL", "ANALYTICAL"}
         assert set(active) == expected
 
     def test_production_conversational_no_rag(self) -> None:
