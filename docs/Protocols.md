@@ -534,3 +534,37 @@
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
+## BKM-045: Removable USB FOB Kernel BDI Isolation & Unmounted-at-Rest Protocol
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                   BKM-045: REMOVABLE USB FOB HARDENING STANDARD                          │
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│  ❌ FORBIDDEN: Auto-mounting offline hardware recovery USBs (e.g. ASUS BIOS Flashback)    │
+│                in Linux runtime userspace (/etc/fstab with 'auto' or desktop udisks2).   │
+│                                                                                          │
+│  ✅ MANDATORY FOUR-LAYER DEFENSE:                                                        │
+│                                                                                          │
+│    1. Unmounted-at-Rest (/etc/fstab):                                                    │
+│       LABEL=Z87P_FLBK /media/jallred/Z87P_FLBK1 vfat noauto,user,rw,noatime,umask=000   │
+│       (Drive physically remains plugged in rear BIOS Flashback port, unmounted in OS).   │
+│                                                                                          │
+│    2. Desktop Auto-Mount Suppression (/etc/udev/rules.d/99-bios-flashback-ignore.rules): │
+│       ENV{ID_FS_LABEL}=="Z87P_FLBK", ENV{UDISKS_IGNORE}="1"                             │
+│       ENV{ID_FS_UUID}=="2FDD-8136", ENV{UDISKS_IGNORE}="1"                              │
+│                                                                                          │
+│    3. Kernel BDI Writeback Throttling (/etc/udev/rules.d/90-usb-bdi-throttle.rules):     │
+│       SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ENV{ID_BUS}=="usb",                      │
+│       ATTR{bdi/strict_limit}="1", ATTR{bdi/max_ratio}="1"                                │
+│       (Caps USB dirty RAM cache to 1%, preventing global sync() stalls in D-State).      │
+│                                                                                          │
+│    4. Locate Search Exclusion (/etc/updatedb.conf):                                      │
+│       PRUNEPATHS contains /media/jallred/Z87P_FLBK1 to prevent background indexer locks. │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+
