@@ -24,6 +24,7 @@ try:
 except ImportError:
     print("Unsloth not installed. Skipping actual import.")
     FastLanguageModel = None
+    TrainerCallback = object
 
 import datetime
 import json
@@ -147,7 +148,7 @@ def record_forge_telemetry(output_dir: str, steps: int, runtime_s: float, pacing
             print(f"⚠️ [LEDGER] Warning updating validation_ledger.jsonl: {e}", flush=True)
 
 
-def train_expert(dataset_path: str, output_dir: str, steps: int = 60, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit", pacing_delay: float = 5.0):
+def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit", pacing_delay: float = 5.0):
     """
     [FEAT-160] Pedigree Refinement Pipeline & [FORGE-02]
     Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
@@ -271,14 +272,14 @@ if __name__ == "__main__":
     parser.add_argument("pos_model", nargs="?", default=None, help="Base model (positional)")
     parser.add_argument("--dataset", default=None, help="Dataset JSONL path")
     parser.add_argument("--output", default=None, help="Output LoRA dir")
-    parser.add_argument("--steps", type=int, default=60, help="Training steps")
+    parser.add_argument("--steps", type=int, default=100, help="Training steps")
     parser.add_argument("--model", default=None, help="Base model")
     parser.add_argument("--pacing-delay", type=float, default=5.0, help="Hardware settling delay in seconds between steps (default: 5.0s)")
     args = parser.parse_args()
 
     dataset_in = args.dataset or args.pos_dataset
     output_out = args.output or args.pos_output
-    steps_in = args.steps or (args.pos_steps if args.pos_steps is not None else 60)
+    steps_in = args.steps or (args.pos_steps if args.pos_steps is not None else 100)
     model_in = args.model or args.pos_model
     pacing_delay_in = args.pacing_delay
 
