@@ -331,6 +331,13 @@
    * For related stories within the same sprint phase (e.g., Phase 1: Stories 65.1 & 65.2), orchestrators should reuse persistent session IDs (`--session-id sprint-65`) to preserve warmed repo file trees, terminal test execution history, and recent diffs in OpenCode's working context.
    * **Circuit Breaker**: If a session exceeds 30+ tool calls or shows signs of hallucination/looping, the orchestrator terminates the session and creates a fresh session ID (`--session-id sprint-65-phase2`).
 
+6. **The Mandatory Post-Delegation Intent & Omissions Audit**:
+   * Before staging and committing any delegated story, the Strategic Orchestrator MUST conduct an explicit **Intent & Omissions Audit** beyond the literal `git diff`:
+     1. **Contract Completeness**: Were all functional requirements in `--details` implemented, or did the subagent silently skip a secondary sub-clause?
+     2. **Dead-Code & Inert Artifacts**: Did the code change leave inert variables or orphaned functions? Are they safely documented per minimal-edit discipline?
+     3. **Boundary Integrity**: Did the subagent create or modify any files outside the assigned `--target` list?
+     4. **Test Realism & Coverage**: Do the new tests genuinely assert the behavioral contract rather than mocking out the core logic?
+
 > [!NOTE]
 > For internal swarm topology, model tool-calling constraints (KENDER/Qwen3), OmO `task()` mechanics, and socket proxy architecture, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
 
