@@ -652,6 +652,16 @@ class FoyerRouter:
         """REST endpoint for remote control UI."""
         path = request.path.replace('/attendant/', '/')
         action = path.lstrip('/')
+        
+        # [MAINTENANCE LOCK] Block wake if maintenance lock is active
+        lock_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/run/maintenance.lock")
+        if action.lower() == "wake" and os.path.exists(lock_path):
+            logger.warning("[FOYER] [MAINTENANCE] Ignition blocked by active maintenance lockfile.")
+            return web.json_response({
+                "status": "LOCKED",
+                "message": "Maintenance lock active (Nightly training / maintenance in progress). Ignition blocked."
+            }, status=423)
+
         await self.enqueue_intent(f"[OPERATIONAL] {action.upper()}", source="REMOTE")
         return web.json_response({"status": "success", "message": f"{action.capitalize()} signal enqueued."})
 
