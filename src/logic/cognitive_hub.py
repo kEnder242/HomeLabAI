@@ -1139,10 +1139,12 @@ class CognitiveHub:
             "version": LAB_VERSION
         })
         
-        # Emit triage message to the respective console
+        # Emit raw pretty-printed triage JSON to the winning console (Option C)
+        public_triage = {k: v for k, v in t_parsed.items() if not str(k).startswith("_")}
+        triage_json_str = json.dumps(public_triage, indent=2)
         await self.broadcast({
             "type": "chat",
-            "brain": f"Triage: {t_parsed.get('situation', 'No situation')}",
+            "brain": triage_json_str,
             "brain_source": routing_meta["source"],
             "channel": routing_meta["channel"],
             "final": True,
