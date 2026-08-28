@@ -142,8 +142,26 @@ def wake_web_ui():
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
 
+def _extract_sprint_summary(sprint_doc_path: str) -> str:
+    """[BKM-034 Tier 1] Extract the Executive Summary & Architectural Contract from a sprint plan."""
+    if not sprint_doc_path or not os.path.exists(sprint_doc_path):
+        return ""
+    try:
+        with open(sprint_doc_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        match = re.search(r"## 🧭 Executive Summary & Architectural Contract(.*?)(?=## 📋 Granular Story Breakdown|\Z)", content, re.DOTALL)
+        if match:
+            summary = match.group(1).strip()
+            if len(summary) > 2500:
+                summary = summary[:2500] + "\n...(truncated for prompt efficiency, see full doc on disk)"
+            return summary
+    except Exception:
+        pass
+    return ""
+
+
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -243,12 +261,26 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
-TOOL GUIDANCE: Always prefer the MCP safe_patch tool for regex-tolerant, lint-verified surgical code edits instead of brittle exact-string edits. If safe_patch is unavailable, use targeted bash scripts."""
+TOOL GUIDANCE: Always call the clara-dna_safe_patch MCP tool for surgical code edits. For researching DNA specifications (FEAT, LAB, BKM, GEM, SCAR), query clara-dna_query_dna or bash `icm recall`. If safe_patch fails, report the failure immediately."""
         _edit_scope = target_files if target_files else reference_file
-        note_block = f"[NOTE] Apply code modifications to {_edit_scope} only. Silicon validation and testing will be performed post-dispatch by the orchestrator."
+        note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}. Silicon validation and testing will be performed post-dispatch by the orchestrator."
+
+    # [BKM-034 Two-Tier Payload Construction]
+    effective_sprint_doc = sprint_doc or (reference_file if reference_file and "SPRINT_PLAN" in reference_file else None)
+    sprint_summary = _extract_sprint_summary(effective_sprint_doc)
+    tier1_block = ""
+    if sprint_summary:
+        tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
+Sprint Reference: {effective_sprint_doc}
+{sprint_summary}
+
+(Directive: Read the full sprint plan on disk at '{effective_sprint_doc}' for deep context if needed, but restrict file edits strictly to your assigned target files.)
+
+---
+"""
 
     _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
-    prompt = f"""[CONTEXT & TARGET SPECIFICATION]
+    prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
 - Sprint Plan Reference: {reference_file}
 - Story: {story_num} ({title})
 {_target_files_line}
@@ -256,7 +288,7 @@ TOOL GUIDANCE: Always prefer the MCP safe_patch tool for regex-tolerant, lint-ve
 
 {mandate_block}
 
-[FUNCTIONAL REQUIREMENTS]
+[FUNCTIONAL REQUIREMENTS & 4-ANCHOR SPECIFICATION]
 {details}
 
 [HANDOVER REFLECTION]
@@ -382,6 +414,7 @@ if __name__ == "__main__":
     parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
     parser.add_argument("--title", required=not _retro_mode, help="Story title")
     parser.add_argument("--reference", required=not _retro_mode, help="Sprint plan / context reference document (read-only context for Atlas)")
+    parser.add_argument("--sprint-doc", default=None, help="Path to Master Sprint Plan (e.g. Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md) to automatically inject Tier-1 Executive Summary")
     parser.add_argument("--target", default=None, help="Actual file(s) Atlas is permitted to edit (omit to default to --reference). Separate multiple paths with commas.")
     parser.add_argument("--details", required=not _retro_mode, help="Detailed requirements")
     parser.add_argument("--mode", choices=["execute", "plan", "investigate"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), or investigate (read-only diagnostic)")
@@ -389,7 +422,7 @@ if __name__ == "__main__":
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
     parser.add_argument("--agent", default="sisyphus", help="Target agent persona override for testing (default: sisyphus)")
-    parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations")
+    parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
     args = parser.parse_args()
 
     if args.retrospective:
@@ -399,6 +432,9 @@ if __name__ == "__main__":
         from infra.delegate_retrospective import run_retrospective
         run_retrospective()
         sys.exit(0)
+
+    # [BKM-034 Session Defaulting]
+    effective_session_id = args.session_id or f"sprint-{args.sprint}"
 
     delegate(
         args.story,
@@ -412,5 +448,6 @@ if __name__ == "__main__":
         max_retries=args.retries,
         mode=args.mode,
         target_files=args.target,
-        session_id=args.session_id,
+        session_id=effective_session_id,
+        sprint_doc=args.sprint_doc,
     )

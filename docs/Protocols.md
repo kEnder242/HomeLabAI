@@ -182,12 +182,19 @@
 2.  **Mandatory Service Reload**: If any file in `src/logic/`, `src/nodes/`, or `src/forge/` was edited during the session, the Agent MUST execute `sudo systemctl restart lab-attendant.service` to flush cached Python processes before executing tests.
 3.  **State Trust**: Do not assume background processes persisted cleanly across git commits or code refactors. Re-verify liveness and run live integration tests after every service restart.
 
-## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
+### BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
 1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification). Include verbatim snippets/reports from discussions to anchor the task.
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
 3.  **Absolute Append**: Do NOT re-write, overwrite, or summarize existing phases of an active sprint plan to 'save space.' New requirements or findings MUST be appended as new phases at the end of the document.
 4.  **No Summarization**: Do not slim down technical requirements for brevity. Detail is the only protection against agentic regression. Detail-rich reporting is the standard for intent preservation.
+5.  **The Pre-Lock Forensic Gap Audit (Doc vs. Discussion Review)**:
+    Before requesting user Greenlight or finalizing any Sprint Plan, the orchestrator MUST perform a forensic comparison between the conversational design session and the draft markdown document across 5 mandatory verification gates:
+    * 🔍 **Localized Root Causes**: Does every individual story contain a "Why It Broke & Root Cause" callout box? (Subagents dispatched via `delegate.py` see only their story in isolation; root cause context prevents blind patching).
+    * 📌 **Buried Code Pointers**: Are exact filenames and line numbers cited for existing/reusable utilities (e.g., test probes, socket checkers, helper classes) to prevent reinventing the wheel?
+    * 🧪 **Literal Test Batteries**: Are concrete test input strings, phrases, and assertions printed verbatim in the story specification (never summarized as "test edge cases")?
+    * 🏛️ **Persona & Prompt Pillars**: Are shared bedrock environment prompts, interest levels, and turn-stage tags explicitly anchored in the prompt requirements?
+    * 📡 **Telemetry & Routing Contracts**: Are exact WebSocket packet types, channel names, and UI console targets defined?
 
 ## BKM-022: The Atomic File Swap Protocol (Filesystem Safety)
 **Objective**: Ensure filesystem atomicity for all file updates and prevent race conditions.
@@ -306,12 +313,11 @@
      python3 src/tests/delegate.py --sprint <S> --story <N> --title "<Title>" --reference "<plan_path>" --target "<file_paths>" --details "<spec>" --dir "<workspace_dir>" --mode execute
      ```
 
-2. **The 4-Anchor Prompt Standard ([BKM-043])**:
-   Every delegation prompt passed in `--details` MUST explicitly specify:
-   * **Grep-Stable Code Anchor**: Exact target file, target function/class, and approximate line number with a grep fallback string (e.g. `"In field_notes/evaluate_rag.py, edit inside def main() starting around line 260; grep 'async def main' if lines shifted"`).
-   * **Import Anchor**: Root namespace convention (`"PYTHONPATH=src: use 'from logic.x import y'"`).
-   * **Path Anchor**: Directory resilience (`"Use Path(__file__).resolve().parent... fallback for configs"`).
-   * **Surgical Delta & Output Template**: Exact signatures and concrete return dict/dataclass examples to eliminate design-by-inference.
+2. **The Two-Tier Payload Standard ([BKM-043])**:
+   Every delegation prompt dispatched to OpenAgent MUST be structured in two tiers to provide maximum architectural coherence with zero prompt wandering:
+   * **Tier 1 (Global Situational Awareness)**: The overarching Sprint Theme, Executive Summary, and Story Matrix (~20–30 lines). Tells the agent where its piece fits in the machine.
+   * **Tier 2 (Bounded Story Contract)**: The 4-Anchor Prompt Standard (`Grep-Stable Code Anchor`, `Import Anchor`, `Path Anchor`, `Surgical Delta & Concrete Test Assertions`). Strictly binds the agent's write tools to assigned target files.
+   * **Sprint Doc Pointer**: Pointers to the active sprint plan on disk (e.g. `Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md`) for deep context lookups without copy-paste truncation.
 
 3. **Git Forensic Ownership Gate**:
    * Subagent workers edit files and run local test suites, but are **strictly prohibited from executing `git commit`**.
@@ -320,6 +326,10 @@
 4. **In-Flight Handover Reflection & ICM Auto-Capture**:
    * `delegate.py` automatically extracts the subagent's `[HANDOVER REFLECTION]` directly from the in-memory completion chunk and prints it front-and-center in the terminal output.
    * `delegate.py` automatically executes `icm store -t errors-resolved` to index prompt friction and linter feedback without manual orchestrator double-back.
+
+5. **Session Continuity & Context Re-use (`--session-id`)**:
+   * For related stories within the same sprint phase (e.g., Phase 1: Stories 65.1 & 65.2), orchestrators should reuse persistent session IDs (`--session-id sprint-65`) to preserve warmed repo file trees, terminal test execution history, and recent diffs in OpenCode's working context.
+   * **Circuit Breaker**: If a session exceeds 30+ tool calls or shows signs of hallucination/looping, the orchestrator terminates the session and creates a fresh session ID (`--session-id sprint-65-phase2`).
 
 > [!NOTE]
 > For internal swarm topology, model tool-calling constraints (KENDER/Qwen3), OmO `task()` mechanics, and socket proxy architecture, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
