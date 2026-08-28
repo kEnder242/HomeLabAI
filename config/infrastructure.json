@@ -48,5 +48,15 @@
         "phi-3.5-mini-awq": "/speedy/models/Phi-3.5-mini-instruct-awq",
         "smollm2-1.7b-instruct": "/speedy/models/SmolLM2-1.7B-Instruct",
         "unified-base": "llama-3.2-3b-awq"
+    },
+    "forge": {
+        "default_steps": 150,
+        "pacing_delay_sec": 5.0,
+        "batch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "vram_eviction_threshold_mb": 1500,
+        "adapter_base_dir": "/speedy/models/adapters"
     }
 }
