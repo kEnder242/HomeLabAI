@@ -1333,7 +1333,7 @@ class CognitiveHub:
                 pass
             else:
                 # Brain leads Turn 1
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context)
                 # Turn 2: Pinky interjects if interest is high
                 if self.current_interest > 0.5:
                     async for token in self._process_node_stream(
@@ -1786,22 +1786,25 @@ class CognitiveHub:
         if result_text:
             try:
                 doc_id = self._extract_doc_id(result_text) or "archive_context"
-                await self.broadcast({
-                    "type": "rag_eval",
-                    "query": turn,
-                    "hyde": hyde,
-                    "tier": str(hyde_tier),
-                    "doc_id": doc_id,
-                    "snippet": result_text[:400] + ("..." if len(result_text) > 400 else ""),
-                    "full_context": result_text,
-                    "n_results": n_results
-                })
+                broadcast_sig = f"{turn}_{doc_id}_{len(result_text)}"
+                if getattr(self, "_last_rag_eval_sig", None) != broadcast_sig:
+                    self._last_rag_eval_sig = broadcast_sig
+                    await self.broadcast({
+                        "type": "rag_eval",
+                        "query": turn,
+                        "hyde": hyde,
+                        "tier": str(hyde_tier),
+                        "doc_id": doc_id,
+                        "snippet": result_text[:400] + ("..." if len(result_text) > 400 else ""),
+                        "full_context": result_text,
+                        "n_results": n_results
+                    })
             except Exception as ex:
                 logging.warning(f"[FEAT-454] RAG eval broadcast warning: {ex}")
 
         return result_text
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None):
+    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None, rag_context=None):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         vibe = triage.get("vibe", "").upper()
@@ -1832,14 +1835,15 @@ class CognitiveHub:
                 f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
             )
         else:
-            if prefetch_task:
-                try:
-                    rag_context = await prefetch_task
-                except Exception as ex:
-                    logging.warning(f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}")
+            if rag_context is None:
+                if prefetch_task:
+                    try:
+                        rag_context = await prefetch_task
+                    except Exception as ex:
+                        logging.warning(f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}")
+                        rag_context = await self._fetch_rag_context(query, triage)
+                else:
                     rag_context = await self._fetch_rag_context(query, triage)
-            else:
-                rag_context = await self._fetch_rag_context(query, triage)
 
             raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
             if rag_context:
