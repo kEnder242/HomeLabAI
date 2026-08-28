@@ -146,7 +146,8 @@ def quiesce_vllm() -> bool:
     try:
         # Step 1: Release all resident models from VRAM
         requests.post(f"{FOYER_URL}/release_nodes", timeout=10)
-        # Step 2: Signal SHUTDOWN state to the Foyer state machine
+        # Step 2: Signal SLEEP and SHUTDOWN state to the Foyer state machine
+        requests.post(f"{FOYER_URL}/sleep", timeout=10)
         requests.post(f"{FOYER_URL}/shutdown", timeout=10)
         requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
     except Exception as e:

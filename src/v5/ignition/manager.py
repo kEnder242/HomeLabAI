@@ -301,12 +301,15 @@ class IgnitionManager:
         logging.info(f"[IGNITION] Initiating Deep Sleep: {reason}")
         self.record_pager(f"HIBERNATION_START ({reason})", severity="INFO")
         
-        # 1. Notify Foyer to release logical nodes (VRAM Hygiene)
+        # 1. Clean shutdown of logical nodes & engine
         try:
-            import requests
-            requests.post("http://localhost:8765/release_nodes", timeout=5)
+            if hasattr(self, 'residents') and self.residents:
+                # Direct non-blocking teardown if resident manager reference exists
+                import asyncio
+                if asyncio.iscoroutinefunction(getattr(self.residents, 'shutdown', None)):
+                    asyncio.create_task(self.residents.shutdown())
         except Exception as e:
-            logging.warning(f"[IGNITION] Failed to notify Foyer for node release: {e}")
+            logging.debug(f"[IGNITION] Resident shutdown error: {e}")
 
         # 2. Targeted Kill of vLLM (Read PID file)
         try:
