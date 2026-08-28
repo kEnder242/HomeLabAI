@@ -1051,13 +1051,7 @@ class CognitiveHub:
                         "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback"]},
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
-                        "importance": {"type": "number"},
-                        "situation": {"type": "string"},
-                        "hints": {"type": "string"},
-                        "hyde_vector_text": {
-                            "type": "string",
-                            "description": "3-part multi-voice Composite HyDE Vector Query."
-                        }
+                        "importance": {"type": "number"}
                     },
                     "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
                 }
@@ -1067,17 +1061,14 @@ class CognitiveHub:
         triage_mode_context = (
             '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
             + BRAIN_PERSONA_SPEC + '\n'
-            "Translate user intent (I think the user is trying to say...).\n"
-            'HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n'
+            "Translate user intent and classify routing metadata.\n"
+            "Domain classification taxonomy:\n"
             '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
             '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
             '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
             '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years or struggles/work in a year (e.g. "2015", "in 2018", "what did I struggle with in 2015") -> MUST classify as vibe: HISTORICAL or TECHNICAL, domain: lab_history, addressed_to: BRAIN or MICE, importance: 0.8.\n'
-            'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
-            '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
-            'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
             'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections, or system commands (e.g. "feedback: ...", "that was wrong", "stop echoing", "too verbose", "KENDER should have a ping gate"). Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
-            'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
+            'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, domain: standard, importance: 0.1.'
         )
 
         # Execute relay
@@ -1095,15 +1086,16 @@ class CognitiveHub:
 
         if not t_parsed:
             logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
-            t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard"}
+            t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard", "casual": 0.5, "intrigue": 0.5, "inferred_intent": "fallback"}
             winner = "fallback"
         
+        # [FEAT-478] Canonical schema validation & field backfilling
+        t_parsed = validate_triage_payload(t_parsed)
+
         # Post-process triage
         vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_parsed)
         t_parsed["vibe"] = vibe_override
         t_parsed["domain"] = domain_override
-        if "hyde_vector_text" in t_parsed:
-            t_parsed["hyde_vector_text"] = scrub_hyde_vector(t_parsed["hyde_vector_text"])
 
         # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
         # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
@@ -1143,8 +1135,11 @@ class CognitiveHub:
             "version": LAB_VERSION
         })
         
-        # Emit raw pretty-printed triage JSON to the winning console (Option C)
-        public_triage = {k: v for k, v in t_parsed.items() if not str(k).startswith("_")}
+        # Emit clean raw pretty-printed triage JSON to the winning console (Option C)
+        public_triage = {
+            k: v for k, v in t_parsed.items()
+            if not str(k).startswith("_") and k not in ["situation", "hints", "hyde_vector_text"]
+        }
         triage_json_str = json.dumps(public_triage, indent=2)
         await self.broadcast({
             "type": "chat",
@@ -1156,9 +1151,8 @@ class CognitiveHub:
         })
 
         # [Triage Intent Gate] Check if triage output requests morning briefing
-        hints = str(t_parsed.get("hints", "")).lower()
-        situation = str(t_parsed.get("situation", "")).lower()
-        if "morning_briefing" in hints or "morning_briefing" in situation or "trigger_morning_briefing" in hints:
+        intent_lower = str(t_parsed.get("inferred_intent", "")).lower()
+        if "morning_briefing" in intent_lower or "morning briefing" in intent_lower or "trigger_morning_briefing" in intent_lower:
             logging.info("[HUB] Triage Intent Gate: Morning briefing triggered via triage.")
             if trigger_briefing_callback:
                 await trigger_briefing_callback()
