@@ -296,7 +296,9 @@ def build_two_mice_stage_prompt(
             + "[STAGE_1_INSTRUCTIONS]: You are Brain. Jason asked a technical question. Extract the exact "
             "technical ground truth (platforms, firmware, tools, scars) from <historical_record> in 3-4 dense "
             "bullet points. Provide pure technical signal for Pinky — no narrative preamble, no filler, no "
-            "conversational framing.\n"
+            "conversational framing. "
+            "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 3-4 dense technical "
+            "bullet points directly, then yield the floor.\n"
             f"[USER_QUERY]: {user_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
@@ -306,9 +308,11 @@ def build_two_mice_stage_prompt(
     return (
         section
         + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and extracted: "
-        f"{{brain_bullets}}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
+        f"{brain_bullets}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
         "and deliver a 2-sentence conversational TL;DR directly to Jason. Keep it warm, concise, and "
-        "human — do not dump bullets or raw RAG references.\n"
+        "human — do not dump bullets or raw RAG references. "
+        "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 2-sentence conversational "
+        "TL;DR directly to Jason, then yield the floor.\n"
         f"[BRAIN_EXTRACTED_BULLETS]:\n{brain_bullets.strip()}\n"
         f"[USER_QUERY]: {user_query.strip()}"
     )
