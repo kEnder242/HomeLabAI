@@ -1,0 +1,14 @@
+[Unit]
+Description=Field Notes Nightly Maintenance & Synthesis Sweep (2:00 AM)
+After=network.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=14400
+MemoryHigh=5.5G
+MemoryMax=6.5G
+ManagedOOMMemoryPressure=kill
+WorkingDirectory=/home/jallred/Dev_Lab/Portfolio_Dev
+Environment="PYTHONPATH=/home/jallred/Dev_Lab/HomeLabAI/src:/home/jallred/Dev_Lab/Portfolio_Dev/field_notes:$PYTHONPATH"
+Environment="LD_LIBRARY_PATH=/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib:$LD_LIBRARY_PATH"
+ExecStart=/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python /home/jallred/Dev_Lab/HomeLabAI/src/infra/nightly_forge.py
