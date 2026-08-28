@@ -697,8 +697,16 @@ class FoyerRouter:
         """REST endpoint to trigger adapter training."""
         try:
             data = await request.json()
-            adapter_name = data.get("adapter")
-            steps = data.get("steps", 100)
+            # Load default steps from infrastructure.json if not explicitly provided
+            cfg_steps = 150
+            try:
+                config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+                if os.path.exists(config_path):
+                    with open(config_path, "r") as f:
+                        cfg_steps = json.load(f).get("forge", {}).get("default_steps", 150)
+            except Exception:
+                pass
+            steps = data.get("steps", cfg_steps)
             
             if not adapter_name:
                 return web.json_response({"status": "ERROR", "message": "Missing adapter name"}, status=400)

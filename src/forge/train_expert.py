@@ -272,38 +272,40 @@ if __name__ == "__main__":
     parser.add_argument("pos_model", nargs="?", default=None, help="Base model (positional)")
     parser.add_argument("--dataset", default=None, help="Dataset JSONL path")
     parser.add_argument("--output", default=None, help="Output LoRA dir")
-    parser.add_argument("--steps", type=int, default=100, help="Training steps")
-    parser.add_argument("--model", default=None, help="Base model")
-    parser.add_argument("--pacing-delay", type=float, default=5.0, help="Hardware settling delay in seconds between steps (default: 5.0s)")
-    args = parser.parse_args()
+    # Load master infrastructure config as single source of truth
+    cfg = {}
+    try:
+        import json
+        config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+    except Exception:
+        pass
+
+    forge_cfg = cfg.get("forge", {})
+    cfg_steps = forge_cfg.get("default_steps", 150)
+    cfg_pacing = forge_cfg.get("pacing_delay_sec", 5.0)
 
     dataset_in = args.dataset or args.pos_dataset
     output_out = args.output or args.pos_output
-    steps_in = args.steps or (args.pos_steps if args.pos_steps is not None else 100)
+    steps_in = args.pos_steps if args.pos_steps is not None else (args.steps if args.steps is not None else cfg_steps)
     model_in = args.model or args.pos_model
-    pacing_delay_in = args.pacing_delay
+    pacing_delay_in = args.pacing_delay if args.pacing_delay is not None else cfg_pacing
 
     if not dataset_in or not output_out:
         print("Usage: python train_expert.py --dataset <dataset_jsonl> --output <output_lora_dir> [--steps N] [--model M] [--pacing-delay S]")
         sys.exit(1)
 
     if not model_in:
-        try:
-            import json
-            config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    cfg = json.load(f)
-                    base = cfg.get("model_manifest", {}).get("unified-base", "")
-                    if "qwen2.5-3b" in base.lower():
-                        model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
-                    elif "llama-3.2-3b" in base.lower():
-                        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
-        except Exception:
-            pass
+        base = cfg.get("model_manifest", {}).get("unified-base", "")
+        if "qwen2.5-3b" in base.lower():
+            model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
+        elif "llama-3.2-3b" in base.lower():
+            model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
 
     if not model_in:
-        model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
+        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
 
     train_expert(
         dataset_path=dataset_in,
