@@ -202,9 +202,18 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     session_title = f"Sprint {sprint_num} Story {story_num} (Run {int(time.time())}) — [{mode.upper()}:{agent.upper()}] {title}"
 
     # 2. Attach to existing session or create a fresh session via REST API on port 4097
+    active_session_valid = False
     if session_id:
-        log_step(story_num, "SESSION_REUSED", f"Reusing existing REST session {session_id}")
-    else:
+        try:
+            check_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}")
+            with urllib.request.urlopen(check_req, timeout=3) as c_resp:
+                if c_resp.status == 200:
+                    active_session_valid = True
+                    log_step(story_num, "SESSION_REUSED", f"Reusing verified REST session {session_id}")
+        except Exception:
+            active_session_valid = False
+
+    if not active_session_valid:
         try:
             session_payload = {
                 "directory": target_dir,
@@ -433,9 +442,6 @@ if __name__ == "__main__":
         run_retrospective()
         sys.exit(0)
 
-    # [BKM-034 Session Defaulting]
-    effective_session_id = args.session_id or f"sprint-{args.sprint}"
-
     delegate(
         args.story,
         args.title,
@@ -448,6 +454,6 @@ if __name__ == "__main__":
         max_retries=args.retries,
         mode=args.mode,
         target_files=args.target,
-        session_id=effective_session_id,
+        session_id=args.session_id,
         sprint_doc=args.sprint_doc,
     )
