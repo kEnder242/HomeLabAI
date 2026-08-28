@@ -305,21 +305,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
 {note_block}"""
 
-    # Resolve agent model binding according to audited swarm topology
-    agent_model_map = {
-        "sisyphus": {"providerID": "opencode", "modelID": "hy3-free"},
-        "atlas": {"providerID": "opencode", "modelID": "hy3-free"},
-        "prometheus": {"providerID": "opencode", "modelID": "hy3-free"},
-        "sisyphus-junior": {"providerID": "my-m5-mlx", "modelID": "mlx-community/Qwen3.8-27B-4bit"},
-        "hephaestus": {"providerID": "my-m5-mlx", "modelID": "mlx-community/Qwen3.8-27B-4bit"},
-        "momus": {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-    }
-    model_override = agent_model_map.get(agent, {"providerID": "opencode", "modelID": "hy3-free"})
-
     msg_dict = {
         "parts": [{"type": "text", "text": prompt}],
-        "model": model_override,
-        "agent": agent
+        "model": {"providerID": "opencode", "modelID": "hy3-free"}
     }
 
     msg_payload = json.dumps(msg_dict).encode("utf-8")
