@@ -192,6 +192,154 @@ def sanitize_stream_chunk(text: str) -> str:
         out = pattern.sub("", out)
     return out
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# [FEAT-489] Two-Mice Sequential Streaming Handover & Distillation Pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Brain and Pinky no longer run as uncoordinated parallel competitors over the
+# same raw RAG dump. On high-interest technical turns the hub runs a strict
+# two-stage funnel:
+#   Stage 1 (Brain - Right Console): extract 3-4 dense technical bullet points
+#     from <historical_record> -> channel="insight", source="Brain (Archive)".
+#   Stage 2 (Pinky - Left Console / TTS): receives Brain's bullets as context,
+#     acknowledges Brain in character, delivers a 2-sentence conversational
+#     TL;DR directly to Jason -> channel="pinky", source="Pinky (Voice)".
+#
+# The 3 Prompt Engineering Pillars (grounded, not generic):
+#   1. Shared Bedrock Lab Foundation [FEAT-140/467] - hardware/residency bedrock
+#      shared by both mice.
+#   2. Interest Loop Awareness [FEAT-403] - the funnel is gated on interest:
+#      High (>= 0.7) -> Distillation Funnel; Low (< 0.4) -> casual brevity.
+#   3. Turn Sequence Stage [FEAT-236] - each prompt names its exact stage so the
+#      stage-numbered instructions are unambiguous to 3B base models.
+
+TWO_MICE_BEDROCK_FOUNDATION = (
+    "[FOUNDATION]: Shared Bicameral Lab Environment. Host: z87-Linux (RTX 2080 Ti, 11GB VRAM, Turing). "
+    "Remote compute peer: KENDER (192.168.1.26, RTX 4090). Unified base model: Llama-3.2-3B-AWQ with "
+    "persona LoRA adapters. Residency: Brain/Deep Thought = right-hemisphere technical analysis on the "
+    "Right Console; Pinky = left-hemisphere conversational voice on the Left Console. Both mice answer "
+    "as residents of this same lab — never as generic assistants."
+)
+
+# Dual-Console WebSocket Routing Contract (packet tags)
+TWO_MICE_BRAIN_CHANNEL = "insight"
+TWO_MICE_BRAIN_SOURCE = "Brain (Archive)"
+TWO_MICE_BRAIN_CONSOLE = "Right"
+TWO_MICE_PINKY_CHANNEL = "pinky"
+TWO_MICE_PINKY_SOURCE = "Pinky (Voice)"
+TWO_MICE_PINKY_CONSOLE = "Left"
+
+# Interest Loop gate [FEAT-403]: Distillation Funnel activates at high interest.
+TWO_MICE_FUNNEL_INTEREST = 0.7
+
+
+def _two_mice_interest_band(interest: float) -> str:
+    """Quantize interest into the FEAT-403 loop bands for the stage prompts."""
+    if interest >= TWO_MICE_FUNNEL_INTEREST:
+        return "HIGH (Distillation Funnel active: Brain extracts facts, Pinky distills them to Jason)"
+    if interest < 0.4:
+        return "LOW (Casual banter: Pinky answers directly with high brevity; Brain remains dormant)"
+    return "MEDIUM (Mixed loop: brief Brain grounding, conversational Pinky delivery)"
+
+
+def build_two_mice_stage_prompt(
+    stage: int,
+    *,
+    user_query: str,
+    context: str = "",
+    interest: float = 0.8,
+    brain_bullets: str = "",
+) -> str:
+    """[FEAT-489] Build the system-role prompt for one stage of the Two-Mice funnel.
+
+    Composes the 3 Prompt Engineering Pillars:
+      1. Shared Bedrock Lab Foundation [FEAT-140/467]
+      2. Interest Loop Awareness [FEAT-403]
+      3. Turn Sequence Stage [FEAT-236]
+
+    Parameters
+    ----------
+    stage:
+        ``1`` (Brain extracts technical bullets) or ``2`` (Pinky acknowledges
+        Brain and delivers a conversational TL;DR).
+    user_query:
+        Jason's original technical question.
+    context:
+        The raw archive/telemetry context (Stage 1) — wrapped in
+        ``<historical_record>`` tags inside the prompt.
+    interest:
+        Current interest scalar used to select the FEAT-403 loop band.
+    brain_bullets:
+        Stage 1 output handed to Pinky as Stage 2 grounding.
+
+    Returns
+    -------
+    The full system-role prompt string. Pure function — no I/O.
+    """
+    if stage not in (1, 2):
+        raise ValueError("stage must be 1 (Brain extract) or 2 (Pinky distill)")
+
+    section = (
+        "[PILLAR_1_RECORD]: SHARED BEDROCK LAB FOUNDATION\n"
+        f"{TWO_MICE_BEDROCK_FOUNDATION}\n\n"
+        "[PILLAR_2_RECORD]: INTEREST LOOP AWARENESS\n"
+        f"Current interest: {interest:.2f}. Loop band: {_two_mice_interest_band(interest)}.\n\n"
+        "[PILLAR_3_RECORD]: TURN SEQUENCE STAGE\n"
+        f"You are executing STAGE {stage} of the Two-Mice sequential handover.\n"
+    )
+
+    if stage == 1:
+        historical = context.strip() if context else "[ZERO_CONTEXT]: No archive record retrieved."
+        return (
+            section
+            + "[STAGE_1_INSTRUCTIONS]: You are Brain. Jason asked a technical question. Extract the exact "
+            "technical ground truth (platforms, firmware, tools, scars) from <historical_record> in 3-4 dense "
+            "bullet points. Provide pure technical signal for Pinky — no narrative preamble, no filler, no "
+            "conversational framing.\n"
+            f"[USER_QUERY]: {user_query.strip()}\n"
+            f"<historical_record>\n{historical}\n</historical_record>"
+        )
+
+    if not brain_bullets.strip():
+        brain_bullets = "(Brain returned no extraction for this turn.)"
+    return (
+        section
+        + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and extracted: "
+        f"{{brain_bullets}}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
+        "and deliver a 2-sentence conversational TL;DR directly to Jason. Keep it warm, concise, and "
+        "human — do not dump bullets or raw RAG references.\n"
+        f"[BRAIN_EXTRACTED_BULLETS]:\n{brain_bullets.strip()}\n"
+        f"[USER_QUERY]: {user_query.strip()}"
+    )
+
+
+def build_two_mice_stream_packet(
+    *,
+    source: str,
+    channel: str,
+    console: str,
+    token: str,
+    final: bool = False,
+    request_id: str = "default",
+) -> dict:
+    """[FEAT-489] Build a dual-console WebSocket thought_stream packet.
+
+    Encapsulates the Dual-Console Routing Contract so the Foyer/Intercom UI can
+    place Brain's bullet stream on the Right Console (channel ``"insight"``) and
+    Pinky's TL;DR on the Left Console (channel ``"pinky"``).
+    """
+    return {
+        "type": "thought_stream",
+        "token": token,
+        "source": source,
+        "channel": channel,
+        "console": console,
+        "final": final,
+        "request_id": request_id,
+    }
+
+
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
 
@@ -1166,17 +1314,35 @@ class CognitiveHub:
             lead_node = "pinky"
 
         if lead_node == "brain":
-            # Brain leads Turn 1
-            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
-            # Turn 2: Pinky interjects if interest is high
-            if self.current_interest > 0.5:
-                async for token in self._process_node_stream(
-                    "pinky", turn, context, "Pinky (Foil Interjection)", 
-                    tools=[], temperature=0.7, request_id=request_id,
-                    behavioral_guidance="[MODE]: FOIL_INTERJECTION (Brief, witty, intuitive quip following Brain's response.)"
-                ):
-                    if shutdown_event and shutdown_event.is_set():
-                        break
+            # [FEAT-489] Two-Mice Sequential Handover: high-interest technical
+            # turns addressed to Brain funnel through Brain-extracts ->
+            # Pinky-distills; falls back to the legacy Brain-led flow when the
+            # funnel cannot run (missing resident / low interest).
+            handover_context = context
+            if not handover_context or "[RAG_CONTEXT]" not in handover_context:
+                if "rag_context" in locals():
+                    handover_context = context if context else rag_context
+                else:
+                    handover_context = context or await self._fetch_rag_context(turn, t_parsed)
+            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST and await self._run_two_mice_handover(
+                turn,
+                focus_context=handover_context,
+                shutdown_event=shutdown_event,
+                request_id=request_id,
+            ):
+                pass
+            else:
+                # Brain leads Turn 1
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
+                # Turn 2: Pinky interjects if interest is high
+                if self.current_interest > 0.5:
+                    async for token in self._process_node_stream(
+                        "pinky", turn, context, "Pinky (Foil Interjection)", 
+                        tools=[], temperature=0.7, request_id=request_id,
+                        behavioral_guidance="[MODE]: FOIL_INTERJECTION (Brief, witty, intuitive quip following Brain's response.)"
+                    ):
+                        if shutdown_event and shutdown_event.is_set():
+                            break
         elif lead_node == "both":
             # Both speak on Turn 1 ("Hey mice!")
             full_pinky_text = ""
@@ -1739,6 +1905,91 @@ class CognitiveHub:
         rag_payload = raw_context if 'raw_context' in locals() else ""
         await self.evaluate_grounding(strategic_source, strategic_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
 
+    async def _run_two_mice_handover(
+        self,
+        query: str,
+        *,
+        focus_context: str = "",
+        interest: float | None = None,
+        shutdown_event=None,
+        request_id: str = "default",
+    ) -> bool:
+        """[FEAT-489] Two-Mice Sequential Streaming Handover.
+
+        Stage 1 (Brain - Right Console): Brain extracts 3-4 dense technical
+        bullet points from the archive record and streams them to
+        ``channel="insight"`` / ``source="Brain (Archive)"``.
+
+        Stage 2 (Pinky - Left Console / TTS): Pinky receives Brain's extracted
+        bullets as context, acknowledges Brain in character, and streams a
+        2-sentence conversational TL;DR to ``channel="pinky"`` /
+        ``source="Pinky (Voice)"``.
+
+        Both stages are grounded by the 3 Prompt Engineering Pillars
+        [FEAT-140/467 + FEAT-403 + FEAT-236] via :func:`build_two_mice_stage_prompt`.
+
+        Returns ``True`` when the handover ran; ``False`` when it is not
+        possible (missing brains/pinky resident, or interest below the
+        Distillation Funnel gate) — the caller falls back to the legacy flow.
+        """
+        if ("brain" not in self.residents) or ("pinky" not in self.residents):
+            logging.info("[FEAT-489] Two-Mice handover unavailable (need brain + pinky residents). Falling back.")
+            return False
+
+        gate_interest = self.current_interest if interest is None else float(interest)
+        if gate_interest < TWO_MICE_FUNNEL_INTEREST:
+            logging.info(f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant.")
+            return False
+        self.current_interest = gate_interest  # persist an explicitly-passed gate value
+
+        # --- Stage 1: Brain extracts technical bullets (Right Console) --------
+        stage1_prompt = build_two_mice_stage_prompt(1, user_query=query, context=focus_context, interest=gate_interest)
+        brain_tools = await self._get_node_tools("brain")
+        brain_bullets = ""
+        async for token in self._process_node_stream(
+            "brain", stage1_prompt, "", "Brain (Archive)",
+            tools=brain_tools, temperature=0.2, request_id=request_id,
+        ):
+            brain_bullets += token
+            await self.broadcast(build_two_mice_stream_packet(
+                source=TWO_MICE_BRAIN_SOURCE, channel=TWO_MICE_BRAIN_CHANNEL,
+                console=TWO_MICE_BRAIN_CONSOLE, token=token,
+                final=False, request_id=request_id,
+            ))
+            if shutdown_event and shutdown_event.is_set():
+                break
+        await self.broadcast(build_two_mice_stream_packet(
+            source=TWO_MICE_BRAIN_SOURCE, channel=TWO_MICE_BRAIN_CHANNEL,
+            console=TWO_MICE_BRAIN_CONSOLE, token="", final=True, request_id=request_id,
+        ))
+
+        # --- Stage 2: Pinky acknowledges Brain + delivers TL;DR (Left Console) -
+        stage2_prompt = build_two_mice_stage_prompt(
+            2, user_query=query, interest=gate_interest, brain_bullets=brain_bullets,
+        )
+        pinky_stream_count = 0
+        async for token in self._process_node_stream(
+            "pinky", stage2_prompt, brain_bullets, "Pinky (Voice)",
+            tools=[], temperature=0.7, request_id=request_id,
+        ):
+            pinky_stream_count += 1
+            await self.broadcast(build_two_mice_stream_packet(
+                source=TWO_MICE_PINKY_SOURCE, channel=TWO_MICE_PINKY_CHANNEL,
+                console=TWO_MICE_PINKY_CONSOLE, token=token,
+                final=False, request_id=request_id,
+            ))
+            if shutdown_event and shutdown_event.is_set():
+                break
+        await self.broadcast(build_two_mice_stream_packet(
+            source=TWO_MICE_PINKY_SOURCE, channel=TWO_MICE_PINKY_CHANNEL,
+            console=TWO_MICE_PINKY_CONSOLE, token="", final=True, request_id=request_id,
+        ))
+
+        self.turn_thought_trace["brain"] = brain_bullets
+        self.turn_thought_trace["pinky"] = f"[Two-Mice TL;DR delivered to Jason ({pinky_stream_count} tokens)]"
+        logging.info(f"[FEAT-489] Two-Mice handover complete: Brain {len(brain_bullets)} chars -> Pinky TL;DR streamed.")
+        return True
+
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
         import subprocess
@@ -2013,3 +2264,10 @@ class CognitiveHub:
             "version": LAB_VERSION
         })
         logging.info("[PRIME] Broadcast complete.")
+
+
+# [FEAT-489] Module-level aliases so tests can reference the Two-Mice handover
+# entry point without instantiating a full CognitiveHub (which requires live
+# residents, a SpeculativeTriageRelay, and engine probes). The method itself
+# still runs on any lightweight/object-constructed hub at runtime.
+run_two_mice_handover = CognitiveHub._run_two_mice_handover

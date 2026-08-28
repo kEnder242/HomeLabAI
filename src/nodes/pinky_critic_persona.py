@@ -214,7 +214,17 @@ def parse_critic_payload(raw_response: str) -> CriticResult:
 
 def _coerce_result(data: dict[str, Any]) -> CriticResult:
     """Coerce a dict into a :class:`CriticResult` with safe defaults."""
-    retort = str(data.get("cartoon_retort", "")).strip()
+    # [FEAT-489] Retort key tolerance: the LLM may emit "retort", "cartoon_retort",
+    # or a legacy alias for the same field. Populate CriticResult.retort faithfully
+    # from whichever key is present instead of defaulting to the missing-retort
+    # fallback string (which previously scored valid turns 1/5 with a placeholder).
+    retort = ""
+    for retort_key in ("retort", "cartoon_retort"):
+        candidate = data.get(retort_key)
+        if candidate is not None:
+            retort = str(candidate).strip()
+            if retort:
+                break
     if not retort:
         retort = "Narf! The retort went missing."
 
