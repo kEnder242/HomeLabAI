@@ -622,11 +622,31 @@ class FoyerRouter:
             web.post('/attendant/shutdown', self.handle_remote_action),
             web.get('/attendant/status', self.handle_status),
             web.get('/attendant/version', self.handle_version),
+            # [FEAT-490] Fast Hot-Reload endpoint for resident Python nodes (VRAM preserved)
+            web.post('/reload_residents', self.handle_reload_residents),
+            web.post('/attendant/reload_residents', self.handle_reload_residents),
             # [LAB-088] EarNode Emergency Deafness: Manual rearm endpoint
             web.post('/rearm_ear', self.handle_rearm_ear)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
+
+    async def handle_reload_residents(self, request):
+        """[FEAT-490] REST endpoint for fast hot-reloading of resident Python nodes without touching vLLM."""
+        try:
+            logger.info("[FOYER] [FEAT-490] Fast resident hot-reload requested...")
+            await self.residents.shutdown()
+            await self.residents.boot_all()
+            if self.cognitive:
+                self.cognitive.residents = self.residents.residents
+            logger.info("[FOYER] [FEAT-490] Resident nodes hot-reloaded successfully. vLLM VRAM preserved.")
+            return web.json_response({
+                "status": "success",
+                "message": "Resident nodes hot-reloaded successfully. vLLM VRAM preserved."
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-490] Hot-reload failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
         """REST endpoint for remote control UI."""
