@@ -1700,14 +1700,46 @@ class CognitiveHub:
         return await self.synthesize_preamble_quip(query)
 
     async def resolve_hyde_vector(self, query: str, triage_result: dict, timeout: float = 8.0) -> tuple:
-        """[FEAT-437] 3-Tier HyDE Failover Cascade: (vector_text, tier)."""
-        # Tier 1: Pinky local vLLM (holds cli_voice_v1 LoRA weights fine-tuned on 18-year archive)
+        """[FEAT-437] 3-Tier HyDE Failover Cascade:
+        Tier 1 (Pinky Local vLLM with cli_voice_v1 LoRA):
+        Triage winner streams intent to Pinky, who synthesizes the 3-part HyDE Vector using fine-tuned archive weights.
+        Tier 2 (Deep Thought on Kender 4090):
+        Fallback synthesist if Pinky local vLLM is unavailable.
+        Tier 3 (Direct Raw Query / Casual):
+        If non-matching domain or casual turn, returns empty vector to bypass ChromaDB."""
+        # Check if casual / non-matching domain
+        domain = str(triage_result.get("domain", ""))
+        vibe = str(triage_result.get("vibe", "")).upper()
+        importance = float(triage_result.get("importance", 0.5))
+
+        if vibe == "CASUAL" or domain in ["feedback", "lab_internal"] or (importance < 0.3 and domain == "standard"):
+            logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
+            return "", DIRECT_RAW_QUERY
+
+        # If triage result already contains a valid HyDE vector from Pinky cli_voice_v1:
         hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
         if len(hyde_text.strip()) > 5:
-            logging.info(f"[FEAT-437][TIER1] Pinky LoRA HyDE: {hyde_text.strip()[:80]!r}")
+            logging.info(f"[FEAT-437][TIER1] Pinky LoRA HyDE (Pre-Synthesized): {hyde_text.strip()[:80]!r}")
             return hyde_text.strip(), PINKY_LOCAL_VLLM
 
-        # Tier 2: Deep Thought on Kender (RTX 4090) fallback if local vLLM text missing
+        # Tier 1: Dispatch to Pinky with cli_voice_v1 LoRA in parallel
+        if "pinky" in self.residents or "lab" in self.residents:
+            try:
+                triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
+                pinky_hyde = ""
+                async for token in self._process_node_stream(
+                    "pinky", HYDE_SYNTHESIS_PROMPT, triage_context, "Pinky (HyDE)",
+                    tools=[], temperature=0.2, max_tokens=150
+                ):
+                    pinky_hyde += token
+                clean_hyde = scrub_hyde_vector(pinky_hyde.strip())
+                if len(clean_hyde) > 5:
+                    logging.info(f"[FEAT-437][TIER1] Pinky LoRA (cli_voice_v1) HyDE: {clean_hyde[:80]!r}")
+                    return clean_hyde, PINKY_LOCAL_VLLM
+            except Exception as e:
+                logging.warning(f"[FEAT-437][TIER1] Pinky local LoRA synthesis failed ({e}), falling back to Tier 2...")
+
+        # Tier 2: Deep Thought on Kender (RTX 4090) fallback
         if "thought" in self.residents:
             try:
                 res = await asyncio.wait_for(
@@ -1718,9 +1750,10 @@ class CognitiveHub:
                 )
                 if hasattr(res, "content") and len(res.content) > 0:
                     text = res.content[0].text
-                    if text and len(text.strip()) > 10:
-                        logging.info(f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {text.strip()[:80]!r}")
-                        return text.strip(), DEEP_THOUGHT_REMOTE
+                    if text and len(text.strip()) > 5:
+                        clean_dt = scrub_hyde_vector(text.strip())
+                        logging.info(f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {clean_dt[:80]!r}")
+                        return clean_dt, DEEP_THOUGHT_REMOTE
             except asyncio.TimeoutError:
                 logging.warning(f"[FEAT-437][TIER2] Deep Thought timed out after {timeout}s")
             except Exception as e:

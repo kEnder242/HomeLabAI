@@ -119,7 +119,7 @@ async def test_fetch_rag_context_tier1_flows_to_get_context():
     result = await hub._fetch_rag_context("query", {})
     assert result == "ctx"
     archive.call_tool.assert_awaited_once_with(
-        "get_context", {"query": "query", "hyde_vector_text": TIER1_TEXT, "n_results": 3}
+        "get_context", {"query": "query", "hyde_vector_text": TIER1_TEXT, "n_results": 3, "vibe": "", "domain": ""}
     )
 
 
