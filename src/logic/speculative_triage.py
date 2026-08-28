@@ -128,12 +128,12 @@ class SpeculativeTriageRelay:
         if winner == "kender":
             return {
                 "channel": "insight",
-                "source": "Brain (Insight)",
+                "source": "Deep Thought (Triage)",
                 "console": "Right"
             }
         else: # vllm
             return {
-                "channel": "pinky",
-                "source": "Pinky (Triage)",
+                "channel": "chat",
+                "source": "Lab (Triage)",
                 "console": "Left"
             }

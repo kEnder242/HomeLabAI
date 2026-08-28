@@ -63,7 +63,7 @@ async def test_kender_fast_path():
     assert result["situation"] == "Kender fast path"
     meta = relay.get_console_metadata(winner)
     assert meta["channel"] == "insight"
-    assert meta["source"] == "Brain (Insight)"
+    assert meta["source"] == "Deep Thought (Triage)"
 
 @pytest.mark.asyncio
 async def test_kender_slow_vllm_wins():
@@ -75,8 +75,8 @@ async def test_kender_slow_vllm_wins():
     assert winner == "vllm"
     assert result["situation"] == "Local vLLM speculative win"
     meta = relay.get_console_metadata(winner)
-    assert meta["channel"] == "pinky"
-    assert meta["source"] == "Pinky (Triage)"
+    assert meta["channel"] == "chat"
+    assert meta["source"] == "Lab (Triage)"
 
 @pytest.mark.asyncio
 async def test_trailing_runner_cancellation():
