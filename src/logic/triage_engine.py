@@ -311,23 +311,27 @@ def classify_vibe_and_domain(
         except Exception:
             pass
 
-    # 2. Check meta lexicon
+    # 2. Check explicit feedback prefix or feedback domain
+    if query.strip().lower().startswith("feedback:") or parsed_json.get("domain") == "feedback":
+        return "META", "feedback"
+
+    # 3. Check meta lexicon
     if is_meta_lexicon(query):
         return _META_DOMAIN_OVERRIDES["vibe"], _META_DOMAIN_OVERRIDES["domain"]
 
-    # 3. WYWO standup briefing heuristic – detect before greeting since WYWO
+    # 4. WYWO standup briefing heuristic – detect before greeting since WYWO
     #    queries may contain words like "what's up" that overlap greetings.
     if _WYWO_RE.search(query):
         return "WYWO", "dream_stream"
 
-    # 4. CASUAL greeting heuristic – colloquial pleasantries bypass LLM
+    # 5. CASUAL greeting heuristic – colloquial pleasantries bypass LLM
     if _GREETING_RE.search(query):
         return "CASUAL", "standard"
 
     vibe = str(parsed_json.get("vibe", "CASUAL")).upper()
     domain = str(parsed_json.get("domain", "standard"))
 
-    # 3. Check declarative policy loader
+    # 6. Check declarative policy loader
     if loader:
         rule = loader.get_vibe_rule(vibe)
         if rule and domain == "standard" and "target_domain" in rule:

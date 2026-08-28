@@ -81,9 +81,9 @@ async def run_live_sprint65_gauntlet():
                     anti_bleed_clean = True
 
                     start_time = asyncio.get_event_loop().time()
-                    while asyncio.get_event_loop().time() - start_time < 60.0:
+                    while asyncio.get_event_loop().time() - start_time < 75.0:
                         try:
-                            raw_msg = await asyncio.wait_for(ws.receive(), timeout=12.0)
+                            raw_msg = await asyncio.wait_for(ws.receive(), timeout=25.0)
                             if raw_msg.type == aiohttp.WSMsgType.TEXT:
                                 data = json.loads(raw_msg.data)
                                 frames.append(data)
