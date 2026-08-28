@@ -105,5 +105,37 @@ async def test_invalid_response_fallback():
     
     assert winner == "vllm"
 
+
+@pytest.mark.asyncio
+async def test_dual_check_gate_fast_bypass(monkeypatch):
+    """Test Case 6: When Kender Ollama probe fails, fast socket gate bypasses head-start with 0 delay."""
+    import logic.speculative_triage as spec_mod
+    monkeypatch.setattr(spec_mod, "_probe_ollama", lambda host, port, timeout: False)
+
+    relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=5.0)
+    t0 = asyncio.get_event_loop().time()
+    result, winner = await relay.relay("test", {}, {}, "req6")
+    elapsed = asyncio.get_event_loop().time() - t0
+
+    # Assert local vLLM won and elapsed time skipped the 10s window entirely (< 1.0s)
+    assert winner == "vllm"
+    assert result["situation"] == "Local vLLM speculative win"
+    assert elapsed < 1.0
+
+
+@pytest.mark.asyncio
+async def test_dual_check_gate_patient_runway(monkeypatch):
+    """Test Case 7: When Kender Ollama probe succeeds, 10s patient window allows slow warm start to win."""
+    import logic.speculative_triage as spec_mod
+    monkeypatch.setattr(spec_mod, "_probe_ollama", lambda host, port, timeout: True)
+
+    # Kender takes 0.3s (simulating warm generation); head-start is 1.0s (t_warm=0.5)
+    relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=1.0)
+    result, winner = await relay.relay("test", {}, {}, "req7")
+
+    assert winner == "kender"
+    assert result["situation"] == "Kender slow path"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

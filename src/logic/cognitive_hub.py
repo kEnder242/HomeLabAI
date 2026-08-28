@@ -23,7 +23,7 @@ from nodes.pinky_critic_persona import (
     format_chat_delivery,
     format_crosstalk_telemetry
 )
-from logic.speculative_triage import SpeculativeTriageRelay, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
+from logic.speculative_triage import SpeculativeTriageRelay, _probe_ollama, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
@@ -437,12 +437,12 @@ class CognitiveHub:
         self.policy_loader = TriagePolicyLoader()
 
         # [SPR-64_1] Speculative Triage Relay initialization
-        # Default t_warm=1.25 -> head_start_window=2.5s
+        # Default t_warm=5.0 -> head_start_window=10.0s (Patient Warm Runway)
         self.triage_relay = SpeculativeTriageRelay(
             broadcast_callback=self.broadcast,
             kender_fn=self._dispatch_kender_triage,
             vllm_fn=self._dispatch_vllm_triage,
-            t_warm=1.25
+            t_warm=5.0
         )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
