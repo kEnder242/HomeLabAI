@@ -22,7 +22,7 @@ from nodes.pinky_critic_persona import (
     format_chat_delivery,
     format_crosstalk_telemetry
 )
-from logic.speculative_triage import SpeculativeTriageRelay
+from logic.speculative_triage import SpeculativeTriageRelay, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
@@ -1646,6 +1646,12 @@ class CognitiveHub:
             except Exception as e:
                 logging.warning(f"[HUB] Deep Thought reachability probe failed: {e}")
                 thought_reachable = False
+        # [FEAT-486] Fast Socket Shadow Gate: Even if the reachability probe nominally
+        # passed, run a 200ms TCP socket check on Kender to hard-bypass the remote call
+        # when it is SHADOW, eliminating 60s timeout hangs in STAGE 4/5.
+        if thought_reachable and not _probe_tcp(KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S):
+            logging.info("[FEAT-486] Kender SHADOW (socket gate). Bypassing remote Strategic Synthesis.")
+            thought_reachable = False
         if thought_reachable:
             thought_context = distilled_context
             if brain_response:

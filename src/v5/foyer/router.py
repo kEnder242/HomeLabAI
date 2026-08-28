@@ -479,7 +479,10 @@ class FoyerRouter:
             return False
 
     async def check_thought_health(self, force=False):
-        """[FEAT-265.31/FEAT-028] State-Aware Deep Thought probe: ping->API + Heavy Prime (GPU Wake)."""
+        """[FEAT-265.31/FEAT-028/FEAT-486] State-Aware Deep Thought probe: fast TCP gate -> API check.
+        [FEAT-486] The redundant `{'prompt': 'ping'}` generation prime is eliminated; the fast
+        200ms TCP socket gate + `/api/tags` status check substitute for it, and the live triage
+        prompt in SpeculativeTriageRelay acts as the definitive residency/vocality verification."""
         # [FEAT-344] Sovereignty Gate: Suppress probes during raw silicon boot / hibernation.
         state = getattr(self.status, "state", "UNKNOWN")
         if state in ["BOOTING", "INIT", "HIBERNATING"]:
@@ -498,6 +501,34 @@ class FoyerRouter:
 
         try:
             target_url = resolve_thought_url()
+            # [FEAT-486] Step 0: Fast 200ms TCP socket gate (fails fast, zero generation ping).
+            try:
+                from urllib.parse import urlparse
+                _u = urlparse(target_url)
+                _probe_host = _u.hostname
+                _probe_port = _u.port or 11434
+                _reader, _writer = await asyncio.wait_for(
+                    asyncio.open_connection(_probe_host, _probe_port), timeout=0.2
+                )
+                _writer.close()
+                try:
+                    await _writer.wait_closed()
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.debug(f"[HEALTH] Deep Thought socket gate failed: {e}")
+                if self.thought_online:
+                    logger.info("[HEALTH] Deep Thought Offline (fast socket gate). Entering 60s penalty box.")
+                    await self.broadcast({
+                        "type": "crosstalk",
+                        "brain": "Strategic Sovereignty: SHADOW (Primary Offline)",
+                        "brain_source": "System",
+                        "version": LAB_VERSION
+                    })
+                self.thought_online = False
+                self._last_brain_fail = now
+                return
+
             async with aiohttp.ClientSession() as session:
                 # Tier 1: Light API Check (Status only)
                 try:
@@ -544,57 +575,6 @@ class FoyerRouter:
                     self.thought_online = False
                     self._last_brain_fail = now
                     return
-
-                # --- Tier 2: Heavy Prime (GPU Wake) ---
-                # [FEAT-134] AFK Presence Gate: Never wake GPU if room is empty
-                is_restoring = state in ["WAKING", "BOOTING"]
-                if len(self.connected_clients) == 0 and not force:
-                    logger.debug("[HEALTH] Heavy Prime Bypassed: No clients connected to foyer.")
-                    return
-
-                # [FEAT-285] Cooldown Management
-                last_prime_delta = now - getattr(self, "_last_brain_prime", 0)
-                should_prime = force or is_restoring or (last_prime_delta > 120)
-                if not should_prime:
-                    logger.debug(f"[HEALTH] Heavy Prime Bypassed: Cooldown active ({int(last_prime_delta)}s < 120s).")
-                    return
-
-                # [FEAT-286.2] Strict Latching: Only one active background prime
-                if getattr(self, "_priming_in_progress", False):
-                    logger.debug("[HEALTH] Heavy Prime Bypassed: Task already in progress.")
-                    return
-
-                # [FEAT-155] Speed over Scale: Prioritize 8B models for <10s load times
-                probe_model = models[0] if models else "llama3.1:8b"  # Fallback to 8B standard
-                preferred = ["llama3.1:8b", "mixtral:8x7b", "gemma2:2b"]
-                for p in preferred:
-                    if p in models:
-                        probe_model = p
-                        break
-
-                logger.info(f"[HEALTH] Initiating Heavy Prime on Deep Thought: {probe_model} (Force={force}, Restoring={is_restoring})")
-
-                p_url = target_url.replace("/api/tags", "/api/generate")
-                payload = {"model": probe_model, "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
-
-                # [BKM] Parallel Execution: Generation probe runs in background to prevent Hub hangs
-                self._priming_in_progress = True
-
-                async def _bg_prime():
-                    try:
-                        async with aiohttp.ClientSession() as p_session:
-                            async with p_session.post(p_url, json=payload, timeout=30) as pr:
-                                if pr.status == 200:
-                                    logger.info(f"[HEALTH] Strategic Sovereign SUCCESS: {probe_model} is resident in VRAM.")
-                                    self._last_brain_prime = time.time()
-                                else:
-                                    logger.error(f"[HEALTH] Heavy Prime Failed on Deep Thought ({pr.status})")
-                    except Exception as pe:
-                        logger.error(f"[HEALTH] Heavy Prime Exception (Deep Thought): {pe}")
-                    finally:
-                        self._priming_in_progress = False
-
-                asyncio.create_task(_bg_prime())
 
         except Exception as e:
             logger.debug(f"[HEALTH] Overall brain probe failed: {e}")
