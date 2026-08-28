@@ -157,7 +157,69 @@ def _extract_sprint_summary(sprint_doc_path: str) -> str:
             return summary
     except Exception:
         pass
-    return ""
+def _format_error_context(exc) -> str:
+    """Extracts deep diagnostic context from HTTP errors, systemd journal, and silicon ping."""
+    details = []
+    if isinstance(exc, urllib.error.HTTPError):
+        details.append(f"HTTP Status: {exc.code} {exc.reason}")
+        try:
+            raw_body = exc.read().decode("utf-8", errors="replace")
+            if raw_body:
+                try:
+                    body_json = json.loads(raw_body)
+                    err_name = body_json.get("name") or body_json.get("error", {}).get("type", "Error")
+                    err_msg = body_json.get("data", {}).get("message") or body_json.get("error", {}).get("message") or str(body_json)
+                    err_ref = body_json.get("data", {}).get("ref") or body_json.get("ref", "")
+                    details.append(f"  ├─ Error Name: {err_name}")
+                    details.append(f"  ├─ Server Message: {err_msg}")
+                    if err_ref:
+                        details.append(f"  ├─ Reference: {err_ref}")
+                except Exception:
+                    details.append(f"  ├─ Response Body: {raw_body[:250]}")
+        except Exception:
+            pass
+
+        if exc.code == 500:
+            try:
+                res = subprocess.run(
+                    ["journalctl", "--user", "-u", "opencode-core.service", "-n", "3", "--no-pager"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2.0
+                )
+                if res.stdout:
+                    jlines = [line.strip() for line in res.stdout.strip().splitlines() if line.strip()]
+                    if jlines:
+                        details.append("  ├─ Core Service Journal (tail):")
+                        for jl in jlines[-2:]:
+                            details.append(f"  │    {jl}")
+            except Exception:
+                pass
+    else:
+        details.append(f"Exception: {exc}")
+
+    m5_status = "UNKNOWN"
+    w4090_status = "UNKNOWN"
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.3)
+        m5_status = "UP" if s.connect_ex(("192.168.1.46", 8000)) == 0 else "DOWN/REFUSED"
+        s.close()
+    except Exception:
+        m5_status = "ERROR"
+
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.3)
+        w4090_status = "UP" if s.connect_ex(("192.168.1.26", 11434)) == 0 else "DOWN/REFUSED"
+        s.close()
+    except Exception:
+        w4090_status = "ERROR"
+
+    details.append(f"  └─ Silicon Reachability: M5(8000)={m5_status} | 4090(11434)={w4090_status}")
+    return "\n".join(details)
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
@@ -398,18 +460,19 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
         if post_exception is not None:
             e = post_exception
+            err_ctx = _format_error_context(e)
             if isinstance(e, urllib.error.HTTPError) and e.code in (502, 503, 504, 429) and attempt < max_retries:
                 backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
-                msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s..."
+                msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s...\n{err_ctx}"
                 log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
                 time.sleep(backoff)
             elif attempt < max_retries:
                 backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
-                msg = f"Dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s..."
+                msg = f"Dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s...\n{err_ctx}"
                 log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
                 time.sleep(backoff)
             else:
-                log_step(story_num, "FAILED", f"Dispatch failed after {duration:.1f}s: {e}", severity="CRITICAL")
+                log_step(story_num, "FAILED", f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}", severity="CRITICAL")
                 sys.exit(1)
 
 
