@@ -69,17 +69,13 @@ def get_vram_usage():
     """Probe actual VRAM usage via nvidia-smi."""
     try:
         res = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,nounits,nounits"],
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=10
         )
         if res.returncode == 0:
             lines = res.stdout.strip().splitlines()
-            if len(lines) >= 2:
-                return int(lines[-1].strip())
             if lines:
-                val = lines[0].strip()
-                if val != "memory.total [MiB]":
-                    return int(val)
+                return int(lines[0].strip())
         return 0
     except Exception:
         return 0
