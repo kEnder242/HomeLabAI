@@ -547,6 +547,8 @@
 │  - Respect the 60s Quiescence Window [FEAT-136] between state transitions.               │
 │  - VRAM Utilization floor is capped at 0.55 (8k context) to protect the physical Xorg   │
 │    display server running on the primary RTX 2080 Ti adapter.                            │
+│  - SELF-SYNCHRONIZING RESTART: Lab restart/wake operations handle completion internally  │
+│    and return when finished. Agents must NEVER poll in a loop or schedule poll timers.   │
 │                                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
