@@ -1,5 +1,5 @@
 """
-[FEAT-456] Language-First Co-Pilot Feedback Loop (BKM-035)
+[FEAT-456/FEAT-487] Language-First Co-Pilot Feedback Loop (BKM-035)
 
 Intercepts user natural language disagreements and conversational corrections,
 transforming them into permanent validation ledger FAIL records and in-character
@@ -7,6 +7,15 @@ refinement prompts.
 
 BKM-015 Compliant: Uses structural regex patterns for critique detection
 (linguistic structure, not domain-specific keyword matching).
+
+[FEAT-487] DEPRECATION: The hardcoded regex pattern matching (`is_critique` /
+`_CRITIQUE_PATTERNS`) is DROPPED as the primary feedback-detection path in favor
+of model-driven semantic triage: the triage engine now classifies supervisory
+feedback / bug reports / tone-verbosity corrections / Fourth-Wall commands to
+`vibe: META`, `domain: feedback`, `addressed_to: SYSTEM`, and CognitiveHub's
+fast control-plane intercept short-circuits on that classification.  These
+regex helpers are preserved ONLY for backward compatibility and existing unit
+tests; new feedback detection MUST go through the semantic triage path.
 
 BKM-022 Compliant: Atomic file operations via .tmp + os.replace for JSONL writes.
 """
@@ -19,6 +28,8 @@ import tempfile
 from typing import Optional
 
 
+# [FEAT-487] DEPRECATED — superseded by model-driven semantic triage (vibe: META,
+# domain: feedback). Kept for legacy tests only; do NOT extend this list.
 # [BKM-015] Structural critique detection patterns.
 # These detect the LINGUISTIC SHAPE of disagreement statements, NOT domain-specific
 # keywords. This is compliant with BKM-015's prohibition of domain keyword hardcoding.
@@ -43,6 +54,11 @@ _CRITIQUE_PATTERNS = [
 def is_critique(query: str) -> bool:
     """
     [FEAT-456/BKM-035] Detect user disagreement or fourth-wall correction semantically.
+
+    DEPRECATED ({FEAT-487}): Superseded by model-driven semantic triage. CognitiveHub
+    no longer routes feedback through this regex pre-filter; it intercepts the
+    vibe META / domain feedback classification from the triage engine instead.
+    Retained only for backward compatibility and existing unit tests.
 
     Uses structural regex patterns to identify the LINGUISTIC SHAPE of critique
     statements (negation patterns, correction patterns, fourth-wall address).

@@ -72,10 +72,13 @@ _EXPECTED_VIBE_MAP: dict[str, tuple[str, str]] = {
     "VAL-06": ("TECHNICAL", "exp_tlm"),
     # platform_telemetry – SRE/operational → OPERATIONAL (exp_bkm)
     "VAL-07": ("OPERATIONAL", "exp_bkm"),
-    # lab_architecture anchors → META (lab_internal)
-    "VAL-08": ("META", "lab_internal"),
-    "VAL-09": ("META", "lab_internal"),
-    "VAL-10": ("META", "lab_internal"),
+    # lab_architecture anchors → META (feedback)
+    # [FEAT-487 / SPR-65] META's canonical default_domain is now feedback (supervisory /
+    # control-plane feedback loop). lab_internal meta-status routing is preserved at
+    # runtime via _META_DOMAIN_OVERRIDES in triage_engine, not via META's default_domain.
+    "VAL-08": ("META", "feedback"),
+    "VAL-09": ("META", "feedback"),
+    "VAL-10": ("META", "feedback"),
 }
 
 
