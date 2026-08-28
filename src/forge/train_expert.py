@@ -272,6 +272,11 @@ if __name__ == "__main__":
     parser.add_argument("pos_model", nargs="?", default=None, help="Base model (positional)")
     parser.add_argument("--dataset", default=None, help="Dataset JSONL path")
     parser.add_argument("--output", default=None, help="Output LoRA dir")
+    parser.add_argument("--steps", type=int, default=None, help="Training steps")
+    parser.add_argument("--model", default=None, help="Base model")
+    parser.add_argument("--pacing-delay", type=float, default=None, help="Hardware settling delay in seconds")
+    args = parser.parse_args()
+
     # Load master infrastructure config as single source of truth
     cfg = {}
     try:
