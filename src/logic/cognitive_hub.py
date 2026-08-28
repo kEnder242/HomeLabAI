@@ -596,9 +596,10 @@ class CognitiveHub:
         buf_key = f"{request_id}_{raw_source}"
 
         # [NEW] Push to waterfall queue for real-time UI delivery
-        # [FEAT-361] 100% Transparency: No masking of inter-node whispers.
+        # [FEAT-361] 100% Transparency: No masking of inter-node whispers (internal triage suppressed from chat).
         if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
-            await self.waterfall_queue.put(data)
+            if not data.get("internal", False) and "triage" not in raw_source.lower():
+                await self.waterfall_queue.put(data)
 
         if token:
             self.session_buffers[buf_key] += token
@@ -935,10 +936,6 @@ class CognitiveHub:
             import uuid
             request_id = uuid.uuid4().hex[:8]
         
-        # [NEW] Unified Early Priming
-        logging.info(f"[PRIME] Spawning priming task for: {turn[:20]}")
-        asyncio.create_task(self._prime_first_try(turn))
-        
         # [SPR-41_2] Reset context starvation tracker per query
         self.context_starved_nodes.clear()
         
@@ -1045,7 +1042,7 @@ class CognitiveHub:
                     "type": "object",
                     "properties": {
                         "inferred_intent": {"type": "string"},
-                        "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
+                        "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"]},
                         "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "SUPERVISORY"]},
                         "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback"]},
                         "casual": {"type": "number"},
@@ -1071,11 +1068,11 @@ class CognitiveHub:
             '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
             '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
             '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
-            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives.\n'
+            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years or struggles/work in a year (e.g. "2015", "in 2018", "what did I struggle with in 2015") -> MUST classify as vibe: HISTORICAL or TECHNICAL, domain: lab_history, addressed_to: BRAIN or MICE, importance: 0.8.\n'
             'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
             '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
             'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
-            'META / FEEDBACK: If the user is giving feedback on a previous answer, pointing out an error or regression, correcting a factual error, asking to tweak verbosity or tone, or issuing system corrections (e.g. "feedback: ...", "that was wrong", "stop echoing", "too verbose", "KENDER should have a ping gate"), classify as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
+            'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections, or system commands (e.g. "feedback: ...", "that was wrong", "stop echoing", "too verbose", "KENDER should have a ping gate"). Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
             'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
         )
 

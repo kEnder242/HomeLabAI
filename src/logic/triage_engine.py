@@ -257,20 +257,28 @@ _FEEDBACK_DOMAINS: frozenset[str] = frozenset({"feedback", "standard", ""})
 def is_control_plane_feedback(t_parsed: dict[str, Any]) -> bool:
     """Return ``True`` when a parsed triage dict is supervisory feedback (FEAT-487/BKM-035).
 
-    Semantic, BKM-015-compliant structural field inspection — it does NOT
-    pattern-match the user's free text.  A turn is control-plane feedback when
-    the triage model resolved it to the ``META`` vibe with a feedback/standard
-    domain, OR explicitly set ``domain == "feedback"``.  Lab-internal meta-status
-    turns (``domain == "lab_internal"``) and retrieval turns (``exp_*`` /
-    ``lab_history``) are never treated as feedback.
+    Semantic, BKM-015-compliant structural field inspection. A turn is control-plane
+    feedback ONLY when the triage model resolved it to ``vibe == "META"`` with a
+    feedback/standard domain, OR explicitly addressed it to ``SYSTEM`` with domain
+    ``feedback``. Conversational vibes (``CASUAL``, ``HISTORICAL``, ``TECHNICAL``)
+    and retrieval domains (``exp_*`` / ``lab_history``) are never treated as feedback.
     """
     if not isinstance(t_parsed, dict):
         return False
     vibe = str(t_parsed.get("vibe", "")).upper()
     domain = str(t_parsed.get("domain", "")).lower()
-    if domain == "feedback":
+    addressed_to = str(t_parsed.get("addressed_to", "")).upper()
+
+    # Never intercept non-META conversational or historical queries
+    if vibe in ("CASUAL", "HISTORICAL", "TECHNICAL", "ANALYTICAL", "FORENSIC"):
+        return False
+
+    if domain in ("lab_internal", "exp_tlm", "exp_bkm", "exp_for", "lab_history", "dream_stream"):
+        return False
+
+    if vibe == "META" and (domain in _FEEDBACK_DOMAINS or addressed_to == "SYSTEM"):
         return True
-    if vibe == "META" and domain in _FEEDBACK_DOMAINS:
+    if addressed_to == "SYSTEM" and domain == "feedback":
         return True
     return False
 

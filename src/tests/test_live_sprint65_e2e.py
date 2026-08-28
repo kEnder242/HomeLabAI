@@ -1,10 +1,11 @@
 """
 [FEAT-486/487/488/489] Live Physical WebSocket Verification Gauntlet (Sprint 65.0)
 
-Connects to the live running server on ws://127.0.0.1:8765/ and sends 3 live turns:
+Connects to the live running server on ws://127.0.0.1:8765/ and sends 4 live turns:
   Turn 1: Live Semantic Meta-Triage Feedback Interceptor ([FEAT-487] / BKM-035)
   Turn 2: Live Anti-Bleed Prompt Hygiene Check ([FEAT-488])
   Turn 3: Live Two-Mice Sequential Streaming Handover ([FEAT-489])
+  Turn 4: Live Historical Temporal Inquiries with Casual Intros (No False Feedback Hijack)
 """
 
 import asyncio
@@ -155,6 +156,14 @@ async def run_live_sprint65_gauntlet():
                     "How about 2015? Name the 4 top technologies I worked with then."
                 )
                 logging.info("✅ Turn 3 PASSED: Two-Mice Handover & Distillation verified live.")
+
+                # --- Turn 4: Historical Inquiry with Casual Intro & Struggle Keyword ---
+                t4 = await send_turn(
+                    "Turn 4: Historical Struggle Inquiry (Anti-False-Feedback Check)",
+                    "Let's talk about 2015. What did I struggle with during this time? Looking for the top two topics"
+                )
+                assert not any("Feedback" in s for s in t4["sources"]), f"Historical turn was incorrectly hijacked as feedback! Sources: {t4['sources']}"
+                logging.info("✅ Turn 4 PASSED: Historical inquiry routed properly without false feedback hijack.")
 
                 logging.info("\n" + "🏆"*35 + "\nALL LIVE GAUNTLET TURNS CERTIFIED ON RUNNING SILICON!\n" + "🏆"*35)
                 return True
