@@ -7,14 +7,15 @@ import re
 import time
 import random
 from v5.common.types import LAB_VERSION
-from logic.feedback_interceptor import is_critique, record_feedback, generate_refinement_prompt
+from logic.feedback_interceptor import record_feedback
 from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
 from logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
 from logic.triage_engine import (
     SpeakerRegistry,
     extract_latest_user_query,
     scrub_hyde_vector,
-    classify_vibe_and_domain
+    classify_vibe_and_domain,
+    is_control_plane_feedback
 )
 from nodes.pinky_critic_persona import (
     build_critic_prompt,
@@ -791,29 +792,11 @@ class CognitiveHub:
         t_text = ""
         t_parsed = None
 
-        # [FEAT-456 / BKM-035] The Fourth Wall Feedback Loop Interception
-        if is_critique(turn):
-            logging.info(f"[HUB] [BKM-035] Fourth Wall critique detected: '{turn[:60]}'")
-            flawed_output = ""
-            if self.turn_thought_trace.get("pinky"):
-                flawed_output = self.turn_thought_trace.get("pinky")
-            elif self.round_table_memory:
-                flawed_output = self.round_table_memory[-1]
-
-            record_feedback(query=turn, flawed_output=flawed_output, user_correction=turn)
-            refinement_prompt = generate_refinement_prompt(turn)
-
-            await self.broadcast({
-                "type": "thought_stream",
-                "source": "Pinky (Feedback)",
-                "token": refinement_prompt,
-                "final": True,
-                "request_id": request_id
-            })
-
-            turn_ledger = f"User (Critique): {turn}\nPinky (Refinement): {refinement_prompt}"
-            self.round_table_memory.append(turn_ledger)
-            return
+        # [FEAT-487 / BKM-035] Supervisory feedback is intercepted semantically AFTER
+        # model-driven triage classifies the turn as META/feedback (see the
+        # _intercept_control_plane_feedback short-circuit below). The legacy regex
+        # based Fourth-Wall pre-filter (is_critique / _CRITIQUE_PATTERNS) is deprecated
+        # in favor of this semantic path to avoid double-recording and brittle matching.
         
         # [BKM-015] Role Token Routing: Bypass LLM triage if query contains a role token
         if self.role_tokens:
@@ -864,7 +847,7 @@ class CognitiveHub:
                         "inferred_intent": {"type": "string"},
                         "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE"]},
                         "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "SUPERVISORY"]},
-                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream"]},
+                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback"]},
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
                         "importance": {"type": "number"},
@@ -892,6 +875,7 @@ class CognitiveHub:
             'If the intent maps to a domain, synthesize in hyde_vector_text a 3-part Composite HyDE Vector Query:\n'
             '[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>\n'
             'If the intent does NOT map to the 4 domains (casual greetings, status checks, pleasantries, meta-talk), set hyde_vector_text: "" and vibe: CASUAL. No hardcoded string arrays (BKM-015).\n'
+            'META / FEEDBACK: If the user is giving feedback on a previous answer, pointing out an error or regression, correcting a factual error, asking to tweak verbosity or tone, or issuing system corrections (e.g. "feedback: ...", "that was wrong", "stop echoing", "too verbose", "KENDER should have a ping gate"), classify as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
             'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, importance: 0.1, hyde_vector_text: empty string.'
         )
 
@@ -919,6 +903,31 @@ class CognitiveHub:
         t_parsed["domain"] = domain_override
         if "hyde_vector_text" in t_parsed:
             t_parsed["hyde_vector_text"] = scrub_hyde_vector(t_parsed["hyde_vector_text"])
+
+        # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
+        # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
+        # META / domain=feedback (supervisory feedback, bug reports, tone/verbosity
+        # corrections, Fourth-Wall commands), short-circuit immediately — bypass RAG
+        # retrieval, interest boosts, and resident model debates. Record atomically to
+        # the validation ledger (BKM-035) and emit a crisp in-character Pinky confirmation.
+        if is_control_plane_feedback(t_parsed):
+            logging.info(f"[HUB] [FEAT-487] Semantic control-plane feedback turn: '{clean_user_query[:60]}'")
+            flawed_output = ""
+            if self.turn_thought_trace.get("pinky"):
+                flawed_output = self.turn_thought_trace.get("pinky")
+            elif self.round_table_memory:
+                flawed_output = self.round_table_memory[-1]
+            record_feedback(query=turn, flawed_output=flawed_output, user_correction=turn)
+            await self.broadcast({
+                "type": "thought_stream",
+                "source": "Pinky (Feedback)",
+                "token": "Narf! Feedback logged to the validation ledger.",
+                "final": True,
+                "request_id": request_id
+            })
+            turn_ledger = f"User (Feedback): {turn}"
+            self.round_table_memory.append(turn_ledger)
+            return
 
         # [SPR-64_1] Console Routing Metadata
         routing_meta = self.triage_relay.get_console_metadata(winner)

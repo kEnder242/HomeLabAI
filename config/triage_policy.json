@@ -43,13 +43,15 @@
             "interest_boost": 0.15
         },
         "META": {
-            "description": "Lab-internal meta queries – infrastructure status, resident agent health, system component diagnostics (vllm, attendant, foyer, audio_pipeline).",
+            "description": "User is giving supervisory feedback, pointing out bugs/regressions, correcting factual errors, requesting tone/verbosity adjustments, or issuing Fourth-Wall operational commands.",
+            "domain": "feedback",
+            "addressed_to": "SYSTEM",
             "enabled": true,
-            "default_domain": "lab_internal",
+            "default_domain": "feedback",
             "rag": null,
-            "importance": 0.65,
-            "importance_floor": 0.6,
-            "interest_boost": 0.1
+            "importance": 0.0,
+            "importance_floor": 0.0,
+            "interest_boost": 0.0
         },
         "OPERATIONAL": {
             "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",

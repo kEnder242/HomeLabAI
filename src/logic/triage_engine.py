@@ -247,6 +247,34 @@ _META_DOMAIN_OVERRIDES: dict[str, str] = {
 }
 
 
+# [FEAT-487 / BKM-035] Control-plane feedback detection. A META turn whose resolved
+# domain is in this set (or unset) is supervisory feedback destined for the fast
+# control-plane intercept — NOT a lab-internal meta-status query, which carries
+# domain "lab_internal" and must never be swallowed as feedback.
+_FEEDBACK_DOMAINS: frozenset[str] = frozenset({"feedback", "standard", ""})
+
+
+def is_control_plane_feedback(t_parsed: dict[str, Any]) -> bool:
+    """Return ``True`` when a parsed triage dict is supervisory feedback (FEAT-487/BKM-035).
+
+    Semantic, BKM-015-compliant structural field inspection — it does NOT
+    pattern-match the user's free text.  A turn is control-plane feedback when
+    the triage model resolved it to the ``META`` vibe with a feedback/standard
+    domain, OR explicitly set ``domain == "feedback"``.  Lab-internal meta-status
+    turns (``domain == "lab_internal"``) and retrieval turns (``exp_*`` /
+    ``lab_history``) are never treated as feedback.
+    """
+    if not isinstance(t_parsed, dict):
+        return False
+    vibe = str(t_parsed.get("vibe", "")).upper()
+    domain = str(t_parsed.get("domain", "")).lower()
+    if domain == "feedback":
+        return True
+    if vibe == "META" and domain in _FEEDBACK_DOMAINS:
+        return True
+    return False
+
+
 def classify_vibe_and_domain(
     query: str,
     parsed_json: dict[str, Any],
