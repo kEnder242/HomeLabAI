@@ -153,6 +153,45 @@ def _get_telemetry_collector():
     except Exception:
         return None
 
+# [FEAT-488] Anti-Bleed Stream Sanitizer.
+# Small base models (Llama-3.2-3B) occasionally echo uppercase instruction headers
+# that live in the system role slot into their output stream, as if they were
+# markdown section formatting to replicate. These echoed markers are stripped here
+# (case-insensitive, line-leading) before a token/message is emitted to the UI —
+# preserving genuine response prose that does not begin with a rogue header.
+_ROGUE_PROMPT_MARKER_PATTERNS = (
+    # GROUNDING_PROTOCOL: ... (header echo)
+    re.compile(r"^\s*\[?GROUNDING_PROTOCOL\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    # [STANCE]: ... or STANCE: ...
+    re.compile(r"^\s*(?:\[STANCE\]\s*:?|STANCE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    # [ROUTE] or ROUTE: ...
+    re.compile(r"^\s*(?:\[ROUTE\]\s*:?|ROUTE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    # RAW CONTEXT APPEND ... (with optional brackets / colon)
+    re.compile(r"^\s*\[?RAW CONTEXT APPEND\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    # Other guidance-frame header echoes
+    re.compile(
+        r"^\s*\[(?:BEHAVIORAL_GUIDANCE|GUIDANCE_FRAME|VIBE_GUIDANCE|DYNAMIC_CONTEXT|SYSTEM_DESIGN_STANCE)\]\s*:[^\n]*\n?",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+)
+
+
+def sanitize_stream_chunk(text: str) -> str:
+    """[FEAT-488] Strip echoed rogue prompt markers from a streamed token/message.
+
+    Removes line-leading echoes of system-slot instruction headers
+    (GROUNDING_PROTOCOL:, [STANCE]:, [ROUTE], RAW CONTEXT APPEND, and related
+    guidance frames) while preserving genuine response prose that does not begin
+    with one of those headers. Applied before tokens are emitted to the UI so the
+    3B-model header replication never reaches the user-visible stream.
+    """
+    if not text:
+        return text or ""
+    out = text
+    for pattern in _ROGUE_PROMPT_MARKER_PATTERNS:
+        out = pattern.sub("", out)
+    return out
+
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
 
@@ -398,6 +437,12 @@ class CognitiveHub:
         data["brain_source"] = source
         
         token = data.get("brain", "")
+        # [FEAT-488] Anti-Bleed: strip echoed system-slot instruction headers
+        # (GROUNDING_PROTOCOL:/[STANCE]:/[ROUTE]/RAW CONTEXT APPEND) from the token
+        # BEFORE it reaches the UI waterfall, preserving genuine response prose.
+        if token:
+            token = sanitize_stream_chunk(token)
+            data["brain"] = token
         # Extract request ID if present
         request_id = data.get("request_id", "default")
         buf_key = f"{request_id}_{raw_source}"
@@ -557,6 +602,11 @@ class CognitiveHub:
 
         try:
             # [Task 2.3] Persona Interest: Adjust behavioral density based on scalar
+            # [FEAT-488] Role-Slot Isolation CONTRACT: [STANCE] and GROUNDING_PROTOCOL
+            # are NEVER appended to the user query/context string. They are assembled
+            # solely into `guidance` below and passed strictly via metadata
+            # ('behavioral_guidance'), which the node loader places into the system
+            # role slot. This prevents 3B models from echoing the uppercase headers.
             stance = ""
             if self.current_interest > 0.75:
                 stance = "\n[STANCE]: ACADEMIC (Evidence-heavy, dense, refer to GEM/SCAR IDs)."
@@ -570,6 +620,8 @@ class CognitiveHub:
             # [FEAT-407] Vibe-Specific Context Isolation: Wrap RAG context in
             # <historical_record> tags + inject GROUNDING_PROTOCOL for HISTORICAL/FORENSIC/TECHNICAL vibes.
             # Prevents bedrock/operational metadata bleed into past-tense briefs.
+            # [FEAT-488] The protocol is injected into `guidance` (system slot), never
+            # into `query`/`context` (user slot).
             _vibe = getattr(self, "current_vibe", "TECHNICAL")
             if _vibe.upper() in ("HISTORICAL", "FORENSIC", "TECHNICAL") and context:
                 context = f"<historical_record>\n{context}\n</historical_record>"
@@ -914,9 +966,9 @@ class CognitiveHub:
             logging.info(f"[HUB] [FEAT-487] Semantic control-plane feedback turn: '{clean_user_query[:60]}'")
             flawed_output = ""
             if self.turn_thought_trace.get("pinky"):
-                flawed_output = self.turn_thought_trace.get("pinky")
+                flawed_output = str(self.turn_thought_trace.get("pinky"))
             elif self.round_table_memory:
-                flawed_output = self.round_table_memory[-1]
+                flawed_output = str(self.round_table_memory[-1])
             record_feedback(query=turn, flawed_output=flawed_output, user_correction=turn)
             await self.broadcast({
                 "type": "thought_stream",
@@ -1786,6 +1838,8 @@ class CognitiveHub:
 
     async def _stream_message_to_ui(self, message, source="System", request_id="default"):
         """Streams a message character-by-character to the UI waterfall."""
+        # [FEAT-488] Anti-Bleed: sanitize full messages against echoed headers too.
+        message = sanitize_stream_chunk(message)
         if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
             chunk_size = 5
             for i in range(0, len(message), chunk_size):

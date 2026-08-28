@@ -458,8 +458,6 @@ class BicameralNode:
                     logging.debug(f"[{self.name}] Role token '{token}' -> LoRA: '{label}'")
                     break
 
-        system_prompt = system_override or self.system_prompt
-        
         # [FEAT-254.2] Metadata Displacement: Context shifts from system to user
         # This prevents 3B models from confusing system data with their core identity.
         user_context = ""
@@ -487,11 +485,19 @@ class BicameralNode:
             masked = masked.replace("ROUTE:", "Flow:").replace("ROLE:", "Identity:")
             user_context += f"[SYSTEM_DESIGN_STANCE]:\n{masked}\n\n"
             
-        # Detect guidance jammed into system_override by wrappers
+        # [FEAT-488] Role-Slot Isolation: Keep behavioral guidance (STANCE,
+        # GROUNDING_PROTOCOL, vibe guidance) strictly in the SYSTEM role slot.
+        # Previously this guidance was extracted out of system_override and
+        # displaced into the user query as [GUIDANCE_FRAME]; 3B base models then
+        # echoed the uppercase headers (GROUNDING_PROTOCOL:/[STANCE]:) as markdown
+        # structure. Only masked operational *data* (context) is displaced to the
+        # user slot (FEAT-254.2) — never the instruction set.
+        system_prompt = system_override or self.system_prompt
         if system_override and "[BEHAVIORAL_GUIDANCE]:" in system_override:
             parts = system_override.split("[BEHAVIORAL_GUIDANCE]:")
             system_prompt = parts[0].strip()
-            user_context += f"[GUIDANCE_FRAME]:\n{parts[1].strip()}\n\n"
+            if len(parts) > 1 and parts[1].strip():
+                system_prompt += f"\n\n[BEHAVIORAL_GUIDANCE]:\n{parts[1].strip()}"
 
         if user_context:
             # [Task 20.5] Append context to end to preserve prefix hash
