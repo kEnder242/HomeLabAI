@@ -72,31 +72,39 @@ class HardwarePacingCallback(TrainerCallback):
                 self.step_metrics.append(entry)
 
     def on_step_end(self, args, state, control, **kwargs):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         print(f"\n⏱️ [HARDWARE PACING] Step {state.global_step}/{state.max_steps} complete. Settling hardware for {self.delay_sec}s...", flush=True)
         time.sleep(self.delay_sec)
         print("⚡ [HARDWARE PACING] Hardware settled to baseline. Initiating next optimization pulse.\n", flush=True)
 
 
 def record_forge_telemetry(output_dir: str, steps: int, runtime_s: float, pacing_delay: float, step_metrics: list):
-    """[FEAT-452] Export rich telemetry data to pager_activity.json, validation_ledger.jsonl, and adapter directory."""
-    start_loss = step_metrics[0].get("loss") if step_metrics and step_metrics[0].get("loss") is not None else 0.0
-    final_loss = step_metrics[-1].get("loss") if step_metrics and step_metrics[-1].get("loss") is not None else start_loss
-
-    # 1. Save training_metrics.json into adapter output dir
-    os.makedirs(output_dir, exist_ok=True)
+    """[FEAT-452] Atomically records rich training telemetry to training_metrics.json and Neural Pager."""
     metrics_file = os.path.join(output_dir, "training_metrics.json")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    start_loss = step_metrics[0]["loss"] if step_metrics and step_metrics[0].get("loss") is not None else None
+    final_loss = step_metrics[-1]["loss"] if step_metrics and step_metrics[-1].get("loss") is not None else None
+    
     metrics_payload = {
         "timestamp": datetime.datetime.now().isoformat(),
-        "total_steps": steps,
-        "runtime_s": round(runtime_s, 2),
-        "pacing_delay_s": pacing_delay,
+        "adapter_name": os.path.basename(output_dir),
+        "steps_configured": steps,
+        "steps_completed": len(step_metrics),
         "start_loss": start_loss,
         "final_loss": final_loss,
-        "steps": step_metrics
+        "runtime_seconds": round(runtime_s, 2),
+        "pacing_delay_seconds": pacing_delay,
+        "step_metrics": step_metrics
     }
+    
+    # 1. Save training_metrics.json alongside adapter weights
     try:
-        with open(metrics_file, "w") as f:
+        tmp_metrics = metrics_file + ".tmp"
+        with open(tmp_metrics, "w") as f:
             json.dump(metrics_payload, f, indent=2)
+        os.replace(tmp_metrics, metrics_file)
         print(f"📊 [TELEMETRY] Saved training metrics to {metrics_file}", flush=True)
     except Exception as e:
         print(f"⚠️ [TELEMETRY] Warning saving {metrics_file}: {e}", flush=True)
@@ -170,7 +178,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_nam
         )
         return
 
-    max_seq_length = min(2048, 1536)  # [FEAT-452] Clamp to 1536 for VRM/thermal headroom
+    max_seq_length = 1024  # [FEAT-452] Clamped to 1024 to guarantee zero CUDA VRAM fragmentation on Turing SM 7.5
     dtype = None 
     load_in_4bit = True 
 

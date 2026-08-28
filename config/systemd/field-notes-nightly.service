@@ -11,4 +11,5 @@ ManagedOOMMemoryPressure=kill
 WorkingDirectory=/home/jallred/Dev_Lab/Portfolio_Dev
 Environment="PYTHONPATH=/home/jallred/Dev_Lab/HomeLabAI/src:/home/jallred/Dev_Lab/Portfolio_Dev/field_notes:$PYTHONPATH"
 Environment="LD_LIBRARY_PATH=/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib:$LD_LIBRARY_PATH"
+Environment="PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
 ExecStart=/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python /home/jallred/Dev_Lab/HomeLabAI/src/infra/nightly_forge.py
