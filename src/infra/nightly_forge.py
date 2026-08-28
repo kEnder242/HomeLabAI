@@ -206,7 +206,7 @@ def run_mass_scan():
     logger.info(f"[SPR-52.0] Mass scan complete with return code {res.returncode}")
     write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
 
-def run_unsloth_forge():
+def run_unsloth_forge() -> bool:
     """[FEAT-160] Run Unsloth LoRA fine-tuning locally on z87 (--local path)."""
     train_script = os.path.join(BASE_DIR, "forge", "train_expert.py")
     cmd = [
@@ -221,12 +221,15 @@ def run_unsloth_forge():
         if res.returncode == 0:
             logger.info("[FEAT-160] LoRA training pass completed successfully.")
             write_step_log("UNSLOTH_FORGE_COMPLETE", "returncode=0")
+            return True
         else:
             logger.error(f"[FEAT-160] LoRA training failed with code {res.returncode}: {res.stderr[-300:]}")
             write_step_log("UNSLOTH_FORGE_FAILED", f"returncode={res.returncode}")
+            return False
     except Exception as e:
         logger.error(f"[FEAT-160] Error executing train_expert.py: {e}")
         write_step_log("UNSLOTH_FORGE_ERROR", str(e))
+        return False
 
 def run_dream_cycle():
     """[FEAT-067 / VIBE-005] Run Subconscious Dreaming pass across newly refined Rank 4/5 gems."""
@@ -284,10 +287,15 @@ def main():
     write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
     time.sleep(15)
 
+    training_ok = False
     try:
         # 4. Heavy LoRA Training Pass (02:00 AM) - 100% Local on z87-Linux RTX 2080 Ti
         logger.info("[NIGHTLY STEP 2/4 - FORGE] Executing Local Unsloth LoRA Fine-Tuning Pass...")
-        run_unsloth_forge()
+        training_ok = run_unsloth_forge()
+        if not training_ok:
+            logger.error("[FATAL] [NIGHTLY FORGE] LoRA training pass failed. Aborting sweep to prevent uncoordinated daytime scans.")
+            write_step_log("SWEEP_ABORTED_ON_TRAIN_FAIL", "Aborting mass scan due to training failure")
+            return
             
         # 5. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
         logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown...")
@@ -297,6 +305,9 @@ def main():
         # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
         logger.info("[NIGHTLY STEP 3/4] Re-igniting Foyer state to OPERATIONAL...")
         re_ignite_vllm()
+
+    if not training_ok:
+        return
 
     # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
     logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")

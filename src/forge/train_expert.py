@@ -3,8 +3,6 @@ import sys
 import ctypes
 import time
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
 # Preload CUDA 13 runtime libraries from pip virtualenv
 _cu13_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
 if os.path.exists(_cu13_dir):
@@ -72,8 +70,6 @@ class HardwarePacingCallback(TrainerCallback):
                 self.step_metrics.append(entry)
 
     def on_step_end(self, args, state, control, **kwargs):
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
         print(f"\n⏱️ [HARDWARE PACING] Step {state.global_step}/{state.max_steps} complete. Settling hardware for {self.delay_sec}s...", flush=True)
         time.sleep(self.delay_sec)
         print("⚡ [HARDWARE PACING] Hardware settled to baseline. Initiating next optimization pulse.\n", flush=True)
