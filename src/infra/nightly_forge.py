@@ -130,32 +130,64 @@ def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
         logger.warning(f"[LAB-109] Power limit verification error: {e}")
         return True  # Non-fatal
 
-def quiesce_vllm():
+MAINTENANCE_LOCK_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/run/maintenance.lock")
+
+
+def quiesce_vllm() -> bool:
     """[FEAT-213] Quiesce vLLM & Foyer to free VRAM for Unsloth training."""
     logger.info("[FEAT-213] Requesting Foyer /release_nodes and SHUTDOWN state to reclaim VRAM...")
     write_step_log("QUIESCE_START", "Requesting Foyer /release_nodes & SHUTDOWN")
+    
+    # Set maintenance lock
+    try:
+        os.makedirs(os.path.dirname(MAINTENANCE_LOCK_PATH), exist_ok=True)
+        with open(MAINTENANCE_LOCK_PATH, "w") as f:
+            f.write(f"pid={os.getpid()}\ntimestamp={time.time()}\nservice=nightly_forge\n")
+        logger.info(f"[MAINTENANCE] Dropped lockfile: {MAINTENANCE_LOCK_PATH}")
+    except Exception as e:
+        logger.warning(f"[MAINTENANCE] Failed to write lockfile: {e}")
+
     try:
         # Step 1: Release all resident models from VRAM
         requests.post(f"{FOYER_URL}/release_nodes", timeout=10)
         # Step 2: Signal SHUTDOWN state to the Foyer state machine
         requests.post(f"{FOYER_URL}/shutdown", timeout=10)
-        resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
-        if resp.status_code == 200:
-            logger.info("[FEAT-213] Foyer nodes released and state set to SHUTDOWN. Settling 10s...")
-            time.sleep(10)
-            write_step_log("QUIESCE_OK", "Foyer SHUTDOWN settled (VRAM evicted)")
-            return True
-        else:
-            logger.warning(f"[FEAT-213] Status update returned HTTP {resp.status_code}")
+        requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
     except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
-    write_step_log("QUIESCE_SKIP", "Foyer status update skipped or offline")
+
+    # Step 3: Hard Verification — Poll VRAM usage for up to 30s until < 1500MB
+    logger.info("[FEAT-213] Verifying physical VRAM eviction via NVML/nvidia-smi...")
+    t0 = time.time()
+    while time.time() - t0 < 30:
+        vram_used = get_vram_usage()
+        if 0 < vram_used < 1500:
+            logger.info(f"[FEAT-213] VRAM eviction confirmed ({vram_used} MB used < 1500 MB threshold).")
+            write_step_log("QUIESCE_OK", f"VRAM evicted ({vram_used} MB used)")
+            return True
+        elif vram_used == 0:
+            logger.info("[FEAT-213] GPU query returned 0 MB, assuming VRAM evicted.")
+            write_step_log("QUIESCE_OK", "VRAM query 0 (evicted)")
+            return True
+        time.sleep(2)
+
+    logger.critical(f"[FEAT-213] VRAM eviction timed out! Current usage: {get_vram_usage()} MB >= 1500 MB.")
+    write_step_log("QUIESCE_FAILED", f"VRAM still allocated ({get_vram_usage()} MB)")
     return False
 
 def re_ignite_vllm():
     """[FEAT-213] Re-ignite Foyer & vLLM post-training."""
     logger.info("[FEAT-213] Re-igniting Foyer state to OPERATIONAL...")
     write_step_log("RE_IGNITE_START", "Requesting Foyer /wake & OPERATIONAL")
+    
+    # Remove maintenance lock
+    if os.path.exists(MAINTENANCE_LOCK_PATH):
+        try:
+            os.remove(MAINTENANCE_LOCK_PATH)
+            logger.info(f"[MAINTENANCE] Removed lockfile: {MAINTENANCE_LOCK_PATH}")
+        except Exception as e:
+            logger.warning(f"[MAINTENANCE] Error removing lockfile: {e}")
+
     try:
         requests.post(f"{FOYER_URL}/wake", timeout=10)
         resp = requests.post(f"{FOYER_URL}/status_update", json={"state": "OPERATIONAL"}, timeout=10)
@@ -237,6 +269,18 @@ def main():
     # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
     logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce for Training...")
     quiesced = quiesce_vllm()
+
+    if not quiesced:
+        logger.critical("[FATAL] [NIGHTLY FORGE] Cannot proceed with LoRA training: VRAM was NOT evicted. Aborting training to protect host memory stability.")
+        write_step_log("UNSLOTH_FORGE_ABORTED", "VRAM not free - aborting to prevent collision")
+        if os.path.exists(MAINTENANCE_LOCK_PATH):
+            try:
+                os.remove(MAINTENANCE_LOCK_PATH)
+            except Exception:
+                pass
+        # Re-ignite lab back to operational
+        re_ignite_vllm()
+        return
 
     # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
     logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
