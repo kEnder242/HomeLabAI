@@ -532,7 +532,8 @@ class BicameralNode:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "repetition_penalty": repetition_penalty,
-                "stream": True
+                "stream": True,
+                "stop": ["\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "Conversation has concluded"]
             }
             # [BKM-015] Active LoRA: role token override takes priority over static config
             active_lora = self.lora_name
@@ -568,7 +569,12 @@ class BicameralNode:
             payload = {
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
                 "stream": True,
-                "options": {"temperature": temperature, "num_predict": max_tokens, "repeat_penalty": repetition_penalty}
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                    "repeat_penalty": repetition_penalty,
+                    "stop": ["\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "Conversation has concluded"]
+                }
             }
             # [FEAT-344] Ollama Niceness: Only send model if explicitly configured.
             # If null/empty, Ollama uses the currently resident model.
