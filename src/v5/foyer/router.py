@@ -698,7 +698,7 @@ class FoyerRouter:
         try:
             data = await request.json()
             adapter_name = data.get("adapter")
-            steps = data.get("steps", 60)
+            steps = data.get("steps", 100)
             
             if not adapter_name:
                 return web.json_response({"status": "ERROR", "message": "Missing adapter name"}, status=400)
