@@ -376,6 +376,24 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     attempt = 0
     while attempt < max_retries:
         attempt += 1
+        if attempt > 1:
+            try:
+                session_payload = {
+                    "directory": target_dir,
+                    "title": f"{session_title} (Fallback Attempt {attempt})"
+                }
+                s_req = urllib.request.Request(
+                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
+                    data=json.dumps(session_payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(s_req, timeout=10) as s_resp:
+                    s_data = json.loads(s_resp.read().decode("utf-8"))
+                    session_id = s_data["id"]
+                    log_step(story_num, "SESSION_RECREATED", f"Created fresh session {session_id} for fallback attempt {attempt}")
+            except Exception:
+                pass
+
         current_model = model_ladder[min(attempt - 1, len(model_ladder) - 1)]
         log_step(story_num, "DISPATCH_ATTEMPT", f"Dispatching prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (Attempt {attempt}/{max_retries})")
         start_time = time.time()
