@@ -3,6 +3,8 @@ import sys
 import ctypes
 import time
 
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:128")
+
 # Preload CUDA 13 runtime libraries from pip virtualenv
 _cu13_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
 if os.path.exists(_cu13_dir):
@@ -193,7 +195,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_nam
         lora_alpha = 16,
         lora_dropout = 0,
         bias = "none",
-        use_gradient_checkpointing = "unsloth",
+        use_gradient_checkpointing = True,  # [FEAT-492] Standard PyTorch gradient checkpointing prevents Triton JIT kernel mutex stalls
         random_state = 3407,
         use_rslora = False,
         loftq_config = None,
@@ -232,7 +234,7 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_nam
         train_dataset = dataset,
         dataset_text_field = "text",
         max_seq_length = max_seq_length,
-        dataset_num_proc = 2,
+        dataset_num_proc = 1,  # [FEAT-492] Single-proc prevents fork memory contention with Xorg
         packing = False,
         callbacks = [pacing_cb],
         args = TrainingArguments(
@@ -250,6 +252,8 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_nam
             seed = 3407,
             output_dir = "outputs",
             report_to = "none",
+            dataloader_num_workers = 0,
+            dataloader_pin_memory = False,
         ),
     )
 
