@@ -367,18 +367,24 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
 {note_block}"""
 
-    msg_dict = {
-        "parts": [{"type": "text", "text": prompt}],
-        "model": {"providerID": "opencode", "modelID": "hy3-free"}
-    }
-
-    msg_payload = json.dumps(msg_dict).encode("utf-8")
+    model_ladder = [
+        {"providerID": "opencode", "modelID": "hy3-free"},
+        {"providerID": "openrouter", "modelID": "openrouter/free"},
+        {"providerID": "my-m5-mlx", "modelID": "mlx-community/Qwen3.8-27B-4bit"},
+    ]
 
     attempt = 0
     while attempt < max_retries:
         attempt += 1
-        log_step(story_num, "DISPATCH_ATTEMPT", f"Dispatching prompt to session {session_id} (Attempt {attempt}/{max_retries})")
+        current_model = model_ladder[min(attempt - 1, len(model_ladder) - 1)]
+        log_step(story_num, "DISPATCH_ATTEMPT", f"Dispatching prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (Attempt {attempt}/{max_retries})")
         start_time = time.time()
+        
+        msg_dict = {
+            "parts": [{"type": "text", "text": prompt}],
+            "model": current_model
+        }
+        msg_payload = json.dumps(msg_dict).encode("utf-8")
         
         post_result = None
         post_exception = None
