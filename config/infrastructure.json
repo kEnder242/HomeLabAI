@@ -58,5 +58,25 @@
         "lora_alpha": 32,
         "vram_eviction_threshold_mb": 1500,
         "adapter_base_dir": "/speedy/models/adapters"
+    },
+    "swarm_aliases": {
+        "champion_reasoner": [
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"}
+        ],
+        "champion_coder": [
+            {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"}
+        ],
+        "fast_worker": [
+            {"providerID": "opencode", "modelID": "hy3-free"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"}
+        ],
+        "default_ladder": [
+            {"providerID": "opencode", "modelID": "hy3-free"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"},
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
+        ]
     }
 }

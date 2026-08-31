@@ -367,11 +367,29 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
 {note_block}"""
 
-    model_ladder = [
-        {"providerID": "opencode", "modelID": "hy3-free"},
-        {"providerID": "openrouter", "modelID": "openrouter/free"},
-        {"providerID": "my-m5-mlx", "modelID": "mlx-community/Qwen3.8-27B-4bit"},
-    ]
+    # [FEAT-493] Load model ladder dynamically from centralized infrastructure config
+    cfg_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+    model_ladder = []
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r") as cf:
+                cfg_obj = json.load(cf)
+                aliases = cfg_obj.get("swarm_aliases", {})
+                if agent in ("prometheus", "atlas", "architect"):
+                    model_ladder = aliases.get("champion_reasoner", [])
+                elif agent in ("sisyphus", "hephaestus", "developer"):
+                    model_ladder = aliases.get("champion_coder", [])
+                else:
+                    model_ladder = aliases.get("default_ladder", [])
+        except Exception:
+            pass
+
+    if not model_ladder:
+        model_ladder = [
+            {"providerID": "opencode", "modelID": "hy3-free"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"},
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+        ]
 
     attempt = 0
     while attempt < max_retries:
