@@ -222,12 +222,25 @@ def _format_error_context(exc) -> str:
     return "\n".join(details)
 
 
+def _ping_host(host: str, port: int, timeout: float = 0.5) -> bool:
+    """Fast socket reachability probe for federated silicon endpoints."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        ok = (s.connect_ex((host, port)) == 0)
+        s.close()
+        return ok
+    except Exception:
+        return False
+
+
 def _is_provider_reachable(provider_id: str) -> bool:
     """Pre-probes local silicon endpoints (0.8s timeout) to avoid 60s OpenCode HTTP socket stalls."""
     if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
-        return _ping_host("192.168.1.26", 11434, timeout=0.8)
+        return _ping_host("192.168.1.26", 11434, timeout=0.5)
     if "m5" in provider_id or "mlx" in provider_id:
-        return _ping_host("192.168.1.46", 8000, timeout=0.8)
+        return _ping_host("192.168.1.46", 8000, timeout=0.5)
     return True
 
 
