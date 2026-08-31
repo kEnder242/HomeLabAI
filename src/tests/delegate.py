@@ -222,6 +222,15 @@ def _format_error_context(exc) -> str:
     return "\n".join(details)
 
 
+def _is_provider_reachable(provider_id: str) -> bool:
+    """Pre-probes local silicon endpoints (0.8s timeout) to avoid 60s OpenCode HTTP socket stalls."""
+    if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
+        return _ping_host("192.168.1.26", 11434, timeout=0.8)
+    if "m5" in provider_id or "mlx" in provider_id:
+        return _ping_host("192.168.1.46", 8000, timeout=0.8)
+    return True
+
+
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
 def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
@@ -390,6 +399,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             {"providerID": "openrouter", "modelID": "openrouter/free"},
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
         ]
+
+    # Pre-filter unreachable endpoints so we never block on 60s socket timeouts
+    model_ladder = [m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))]
+    if not model_ladder:
+        model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
 
     attempt = 0
     while attempt < max_retries:
