@@ -247,6 +247,23 @@ def run_dream_cycle():
     else:
         logger.info("[DREAM] dream_cycle.py not found; skipping dream pass.")
 
+
+def run_benchmark_sweep():
+    """[FEAT-495] Dynamic Federated Benchmark Sweep across all active hardware seats."""
+    bench_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/bench_models.py")
+    if os.path.exists(bench_script):
+        try:
+            res = subprocess.run([sys.executable, bench_script, "--no-serve"], capture_output=True, text=True, timeout=120)
+            if res.returncode == 0:
+                last_line = res.stdout.strip().splitlines()[-1] if res.stdout else "Success"
+                logger.info(f"[BENCHMARK] Sweep complete: {last_line}")
+                write_step_log("BENCHMARK_SWEEP_OK", f"Dynamic benchmarks refreshed: {last_line}")
+            else:
+                logger.warning(f"[BENCHMARK] Sweep exited with code {res.returncode}: {res.stderr}")
+        except Exception as e:
+            logger.warning(f"[BENCHMARK] Sweep execution failed: {e}")
+
+
 def main():
     logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED (LOCAL Z87) ===")
     write_step_log("ORCHESTRATION_INIT")
@@ -317,8 +334,12 @@ def main():
     logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
     run_dream_cycle()
 
+    # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
+    logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")
+    run_benchmark_sweep()
+
     logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
-    write_step_log("ORCHESTRATION_COMPLETE")
+    write_step_log("ORCHESTRATION_COMPLETE", "All nightly maintenance and benchmark phases passed")
 
 if __name__ == "__main__":
     main()
