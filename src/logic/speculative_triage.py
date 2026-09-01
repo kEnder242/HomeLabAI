@@ -58,21 +58,45 @@ def _probe_ollama(host: str = "192.168.1.26", port: int = 11434, timeout: float 
     return _probe_http(f"http://{host}:{port}/api/tags", timeout=timeout)
 
 
+def _probe_m5_air_vocal(host: str, port: int, timeout: float = 0.3) -> bool:
+    """Return True if M5 Air responds to a 1-token vocal completion check within *timeout* seconds."""
+    url = f"http://{host}:{port}/v1/chat/completions"
+    payload = b'{"model":"auto","messages":[{"role":"user","content":"."}],"max_tokens":1}'
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "User-Agent": "AcmeLab/5.0",
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
 def resolve_active_deep_thought_target(timeout: float = API_PROBE_TIMEOUT_S) -> dict:
     """
-    [FEAT-500] Ping-First & Stick Multi-Seat Resolver:
-    Probes M5 Air (:8000) first. If responsive, returns M5_AIR target.
-    If M5 Air is sleeping/unreachable, falls back to Kender (:11434).
+    [FEAT-500 / FEAT-502] Ping-First & Stick Multi-Seat Resolver:
+    Probes M5 Air (:8000) with a 1-token vocal completion check first.
+    If M5 Air returns an error or fails, falls back to Kender (:11434).
     If both remote seats fail, returns LOCAL (vLLM :8088).
     """
-    for target in DEEP_THOUGHT_TARGETS:
-        host = target["host"]
-        port = target["port"]
-        probe_path = target["probe_path"]
-        if _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
-            if _probe_http(f"http://{host}:{port}{probe_path}", timeout=timeout):
-                return target
-    return DEEP_THOUGHT_TARGETS[-1] # Fallback to LOCAL
+    # [FEAT-502] 1-token vocal completion check for M5 Air
+    m5_air = DEEP_THOUGHT_TARGETS[0]
+    if _probe_m5_air_vocal(m5_air["host"], m5_air["port"], timeout=0.3):
+        return m5_air
+
+    # Fallback to Kender (TCP + HTTP probe)
+    kender = DEEP_THOUGHT_TARGETS[1]
+    if _probe_tcp(kender["host"], kender["port"], timeout=SOCKET_TIMEOUT_S):
+        if _probe_http(f"http://{kender['host']}:{kender['port']}{kender['probe_path']}", timeout=timeout):
+            return kender
+
+    return DEEP_THOUGHT_TARGETS[-1]  # Fallback to LOCAL
 
 
 class SpeculativeTriageRelay:
