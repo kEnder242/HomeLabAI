@@ -6,9 +6,11 @@ creating a clean REST session on port 4097, pre-checking cloud rate limits, and 
 """
 
 import argparse
+import atexit
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -25,6 +27,36 @@ OPENCODE_REST_PORT = 4097
 OPENCODE_WEB_PORT = 4096
 OPENCODE_ATTACH_URL = f"http://127.0.0.1:{OPENCODE_REST_PORT}/"
 OPENCODE_WEB_URL = f"http://127.0.0.1:{OPENCODE_WEB_PORT}/"
+
+_ACTIVE_SESSION_ID = None
+
+
+def _cleanup_active_session():
+    """Auto-abort and delete in-flight REST session on task termination or exit."""
+    global _ACTIVE_SESSION_ID
+    if _ACTIVE_SESSION_ID:
+        sid = _ACTIVE_SESSION_ID
+        _ACTIVE_SESSION_ID = None
+        try:
+            req_abort = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort", method="POST")
+            urllib.request.urlopen(req_abort, timeout=1.5)
+        except Exception:
+            pass
+        try:
+            req_del = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}", method="DELETE")
+            urllib.request.urlopen(req_del, timeout=1.5)
+        except Exception:
+            pass
+
+
+def _sig_term_handler(signum, frame):
+    _cleanup_active_session()
+    sys.exit(1)
+
+
+signal.signal(signal.SIGINT, _sig_term_handler)
+signal.signal(signal.SIGTERM, _sig_term_handler)
+atexit.register(_cleanup_active_session)
 
 
 def _log_pager_event(message: str, severity: str = "WARNING"):
@@ -278,7 +310,7 @@ def _is_provider_reachable(provider_id: str) -> bool:
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=False):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=False, cloud_only=False):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -362,6 +394,8 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
             sys.exit(1)
 
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
+    global _ACTIVE_SESSION_ID
+    _ACTIVE_SESSION_ID = session_id
     wake_web_ui()
     log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
@@ -440,6 +474,12 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                             local_cfg.get("coder", {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"}),
                             local_cfg.get("fallback_coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"})
                         ]
+                elif cloud_only:
+                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/OpenCode). Zero local silicon fallbacks.")
+                    model_ladder = [
+                        {"providerID": "openrouter", "modelID": "openrouter/free"},
+                        {"providerID": "opencode", "modelID": "hy3-free"}
+                    ]
                 elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
                 elif agent in ("sisyphus", "hephaestus", "developer"):
@@ -452,6 +492,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     if not model_ladder:
         if local_only:
             model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}]
+        elif cloud_only:
+            model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
         else:
             model_ladder = [
                 {"providerID": "opencode", "modelID": "hy3-free"},
@@ -575,6 +617,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             else:
                 print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk.", flush=True)
 
+            _ACTIVE_SESSION_ID = None
             return
 
         if post_exception is not None:
@@ -613,6 +656,7 @@ if __name__ == "__main__":
     parser.add_argument("--agent", default="sisyphus", help="Target agent persona override for testing (default: sisyphus)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
     parser.add_argument("--local-only", action="store_true", help="Force 100% sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
+    parser.add_argument("--cloud-only", action="store_true", help="Force 100% cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")
     args = parser.parse_args()
 
     if args.retrospective:
@@ -638,4 +682,5 @@ if __name__ == "__main__":
         session_id=args.session_id,
         sprint_doc=args.sprint_doc,
         local_only=args.local_only,
+        cloud_only=args.cloud_only,
     )
