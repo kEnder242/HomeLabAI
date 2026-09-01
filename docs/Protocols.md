@@ -78,10 +78,30 @@
 
 1.  **The Test Plan**: Present a clear plan (What to test, expected outcome) before launching.
 2.  **Versioning**: Agent MUST bump the system VERSION (in acme_lab.py) if any client/server logic changed to prevent "Old Code" traps.
-3.  **Execute (Blocking)**: Agent runs the co-pilot script and WAITS. 
+3.  **Execute (Blocking)**: Agent runs the co-pilot script and WAITS.
     *   *Timeout*: Tool calls must automatically time out after 300s to prevent Agent lockup.
 4.  **Verbal Feedback**: Actively mine logs for user notes (e.g., "Pinky, note that X is broken") received during the session.
 5.  **Post-Mortem**: Immediately update `ProjectStatus.md` with findings from both logs and user feedback.
+
+### Canonical Log Black Box Path
+All diagnostic forensics MUST reference the canonical black box log:
+```
+/home/jallred/Dev_Lab/HomeLabAI/src/server.log
+```
+
+### FEAT-505: 75-Minute 5x5 Endurance Gauntlet Rule
+**Objective**: Ensure engine stability validation across sustained operational intervals.
+**Trigger**: Cloud Swarm Run validation, production deployment gates, or long-duration stability certification.
+
+1.  **The 5x5 Mandate**: The engine MUST survive a 75-minute endurance gauntlet with pulse checks at fixed intervals:
+    *   **Interval 0 min**: Initial ignition verification
+    *   **Interval 5 min**: First stability pulse
+    *   **Interval 10 min**: Second stability pulse
+    *   **Interval 20 min**: Third stability pulse
+    *   **Interval 40 min**: Final stability pulse
+    *   **Total Duration**: 75 minutes cumulative
+
+2.  **Pass Criteria**: Engine remains OPERATIONAL at all intervals without crash, stall, or memory leak degradation.
 
 ## BKM-011: The Safe-Scalpel (Atomic Patcher)
 **Objective**: Ensure lint-verified, regression-free code edits.
