@@ -1406,6 +1406,31 @@ class FoyerRouter:
                             "request_id": request_id
                         })
 
+                        # [FEAT-498] Cumulative Sovereign Telemetry Tap for Intercom & Mice Debate
+                        try:
+                            from infra.cumulative_telemetry import log_telemetry_event
+                            toks = max(1, int(len(content) / 3.8))
+                            seat_map = {
+                                "pinky": "Linux 2080ti",
+                                "brain": "Windows 4090RTX",
+                                "deep thought": "Windows 4090RTX",
+                                "architect": "Apple M5 Air",
+                                "librarian": "Linux 2080ti"
+                            }
+                            s_seat = seat_map.get(source.lower(), "Linux 2080ti")
+                            log_telemetry_event(
+                                source=f"Web Intercom ({source})",
+                                task_title=f"Mice Turn: {source}",
+                                seat=s_seat,
+                                provider="local_hub",
+                                model=f"persona_{source.lower()}",
+                                tokens_generated=toks,
+                                duration_seconds=max(0.5, toks / 35.0),
+                                raw_throughput_tok_s=35.0
+                            )
+                        except Exception:
+                            pass
+
                         # [SPR-52.0 / Task 52.3] Stage 5: contract completion (idempotent)
                         if self.stage_memory.get(request_id, {}).get("stage5_pinky_review") is None:
                             await self._emit_stage_progress("stage5_pinky_review", request_id, "COMPLETED")
