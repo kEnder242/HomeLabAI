@@ -28,7 +28,7 @@
             "mlx_port": 8000,
             "webui_port": 3000,
             "ssh_user": "jasons-air",
-            "default_model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit"
+            "default_model": "mlx-community--Qwen3.8-27B-4bit"
         },
         "KENDER": {
             "ip_hint": "192.168.1.26",
@@ -67,7 +67,7 @@
         ],
         "champion_coder": [
             {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
-            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"},
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
             {"providerID": "openrouter", "modelID": "openrouter/free"}
         ],
         "fast_worker": [
@@ -82,7 +82,7 @@
         "local_bicameral": {
             "architect": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
             "coder": {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
-            "fallback_coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"}
+            "fallback_coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
         }
     }
 }
