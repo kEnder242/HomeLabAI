@@ -866,6 +866,9 @@ class FoyerRouter:
             asyncio.create_task(self.sensory.load())
         else:
             logger.info("[BOOT] Sensory EarNode disabled by configuration.")
+
+        # [FEAT-503] Eager Resident Node Ignition: Boot all resident workers on startup
+        self._launch_resident_boot_async()
         
         # [Task 5.2] Execute one-off trigger task if requested
         trigger_task = getattr(self, "trigger_task", None)
