@@ -51,26 +51,27 @@ STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 JUDGE_BACKPRESSURE_PATH = os.path.join(DATA_DIR, "judge_backpressure.jsonl")  # [FEAT-444]
 INFRA_CONFIG = os.path.join(LAB_DIR, "config", "infrastructure.json")  # [FEAT-028] Deep Thought topology
 
-# [SPR-52.0 / Task 52.3] 5-Stage Division of Labor Orchestration
+# [SPR-52.0 / SPR-67.0 / FEAT-500] 5-Stage Division of Labor Orchestration
 DIVISION_OF_LABOR_STAGES = (
-    ("stage1_kender_triage",  "Deep Thought / Lab Node (Kender · t=0)", "Preamble & Triage"),
-    ("stage2_pinky_hyde",     "Pinky (vLLM + LoRA)",                    "HyDE & Persona Alignment"),
-    ("stage3_brain_query",    "Brain (Right Hemisphere)",               "Short Technical Answer / ChromaDB"),
-    ("stage4_dt_synthesis",   "Deep Thought (Kender)",                  "Strategic Synthesis (importance >= 0.7)"),
-    ("stage5_pinky_review",   "Pinky (Sanity / Vibe Check)",            "Out-Loud Delivery -> Waterfall Drainer"),
+    ("stage1_deep_thought_triage", "Deep Thought / Lab Node (Sovereign Silicon)", "Preamble & Triage"),
+    ("stage2_pinky_hyde",          "Pinky (vLLM + LoRA)",                        "HyDE & Persona Alignment"),
+    ("stage3_brain_query",         "Brain (Right Hemisphere)",                   "Short Technical Answer / ChromaDB"),
+    ("stage4_dt_synthesis",        "Deep Thought (M5 Air / Sovereign)",          "Strategic Synthesis (importance >= 0.7)"),
+    ("stage5_pinky_review",        "Pinky (Sanity / Vibe Check)",                "Out-Loud Delivery -> Waterfall Drainer"),
 )
 STAGE_SOURCE_MAP = {
-    "Deep Thought": "stage1_kender_triage",
-    "Lab (Triage)": "stage1_kender_triage",
+    "Deep Thought": "stage1_deep_thought_triage",
+    "Lab (Triage)": "stage1_deep_thought_triage",
     "Pinky":        "stage2_pinky_hyde",
     "Brain":        "stage3_brain_query",
 }
 STAGE_TIMEOUTS = {
-    "stage1_kender_triage": 45,
-    "stage2_pinky_hyde":    30,
-    "stage3_brain_query":   30,
-    "stage4_dt_synthesis":  60,
-    "stage5_pinky_review":  20,
+    "stage1_deep_thought_triage": 45,
+    "stage1_kender_triage":       45, # backward-compatible alias
+    "stage2_pinky_hyde":          30,
+    "stage3_brain_query":         30,
+    "stage4_dt_synthesis":        60,
+    "stage5_pinky_review":        20,
 }
 STAGE_LEDGER_PATH = os.path.join(DATA_DIR, "foyer_stage_ledger.jsonl")
 
@@ -1299,9 +1300,9 @@ class FoyerRouter:
             # [Story 54.5] Step 2: Spawn parallel background preamble synthesis & broadcast
             async def _run_synthesis_and_broadcast():
                 try:
-                    if not self.stage_memory.get(request_id, {}).get("stage1_kender_triage"):
+                    if not self.stage_memory.get(request_id, {}).get("stage1_deep_thought_triage"):
                         await self._emit_stage_progress(
-                            "stage1_kender_triage", request_id, "STARTED",
+                            "stage1_deep_thought_triage", request_id, "STARTED",
                             detail="unified_llm_synthesis"
                         )
 

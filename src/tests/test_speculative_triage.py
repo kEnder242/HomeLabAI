@@ -55,11 +55,11 @@ async def mock_invalid_response(query, context, schema, request_id):
 
 @pytest.mark.asyncio
 async def test_kender_fast_path():
-    """Test Case 1: Kender resolves within head-start window."""
+    """Test Case 1: Deep Thought resolves within head-start window."""
     relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_fast, mock_vllm_medium, t_warm=0.5)
     result, winner = await relay.relay("test", {}, {}, "req1")
     
-    assert winner == "kender"
+    assert winner in ["deep_thought", "kender"]
     assert result["situation"] == "Kender fast path"
     meta = relay.get_console_metadata(winner)
     assert meta["channel"] == "insight"
@@ -67,9 +67,9 @@ async def test_kender_fast_path():
 
 @pytest.mark.asyncio
 async def test_kender_slow_vllm_wins():
-    """Test Case 2: Kender slow, vLLM speculative win."""
+    """Test Case 2: Deep Thought slow, vLLM speculative win."""
     relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=0.1)
-    # head_start = 0.2s. Kender sleeps 1.0s, vLLM sleeps 0.2s.
+    # head_start = 0.2s. Deep Thought sleeps 1.0s, vLLM sleeps 0.2s.
     result, winner = await relay.relay("test", {}, {}, "req2")
     
     assert winner == "vllm"
@@ -81,11 +81,9 @@ async def test_kender_slow_vllm_wins():
 @pytest.mark.asyncio
 async def test_trailing_runner_cancellation():
     """Test Case 3: Ensure trailing runner is cancelled (implicit via fast return)."""
-    # We can't easily test cancellation without mocks tracking calls, 
-    # but we can verify the winner logic.
     relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=0.01)
     result, winner = await relay.relay("test", {}, {}, "req3")
-    assert winner in ["kender", "vllm"]
+    assert winner in ["deep_thought", "kender", "vllm"]
 
 @pytest.mark.asyncio
 async def test_fallback_on_error():
@@ -100,7 +98,7 @@ async def test_fallback_on_error():
 async def test_invalid_response_fallback():
     """Test Case 5: Invalid JSON response handling."""
     relay = SpeculativeTriageRelay(mock_broadcast, mock_invalid_response, mock_vllm_medium, t_warm=0.1)
-    # Kender returns invalid, vLLM should win
+    # Deep Thought returns invalid, vLLM should win
     result, winner = await relay.relay("test", {}, {}, "req5")
     
     assert winner == "vllm"
@@ -108,9 +106,9 @@ async def test_invalid_response_fallback():
 
 @pytest.mark.asyncio
 async def test_dual_check_gate_fast_bypass(monkeypatch):
-    """Test Case 6: When Kender Ollama probe fails, fast socket gate bypasses head-start with 0 delay."""
+    """Test Case 6: When remote Deep Thought probe fails, fast socket gate bypasses head-start with 0 delay."""
     import logic.speculative_triage as spec_mod
-    monkeypatch.setattr(spec_mod, "_probe_ollama", lambda host, port, timeout: False)
+    monkeypatch.setattr(spec_mod, "resolve_active_deep_thought_target", lambda timeout=0.6: {"name": "LOCAL", "host": "127.0.0.1", "port": 8088, "protocol": "VLLM", "probe_path": "/v1/models"})
 
     relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=5.0)
     t0 = asyncio.get_event_loop().time()
@@ -125,15 +123,15 @@ async def test_dual_check_gate_fast_bypass(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dual_check_gate_patient_runway(monkeypatch):
-    """Test Case 7: When Kender Ollama probe succeeds, 10s patient window allows slow warm start to win."""
+    """Test Case 7: When remote Deep Thought probe succeeds, 10s patient window allows slow warm start to win."""
     import logic.speculative_triage as spec_mod
-    monkeypatch.setattr(spec_mod, "_probe_ollama", lambda host, port, timeout: True)
+    monkeypatch.setattr(spec_mod, "resolve_active_deep_thought_target", lambda timeout=0.6: {"name": "M5_AIR", "host": "192.168.1.46", "port": 8000, "protocol": "OPENAI", "probe_path": "/v1/models"})
 
-    # Kender takes 0.3s (simulating warm generation); head-start is 1.0s (t_warm=0.5)
+    # Deep Thought takes 0.3s (simulating warm generation); head-start is 2.0s (t_warm=1.0)
     relay = SpeculativeTriageRelay(mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warm=1.0)
     result, winner = await relay.relay("test", {}, {}, "req7")
 
-    assert winner == "kender"
+    assert winner in ["deep_thought", "kender"]
     assert result["situation"] == "Kender slow path"
 
 
