@@ -30,6 +30,8 @@ DEEP_THOUGHT_TARGETS = [
 
 SOCKET_TIMEOUT_S = 0.2
 API_PROBE_TIMEOUT_S = 0.6
+KENDER_HOST = "192.168.1.26"
+KENDER_PORT = 11434
 
 
 def _probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
