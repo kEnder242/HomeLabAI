@@ -291,6 +291,7 @@ class BicameralNode:
         # [FEAT-255.1] Dynamic Registry: Sync engine type with status.json
         resolved_ip = self._resolve_primary_host()
         
+        host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
         if self.primary_host == "localhost":
             engine_type = os.environ.get("LAB_MODE", "VLLM")
             status_path = os.path.join(LAB_DIR, "status.json")
@@ -304,9 +305,14 @@ class BicameralNode:
             
             port = 8088 if engine_type == "VLLM" else 11434
             base_url = f"http://{resolved_ip}:{port}"
+        elif self.primary_host == "M5_AIR":
+            engine_type = "VLLM" # oMLX on M5 Air uses OpenAI /v1/ API
+            port = host_cfg.get("mlx_port", 8000)
+            base_url = f"http://{resolved_ip}:{port}"
         else:
             engine_type = "OLLAMA"
-            base_url = f"http://{resolved_ip}:11434"
+            port = host_cfg.get("ollama_port", 11434)
+            base_url = f"http://{resolved_ip}:{port}"
         
         models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
 

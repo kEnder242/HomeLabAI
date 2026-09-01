@@ -1,10 +1,33 @@
 import asyncio
 import logging
 import socket
+import urllib.request
 
-# [FEAT-486] Remote Kender (Ollama) endpoint used by the fast dual-check gate.
-KENDER_HOST = "192.168.1.26"
-KENDER_PORT = 11434
+# [FEAT-500] Deep Thought Sovereign Multi-Seat Endpoints (Role-Hardware Decoupled)
+DEEP_THOUGHT_TARGETS = [
+    {
+        "name": "M5_AIR",
+        "host": "192.168.1.46",
+        "port": 8000,
+        "protocol": "OPENAI",
+        "probe_path": "/v1/models"
+    },
+    {
+        "name": "KENDER",
+        "host": "192.168.1.26",
+        "port": 11434,
+        "protocol": "OLLAMA",
+        "probe_path": "/api/tags"
+    },
+    {
+        "name": "LOCAL",
+        "host": "127.0.0.1",
+        "port": 8088,
+        "protocol": "VLLM",
+        "probe_path": "/v1/models"
+    }
+]
+
 SOCKET_TIMEOUT_S = 0.2
 API_PROBE_TIMEOUT_S = 0.6
 
@@ -18,39 +41,57 @@ def _probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
         return False
 
 
-def _probe_ollama(host: str = KENDER_HOST, port: int = KENDER_PORT, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
-    """Return True if Kender TCP connects AND Ollama /api/tags responds within *timeout* seconds."""
-    if not _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
-        return False
+def _probe_http(url: str, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
+    """Return True if HTTP endpoint returns 200 within *timeout* seconds."""
     try:
-        import urllib.request
-        req = urllib.request.Request(f"http://{host}:{port}/api/tags", headers={"User-Agent": "AcmeLab/5.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "AcmeLab/5.0"})
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return response.status == 200
     except Exception:
         return False
 
 
+def _probe_ollama(host: str = "192.168.1.26", port: int = 11434, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
+    """Legacy compatibility wrapper for Kender probe."""
+    if not _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
+        return False
+    return _probe_http(f"http://{host}:{port}/api/tags", timeout=timeout)
+
+
+def resolve_active_deep_thought_target(timeout: float = API_PROBE_TIMEOUT_S) -> dict:
+    """
+    [FEAT-500] Ping-First & Stick Multi-Seat Resolver:
+    Probes M5 Air (:8000) first. If responsive, returns M5_AIR target.
+    If M5 Air is sleeping/unreachable, falls back to Kender (:11434).
+    If both remote seats fail, returns LOCAL (vLLM :8088).
+    """
+    for target in DEEP_THOUGHT_TARGETS:
+        host = target["host"]
+        port = target["port"]
+        probe_path = target["probe_path"]
+        if _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
+            if _probe_http(f"http://{host}:{port}{probe_path}", timeout=timeout):
+                return target
+    return DEEP_THOUGHT_TARGETS[-1] # Fallback to LOCAL
+
+
 class SpeculativeTriageRelay:
     """
-    [SPR-64_1] Speculative Triage Relay with Kender Priority Window.
-    Races Remote Kender (Ollama) and Local vLLM for the fastest triage JSON.
-    [FEAT-486] A Dual-Check Gate (TCP + HTTP /api/tags) is applied at the front of relay():
-    If the Remote Kender Ollama API is unreachable, the speculative head-start window (10.0s)
-    is skipped entirely and local vLLM is dispatched with zero delay.
-    If Kender Ollama is responsive, a 10.0s patient runway is granted to allow Kender
-    to warm from idle disk sleep (~5.4s) + generate (~0.3s) without false timeouts.
+    [SPR-67_0 / FEAT-500] Speculative Triage Relay with Dynamic Deep Thought Multi-Seat Resolution.
+    Races Sovereign Deep Thought (M5 Air / Kender) and Local vLLM for the fastest triage JSON.
+    [FEAT-486 / FEAT-500] A Dual-Check Gate probes M5 Air first, then Kender:
+    If a remote Deep Thought target is reachable, a 10.0s patient warmup runway is granted.
+    If remote seats are unreachable, the head-start window is skipped with zero delay
+    and local vLLM is dispatched immediately.
     """
-    def __init__(self, broadcast_callback, kender_fn, vllm_fn, t_warm=5.0,
-                 kender_host=KENDER_HOST, kender_port=KENDER_PORT,
-                 socket_timeout=SOCKET_TIMEOUT_S, api_timeout=API_PROBE_TIMEOUT_S):
+    def __init__(self, broadcast_callback, deep_thought_fn=None, vllm_fn=None, t_warm=5.0,
+                 kender_fn=None, socket_timeout=SOCKET_TIMEOUT_S, api_timeout=API_PROBE_TIMEOUT_S):
         self.broadcast = broadcast_callback
-        self.kender_fn = kender_fn
+        self.deep_thought_fn = deep_thought_fn or kender_fn
+        self.kender_fn = self.deep_thought_fn # backward compatibility
         self.vllm_fn = vllm_fn
         self.t_warm = t_warm
         self.head_start_window = 2 * t_warm
-        self.kender_host = kender_host
-        self.kender_port = kender_port
         self.socket_timeout = socket_timeout
         self.api_timeout = api_timeout
 
@@ -59,49 +100,52 @@ class SpeculativeTriageRelay:
         Execute the speculative relay.
         Returns (triage_dict, winner_name) or (None, None).
         """
-        logging.info(f"[SPR-64_1] Initiating Speculative Relay (Head-start: {self.head_start_window}s)")
+        logging.info(f"[SPR-67_0] Initiating Speculative Relay (Head-start: {self.head_start_window}s)")
 
-        # [FEAT-486] Dual-Check Gate: If Remote Kender or Ollama /api/tags is unreachable,
-        # skip the speculative head-start window with ZERO delay and dispatch
-        # local vLLM immediately. If responsive, grant 10.0s patient warmup runway.
-        if not _probe_ollama(self.kender_host, self.kender_port, self.api_timeout):
-            logging.info("[FEAT-486] Kender/Ollama unreachable. Fast dual-check gate: dispatching local vLLM with zero delay.")
+        # [FEAT-500] Dual-Check Gate: Check if remote Deep Thought (M5 Air or Kender) is live
+        active_target = resolve_active_deep_thought_target(self.api_timeout)
+        target_name = active_target["name"]
+
+        if target_name == "LOCAL":
+            logging.info("[FEAT-500] Remote Deep Thought seats unreachable. Fast dual-check gate: dispatching local vLLM with zero delay.")
             result = await self._run_vllm(query, context, triage_schema, request_id)
             if self._is_valid_triage(result):
                 return result, "vllm"
             return None, None
 
-        # 1. Launch Kender
-        kender_task = asyncio.create_task(self._run_kender(query, context, triage_schema, request_id))
+        logging.info(f"[FEAT-500] Deep Thought target resolved: {target_name} ({active_target['host']}:{active_target['port']})")
+
+        # 1. Launch Deep Thought
+        dt_task = asyncio.create_task(self._run_deep_thought(query, context, triage_schema, request_id))
         
         # 2. Wait for head-start window
         done, pending = await asyncio.wait(
-            [kender_task],
+            [dt_task],
             timeout=self.head_start_window
         )
         
-        # 3. If Kender finishes in head-start, it wins
+        # 3. If Deep Thought finishes in head-start, it wins
         if done:
             try:
                 result = done.pop().result()
                 if self._is_valid_triage(result):
-                    logging.info("[SPR-64_1] Kender won (Head-start completion)")
-                    return result, "kender"
+                    logging.info(f"[SPR-67_0] Deep Thought ({target_name}) won (Head-start completion)")
+                    return result, "deep_thought"
             except Exception as e:
-                logging.warning(f"[SPR-64_1] Kender failed in head-start: {e}")
+                logging.warning(f"[SPR-67_0] Deep Thought failed in head-start: {e}")
         
-        # 4. Kender slow: Launch local vLLM
-        logging.info("[SPR-64_1] Kender slow. Launching local vLLM candidate...")
+        # 4. Deep Thought slow: Launch local vLLM
+        logging.info(f"[SPR-67_0] Deep Thought ({target_name}) slow. Launching local vLLM candidate...")
         await self.broadcast({
             "type": "crosstalk",
-            "brain": "[SPECULATIVE] Kender slow. Launching local vLLM candidate...",
+            "brain": f"[SPECULATIVE] Deep Thought ({target_name}) slow. Launching local vLLM candidate...",
             "brain_source": "System"
         })
         
         vllm_task = asyncio.create_task(self._run_vllm(query, context, triage_schema, request_id))
         
         # 5. Race the remaining tasks
-        runners = [kender_task, vllm_task]
+        runners = [dt_task, vllm_task]
         while runners:
             done, runners = await asyncio.wait(runners, return_when=asyncio.FIRST_COMPLETED)
             
@@ -114,17 +158,22 @@ class SpeculativeTriageRelay:
                             if not r.done():
                                 r.cancel()
                         
-                        winner = "vllm" if task is vllm_task else "kender"
-                        logging.info(f"[SPR-64_1] {winner.upper()} won (Speculative race)")
+                        winner = "vllm" if task is vllm_task else "deep_thought"
+                        logging.info(f"[SPR-67_0] {winner.upper()} won (Speculative race)")
                         return result, winner
                 except Exception as e:
-                    logging.warning(f"[SPR-64_1] Runner failed: {e}")
+                    logging.warning(f"[SPR-67_0] Runner failed: {e}")
                     continue
                     
         return None, None
 
+    async def _run_deep_thought(self, query, context, triage_schema, request_id):
+        if self.deep_thought_fn:
+            return await self.deep_thought_fn(query, context, triage_schema, request_id)
+        return None
+
     async def _run_kender(self, query, context, triage_schema, request_id):
-        return await self.kender_fn(query, context, triage_schema, request_id)
+        return await self._run_deep_thought(query, context, triage_schema, request_id)
 
     async def _run_vllm(self, query, context, triage_schema, request_id):
         return await self.vllm_fn(query, context, triage_schema, request_id)
@@ -141,7 +190,7 @@ class SpeculativeTriageRelay:
         """
         Return channel/source metadata based on winner.
         """
-        if winner == "kender":
+        if winner in ["kender", "deep_thought", "m5_air"]:
             return {
                 "channel": "insight",
                 "source": "Deep Thought (Triage)",

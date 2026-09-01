@@ -4,8 +4,9 @@
     "vram_hibernation_level": 2,
     "nodes": {
         "thought": {
-            "primary": "KENDER",
-            "fallback": "localhost",
+            "primary": "M5_AIR",
+            "fallback": "KENDER",
+            "local_fallback": "localhost",
             "lora_name": "lab_history_v1"
         },
         "brain": {
