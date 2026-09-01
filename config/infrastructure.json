@@ -77,6 +77,11 @@
             {"providerID": "opencode", "modelID": "hy3-free"},
             {"providerID": "openrouter", "modelID": "openrouter/free"},
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
-        ]
+        ],
+        "local_bicameral": {
+            "architect": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            "coder": {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
+            "fallback_coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"}
+        }
     }
 }

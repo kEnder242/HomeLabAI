@@ -286,7 +286,7 @@ def _is_provider_reachable(provider_id: str) -> bool:
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=False):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -438,7 +438,17 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             with open(cfg_path, "r") as cf:
                 cfg_obj = json.load(cf)
                 aliases = cfg_obj.get("swarm_aliases", {})
-                if agent in ("prometheus", "atlas", "architect"):
+                if local_only:
+                    local_cfg = aliases.get("local_bicameral", {})
+                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (M5 Air + Windows KENDER). Zero cloud fallbacks.")
+                    if mode in ("plan", "investigate") or agent in ("prometheus", "atlas", "architect"):
+                        model_ladder = [local_cfg.get("architect", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"})]
+                    else:
+                        model_ladder = [
+                            local_cfg.get("coder", {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"}),
+                            local_cfg.get("fallback_coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"})
+                        ]
+                elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
                 elif agent in ("sisyphus", "hephaestus", "developer"):
                     model_ladder = aliases.get("champion_coder", [])
@@ -448,16 +458,20 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             pass
 
     if not model_ladder:
-        model_ladder = [
-            {"providerID": "opencode", "modelID": "hy3-free"},
-            {"providerID": "openrouter", "modelID": "openrouter/free"},
-            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
-        ]
+        if local_only:
+            model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}]
+        else:
+            model_ladder = [
+                {"providerID": "opencode", "modelID": "hy3-free"},
+                {"providerID": "openrouter", "modelID": "openrouter/free"},
+                {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            ]
 
-    # Pre-filter unreachable endpoints so we never block on 60s socket timeouts
-    model_ladder = [m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))]
-    if not model_ladder:
-        model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
+    # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
+    if not local_only:
+        model_ladder = [m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))]
+        if not model_ladder:
+            model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
 
     attempt = 0
     while attempt < max_retries:
@@ -606,6 +620,7 @@ if __name__ == "__main__":
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
     parser.add_argument("--agent", default="sisyphus", help="Target agent persona override for testing (default: sisyphus)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
+    parser.add_argument("--local-only", action="store_true", help="Force 100% sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
     args = parser.parse_args()
 
     if args.retrospective:
@@ -630,4 +645,5 @@ if __name__ == "__main__":
         target_files=args.target,
         session_id=args.session_id,
         sprint_doc=args.sprint_doc,
+        local_only=args.local_only,
     )
