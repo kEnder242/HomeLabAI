@@ -235,43 +235,35 @@ def _ping_host(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
-def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model_obj: dict, duration: float, tokens: dict, text_len: int):
-    """[FEAT-496] Passive Swarm Telemetry Tap for live_usage_stream.jsonl"""
+def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model_obj: dict, duration: float, tokens: dict, text_len: int, raw_tp: float = None):
+    """[FEAT-498] Unified Swarm Telemetry Tap for live_usage_stream.jsonl & cumulative_tokens.json"""
     try:
-        data_dir = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
-        os.makedirs(data_dir, exist_ok=True)
-        stream_path = os.path.join(data_dir, "live_usage_stream.jsonl")
-        
+        from infra.cumulative_telemetry import log_telemetry_event
         out_tokens = tokens.get("output", 0) if isinstance(tokens, dict) else 0
         if out_tokens == 0 and text_len > 0:
             out_tokens = max(1, int(text_len / 4.0))
             
-        tp = round(out_tokens / duration, 2) if duration > 0 and out_tokens > 0 else 0.0
         provider_id = model_obj.get("providerID", "unknown") if isinstance(model_obj, dict) else "unknown"
         model_id = model_obj.get("modelID", "unknown") if isinstance(model_obj, dict) else str(model_obj)
         
         seat = "Cloud Swarm"
-        if "4090" in provider_id or "kender" in provider_id:
-            seat = "Windows KENDER (RTX 4090)"
+        if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
+            seat = "Windows 4090RTX"
         elif "m5" in provider_id or "mlx" in provider_id:
             seat = "Apple M5 Air"
         elif "z87" in provider_id or "vllm" in provider_id:
-            seat = "Linux z87 (RTX 2080 Ti)"
+            seat = "Linux 2080ti"
             
-        record = {
-            "timestamp": time.time(),
-            "date_str": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": f"delegate.py (Story {story_num})",
-            "task_title": title,
-            "seat": seat,
-            "provider": provider_id,
-            "model": model_id,
-            "tokens_generated": out_tokens,
-            "duration_seconds": round(duration, 2),
-            "throughput_tok_s": tp
-        }
-        with open(stream_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        log_telemetry_event(
+            source=f"delegate.py (Story {story_num})",
+            task_title=title,
+            seat=seat,
+            provider=provider_id,
+            model=model_id,
+            tokens_generated=out_tokens,
+            duration_seconds=duration,
+            raw_throughput_tok_s=raw_tp
+        )
     except Exception:
         pass
 
