@@ -438,7 +438,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     else:
                         model_ladder = [
                             local_cfg.get("coder", {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"}),
-                            local_cfg.get("fallback_coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen2.5-Coder-14B-Instruct-4bit"})
+                            local_cfg.get("fallback_coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"})
                         ]
                 elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
