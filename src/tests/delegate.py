@@ -418,6 +418,14 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   3. IDENTIFIED BOTTLENECK / RACE CONDITION
   4. RECOMMENDED REMEDIATION"""
         note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
+    elif agent == "atlas":
+        mandate_block = f"""[STORY {story_num}: {title}]
+You are Atlas (Task Orchestrator on Apple M5 Air).
+Your mission is to formulate the structured plan and delegate implementation tasks to your local execution worker `sisyphus-junior` (RTX 4090) using the `task` tool:
+  `task(agent="sisyphus-junior", prompt="<concrete instructions with file paths, symbol anchors, and code diffs>")`
+Do not attempt direct multi-turn file edits yourself; delegate execution to sisyphus-junior."""
+        _edit_scope = target_files if target_files else reference_file
+        note_block = f"[NOTE] Delegate the surgical code edits to sisyphus-junior. Silicon validation will be performed post-dispatch."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
@@ -427,10 +435,11 @@ TOOL GUIDANCE: Always call the clara-dna_safe_patch MCP tool for surgical code e
 
     # [BKM-034 Two-Tier Payload Construction]
     effective_sprint_doc = sprint_doc or (reference_file if reference_file and "SPRINT_PLAN" in reference_file else None)
-    sprint_summary = _extract_sprint_summary(effective_sprint_doc)
     tier1_block = ""
-    if sprint_summary:
-        tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
+    if not local_only and effective_sprint_doc:
+        sprint_summary = _extract_sprint_summary(effective_sprint_doc)
+        if sprint_summary:
+            tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
 Sprint Reference: {effective_sprint_doc}
 {sprint_summary}
 
@@ -438,6 +447,24 @@ Sprint Reference: {effective_sprint_doc}
 
 ---
 """
+    elif local_only and effective_sprint_doc:
+        tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
+Sprint Reference: {effective_sprint_doc} (Available on disk for full architectural context & diagrams)
+
+---
+"""
+
+    # Optional target file snippet injection to prevent M5 Air memory ceiling blowouts
+    target_snippet_block = ""
+    if target_files and os.path.exists(target_files.split(",")[0].strip()):
+        first_target = target_files.split(",")[0].strip()
+        try:
+            with open(first_target, "r") as tf:
+                lines = tf.readlines()
+                snippet = "".join(lines[:80])
+                target_snippet_block = f"\n[INCUMBENT TARGET CODE SNIPPET: {first_target}]\n```python\n{snippet}\n```\n"
+        except Exception:
+            pass
 
     _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
     prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
@@ -450,7 +477,7 @@ Sprint Reference: {effective_sprint_doc}
 
 [FUNCTIONAL REQUIREMENTS & 4-ANCHOR SPECIFICATION]
 {details}
-
+{target_snippet_block}
 [HANDOVER REFLECTION]
 As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 

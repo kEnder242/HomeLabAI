@@ -49,6 +49,7 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
 3. **Native-binary gotcha:** opencode 1.14.48 is native (no node_modules). Do NOT add `npm:` provider blocks for groq/cohere/mistral — the embedded registry resolves them; npm blocks only add breakage risk. `opencode models` is the ground-truth resolver check.
 4. **Cloudflare UA-block (not hacky):** raw urllib hits 403 error-1010; browser-like UA gets through. Real SDK/http clients send proper UAs — no hacks needed.
 5. **Free-tier 503s are provider-side** (request queue full). Mitigation = spread load across ladder (this swarm), keep `runtime_fallback.retry_on_errors: [400,429,503,529]`, `max_fallback_attempts: 3`.
+6. **2026-09-01 Local 24GB Memory Guard Ceiling (oMLX):** 27B model on 24GB Unified Memory has a ~4k–6k token prefill activation budget before tripping the 24.46 GB Metal cap (`iogpu.wired_limit_mb`). Mitigation: Disable `turbovec` MCP (save 1,200 tok), prune unused subagents (save 800 tok), streamline `AGENTS.md` (save 1,150 tok), and use adaptive on-demand sprint pointers in `delegate.py` under `--local-only`.
 
 ## Verification Commands
 ```
@@ -58,6 +59,6 @@ git -C ~/.config/opencode log --oneline -10   # config history (configs ARE git)
 ```
 
 ## Status Notes
-- Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, mistral ❌ (401, needs new key).
-- Committed: (2026-08-03).
+- Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, M5 Air ✅, mistral ❌ (401, needs new key).
+- Committed: (2026-09-01).
 - Google remains DECLARED but unused in hot path (CloudFlash alias kept for manual use).
