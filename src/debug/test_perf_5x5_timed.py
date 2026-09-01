@@ -157,8 +157,8 @@ async def main():
         print(f"💎 INITIATING CUSTOM TIMED GAUNTLET: intervals = {intervals}")
     else:
         print("💎 INITIATING TIMED PERFORMANCE GAUNTLET (75 MINS)")
-        print("[*] intervals: 0, 5, 10, 15, 20, 25 minutes.")
-        intervals = [0, 5, 10, 15, 20, 25]
+        print("[*] intervals: 0, 5, 10, 20, 40 minutes (moving up to 40m quiescence wait).")
+        intervals = [0, 5, 10, 20, 40]
 
     async with async_playwright() as p:
         for i, wait in enumerate(intervals):
