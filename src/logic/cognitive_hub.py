@@ -15,7 +15,8 @@ from logic.triage_engine import (
     extract_latest_user_query,
     scrub_hyde_vector,
     classify_vibe_and_domain,
-    is_control_plane_feedback
+    is_control_plane_feedback,
+    validate_triage_payload
 )
 from nodes.pinky_critic_persona import (
     build_critic_prompt,

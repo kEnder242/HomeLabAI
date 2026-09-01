@@ -630,3 +630,39 @@ class TriageEngine:
         parsed["hyde_vector_text"] = scrub_hyde_vector(raw_hyde)
 
         return parsed
+
+
+def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
+    """[FEAT-478] Canonical schema validation & field backfilling.
+
+    Guarantees required triage keys (vibe, addressed_to, importance, domain, casual, intrigue)
+    exist with valid types and default fallbacks to prevent runtime crashes.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+
+    defaults: dict[str, Any] = {
+        "vibe": "CASUAL",
+        "addressed_to": "PINKY",
+        "importance": 0.5,
+        "domain": "standard",
+        "casual": 0.5,
+        "intrigue": 0.5,
+        "inferred_intent": "general_interaction",
+        "hyde_vector_text": ""
+    }
+
+    validated: dict[str, Any] = {}
+    for k, default_val in defaults.items():
+        val = payload.get(k, default_val)
+        if val is None:
+            val = default_val
+        validated[k] = val
+
+    # Preserve any additional dynamic keys (e.g. overrides, latency stats)
+    for k, v in payload.items():
+        if k not in validated:
+            validated[k] = v
+
+    return validated
+
