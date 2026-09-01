@@ -235,6 +235,47 @@ def _ping_host(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
+def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model_obj: dict, duration: float, tokens: dict, text_len: int):
+    """[FEAT-496] Passive Swarm Telemetry Tap for live_usage_stream.jsonl"""
+    try:
+        data_dir = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
+        os.makedirs(data_dir, exist_ok=True)
+        stream_path = os.path.join(data_dir, "live_usage_stream.jsonl")
+        
+        out_tokens = tokens.get("output", 0) if isinstance(tokens, dict) else 0
+        if out_tokens == 0 and text_len > 0:
+            out_tokens = max(1, int(text_len / 4.0))
+            
+        tp = round(out_tokens / duration, 2) if duration > 0 and out_tokens > 0 else 0.0
+        provider_id = model_obj.get("providerID", "unknown") if isinstance(model_obj, dict) else "unknown"
+        model_id = model_obj.get("modelID", "unknown") if isinstance(model_obj, dict) else str(model_obj)
+        
+        seat = "Cloud Swarm"
+        if "4090" in provider_id or "kender" in provider_id:
+            seat = "Windows KENDER (RTX 4090)"
+        elif "m5" in provider_id or "mlx" in provider_id:
+            seat = "Apple M5 Air"
+        elif "z87" in provider_id or "vllm" in provider_id:
+            seat = "Linux z87 (RTX 2080 Ti)"
+            
+        record = {
+            "timestamp": time.time(),
+            "date_str": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": f"delegate.py (Story {story_num})",
+            "task_title": title,
+            "seat": seat,
+            "provider": provider_id,
+            "model": model_id,
+            "tokens_generated": out_tokens,
+            "duration_seconds": round(duration, 2),
+            "throughput_tok_s": tp
+        }
+        with open(stream_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+
 def _is_provider_reachable(provider_id: str) -> bool:
     """Pre-probes local silicon endpoints (0.8s timeout) to avoid 60s OpenCode HTTP socket stalls."""
     if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
@@ -491,6 +532,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             parts = post_result.get("parts", [])
             text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
             full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
+
+            # [FEAT-496] Passive Swarm Telemetry Tap
+            _log_live_usage_telemetry(story_num, sprint_num, title, current_model, duration, tokens, len(full_text))
 
             if full_text:
                 print("\n" + "═" * 80, flush=True)
