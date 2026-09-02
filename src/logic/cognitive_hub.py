@@ -26,6 +26,7 @@ from nodes.pinky_critic_persona import (
 )
 from logic.speculative_triage import SpeculativeTriageRelay, _probe_ollama, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
+from memory.blackboard_ledger import BlackboardLedger, ContextScope
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -389,6 +390,8 @@ class CognitiveHub:
         
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
+        # [FEAT-523] Round Table Blackboard Ledger
+        self.blackboard_ledger = BlackboardLedger()
         self.turn_thought_trace = {}
         # [FEAT-441-Cache] Lightweight RAG response cache (max 128, LRU eviction)
         self._rag_cache = {}
@@ -724,14 +727,24 @@ class CognitiveHub:
         return await task
 
 # [FEAT-408] Tool-Driven Waterfall Cascade
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default"):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default", scope=None):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         # [FEAT-519] Triage Context Squeeze: Never bloat triage queries with previous debate context
         is_triage = "triage" in source_name.lower()
-        if not is_triage and hasattr(self, "round_table_memory") and self.round_table_memory:
-            debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(self.round_table_memory)
-            if "[PREVIOUS_DEBATE]" not in query:
-                query += debate_context
+        # [FEAT-523] Context Scope Enforcement: Triage & Deep Thought use TURN isolation; Mice use LONG
+        if scope is None:
+            scope = ContextScope.TURN if (is_triage or "deep" in source_name.lower()) else ContextScope.LONG
+
+        if scope == ContextScope.LONG:
+            # First inject blackboard summary if available
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                bb_summary = self.blackboard_ledger.get_summary()
+                if bb_summary and "[BLACKBOARD_LEDGER]" not in query:
+                    query += f"\n\n[BLACKBOARD_LEDGER]:\n{bb_summary}"
+            if hasattr(self, "round_table_memory") and self.round_table_memory:
+                debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(self.round_table_memory)
+                if "[PREVIOUS_DEBATE]" not in query:
+                    query += debate_context
 
         if node_id not in self.residents:
             return
@@ -1400,15 +1413,22 @@ class CognitiveHub:
 
         # [FEAT-356] Unified Session Ledger: Record turn summary
         turn_ledger = f"User: {turn}"
+        turn_num = len(self.round_table_memory) + 1
         pinky_res = self.turn_thought_trace.get("pinky")
         if pinky_res:
             turn_ledger += f"\nPinky: {pinky_res}"
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                self.blackboard_ledger.record_bullet(turn_num, "pinky", str(pinky_res)[:200])
         brain_res = self.turn_thought_trace.get("thought") or self.turn_thought_trace.get("brain")
         if brain_res:
             turn_ledger += f"\nBrain: {brain_res}"
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                self.blackboard_ledger.record_bullet(turn_num, "brain", str(brain_res)[:200])
         critique_res = self.turn_thought_trace.get("critique")
         if critique_res:
             turn_ledger += f"\nPinky Summary: {critique_res}"
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                self.blackboard_ledger.record_consensus(turn_num, str(critique_res)[:200])
         self.round_table_memory.append(turn_ledger)
 
         # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
