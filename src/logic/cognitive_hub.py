@@ -723,7 +723,9 @@ class CognitiveHub:
 # [FEAT-408] Tool-Driven Waterfall Cascade
     async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default"):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
-        if hasattr(self, "round_table_memory") and self.round_table_memory:
+        # [FEAT-519] Triage Context Squeeze: Never bloat triage queries with previous debate context
+        is_triage = "triage" in source_name.lower()
+        if not is_triage and hasattr(self, "round_table_memory") and self.round_table_memory:
             debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(self.round_table_memory)
             if "[PREVIOUS_DEBATE]" not in query:
                 query += debate_context
@@ -796,7 +798,8 @@ class CognitiveHub:
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora, "response_format": response_format, 
-                "request_id": request_id
+                "request_id": request_id,
+                "max_tokens": 128 if is_triage else 1000
             }))
             
             full_text = ""
