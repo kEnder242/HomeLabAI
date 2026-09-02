@@ -550,8 +550,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 elif cloud_only:
                     log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/OpenCode). Zero local silicon fallbacks.")
                     model_ladder = [
-                        {"providerID": "openrouter", "modelID": "openrouter/free"},
-                        {"providerID": "opencode", "modelID": "hy3-free"}
+                        {"providerID": "openrouter", "modelID": "free"},
+                        {"providerID": "opencode", "modelID": "nemotron-3.5-lightning-free"}
                     ]
                 elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
@@ -566,19 +566,19 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if local_only:
             model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}]
         elif cloud_only:
-            model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
+            model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
         else:
             model_ladder = [
-                {"providerID": "opencode", "modelID": "hy3-free"},
-                {"providerID": "openrouter", "modelID": "openrouter/free"},
-                {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+                {"providerID": "openrouter", "modelID": "free"},
+                {"providerID": "opencode", "modelID": "nemotron-3.5-lightning-free"},
+                {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
             ]
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
     if not local_only:
         model_ladder = [m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))]
         if not model_ladder:
-            model_ladder = [{"providerID": "openrouter", "modelID": "openrouter/free"}]
+            model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
 
     attempt = 0
     while attempt < max_retries:
