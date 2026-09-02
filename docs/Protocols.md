@@ -611,6 +611,47 @@ All diagnostic forensics MUST reference the canonical black box log:
 
 ---
 
+## BKM-047: Local Silicon Memory Ceilings & Bicameral Swarm Topology
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                   BKM-047: LOCAL SILICON MEMORY CEILINGS & BICAMERAL SWARM TOPOLOGY      │
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│  THE HARDWARE ASYMMETRY REALITY:                                                         │
+│  Federated bicameral swarms pair distinct silicon architectures with competing memory    │
+│  profiles. Inverting their operational roles causes instant thrashing or OOM crashes.    │
+│                                                                                          │
+│  1. Node Kender (Windows RTX 4090 24GB VRAM / Ollama):                                  │
+│     - Model: hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL (9.16 GB resident).                │
+│     - Headroom: ~14.8 GB dedicated VRAM for KV cache + dynamic host RAM paging.          │
+│     - Swarm Role: Layer 2 Orchestrator (Atlas) — absorbs broad sprint plans, global      │
+│       state, and sequences task dependencies. Pure routing (NO CODE EDITS).              │
+│                                                                                          │
+│  2. Node Brain (Apple M5 Air 32GB Unified Memory / oMLX dflash):                         │
+│     - Model: mlx-community--Qwen3.8-27B-4bit (15.2 GB resident).                         │
+│     - Metal Memory Ceiling: iogpu.wired_limit_mb caps wired GPU memory at ~24.46 GB.     │
+│       A 27B model prefilling > 4k tokens triggers immediate Metal allocation panic.      │
+│     - Swarm Role: Layer 3 Fast Worker (Sisyphus-Junior) — bounded (< 1.5k tok) code     │
+│       stub fill via clara-dna_safe_patch. Heavy search/tools disabled.                   │
+│                                                                                          │
+│  SWARM TOPOLOGY INVERSION LAW:                                                           │
+│  - Broad Context (Tier 1 Sprint) MUST flow into 4090 Atlas (Flexible RAM ceiling).       │
+│  - Narrow Contracts (Tier 2 AST Stubs) MUST flow into M5 Air Junior (Fast, strict cap).  │
+│  - Violating this hierarchy by feeding 10k token plans to M5 Air blows the Metal limit;  │
+│    forcing 4090 to execute code edits ties up the orchestrator on low-tier syntax.       │
+│                                                                                          │
+│  SCARS RETROSPECTIVE:                                                                    │
+│  - Scar #1: Feeding broad sprint context directly to M5 Air 27B caused silent kernel     │
+│    hangs when Metal prefill activation buffers exceeded wired unified memory limits.     │
+│  - Scar #2: Atlas attempting direct file editing caused hallucinated imports; resolved   │
+│    by hard-pinning Atlas permissions to edit:deny and task(category="unspecified-low").  │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
 
 ```
