@@ -84,46 +84,89 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         real_answer_src = ""
         success = False
         
+        # [FEAT-521] Liveliness & Dead Air Event Ledger
+        event_timeline = [{"t": 0.0, "src": "USER", "kind": "DISPATCH"}]
+        crosstalk_events = []
+        actor_events = []
+        
+        last_event_t = 0.0
+        max_dead_air_with_crosstalk = 0.0
+        
         while time.time() - send_t < 180:
+            current_elapsed = time.time() - send_t
             try:
                 new_elements = await page.evaluate(f"""() => {{
                     const all = Array.from(document.querySelectorAll('.message'));
                     return all.slice({baseline_count}).map(el => ({{
                         src: (el.querySelector('.msg-source')?.innerText || '').trim(),
-                        body: (el.querySelector('.msg-body')?.innerText || '').trim()
+                        body: (el.querySelector('.msg-body')?.innerText || '').trim(),
+                        is_crosstalk: el.classList.contains('internal') || (el.querySelector('.msg-source')?.innerText || '').toLowerCase().includes('crosstalk') || (el.querySelector('.msg-source')?.innerText || '').toLowerCase().includes('system')
                     }}));
                 }}""")
             except Exception:
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
                 continue
             
-            for item in new_elements:
-                src = item.get("src", "")
-                body = item.get("body", "")
-                src_lower = src.lower()
-                body_lower = body.lower()
-                
-                # Check for Warming Pop (from Pinky or system)
-                if "warming its anchors" in body_lower and warming_pop_t is None:
-                    warming_pop_t = time.time() - send_t
-                    print(f"    [🔥 WARMING POP] Source: {src} | Latency: {warming_pop_t*1000:.0f}ms (Budget: <100ms)")
-                
-                # Check for Real Engine Response (from Pinky, Brain, or Deep Thought)
-                is_assistant = ("brain" in src_lower or "pinky" in src_lower or "thought" in src_lower or "failover" in src_lower)
-                if is_assistant and len(body) > 15 and "warming its anchors" not in body_lower:
-                    real_answer_t = time.time() - send_t
-                    real_answer_text = body
-                    real_answer_src = src
-                    success = True
-                    break
+            # Detect newly added elements in timeline
+            if len(new_elements) > len(event_timeline) - 1:
+                added_count = len(new_elements) - (len(event_timeline) - 1)
+                for item in new_elements[-added_count:]:
+                    src = item.get("src", "")
+                    body = item.get("body", "")
+                    src_lower = src.lower()
+                    body_lower = body.lower()
+                    is_xtalk = item.get("is_crosstalk", False) or "crosstalk" in src_lower or "system" in src_lower
+                    
+                    gap_from_last = current_elapsed - last_event_t
+                    if gap_from_last > max_dead_air_with_crosstalk:
+                        max_dead_air_with_crosstalk = gap_from_last
+                    last_event_t = current_elapsed
+                    
+                    evt = {
+                        "t": current_elapsed,
+                        "src": src,
+                        "kind": "CROSSTALK" if is_xtalk else "ACTOR",
+                        "preview": body[:60]
+                    }
+                    event_timeline.append(evt)
+                    
+                    if is_xtalk:
+                        crosstalk_events.append(evt)
+                        print(f"    [💬 CROSSTALK @ +{current_elapsed:.2f}s] Source: {src} | Preview: '{body[:45]}...'")
+                    else:
+                        actor_events.append(evt)
+                    
+                    # Check for Warming Pop
+                    if "warming its anchors" in body_lower and warming_pop_t is None:
+                        warming_pop_t = current_elapsed
+                        print(f"    [🔥 WARMING POP] Source: {src} | Latency: {warming_pop_t*1000:.0f}ms (Budget: <100ms)")
+                    
+                    # Check for Real Engine Response
+                    is_assistant = ("brain" in src_lower or "pinky" in src_lower or "thought" in src_lower or "failover" in src_lower)
+                    if is_assistant and len(body) > 15 and "warming its anchors" not in body_lower:
+                        real_answer_t = current_elapsed
+                        real_answer_text = body
+                        real_answer_src = src
+                        success = True
+                        break
             
             if success:
                 break
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.5)
 
-        # 5. Report Cycle Verdict
+        # 5. Report Cycle Verdict & Liveliness Metrics
+        dead_air_without_crosstalk = real_answer_t if real_answer_t is not None else (time.time() - send_t)
+        heavy_lifting_saved_s = max(0.0, dead_air_without_crosstalk - max_dead_air_with_crosstalk)
+        heavy_lifting_pct = (heavy_lifting_saved_s / dead_air_without_crosstalk * 100.0) if dead_air_without_crosstalk > 0 else 0.0
+
         if success:
             print(f"    [🏆 REAL ANSWER] Source: {real_answer_src} | TTFT: {real_answer_t:.2f}s | Length: {len(real_answer_text)} chars")
+            print(f"    [📊 LIVELINESS BENCHMARK]:")
+            print(f"       * Dead Air (WITH Crosstalk):    {max_dead_air_with_crosstalk:.2f}s max gap")
+            print(f"       * Dead Air (WITHOUT Crosstalk): {dead_air_without_crosstalk:.2f}s (Total TTFT)")
+            print(f"       * Crosstalk Heavy Lifting:      {heavy_lifting_saved_s:.2f}s perceived wait reduction ({heavy_lifting_pct:.1f}%)")
+            print(f"       * Total Timeline Events:        {len(event_timeline)} (Crosstalk: {len(crosstalk_events)}, Actor: {len(actor_events)})")
+            
             if is_cold:
                 if warming_pop_t is not None:
                     print(f"    [✅ COLD START CERTIFIED] Standalone pop arrived in {warming_pop_t*1000:.0f}ms, full answer delivered in {real_answer_t:.2f}s.")
@@ -137,7 +180,16 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
     finally:
         await browser.close()
     
-    return success
+    return {
+        "success": success,
+        "real_answer_t": real_answer_t,
+        "dead_air_with_crosstalk": max_dead_air_with_crosstalk,
+        "dead_air_without_crosstalk": dead_air_without_crosstalk,
+        "heavy_lifting_saved_s": heavy_lifting_saved_s,
+        "heavy_lifting_pct": heavy_lifting_pct,
+        "event_count": len(event_timeline),
+        "crosstalk_count": len(crosstalk_events)
+    }
 
 async def main():
     parser = argparse.ArgumentParser(description="AcmeLab Performance Gauntlet & Cold-Start Latency Benchmarker")
@@ -160,15 +212,28 @@ async def main():
         print("[*] intervals: 0, 5, 10, 20, 40 minutes (moving up to 40m quiescence wait).")
         intervals = [0, 5, 10, 20, 40]
 
+    results = []
     async with async_playwright() as p:
         for i, wait in enumerate(intervals):
-            ok = await run_cycle(i+1, len(intervals), wait, p, force_cold=args.cold_cert)
-            if not ok:
+            res = await run_cycle(i+1, len(intervals), wait, p, force_cold=args.cold_cert)
+            results.append(res)
+            if not res.get("success"):
                 print(f"\n❌ GAUNTLET FAILED at cycle {i+1}.")
                 sys.exit(1)
         
         print(f"\n{'='*70}")
         print("🏆 GAUNTLET COMPLETE: Performance Bedrock & Latency Budgets are CERTIFIED.")
+        
+        # [FEAT-521] Summary Report
+        avg_dead_air_xtalk = sum(r["dead_air_with_crosstalk"] for r in results) / len(results) if results else 0
+        avg_dead_air_no_xtalk = sum(r["dead_air_without_crosstalk"] for r in results) / len(results) if results else 0
+        avg_lifting_pct = sum(r["heavy_lifting_pct"] for r in results) / len(results) if results else 0
+        
+        print("\n📈 [FEAT-521] LIVELINESS BENCHMARK SUMMARY:")
+        print(f"   • Cycles Completed:             {len(results)}/{len(intervals)}")
+        print(f"   • Avg Dead Air (WITH Crosstalk):    {avg_dead_air_xtalk:.2f}s")
+        print(f"   • Avg Dead Air (WITHOUT Crosstalk): {avg_dead_air_no_xtalk:.2f}s")
+        print(f"   • Crosstalk Heavy-Lifting Lift:     {avg_lifting_pct:.1f}% perceived wait reduction")
 
 if __name__ == "__main__":
     asyncio.run(main())
