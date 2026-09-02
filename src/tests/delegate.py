@@ -419,20 +419,62 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
+        # [FEAT-515 / Task 69.6.3] Dual-Mode Category Dispatch:
+        #   --local-only  -> category="unspecified-low" (routes to M5 Air via oh-my-openagent.json)
+        #   default/cloud -> category="deep" (routes to cloud DeepSeek/Qwen fallback ladders)
+        _atlas_dispatch_category = "unspecified-low" if local_only else "deep"
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Atlas (Task Orchestrator on Windows RTX 4090).
-Your mission is to formulate the structured plan and delegate implementation tasks to your local execution worker on Apple M5 Air using the `task` tool:
-  `task(category="deep", prompt="<concrete instructions with file paths, symbol anchors, and code diffs>")`
-CRITICAL: The `task` tool call must contain ONLY two fields:
-  category: "deep"
-  prompt: "<detailed implementation instructions>"
-Do not provide any other parameters. Delegate execution immediately."""
+
+[STATIC RULES — L2 INVARIANTS]
+- You are a PURE ROUTER. You NEVER write code, edit files, or invoke file-editing tools directly.
+- Your sole output tool is `task(category="{_atlas_dispatch_category}", prompt="...")`.
+- The `task` tool call must contain ONLY two fields: category and prompt. No other parameters.
+- If Junior emits [BLOCKER REPORT: ...], relay the exact blocker text upward. Do NOT attempt local resolution.
+
+[DYNAMIC INGESTION — SPRINT CONTEXT]
+- Ingest the Tier 1 sprint summary (injected above) for global architectural context.
+- Cross-reference story requirements against the sprint's stated dependencies and verification gates.
+- If the story references target files, confirm they exist before dispatching.
+
+[DOWNSTREAM HAND-OFF — JUNIOR DISPATCH PROTOCOL]
+- Decompose work into bounded micro-tasks (< 1,200 tokens per dispatch prompt).
+- Each dispatch prompt MUST include: exact file path(s), target function/class symbol anchors, and a concrete code diff or stub-fill specification.
+- Prefer the 3-Task Micro-Pattern: Task A (Interface Contract) -> Task B (Core Logic) -> Task C (Verification).
+
+[BACKPRESSURE PROTOCOL — ESCALATION GATE]
+- If Junior returns empty text or finish=unknown, emit [BLOCKER REPORT: SILENT_FAILURE] with the session URL.
+- If you lack sufficient context to formulate a dispatch, emit [BLOCKER REPORT: INSUFFICIENT_CONTEXT] listing what is missing.
+- NEVER guess at API signatures, file paths, or implementation details. Halt and escalate.
+
+Delegate execution immediately via:
+  `task(category="{_atlas_dispatch_category}", prompt="<concrete instructions>")`"""
         _edit_scope = target_files if target_files else reference_file
-        note_block = "[NOTE] Delegate the surgical code edits to the local execution worker via task(category=\"deep\", ...). Silicon validation will be performed post-dispatch."
+        note_block = f"[NOTE] Delegate the surgical code edits to the local execution worker via task(category=\"{_atlas_dispatch_category}\", ...). Silicon validation will be performed post-dispatch."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
-TOOL GUIDANCE: Research is done. Do NOT use search, grep, or find tools across the repository. Always call the clara-dna_safe_patch MCP tool for surgical code edits within the assigned target files and function stubs. If missing interfaces, broken types, or blocked, halt immediately and emit: [BLOCKER REPORT: <CATEGORY>] <details>."""
+
+[STATIC RULES — L3 INVARIANTS]
+- Research is DONE. Do NOT use search, grep, or find tools across the repository.
+- You operate strictly within the assigned target files and function stubs.
+- Always use the clara-dna_safe_patch MCP tool for surgical code edits.
+- Never import new external dependencies without explicit authorization in the story spec.
+
+[DYNAMIC INGESTION — TASK CONTEXT]
+- Your contract is the Tier 2 specification injected below. It contains exact file paths, symbol anchors, and expected behavior.
+- If a code snippet is provided, treat it as the authoritative incumbent implementation to modify.
+- Preserve all existing comments, docstrings, and test coverage unrelated to the assigned modification.
+
+[DOWNSTREAM HAND-OFF — VERIFICATION ARTIFACTS]
+- After completing edits, report: files modified, functions touched, and lines changed.
+- If tests exist in the target scope, run them and include pass/fail results in your response.
+- Emit a brief [HANDOVER REFLECTION] describing what was unclear or could improve the next dispatch.
+
+[BACKPRESSURE PROTOCOL — BLOCKER GATE]
+- If missing interfaces, broken types, or import failures prevent completion, HALT immediately.
+- Emit: [BLOCKER REPORT: <CATEGORY>] <exact error details and missing dependency>.
+- NEVER stub out or mock missing dependencies. Halt and let the orchestrator provide them."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
@@ -617,14 +659,46 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                         cat = tinput.get("category", "")
                                         state_summary += f" category:{cat}"
                                     elif tname == "question":
-                                        # Interactive question popup detected (e.g. key limit or user prompt)
-                                        q_text = str(tinput.get("questions", ""))
-                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", f"OpenCode emitted question/popup: {q_text[:160]}", severity="CRITICAL")
-                                        # Force abort session so we don't hang
-                                        _abort_url = f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/abort"
-                                        urllib.request.urlopen(urllib.request.Request(_abort_url, method="POST"), timeout=2.0)
-                                        post_exception = RuntimeError(f"Interactive popup/error from OpenCode: {q_text[:200]}")
-                                        break
+                                        # [FEAT-515 / Task 69.6.1] Interactive Popup Breakout
+                                        # Extract question content for CLI display, then exit with code 2 (AWAITING_INPUT)
+                                        q_input = tinput
+                                        q_text = ""
+                                        q_options = []
+                                        if isinstance(q_input, dict):
+                                            questions = q_input.get("questions", [])
+                                            if isinstance(questions, list) and questions:
+                                                q0 = questions[0] if isinstance(questions[0], dict) else {}
+                                                q_text = q0.get("question", str(questions))
+                                                q_options = q0.get("options", [])
+                                            else:
+                                                q_text = str(q_input)
+                                        else:
+                                            q_text = str(q_input)
+
+                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", f"OpenCode emitted interactive question. Session paused.", severity="CRITICAL")
+                                        print("\n" + "=" * 80, flush=True)
+                                        print(f"[INTERACTIVE POPUP — SESSION {session_id}]", flush=True)
+                                        print("=" * 80, flush=True)
+                                        print(f"QUESTION: {q_text}", flush=True)
+                                        if q_options:
+                                            print("\nOPTIONS:", flush=True)
+                                            for i, opt in enumerate(q_options, 1):
+                                                print(f"  [{i}] {opt}", flush=True)
+                                        print(f"\nTo resume, run:", flush=True)
+                                        print(f"  python3 delegate.py --resume {session_id} --answer '<your choice>'", flush=True)
+                                        print("=" * 80 + "\n", flush=True)
+
+                                        # Persist session ID breadcrumb for easy resume discovery
+                                        try:
+                                            breadcrumb_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/logs/paused_session.txt")
+                                            os.makedirs(os.path.dirname(breadcrumb_path), exist_ok=True)
+                                            with open(breadcrumb_path, "w") as bf:
+                                                bf.write(f"session_id={session_id}\nstory={story_num}\ntitle={title}\nquestion={q_text}\n")
+                                        except Exception:
+                                            pass
+
+                                        _ACTIVE_SESSION_ID = None  # Don't auto-cleanup on exit; session is intentionally paused
+                                        sys.exit(2)  # EXIT CODE 2 = AWAITING_INPUT
 
                                     if state_summary != last_inspected_state:
                                         last_inspected_state = state_summary
@@ -711,7 +785,64 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 except Exception:
                     pass
             else:
-                print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk.", flush=True)
+                # [FEAT-515 / Task 69.6.2] Silent Failure Escalation Gate
+                # Core Law: "Fix the delegation infrastructure; do not manually finish the sprint."
+                is_silent_failure = (finish == "unknown")
+                if is_silent_failure:
+                    log_step(story_num, "SILENT_DELEGATION_FAILURE",
+                             f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
+                             f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
+                             severity="CRITICAL")
+
+                    # Persist to delegation_failures.log for retrospective analysis
+                    try:
+                        fail_log_dir = os.path.expanduser("~/Dev_Lab/HomeLabAI/logs")
+                        os.makedirs(fail_log_dir, exist_ok=True)
+                        fail_log_path = os.path.join(fail_log_dir, "delegation_failures.log")
+                        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                        fail_entry = (
+                            f"[{ts}] SILENT_DELEGATION_FAILURE\n"
+                            f"  Story: {story_num} ({title})\n"
+                            f"  Sprint: {sprint_num}\n"
+                            f"  Agent: {agent}\n"
+                            f"  Model: {current_model}\n"
+                            f"  Session: {session_id}\n"
+                            f"  Duration: {duration:.1f}s\n"
+                            f"  finish={finish}, tokens={tokens}\n"
+                            f"  Web UI: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}\n"
+                            f"  Raw Parts: {json.dumps(parts[:3], indent=2)}\n"
+                            f"{'=' * 60}\n"
+                        )
+                        with open(fail_log_path, "a") as fl:
+                            fl.write(fail_entry)
+                    except Exception:
+                        pass
+
+                    # ICM store for pattern tracking
+                    try:
+                        subprocess.run(
+                            [
+                                "icm", "store",
+                                "-t", "errors-resolved",
+                                "-c", f"SILENT_DELEGATION_FAILURE: Story {story_num} ({title}) — finish={finish}, no text, model={current_model.get('modelID', 'unknown')}. Session {session_id}.",
+                                "-i", "critical",
+                                "-k", f"silent-failure,delegation,story-{story_num},sprint-{sprint_num}"
+                            ],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                    except Exception:
+                        pass
+
+                    print(f"\n[!!!] DELEGATION HALTED: Silent failure detected. The delegation infrastructure needs fixing.", flush=True)
+                    print(f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}", flush=True)
+                    print(f"[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log", flush=True)
+                    _ACTIVE_SESSION_ID = None
+                    sys.exit(3)  # EXIT CODE 3 = SILENT_DELEGATION_FAILURE
+                else:
+                    # Non-unknown finish with empty text (e.g. tool-only response) — warn but don't halt
+                    print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk (finish={finish}). Check Web UI.", flush=True)
 
             _ACTIVE_SESSION_ID = None
             return
@@ -753,7 +884,44 @@ if __name__ == "__main__":
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
     parser.add_argument("--local-only", action="store_true", help="Force 100% sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
     parser.add_argument("--cloud-only", action="store_true", help="Force 100% cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")
+    parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
+    parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
     args = parser.parse_args()
+
+    # [FEAT-515 / Task 69.6.1] Interactive Session Resume Handler
+    if args.resume:
+        if not args.answer:
+            print("[!] --resume requires --answer <choice> to send a response to the paused session.", flush=True)
+            sys.exit(1)
+        resume_sid = args.resume
+        print(f"[*] Resuming paused session {resume_sid} with answer: {args.answer}", flush=True)
+        try:
+            resume_payload = json.dumps({
+                "parts": [{"type": "text", "text": args.answer}]
+            }).encode("utf-8")
+            resume_req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{resume_sid}/message",
+                data=resume_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(resume_req, timeout=600) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                parts = result.get("parts", [])
+                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+                full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
+                if full_text:
+                    print("\n" + "=" * 80, flush=True)
+                    print(f"[RESUME RESPONSE — SESSION {resume_sid}]", flush=True)
+                    print("=" * 80, flush=True)
+                    print(full_text, flush=True)
+                    print("=" * 80 + "\n", flush=True)
+                else:
+                    print(f"[!] Resume completed but no text returned. Check session at http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{resume_sid}", flush=True)
+        except Exception as e:
+            print(f"[!] Resume failed: {e}", flush=True)
+            sys.exit(1)
+        sys.exit(0)
 
     if args.retrospective:
         _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
