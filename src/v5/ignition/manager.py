@@ -501,23 +501,36 @@ class IgnitionManager:
                 today = now.date()
                 
                 # 1. AFK Hibernation (Task 4.1)
-                idle_time = time.time() - self.last_activity_time
-                foyer_clients = await self.get_foyer_clients()
-                
-                # [FEAT-455] Extended Idle Window: 600s (10 min) base timeout
-                # Extra 5 minutes (300s) if there is an active client connection (total 900s / 15 min)
-                effective_timeout = 600
-                if foyer_clients > 0:
-                    effective_timeout += 300
+                # [FEAT-517] Master Hibernation Gate: bypass AFK shutdown if disabled
+                _hib_enabled = True
+                if os.path.exists(INFRA_CONFIG):
+                    try:
+                        with open(INFRA_CONFIG, 'r') as _icf:
+                            _hib_enabled = json.load(_icf).get('hibernation', {}).get('enabled', True)
+                    except Exception:
+                        pass
 
-                if idle_time > effective_timeout and self.status.state == "OPERATIONAL":
-                    if await self.is_engine_active():
-                        # Reset idle timer because engine is active
-                        self.last_activity_time = time.time()
-                        logging.info(f"[IGNITION] Resetting idle timer (foyer_clients={foyer_clients}) due to active engine.")
-                    else:
-                        logging.info(f"[IGNITION] Idle timeout reached ({idle_time:.1f}s > {effective_timeout}s, foyer_clients={foyer_clients}). Hibernating...")
-                        await self.stop_lab(reason="AFK_TIMEOUT")
+                if not _hib_enabled:
+                    # Hibernation disabled: stay operational and skip AFK stop
+                    idle_time = 0
+                else:
+                    idle_time = time.time() - self.last_activity_time
+                    foyer_clients = await self.get_foyer_clients()
+                    
+                    # [FEAT-455] Extended Idle Window: 600s (10 min) base timeout
+                    # Extra 5 minutes (300s) if there is an active client connection (total 900s / 15 min)
+                    effective_timeout = 600
+                    if foyer_clients > 0:
+                        effective_timeout += 300
+
+                    if idle_time > effective_timeout and self.status.state == "OPERATIONAL":
+                        if await self.is_engine_active():
+                            # Reset idle timer because engine is active
+                            self.last_activity_time = time.time()
+                            logging.info(f"[IGNITION] Resetting idle timer (foyer_clients={foyer_clients}) due to active engine.")
+                        else:
+                            logging.info(f"[IGNITION] Idle timeout reached ({idle_time:.1f}s > {effective_timeout}s, foyer_clients={foyer_clients}). Hibernating...")
+                            await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
                 disable_lock_path = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/disable_induction.lock"
