@@ -744,9 +744,12 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 **Status:** ACTIVE / MANDATORY  
 
 #### 1. The Tri-Loop Law
-1. **Three Full Story Retries:** A story assigned to delegation is permitted up to **3 full execution attempts** before primary agent (AGY) takeover is authorized.
-2. **Never Blindly Retry:** A retry is strictly defined as an execution attempt preceded by root-cause diagnosis. Simply tweaking prompt wording and immediately re-firing is an invariant violation.
-3. **Primary Agent (AGY) Takeover Gate:** AGY takes over direct AST implementation *only* after 3 diagnosed and failed delegation attempts, or upon explicit user directive (`HALT` / takeover).
+1. **Three-Tier Escalation Ladder:** A story assigned to delegation executes through a strictly structured 3-tier escalation ladder:
+   * **Attempt 1: Sovereign Local Silicon (`[SWARM:LOCAL]`)** — Windows RTX 4090 (Atlas) + macOS M5 Air (Junior). 100% private, sovereign execution.
+   * **Attempt 2: Cloud Swarm (`[SWARM:CLOUD]`)** — OpenCode Cloud / OpenRouter / DeepSeek / Cohere. Burst capacity for complex reasoning when local models hit context or syntax boundaries.
+   * **Attempt 3: Primary Agent (`[AGY:TAKEOVER]`)** — AGY executes direct AST implementation and architectural certification, preserving primary tokens.
+2. **Never Blindly Retry:** A retry between tiers is strictly defined as an execution attempt preceded by root-cause diagnosis. Simply tweaking prompt wording without fixing underlying tool/permission mismatch is an invariant violation.
+3. **Safe-Patch Mandate (Anti-Bash-Clobber):** Subagents MUST NOT use destructive bash file writes (`cat << 'EOF' >` or `echo >`) on existing codebase files. Subagents must invoke `clara-dna_safe_patch` (or atomic patchers) for existing files, reserving `write` strictly for new standalone files.
 
 #### 2. Mandatory Diagnostics Between Retries
 Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform three diagnostic probes:
@@ -766,7 +769,8 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 | `"Model is busy"` / 503 | Parallel requests exceeded single-stream ceiling | Enforce Single Task Law; serialize dispatches. |
 | Subagent freezes mid-read | Auto-compaction agent spawned | Set `"compaction": {"auto": false}` in `opencode.json`. |
 | Ruff / Syntax loop | Indentation or multiline whitespace slip | Provide explicit AST line anchors or simplify patch scope. |
-| Code 3: Silent Failure | 0 text tokens streamed; session deadlocked | Check inference server health; increase timeout; restart host. |
+| Bash clobber attempt | Subagent attempted `echo >` on existing file | Inject explicit `clara-dna_safe_patch` JSON tool call schema into prompt. |
+| Code 3: Silent Failure | 0 text tokens streamed; session deadlocked | Check inference server health; escalate to Attempt 2 (Cloud Swarm). |
 
 #### 4. The 5-Minute Watchdog & Inspection Gate Law
 1. **Inspection Gate, Not an Automatic Kill:** The 5-minute watchdog ceiling is an **Inspection Gate**, not a blind termination trigger. Reaching 5 minutes does NOT mean immediate cancellation.
