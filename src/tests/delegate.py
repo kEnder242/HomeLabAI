@@ -676,7 +676,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                         else:
                                             q_text = str(q_input)
 
-                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", f"OpenCode emitted interactive question. Session paused.", severity="CRITICAL")
+                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", "OpenCode emitted interactive question. Session paused.", severity="CRITICAL")
                                         print("\n" + "=" * 80, flush=True)
                                         print(f"[INTERACTIVE POPUP — SESSION {session_id}]", flush=True)
                                         print("=" * 80, flush=True)
@@ -685,7 +685,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                             print("\nOPTIONS:", flush=True)
                                             for i, opt in enumerate(q_options, 1):
                                                 print(f"  [{i}] {opt}", flush=True)
-                                        print(f"\nTo resume, run:", flush=True)
+                                        print("\nTo resume, run:", flush=True)
                                         print(f"  python3 delegate.py --resume {session_id} --answer '<your choice>'", flush=True)
                                         print("=" * 80 + "\n", flush=True)
 
@@ -836,10 +836,10 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     except Exception:
                         pass
 
-                    print(f"\n[!!!] DELEGATION HALTED: Silent failure detected. The delegation infrastructure needs fixing.", flush=True)
+                    print("\n[!!!] DELEGATION HALTED: Silent failure detected. The delegation infrastructure needs fixing.", flush=True)
                     print(f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}", flush=True)
-                    print(f"[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log", flush=True)
-                    _ACTIVE_SESSION_ID = None
+                    print("[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log", flush=True)
+                    _cleanup_active_session()
                     sys.exit(3)  # EXIT CODE 3 = SILENT_DELEGATION_FAILURE
                 else:
                     # Non-unknown finish with empty text (e.g. tool-only response) — warn but don't halt

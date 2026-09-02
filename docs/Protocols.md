@@ -767,3 +767,11 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 | Subagent freezes mid-read | Auto-compaction agent spawned | Set `"compaction": {"auto": false}` in `opencode.json`. |
 | Ruff / Syntax loop | Indentation or multiline whitespace slip | Provide explicit AST line anchors or simplify patch scope. |
 | Code 3: Silent Failure | 0 text tokens streamed; session deadlocked | Check inference server health; increase timeout; restart host. |
+
+#### 4. The 5-Minute Watchdog & Inspection Gate Law
+1. **Inspection Gate, Not an Automatic Kill:** The 5-minute watchdog ceiling is an **Inspection Gate**, not a blind termination trigger. Reaching 5 minutes does NOT mean immediate cancellation.
+2. **Active Progress Probe:** At the 5-minute mark, the orchestrator must inspect the live session:
+   - Query `GET /session/{id}` or `GET /session/{id}/message` to inspect token generation and tool calls.
+   - **Progressing:** If tokens are actively flowing and constructive work is progressing, extend the timer window.
+   - **Stalled:** If token generation is dead, or the agent is spinning in an unresolvable tool retry loop or orphaned subagent wait, only then terminate the attempt.
+3. **Mandatory Zombie Cleanup:** When an attempt is halted, timed out, or interrupted, the harness (`delegate.py`) and orchestrator MUST issue an explicit `POST /session/{id}/abort` frame to the OpenCode REST port. Never allow orphaned subagent loops to churn GPU silicon after client disconnects.
