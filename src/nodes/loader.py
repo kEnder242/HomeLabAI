@@ -147,7 +147,7 @@ class BicameralNode:
         self._start_telemetry_relay()
 
         @self.mcp.tool()
-        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.1, use_lora: bool = True, response_format: dict = None, request_id: str = "default") -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.1, use_lora: bool = True, response_format: dict = None, request_id: str = "default", max_tokens: int = 1000) -> str:
             """
             [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
             Supports real-time token yielding to the Hub for internal waterfall streaming.
@@ -178,7 +178,8 @@ class BicameralNode:
             with redirect_stdout(sys.stderr):
                 # Pass sampling parameters for small model stability
                 # [FEAT-339] Use LoRA by default, but allow override for stability
-                async for token in self.generate_response(query, context, system_override=system_override, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools, response_format=response_format, request_id=request_id):
+                # [FEAT-519] Forward max_tokens cap (e.g. 128 for triage) to prevent context overflow
+                async for token in self.generate_response(query, context, system_override=system_override, max_tokens=max_tokens, source_name=stream_source, temperature=temperature, repetition_penalty=repetition_penalty, use_lora=use_lora, tools=tools, response_format=response_format, request_id=request_id):
                     if "The local engine is warming its anchors" not in token:
                         full_response += token
                     
