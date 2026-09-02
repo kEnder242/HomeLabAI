@@ -705,5 +705,34 @@ All diagnostic forensics MUST reference the canonical black box log:
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+---
 
+### [BKM-049] Tri-Loop Story Delegation & Diagnostic Protocol
+**Feature Anchor:** `[FEAT-522]` / `[BKM-049]`  
+**Domain:** Swarm Delegation, Autonomous Subagent Execution & Harness Diagnostics  
+**Status:** ACTIVE / MANDATORY  
 
+#### 1. The Tri-Loop Law
+1. **Three Full Story Retries:** A story assigned to delegation is permitted up to **3 full execution attempts** before primary agent (AGY) takeover is authorized.
+2. **Never Blindly Retry:** A retry is strictly defined as an execution attempt preceded by root-cause diagnosis. Simply tweaking prompt wording and immediately re-firing is an invariant violation.
+3. **Primary Agent (AGY) Takeover Gate:** AGY takes over direct AST implementation *only* after 3 diagnosed and failed delegation attempts, or upon explicit user directive (`HALT` / takeover).
+
+#### 2. Mandatory Diagnostics Between Retries
+Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform three diagnostic probes:
+1. **Server & Silicon State:**
+   - Probe inference endpoints (`curl http://192.168.1.46:8000/v1/models`, `nvidia-smi`).
+   - Check socket states (`ss -tulpn | grep 4097` or target port) to ensure child connections are not hanging.
+2. **Session Transcripts & Logs:**
+   - Inspect OpenCode / subagent transcripts for syntax loops, compaction triggers, or unhandled tool rejections.
+   - Verify whether OpenCode auto-compaction hijacked the context window.
+3. **Harness & Configuration Audit:**
+   - Audit `delegate.py` and `opencode.json` for prompt contradictions (e.g. Single Task Law vs. micro-patterns).
+   - Verify file permissions, diff patch formats, and linting constraints.
+
+#### 3. Root Cause Escalation Matrix
+| Failure Symptom | Diagnostic Finding | Remediation Required Before Retry |
+| :--- | :--- | :--- |
+| `"Model is busy"` / 503 | Parallel requests exceeded single-stream ceiling | Enforce Single Task Law; serialize dispatches. |
+| Subagent freezes mid-read | Auto-compaction agent spawned | Set `"compaction": {"auto": false}` in `opencode.json`. |
+| Ruff / Syntax loop | Indentation or multiline whitespace slip | Provide explicit AST line anchors or simplify patch scope. |
+| Code 3: Silent Failure | 0 text tokens streamed; session deadlocked | Check inference server health; increase timeout; restart host. |
