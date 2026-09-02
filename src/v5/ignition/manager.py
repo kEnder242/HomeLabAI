@@ -600,6 +600,19 @@ class IgnitionManager:
 
     async def main_loop(self):
         logging.info("[IGNITION] V5 Ignition Manager Active.")
+        # [LAB-110B] Direct-to-Online Boot Ignition
+        try:
+            if os.path.exists(INFRA_CONFIG):
+                with open(INFRA_CONFIG, "r") as f:
+                    _cfg = json.load(f)
+                _hib_enabled = _cfg.get("hibernation", {}).get("enabled", True)
+                _residency = _cfg.get("hibernation", {}).get("daytime_node_residency", "")
+                if not _hib_enabled or _residency == "PERMANENT_RESIDENT":
+                    logging.info(f"[IGNITION] Permanent residency detected (hibernation={_hib_enabled}, residency='{_residency}'). Scheduling direct-to-online start_lab.")
+                    asyncio.create_task(self.start_lab(reason="BOOT_PERMANENT_RESIDENT"))
+        except Exception as e:
+            logging.error(f"[IGNITION] Failed to evaluate direct-to-online boot condition: {e}")
+
         asyncio.create_task(self.queue_watcher())
         asyncio.create_task(self.continuous_burn_loop())
         asyncio.create_task(self.journal_monitor())
