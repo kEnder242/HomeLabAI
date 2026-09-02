@@ -52,10 +52,10 @@ def test_kender_ollama_reachable():
 
 
 def test_kender_chat_completion():
-    """POST /api/chat with qwen2.5-coder:14b returns a non-trivial message."""
+    """POST /api/chat with hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL returns a non-trivial message."""
     global _CHAT_RESPONSE
     payload = {
-        "model": "qwen2.5-coder:14b",
+        "model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL",
         "messages": [
             {
                 "role": "system",

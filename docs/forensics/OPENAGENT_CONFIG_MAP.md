@@ -50,15 +50,23 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
 4. **Cloudflare UA-block (not hacky):** raw urllib hits 403 error-1010; browser-like UA gets through. Real SDK/http clients send proper UAs — no hacks needed.
 5. **Free-tier 503s are provider-side** (request queue full). Mitigation = spread load across ladder (this swarm), keep `runtime_fallback.retry_on_errors: [400,429,503,529]`, `max_fallback_attempts: 3`.
 6. **2026-09-01 Local 24GB Memory Guard Ceiling (oMLX):** 27B model on 24GB Unified Memory has a ~4k–6k token prefill activation budget before tripping the 24.46 GB Metal cap (`iogpu.wired_limit_mb`). Mitigation: Disable `turbovec` MCP (save 1,200 tok), prune unused subagents (save 800 tok), streamline `AGENTS.md` (save 1,150 tok), and use adaptive on-demand sprint pointers in `delegate.py` under `--local-only`.
+7. **2026-09-01 Local Bicameral Delegation Patches (Atlas 4090 → Sisyphus-Junior M5):**
+   - **`taskID` Placeholder Trap (`dist/index.js:L132942`):** When Atlas emits placeholder session IDs (`task_id="ses_abc123"`), OpenCode attempted to look up non-existent sessions instead of spawning a new child. *Fix: Filter out dummy/placeholder task IDs before session lookup.*
+   - **Cloud Requirement Bypass (`dist/index.js:L129004`):** Category resolver evaluated hardcoded cloud fallback chains. *Fix: `if (!requirement || explicitCategoryModel)` enforces `oh-my-openagent.json` category models unconditionally.*
+   - **Built-in Default Models Purge (`dist/index.js:L24790-L25035` / `L28076-L28315`):** Unconfigured category defaults pointed to `openai/gpt-5.6-sol` / `gemini-3.1-pro`, triggering interactive `ModelAvailability` popups that halted headless runs. *Fix: Defaulted built-in category configs to `my-m5-mlx/mlx-community--Qwen3.8-27B-4bit`.*
+   - **Provider Alias (`opencode.json`):** Registered `"my-m5-air"` alias pointing to `http://192.168.1.46:8000/v1` to resolve legacy subagent model strings.
+   - **Subagent Edit Permissions (`oh-my-openagent.json`):** Changed `sisyphus-junior` and `hephaestus` permissions from `"edit": "deny"` to `"edit": "allow"` so child workers can apply code changes.
+   - **Category Schema Alignment (`delegate.py`):** OpenAgent validates `args.category` against 8 canonical categories. Changed prompt template from custom `coder` to valid categories (`deep` / `unspecified-low`).
 
 ## Verification Commands
 ```
-opencode models | grep -E "^(groq|cohere)"    # registry resolution check
-python3 -m json.tool oh-my-openagent.json     # JSON validity
-git -C ~/.config/opencode log --oneline -10   # config history (configs ARE git)
+opencode models | grep -E "^(groq|cohere|my-m5|my-windows)"    # registry & provider check
+python3 -m json.tool oh-my-openagent.json                     # JSON validity
+git -C ~/.config/opencode log --oneline -10                   # config history
+pytest HomeLabAI/src/tests/test_delegation_canary.py -v       # live delegation certification
 ```
 
 ## Status Notes
 - Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, M5 Air ✅, mistral ❌ (401, needs new key).
-- Committed: (2026-09-01).
+- Bicameral Delegation: Atlas (4090) → Sisyphus-Junior (M5 Air) 100% Certified.
 - Google remains DECLARED but unused in hot path (CloudFlash alias kept for manual use).

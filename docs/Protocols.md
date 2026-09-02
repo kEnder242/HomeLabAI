@@ -343,9 +343,12 @@ All diagnostic forensics MUST reference the canonical black box log:
    * Subagent workers edit files and run local test suites, but are **strictly prohibited from executing `git commit`**.
    * The Strategic Orchestrator audits `git diff`, verifies `pytest` output, and performs all git commits.
 
-4. **In-Flight Handover Reflection & ICM Auto-Capture**:
-   * `delegate.py` automatically extracts the subagent's `[HANDOVER REFLECTION]` directly from the in-memory completion chunk and prints it front-and-center in the terminal output.
-   * `delegate.py` automatically executes `icm store -t errors-resolved` to index prompt friction and linter feedback without manual orchestrator double-back.
+4. **The Tri-Loop Feedback & Remediation Engine**:
+   * **In-Flight Handover Reflection**: `delegate.py` automatically extracts the subagent's `[HANDOVER REFLECTION]` directly from the in-memory completion chunk and prints it front-and-center in the terminal output, auto-storing friction in ICM (`errors-resolved`).
+   * **The Tri-Loop Remediation Ladder**:
+     - **Loop A (Fast In-Session Re-fire / Test Trace Remediation)**: If `pytest` or compiler execution fails, re-fire into the *same persistent session* (`--session-id`) passing the exact traceback snippet without cold-starting daemons.
+     - **Loop B (Anti-Drift / Stub-Tightening Re-fire)**: If a subagent drifts into repository exploration or edits unassigned files, re-fire with an explicit line-range diff anchor and tightened scope.
+     - **Loop C (Hard Blocker & Harness Escalation)**: If a subagent emits `[BLOCKER REPORT: <CATEGORY>]` or halts on an interactive popup / silent finish (`finish=unknown`), `delegate.py` immediately breaks out (Exit Code 2: `AWAITING_INPUT`), logs to `delegation_failures.log`, and yields to the Strategic Orchestrator / Human Driver via `--resume <session_id> --answer <choice>`. Never bypass a delegation harness failure to finish a sprint manually.
 
 5. **Session Continuity & Context Re-use (`--session-id`)**:
    * For related stories within the same sprint phase (e.g., Phase 1: Stories 65.1 & 65.2), orchestrators should reuse persistent session IDs (`--session-id sprint-65`) to preserve warmed repo file trees, terminal test execution history, and recent diffs in OpenCode's working context.
@@ -605,5 +608,61 @@ All diagnostic forensics MUST reference the canonical black box log:
 │                                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                   BKM-048: JIT CONTEXT INTERLEAVING ("FINGERTIPS" STANDARD)              │
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│  ❌ FORBIDDEN: Bloating global instruction files (AGENTS.md, BOOTSTRAP.md) with          │
+│                exhaustive tactical rules or forcing subagents to parse massive docs.     │
+│                                                                                          │
+│  ✅ THE "FINGERTIPS" LAW:                                                                │
+│     All necessary tactical context, type signatures, and BKM rules MUST be spoon-fed     │
+│     Just-in-Time (JIT) directly inside the active Sprint Document and layered payloads.  │
+│                                                                                          │
+│  THE CORE MO: CLOUD-SCALE FIDELITY VIA CONTEXT SCOPING                                   │
+│  - Small/medium local models (14B–27B) suffer severe attention dilution when given       │
+│    massive 30k+ token codebases, causing hallucination and memory blowout.               │
+│  - By partitioning compute across discrete context scopes (Global Architecture at L1,    │
+│    Task Sequencing at L2, Surgical AST Delta at L3), local silicon operates at 100%      │
+│    attention density over razor-sharp < 1.5k token windows, yielding cloud-grade (Opus)  │
+│    fidelity from lightweight local weights.                                              │
+│                                                                                          │
+│  THREE-LAYER JIT MAPPING:                                                                │
+│                                                                                          │
+│  1. Layer 1: Strategic Guardian (AGY / Gemini) → Guides: [BKM-030] & [BKM-043]           │
+│     - Authors the Sprint Plan as the canonical "JIT Container".                          │
+│     - Decomposes local stories into the 3-Task Micro-Pattern:                            │
+│         • Task A: Interface Contract (signatures, types, docstrings, stubs < 800 tok).   │
+│         • Task B: Core Logic (inner algorithm / surgical patch < 1,200 tok).             │
+│         • Task C: Verification (ruff check + targeted pytest < 800 tok).                 │
+│                                                                                          │
+│  2. Layer 2: Tactical Router (Atlas on RTX 4090) → Guide: [BKM-034]                      │
+│     - Receives the bounded story payload from AGY.                                       │
+│     - Enforces STRICT NO-CODE-WRITING rules; acts purely as a task sequencer.            │
+│     - Dispatches micro-tasks sequentially via task(category="unspecified-low").          │
+│                                                                                          │
+│  3. Layer 3: Fast Surgical Worker (Sisyphus-Junior on M5 Air) → Guide: [BKM-048]         │
+│     - Receives isolated file stubs (< 1.5k tokens) with 100% focused attention density.  │
+│     - Anti-exploratory: writes only within designated target lines; runs ruff/pytest.     │
+│     - LINTER PROTOCOL: Ruff treats standard stubs ('...', 'pass') as valid syntax.       │
+│       Trivial lint fixes are applied automatically; complex warnings are reported in     │
+│       [HANDOVER REFLECTION] rather than pausing on interactive question popups.          │
+│                                                                                          │
+│  ESCALATION & HARNESS RESILIENCE:                                                        │
+│  - If a subagent terminates on an interactive popup or silent finish (finish=unknown),   │
+│    delegate.py breaks out with code 2 (AWAITING_INPUT) and provides a resume command:    │
+│      python3 delegate.py --resume <session_id> --answer <choice>                         │
+│  - "When delegation stumbles, we halt the sprint to fix the harness; we never manually   │
+│    bypass the failure to finish the sprint."                                             │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 
 
