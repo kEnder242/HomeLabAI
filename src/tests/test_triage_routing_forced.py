@@ -6,8 +6,7 @@ Verifies:
    .msg-source.pinky and .msg-source.brain styling classes render correctly when routed.
 """
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from playwright.async_api import async_playwright
 
 # ==============================================================================
@@ -161,3 +160,44 @@ async def test_playwright_forced_routing_dom_elements():
         assert "BRAIN" in brain_text
         
         await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_playwright_triage_pane_mapping():
+    """Verify that triage messages map to the correct DOM pane (#chat-console vs #insight-console)."""
+    intercom_url = "http://localhost:9001/intercom.html"
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        response = await page.goto(intercom_url)
+        assert response.status == 200
+
+        # Inject triage messages via intercom_v2.js appendMsg()
+        await page.evaluate("""() => {
+            // 1. Local vLLM triage -> channel='chat' -> Pinky's Console (Left)
+            appendMsg('{"addressed_to": "PINKY", "vibe": "CASUAL"}', 'brain-msg', 'Lab (Triage)', 'chat');
+
+            // 2. Kender/Deep Thought triage -> channel='insight' -> Brain's Insight (Right)
+            appendMsg('{"addressed_to": "BRAIN", "vibe": "TECHNICAL"}', 'brain-msg', 'Deep Thought (Triage)', 'insight');
+        }""")
+
+        # Verify #chat-console (Pinky Left) contains the Lab (Triage) message
+        pinky_pane = page.locator("#chat-console")
+        pinky_triage = pinky_pane.locator(".message", has_text="Lab (Triage)")
+        await pinky_triage.wait_for(state="visible", timeout=3000)
+        assert await pinky_triage.count() == 1
+
+        # Verify #insight-console (Brain Right) contains the Deep Thought (Triage) message
+        insight_pane = page.locator("#insight-console")
+        brain_triage = insight_pane.locator(".message", has_text="Deep Thought (Triage)")
+        await brain_triage.wait_for(state="visible", timeout=3000)
+        assert await brain_triage.count() == 1
+
+        # Cross-isolation check: Lab (Triage) must NOT be in insight pane, Deep Thought (Triage) must NOT be in chat pane
+        assert await insight_pane.locator(".message", has_text="Lab (Triage)").count() == 0
+        assert await pinky_pane.locator(".message", has_text="Deep Thought (Triage)").count() == 0
+
+        await browser.close()
+
