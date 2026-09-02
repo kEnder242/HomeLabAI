@@ -32,7 +32,8 @@
         },
         "KENDER": {
             "ip_hint": "192.168.1.26",
-            "ollama_port": 11434
+            "ollama_port": 11434,
+            "default_model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"
         },
         "localhost": {
             "ip_hint": "127.0.0.1",
@@ -63,11 +64,12 @@
     "swarm_aliases": {
         "champion_reasoner": [
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
             {"providerID": "openrouter", "modelID": "openrouter/free"}
         ],
         "champion_coder": [
-            {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
             {"providerID": "openrouter", "modelID": "openrouter/free"}
         ],
         "fast_worker": [
@@ -80,9 +82,9 @@
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
         ],
         "local_bicameral": {
-            "architect": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
-            "coder": {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"},
-            "fallback_coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
+            "architect": {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
+            "coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
+            "fallback_coder": {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"}
         }
     }
 }

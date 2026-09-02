@@ -408,7 +408,7 @@ Inspect the target files and output a structured plan:
   2. TARGET FILES & EXACT SYMBOL ANCHORS
   3. PROPOSED FIX OPTIONS (Option A vs Option B with trade-offs)
   4. VERIFICATION STRATEGY & RISK RATING"""
-        note_block = f"[NOTE] Output the architecture plan in markdown only. Apply ZERO file edits. Execution will be performed in a separate story."
+        note_block = "[NOTE] Output the architecture plan in markdown only. Apply ZERO file edits. Execution will be performed in a separate story."
     elif mode == "investigate":
         mandate_block = """[READ-ONLY INVESTIGATION DIRECTIVE — NO CODE EDITS]
 You are Prometheus (Lead Investigator). You MUST NOT edit files or run code modifications.
@@ -417,19 +417,22 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   2. REPRODUCTION STEPS
   3. IDENTIFIED BOTTLENECK / RACE CONDITION
   4. RECOMMENDED REMEDIATION"""
-        note_block = f"[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
+        note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
         mandate_block = f"""[STORY {story_num}: {title}]
-You are Atlas (Task Orchestrator on Apple M5 Air).
-Your mission is to formulate the structured plan and delegate implementation tasks to your local execution worker `sisyphus-junior` (RTX 4090) using the `task` tool:
-  `task(agent="sisyphus-junior", prompt="<concrete instructions with file paths, symbol anchors, and code diffs>")`
-Do not attempt direct multi-turn file edits yourself; delegate execution to sisyphus-junior."""
+You are Atlas (Task Orchestrator on Windows RTX 4090).
+Your mission is to formulate the structured plan and delegate implementation tasks to your local execution worker on Apple M5 Air using the `task` tool:
+  `task(category="deep", prompt="<concrete instructions with file paths, symbol anchors, and code diffs>")`
+CRITICAL: The `task` tool call must contain ONLY two fields:
+  category: "deep"
+  prompt: "<detailed implementation instructions>"
+Do not provide any other parameters. Delegate execution immediately."""
         _edit_scope = target_files if target_files else reference_file
-        note_block = f"[NOTE] Delegate the surgical code edits to sisyphus-junior. Silicon validation will be performed post-dispatch."
+        note_block = "[NOTE] Delegate the surgical code edits to the local execution worker via task(category=\"deep\", ...). Silicon validation will be performed post-dispatch."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
-TOOL GUIDANCE: Always call the clara-dna_safe_patch MCP tool for surgical code edits. For researching DNA specifications (FEAT, LAB, BKM, GEM, SCAR), query clara-dna_query_dna or bash `icm recall`. If safe_patch fails, report the failure immediately."""
+TOOL GUIDANCE: Research is done. Do NOT use search, grep, or find tools across the repository. Always call the clara-dna_safe_patch MCP tool for surgical code edits within the assigned target files and function stubs. If missing interfaces, broken types, or blocked, halt immediately and emit: [BLOCKER REPORT: <CATEGORY>] <details>."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
@@ -493,13 +496,13 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 aliases = cfg_obj.get("swarm_aliases", {})
                 if local_only:
                     local_cfg = aliases.get("local_bicameral", {})
-                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (M5 Air + Windows KENDER). Zero cloud fallbacks.")
+                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (Windows 4090 Atlas + M5 Air Junior). Zero cloud fallbacks.")
                     if mode in ("plan", "investigate") or agent in ("prometheus", "atlas", "architect"):
-                        model_ladder = [local_cfg.get("architect", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"})]
+                        model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"})]
                     else:
                         model_ladder = [
-                            local_cfg.get("coder", {"providerID": "my-windows-4090", "modelID": "qwen2.5-coder:14b"}),
-                            local_cfg.get("fallback_coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"})
+                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}),
+                            local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"})
                         ]
                 elif cloud_only:
                     log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/OpenCode). Zero local silicon fallbacks.")
@@ -587,12 +590,53 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
         # Heartbeat loop while worker thread is active
         hb_tick = 0
+        last_inspected_state = ""
         while worker.is_alive():
-            worker.join(timeout=5.0)
+            worker.join(timeout=3.0)
             if worker.is_alive():
                 hb_tick += 1
                 elapsed = int(time.time() - start_time)
-                # Heartbeat stdout line every 5s keeps process output active and prevents silent watchdog timeouts
+
+                # [FEAT-512 / BKM-047] Smart Heartbeat Polling & Live Telemetry Inspector
+                try:
+                    poll_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message")
+                    with urllib.request.urlopen(poll_req, timeout=2.0) as poll_resp:
+                        msgs = json.loads(poll_resp.read().decode("utf-8"))
+                        if msgs:
+                            last_msg = msgs[-1]
+                            parts = last_msg.get("parts", [])
+                            for p in reversed(parts):
+                                ptype = p.get("type")
+                                if ptype == "tool":
+                                    tname = p.get("tool")
+                                    tstate = p.get("state", {})
+                                    status = tstate.get("status", "unknown")
+                                    tinput = tstate.get("input", {})
+                                    state_summary = f"tool:{tname} status:{status}"
+                                    if tname == "task":
+                                        cat = tinput.get("category", "")
+                                        state_summary += f" category:{cat}"
+                                    elif tname == "question":
+                                        # Interactive question popup detected (e.g. key limit or user prompt)
+                                        q_text = str(tinput.get("questions", ""))
+                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", f"OpenCode emitted question/popup: {q_text[:160]}", severity="CRITICAL")
+                                        # Force abort session so we don't hang
+                                        _abort_url = f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/abort"
+                                        urllib.request.urlopen(urllib.request.Request(_abort_url, method="POST"), timeout=2.0)
+                                        post_exception = RuntimeError(f"Interactive popup/error from OpenCode: {q_text[:200]}")
+                                        break
+
+                                    if state_summary != last_inspected_state:
+                                        last_inspected_state = state_summary
+                                        log_step(story_num, "LIVE_SWARM_STATE", f"State transition: [{state_summary}]")
+                                    break
+                except Exception:
+                    pass
+
+                if post_exception is not None:
+                    break
+
+                # Heartbeat stdout line keeps process output active and prevents silent watchdog timeouts
                 log_step(story_num, "HEARTBEAT", f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log")
 
         duration = time.time() - start_time
@@ -617,6 +661,31 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 print("═" * 80, flush=True)
                 print(full_text, flush=True)
                 print("═" * 80 + "\n", flush=True)
+
+                # [FEAT-512] Attempt automatic Blocker Report ingestion
+                try:
+                    blocker_match = re.search(
+                        r"(?:\[BLOCKER REPORT:\s*(.+?)\]|\*\*Blocker Report:\*\*\s*(.+))",
+                        full_text,
+                        re.DOTALL | re.IGNORECASE,
+                    )
+                    if blocker_match:
+                        blocker_text = (blocker_match.group(1) or blocker_match.group(2) or "").strip()
+                        log_step(story_num, "BLOCKER_DETECTED", f"Subagent emitted blocker report: {blocker_text}", severity="CRITICAL")
+                        subprocess.run(
+                            [
+                                "icm", "store",
+                                "-t", "errors-resolved",
+                                "-c", f"Story {story_num} ({title}) Blocker: {blocker_text}",
+                                "-i", "critical",
+                                "-k", f"blocker,delegation,openagent,story-{story_num},sprint-{sprint_num}"
+                            ],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                except Exception:
+                    pass
 
                 # Attempt automatic ICM ingestion
                 try:
