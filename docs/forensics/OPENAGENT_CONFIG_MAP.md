@@ -57,16 +57,23 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
    - **Provider Alias (`opencode.json`):** Registered `"my-m5-air"` alias pointing to `http://192.168.1.46:8000/v1` to resolve legacy subagent model strings.
    - **Subagent Edit Permissions (`oh-my-openagent.json`):** Changed `sisyphus-junior` and `hephaestus` permissions from `"edit": "deny"` to `"edit": "allow"` so child workers can apply code changes.
    - **Category Schema Alignment (`delegate.py`):** OpenAgent validates `args.category` against 8 canonical categories. Changed prompt template from custom `coder` to valid categories (`deep` / `unspecified-low`).
+8. **2026-09-02 Context Pressure, Tool Bloat, and KENDER Worker Realignment:**
+   - **Symlink Invariant:** OpenCode reads `~/.config/opencode/opencode.json` and `~/.config/opencode/oh-my-openagent.json`. Both files MUST be symlinked to `/home/jallred/Dev_Lab/` so repository changes take effect immediately without config drift.
+   - **MCP Absolute Path Law:** Systemd user services (`opencode-core.service`) execute with default system `PATH` (`/usr/bin:/bin`). Binaries like `icm` must be specified with their absolute path (`/home/jallred/.local/bin/icm`), otherwise `execvp` silently fails and drops the server.
+   - **Subagent Tool Scoping (`[BKM-051]`):** OpenCode exposes all registered MCP tools to all subagents by default. With ICM's 31 tools + CLaRa + LSP, worker base prompts ballooned to **24,488 input tokens**, causing 90s prefill dead-air on M5 Air. Worker subagents (`sisyphus-junior`) MUST explicitly deny non-essential tools (`"icm_*": "deny"`, `"websearch_*": "deny"`, `"codegraph_*": "deny"`) to restore lean $< 1,500$ token inputs.
+   - **KENDER 4090 Execution Realignment:** `Qwen3.8-27B` on Apple M5 Air (24GB Unified Memory) trips the 24.46 GB Metal cap (`iogpu.wired_limit_mb`) whenever prompt context grows beyond ~4k tokens, crashing with `oMLX prefill memory guard rejected this prompt: Prefill would require ~25.81 GB peak`. In contrast, Kender (Windows RTX 4090 + Ollama) runs `Qwen3-14B` at only 9.2 GB VRAM, leaving **14.8 GB for KV cache**, and delivers 75 tok/s (vs 16 tok/s). `sisyphus-junior` and `unspecified-low` are repointed to Kender RTX 4090 for fast, OOM-free code execution.
 
 ## Verification Commands
-```
+```bash
 opencode models | grep -E "^(groq|cohere|my-m5|my-windows)"    # registry & provider check
 python3 -m json.tool oh-my-openagent.json                     # JSON validity
+curl -s http://127.0.0.1:4097/mcp                             # MCP server connection status
 git -C ~/.config/opencode log --oneline -10                   # config history
 pytest HomeLabAI/src/tests/test_delegation_canary.py -v       # live delegation certification
 ```
 
 ## Status Notes
-- Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, M5 Air ✅, mistral ❌ (401, needs new key).
-- Bicameral Delegation: Atlas (4090) → Sisyphus-Junior (M5 Air) 100% Certified.
-- Google remains DECLARED but unused in hot path (CloudFlash alias kept for manual use).
+- Keys confirmed live: groq ✅, cohere ✅, google ✅, 4090 ✅, M5 Air ✅, openrouter ✅, mistral ❌ (401).
+- Swarm Topology: Atlas (RTX 4090) → Sisyphus-Junior (RTX 4090 / Kender Ollama) 100% Certified.
+- M5 Air Role: High-fidelity CoT speculative triage and deep reasoning (read-focused, low-tool).
+
