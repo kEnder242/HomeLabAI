@@ -40,26 +40,28 @@ async def test_delta_t_telemetry_tab_and_drawer():
             c_width = await canvas.evaluate("el => el.width")
             assert c_width >= 900, f"Expected canvas width >= 900, got {c_width}"
 
-            # 5. Verify accordion drawer starts closed
-            drawer_content = page.locator("#blackboard-content")
-            is_open_initial = await drawer_content.evaluate("el => el.classList.contains('open')")
-            assert not is_open_initial, "Expected blackboard drawer to start closed"
+            # 5. Verify blackboard ledger container contains expandable turn details
+            ledger_container = page.locator("#blackboard-ledger-container")
+            await ledger_container.wait_for(state="visible", timeout=5000)
+            
+            # Wait for details elements to be rendered by JS
+            await page.wait_for_selector("#blackboard-ledger-container details.feature-details", timeout=5000)
+            turn_details = page.locator("#blackboard-ledger-container details.feature-details")
+            count = await turn_details.count()
+            assert count >= 3, f"Expected at least 3 historical turns in ledger, got {count}"
 
-            # 6. Click drawer toggle to open
-            toggle_btn = page.locator(".drawer-toggle")
-            await toggle_btn.click()
-            is_open_after = await drawer_content.evaluate("el => el.classList.contains('open')")
-            assert is_open_after, "Expected blackboard drawer to open after click"
+            # 6. Verify first turn summary format (TURN 1 • TOPIC • [SCOPE])
+            first_summary = await turn_details.first.locator("summary").inner_text()
+            assert "TURN 1" in first_summary
+            assert "SILICON_MEMORY_LIMITS" in first_summary
+            assert "CONTEXT_SCOPE_LONG" in first_summary
 
-            # 7. Verify blackboard entry contains distillation bullets and consensus
-            entry_text = await page.locator(".blackboard-entry").inner_text()
-            assert "Distillation Bullets:" in entry_text
-            assert "1-Line Consensus:" in entry_text
-
-            # 8. Click drawer toggle to close
-            await toggle_btn.click()
-            is_closed_again = await drawer_content.evaluate("el => !el.classList.contains('open')")
-            assert is_closed_again, "Expected blackboard drawer to close after second click"
+            # 7. Verify expanded contents (Distillation Bullets & 1-Line Consensus)
+            details_content = turn_details.first.locator(".details-content")
+            content_text = await details_content.inner_text()
+            assert "DISTILLATION BULLETS" in content_text.upper()
+            assert "1-LINE CONSENSUS" in content_text.upper()
+            assert "HANDOVER TELEMETRY" in content_text.upper()
 
         finally:
             await context.close()
