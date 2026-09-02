@@ -56,6 +56,11 @@ def pytest_sessionstart(session):
         served_commit = None
 
     # Generate appropriate output
+    global _LOCAL_COMMIT, _SERVED_COMMIT, _IS_VOCAL_STATUS
+    _LOCAL_COMMIT = local_commit
+    _SERVED_COMMIT = served_commit
+    _IS_VOCAL_STATUS = is_vocal_status
+
     if local_commit and served_commit:
         vocal_tag = f" | vocal={is_vocal_status}" if is_vocal_status is not None else ""
         if local_commit == served_commit:
@@ -76,6 +81,33 @@ def pytest_sessionstart(session):
         print("[WARN] Could not determine boot commit (git/service unavailable)")
 
 
+_LOCAL_COMMIT: Optional[str] = None
+_SERVED_COMMIT: Optional[str] = None
+_IS_VOCAL_STATUS: Optional[bool] = None
+
+
+@pytest.fixture(autouse=True)
+def live_bytecode_gate(request):
+    """[FEAT-524] LIVE IS GOD Invariant Gate.
+    Automatically aborts any test marked with @pytest.mark.live if the served
+    lab attendant process on port 8765 is running stale bytecode or is unreachable.
+    """
+    if request.node.get_closest_marker("live"):
+        if not _SERVED_COMMIT:
+            pytest.fail(
+                "LIVE IS GOD VIOLATION: Lab attendant is unreachable on port 8765.\n"
+                "Live certification requires an active, running lab attendant service."
+            )
+        if _LOCAL_COMMIT and _SERVED_COMMIT != _LOCAL_COMMIT:
+            pytest.fail(
+                f"LIVE IS GOD VIOLATION: Stale bytecode detected on port 8765!\n"
+                f"Local Git Commit:   {_LOCAL_COMMIT}\n"
+                f"Served Boot Commit: {_SERVED_COMMIT}\n"
+                f"The live server must match current git HEAD before live certification.\n"
+                f"Action required: 'sudo systemctl restart lab-attendant.service'"
+            )
+
+
 def is_vocal(status_url: str = "http://127.0.0.1:8765/status") -> bool:
     """Direct, single-property source of truth for lab vocality."""
     try:
@@ -87,9 +119,17 @@ def is_vocal(status_url: str = "http://127.0.0.1:8765/status") -> bool:
 
 @pytest.fixture(scope="session")
 def live_vocal():
-    """Pytest fixture ensuring the lab attendant is reachable and vocal is True.
-    Fails the test session explicitly if dormant or offline.
+    """Pytest fixture ensuring the lab attendant is reachable, vocal is True,
+    and running fresh bytecode matching local git HEAD.
+    Fails the test session explicitly if dormant, offline, or running stale bytecode.
     """
+    if _LOCAL_COMMIT and _SERVED_COMMIT and _LOCAL_COMMIT != _SERVED_COMMIT:
+        pytest.fail(
+            f"LIVE IS GOD VIOLATION: Stale bytecode served on port 8765!\n"
+            f"Local: {_LOCAL_COMMIT} | Served: {_SERVED_COMMIT}\n"
+            f"Action required: 'sudo systemctl restart lab-attendant.service'"
+        )
+
     try:
         resp = requests.get("http://127.0.0.1:8765/status", timeout=3)
         if resp.status_code != 200:
