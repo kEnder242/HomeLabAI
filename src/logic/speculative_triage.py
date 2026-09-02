@@ -207,6 +207,11 @@ class SpeculativeTriageRelay:
     def _is_valid_triage(self, result):
         if not isinstance(result, dict):
             return False
+        # [FEAT-518] Reject transient warming objects
+        situation_str = str(result.get("situation", "")).lower()
+        hint_str = str(result.get("hints", "")).lower()
+        if "warming" in situation_str or "warming" in hint_str:
+            return False
         # Check for essential triage fields
         required_fields = ["vibe", "addressed_to", "importance"]
         return all(field in result for field in required_fields)

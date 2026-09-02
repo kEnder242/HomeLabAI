@@ -618,9 +618,13 @@ class CognitiveHub:
             return None
         
         if "{" not in text:
-            # If text is non-empty prose (> 15 chars), synthesize a fallback triage object
+            # [FEAT-518] Double Kickstart Root Cause Fix:
+            # Do NOT synthesize a fallback triage object if text is an engine warming notification
             clean_str = text.strip()
-            if len(clean_str) > 15 and not ("Error:" in clean_str or "vLLM connection" in clean_str or "Connect call failed" in clean_str):
+            is_warming = any(w in clean_str.lower() for w in ["warming", "warming its anchors", "re-connecting momentarily"])
+            is_conn_error = any(e in clean_str for e in ["Error:", "vLLM connection", "Connect call failed"])
+            
+            if len(clean_str) > 15 and not is_warming and not is_conn_error:
                 logging.info("[HUB] Non-JSON prose triage synthesized into fallback structure.")
                 return {
                     "inferred_intent": clean_str[:100],
@@ -635,9 +639,8 @@ class CognitiveHub:
                     "hyde_vector_text": clean_str
                 }
 
-            # [FIX] Silence [RAW_OUTPUT] for connection errors to reduce UI noise
-            is_connection_error = "vLLM connection failed" in text or "Error:" in text or "Connect call failed" in text
-            if not is_connection_error:
+            # [FIX] Silence [RAW_OUTPUT] for connection/warming errors to reduce UI noise
+            if not is_conn_error and not is_warming:
                 msg = f"[RAW_OUTPUT] Missing JSON anchor. Text: {text[:200]}..."
                 logging.warning(f"[HUB] {msg}")
                 asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
