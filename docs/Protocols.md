@@ -678,19 +678,22 @@ All diagnostic forensics MUST reference the canonical black box log:
 │                                                                                          │
 │  1. Layer 1: Strategic Guardian (AGY / Gemini) → Guides: [BKM-030] & [BKM-043]           │
 │     - Authors the Sprint Plan as the canonical "JIT Container".                          │
-│     - Decomposes local stories into the 3-Task Micro-Pattern:                            │
-│         • Task A: Interface Contract (signatures, types, docstrings, stubs < 800 tok).   │
-│         • Task B: Core Logic (inner algorithm / surgical patch < 1,200 tok).             │
-│         • Task C: Verification (ruff check + targeted pytest < 800 tok).                 │
+│     - Decomposes local stories into a Single Consolidated Task Contract:                 │
+│         • Exact target file path, symbol line anchors, and strict AST delta (< 1,500 tok)│
+│         • Concrete verification command (targeted pytest).                               │
 │                                                                                          │
 │  2. Layer 2: Tactical Router (Atlas on RTX 4090) → Guide: [BKM-034]                      │
 │     - Receives the bounded story payload from AGY.                                       │
 │     - Enforces STRICT NO-CODE-WRITING rules; acts purely as a task sequencer.            │
-│     - Dispatches micro-tasks sequentially via task(category="unspecified-low").          │
+│     - Dispatches a single consolidated task via task(category="unspecified-low").        │
+│     - ENFORCES SINGLE TASK LAW: Never emit parallel task() calls in a single turn.       │
 │                                                                                          │
-│  3. Layer 3: Fast Surgical Worker (Sisyphus-Junior on M5 Air) → Guide: [BKM-048]         │
+│  3. Layer 3: Fast Surgical Worker (Sisyphus-Junior on KENDER 4090) → Guide: [BKM-048]    │
+│     - Resident on Kender (RTX 4090 + Ollama Qwen3-14B) with 1,008 GB/s bandwidth.       │
 │     - Receives isolated file stubs (< 1.5k tokens) with 100% focused attention density.  │
-│     - Anti-exploratory: writes only within designated target lines; runs ruff/pytest.     │
+│     - TOOL SCOPING ENFORCED [BKM-051]: Heavy tools (icm_*, websearch_*, codegraph_*) are │
+│       denied to keep worker context strictly lean and prevent 24k token prefill bloat.   │
+│     - Anti-exploratory: writes only within designated target lines; runs pytest.         │
 │     - LINTER PROTOCOL: Ruff treats standard stubs ('...', 'pass') as valid syntax.       │
 │       Trivial lint fixes are applied automatically; complex warnings are reported in     │
 │       [HANDOVER REFLECTION] rather than pausing on interactive question popups.          │
@@ -703,6 +706,34 @@ All diagnostic forensics MUST reference the canonical black box log:
 │    bypass the failure to finish the sprint."                                             │
 │                                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### [BKM-051] Subagent MCP Tool Scoping & Context Ballast Protocol
+**Feature Anchor:** `[FEAT-526]` / `[BKM-051]`  
+**Domain:** OpenAgent Swarm Topology, MCP Overhead Mitigation & Subagent Prompt Budget  
+**Status:** ACTIVE / MANDATORY  
+
+#### 1. The Tool Schema Overhead Problem
+When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools), OpenCode injects the full JSON Schema for every single tool into the system prompt of every agent. For child workers, this creates **24,488 tokens of static tool ballast** before reading any code, causing:
+1. Massive prefill dead-air (90+ seconds on unified memory hosts).
+2. Metal VRAM exhaustion (`AI_APICallError: oMLX prefill memory guard rejected this prompt`).
+3. Diluted model attention across dozens of irrelevant tools.
+
+#### 2. The Tool Scoping Law
+1. **Architect Nodes (Atlas / Sisyphus):** Granted full access to `icm_*`, `clara-dna_*`, and research tools to formulate structured plans and recall historical context.
+2. **Worker Nodes (Sisyphus-Junior / Hephaestus):** MUST have heavy and unused MCP tools denied in `oh-my-openagent.json`:
+   ```json
+   "permission": {
+     "edit": "allow",
+     "icm_*": "deny",
+     "websearch_*": "deny",
+     "codegraph_*": "deny",
+     "question": "deny"
+   }
+   ```
+3. **Target Worker Input Ceiling:** A worker subagent's initial prompt MUST stay below **1,500 tokens**.
 ```
 
 ---
