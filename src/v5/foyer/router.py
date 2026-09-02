@@ -1203,8 +1203,20 @@ class FoyerRouter:
             
             # Start disconnect timer if no clients connected and mode is DEBUG_BRAIN
             if not self.connected_clients and self.mode == "DEBUG_BRAIN":
-                logger.info(f"[FOYER] No clients connected. Starting {self.afk_timeout}s idle shutdown timer.")
-                self.disconnect_timer = asyncio.create_task(self.delayed_shutdown(self.afk_timeout))
+                # [FEAT-517] Suppress disconnect timer if hibernation is disabled
+                _cfg_p = os.path.expanduser('~/Dev_Lab/HomeLabAI/config/infrastructure.json')
+                _hib_on = True
+                if os.path.exists(_cfg_p):
+                    try:
+                        with open(_cfg_p, 'r') as _cf:
+                            _hib_on = json.load(_cf).get('hibernation', {}).get('enabled', True)
+                    except Exception:
+                        pass
+                if _hib_on:
+                    logger.info(f"[FOYER] No clients connected. Starting {self.afk_timeout}s idle shutdown timer.")
+                    self.disconnect_timer = asyncio.create_task(self.delayed_shutdown(self.afk_timeout))
+                else:
+                    logger.info("[FOYER] Hibernation disabled by config. Suppressing idle shutdown timer.")
 
             # Disconnect memory reclaim: flush audio ring-buffer and force GC.
             # Defensive — a failure here must never break the disconnect/timer path.

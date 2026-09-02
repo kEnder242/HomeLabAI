@@ -2,6 +2,10 @@
     "idle_eviction_enabled": false,
     "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
+    "hibernation": {
+        "enabled": false,
+        "idle_timeout_seconds": 900
+    },
     "nodes": {
         "thought": {
             "primary": "M5_AIR",
