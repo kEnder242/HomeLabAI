@@ -67,14 +67,12 @@
     },
     "swarm_aliases": {
         "champion_reasoner": [
-            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
             {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
-            {"providerID": "openrouter", "modelID": "openrouter/free"}
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
         ],
         "champion_coder": [
-            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"},
             {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
-            {"providerID": "openrouter", "modelID": "openrouter/free"}
+            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
         ],
         "fast_worker": [
             {"providerID": "opencode", "modelID": "hy3-free"},
