@@ -356,7 +356,12 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
             status_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/status")
             with urllib.request.urlopen(status_req, timeout=3) as st_resp:
                 st_data = json.loads(st_resp.read().decode("utf-8"))
-                active_sessions = [s_id for s_id, s_info in st_data.items() if s_info.get("status") in ("running", "busy")]
+                active_sessions = []
+                if isinstance(st_data, dict):
+                    active_sessions = [s_id for s_id, s_info in st_data.items() if isinstance(s_info, dict) and s_info.get("status") in ("running", "busy")]
+                elif isinstance(st_data, list):
+                    active_sessions = [s.get("id") for s in st_data if isinstance(s, dict) and s.get("status") in ("running", "busy")]
+                
                 if active_sessions:
                     log_step(story_num, "ACTIVE_SESSION_GATE_REJECTED", f"REJECTED: Session {active_sessions[0]} is still actively running. Parallel delegation is strictly forbidden per BKM-049.", severity="CRITICAL")
                     print(f"\n[!!!] ANTI-PARALLEL GATE TRIGGERED: Session {active_sessions[0]} is still active.", file=sys.stderr)
@@ -480,12 +485,6 @@ You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modificat
 - You operate strictly within the assigned target files and function stubs.
 - NEVER use destructive bash file overwrites (e.g. echo >, cat << 'EOF' >) on existing codebase files.
 - Modifying Existing Files: Always invoke the `clara-dna_safe_patch` MCP tool.
-  Example tool call:
-    Tool: clara-dna_safe_patch
-    Arguments:
-      file_path: "HomeLabAI/src/tests/fixtures/patch_target.py"
-      old_pattern: "def format_node_badge(node_name: str, tier: str = \\"local\\") -> str:\\n    \\"\\"\\"Format node tier badge string.\\"\\"\\"\\n    prefix = \\"[LOCAL]\\" if tier == \\"local\\" else \\"[CLOUD]\\"\\n    return f\\\"{{prefix}} {{node_name.upper()}}\\\""
-      new_pattern: "def format_node_badge(node_name: str, tier: str = \\"local\\") -> str:\\n    \\"\\"\\"Format node tier badge string.\\"\\"\\"\\n    prefix = \\"[LOCAL]\\" if tier == \\"local\\" else \\"[CLOUD]\\"\\n    return f\\\"{{prefix}} {{node_name.upper()}}\\\"\\n\\n\\ndef calculate_energy_efficiency(tokens: int, duration_s: float, watts: float) -> float:\\n    \\"\\"\\"Calculate energy efficiency metric.\\"\\"\\"\\n    if duration_s > 0 and watts > 0:\\n        return (tokens / duration_s) / watts\\n    return 0.0"
 - Creating New Files: Use the standard `write` tool.
 - Never import new external dependencies without explicit authorization in the story spec.
 
