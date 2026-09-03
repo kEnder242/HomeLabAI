@@ -424,7 +424,7 @@ class BicameralNode:
                                     break
 
                     self._engine_cache = {
-                        "url": f"{base_url}/v1/chat/completions" if engine_type == "VLLM" else f"{base_url}/api/chat", 
+                        "url": f"{base_url}/v1/chat/completions" if engine_type in ("VLLM", "OMLX") else f"{base_url}/api/chat", 
                         "model": target, 
                         "type": engine_type,
                         "available": available,
@@ -542,7 +542,7 @@ class BicameralNode:
             # [Task 20.5] Append context to end to preserve prefix hash
             query = f"{query}\n\n---\n[DYNAMIC_CONTEXT]:\n{user_context}"
 
-        if engine["type"] == "VLLM":
+        if engine["type"] in ("VLLM", "OMLX"):
             # [SAFETY] Dynamic context ceiling auto-discovered from active vLLM model metadata
             MAX_CONTEXT = engine.get("max_model_len", 16384)
             SAFE_CEILING = max(1000, MAX_CONTEXT - 384)
@@ -631,7 +631,7 @@ class BicameralNode:
         try:
             stream_iter = (
                 self._stream_vllm(engine["url"], payload)
-                if engine["type"] == "VLLM"
+                if engine["type"] in ("VLLM", "OMLX")
                 else self._stream_ollama(engine["url"], payload)
             )
             async for token in stream_iter:

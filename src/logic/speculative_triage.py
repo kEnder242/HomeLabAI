@@ -63,7 +63,7 @@ def _probe_ollama(host: str = "192.168.1.26", port: int = 11434, timeout: float 
 def _probe_m5_air_vocal(host: str, port: int, timeout: float = 0.3) -> bool:
     """Return True if M5 Air responds to a 1-token vocal completion check within *timeout* seconds."""
     url = f"http://{host}:{port}/v1/chat/completions"
-    payload = b'{"model":"auto","messages":[{"role":"user","content":"."}],"max_tokens":1}'
+    payload = b'{"model":"mlx-community--Qwen3.8-27B-4bit","messages":[{"role":"user","content":"."}],"max_tokens":1}'
     try:
         req = urllib.request.Request(
             url,
