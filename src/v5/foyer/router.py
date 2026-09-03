@@ -1093,11 +1093,16 @@ class FoyerRouter:
 
     async def handle_websocket(self, ws_request):
         # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
-        # [FEAT-426] Origin Security Guard: browsers cannot set custom WS headers,
-        # so the authoritative check is the handshake-frame `lab_key` below. The
-        # pre-prepare header check is defense-in-depth for non-browser clients:
-        # a PRESENT-but-invalid X-Lab-Key header is rejected with 403; an absent
-        # header is allowed through to the handshake-frame check (browser case).
+        # [FEAT-426 / FEAT-537] Origin Security & Stale Bytecode Handshake Guard:
+        # Pre-prepare header check is defense-in-depth for non-browser / test clients.
+        # A PRESENT-but-invalid X-Lab-Key header is rejected with 403.
+        # A PRESENT-but-mismatched X-Client-Commit header is rejected with 409 Conflict.
+        presented_commit = ws_request.headers.get("X-Client-Commit", "")
+        if presented_commit and presented_commit != getattr(self, "boot_commit", "unknown"):
+            peer = ws_request.remote
+            logger.warning(f"[FOYER] Rejected WS connection from {peer}: Stale bytecode (Client {presented_commit} != Server {self.boot_commit})")
+            raise web.HTTPConflict(reason=f"Stale bytecode: Server running {self.boot_commit}")
+
         presented_key = ws_request.headers.get("X-Lab-Key", "")
         if presented_key and presented_key != self.session_token:
             peer = ws_request.remote
@@ -1129,15 +1134,22 @@ class FoyerRouter:
                     m_type = data.get("type")
                     
                     if m_type == "handshake":
-                        # [FEAT-426] Origin Security Guard: the browser WebSocket
-                        # API cannot set custom headers, so the X-Lab-Key rides the
-                        # first frame as `lab_key` and must match the session token.
+                        # [FEAT-426 / FEAT-537] Origin Security & Common Hash Key Guard:
+                        # Validate session_token (lab_key) and reject commit mismatch
                         if not authenticated:
                             if data.get("lab_key") != self.session_token:
                                 peer = ws_request.remote
                                 logger.warning(f"[FOYER] Rejected WS connection from {peer}: missing/invalid X-Lab-Key")
                                 await ws.close(code=1008, message=b"missing or invalid X-Lab-Key")
                                 break
+                            
+                            client_commit = data.get("client_commit") or data.get("commit")
+                            if client_commit and client_commit != getattr(self, "boot_commit", "unknown"):
+                                peer = ws_request.remote
+                                logger.warning(f"[FOYER] Rejected WS connection from {peer}: Stale bytecode (Client {client_commit} != Server {self.boot_commit})")
+                                await ws.close(code=1008, message=f"Stale bytecode: Server running {self.boot_commit}".encode())
+                                break
+
                             authenticated = True
                             self.session_horizon_ts = int(time.time())
                             logger.info(f"[FOYER] WS client authenticated: {socket_id} (Token: {self.session_token}, Horizon: {self.session_horizon_ts})")
@@ -1147,6 +1159,7 @@ class FoyerRouter:
                             "socket_id": socket_id,
                             "session_token": self.session_token,
                             "session_horizon_ts": self.session_horizon_ts,
+                            "boot_commit": getattr(self, "boot_commit", "unknown"),
                             "version": LAB_VERSION
                         }))
                     elif not authenticated:
