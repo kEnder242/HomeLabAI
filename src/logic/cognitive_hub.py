@@ -1041,24 +1041,10 @@ class CognitiveHub:
         # [FEAT-468/471] Extract clean user query from demarcated speaker history
         clean_user_query = extract_latest_user_query(turn)
 
-        # [FEAT-436] Unified Pre-Reflection & Greeting Short-Circuit Pass
-        raw_lower = clean_user_query.strip().lower().strip("!?,.")
-        if raw_lower in ["hi", "hey", "hello", "what's up", "whats up", "good morning", "narf", "yo"]:
-            logging.info("[HUB] Simple greeting detected. Short-circuiting Pre-Reflection in <15 tokens.")
-            t_parsed = {
-                "inferred_intent": "User is greeting the lab.",
-                "addressed_to": "PINKY",
-                "vibe": "CASUAL",
-                "domain": "standard",
-                "casual": 0.9,
-                "intrigue": 0.1,
-                "importance": 0.1,
-                "situation": "Greeting",
-                "hints": "",
-                "hyde_vector_text": ""
-            }
-
-        # [SPR-64_1] Speculative Triage Relay: Kender vs Local vLLM
+        # [FEAT-533] [BKM-015-GUARD]: Pure prompt-guided semantic triage.
+        # PROHIBITED: Hardcoded keyword string lists (e.g. raw_lower in [...]).
+        
+        # [SPR-64_1 / FEAT-534] Speculative Triage Relay: Multi-Seat vs Local vLLM
         triage_schema = {
             "type": "json_schema",
             "json_schema": {
@@ -1069,7 +1055,7 @@ class CognitiveHub:
                         "inferred_intent": {"type": "string"},
                         "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"]},
                         "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "SUPERVISORY"]},
-                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback"]},
+                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback", "unknown"]},
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
                         "importance": {"type": "number"}
@@ -1087,9 +1073,10 @@ class CognitiveHub:
             '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
             '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
             '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
-            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years or struggles/work in a year (e.g. "2015", "in 2018", "what did I struggle with in 2015") -> MUST classify as vibe: HISTORICAL or TECHNICAL, domain: lab_history, addressed_to: BRAIN or MICE, importance: 0.8.\n'
-            'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections, or system commands (e.g. "feedback: ...", "that was wrong", "stop echoing", "too verbose", "KENDER should have a ping gate"). Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
-            'For casual quips or greetings, set addressed_to: PINKY, vibe: CASUAL, domain: standard, importance: 0.1.'
+            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years (e.g. "2015", "in 2018").\n'
+            '  5. unknown (Conversational / General): Any general conversation, salutations, or queries not requiring internal private lab archives -> MUST set domain: unknown.\n'
+            'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections. Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
+            'DIRECT SALUTATIONS: Any conversational greeting or prompt addressed to Pinky (e.g. "hello pinky", "hey pinky", "yo pinky", "hi") MUST evaluate as addressed_to: PINKY, vibe: CASUAL, domain: unknown, importance: 0.1.'
         )
 
         # Execute relay
