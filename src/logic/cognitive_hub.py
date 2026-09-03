@@ -1129,20 +1129,13 @@ class CognitiveHub:
             self.round_table_memory.append(turn_ledger)
             return
 
-        # [SPR-64_1] Console Routing Metadata
+        # [SPR-64_1 / FEAT-532] Console Routing Metadata & Single Broadcast Consolidation
         routing_meta = self.triage_relay.get_console_metadata(winner)
         t_parsed["_console_channel"] = routing_meta["channel"]
         t_parsed["_console_source"] = routing_meta["source"]
         t_parsed["_console_target"] = routing_meta["console"]
         
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"[HUB] Triage successful (Winner: {winner}). Vibe: {t_parsed.get('vibe')}, Domain: {t_parsed.get('domain')}",
-            "brain_source": routing_meta["source"],
-            "version": LAB_VERSION
-        })
-        
-        # Emit clean raw pretty-printed triage JSON to the winning console (Option C)
+        # Emit single clean pretty-printed triage JSON to the winning console (Option C)
         public_triage = {
             k: v for k, v in t_parsed.items()
             if not str(k).startswith("_") and k not in ["situation", "hints", "hyde_vector_text"]
