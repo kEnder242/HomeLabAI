@@ -86,6 +86,30 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
 
 ---
 
+## 🪜 Progressive Task Phasing (Interface-First & Stub-and-Fill Lifecycle)
+
+To prevent circular dependency stalls (e.g. running pytest before tests are written or before methods exist), multi-file stories are sequenced across discrete **Progressive Phases**:
+
+### The 4 Progressive Phases:
+1. **[PHASE: INTERFACE_CONTRACT_STUB]**
+   - **Action:** Add target class/method interface stub to incumbent file.
+   - **Verification Gate:** Fast syntax / lint check (`ruff check <target_file>`).
+2. **[PHASE: TEST_HARNESS_CREATION]**
+   - **Action:** Physically create/write the test file containing assertions against the new interface.
+   - **Verification Gate:** Test runner collects tests cleanly (`pytest <test_file> --collect-only` or `-k "not integration"`).
+3. **[PHASE: CALLER_INTEGRATION_WIRING]**
+   - **Action:** Instrument caller modules (e.g., `CognitiveHub`, pipelines) to invoke the new interface.
+   - **Verification Gate:** Caller syntax / lint check (`ruff check <caller_file>`).
+4. **[PHASE: FULL_SILICON_CONVERGENCE]**
+   - **Action:** Execute end-to-end pytest sweep on live silicon endpoints.
+   - **Verification Gate:** 100% test pass on live hardware (`pytest <test_file> -v`).
+
+### Phased Progress Notification & Handover:
+* **Junior $\rightarrow$ Atlas:** Emits natural completion tag: `[PROGRESS: PHASE X COMPLETE] <files touched, gate passed>`.
+* **Atlas $\rightarrow$ AGY:** Emits top-level completion summary upon reaching `PHASE: FULL_SILICON_CONVERGENCE` or halts with `[BLOCKER REPORT: <CATEGORY>]` if any phase fails.
+
+---
+
 ## Verification Commands
 ```bash
 opencode models | grep -E "^(groq|cohere|my-m5|my-windows)"    # registry & provider check
