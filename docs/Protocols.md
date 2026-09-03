@@ -680,8 +680,6 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
 ---
 
 ## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
-
-## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
 **Feature Anchor:** `[FEAT-515]` / `[BKM-048]`  
 **Domain:** Layered Swarm Delegation, Token Budget Optimization, and On-Disk JIT Execution  
 **Status:** ACTIVE / MANDATORY  
