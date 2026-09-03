@@ -450,23 +450,26 @@ Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION INSTRUCTIONS FOR ATLAS]
 1. Read the section for Story {story_num} in '{reference_file}' on disk.
-2. If BKM or Feature schemas need clarification, query CLaRa-DNA:
-   - `clara-dna_get_protocol(bkm_id="BKM-xxx")`
-   - `clara-dna_query_dna(collection="behavioral_dna", query="...")`
-3. Spoon-feed Junior by formulating exactly ONE task() dispatch formatted as:
+2. Read the target code file on disk to verify actual incumbent code anchors and line numbers before dispatching.
+3. If the story touches multiple targets, dispatch Stage 1 first:
+   - [STAGE 1: INTERFACE_CONTRACT_STUB]: Add method/interface stub to target file using exact code from sprint spec. Verification: ruff check <target_file>.
+   - [STAGE 2: TEST_HARNESS_CREATION]: Create test file.
+   - [STAGE 3: CALLER_INTEGRATION_WIRING]: Wire caller modules.
+   - [STAGE 4: FULL_SILICON_CONVERGENCE]: Run full pytest suite.
+4. Formulate task() using exact verbatim Python code from the sprint spec. Never invent function signatures:
    task(
        category="{_atlas_dispatch_category}",
        prompt=(
            "[TASK: Modify target file for Story {story_num}]\\n"
            "- Target File: <path>\\n"
            "- Tool: clara-dna_safe_patch (or write for new files)\\n"
-           "[OLD CODE / ANCHOR]\\n<exact incumbent code block>\\n"
-           "[NEW CODE IMPLEMENTATION]\\n<exact new code>\\n"
-           "[VERIFICATION COMMAND]\\npytest <path/to/test.py> -v"
+           "[OLD CODE / ANCHOR]\\n<exact incumbent code block from file>\\n"
+           "[NEW CODE IMPLEMENTATION]\\n<exact new code from sprint spec>\\n"
+           "[VERIFICATION COMMAND]\\n<stage verification command>"
        )
    )
-4. For multi-file changes, re-verify line anchors before sending task (N+1).
-5. When Junior completes, synthesize a 2-line completion report with test results."""
+5. If incumbent file anchors do not match sprint description, emit [BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH].
+6. When Junior completes, synthesize a 2-line completion report with test results."""
         note_block = f"[NOTE] Ingest Story {story_num} from '{reference_file}' on disk. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...)."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
