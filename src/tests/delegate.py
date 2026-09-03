@@ -441,22 +441,46 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
+        # Calculate approximate line range in sprint document for Story pointer
+        _sprint_line_pointer = ""
+        if reference_file and os.path.exists(reference_file):
+            try:
+                with open(reference_file, "r") as rf:
+                    r_lines = rf.readlines()
+                    start_idx = None
+                    end_idx = None
+                    for idx, line in enumerate(r_lines):
+                        if f"Story {story_num}" in line:
+                            start_idx = idx + 1
+                            break
+                    if start_idx:
+                        # Find next story or end of section
+                        for idx in range(start_idx, len(r_lines)):
+                            if "### ⏱️ Story" in r_lines[idx] or "### 🏛️ Architecture" in r_lines[idx]:
+                                end_idx = idx
+                                break
+                        if not end_idx:
+                            end_idx = min(len(r_lines), start_idx + 140)
+                        _sprint_line_pointer = f" (Lines {start_idx}–{end_idx})"
+            except Exception:
+                pass
+
         # [FEAT-515 / Task 69.6.3] Lean Atlas Task Dispatcher:
         # Category: unspecified-low (local Windows RTX 4090) or deep (cloud ladder under --cloud-only)
         _atlas_dispatch_category = "deep" if cloud_only else "unspecified-low"
         mandate_block = f"""[STORY {story_num}: {title}]
-Sprint Reference: {reference_file}
+Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION INSTRUCTIONS FOR ATLAS]
-1. Read the section for Story {story_num} in '{reference_file}' on disk.
-2. Read the target code file on disk to verify actual incumbent code anchors and line numbers before dispatching.
-3. If the story touches multiple targets, dispatch Stage 1 first:
-   - [STAGE 1: INTERFACE_CONTRACT_STUB]: Add method/interface stub to target file using exact code from sprint spec. Verification: ruff check <target_file>.
+1. Use the `read` tool to read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
+2. Use the `read` tool to read the incumbent target file ({target_files.split(",")[0] if target_files else reference_file}) to verify line numbers and anchors.
+3. Sequence multi-file changes across progressive stages:
+   - [STAGE 1: INTERFACE_CONTRACT_STUB]: Add method stub to target file using exact code from sprint spec. (Verify: ruff check <target_file>).
    - [STAGE 2: TEST_HARNESS_CREATION]: Create test file.
    - [STAGE 3: CALLER_INTEGRATION_WIRING]: Wire caller modules.
    - [STAGE 4: FULL_SILICON_CONVERGENCE]: Run full pytest suite.
-4. Formulate task() using exact verbatim Python code from the sprint spec. Never invent function signatures:
+4. Formulate task() using exact verbatim Python code from the sprint spec:
    task(
        category="{_atlas_dispatch_category}",
        prompt=(
@@ -470,7 +494,7 @@ Edit Target(s): {target_files or reference_file}
    )
 5. If incumbent file anchors do not match sprint description, emit [BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH].
 6. When Junior completes, synthesize a 2-line completion report with test results."""
-        note_block = f"[NOTE] Ingest Story {story_num} from '{reference_file}' on disk. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...)."
+        note_block = f"[NOTE] Read Story {story_num} in '{reference_file}'{_sprint_line_pointer}. Read target file. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...)."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
