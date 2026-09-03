@@ -307,7 +307,7 @@ class BicameralNode:
             port = 8088 if engine_type == "VLLM" else 11434
             base_url = f"http://{resolved_ip}:{port}"
         elif self.primary_host == "M5_AIR":
-            engine_type = "VLLM" # oMLX on M5 Air uses OpenAI /v1/ API
+            engine_type = "OMLX" # oMLX on M5 Air uses OpenAI /v1/ API, distinct from local vLLM
             port = host_cfg.get("mlx_port", 8000)
             base_url = f"http://{resolved_ip}:{port}"
         else:
@@ -315,7 +315,7 @@ class BicameralNode:
             port = host_cfg.get("ollama_port", 11434)
             base_url = f"http://{resolved_ip}:{port}"
         
-        models_url = f"{base_url}/v1/models" if engine_type == "VLLM" else f"{base_url}/api/tags"
+        models_url = f"{base_url}/v1/models" if engine_type in ("VLLM", "OMLX") else f"{base_url}/api/tags"
 
         try:
             # [FEAT-415] Asynchronous Non-Blocking Engine Health Gate
@@ -324,8 +324,8 @@ class BicameralNode:
                     if r.status != 200:
                         self._engine_cache = {"type": "NONE"}
                         self._last_probe = time.time()
-                        err_msg = f"vLLM Engine Error ({r.status}): Unreachable models endpoint"
-                        trigger_pager(err_msg, source="VLLM", severity="ERROR")
+                        err_msg = f"{engine_type} Engine Error ({r.status}): Unreachable models endpoint"
+                        trigger_pager(err_msg, source=engine_type, severity="ERROR")
                         return False, f"Engine {engine_type} unreachable (Status {r.status})"
                     data = await r.json()
                     
@@ -336,12 +336,11 @@ class BicameralNode:
                         available = [m["id"] for m in model_objs]
                         if model_objs and "max_model_len" in model_objs[0]:
                             max_model_len = model_objs[0]["max_model_len"]
-                        # [BKM] Vocal Probe Enforcement: Do not trust GET /v1/models (200 OK) alone.
-                        # Execute a real chat completion probe to verify token generation.
+                        # [BKM] Vocal Probe Enforcement for local vLLM:
+                        # unified-base is STRICTLY and ONLY for local 2080 Ti vLLM residency.
                         probe_url = f"{base_url}/v1/chat/completions"
-                        probe_model = available[0] if (available and self.primary_host == "M5_AIR") else "unified-base"
                         probe_payload = {
-                            "model": probe_model,
+                            "model": "unified-base",
                             "messages": [{"role": "user", "content": "Respond with SUCCESS."}],
                             "max_tokens": 10
                         }
@@ -360,6 +359,33 @@ class BicameralNode:
                             err_msg = f"vLLM Vocal Probe Failed: {pe}"
                             trigger_pager(err_msg, source="VLLM", severity="ERROR")
                             return False, f"Engine VLLM vocal probe failed: {pe}"
+                    elif engine_type == "OMLX":
+                        model_objs = data.get("data", [])
+                        available = [m["id"] for m in model_objs]
+                        max_model_len = 262144
+                        # oMLX on M5 Air hosts its own distinct models (e.g. Qwen3.8-27B); never unified-base
+                        probe_model = host_cfg.get("default_model", available[0] if available else "mlx-community--Qwen3.8-27B-4bit")
+                        probe_url = f"{base_url}/v1/chat/completions"
+                        probe_payload = {
+                            "model": probe_model,
+                            "messages": [{"role": "user", "content": "Respond with SUCCESS."}],
+                            "max_tokens": 10
+                        }
+                        try:
+                            async with session.post(probe_url, json=probe_payload, timeout=5) as pr:
+                                if pr.status != 200:
+                                    pr_err = await pr.text()
+                                    self._engine_cache = {"type": "NONE"}
+                                    self._last_probe = time.time()
+                                    err_msg = f"oMLX Engine Error ({pr.status}): {pr_err}"
+                                    trigger_pager(err_msg, source="OMLX", severity="ERROR")
+                                    return False, f"Engine oMLX not vocal: {pr_err}"
+                        except Exception as pe:
+                            self._engine_cache = {"type": "NONE"}
+                            self._last_probe = time.time()
+                            err_msg = f"oMLX Vocal Probe Failed: {pe}"
+                            trigger_pager(err_msg, source="OMLX", severity="ERROR")
+                            return False, f"Engine oMLX vocal probe failed: {pe}"
                     else:
                         available = [m["name"] for m in data.get("models", [])]
                         max_model_len = 32768
