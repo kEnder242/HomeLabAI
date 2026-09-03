@@ -439,17 +439,18 @@ You are Atlas (Task Orchestrator on Windows RTX 4090).
 - If the story references target files, confirm they exist before dispatching.
 
 [DOWNSTREAM HAND-OFF — JUNIOR DISPATCH PROTOCOL]
-- Consolidate all implementation steps into a SINGLE unified task prompt (< 1,500 tokens).
-- Each dispatch prompt MUST include: exact file path(s), target function/class symbol anchors, and concrete code diff or stub-fill specifications.
-- SINGLE TASK LAW: Local execution hardware operates on a single execution stream. You MUST package the interface, logic, and verification into ONE single task() dispatch. NEVER split across multiple task() calls.
+- POINTER-BASED ROUTING: Reference the story section directly in '{reference_file}'.
+- Direct Junior to read the exact 4-anchor specification on disk for file paths, symbol anchors, and code stubs.
+- Do NOT serialize or summarize large code blocks across task() arguments. Keep the task() prompt lean (< 300 tokens).
+- SINGLE TASK LAW: Local execution hardware operates on a single execution stream. You MUST emit exactly ONE single task() dispatch per turn. NEVER split across multiple task() calls.
 
 [BACKPRESSURE PROTOCOL — ESCALATION GATE]
 - If Junior returns empty text or finish=unknown, emit [BLOCKER REPORT: SILENT_FAILURE] with the session URL.
-- If you lack sufficient context to formulate a dispatch, emit [BLOCKER REPORT: INSUFFICIENT_CONTEXT] listing what is missing.
-- NEVER guess at API signatures, file paths, or implementation details. Halt and escalate.
+- If Junior emits [BLOCKER REPORT: ...], relay the exact blocker text upward to AGY. Do NOT attempt local resolution.
+- Relayed synthesis: Report test pass/fail outcome and files modified.
 
 Delegate execution immediately via:
-  `task(category="{_atlas_dispatch_category}", prompt="<concrete instructions>")`"""
+  `task(category="{_atlas_dispatch_category}", prompt="Execute Story {story_num} in {reference_file} (Section: Story {story_num}). Follow the 4-anchor specification in that section to modify target file using clara-dna_safe_patch. Verify with pytest.")`"""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Delegate the surgical code edits to the local execution worker via task(category=\"{_atlas_dispatch_category}\", ...). Silicon validation will be performed post-dispatch."
     else:
