@@ -40,7 +40,9 @@ def test_safe_patch_new_function():
 
 def test_patch_target_ast_integrity():
     """Verify the file has valid AST syntax with all 3 functions present."""
-    with open("HomeLabAI/src/tests/fixtures/patch_target.py", "r") as f:
+    from pathlib import Path
+    target_path = Path(__file__).resolve().parent / "fixtures" / "patch_target.py"
+    with open(target_path, "r") as f:
         tree = ast.parse(f.read())
 
     func_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
