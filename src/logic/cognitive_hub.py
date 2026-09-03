@@ -24,7 +24,7 @@ from nodes.pinky_critic_persona import (
     format_chat_delivery,
     format_crosstalk_telemetry
 )
-from logic.speculative_triage import SpeculativeTriageRelay, _probe_ollama, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
+from logic.speculative_triage import SpeculativeTriageRelay, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
 from memory.blackboard_ledger import BlackboardLedger, ContextScope
 
@@ -444,13 +444,12 @@ class CognitiveHub:
         # [FEAT-484] Declarative Triage Policy Loader
         self.policy_loader = TriagePolicyLoader()
 
-        # [SPR-64_1] Speculative Triage Relay initialization
-        # Default t_warm=5.0 -> head_start_window=10.0s (Patient Warm Runway)
+        # [SPR-64_1 / FEAT-531] Speculative Triage Relay initialization with 2x timing
         self.triage_relay = SpeculativeTriageRelay(
             broadcast_callback=self.broadcast,
             kender_fn=self._dispatch_kender_triage,
             vllm_fn=self._dispatch_vllm_triage,
-            t_warm=5.0
+            t_warmed=0.09
         )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
@@ -1753,8 +1752,9 @@ class CognitiveHub:
         vibe = str(triage_result.get("vibe", "")).upper()
         importance = float(triage_result.get("importance", 0.5))
 
-        if vibe == "CASUAL" or domain in ["feedback", "lab_internal"] or (importance < 0.3 and domain == "standard"):
-            logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
+        # [FEAT-534] The True RAG Rule: If domain is 'unknown', or non-matching feedback/internal, return empty vector
+        if domain in ["unknown", "feedback", "lab_internal"] or (importance < 0.3 and domain == "standard"):
+            logging.info("[FEAT-534] Unrecorded domain or casual turn; returning empty HyDE vector (Zero RAG Noise)")
             return "", DIRECT_RAW_QUERY
 
         # If triage result already contains a valid HyDE vector from Pinky cli_voice_v1:
