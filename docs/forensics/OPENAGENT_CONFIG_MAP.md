@@ -61,7 +61,30 @@ OpenAgent spawns subagents → routes by role/category → model string `provide
    - **Symlink Invariant:** OpenCode reads `~/.config/opencode/opencode.json` and `~/.config/opencode/oh-my-openagent.json`. Both files MUST be symlinked to `/home/jallred/Dev_Lab/` so repository changes take effect immediately without config drift.
    - **MCP Absolute Path Law:** Systemd user services (`opencode-core.service`) execute with default system `PATH` (`/usr/bin:/bin`). Binaries like `icm` must be specified with their absolute path (`/home/jallred/.local/bin/icm`), otherwise `execvp` silently fails and drops the server.
    - **Subagent Tool Scoping (`[BKM-051]`):** OpenCode exposes all registered MCP tools to all subagents by default. With ICM's 31 tools + CLaRa + LSP, worker base prompts ballooned to **24,488 input tokens**, causing 90s prefill dead-air on M5 Air. Worker subagents (`sisyphus-junior`) MUST explicitly deny non-essential tools (`"icm_*": "deny"`, `"websearch_*": "deny"`, `"codegraph_*": "deny"`) to restore lean $< 1,500$ token inputs.
-   - **KENDER 4090 Execution Realignment:** `Qwen3.8-27B` on Apple M5 Air (24GB Unified Memory) trips the 24.46 GB Metal cap (`iogpu.wired_limit_mb`) whenever prompt context grows beyond ~4k tokens, crashing with `oMLX prefill memory guard rejected this prompt: Prefill would require ~25.81 GB peak`. In contrast, Kender (Windows RTX 4090 + Ollama) runs `Qwen3-14B` at only 9.2 GB VRAM, leaving **14.8 GB for KV cache**, and delivers 75 tok/s (vs 16 tok/s). `sisyphus-junior` and `unspecified-low` are repointed to Kender RTX 4090 for fast, OOM-free code execution.
+   - KENDER 4090 Execution Realignment: Qwen3.8-27B on Apple M5 Air (24GB Unified Memory) trips the 24.46 GB Metal cap (iogpu.wired_limit_mb) whenever prompt context grows beyond ~4k tokens, crashing with oMLX prefill memory guard rejected this prompt. In contrast, Kender (Windows RTX 4090 + Ollama) runs Qwen3-14B at only 9.2 GB VRAM, leaving 14.8 GB for KV cache, and delivers 75 tok/s (vs 16 tok/s). sisyphus-junior and unspecified-low are repointed to Kender RTX 4090 for fast, OOM-free code execution.
+
+---
+
+## 📜 Swarm Delegation Operational Playbook (Principles 1–9 & Execution Sentinels)
+
+### Master One-Liner Index
+1. **[1: CLaRa / BKM / FEAT Resolution]** Give Atlas explicit tool directions so it knows `clara-dna_get_protocol` and `clara-dna_query_dna` can look up BKM and FEAT context on demand.
+2. **[2: Fingertips Compliance]** Stop dumping Layer 1 philosophical rules and whole code files into Atlas's prompt—keep dispatch prompts lean pointers (< 200 tokens).
+3. **[3: Pass-Down / Pass-Up Protocol]** Replace abstract L1/L2/L3 theory in Atlas's prompt with exact operational mechanics: spoon-feed micro-tasks down, synthesize 2-sentence test reports up.
+4. **[4: Junior's Job & Guardrails]** Junior is a pure surgical code modifier (75 tok/s)—it takes exact AST diffs, applies `clara-dna_safe_patch` (or `write`), runs pytest, and has zero license to explore, grep, or redesign.
+5. **[5: Spoon-Fed Task Template]** Standardize the 4-anchor task payload that Atlas forwards to Junior (`[TASK]`, `[TARGET FILE]`, `[OLD CODE / ANCHOR]`, `[NEW CODE]`, `[VERIFICATION]`).
+6. **[6: Static Persona `prompt_append`]** Let OpenCode's `prompt_append` in `oh-my-openagent.json` automatically attach static worker invariants to `sisyphus-junior` rather than manually constructing them in Atlas.
+7. **[7: Task-to-Task Transition & Re-Mapping]** Instruct Atlas to re-inspect target files and refresh code line anchors before dispatching task $(N+1)$ to prevent drift from prior edits.
+8. **[8: Junior Anchor Pushback Gate]** Mandate that Junior immediately halts and emits `[BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH]` if expected code anchors or `old_pattern` do not match, forbidding destructive `sed -i` fallbacks.
+9. **[9: Atlas Worker Introduction]** Equip Atlas's system prompt with a concise mental model of Junior's capabilities (fast AST edits, pytest execution) and limits (no repo research, no guessing).
+
+### Execution Sentinels
+* **Session Re-attachment on Self-Healing (`--session-id`):** When a subagent fails or needs remediation, re-attach to the same REST session ID with traceback context rather than spawning a fresh disconnected session.
+* **Symlink Synchronization Guard (`~/.config/opencode`):** `oh-my-openagent.json` and `opencode.json` must remain symlinked to workspace root.
+* **Silent Failure Sentinel & Web UI Deep-Link:** If an L2/L3 worker returns empty text or `finish=unknown`, `delegate.py` formats a direct browser link (`http://192.168.1.238:4096/#/session/<id>`) and halts cleanly.
+* **Category Route Lock (`unspecified-low`):** Local execution is locked to `unspecified-low` (Windows RTX 4090); cloud fallback (`deep`) is strictly gated behind `--cloud-only`.
+
+---
 
 ## Verification Commands
 ```bash
