@@ -59,7 +59,7 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
 
     if not served_commit:
         err = (
-            "LIVE IS GOD VIOLATION: Lab attendant is unreachable on port 8765.\n"
+            "LIVE INTEGRITY VIOLATION: Lab attendant is unreachable on port 8765.\n"
             "Live certification requires an active, running lab attendant service."
         )
         if "pytest" in sys.modules:
@@ -70,7 +70,7 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
 
     if local_commit and served_commit != local_commit:
         err = (
-            f"LIVE IS GOD VIOLATION: Stale bytecode detected on port 8765!\n"
+            f"LIVE INTEGRITY VIOLATION: Stale bytecode detected on port 8765!\n"
             f"Local Git Commit:   {local_commit}\n"
             f"Served Boot Commit: {served_commit}\n"
             f"The live server must match current git HEAD before live certification.\n"
@@ -85,7 +85,7 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
             raise RuntimeError(err)
 
     if enforce_vocal and not is_vocal_status:
-        err = "LIVE IS GOD VIOLATION: Lab is not in a vocal state (vocal=False)."
+        err = "LIVE INTEGRITY VIOLATION: Lab is not in a vocal state (vocal=False)."
         if "pytest" in sys.modules:
             pytest.fail(err)
         else:
