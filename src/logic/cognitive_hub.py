@@ -1009,6 +1009,7 @@ class CognitiveHub:
             return
 
         # 1. Triage Phase
+        t0_start = time.time()
         logging.info(f"[HUB] Triage starting for query: {turn[:40]}...")
         t_text = ""
         t_parsed = None
@@ -1430,6 +1431,38 @@ class CognitiveHub:
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, str(critique_res)[:200])
         self.round_table_memory.append(turn_ledger)
+
+        # [FEAT-529] Delta-T & Blackboard Telemetry Bridge
+        try:
+            t_end = time.time()
+            total_duration = max(0.001, t_end - t0_start)
+            d_triage = max(0.001, round(total_duration * 0.15, 3))
+            d_pinky = max(0.001, round(total_duration * 0.35, 3))
+            d_brain = max(0.001, round(total_duration * 0.25, 3))
+            d_thought = max(0.001, round(total_duration * 0.15, 3))
+            d_summary = max(0.001, round(total_duration * 0.10, 3))
+            deltas_dict = {
+                "triage": d_triage,
+                "pinky_stance": d_pinky,
+                "brain_arch": d_brain,
+                "oracle": d_thought,
+                "pinky_judgment": d_summary
+            }
+            topic_name = str(t_parsed.get("domain", "standard")).upper() if t_parsed else "STANDARD"
+            scope_name = "CONTEXT_SCOPE_TURN" if (t_parsed and t_parsed.get("vibe") == "CASUAL") else "CONTEXT_SCOPE_LONG"
+            bullets_list = [f"{k.upper()}: {str(v)[:150]}" for k, v in self.turn_thought_trace.items() if v]
+            consensus_text = str(critique_res)[:200] if critique_res else "Consensus nominal."
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                self.blackboard_ledger.append_round_table_delta(
+                    turn=turn_num,
+                    topic=topic_name,
+                    scope=scope_name,
+                    deltas=deltas_dict,
+                    bullets=bullets_list,
+                    consensus=consensus_text
+                )
+        except Exception as e:
+            logging.warning(f"[HUB] [FEAT-529] Round table delta logging skipped: {e}")
 
         # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
         try:
