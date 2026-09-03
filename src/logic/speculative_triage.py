@@ -1,38 +1,64 @@
 import asyncio
+import json
 import logging
+import os
 import socket
 import urllib.request
-
-# [FEAT-500] Deep Thought Sovereign Multi-Seat Endpoints (Role-Hardware Decoupled)
-DEEP_THOUGHT_TARGETS = [
-    {
-        "name": "M5_AIR",
-        "host": "192.168.1.46",
-        "port": 8000,
-        "protocol": "OPENAI",
-        "probe_path": "/v1/models"
-    },
-    {
-        "name": "KENDER",
-        "host": "192.168.1.26",
-        "port": 11434,
-        "protocol": "OLLAMA",
-        "probe_path": "/api/tags"
-    },
-    {
-        "name": "LOCAL",
-        "host": "127.0.0.1",
-        "port": 8088,
-        "protocol": "VLLM",
-        "probe_path": "/v1/models"
-    }
-]
+from typing import Dict, Any, List, Optional
 
 SOCKET_TIMEOUT_S = 0.2
-API_PROBE_TIMEOUT_S = 0.6
+API_PROBE_TIMEOUT_S = 1.7  # [FEAT-531] 2x Rule for Cold Probe (2 * 0.85s)
 KENDER_HOST = "192.168.1.26"
 KENDER_PORT = 11434
 
+def _load_engine_seats() -> List[Dict[str, Any]]:
+    """[FEAT-531] Load declarative engine seats from config/infrastructure.json."""
+    config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                data = json.load(f)
+                if "seats" in data:
+                    return data["seats"]
+    except Exception as e:
+        logging.warning(f"[SPECULATIVE] Failed to load seats from infrastructure.json: {e}")
+    
+    # Fallback default seats
+    return [
+        {
+            "id": "M5_AIR",
+            "name": "M5_AIR",
+            "host": "192.168.1.46",
+            "port": 8000,
+            "protocol": "OPENAI",
+            "probe_path": "/v1/chat/completions",
+            "probe_payload": {"model": "mlx-community--Qwen3.8-27B-4bit", "messages": [{"role": "user", "content": "."}], "max_tokens": 1},
+            "t_warmed": 0.09,
+            "t_cold": 0.85
+        },
+        {
+            "id": "KENDER",
+            "name": "KENDER",
+            "host": "192.168.1.26",
+            "port": 11434,
+            "protocol": "OLLAMA",
+            "probe_path": "/api/tags",
+            "probe_payload": None,
+            "t_warmed": 0.12,
+            "t_cold": 1.2
+        },
+        {
+            "id": "LOCAL",
+            "name": "LOCAL",
+            "host": "127.0.0.1",
+            "port": 8088,
+            "protocol": "VLLM",
+            "probe_path": "/v1/models",
+            "probe_payload": None,
+            "t_warmed": 0.045,
+            "t_cold": 0.05
+        }
+    ]
 
 def _probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
     """Return True if a TCP connect succeeds within *timeout* seconds."""
@@ -42,63 +68,64 @@ def _probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
     except (OSError, socket.timeout):
         return False
 
-
-def _probe_http(url: str, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
+def _probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
     """Return True if HTTP endpoint returns 200 within *timeout* seconds."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AcmeLab/5.0"})
+        if payload:
+            data_bytes = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data_bytes,
+                headers={"User-Agent": "AcmeLab/5.0", "Content-Type": "application/json"},
+                method="POST"
+            )
+        else:
+            req = urllib.request.Request(url, headers={"User-Agent": "AcmeLab/5.0"})
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return response.status == 200
     except Exception:
         return False
 
-
-def _probe_ollama(host: str = "192.168.1.26", port: int = 11434, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
-    """Legacy compatibility wrapper for Kender probe."""
+def _probe_seat(seat: Dict[str, Any]) -> bool:
+    """[FEAT-531] Generic declarative seat health probe."""
+    host = seat.get("host", "127.0.0.1")
+    port = seat.get("port", 80)
     if not _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
         return False
-    return _probe_http(f"http://{host}:{port}/api/tags", timeout=timeout)
+    
+    probe_path = seat.get("probe_path", "/v1/models")
+    url = f"http://{host}:{port}{probe_path}"
+    payload = seat.get("probe_payload")
+    # 2x Rule: Probe timeout is 2 * t_cold
+    t_probe = 2.0 * seat.get("t_cold", 0.85)
+    return _probe_http(url, payload=payload, timeout=t_probe)
 
-
-def _probe_m5_air_vocal(host: str, port: int, timeout: float = 0.3) -> bool:
-    """Return True if M5 Air responds to a 1-token vocal completion check within *timeout* seconds."""
-    url = f"http://{host}:{port}/v1/chat/completions"
-    payload = b'{"model":"mlx-community--Qwen3.8-27B-4bit","messages":[{"role":"user","content":"."}],"max_tokens":1}'
-    try:
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={
-                "User-Agent": "AcmeLab/5.0",
-                "Content-Type": "application/json"
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            return response.status == 200
-    except Exception:
-        return False
-
-
-def resolve_active_deep_thought_target(timeout: float = API_PROBE_TIMEOUT_S) -> dict:
+def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
-    [FEAT-500 / FEAT-502] Ping-First & Stick Multi-Seat Resolver:
-    Probes M5 Air (:8000) with a 1-token vocal completion check first.
-    If M5 Air returns an error or fails, falls back to Kender (:11434).
-    If both remote seats fail, returns LOCAL (vLLM :8088).
+    [FEAT-531] Declarative Multi-Seat Engine Resolver:
+    Iterates through configured engine seats and selects the first active remote engine.
+    If all remote seats fail, falls back to LOCAL vLLM.
     """
-    # [FEAT-502] 1-token vocal completion check for M5 Air
-    m5_air = DEEP_THOUGHT_TARGETS[0]
-    if _probe_m5_air_vocal(m5_air["host"], m5_air["port"], timeout=0.3):
-        return m5_air
-
-    # Fallback to Kender (TCP + HTTP probe)
-    kender = DEEP_THOUGHT_TARGETS[1]
-    if _probe_tcp(kender["host"], kender["port"], timeout=SOCKET_TIMEOUT_S):
-        if _probe_http(f"http://{kender['host']}:{kender['port']}{kender['probe_path']}", timeout=timeout):
-            return kender
-
-    return DEEP_THOUGHT_TARGETS[-1]  # Fallback to LOCAL
+    if seats is None:
+        seats = _load_engine_seats()
+    
+    for seat in seats:
+        if seat.get("id") == "LOCAL":
+            continue
+        if _probe_seat(seat):
+            return seat
+            
+    # Default fallback to LOCAL seat
+    local_seat = next((s for s in seats if s.get("id") == "LOCAL"), {
+        "id": "LOCAL",
+        "name": "LOCAL",
+        "host": "127.0.0.1",
+        "port": 8088,
+        "protocol": "VLLM",
+        "t_warmed": 0.045,
+        "t_cold": 0.05
+    })
+    return local_seat
 
 
 class SpeculativeTriageRelay:
@@ -110,14 +137,15 @@ class SpeculativeTriageRelay:
     If remote seats are unreachable, the head-start window is skipped with zero delay
     and local vLLM is dispatched immediately.
     """
-    def __init__(self, broadcast_callback, deep_thought_fn=None, vllm_fn=None, t_warm=5.0,
+    def __init__(self, broadcast_callback, deep_thought_fn=None, vllm_fn=None, t_warmed=0.09,
                  kender_fn=None, socket_timeout=SOCKET_TIMEOUT_S, api_timeout=API_PROBE_TIMEOUT_S):
         self.broadcast = broadcast_callback
         self.deep_thought_fn = deep_thought_fn or kender_fn
         self.kender_fn = self.deep_thought_fn # backward compatibility
         self.vllm_fn = vllm_fn
-        self.t_warm = t_warm
-        self.head_start_window = 2 * t_warm
+        self.t_warmed = t_warmed
+        # [FEAT-531] 2x Rule for Warmed Speculative Head-Start Window (2 * 0.09s = 0.18s)
+        self.head_start_window = 2 * t_warmed
         self.socket_timeout = socket_timeout
         self.api_timeout = api_timeout
 
@@ -126,14 +154,15 @@ class SpeculativeTriageRelay:
         Execute the speculative relay.
         Returns (triage_dict, winner_name) or (None, None).
         """
-        logging.info(f"[SPR-67_0] Initiating Speculative Relay (Head-start: {self.head_start_window}s)")
-
-        # [FEAT-500] Dual-Check Gate: Check if remote Deep Thought (M5 Air or Kender) is live
-        active_target = resolve_active_deep_thought_target(self.api_timeout)
+        # [FEAT-531] Declarative Multi-Seat Resolution
+        active_target = resolve_active_deep_thought_target()
         target_name = active_target["name"]
+        t_warmed_seat = active_target.get("t_warmed", self.t_warmed)
+        self.head_start_window = 2 * t_warmed_seat
+        logging.info(f"[FEAT-531] Initiating Speculative Relay (Target: {target_name}, Head-start: {self.head_start_window:.3f}s)")
 
         if target_name == "LOCAL":
-            logging.info("[FEAT-500] Remote Deep Thought seats unreachable. Fast dual-check gate: dispatching local vLLM with zero delay.")
+            logging.info("[FEAT-531] Remote Deep Thought seats unreachable. Fast dual-check gate: dispatching local vLLM with zero delay.")
             result = await self._run_vllm(query, context, triage_schema, request_id)
             if self._is_valid_triage(result):
                 return result, "vllm"
