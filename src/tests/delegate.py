@@ -459,7 +459,15 @@ You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modificat
 [STATIC RULES — L3 INVARIANTS]
 - Research is DONE. Do NOT use search, grep, or find tools across the repository.
 - You operate strictly within the assigned target files and function stubs.
-- Always use the clara-dna_safe_patch MCP tool for surgical code edits.
+- NEVER use destructive bash file overwrites (e.g. echo >, cat << 'EOF' >) on existing codebase files.
+- Modifying Existing Files: Always invoke the `clara-dna_safe_patch` MCP tool.
+  Example tool call:
+    Tool: clara-dna_safe_patch
+    Arguments:
+      file_path: "HomeLabAI/src/tests/fixtures/patch_target.py"
+      old_pattern: "def format_node_badge(node_name: str, tier: str = \\"local\\") -> str:\\n    \\"\\"\\"Format node tier badge string.\\"\\"\\"\\n    prefix = \\"[LOCAL]\\" if tier == \\"local\\" else \\"[CLOUD]\\"\\n    return f\\\"{{prefix}} {{node_name.upper()}}\\\""
+      new_pattern: "def format_node_badge(node_name: str, tier: str = \\"local\\") -> str:\\n    \\"\\"\\"Format node tier badge string.\\"\\"\\"\\n    prefix = \\"[LOCAL]\\" if tier == \\"local\\" else \\"[CLOUD]\\"\\n    return f\\\"{{prefix}} {{node_name.upper()}}\\\"\\n\\n\\ndef calculate_energy_efficiency(tokens: int, duration_s: float, watts: float) -> float:\\n    \\"\\"\\"Calculate energy efficiency metric.\\"\\"\\"\\n    if duration_s > 0 and watts > 0:\\n        return (tokens / duration_s) / watts\\n    return 0.0"
+- Creating New Files: Use the standard `write` tool.
 - Never import new external dependencies without explicit authorization in the story spec.
 
 [DYNAMIC INGESTION — TASK CONTEXT]
@@ -512,6 +520,12 @@ Sprint Reference: {effective_sprint_doc} (Available on disk for full architectur
         except Exception:
             pass
 
+    _handover_block = ""
+    if agent != "atlas":
+        _handover_block = """[HANDOVER REFLECTION]
+As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
+"""
+
     _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
     prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
 - Sprint Plan Reference: {reference_file}
@@ -524,9 +538,7 @@ Sprint Reference: {effective_sprint_doc} (Available on disk for full architectur
 [FUNCTIONAL REQUIREMENTS & 4-ANCHOR SPECIFICATION]
 {details}
 {target_snippet_block}
-[HANDOVER REFLECTION]
-As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
-
+{_handover_block}
 {note_block}"""
 
     # [FEAT-493] Load model ladder dynamically from centralized infrastructure config
@@ -548,11 +560,12 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                             local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"})
                         ]
                 elif cloud_only:
-                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/OpenCode). Zero local silicon fallbacks.")
-                    model_ladder = [
-                        {"providerID": "openrouter", "modelID": "free"},
-                        {"providerID": "opencode", "modelID": "nemotron-3.5-lightning-free"}
-                    ]
+                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (Groq/OpenCode/Cohere). Zero local silicon fallbacks.")
+                    model_ladder = aliases.get("fast_worker", [
+                        {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
+                        {"providerID": "opencode", "modelID": "big-pickle"},
+                        {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+                    ])
                 elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
                 elif agent in ("sisyphus", "hephaestus", "developer"):
@@ -566,11 +579,15 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if local_only:
             model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}]
         elif cloud_only:
-            model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
+            model_ladder = [
+                {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
+                {"providerID": "opencode", "modelID": "big-pickle"},
+                {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+            ]
         else:
             model_ladder = [
-                {"providerID": "openrouter", "modelID": "free"},
-                {"providerID": "opencode", "modelID": "nemotron-3.5-lightning-free"},
+                {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
+                {"providerID": "opencode", "modelID": "big-pickle"},
                 {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
             ]
 
@@ -870,8 +887,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
     parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
     _retro_mode = "--retrospective" in sys.argv
-    parser.add_argument("--sprint", required=not _retro_mode, type=int, default=53, help="Sprint number (e.g. 53)")
-    parser.add_argument("--story", required=not _retro_mode, type=int, help="Story number")
+    parser.add_argument("--sprint", required=not _retro_mode, type=int, help="Sprint number")
+    parser.add_argument("--story", required=not _retro_mode, type=str, help="Story number (e.g. 709, 709B)")
     parser.add_argument("--title", required=not _retro_mode, help="Story title")
     parser.add_argument("--reference", required=not _retro_mode, help="Sprint plan / context reference document (read-only context for Atlas)")
     parser.add_argument("--sprint-doc", default=None, help="Path to Master Sprint Plan (e.g. Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md) to automatically inject Tier-1 Executive Summary")
@@ -881,7 +898,7 @@ if __name__ == "__main__":
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
-    parser.add_argument("--agent", default="sisyphus", help="Target agent persona override for testing (default: sisyphus)")
+    parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
     parser.add_argument("--local-only", action="store_true", help="Force 100% sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
     parser.add_argument("--cloud-only", action="store_true", help="Force 100% cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")

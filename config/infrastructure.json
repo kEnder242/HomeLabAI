@@ -75,13 +75,15 @@
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
         ],
         "fast_worker": [
-            {"providerID": "opencode", "modelID": "hy3-free"},
-            {"providerID": "openrouter", "modelID": "openrouter/free"}
+            {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
+            {"providerID": "opencode", "modelID": "big-pickle"},
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],
         "default_ladder": [
-            {"providerID": "opencode", "modelID": "hy3-free"},
-            {"providerID": "openrouter", "modelID": "openrouter/free"},
-            {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}
+            {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
+            {"providerID": "opencode", "modelID": "big-pickle"},
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
+            {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"}
         ],
         "local_bicameral": {
             "architect": {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
