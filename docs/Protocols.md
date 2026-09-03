@@ -784,3 +784,67 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
    - **Progressing:** If tokens are actively flowing and constructive work is progressing, extend the timer window.
    - **Stalled:** If token generation is dead, or the agent is spinning in an unresolvable tool retry loop or orphaned subagent wait, only then terminate the attempt.
 3. **Mandatory Zombie Cleanup:** When an attempt is halted, timed out, or interrupted, the harness (`delegate.py`) and orchestrator MUST issue an explicit `POST /session/{id}/abort` frame to the OpenCode REST port. Never allow orphaned subagent loops to churn GPU silicon after client disconnects.
+
+---
+
+### [BKM-052] Sovereign Driver Protocol (Stateless Serialized Delegation for Fallback LLMs)
+**Feature Anchor:** `[FEAT-530]` / `[BKM-052]`  
+**Domain:** External Orchestration Fallback, Token Quota Exhaustion & Headless Dispatch  
+**Status:** ACTIVE / MANDATORY  
+
+#### 1. The Principle
+When the primary orchestrator (AGY / Gemini CLI) exhausts its token quota or encounters severe rate-limiting, an alternative driver LLM (such as GPT-4o / Claude / DeepSeek via external CLI or Web UI) must be able to drive the sprint pipeline without attempting to manually write code, debug ASTs, or re-architect the system. The driver acts **strictly as a headless execution sequencer** for `delegate.py`.
+
+#### 2. The Invariant Rules
+1. **No Direct Code Generation:** The fallback driver is FORBIDDEN from generating code diffs or writing implementation files directly.
+2. **No Human Docs:** Treat sprint documents on disk as executable instruction sets.
+3. **Serialized Dispatch Only:** Dispatches MUST be strictly serialized. The driver invokes exactly ONE story at a time and blocks until `delegate.py` exits.
+4. **Zero Self-Correction Loops:** If `delegate.py` returns a non-zero exit code (failure, blocker, or timeout), the driver does NOT attempt to rewrite the code. It executes the Tri-Loop remediation ladder (`--local-only` $\rightarrow$ `--cloud-only` $\rightarrow$ surface blocker to user).
+
+#### 3. The 3-Step Driver Execution Loop
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Step 1: Ingest Sprint Document Pointer                     │
+│ Read SPRINT_PLAN_SPR_XX_0.md for story list & targets.     │
+└─────────────────────────────┬──────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────┐
+│ Step 2: Execute Headless Delegation via Bash               │
+│ Invoke delegate.py for Story N:                            │
+│   HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py \
+│     --sprint <S> --story <N> --title "<Title>"             │
+│     --reference <sprint_plan_path>                         │
+│     --target <target_file> --mode execute                  │
+│     --details "Execute Story N in <sprint_plan_path>..."   │
+│     --local-only                                           │
+└─────────────────────────────┬──────────────────────────────┘
+                              │
+                ┌─────────────┴─────────────┐
+                ▼                           ▼
+      [Exit Code 0 (PASS)]        [Exit Code != 0 (FAIL)]
+                │                           │
+                ▼                           ▼
+┌───────────────────────────┐   ┌───────────────────────────┐
+│ Step 3A: Git Commit Story │   │ Step 3B: Cloud Fallback   │
+│ • git add <target_files>  │   │ Retry once with           │
+│ • git commit -m "..."     │   │ `--cloud-only`. If fail,  │
+│ • Proceed to Story N+1    │   │ report blocker & HALT.    │
+└───────────────────────────┘   └───────────────────────────┘
+```
+
+#### 4. The Minimal Driver Prompt Template (For External GPT / Web Prompts)
+When pasting instructions into an external LLM (e.g. ChatGPT / Claude) to drive the lab:
+
+```text
+You are the Federated Lab Delegation Driver (BKM-052).
+Your ONLY task is to sequentially delegate stories in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_0.md` using `delegate.py`.
+DO NOT write code or generate file diffs yourself.
+
+For each story:
+1. Run:
+   HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py --sprint <S> --story <N> --title "<Title>" --reference Portfolio_Dev/SPRINT_PLAN_SPR_XX_0.md --target <target_path> --mode execute --details "Execute Story <N> in Portfolio_Dev/SPRINT_PLAN_SPR_XX_0.md (Section: Story <N>). Follow the 4-anchor specification in that section to modify target file using clara-dna_safe_patch. Verify with pytest." --local-only
+2. If exit code is 0: Run `git add <target_files> && git commit -m "feat: complete Story <N>"` and advance to the next story.
+3. If exit code is non-zero: Re-run with `--cloud-only`. If that fails, HALT and report the blocker.
+```
