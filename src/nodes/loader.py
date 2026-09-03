@@ -339,8 +339,9 @@ class BicameralNode:
                         # [BKM] Vocal Probe Enforcement: Do not trust GET /v1/models (200 OK) alone.
                         # Execute a real chat completion probe to verify token generation.
                         probe_url = f"{base_url}/v1/chat/completions"
+                        probe_model = available[0] if (available and self.primary_host == "M5_AIR") else "unified-base"
                         probe_payload = {
-                            "model": "unified-base",
+                            "model": probe_model,
                             "messages": [{"role": "user", "content": "Respond with SUCCESS."}],
                             "max_tokens": 10
                         }
