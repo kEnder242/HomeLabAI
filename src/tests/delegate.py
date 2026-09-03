@@ -441,41 +441,33 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
-        # [FEAT-515 / Task 69.6.3] Category Dispatch:
-        #   Default / Local -> category="unspecified-low" (routes to Windows RTX 4090 / local hardware)
-        #   --cloud-only   -> category="deep" (routes to cloud Groq/DeepSeek/Cohere fallback ladders)
+        # [FEAT-515 / Task 69.6.3] Lean Atlas Task Dispatcher:
+        # Category: unspecified-low (local Windows RTX 4090) or deep (cloud ladder under --cloud-only)
         _atlas_dispatch_category = "deep" if cloud_only else "unspecified-low"
         mandate_block = f"""[STORY {story_num}: {title}]
-You are Atlas (Task Orchestrator on Windows RTX 4090).
+Sprint Reference: {reference_file}
+Edit Target(s): {target_files or reference_file}
 
-[STATIC RULES — L2 INVARIANTS]
-- You are a PURE ROUTER. You NEVER write code, edit files, or invoke file-editing tools directly.
-- ZERO CONVERSATIONAL QUESTIONS: Never ask questions like "Would you like me to...". Never pause for interactive chat. Either dispatch via task() or emit a blocker report.
-- Your sole output tool is `task(category="{_atlas_dispatch_category}", prompt="...")`.
-- The `task` tool call must contain ONLY two fields: category and prompt. No other parameters.
-- CRITICAL CONCURRENCY INVARIANT: You MUST emit exactly ONE task() tool call per turn. NEVER call task() multiple times in parallel. Consolidate your micro-task specifications into a single, cohesive, bounded implementation contract for Junior.
-- If Junior emits [BLOCKER REPORT: ...], relay the exact blocker text upward. Do NOT attempt local resolution.
-
-[DYNAMIC INGESTION — SPRINT CONTEXT]
-- Ingest the Tier 1 sprint summary (injected above) for global architectural context.
-- Cross-reference story requirements against the sprint's stated dependencies and verification gates.
-- If the story references target files, confirm they exist before dispatching.
-
-[DOWNSTREAM HAND-OFF — JUNIOR DISPATCH PROTOCOL]
-- POINTER-BASED ROUTING: Reference the story section directly in '{reference_file}'.
-- Direct Junior to read the exact 4-anchor specification on disk for file paths, symbol anchors, and code stubs.
-- Do NOT serialize or summarize large code blocks across task() arguments. Keep the task() prompt lean (< 300 tokens).
-- SINGLE TASK LAW: Local execution hardware operates on a single execution stream. You MUST emit exactly ONE single task() dispatch per turn. NEVER split across multiple task() calls.
-
-[BACKPRESSURE PROTOCOL — ESCALATION GATE]
-- If Junior returns empty text or finish=unknown, emit [BLOCKER REPORT: SILENT_FAILURE] with the session URL.
-- If Junior emits [BLOCKER REPORT: ...], relay the exact blocker text upward to AGY. Do NOT attempt local resolution.
-- Relayed synthesis: Report test pass/fail outcome and files modified.
-
-Delegate execution immediately via:
-  `task(category="{_atlas_dispatch_category}", prompt="Execute Story {story_num} in {reference_file} (Section: Story {story_num}). Follow the 4-anchor specification in that section to modify target file using clara-dna_safe_patch. Verify with pytest.")`"""
-        _edit_scope = target_files if target_files else reference_file
-        note_block = f"[NOTE] Delegate the surgical code edits to the local execution worker via task(category=\"{_atlas_dispatch_category}\", ...). Silicon validation will be performed post-dispatch."
+[ORCHESTRATION INSTRUCTIONS FOR ATLAS]
+1. Read the section for Story {story_num} in '{reference_file}' on disk.
+2. If BKM or Feature schemas need clarification, query CLaRa-DNA:
+   - `clara-dna_get_protocol(bkm_id="BKM-xxx")`
+   - `clara-dna_query_dna(collection="behavioral_dna", query="...")`
+3. Spoon-feed Junior by formulating exactly ONE task() dispatch formatted as:
+   task(
+       category="{_atlas_dispatch_category}",
+       prompt=(
+           "[TASK: Modify target file for Story {story_num}]\\n"
+           "- Target File: <path>\\n"
+           "- Tool: clara-dna_safe_patch (or write for new files)\\n"
+           "[OLD CODE / ANCHOR]\\n<exact incumbent code block>\\n"
+           "[NEW CODE IMPLEMENTATION]\\n<exact new code>\\n"
+           "[VERIFICATION COMMAND]\\npytest <path/to/test.py> -v"
+       )
+   )
+4. For multi-file changes, re-verify line anchors before sending task (N+1).
+5. When Junior completes, synthesize a 2-line completion report with test results."""
+        note_block = f"[NOTE] Ingest Story {story_num} from '{reference_file}' on disk. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...)."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
@@ -545,7 +537,20 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 """
 
     _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
-    prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
+    if agent == "atlas":
+        prompt = f"""[STORY DELEGATION TARGET: STORY {story_num}]
+- Title: {title}
+- Sprint Reference: {reference_file}
+- Edit Target(s): {target_files or reference_file}
+- Mode: {mode.upper()}
+
+{mandate_block}
+
+{details}
+
+{note_block}"""
+    else:
+        prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
 - Sprint Plan Reference: {reference_file}
 - Story: {story_num} ({title})
 {_target_files_line}
