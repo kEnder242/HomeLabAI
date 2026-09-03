@@ -51,6 +51,75 @@ class BlackboardLedger:
             "count_consensus": len(self.consensus_1liners)
         }
 
+    def append_round_table_delta(self, turn: int, topic: str, scope: str, deltas: Dict[str, float], bullets: List[str], consensus: str, output_path: Optional[str] = None) -> Dict[str, Any]:
+        """[FEAT-529] Atomic delta export engine for live turn memory to round table delta-t bridge."""
+        import json
+        import os
+
+        if output_path is None:
+            output_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table_deltas.json")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        d1 = float(deltas.get("triage", 0.0))
+        d2 = float(deltas.get("pinky_stance", 0.0))
+        d3 = float(deltas.get("brain_arch", 0.0))
+        d4 = float(deltas.get("oracle", 0.0))
+        d5 = float(deltas.get("pinky_judgment", 0.0))
+
+        c1 = round(d1, 3)
+        c2 = round(c1 + d2, 3)
+        c3 = round(c2 + d3, 3)
+        c4 = round(c3 + d4, 3)
+        c5 = round(c4 + d5, 3)
+
+        turn_entry = {
+            "turn": int(turn),
+            "timestamp": int(time.time()),
+            "time_str": time.strftime("%H:%M:%S"),
+            "topic": topic or "LIVE_TURN",
+            "scope": scope or "CONTEXT_SCOPE_LONG",
+            "deltas": {"triage": d1, "pinky_stance": d2, "brain_arch": d3, "oracle": d4, "pinky_judgment": d5},
+            "cumulative": {"triage": c1, "pinky_stance": c2, "brain_arch": c3, "oracle": c4, "pinky_judgment": c5},
+            "total_s": c5,
+            "distillation_bullets": bullets if bullets else ["Live turn registered."],
+            "consensus_1liner": consensus if consensus else "Consensus nominal."
+        }
+
+        records = []
+        if os.path.exists(output_path):
+            try:
+                with open(output_path, "r") as f:
+                    existing = json.load(f)
+                    if isinstance(existing, list):
+                        records = existing
+            except Exception:
+                records = []
+
+        updated = False
+        for idx, r in enumerate(records):
+            if r.get("turn") == turn:
+                records[idx] = turn_entry
+                updated = True
+                break
+        if not updated:
+            records.append(turn_entry)
+
+        if len(records) > 50:
+            records = records[-50:]
+
+        tmp_path = f"{output_path}.tmp_{os.getpid()}"
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(records, f, indent=2)
+            os.replace(tmp_path, output_path)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+        return turn_entry
+
     def commit_to_chroma(self, client=None, collection_name: str = "blackboard_ledger_dna"):
         """Non-fatal commit of blackboard events to ChromaDB."""
         try:
@@ -67,3 +136,6 @@ class BlackboardLedger:
                 )
         except Exception as e:
             logging.warning(f"[BLACKBOARD] Non-fatal ChromaDB sync failed: {e}")
+
+# Backward-compatibility alias
+BlackboardLedgerV2 = BlackboardLedger
