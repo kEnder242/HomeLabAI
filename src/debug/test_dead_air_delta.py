@@ -5,10 +5,18 @@ Evaluates actor-to-actor handovers across Cold Boot, Waking, and Operational Hot
 import asyncio
 import json
 import os
+import sys
 import time
 import argparse
 import urllib.request
+from pathlib import Path
 from playwright.async_api import async_playwright
+
+SRC_DIR = Path(__file__).resolve().parent.parent
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(SRC_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR.parent))
 
 ATTENDANT_URL = "http://127.0.0.1:8765"
 INTERCOM_URL = "http://localhost:9001/intercom.html"
@@ -185,6 +193,14 @@ async def run_condition_benchmark(condition_name, p_instance, timeout_s=120):
     return handovers
 
 async def main():
+    # [FEAT-524] LIVE IS GOD Bytecode Freshness Gate
+    try:
+        from src.tests.conftest import assert_live_bytecode
+        assert_live_bytecode()
+    except Exception as e:
+        print(f"\n❌ [ABORT] {e}\n")
+        sys.exit(1)
+
     parser = argparse.ArgumentParser(description="[FEAT-524] Dead Air Delta Benchmark Harness")
     parser.add_argument("--condition", choices=["cold", "hot", "all"], default="hot", help="Execution condition")
     args = parser.parse_args()

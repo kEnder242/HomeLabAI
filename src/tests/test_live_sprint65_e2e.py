@@ -27,6 +27,9 @@ BASE_URL = "http://127.0.0.1:8765"
 
 
 async def run_live_sprint65_gauntlet():
+    from src.tests.conftest import assert_live_bytecode
+    assert_live_bytecode()
+
     logging.info(f"Probing live Acme Lab status at {BASE_URL}/status...")
 
     async with aiohttp.ClientSession() as session:
