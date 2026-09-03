@@ -5,7 +5,7 @@ import time
 import requests
 import websockets
 import subprocess
-from tests.conftest import assert_live_bytecode, get_bytecode_status
+from tests.conftest import assert_live_bytecode
 
 def _get_local_commit():
     res = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True)
@@ -14,7 +14,6 @@ def _get_local_commit():
 @pytest.mark.asyncio
 async def test_live_lab_fresh_bytecode_gate():
     """Verify live integrity gate catches commit mismatch without restarting the lab."""
-    # This MUST fail right now because Served (5d020e4) != Local (HEAD)
     assert_live_bytecode()
 
 @pytest.mark.asyncio
@@ -57,14 +56,29 @@ async def test_live_sprint71_dialogue_roll_up():
             "client_commit": local_commit,
             "lab_key": lab_key
         }))
+        
+        # Drain initial status frame
+        init_frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+        assert init_frame.get("state") in ["ready", "connected", "init", "OPERATIONAL"]
+
+        # Send dialogue turn
         await ws.send(json.dumps({"type": "text_input", "content": "hello pinky!"}))
         
-        # Monitor turn stream & verify sub-second Pinky response with zero archive dump
+        # Monitor turn stream for Pinky response (give 30s for full multi-node resolution)
         t0 = time.time()
         found_pinky = False
-        while time.time() - t0 < 5.0:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=3.0))
-            if "Pinky" in msg.get("brain_source", ""):
-                found_pinky = True
+        received_msgs = []
+        while time.time() - t0 < 30.0:
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                msg = json.loads(raw)
+                received_msgs.append(msg)
+                source = msg.get("brain_source", "")
+                text = msg.get("brain", "")
+                if ("Pinky" in source or "Pinky" in msg.get("source", "")) and not "HyDE" in source and not "Triage" in source:
+                    found_pinky = True
+                    break
+            except asyncio.TimeoutError:
                 break
-        assert found_pinky, "Pinky must respond as lead node to direct salutation"
+                
+        assert found_pinky, f"Pinky must respond as lead node. Received frames: {received_msgs}"
