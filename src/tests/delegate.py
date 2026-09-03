@@ -348,6 +348,23 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     except Exception:
         pass
 
+    # [BKM-049 / Anti-Parallel Execution Gate]
+    # Check if any prior session is still actively running in OpenCode.
+    # If a live execution is in progress and we are not explicitly attaching via --session-id, REJECT to prevent parallel race conditions.
+    if not session_id:
+        try:
+            status_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/status")
+            with urllib.request.urlopen(status_req, timeout=3) as st_resp:
+                st_data = json.loads(st_resp.read().decode("utf-8"))
+                active_sessions = [s_id for s_id, s_info in st_data.items() if s_info.get("status") in ("running", "busy")]
+                if active_sessions:
+                    log_step(story_num, "ACTIVE_SESSION_GATE_REJECTED", f"REJECTED: Session {active_sessions[0]} is still actively running. Parallel delegation is strictly forbidden per BKM-049.", severity="CRITICAL")
+                    print(f"\n[!!!] ANTI-PARALLEL GATE TRIGGERED: Session {active_sessions[0]} is still active.", file=sys.stderr)
+                    print(f"[!!!] Wait for it to complete or terminate it before launching Story {story_num}.", file=sys.stderr)
+                    sys.exit(1)
+        except Exception:
+            pass
+
     session_title = f"Sprint {sprint_num} Story {story_num} (Run {int(time.time())}) — [{mode.upper()}:{agent.upper()}] {title}"
 
     # 2. Attach to existing session or create a fresh session via REST API on port 4097
@@ -428,6 +445,7 @@ You are Atlas (Task Orchestrator on Windows RTX 4090).
 
 [STATIC RULES — L2 INVARIANTS]
 - You are a PURE ROUTER. You NEVER write code, edit files, or invoke file-editing tools directly.
+- ZERO CONVERSATIONAL QUESTIONS: Never ask questions like "Would you like me to...". Never pause for interactive chat. Either dispatch via task() or emit a blocker report.
 - Your sole output tool is `task(category="{_atlas_dispatch_category}", prompt="...")`.
 - The `task` tool call must contain ONLY two fields: category and prompt. No other parameters.
 - CRITICAL CONCURRENCY INVARIANT: You MUST emit exactly ONE task() tool call per turn. NEVER call task() multiple times in parallel. Consolidate your micro-task specifications into a single, cohesive, bounded implementation contract for Junior.
