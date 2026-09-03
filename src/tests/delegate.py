@@ -436,10 +436,10 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
   4. RECOMMENDED REMEDIATION"""
         note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
-        # [FEAT-515 / Task 69.6.3] Dual-Mode Category Dispatch:
-        #   --local-only  -> category="unspecified-low" (routes to M5 Air via oh-my-openagent.json)
-        #   default/cloud -> category="deep" (routes to cloud DeepSeek/Qwen fallback ladders)
-        _atlas_dispatch_category = "unspecified-low" if local_only else "deep"
+        # [FEAT-515 / Task 69.6.3] Category Dispatch:
+        #   Default / Local -> category="unspecified-low" (routes to Windows RTX 4090 / local hardware)
+        #   --cloud-only   -> category="deep" (routes to cloud Groq/DeepSeek/Cohere fallback ladders)
+        _atlas_dispatch_category = "deep" if cloud_only else "unspecified-low"
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Atlas (Task Orchestrator on Windows RTX 4090).
 
