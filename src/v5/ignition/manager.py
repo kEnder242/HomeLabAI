@@ -32,13 +32,13 @@ GEM_REFINER = os.path.join(WORKSPACE_DIR, "field_notes/refine_gem.py")
 INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
 
 def get_unified_base_model():
-    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.unified-base pointer."""
+    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.local-unified-base pointer."""
     try:
         if os.path.exists(INFRA_CONFIG):
             with open(INFRA_CONFIG, "r") as f:
                 data = json.load(f)
                 manifest = data.get("model_manifest", {})
-                unified_key = manifest.get("unified-base", "llama-3.2-3b-awq")
+                unified_key = manifest.get("local-unified-base", manifest.get("unified-base", "llama-3.2-3b-awq"))
                 return manifest.get(unified_key, unified_key)
     except Exception:
         pass

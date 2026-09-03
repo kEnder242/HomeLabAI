@@ -17,7 +17,7 @@ LAB_VENV_PYTHON=${2:-"/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"}
 
 # Check if MODEL_PATH was passed, otherwise pull from config
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_KEY=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest']['unified-base'])" 2>/dev/null)
+    MODEL_KEY=$(python3 -c "import json; m = json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest']; print(m.get('local-unified-base', m.get('unified-base')))" 2>/dev/null)
     # If unified-base points to a specific model key, resolve it
     if [[ "$MODEL_KEY" != /* ]]; then
         MODEL_PATH=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest'].get('$MODEL_KEY', '$MODEL_KEY'))" 2>/dev/null)
@@ -53,7 +53,7 @@ $LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
     --load-format auto \
     --host 0.0.0.0 \
     --port 8088 \
-    --served-model-name unified-base \
+    --served-model-name local-unified-base unified-base \
     --trust-remote-code \
     --gpu-memory-utilization 0.55 \
     --max-model-len 8192 \

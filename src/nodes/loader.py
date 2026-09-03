@@ -25,13 +25,13 @@ TOOL_LOG_PATH = os.path.join(LAB_DIR, "tool_log.md")
 
 
 def get_unified_base_model():
-    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.unified-base pointer."""
+    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.local-unified-base pointer."""
     try:
         if os.path.exists(INFRA_CONFIG):
             with open(INFRA_CONFIG, "r") as f:
                 data = json.load(f)
                 manifest = data.get("model_manifest", {})
-                unified_key = manifest.get("unified-base", "llama-3.2-3b-awq")
+                unified_key = manifest.get("local-unified-base", manifest.get("unified-base", "llama-3.2-3b-awq"))
                 return manifest.get(unified_key, unified_key)
     except Exception:
         pass
@@ -231,6 +231,8 @@ class BicameralNode:
             m = model_map[env_mod].get(engine_type.lower())
             # Path/Serving-name matching for VLLM
             if engine_type == "VLLM":
+                if "local-unified-base" in available_models:
+                    return "local-unified-base"
                 if "unified-base" in available_models:
                     return "unified-base"
                 if m in available_models:
@@ -242,6 +244,8 @@ class BicameralNode:
 
         if available_models:
             # Fallback to serving name if found
+            if "local-unified-base" in available_models:
+                return "local-unified-base"
             if "unified-base" in available_models:
                 return "unified-base"
             
@@ -337,10 +341,11 @@ class BicameralNode:
                         if model_objs and "max_model_len" in model_objs[0]:
                             max_model_len = model_objs[0]["max_model_len"]
                         # [BKM] Vocal Probe Enforcement for local vLLM:
-                        # unified-base is STRICTLY and ONLY for local 2080 Ti vLLM residency.
+                        # local-unified-base is STRICTLY and ONLY for local 2080 Ti vLLM residency.
                         probe_url = f"{base_url}/v1/chat/completions"
+                        probe_model = "local-unified-base" if "local-unified-base" in available else "unified-base"
                         probe_payload = {
-                            "model": "unified-base",
+                            "model": probe_model,
                             "messages": [{"role": "user", "content": "Respond with SUCCESS."}],
                             "max_tokens": 10
                         }
