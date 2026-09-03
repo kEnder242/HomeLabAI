@@ -1,6 +1,7 @@
 import pytest
 import subprocess
 import os
+import sys
 import requests
 from typing import Optional
 
@@ -17,19 +18,14 @@ def _find_repo_root(start_dir: str) -> str:
 
 REPO_ROOT = _find_repo_root(os.path.dirname(__file__))
 
-@pytest.hookimpl(tryfirst=True)
-def pytest_sessionstart(session):
-    """Pytest session start hook to verify boot commit consistency.
-
-    Computes local git commit and fetches served commit from lab-attendant.
-    Prints warnings if mismatch or unreachable, OK if match.
-    """
-    # Compute local boot commit
+def get_bytecode_status(repo_root: Optional[str] = None) -> tuple[Optional[str], Optional[str], Optional[bool]]:
+    """[FEAT-524] Core evaluator for local Git HEAD vs served Lab Attendant boot commit."""
+    root = repo_root or REPO_ROOT
     local_commit: Optional[str] = None
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short=7", "HEAD"],
-            cwd=REPO_ROOT,
+            cwd=root,
             capture_output=True,
             text=True,
             timeout=5,
@@ -39,7 +35,6 @@ def pytest_sessionstart(session):
     except Exception:
         local_commit = None
 
-    # Try to fetch served boot commit and vocal status from local lab-attendant service
     served_commit: Optional[str] = None
     is_vocal_status: Optional[bool] = None
     try:
@@ -54,6 +49,60 @@ def pytest_sessionstart(session):
                 served_commit = ver_resp.json().get("boot_commit")
     except Exception:
         served_commit = None
+
+    return local_commit, served_commit, is_vocal_status
+
+
+def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = False):
+    """[FEAT-524] Standalone / Pytest callable gate enforcing fresh bytecode before live runs."""
+    local_commit, served_commit, is_vocal_status = get_bytecode_status(repo_root)
+
+    if not served_commit:
+        err = (
+            "LIVE IS GOD VIOLATION: Lab attendant is unreachable on port 8765.\n"
+            "Live certification requires an active, running lab attendant service."
+        )
+        if "pytest" in sys.modules:
+            pytest.fail(err)
+        else:
+            _print_warning_box(f"[ERROR] SERVER UNREACHABLE\nLocal: {local_commit}\nServed: unknown")
+            raise RuntimeError(err)
+
+    if local_commit and served_commit != local_commit:
+        err = (
+            f"LIVE IS GOD VIOLATION: Stale bytecode detected on port 8765!\n"
+            f"Local Git Commit:   {local_commit}\n"
+            f"Served Boot Commit: {served_commit}\n"
+            f"The live server must match current git HEAD before live certification.\n"
+            f"Action required: 'sudo systemctl restart lab-attendant.service'"
+        )
+        if "pytest" in sys.modules:
+            pytest.fail(err)
+        else:
+            _print_warning_box(
+                f"[ERROR] STALE BYTECODE\nLocal:  {local_commit}\nServed: {served_commit}"
+            )
+            raise RuntimeError(err)
+
+    if enforce_vocal and not is_vocal_status:
+        err = "LIVE IS GOD VIOLATION: Lab is not in a vocal state (vocal=False)."
+        if "pytest" in sys.modules:
+            pytest.fail(err)
+        else:
+            _print_warning_box("[ERROR] LAB NOT VOCAL\nDaemon is running but vocal=False")
+            raise RuntimeError(err)
+
+    return True
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    """Pytest session start hook to verify boot commit consistency.
+
+    Computes local git commit and fetches served commit from lab-attendant.
+    Prints warnings if mismatch or unreachable, OK if match.
+    """
+    local_commit, served_commit, is_vocal_status = get_bytecode_status()
 
     # Generate appropriate output
     global _LOCAL_COMMIT, _SERVED_COMMIT, _IS_VOCAL_STATUS
@@ -93,19 +142,7 @@ def live_bytecode_gate(request):
     lab attendant process on port 8765 is running stale bytecode or is unreachable.
     """
     if request.node.get_closest_marker("live"):
-        if not _SERVED_COMMIT:
-            pytest.fail(
-                "LIVE IS GOD VIOLATION: Lab attendant is unreachable on port 8765.\n"
-                "Live certification requires an active, running lab attendant service."
-            )
-        if _LOCAL_COMMIT and _SERVED_COMMIT != _LOCAL_COMMIT:
-            pytest.fail(
-                f"LIVE IS GOD VIOLATION: Stale bytecode detected on port 8765!\n"
-                f"Local Git Commit:   {_LOCAL_COMMIT}\n"
-                f"Served Boot Commit: {_SERVED_COMMIT}\n"
-                f"The live server must match current git HEAD before live certification.\n"
-                f"Action required: 'sudo systemctl restart lab-attendant.service'"
-            )
+        assert_live_bytecode()
 
 
 def is_vocal(status_url: str = "http://127.0.0.1:8765/status") -> bool:

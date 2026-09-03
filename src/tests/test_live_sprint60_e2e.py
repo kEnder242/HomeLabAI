@@ -32,6 +32,9 @@ def get_authenticated_session_token() -> str:
 
 
 async def run_live_sprint60_gauntlet():
+    from src.tests.conftest import assert_live_bytecode
+    assert_live_bytecode()
+
     print("\n" + "=" * 60)
     print(f"🔥 [LIVE FIRE SPRINT 60] Connecting to Running Lab Service: {FOYER_WS_URL}")
     print("=" * 60)
