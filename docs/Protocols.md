@@ -525,10 +525,11 @@ All diagnostic forensics MUST reference the canonical black box log:
 
 ---
 
-## BKM-043: Master 4-Anchor Prompt Standard (Surgical Code Anchoring)
-**Date:** August 25, 2026  
-**Objective**: Eliminate subagent design-by-inference, whole-file re-scan thrash, and import/path errors by enforcing 4 mandatory, grep-resilient anchors in every delegation payload.
+## BKM-043: Master 4-Anchor Prompt Standard (Surgical Code Anchoring & Story Template)
+**Date:** August 25, 2026 (Updated September 2, 2026)  
+**Objective**: Eliminate subagent design-by-inference, whole-file re-scan thrash, and import/path errors by baking 4 mandatory, grep-resilient anchors and explicit tool contracts directly into every sprint story specification.
 
+### 1. The 4 Concrete Anchors (Baked Directly Into Story Text)
 1. **Anchor 1: Grep-Stable Code Anchor**:
    * Must specify exact target file, target function/class, and approximate line number with a grep fallback string.
    * *Formula*: `"In <file>, edit inside def <func>() starting around line <N> (grep: '<unique_signature>' if lines shifted)"`.
@@ -546,6 +547,32 @@ All diagnostic forensics MUST reference the canonical black box log:
 4. **Anchor 4: Surgical Delta & Concrete Output Template**:
    * Must provide concrete dataclass, dictionary schema, and return type examples rather than abstract prose instructions.
    * *Purpose*: Completely eliminates "design-by-inference" where subagents invent incompatible dictionary keys.
+
+### 2. Mandatory Sprint Story Markdown Template
+Every story in a sprint plan MUST be authored using this exact self-contained template so Layer 3 workers have all tool and code requirements baked directly at their fingertips:
+
+```markdown
+### 📊 Story XX.Y: <Title> (`[FEAT-XXX]`)
+* **Status:** `[PENDING DELEGATION]`
+* **Assigned Execution Mode:** `[SWARM DELEGATION: ATLAS + JUNIOR]` (via `delegate.py` on REST port 4097)
+* **Objective:** <1-2 sentence concise goal>
+* **Target Files:**
+  * `<path/to/target_file>`
+  * `<path/to/test_file>`
+* **4-Anchor Specification (BKM-043):**
+  * **Anchor 1 (Symbol Anchor):** In `<target_file>`, edit inside `<class/func>` (around line N, grep: '<signature>').
+  * **Anchor 2 (Data Flow / Root Imports):** `PYTHONPATH=src: use 'from logic.x import y'`.
+  * **Anchor 3 (Schema / Code Stub):** Exact dataclass, dictionary keys, or literal code diff.
+  * **Anchor 4 (Path Resilience):** Mandate `Path(__file__).resolve().parent` fallbacks.
+* **Tool Invocation Law:**
+  * Modifying Existing Files: Use `clara-dna_safe_patch` with exact `old_pattern` and `new_pattern`.
+  * Creating New Files: Use standard `write` tool.
+  * Anti-Exploratory: Research is done. Never run repo-wide search or grep.
+* **Acceptance Criteria:**
+  1. <criterion 1>
+  2. <criterion 2>
+* **Verification Command:** `pytest <path/to/test_file> -v`
+```
 
 ---
 
@@ -654,59 +681,37 @@ All diagnostic forensics MUST reference the canonical black box log:
 
 ## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│                   BKM-048: JIT CONTEXT INTERLEAVING ("FINGERTIPS" STANDARD)              │
-├──────────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                          │
-│  ❌ FORBIDDEN: Bloating global instruction files (AGENTS.md, BOOTSTRAP.md) with          │
-│                exhaustive tactical rules or forcing subagents to parse massive docs.     │
-│                                                                                          │
-│  ✅ THE "FINGERTIPS" LAW:                                                                │
-│     All necessary tactical context, type signatures, and BKM rules MUST be spoon-fed     │
-│     Just-in-Time (JIT) directly inside the active Sprint Document and layered payloads.  │
-│                                                                                          │
-│  THE CORE MO: CLOUD-SCALE FIDELITY VIA CONTEXT SCOPING                                   │
-│  - Small/medium local models (14B–27B) suffer severe attention dilution when given       │
-│    massive 30k+ token codebases, causing hallucination and memory blowout.               │
-│  - By partitioning compute across discrete context scopes (Global Architecture at L1,    │
-│    Task Sequencing at L2, Surgical AST Delta at L3), local silicon operates at 100%      │
-│    attention density over razor-sharp < 1.5k token windows, yielding cloud-grade (Opus)  │
-│    fidelity from lightweight local weights.                                              │
-│                                                                                          │
-│  THREE-LAYER JIT MAPPING:                                                                │
-│                                                                                          │
-│  1. Layer 1: Strategic Guardian (AGY / Gemini) → Guides: [BKM-030] & [BKM-043]           │
-│     - Authors the Sprint Plan as the canonical "JIT Container".                          │
-│     - Decomposes local stories into a Single Consolidated Task Contract:                 │
-│         • Exact target file path, symbol line anchors, and strict AST delta (< 1,500 tok)│
-│         • Concrete verification command (targeted pytest).                               │
-│                                                                                          │
-│  2. Layer 2: Tactical Router (Atlas on RTX 4090) → Guide: [BKM-034]                      │
-│     - Receives the bounded story payload from AGY.                                       │
-│     - Enforces STRICT NO-CODE-WRITING rules; acts purely as a task sequencer.            │
-│     - Dispatches a single consolidated task via task(category="unspecified-low").        │
-│     - ENFORCES SINGLE TASK LAW: Never emit parallel task() calls in a single turn.       │
-│                                                                                          │
-│  3. Layer 3: Fast Surgical Worker (Sisyphus-Junior on KENDER 4090) → Guide: [BKM-048]    │
-│     - Resident on Kender (RTX 4090 + Ollama Qwen3-14B) with 1,008 GB/s bandwidth.       │
-│     - Receives isolated file stubs (< 1.5k tokens) with 100% focused attention density.  │
-│     - TOOL SCOPING ENFORCED [BKM-051]: Heavy tools (icm_*, websearch_*, codegraph_*) are │
-│       denied to keep worker context strictly lean and prevent 24k token prefill bloat.   │
-│     - Anti-exploratory: writes only within designated target lines; runs pytest.         │
-│     - LINTER PROTOCOL: Ruff treats standard stubs ('...', 'pass') as valid syntax.       │
-│       Trivial lint fixes are applied automatically; complex warnings are reported in     │
-│       [HANDOVER REFLECTION] rather than pausing on interactive question popups.          │
-│                                                                                          │
-│  ESCALATION & HARNESS RESILIENCE:                                                        │
-│  - If a subagent terminates on an interactive popup or silent finish (finish=unknown),   │
-│    delegate.py breaks out with code 2 (AWAITING_INPUT) and provides a resume command:    │
-│      python3 delegate.py --resume <session_id> --answer <choice>                         │
-│  - "When delegation stumbles, we halt the sprint to fix the harness; we never manually   │
-│    bypass the failure to finish the sprint."                                             │
-│                                                                                          │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
-```
+## BKM-048: Just-in-Time (JIT) Context Interleaving & The "Fingertips" Protocol
+**Feature Anchor:** `[FEAT-515]` / `[BKM-048]`  
+**Domain:** Layered Swarm Delegation, Token Budget Optimization, and On-Disk JIT Execution  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Law: Bake Context In (Do Not Require Search Lookups)
+* **❌ FORBIDDEN:** Telling a local 14B/27B worker to "Go query ChromaDB", "Go look up BKM-043", or "Explore the codebase for imports". Local attention spans dilute instantly across multi-step research turns, causing memory ceilings and hallucinations.
+* **✅ THE "FINGERTIPS" LAW:** All necessary context, symbol anchors, import paths, code stubs, and tool schemas MUST be **baked directly into the sprint story on disk**.
+* **POINTER-BASED DELEGATION:** 
+  1. **Layer 1 (AGY)** writes the complete self-contained 4-anchor story block into the sprint document.
+  2. **Layer 2 (Atlas)** routes a lean pointer (`< 300` tokens) via `task(category="...", prompt="Execute Story X in <sprint_doc> (Section: Story X)...")`.
+  3. **Layer 3 (Junior)** reads its specific story section on disk. Everything it needs is directly at its fingertips in that section—zero search, zero tool exploration required.
+
+### 2. Three-Layer JIT Authoring & Execution Architecture
+* **Layer 1: Strategic Guardian (AGY / Gemini)** → Guides: `[BKM-030]` & `[BKM-043]`
+  * Authors the Sprint Plan as the canonical on-disk "JIT Container" using clean Markdown (no ASCII art boxes).
+  * Bakes the 4 anchors, tool laws, and pytest commands directly into every story section.
+* **Layer 2: Tactical Router (Atlas on Windows RTX 4090 / Ollama)** → Guide: `[BKM-034]`
+  * Absorbs broad sprint context (14.8 GB KV cache headroom).
+  * Strict L2 Invariants: Pure router. NEVER writes code or edits files.
+  * Emits exactly ONE pointer dispatch per turn. Never serializes large code blocks across `task()` parameters.
+  * Relays Junior's blockers straight up to AGY; provides a 2-sentence handover reflection on instruction clarity.
+* **Layer 3: Fast Surgical Worker (Sisyphus-Junior on KENDER 4090 / M5 Air)** → Guide: `[BKM-048]`
+  * Reads its exact 4-anchor section on disk (< 1,500 tokens).
+  * Strict L3 Invariants: Anti-exploratory. Heavy tools (`icm_*`, `websearch_*`, `codegraph_*`) denied via `[BKM-051]`.
+  * Executes edits via `clara-dna_safe_patch` (or `write` for new files) and runs assigned `pytest`.
+  * Halts immediately on missing types; emits `[BLOCKER REPORT: <CATEGORY>] <details>` upward.
+
+### 3. Harness Resilience & Escalation Protocol
+* If a subagent terminates on an interactive popup or silent finish (`finish=unknown`), `delegate.py` breaks out with code 2 (`AWAITING_INPUT`) and provides a resume command.
+* *"When delegation stumbles, we halt the sprint to fix the harness; we never manually bypass the failure to finish the sprint."*
 
 ---
 
