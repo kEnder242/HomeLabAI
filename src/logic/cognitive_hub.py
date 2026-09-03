@@ -1318,35 +1318,27 @@ class CognitiveHub:
             lead_node = "pinky"
 
         if lead_node == "brain":
-            # [FEAT-489] Two-Mice Sequential Handover: high-interest technical
-            # turns addressed to Brain funnel through Brain-extracts ->
-            # Pinky-distills; falls back to the legacy Brain-led flow when the
-            # funnel cannot run (missing resident / low interest).
+            # [FEAT-489 / FEAT-535] Two-Mice Sequential Handover & Single-Execution Gate:
+            # High-interest technical turns addressed to Brain attempt two-mice handover.
+            # If handover cannot run (low interest / missing resident), execute Brain exactly ONCE.
             handover_context = context
             if not handover_context or "[RAG_CONTEXT]" not in handover_context:
                 if "rag_context" in locals():
                     handover_context = context if context else rag_context
                 else:
                     handover_context = context or await self._fetch_rag_context(turn, t_parsed)
-            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST and await self._run_two_mice_handover(
-                turn,
-                focus_context=handover_context,
-                shutdown_event=shutdown_event,
-                request_id=request_id,
-            ):
-                pass
+            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST:
+                handover_success = await self._run_two_mice_handover(
+                    turn,
+                    focus_context=handover_context,
+                    shutdown_event=shutdown_event,
+                    request_id=request_id,
+                )
+                if not handover_success:
+                    await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context)
             else:
-                # Brain leads Turn 1
+                # Brain leads Turn 1 (Single Execution Guarantee)
                 await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context)
-                # Turn 2: Pinky interjects if interest is high
-                if self.current_interest > 0.5:
-                    async for token in self._process_node_stream(
-                        "pinky", turn, context, "Pinky (Foil Interjection)", 
-                        tools=[], temperature=0.7, request_id=request_id,
-                        behavioral_guidance="[MODE]: FOIL_INTERJECTION (Brief, witty, intuitive quip following Brain's response.)"
-                    ):
-                        if shutdown_event and shutdown_event.is_set():
-                            break
         elif lead_node == "both":
             # Both speak on Turn 1 ("Hey mice!")
             full_pinky_text = ""
