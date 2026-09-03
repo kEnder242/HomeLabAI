@@ -606,7 +606,7 @@ class IgnitionManager:
                 with open(INFRA_CONFIG, "r") as f:
                     _cfg = json.load(f)
                 _hib_enabled = _cfg.get("hibernation", {}).get("enabled", True)
-                _residency = _cfg.get("hibernation", {}).get("daytime_node_residency", "")
+                _residency = _cfg.get("daytime_node_residency", _cfg.get("hibernation", {}).get("daytime_node_residency", ""))
                 if not _hib_enabled or _residency == "PERMANENT_RESIDENT":
                     logging.info(f"[IGNITION] Permanent residency detected (hibernation={_hib_enabled}, residency='{_residency}'). Scheduling direct-to-online start_lab.")
                     asyncio.create_task(self.start_lab(reason="BOOT_PERMANENT_RESIDENT"))
