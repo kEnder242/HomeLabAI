@@ -5,7 +5,7 @@
         "CASUAL": {
             "description": "Colloquial greetings and pleasantries – 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
             "enabled": true,
-            "default_domain": "standard",
+            "default_domain": "unknown",
             "rag": null,
             "importance": 0.1,
             "importance_floor": 0.1,
@@ -22,7 +22,7 @@
         "SUPERVISORY": {
             "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
             "enabled": true,
-            "default_domain": "standard",
+            "default_domain": "feedback",
             "rag": null,
             "importance": 0.6,
             "importance_floor": 0.5,
@@ -56,13 +56,8 @@
         "OPERATIONAL": {
             "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
             "enabled": true,
-            "default_domain": "exp_bkm",
-            "rag": {
-                "target_domain": "exp_bkm",
-                "traversal": "TOPIC_FIRST",
-                "allowed_collections": ["behavioral_dna", "artifact_vault"],
-                "max_distance": 0.75
-            },
+            "default_domain": "unknown",
+            "rag": null,
             "importance": 0.85,
             "importance_floor": 0.75,
             "interest_boost": 0.15
@@ -70,13 +65,8 @@
         "FORENSIC": {
             "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
             "enabled": true,
-            "default_domain": "exp_for",
-            "rag": {
-                "target_domain": "exp_for",
-                "traversal": "TIME_FIRST",
-                "allowed_collections": ["career_ledger", "artifact_vault"],
-                "max_distance": 0.70
-            },
+            "default_domain": "unknown",
+            "rag": null,
             "importance": 0.95,
             "importance_floor": 0.85,
             "interest_boost": 0.15
@@ -84,13 +74,8 @@
         "TECHNICAL": {
             "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
             "enabled": true,
-            "default_domain": "exp_tlm",
-            "rag": {
-                "target_domain": "exp_tlm",
-                "traversal": "TOPIC_FIRST",
-                "allowed_collections": ["behavioral_dna", "artifact_vault", "career_ledger"],
-                "max_distance": 0.70
-            },
+            "default_domain": "unknown",
+            "rag": null,
             "importance": 0.90,
             "importance_floor": 0.75,
             "interest_boost": 0.15
@@ -103,7 +88,7 @@
                 "target_domain": "lab_history",
                 "traversal": "TIME_FIRST",
                 "allowed_collections": ["career_ledger", "long_term_wisdom"],
-                "max_distance": 0.80
+                "max_distance": 0.65
             },
             "importance": 0.90,
             "importance_floor": 0.80,
@@ -112,7 +97,7 @@
         "ANALYTICAL": {
             "description": "Comparative, trade-off, architectural analysis with high objectivity.",
             "enabled": true,
-            "default_domain": "standard",
+            "default_domain": "unknown",
             "rag": null,
             "importance": 0.7,
             "importance_floor": 0.65,
