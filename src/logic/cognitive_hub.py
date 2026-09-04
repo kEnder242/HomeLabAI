@@ -391,6 +391,10 @@ class CognitiveHub:
         
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
+        # [FEAT-456] Prior Turn Context Tracking for Fourth-Wall Supervision
+        self.last_user_query = ""
+        self.last_triage_payload = {}
+        self.last_full_turn_text = ""
         # [FEAT-523] Round Table Blackboard Ledger
         self.blackboard_ledger = BlackboardLedger()
         self.turn_thought_trace = {}
@@ -1166,12 +1170,35 @@ class CognitiveHub:
         # the validation ledger (BKM-035) and emit a crisp in-character Pinky confirmation.
         if is_control_plane_feedback(t_parsed):
             logging.info(f"[HUB] [FEAT-487] Semantic control-plane feedback turn: '{clean_user_query[:60]}'")
+            
+            # [FEAT-456] Retrieve previous full turn context including user's prior query
+            prev_user_input = getattr(self, "last_user_query", "")
+            prev_turn_text = getattr(self, "last_full_turn_text", "")
+            if not prev_turn_text and self.round_table_memory:
+                prev_turn_text = str(self.round_table_memory[-1])
+            
+            if not prev_user_input and prev_turn_text:
+                for line in prev_turn_text.splitlines():
+                    if line.startswith("User:"):
+                        prev_user_input = line[5:].strip()
+                        break
+            
             flawed_output = ""
             if self.turn_thought_trace.get("pinky"):
                 flawed_output = str(self.turn_thought_trace.get("pinky"))
-            elif self.round_table_memory:
-                flawed_output = str(self.round_table_memory[-1])
-            record_feedback(query=turn, flawed_output=flawed_output, user_correction=turn)
+            elif prev_turn_text:
+                flawed_output = prev_turn_text
+                
+            prev_triage = getattr(self, "last_triage_payload", {})
+            
+            record_feedback(
+                query=prev_user_input or turn,
+                flawed_output=flawed_output,
+                user_correction=turn,
+                previous_user_input=prev_user_input,
+                previous_full_turn=prev_turn_text,
+                previous_triage=prev_triage,
+            )
             await self.broadcast({
                 "type": "thought_stream",
                 "source": "Pinky (Feedback)",
@@ -1472,6 +1499,9 @@ class CognitiveHub:
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, clean_critique[:200])
         self.round_table_memory.append(turn_ledger)
+        self.last_user_query = turn
+        self.last_triage_payload = dict(t_parsed) if isinstance(t_parsed, dict) else {}
+        self.last_full_turn_text = turn_ledger
         if len(self.round_table_memory) > 10:
             self.round_table_memory.pop(0)
         t_judgment_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))

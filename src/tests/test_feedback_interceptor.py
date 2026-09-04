@@ -133,12 +133,32 @@ class TestRecordFeedback:
 
         required_fields = [
             "timestamp", "query", "verdict", "flawed_output",
-            "ground_truth", "source"
+            "ground_truth", "source", "previous_user_input", "previous_full_turn"
         ]
         for field in required_fields:
             assert field in record, f"Missing required field: {field}"
 
         assert record["timestamp"].endswith("Z") or "+" in record["timestamp"]
+
+    def test_record_captures_prior_full_turn(self, tmp_path):
+        """Verify full previous turn and triage metadata are logged."""
+        ledger_path = str(tmp_path / "validation_ledger.jsonl")
+
+        record = record_feedback(
+            query="fallback query",
+            flawed_output="Narf! Hello human! I am Pinky and here is a giant essay...",
+            user_correction="feedback: your last response was too verbose",
+            ledger_path=ledger_path,
+            previous_user_input="hi there",
+            previous_full_turn="User: hi there\nPinky: Narf! Hello human! I am Pinky...",
+            previous_triage={"vibe": "CASUAL", "addressed_to": "NONE", "inferred_intent": "greeting"}
+        )
+
+        assert record["previous_user_input"] == "hi there"
+        assert record["query"] == "hi there"
+        assert "User: hi there" in record["previous_full_turn"]
+        assert record["previous_triage"]["vibe"] == "CASUAL"
+        assert record["ground_truth"] == "feedback: your last response was too verbose"
 
     def test_record_is_valid_jsonl(self, tmp_path):
         """Verify written file contains valid JSONL (one JSON per line)."""
