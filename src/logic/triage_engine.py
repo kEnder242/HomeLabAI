@@ -319,19 +319,10 @@ def classify_vibe_and_domain(
     if is_meta_lexicon(query):
         return _META_DOMAIN_OVERRIDES["vibe"], _META_DOMAIN_OVERRIDES["domain"]
 
-    # 4. WYWO standup briefing heuristic – detect before greeting since WYWO
-    #    queries may contain words like "what's up" that overlap greetings.
-    if _WYWO_RE.search(query):
-        return "WYWO", "dream_stream"
-
-    # 5. CASUAL greeting heuristic – colloquial pleasantries bypass LLM
-    if _GREETING_RE.search(query):
-        return "CASUAL", "standard"
-
     vibe = str(parsed_json.get("vibe", "CASUAL")).upper()
     domain = str(parsed_json.get("domain", "standard"))
 
-    # 6. Check declarative policy loader
+    # 4. Check declarative policy loader
     if loader:
         rule = loader.get_vibe_rule(vibe)
         if rule and domain == "standard" and "target_domain" in rule:
@@ -580,19 +571,6 @@ class TriageEngine:
         """
         # 1. Clean the incoming turn
         clean_turn = self.registry.sanitize(turn)
-
-        # 1a. Fast-path: greeting heuristic skips the LLM entirely
-        if _GREETING_RE.search(clean_turn):
-            return {
-                "inferred_intent": "greeting",
-                "addressed_to": "PINKY",
-                "vibe": "CASUAL",
-                "domain": "standard",
-                "casual": 0.95,
-                "intrigue": 0.05,
-                "importance": 0.1,
-                "hyde_vector_text": "",
-            }
 
         # 2. Build the mode context + conversation block
         mode_ctx = self._build_triage_mode_context()
