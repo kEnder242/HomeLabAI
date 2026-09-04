@@ -572,7 +572,11 @@ class BicameralNode:
                 "temperature": temperature,
                 "repetition_penalty": repetition_penalty,
                 "stream": True,
-                "stop": ["\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "Conversation has concluded"]
+                "stop": [
+                    "\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "\nHuman:",
+                    "\n---\n\n**Visible Consensus**", "\n\n**Visible Consensus**:",
+                    "Conversation has concluded"
+                ]
             }
             # [BKM-015] Active LoRA: role token override takes priority over static config
             active_lora = self.lora_name
@@ -612,7 +616,11 @@ class BicameralNode:
                     "temperature": temperature,
                     "num_predict": max_tokens,
                     "repeat_penalty": repetition_penalty,
-                    "stop": ["\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "Conversation has concluded"]
+                    "stop": [
+                        "\nUser:", "\nPinky:", "\n[PINKY]", "\nBrain:", "\n[BRAIN]", "\nHuman:",
+                        "\n---\n\n**Visible Consensus**", "\n\n**Visible Consensus**:",
+                        "Conversation has concluded"
+                    ]
                 }
             }
             # [FEAT-344] Ollama Niceness: Only send model if explicitly configured.
