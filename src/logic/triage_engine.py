@@ -345,7 +345,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 "inferred_intent": {"type": "string"},
                 "addressed_to": {
                     "type": "string",
-                    "enum": ["NONE", "BRAIN", "PINKY", "MICE"],
+                    "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"],
                 },
                 "vibe": {
                     "type": "string",
@@ -485,7 +485,7 @@ class TriageEngine:
             if len(clean) > 15:
                 return {
                     "inferred_intent": clean[:100],
-                    "addressed_to": "PINKY",
+                    "addressed_to": "NONE",
                     "vibe": "CASUAL",
                     "domain": "standard",
                     "casual": 0.5,
@@ -513,83 +513,72 @@ class TriageEngine:
                 continue
         return None
 
+    def _build_system_prompt(self, history: list[dict[str, str]] | None = None) -> str:
+        prompt = self._build_triage_mode_context() + "\n\n"
+        if history:
+            prompt += format_speaker_history(history) + "\n\n"
+        return prompt
+
     # ── resident_caller dispatch ──────────────────────────────────────────
 
     @staticmethod
     async def _invoke_resident(resident_caller: Any, prompt: str) -> str | None:
         """Invoke the resident LLM via call_tool, native think, or direct callable."""
-        if resident_caller is None:
-            return None
-
-        try:
-            if hasattr(resident_caller, "think") and callable(resident_caller.think):
-                result = await resident_caller.think(prompt, internal=True)
-                return result if isinstance(result, str) else str(result)
-
-            if hasattr(resident_caller, "call_tool") and callable(resident_caller.call_tool):
-                res = await resident_caller.call_tool(
-                    "think",
-                    {"prompt": prompt, "query": prompt},
-                )
-                if hasattr(res, "content") and res.content:
-                    return res.content[0].text
-                return str(res)
-
-            if callable(resident_caller):
-                result = await resident_caller(prompt)  # type: ignore[misc]
-                return result if isinstance(result, str) else str(result)
-        except Exception:  # noqa: BLE001 – resident failures must not propagate
-            return None
-
+        if hasattr(resident_caller, "call_tool"):
+            res = await resident_caller.call_tool(
+                "think", {"query": prompt, "temperature": 0.1, "max_tokens": 128}
+            )
+            if hasattr(res, "content") and len(res.content) > 0:
+                return res.content[0].text
+        elif hasattr(resident_caller, "think"):
+            res = await resident_caller.think(prompt)
+            return str(res) if res is not None else None
+        elif callable(resident_caller):
+            import inspect
+            if inspect.iscoroutinefunction(resident_caller):
+                res = await resident_caller(prompt)
+            else:
+                res = resident_caller(prompt)
+            return str(res) if res is not None else None
         return None
 
-    # ── public API ────────────────────────────────────────────────────────
+    # ── Main Entry Point ──────────────────────────────────────────────────
 
-    async def evaluate_triage(
+    async def evaluate_turn(
         self,
-        turn: str,
-        history: list[dict[str, str]] | None = None,
+        turn_text: str,
         resident_caller: Any = None,
+        history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Run the full pre-reflection triage pipeline.
+        """Classify a single turn text using the resident model."""
+        clean_turn = extract_latest_user_query(turn_text).strip()
+        if not clean_turn:
+            return {
+                "inferred_intent": "Empty turn.",
+                "addressed_to": "NONE",
+                "vibe": "CASUAL",
+                "domain": "standard",
+                "casual": 0.8,
+                "intrigue": 0.1,
+                "importance": 0.1,
+                "hyde_vector_text": "",
+            }
 
-        Parameters
-        ----------
-        turn:
-            The raw user turn (may include speaker prefixes).
-        history:
-            Optional prior conversation turns for context.
-        resident_caller:
-            Async callable / MCP session that implements ``call_tool`` or
-            ``think``.
-
-        Returns
-        -------
-        A triage result dict with at least ``vibe``, ``domain``,
-        ``addressed_to``, ``hyde_vector_text``, ``importance``,
-        ``casual``, ``intrigue``.
-        """
-        # 1. Clean the incoming turn
-        clean_turn = self.registry.sanitize(turn)
-
-        # 2. Build the mode context + conversation block
-        mode_ctx = self._build_triage_mode_context()
-        prompt = mode_ctx + "\n\n"
-        if history:
-            prompt += format_speaker_history(history) + "\n\n"
+        # 1. Build the triage prompt
+        prompt = self._build_system_prompt(history=history)
         prompt += f"User: {clean_turn}"
 
-        # 3. Invoke the resident
+        # 2. Invoke the resident
         raw_output = await self._invoke_resident(resident_caller, prompt)
 
-        # 4. Parse the LLM output
+        # 3. Parse the LLM output
         parsed = self._bridge_signal_clean(raw_output or "")
 
-        # 5. Fallback on parse failure
+        # 4. Fallback on parse failure
         if parsed is None:
             parsed = {
                 "inferred_intent": "Parse failed – defaulting to casual.",
-                "addressed_to": "PINKY",
+                "addressed_to": "NONE",
                 "vibe": "CASUAL",
                 "domain": "standard",
                 "casual": 0.5,
@@ -598,16 +587,25 @@ class TriageEngine:
                 "hyde_vector_text": "",
             }
 
-        # 6. Meta-lexicon override
+        # 5. Meta-lexicon override
         vibe, domain = classify_vibe_and_domain(clean_turn, parsed)
         parsed["vibe"] = vibe
         parsed["domain"] = domain
 
-        # 7. Scrub the HyDE vector
+        # 6. Scrub the HyDE vector
         raw_hyde = parsed.get("hyde_vector_text", "")
         parsed["hyde_vector_text"] = scrub_hyde_vector(raw_hyde)
 
         return parsed
+
+    async def evaluate_triage(
+        self,
+        turn_text: str,
+        history: list[dict[str, str]] | None = None,
+        resident_caller: Any = None,
+    ) -> dict[str, Any]:
+        """Compatibility alias for evaluate_turn with explicit history support."""
+        return await self.evaluate_turn(turn_text, resident_caller=resident_caller, history=history)
 
 
 def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
@@ -621,7 +619,7 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
 
     defaults: dict[str, Any] = {
         "vibe": "CASUAL",
-        "addressed_to": "PINKY",
+        "addressed_to": "NONE",
         "importance": 0.5,
         "domain": "standard",
         "casual": 0.5,
