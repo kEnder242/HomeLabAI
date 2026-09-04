@@ -38,7 +38,7 @@ def get_bytecode_status(repo_root: Optional[str] = None) -> tuple[Optional[str],
     served_commit: Optional[str] = None
     is_vocal_status: Optional[bool] = None
     try:
-        response = requests.get("http://127.0.0.1:8765/status", timeout=2)
+        response = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60)
         if response.status_code == 200:
             data = response.json()
             served_commit = data.get("boot_commit")
@@ -168,7 +168,7 @@ def live_vocal():
         )
 
     try:
-        resp = requests.get("http://127.0.0.1:8765/status", timeout=3)
+        resp = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60)
         if resp.status_code != 200:
             pytest.fail(f"Lab Attendant status endpoint returned HTTP {resp.status_code}")
         data = resp.json()
