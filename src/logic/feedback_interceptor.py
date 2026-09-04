@@ -99,6 +99,9 @@ def record_feedback(
     flawed_output: str,
     user_correction: str,
     ledger_path: Optional[str] = None,
+    previous_user_input: Optional[str] = None,
+    previous_full_turn: Optional[str] = None,
+    previous_triage: Optional[dict] = None,
 ) -> dict:
     """
     [FEAT-456/BKM-035] Atomically append a FAIL record to validation_ledger.jsonl.
@@ -109,30 +112,39 @@ def record_feedback(
     Schema (per BKM-035):
         {
             "timestamp": "ISO-8601",
-            "query": "<original_user_query>",
+            "query": "<previous_user_query_or_current>",
+            "previous_user_input": "<previous_user_query>",
             "verdict": "FAIL",
             "flawed_output": "<previous_assistant_response>",
+            "previous_full_turn": "<multi_agent_turn_transcript>",
+            "previous_triage": { ... },
             "ground_truth": "<user_correction_text>",
             "source": "CO_PILOT_FOURTH_WALL"
         }
 
     Args:
-        query: The original user query that triggered the flawed output.
+        query: The user query that triggered the flawed output (or fallback).
         flawed_output: The assistant response that contained the error.
         user_correction: The user's corrective statement.
         ledger_path: Optional override for the JSONL ledger path.
-                     Defaults to ~/Dev_Lab/Portfolio_Dev/field_notes/data/validation_ledger.jsonl.
+        previous_user_input: Explicit previous user query that caused the flawed response.
+        previous_full_turn: Complete multi-turn verbatim text (User/Pinky/Brain).
+        previous_triage: Parsed triage metadata from the flawed turn.
 
     Returns:
         The FAIL record dict that was written to the ledger.
     """
     target_path = ledger_path or _DEFAULT_LEDGER_PATH
+    prev_input = previous_user_input or query
 
     record = {
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "query": query,
+        "query": prev_input,
+        "previous_user_input": prev_input,
         "verdict": "FAIL",
         "flawed_output": flawed_output,
+        "previous_full_turn": previous_full_turn or f"User: {prev_input}\nAssistant: {flawed_output}",
+        "previous_triage": previous_triage or {},
         "ground_truth": user_correction,
         "source": "CO_PILOT_FOURTH_WALL",
     }
