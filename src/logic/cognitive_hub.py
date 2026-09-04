@@ -730,9 +730,10 @@ class CognitiveHub:
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         # [FEAT-519] Triage Context Squeeze: Never bloat triage queries with previous debate context
         is_triage = "triage" in source_name.lower()
-        # [FEAT-523] Context Scope Enforcement: Triage & Deep Thought use TURN isolation; Mice use LONG
+        # [FEAT-523] Context Scope Enforcement: Triage, Deep Thought, and casual/low-interest turns use TURN isolation; active Mice debates use LONG
         if scope is None:
-            scope = ContextScope.TURN if (is_triage or "deep" in source_name.lower()) else ContextScope.LONG
+            is_casual = getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" or getattr(self, "current_interest", 0.5) < 0.3
+            scope = ContextScope.TURN if (is_triage or is_casual or "deep" in source_name.lower()) else ContextScope.LONG
 
         if scope == ContextScope.LONG:
             # First inject blackboard summary if available
@@ -807,14 +808,15 @@ class CognitiveHub:
             buf_key = f"{request_id}_{src_key}"
             self.session_buffers[buf_key] = ""
             
-            # [Task 9.2] Hub relies on the Node's telemetry queue to populate the Foyer drainer.
+            # [FEAT-523] Token Budget: Clamp casual/low-interest turns to 150 tokens to prevent runaway loops
+            token_budget = 128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1000)
             call_task = asyncio.create_task(node.call_tool("think", arguments={
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora, "response_format": response_format, 
                 "request_id": request_id,
-                "max_tokens": 128 if is_triage else 1000
+                "max_tokens": token_budget
             }))
             
             full_text = ""
@@ -1054,7 +1056,7 @@ class CognitiveHub:
                         "inferred_intent": {"type": "string"},
                         "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"]},
                         "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "SUPERVISORY"]},
-                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback", "unknown"]},
+                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "work_history", "acme_lab_history", "lab_history", "lab_internal", "dream_stream", "feedback", "unknown"]},
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
                         "importance": {"type": "number"}
@@ -1072,8 +1074,9 @@ class CognitiveHub:
             '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
             '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
             '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
-            '  4. lab_history (18-Year Archive): historical project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years (e.g. "2015", "in 2018").\n'
-            '  5. unknown (Conversational / General): Any general conversation, salutations, or queries not requiring internal private lab archives -> MUST set domain: unknown.\n'
+            '  4. work_history (18-Year Career Archive): Intel/engineering project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years (e.g. "2015", "in 2018").\n'
+            '  5. acme_lab_history (Lab Ledger & DNA): Internal Acme Lab system events, architecture milestones, sprint logs, and BKM protocols.\n'
+            '  6. unknown (Conversational / General): Any general conversation, salutations, or queries not requiring internal private lab archives -> MUST set domain: unknown.\n'
             'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections. Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
             'DIRECT SALUTATIONS: Any conversational greeting or prompt addressed to Pinky (e.g. "hello pinky", "hey pinky", "yo pinky", "hi") MUST evaluate as addressed_to: PINKY, vibe: CASUAL, domain: unknown, importance: 0.1.'
         )
@@ -1402,25 +1405,32 @@ class CognitiveHub:
                     brain_prefetch_task.cancel()
                     logging.info(f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context.")
 
-        # [FEAT-356] Unified Session Ledger: Record turn summary
+        # [FEAT-356] Unified Session Ledger: Record turn summary (Sanitized for Auto-Regressive Health)
         turn_ledger = f"User: {turn}"
         turn_num = len(self.round_table_memory) + 1
         pinky_res = self.turn_thought_trace.get("pinky")
         if pinky_res:
-            turn_ledger += f"\nPinky: {pinky_res}"
+            clean_pinky = re.sub(r'\s+', ' ', str(pinky_res)).strip()
+            if not clean_pinky.startswith('{"score"') and not clean_pinky.startswith('{ "score"'):
+                turn_ledger += f"\nPinky: {clean_pinky[:300]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.record_bullet(turn_num, "pinky", str(pinky_res)[:200])
+                self.blackboard_ledger.record_bullet(turn_num, "pinky", clean_pinky[:200])
         brain_res = self.turn_thought_trace.get("thought") or self.turn_thought_trace.get("brain")
         if brain_res:
-            turn_ledger += f"\nBrain: {brain_res}"
+            clean_brain = re.sub(r'\s+', ' ', str(brain_res)).strip()
+            turn_ledger += f"\nBrain: {clean_brain[:400]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.record_bullet(turn_num, "brain", str(brain_res)[:200])
+                self.blackboard_ledger.record_bullet(turn_num, "brain", clean_brain[:200])
         critique_res = self.turn_thought_trace.get("critique")
         if critique_res:
-            turn_ledger += f"\nPinky Summary: {critique_res}"
+            clean_critique = re.sub(r'\s+', ' ', str(critique_res)).strip()
+            if not clean_critique.startswith('{"score"') and not clean_critique.startswith('{ "score"'):
+                turn_ledger += f"\nPinky Summary: {clean_critique[:200]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.record_consensus(turn_num, str(critique_res)[:200])
+                self.blackboard_ledger.record_consensus(turn_num, clean_critique[:200])
         self.round_table_memory.append(turn_ledger)
+        if len(self.round_table_memory) > 10:
+            self.round_table_memory.pop(0)
         t_judgment_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
 
         # [FEAT-525] Live Round Table Elapsed Time & Blackboard Telemetry Bridge
