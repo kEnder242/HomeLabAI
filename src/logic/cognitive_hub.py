@@ -1431,30 +1431,32 @@ class CognitiveHub:
         self.round_table_memory.append(turn_ledger)
         d_summary = max(0.001, round(time.perf_counter() - t_summary_start, 3))
 
-        # [FEAT-529] Delta-T & Blackboard Telemetry Bridge (100% Physical Silicon Stopwatch)
-        try:
-            deltas_dict = {
-                "triage": d_triage,
-                "pinky_stance": d_pinky,
-                "brain_arch": d_brain,
-                "oracle": d_thought,
-                "pinky_judgment": d_summary
-            }
-            topic_name = str(t_parsed.get("domain", "standard")).upper() if t_parsed else "STANDARD"
-            scope_name = "CONTEXT_SCOPE_TURN" if (t_parsed and t_parsed.get("vibe") == "CASUAL") else "CONTEXT_SCOPE_LONG"
-            bullets_list = [f"{k.upper()}: {str(v)[:150]}" for k, v in self.turn_thought_trace.items() if v]
-            consensus_text = str(critique_res)[:200] if critique_res else "Consensus nominal."
-            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.append_round_table_delta(
-                    turn=turn_num,
-                    topic=topic_name,
-                    scope=scope_name,
-                    deltas=deltas_dict,
-                    bullets=bullets_list,
-                    consensus=consensus_text
-                )
-        except Exception as e:
-            logging.warning(f"[HUB] [FEAT-529] Round table delta logging skipped: {e}")
+        # [FEAT-525] Delta-T & Blackboard Telemetry Bridge (100% Physical Silicon Stopwatch)
+        # Invariant: Round Table Delta Telemetry is strictly and exclusively recorded for Full Round Table deliberations.
+        if d_brain > 0.0001 and d_thought > 0.0001:
+            try:
+                deltas_dict = {
+                    "triage": d_triage,
+                    "pinky_stance": d_pinky,
+                    "brain_arch": d_brain,
+                    "oracle": d_thought,
+                    "pinky_judgment": d_summary
+                }
+                topic_name = str(t_parsed.get("domain", "standard")).upper() if t_parsed else "STANDARD"
+                scope_name = "CONTEXT_SCOPE_LONG"
+                bullets_list = [f"{k.upper()}: {str(v)[:150]}" for k, v in self.turn_thought_trace.items() if v]
+                consensus_text = str(critique_res)[:200] if critique_res else "Consensus nominal."
+                if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                    self.blackboard_ledger.append_round_table_delta(
+                        turn=turn_num,
+                        topic=topic_name,
+                        scope=scope_name,
+                        deltas=deltas_dict,
+                        bullets=bullets_list,
+                        consensus=consensus_text
+                    )
+            except Exception as e:
+                logging.warning(f"[HUB] [FEAT-525] Round table delta logging skipped: {e}")
 
         # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
         try:
