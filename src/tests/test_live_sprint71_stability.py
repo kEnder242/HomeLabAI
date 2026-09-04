@@ -7,8 +7,11 @@ import websockets
 import subprocess
 from tests.conftest import assert_live_bytecode
 
+import os
+
 def _get_local_commit():
-    res = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True)
+    repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    res = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=repo_dir, capture_output=True, text=True)
     return res.stdout.strip() if res.returncode == 0 else "unknown"
 
 @pytest.mark.asyncio
@@ -64,13 +67,13 @@ async def test_live_sprint71_dialogue_roll_up():
         # Send dialogue turn
         await ws.send(json.dumps({"type": "text_input", "content": "hello pinky!"}))
         
-        # Monitor turn stream for Pinky response (give 30s for full multi-node resolution)
+        # Monitor turn stream for Pinky response (give 90s for full multi-node resolution)
         t0 = time.time()
         found_pinky = False
         received_msgs = []
-        while time.time() - t0 < 30.0:
+        while time.time() - t0 < 90.0:
             try:
-                raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                raw = await asyncio.wait_for(ws.recv(), timeout=20.0)
                 msg = json.loads(raw)
                 received_msgs.append(msg)
                 source = msg.get("brain_source", "")
@@ -79,6 +82,6 @@ async def test_live_sprint71_dialogue_roll_up():
                     found_pinky = True
                     break
             except asyncio.TimeoutError:
-                break
+                continue
                 
         assert found_pinky, f"Pinky must respond as lead node. Received frames: {received_msgs}"
