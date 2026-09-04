@@ -26,6 +26,7 @@ from nodes.pinky_critic_persona import (
 )
 from logic.speculative_triage import SpeculativeTriageRelay, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
+from logic.vector_pre_triage import probe_clara_dna_sync
 from memory.blackboard_ledger import BlackboardLedger, ContextScope
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
@@ -726,7 +727,7 @@ class CognitiveHub:
         return await task
 
 # [FEAT-408] Tool-Driven Waterfall Cascade
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default", scope=None):
+    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default", scope=None, max_tokens=None):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         # [FEAT-519] Triage Context Squeeze: Never bloat triage queries with previous debate context
         is_triage = "triage" in source_name.lower()
@@ -809,7 +810,7 @@ class CognitiveHub:
             self.session_buffers[buf_key] = ""
             
             # [FEAT-523] Token Budget: Clamp casual/low-interest turns to 150 tokens to prevent runaway loops
-            token_budget = 128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1000)
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1000))
             call_task = asyncio.create_task(node.call_tool("think", arguments={
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
@@ -1067,20 +1068,34 @@ class CognitiveHub:
             }
         }
 
+        # [FEAT-540] Multi-Collection CLaRa-DNA Vector Pre-Triage Probe
+        # Sub-20ms CPU vector similarity probe across ChromaDB port 8001 collections.
+        pre_triage_res = probe_clara_dna_sync(clean_user_query)
+        vector_hint = pre_triage_res.get("semantic_hint", "")
+        # [FEAT-541] Pre-seed candidate RAG document chunk if high-confidence vector match
+        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get("best_doc"):
+            self._last_pre_triage_doc = pre_triage_res["best_doc"]
+        else:
+            self._last_pre_triage_doc = ""
+
         triage_mode_context = (
             '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
-            'Analyze user intent and accurately classify routing metadata according to these priority rules:\n'
-            '1. CASUAL GREETINGS & SALUTATIONS: Any general conversation, pleasantry, or greeting (e.g. "hi", "hello", "hey", "how are you", "what\'s up", "hello pinky") '
-            'MUST be classified as: addressed_to="PINKY", vibe="CASUAL", domain="unknown", casual=0.9, intrigue=0.1, importance=0.1, inferred_intent="greeting".\n'
-            '2. META / SUPERVISORY FEEDBACK: Fourth-Wall feedback on the AI, corrections, bug reports -> addressed_to="SYSTEM", vibe="META", domain="feedback", importance=0.0.\n'
-            '3. TECHNICAL LAB QUERIES: Classify under the matching domain ONLY if requesting technical data or private lab history:\n'
-            '  - exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, GPU/MSR metrics, Redfish sensors.\n'
-            '  - exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd topologies.\n'
-            '  - exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, memory pressure analysis.\n'
-            '  - work_history (18-Year Career Archive): Historical engineering project notes (2005-2025), specific years ("in 2018").\n'
-            '  - acme_lab_history (Lab Ledger & DNA): Internal Acme Lab system events, architecture milestones, sprint logs, BKM protocols.\n'
-            '  - unknown: Any question not requiring internal private lab archives.'
+            'Analyze user query and return valid JSON classifying intent into one of the 6 core archetypes:\n'
+            '1. CASUAL GREETING: Conversational hello/pleasantry ("hi", "hello", "good morning", "hey") '
+            '-> addressed_to="PINKY", vibe="CASUAL", domain="unknown", casual=0.9, intrigue=0.1, importance=0.1, inferred_intent="greeting".\n'
+            '2. WYWO / STANDUP: Inquiries on what happened while user was away or standup briefs ("what did you do while I was out?", "morning briefing", "what happened overnight?") '
+            '-> addressed_to="PINKY", vibe="WYWO", domain="acme_lab_history", casual=0.3, intrigue=0.7, importance=0.7.\n'
+            '3. META / FEEDBACK: Supervisory feedback, tone corrections, prompt adjustments ("feedback: ...", "your last response was too verbose", "explain triage architecture") '
+            '-> addressed_to="SYSTEM", vibe="META", domain="feedback", casual=0.1, intrigue=0.2, importance=0.9.\n'
+            '4. HISTORICAL: Questions on past Intel/career projects or specific years ("what did we do in 2018 for RAPL validation?", "past configs in 2019") '
+            '-> addressed_to="BRAIN", vibe="HISTORICAL", domain="work_history", casual=0.1, intrigue=0.8, importance=0.8.\n'
+            '5. OPERATIONAL / TELEMETRY: Live system metrics, GPU VRAM, power caps, temperatures, sensors ("check GPU VRAM status and thermal levels", "RAPL power readings", "PCIe error rate") '
+            '-> addressed_to="BRAIN", vibe="OPERATIONAL", domain="exp_tlm", casual=0.1, intrigue=0.8, importance=0.8.\n'
+            '6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night", "OOM crash traceback") '
+            '-> addressed_to="BRAIN", vibe="FORENSIC", domain="exp_for", casual=0.1, intrigue=0.9, importance=0.9.\n'
         )
+        if vector_hint:
+            triage_mode_context += f'\n{vector_hint}\n'
 
         # Execute relay
         winner = None
@@ -1108,6 +1123,28 @@ class CognitiveHub:
         t_parsed["vibe"] = vibe_override
         t_parsed["domain"] = domain_override
 
+        # [SPR-64_1 / FEAT-532] Console Routing Metadata & Single Broadcast Consolidation
+        routing_meta = self.triage_relay.get_console_metadata(winner)
+        t_parsed["_console_channel"] = routing_meta["channel"]
+        t_parsed["_console_source"] = routing_meta["source"]
+        t_parsed["_console_target"] = routing_meta["console"]
+        
+        # Emit single clean pretty-printed triage JSON to the winning console (Option C)
+        public_triage = {
+            k: v for k, v in t_parsed.items()
+            if not str(k).startswith("_") and k not in ["situation", "hints", "hyde_vector_text"]
+        }
+        triage_json_str = json.dumps(public_triage, indent=2)
+        await self.broadcast({
+            "type": "chat",
+            "brain": triage_json_str,
+            "brain_source": routing_meta["source"],
+            "channel": routing_meta["channel"],
+            "final": True,
+            "request_id": request_id,
+            "version": LAB_VERSION
+        })
+
         # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
         # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
         # META / domain=feedback (supervisory feedback, bug reports, tone/verbosity
@@ -1132,27 +1169,6 @@ class CognitiveHub:
             turn_ledger = f"User (Feedback): {turn}"
             self.round_table_memory.append(turn_ledger)
             return
-
-        # [SPR-64_1 / FEAT-532] Console Routing Metadata & Single Broadcast Consolidation
-        routing_meta = self.triage_relay.get_console_metadata(winner)
-        t_parsed["_console_channel"] = routing_meta["channel"]
-        t_parsed["_console_source"] = routing_meta["source"]
-        t_parsed["_console_target"] = routing_meta["console"]
-        
-        # Emit single clean pretty-printed triage JSON to the winning console (Option C)
-        public_triage = {
-            k: v for k, v in t_parsed.items()
-            if not str(k).startswith("_") and k not in ["situation", "hints", "hyde_vector_text"]
-        }
-        triage_json_str = json.dumps(public_triage, indent=2)
-        await self.broadcast({
-            "type": "chat",
-            "brain": triage_json_str,
-            "brain_source": routing_meta["source"],
-            "channel": routing_meta["channel"],
-            "final": True,
-            "version": LAB_VERSION
-        })
 
         # [FEAT-529] Physical Stopwatch: Record Stage 1 Triage Elapsed Checkpoint
         t_triage_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
@@ -1816,20 +1832,26 @@ class CognitiveHub:
         return "", DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
-        """[FEAT-437/442/454] Post-triage RAG retrieval: pass the AI-produced HyDE vector text
-        from the unified pre-reflection pass into the archive context engine, so retrieval
-        searches the refined domain indexing terms instead of the raw noisy turn."""
+        """[FEAT-437/442/454/541] Post-triage RAG retrieval with Two-Stage Zero-Duplicate Cache:
+        Passes AI-produced HyDE vector text or utilizes pre-triage vector probe results from
+        ChromaDB collections to bypass redundant database lookups (0ms cache hits)."""
         if "archive" not in self.residents:
             return ""
         hyde, hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
         # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB
         if not hyde:
             return ""
-        # [FEAT-441-Cache] Key on the exact inputs that shape retrieval output
+        # [FEAT-441-Cache / FEAT-541] Key on the exact inputs that shape retrieval output
         cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
         result_text = ""
         if cache_key in self._rag_cache:
+            logging.info(f"[HUB] [FEAT-541] Two-Stage RAG Cache Hit (0ms): {cache_key[:8]}")
             result_text = self._rag_cache[cache_key]
+        elif hasattr(self, "_last_pre_triage_doc") and self._last_pre_triage_doc:
+            # Stage 1 Pre-Triage Seed: If pre-triage extracted a high-relevance document chunk, use it directly
+            result_text = self._last_pre_triage_doc
+            self._rag_cache[cache_key] = result_text
+            logging.info(f"[HUB] [FEAT-541] Two-Stage RAG Cache Pre-Seeded from Vector Pre-Triage (0ms): {cache_key[:8]}")
         else:
             try:
                 vibe_val = str(t_parsed.get("vibe", ""))
