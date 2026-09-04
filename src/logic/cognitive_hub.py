@@ -629,9 +629,16 @@ class CognitiveHub:
             
             if len(clean_str) > 15 and not is_warming and not is_conn_error:
                 logging.info("[HUB] Non-JSON prose triage synthesized into fallback structure.")
+                target = "NONE"
+                if any(w in clean_str.lower() for w in ["pinky"]):
+                    target = "PINKY"
+                elif any(w in clean_str.lower() for w in ["brain", "deep thought"]):
+                    target = "BRAIN"
+                elif any(w in clean_str.lower() for w in ["mice", "guys", "both"]):
+                    target = "MICE"
                 return {
                     "inferred_intent": clean_str[:100],
-                    "addressed_to": "PINKY" if any(w in clean_str.lower() for w in ["pinky", "hi", "hello", "crash"]) else "BRAIN",
+                    "addressed_to": target,
                     "vibe": "TECHNICAL" if any(w in clean_str.lower() for w in ["crash", "error", "stability", "status", "debug"]) else "CASUAL",
                     "domain": "standard",
                     "casual": 0.5,
@@ -1080,17 +1087,25 @@ class CognitiveHub:
 
         triage_mode_context = (
             '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
-            'Analyze user query and return valid JSON classifying intent into one of the 6 core archetypes with decoupled continuous scalars:\n'
-            '• SCALAR RUBRIC: casual (0.0-1.0: 0.8+ greeting, 0.4-0.7 conversational/meta, 0.0-0.3 direct command), '
-            'intrigue (0.0-1.0: 0.7+ architectural/systemic/meta exploration, 0.4-0.6 standard technical, 0.0-0.2 routine), '
-            'importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n'
+            'Analyze user query and return valid JSON with strictly decoupled entity targeting, archetype, and continuous scalars:\n'
+            '• ADDRESSED_TO (Strict Explicit Entity Naming Only):\n'
+            '  - "NONE": Default when user does NOT explicitly name a character (e.g. "hi there", "status report", "how did 2018 RAPL work?").\n'
+            '  - "PINKY": User explicitly calls out Pinky by name (e.g. "Pinky, what do you think?", "Hey Pinky").\n'
+            '  - "BRAIN": User explicitly calls out Brain or Deep Thought (e.g. "Brain, analyze this", "Deep Thought").\n'
+            '  - "MICE": User explicitly addresses both/group (e.g. "Hey guys", "Mice", "Both of you", "You two", "Team").\n'
+            '  - "SYSTEM": User addresses meta/supervisor engine (e.g. "feedback: ...", "tweak scalars").\n'
+            '• 6 CORE ARCHETYPES (vibe & domain):\n'
+            '  1. CASUAL: Conversational pleasantries, small talk ("hi", "hello", "good morning") -> vibe="CASUAL", domain="unknown".\n'
+            '  2. WYWO: Standup briefs or overnight activity inquiries ("what did you do while I was out?", "morning briefing") -> vibe="WYWO", domain="acme_lab_history".\n'
+            '  3. META: Supervisory feedback, prompt engineering discussions, triage adjustments, tone/verbosity critiques ("feedback: ...", "Visible Consensus spam") -> vibe="META", domain="feedback" or "lab_internal".\n'
+            '  4. HISTORICAL: Questions on past Intel/career projects or specific years ("what did we do in 2018 for RAPL validation?") -> vibe="HISTORICAL", domain="work_history".\n'
+            '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures ("check GPU VRAM status and thermal levels") -> vibe="OPERATIONAL", domain="exp_tlm".\n'
+            '  6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night") -> vibe="FORENSIC", domain="exp_for".\n'
+            '• SCALAR RUBRIC:\n'
+            '  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n'
+            '  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n'
+            '  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n'
             '• INFERRED INTENT: Concise 3-6 word action phrase.\n'
-            '1. CASUAL: Conversational pleasantries ("hi", "hello", "good morning") -> addressed_to="PINKY", vibe="CASUAL", domain="unknown".\n'
-            '2. WYWO: Standup briefs or overnight activity inquiries ("what did you do while I was out?", "morning briefing") -> addressed_to="PINKY", vibe="WYWO", domain="acme_lab_history".\n'
-            '3. META: Supervisory feedback, prompt engineering discussions, triage adjustments, tone/verbosity critiques, or prior turn references ("feedback: ...", "tweak scalars", "Visible Consensus spam", "you missed that I was referring to prior turn") -> addressed_to="SYSTEM", vibe="META", domain="feedback" or "lab_internal".\n'
-            '4. HISTORICAL: Questions on past Intel/career projects or specific years ("what did we do in 2018 for RAPL validation?") -> addressed_to="BRAIN", vibe="HISTORICAL", domain="work_history".\n'
-            '5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures ("check GPU VRAM status and thermal levels") -> addressed_to="BRAIN", vibe="OPERATIONAL", domain="exp_tlm".\n'
-            '6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night") -> addressed_to="BRAIN", vibe="FORENSIC", domain="exp_for".\n'
         )
         if vector_hint:
             triage_mode_context += f'\n{vector_hint}\n'
@@ -1109,8 +1124,8 @@ class CognitiveHub:
                 await asyncio.sleep(2)
 
         if not t_parsed:
-            logging.error("[HUB] All triage attempts failed. Falling back to PINKY.")
-            t_parsed = {"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.5, "domain": "standard", "casual": 0.5, "intrigue": 0.5, "inferred_intent": "fallback"}
+            logging.error("[HUB] All triage attempts failed. Falling back to default.")
+            t_parsed = {"vibe": "CASUAL", "addressed_to": "NONE", "importance": 0.5, "domain": "unknown", "casual": 0.5, "intrigue": 0.5, "inferred_intent": "fallback"}
             winner = "fallback"
         
         # [FEAT-478] Canonical schema validation & field backfilling
@@ -1215,14 +1230,16 @@ class CognitiveHub:
         # [Task 15.1] Conversational Grace Override & [FEAT-458] Floating Validation Oracle
         behavioral_guidance = ""
         context = ""
+        rag_context = ""
 
         if vibe == "CASUAL":
             self.current_interest = min(self.current_interest, 0.1)
-            candidate_pool = build_floating_candidate_pool(auto_harvest=True)
-            context = candidate_pool
+            context = ""
             behavioral_guidance = (
-                "[MODE]: CONVERSATIONAL (Warm, natural, brief. Match user brevity with 1 short sentence. "
-                "If appropriate for user inquiry, weave in one candidate from [FLOATING_CANDIDATES] to prompt the user rather than giving generic small talk.)"
+                "[MODE]: CONVERSATIONAL CASUAL.\n"
+                "The user is offering a friendly greeting or casual remark.\n"
+                "MANDATORY BREVITY: Reply with EXACTLY ONE short, character-faithful sentence (< 12 words). "
+                "Do NOT list tasks, system status, or floating candidates unless explicitly asked."
             )
         elif vibe == "WYWO":
             # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
@@ -1325,14 +1342,21 @@ class CognitiveHub:
                     "Respond purely from live telemetry or explicitly acknowledge unrecorded state."
                 )
 
-        # [FEAT-418] The Symmetrical Interest Cascade (Lead Speaker + Interjection Threshold)
+        # [FEAT-418] Decoupled Entity Target & Archetype Lead Node Routing
         target_upper = str(target).upper()
         if target_upper in ["BRAIN", "THOUGHT", "DEEP"]:
             lead_node = "brain"
-        elif target_upper == "MICE":
-            lead_node = "both"
-        else: # "PINKY" or "NONE"
+        elif target_upper == "PINKY":
             lead_node = "pinky"
+        elif target_upper in ["MICE", "BOTH"]:
+            lead_node = "both"
+        else: # "NONE", "SYSTEM", ""
+            if vibe == "CASUAL":
+                # Open room greeting / casual remark -> Both mice acknowledge with character brevity
+                lead_node = "both"
+            else:
+                # Open technical / historical / operational / forensic / WYWO inquiry -> Lead with Brain
+                lead_node = "brain"
 
         if lead_node == "brain":
             # [FEAT-489 / FEAT-535] Two-Mice Sequential Handover & Single-Execution Gate:
@@ -1344,7 +1368,7 @@ class CognitiveHub:
                     handover_context = context if context else rag_context
                 else:
                     handover_context = context or await self._fetch_rag_context(turn, t_parsed)
-            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST:
+            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST and vibe != "CASUAL":
                 handover_success = await self._run_two_mice_handover(
                     turn,
                     focus_context=handover_context,
@@ -1364,12 +1388,14 @@ class CognitiveHub:
                 t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
                 t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
         elif lead_node == "both":
-            # Both speak on Turn 1 ("Hey mice!")
+            # Both speak on Turn 1 ("Hey mice!" or open casual greeting)
             full_pinky_text = ""
+            p_temp = 0.4 if vibe == "CASUAL" else 0.7
+            p_max_tokens = 35 if vibe == "CASUAL" else None
             async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
-                tools=[], temperature=0.7, request_id=request_id,
-                behavioral_guidance=behavioral_guidance
+                tools=[], temperature=p_temp, request_id=request_id,
+                behavioral_guidance=behavioral_guidance, max_tokens=p_max_tokens
             ):
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
@@ -1382,15 +1408,17 @@ class CognitiveHub:
             # [FEAT-457] Single-Layer Speculative Context Pre-fetch:
             # Launch Brain's RAG context retrieval immediately in the background while Pinky speaks.
             brain_prefetch_task = None
-            if "brain" in self.residents or "thought" in self.residents:
+            if ("brain" in self.residents or "thought" in self.residents) and vibe != "CASUAL":
                 brain_prefetch_task = asyncio.create_task(self._fetch_rag_context(turn, t_parsed))
 
-            # Pinky leads Turn 1 (Default for PINKY or NONE)
+            # Pinky leads Turn 1 (Explicitly addressed to PINKY)
             full_pinky_text = ""
+            p_temp = 0.4 if vibe == "CASUAL" else 0.7
+            p_max_tokens = 35 if vibe == "CASUAL" else None
             async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
-                tools=[], temperature=0.7, request_id=request_id,
-                behavioral_guidance=behavioral_guidance
+                tools=[], temperature=p_temp, request_id=request_id,
+                behavioral_guidance=behavioral_guidance, max_tokens=p_max_tokens
             ):
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
@@ -1916,6 +1944,30 @@ class CognitiveHub:
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         vibe = triage.get("vibe", "").upper()
+        if vibe == "CASUAL":
+            # [FEAT-542] Casual Brevity & Zero-RAG Fast Path:
+            # Skip RAG, skip distillation, and skip remote escalation.
+            # Brain delivers a calm, strategic 1-sentence acknowledgement locally (<12 words).
+            brain_response = ""
+            guidance = (
+                "[MODE]: CONVERSATIONAL CASUAL.\n"
+                "The user is offering a casual greeting or friendly remark.\n"
+                "MANDATORY BREVITY: Reply with EXACTLY ONE short, character-faithful sentence (< 12 words), calm and strategic."
+            )
+            if "brain" in self.residents:
+                async for token in self._process_node_stream(
+                    "brain", query, "", "Brain (Local Baseline)",
+                    tools=[], temperature=0.2, request_id=request_id,
+                    behavioral_guidance=guidance, max_tokens=35
+                ):
+                    brain_response += token
+                    if shutdown_event and shutdown_event.is_set():
+                        break
+            if t_turn_start is not None:
+                self._last_t_brain_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
+            self.turn_thought_trace["brain"] = brain_response
+            return
+
         if vibe == "WYWO":
             # Construct WYWO context
             nightly_dialogue = "No recent nightly dialogue recorded."

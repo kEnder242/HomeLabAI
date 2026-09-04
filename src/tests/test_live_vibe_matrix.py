@@ -22,7 +22,7 @@ def _get_live_credentials():
     except Exception:
         return "", ""
 
-async def _probe_live_query(query: str, timeout: float = 15.0) -> dict:
+async def _probe_live_query(query: str, timeout: float = 25.0) -> dict:
     import uuid
     lab_key, commit = _get_live_credentials()
     if not lab_key:
@@ -48,7 +48,7 @@ async def _probe_live_query(query: str, timeout: float = 15.0) -> dict:
             t0 = asyncio.get_event_loop().time()
             while asyncio.get_event_loop().time() - t0 < timeout:
                 try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=15.0)
+                    raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
                 except asyncio.TimeoutError:
                     break
                 msg = json.loads(raw)
@@ -87,7 +87,23 @@ async def test_live_vibe_casual():
     if not payload:
         pytest.skip("Lab attendant daemon not running on port 8765")
     assert payload.get("vibe") == "CASUAL"
+    assert payload.get("addressed_to") in ["NONE", "MICE"]
+
+@pytest.mark.asyncio
+async def test_live_addressed_to_pinky():
+    payload = await _probe_live_query("Pinky, how are you today?")
+    if not payload:
+        pytest.skip("Lab attendant daemon not running on port 8765")
+    assert payload.get("vibe") == "CASUAL"
     assert payload.get("addressed_to") == "PINKY"
+
+@pytest.mark.asyncio
+async def test_live_addressed_to_mice():
+    payload = await _probe_live_query("Hey mice, good morning to both of you")
+    if not payload:
+        pytest.skip("Lab attendant daemon not running on port 8765")
+    assert payload.get("vibe") == "CASUAL"
+    assert payload.get("addressed_to") == "MICE"
 
 @pytest.mark.asyncio
 async def test_live_vibe_wywo():

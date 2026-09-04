@@ -554,7 +554,7 @@ class TestTriageEngine:
             engine.evaluate_triage("Check lab status", resident_caller=None)
         )
         assert result["vibe"] == "CASUAL"
-        assert result["addressed_to"] == "PINKY"
+        assert result["addressed_to"] == "NONE"
 
     def test_evaluate_triage_history_formatted(self) -> None:
         """History turns are included in the prompt (smoke test)."""
@@ -602,9 +602,9 @@ class TestTriageEngine:
             engine.evaluate_triage("Check lab status", resident_caller=resident)
         )
 
-        # Should get a fallback with CASUAL vibe
+        # Should get a fallback with CASUAL vibe and NONE entity targeting
         assert result["vibe"] == "CASUAL"
-        assert result["addressed_to"] == "PINKY"
+        assert result["addressed_to"] == "NONE"
 
     def test_evaluate_triage_callable_resident(self) -> None:
         """Raw async callable as resident_caller works."""
