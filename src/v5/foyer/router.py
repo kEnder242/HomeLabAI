@@ -906,10 +906,48 @@ class FoyerRouter:
         })
 
     async def handle_status(self, request):
+        """[FEAT-265] Blocking State Machine & Status Probe.
+        
+        Mandates a `timeout` query parameter (e.g. /status?timeout=60) to enforce blocking
+        agentic flow during transitions (WAKING, IGNITING, SYNCING, BOOTING). Returns HTTP 400
+        if timeout parameter is omitted.
+        """
+        # --- OFFENDING NON-BLOCKING CODE (COMMENTED OUT FOR FEAT-265 REMINDER) ---
+        # # [FEAT-265 OFFENDING CODE]: Passive un-blocked snapshot without timeout validation
+        # status_dict = self.status.to_dict()
+        # status_dict["connected_clients"] = len(self.connected_clients)
+        # status_dict["session_token"] = self.session_token
+        # status_dict["boot_commit"] = getattr(self, "boot_commit", "unknown")
+        # status_dict["boot_timestamp"] = getattr(self, "boot_timestamp", 0)
+        # return web.json_response(status_dict)
+        # --------------------------------------------------------------------------
+
+        raw_timeout = request.rel_url.query.get("timeout")
+        if raw_timeout is None:
+            return web.json_response({
+                "error": "BAD_REQUEST",
+                "message": "[FEAT-265] Mandatory 'timeout' parameter missing. Use /status?timeout=N (e.g. /status?timeout=60) to enforce blocking agentic synchrony."
+            }, status=400)
+
+        try:
+            timeout_s = float(raw_timeout)
+        except ValueError:
+            return web.json_response({
+                "error": "BAD_REQUEST",
+                "message": f"[FEAT-265] Invalid timeout value '{raw_timeout}'. Must be a positive integer or float."
+            }, status=400)
+
+        start_t = time.time()
+        while time.time() - start_t < timeout_s:
+            curr_state = getattr(self.status, "state", "UNKNOWN")
+            # If transitioning/waking, block until settled (OPERATIONAL, READY, HIBERNATING, OFFLINE)
+            if curr_state not in ["WAKING", "IGNITING", "BOOTING", "SYNCING"]:
+                break
+            await asyncio.sleep(0.5)
+
         status_dict = self.status.to_dict()
         status_dict["connected_clients"] = len(self.connected_clients)
-        # [FEAT-426] Expose the session token so the browser client can present it
-        # as the WS handshake `lab_key` (browsers cannot set custom WS headers).
+        # [FEAT-426] Expose session token for WS handshake auth
         status_dict["session_token"] = self.session_token
         status_dict["boot_commit"] = getattr(self, "boot_commit", "unknown")
         status_dict["boot_timestamp"] = getattr(self, "boot_timestamp", 0)

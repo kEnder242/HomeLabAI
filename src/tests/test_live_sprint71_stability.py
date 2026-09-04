@@ -22,7 +22,7 @@ async def test_live_lab_fresh_bytecode_gate():
 @pytest.mark.asyncio
 async def test_live_handshake_rejects_stale_client_commit():
     """Verify server actively rejects connections sending mismatched client_commit."""
-    status = requests.get("http://127.0.0.1:8765/status", timeout=2).json()
+    status = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60).json()
     lab_key = status.get("session_token", "")
     
     uri = "ws://127.0.0.1:8765"
@@ -45,7 +45,7 @@ async def test_live_sprint71_dialogue_roll_up():
     assert_live_bytecode()
     
     local_commit = _get_local_commit()
-    status = requests.get("http://127.0.0.1:8765/status", timeout=2).json()
+    status = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60).json()
     lab_key = status.get("session_token", "")
     
     uri = "ws://127.0.0.1:8765"
@@ -92,7 +92,7 @@ async def test_live_sprint71_full_round_table_deliberation():
     assert_live_bytecode()
     
     local_commit = _get_local_commit()
-    status = requests.get("http://127.0.0.1:8765/status", timeout=2).json()
+    status = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60).json()
     lab_key = status.get("session_token", "")
     
     uri = "ws://127.0.0.1:8765"
