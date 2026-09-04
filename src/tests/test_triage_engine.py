@@ -348,119 +348,56 @@ class TestClassifyVibeAndDomain:
         assert vibe == "TECHNICAL"
         assert domain == "exp_tlm"
 
-    def test_greeting_how_are_things(self) -> None:
-        """'how are things?' -> CASUAL, standard via greeting heuristic."""
+    def test_greeting_semantic_passthrough(self) -> None:
+        """Semantic greeting parsed values pass through without mutation."""
         vibe, domain = classify_vibe_and_domain(
             "how are things?",
-            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
+            {"vibe": "CASUAL", "domain": "unknown"},
         )
         assert vibe == "CASUAL"
-        assert domain == "standard"
+        assert domain == "unknown"
 
-    def test_greeting_how_are_you_doing(self) -> None:
-        """'how are you doing?' -> CASUAL, standard via greeting heuristic."""
-        vibe, domain = classify_vibe_and_domain(
-            "how are you doing?",
-            {"vibe": "OPERATIONAL", "domain": "exp_bkm"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_greeting_whats_up(self) -> None:
-        """'what's up?' -> CASUAL, standard."""
-        vibe, domain = classify_vibe_and_domain(
-            "what's up?",
-            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_greeting_hello(self) -> None:
-        """'hello' -> CASUAL, standard."""
-        vibe, domain = classify_vibe_and_domain(
-            "hello",
-            {"vibe": "FORENSIC", "domain": "exp_for"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_greeting_good_morning(self) -> None:
-        """'good morning' -> CASUAL, standard."""
-        vibe, domain = classify_vibe_and_domain(
-            "good morning",
-            {"vibe": "HISTORICAL", "domain": "lab_history"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_greeting_hi(self) -> None:
-        """'hi' -> CASUAL, standard."""
-        vibe, domain = classify_vibe_and_domain(
-            "hi",
-            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_greeting_hows_it_going(self) -> None:
-        """'how's it going?' -> CASUAL, standard."""
-        vibe, domain = classify_vibe_and_domain(
-            "how's it going?",
-            {"vibe": "TECHNICAL", "domain": "exp_tlm"},
-        )
-        assert vibe == "CASUAL"
-        assert domain == "standard"
-
-    def test_wywo_what_did_you_do_while_i_was_out(self) -> None:
-        """'what did you do while I was out?' -> WYWO, dream_stream."""
+    def test_wywo_semantic_passthrough(self) -> None:
+        """Semantic WYWO parsed values pass through without mutation."""
         vibe, domain = classify_vibe_and_domain(
             "what did you do while I was out?",
-            {"vibe": "CASUAL", "domain": "standard"},
-        )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
-
-    def test_wywo_standup_briefing(self) -> None:
-        """'give me the standup briefing' -> WYWO, dream_stream."""
-        vibe, domain = classify_vibe_and_domain(
-            "give me the standup briefing",
-            {"vibe": "CASUAL", "domain": "standard"},
+            {"vibe": "WYWO", "domain": "dream_stream"},
         )
         assert vibe == "WYWO"
         assert domain == "dream_stream"
 
     def test_wywo_what_happened_while_away(self) -> None:
-        """'what happened while I was away?' -> WYWO, dream_stream."""
+        """'what happened while I was away?' -> WYWO, dream_stream when parsed."""
         vibe, domain = classify_vibe_and_domain(
             "what happened while I was away?",
-            {"vibe": "META", "domain": "lab_internal"},
+            {"vibe": "WYWO", "domain": "dream_stream"},
         )
         assert vibe == "WYWO"
         assert domain == "dream_stream"
 
     def test_wywo_catch_me_up(self) -> None:
-        """'catch me up' -> WYWO, dream_stream."""
+        """'catch me up' -> WYWO, dream_stream when parsed."""
         vibe, domain = classify_vibe_and_domain(
             "catch me up",
-            {"vibe": "CASUAL", "domain": "standard"},
+            {"vibe": "WYWO", "domain": "dream_stream"},
         )
         assert vibe == "WYWO"
         assert domain == "dream_stream"
 
     def test_wywo_while_you_were_out(self) -> None:
-        """'while you were out' -> WYWO, dream_stream."""
+        """'while you were out' -> WYWO, dream_stream when parsed."""
         vibe, domain = classify_vibe_and_domain(
             "while you were out",
-            {"vibe": "CASUAL", "domain": "standard"},
+            {"vibe": "WYWO", "domain": "dream_stream"},
         )
         assert vibe == "WYWO"
         assert domain == "dream_stream"
 
     def test_wywo_what_did_i_miss(self) -> None:
-        """'what did I miss?' -> WYWO, dream_stream."""
+        """'what did I miss?' -> WYWO, dream_stream when parsed."""
         vibe, domain = classify_vibe_and_domain(
             "what did I miss?",
-            {"vibe": "CASUAL", "domain": "standard"},
+            {"vibe": "WYWO", "domain": "dream_stream"},
         )
         assert vibe == "WYWO"
         assert domain == "dream_stream"
@@ -479,15 +416,6 @@ class TestClassifyVibeAndDomain:
         )
         assert vibe == "META"
         assert domain == "lab_internal"
-
-    def test_wywo_takes_priority_over_greeting(self) -> None:
-        """WYWO pattern detection takes priority over greeting detection."""
-        vibe, domain = classify_vibe_and_domain(
-            "what did you do while I was out?",
-            {"vibe": "CASUAL", "domain": "standard"},
-        )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
 
     def test_technical_query_passthrough(self) -> None:
         """Genuine technical query passes through to LLM classification."""
@@ -708,151 +636,83 @@ class TestTriageEngine:
 
 
 # ===========================================================================
-# 8. Greeting Fast-Path (evaluate_triage)
+# 8. Semantic Greeting Evaluation (evaluate_triage)
 # ===========================================================================
 
 
-class TestGreetingFastPath:
-    """Greeting queries bypass the LLM entirely."""
+class TestGreetingSemanticEvaluation:
+    """Greeting queries are semantically classified via resident model."""
 
     def test_greeting_how_are_things(self) -> None:
-        """'how are things?' returns CASUAL without invoking the LLM."""
+        """'how are things?' returns CASUAL via mock resident."""
+        triage_json = (
+            '{"inferred_intent": "greeting", "addressed_to": "PINKY", '
+            '"vibe": "CASUAL", "domain": "unknown", "casual": 0.9, '
+            '"intrigue": 0.1, "importance": 0.1, "hyde_vector_text": ""}'
+        )
+        resident = _MockResident(triage_json)
         engine = TriageEngine()
         result = asyncio.run(
-            engine.evaluate_triage("how are things?", resident_caller=None)
+            engine.evaluate_triage("how are things?", resident_caller=resident)
         )
         assert result["vibe"] == "CASUAL"
-        assert result["domain"] == "standard"
+        assert result["domain"] == "unknown"
         assert result["importance"] == 0.1
         assert result["hyde_vector_text"] == ""
 
     def test_greeting_hello(self) -> None:
-        """'hello' returns CASUAL fast-path."""
+        """'hello' returns CASUAL via mock resident."""
+        triage_json = (
+            '{"inferred_intent": "greeting", "addressed_to": "PINKY", '
+            '"vibe": "CASUAL", "domain": "unknown", "casual": 0.9, '
+            '"intrigue": 0.1, "importance": 0.1, "hyde_vector_text": ""}'
+        )
+        resident = _MockResident(triage_json)
         engine = TriageEngine()
         result = asyncio.run(
-            engine.evaluate_triage("hello", resident_caller=None)
+            engine.evaluate_triage("hello", resident_caller=resident)
         )
         assert result["vibe"] == "CASUAL"
         assert result["addressed_to"] == "PINKY"
 
-    def test_greeting_whats_up(self) -> None:
-        """'what's up?' returns CASUAL fast-path."""
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("what's up?", resident_caller=None)
-        )
-        assert result["vibe"] == "CASUAL"
-        assert result["domain"] == "standard"
-
-    def test_greeting_good_morning(self) -> None:
-        """'good morning' returns CASUAL fast-path."""
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("good morning", resident_caller=None)
-        )
-        assert result["vibe"] == "CASUAL"
-        assert result["importance"] == 0.1
-
-    def test_greeting_hi(self) -> None:
-        """'hi' returns CASUAL fast-path."""
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("hi", resident_caller=None)
-        )
-        assert result["vibe"] == "CASUAL"
-
-    def test_greeting_how_are_you(self) -> None:
-        """'how are you?' returns CASUAL fast-path."""
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("how are you?", resident_caller=None)
-        )
-        assert result["vibe"] == "CASUAL"
-
-    def test_greeting_with_prefix_stripped(self) -> None:
-        """'[ME] hello' strips prefix then matches greeting fast-path."""
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("[ME] hello", resident_caller=None)
-        )
-        assert result["vibe"] == "CASUAL"
-
-    def test_greeting_does_not_invoke_llm(self) -> None:
-        """Greeting fast-path returns result without calling resident."""
-        call_count = 0
-
-        async def _counting_resident(prompt: str) -> str:
-            nonlocal call_count
-            call_count += 1
-            return '{"vibe": "CASUAL", "domain": "standard"}'
-
-        engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("how are you doing?", resident_caller=_counting_resident)
-        )
-        assert result["vibe"] == "CASUAL"
-        assert call_count == 0  # LLM was NOT invoked
-
 
 # ===========================================================================
-# 9. WYWO Standup Briefing (evaluate_triage via classify_vibe_and_domain)
+# 9. WYWO Standup Briefing (evaluate_triage)
 # ===========================================================================
 
 
 class TestWYWOClassification:
-    """WYWO queries are correctly classified via the heuristic in classify_vibe_and_domain."""
+    """WYWO queries are classified via semantic resident model."""
 
     def test_wywo_what_did_you_do_while_i_was_out(self) -> None:
         """'what did you do while I was out?' -> WYWO."""
+        triage_json = (
+            '{"inferred_intent": "wywo", "addressed_to": "PINKY", '
+            '"vibe": "WYWO", "domain": "dream_stream", "casual": 0.5, '
+            '"intrigue": 0.5, "importance": 0.6, "hyde_vector_text": ""}'
+        )
+        resident = _MockResident(triage_json)
         engine = TriageEngine()
-        asyncio.run(
+        result = asyncio.run(
             engine.evaluate_triage(
                 "what did you do while I was out?",
-                resident_caller=None,
+                resident_caller=resident,
             )
         )
-        # With no resident, fallback gives CASUAL, but classify_vibe_and_domain
-        # is called on the fallback output. Since the query matches WYWO but
-        # the fallback goes through parse failure path, we test classify directly.
-        vibe, domain = classify_vibe_and_domain(
-            "what did you do while I was out?",
-            {"vibe": "CASUAL", "domain": "standard"},
-        )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
+        assert result["vibe"] == "WYWO"
+        assert result["domain"] == "dream_stream"
 
     def test_wywo_give_me_the_briefing(self) -> None:
         """'give me the briefing' -> WYWO."""
-        vibe, domain = classify_vibe_and_domain(
-            "give me the briefing",
-            {"vibe": "CASUAL", "domain": "standard"},
+        triage_json = (
+            '{"inferred_intent": "wywo", "addressed_to": "PINKY", '
+            '"vibe": "WYWO", "domain": "dream_stream", "casual": 0.5, '
+            '"intrigue": 0.5, "importance": 0.6, "hyde_vector_text": ""}'
         )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
-
-    def test_wywo_catch_me_up(self) -> None:
-        """'catch me up' -> WYWO."""
-        vibe, domain = classify_vibe_and_domain(
-            "catch me up",
-            {"vibe": "CASUAL", "domain": "standard"},
+        resident = _MockResident(triage_json)
+        engine = TriageEngine()
+        result = asyncio.run(
+            engine.evaluate_triage("give me the briefing", resident_caller=resident)
         )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
-
-    def test_wywo_what_happened_while_i_was_away(self) -> None:
-        """'what happened while I was away?' -> WYWO."""
-        vibe, domain = classify_vibe_and_domain(
-            "what happened while I was away?",
-            {"vibe": "META", "domain": "lab_internal"},
-        )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
-
-    def test_wywo_summary_recap(self) -> None:
-        """'give me the summary recap' -> WYWO."""
-        vibe, domain = classify_vibe_and_domain(
-            "give me the summary recap",
-            {"vibe": "CASUAL", "domain": "standard"},
-        )
-        assert vibe == "WYWO"
-        assert domain == "dream_stream"
+        assert result["vibe"] == "WYWO"
+        assert result["domain"] == "dream_stream"

@@ -470,7 +470,7 @@ class CognitiveHub:
         """[SPR-64_1] Dispatch triage to Remote Kender (Deep Thought)."""
         t_text = ""
         async for token in self._process_node_stream(
-            "thought", query, context, "Deep Thought (Triage)", tools=[], temperature=0.2, response_format=triage_schema, request_id=request_id
+            "thought", query, "", "Deep Thought (Triage)", tools=[], behavioral_guidance=context, temperature=0.2, response_format=triage_schema, request_id=request_id
         ):
             t_text += token
         return self.bridge_signal_clean(t_text)
@@ -479,7 +479,7 @@ class CognitiveHub:
         """[SPR-64_1] Dispatch triage to Local vLLM (Lab)."""
         t_text = ""
         async for token in self._process_node_stream(
-            "lab", query, context, "Lab (Triage)", tools=[], temperature=0.0, response_format=triage_schema, request_id=request_id
+            "lab", query, "", "Lab (Triage)", tools=[], behavioral_guidance=context, temperature=0.0, response_format=triage_schema, request_id=request_id
         ):
             t_text += token
         return self.bridge_signal_clean(t_text)
@@ -816,7 +816,8 @@ class CognitiveHub:
                 "temperature": temperature, "repetition_penalty": repetition_penalty,
                 "use_lora": use_lora, "response_format": response_format, 
                 "request_id": request_id,
-                "max_tokens": token_budget
+                "max_tokens": token_budget,
+                "internal": is_triage
             }))
             
             full_text = ""
@@ -1068,17 +1069,17 @@ class CognitiveHub:
 
         triage_mode_context = (
             '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
-            + BRAIN_PERSONA_SPEC + '\n'
-            "Translate user intent and classify routing metadata.\n"
-            "Domain classification taxonomy:\n"
-            '  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, NVIDIA GPU metrics, MSR registers, Redfish sensors.\n'
-            '  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd service topologies.\n'
-            '  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, backpressure ledgers, memory pressure root cause analysis.\n'
-            '  4. work_history (18-Year Career Archive): Intel/engineering project notes (2005-2025), career milestones, past sprint retrospectives, questions referencing specific past years (e.g. "2015", "in 2018").\n'
-            '  5. acme_lab_history (Lab Ledger & DNA): Internal Acme Lab system events, architecture milestones, sprint logs, and BKM protocols.\n'
-            '  6. unknown (Conversational / General): Any general conversation, salutations, or queries not requiring internal private lab archives -> MUST set domain: unknown.\n'
-            'META / FEEDBACK: ONLY for Fourth-Wall supervisory feedback on the AI itself, bug reports on responses, tone/verbosity corrections. Classify strictly as vibe: META, domain: feedback, addressed_to: SYSTEM, importance: 0.0.\n'
-            'DIRECT SALUTATIONS: Any conversational greeting or prompt addressed to Pinky (e.g. "hello pinky", "hey pinky", "yo pinky", "hi") MUST evaluate as addressed_to: PINKY, vibe: CASUAL, domain: unknown, importance: 0.1.'
+            'Analyze user intent and accurately classify routing metadata according to these priority rules:\n'
+            '1. CASUAL GREETINGS & SALUTATIONS: Any general conversation, pleasantry, or greeting (e.g. "hi", "hello", "hey", "how are you", "what\'s up", "hello pinky") '
+            'MUST be classified as: addressed_to="PINKY", vibe="CASUAL", domain="unknown", casual=0.9, intrigue=0.1, importance=0.1, inferred_intent="greeting".\n'
+            '2. META / SUPERVISORY FEEDBACK: Fourth-Wall feedback on the AI, corrections, bug reports -> addressed_to="SYSTEM", vibe="META", domain="feedback", importance=0.0.\n'
+            '3. TECHNICAL LAB QUERIES: Classify under the matching domain ONLY if requesting technical data or private lab history:\n'
+            '  - exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps, GPU/MSR metrics, Redfish sensors.\n'
+            '  - exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs, test runner steps, systemd topologies.\n'
+            '  - exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs, memory pressure analysis.\n'
+            '  - work_history (18-Year Career Archive): Historical engineering project notes (2005-2025), specific years ("in 2018").\n'
+            '  - acme_lab_history (Lab Ledger & DNA): Internal Acme Lab system events, architecture milestones, sprint logs, BKM protocols.\n'
+            '  - unknown: Any question not requiring internal private lab archives.'
         )
 
         # Execute relay

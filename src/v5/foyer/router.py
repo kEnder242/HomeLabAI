@@ -636,6 +636,17 @@ class FoyerRouter:
         """[FEAT-490] REST endpoint for fast hot-reloading of resident Python nodes without touching vLLM."""
         try:
             logger.info("[FOYER] [FEAT-490] Fast resident hot-reload requested...")
+            # Update acknowledged commit from git
+            try:
+                _hr = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                     capture_output=True, text=True, cwd="/home/jallred/Dev_Lab/HomeLabAI", timeout=5)
+                if _hr.returncode == 0 and _hr.stdout.strip():
+                    old_commit = getattr(self, "boot_commit", "unknown")
+                    self.boot_commit = _hr.stdout.strip()
+                    logger.info(f"[FOYER] [FEAT-490] Refreshed acknowledged commit: {old_commit} -> {self.boot_commit}")
+            except Exception as ge:
+                logger.warning(f"[FOYER] [FEAT-490] Could not refresh commit hash on reload: {ge}")
+
             await self.residents.shutdown()
             await self.residents.boot_all()
             if self.cognitive:
@@ -643,7 +654,8 @@ class FoyerRouter:
             logger.info("[FOYER] [FEAT-490] Resident nodes hot-reloaded successfully. vLLM VRAM preserved.")
             return web.json_response({
                 "status": "success",
-                "message": "Resident nodes hot-reloaded successfully. vLLM VRAM preserved."
+                "message": f"Resident nodes hot-reloaded successfully (commit: {getattr(self, 'boot_commit', 'unknown')}). vLLM VRAM preserved.",
+                "commit": getattr(self, "boot_commit", "unknown")
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-490] Hot-reload failed: {e}")
@@ -1184,8 +1196,9 @@ class FoyerRouter:
                             client_commit = data.get("client_commit") or data.get("commit")
                             if client_commit and client_commit != getattr(self, "boot_commit", "unknown"):
                                 peer = ws_request.remote
-                                logger.warning(f"[FOYER] Rejected WS connection from {peer}: Stale bytecode (Client {client_commit} != Server {self.boot_commit})")
-                                await ws.close(code=1008, message=f"Stale bytecode: Server running {self.boot_commit}".encode())
+                                logger.warning(f"[FOYER] Rejected WS connection from {peer}: Code updated (Client {client_commit} != Server {self.boot_commit})")
+                                close_msg = f"Code updated: The server is running commit {self.boot_commit} while the site was updated to {client_commit}. Please restart the server service."
+                                await ws.close(code=1008, message=close_msg.encode())
                                 break
 
                             authenticated = True
