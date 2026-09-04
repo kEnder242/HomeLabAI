@@ -649,9 +649,25 @@ class FoyerRouter:
 
             await self.residents.shutdown()
             await self.residents.boot_all()
-            if self.cognitive:
-                self.cognitive.residents = self.residents.residents
-            logger.info("[FOYER] [FEAT-490] Resident nodes hot-reloaded successfully. vLLM VRAM preserved.")
+            
+            # Re-instantiate CognitiveHub to load new prompts and module code
+            import importlib
+            import logic.cognitive_hub
+            importlib.reload(logic.cognitive_hub)
+            from logic.cognitive_hub import CognitiveHub
+            
+            self.cognitive = CognitiveHub(
+                self.residents.residents, 
+                self.broadcast, 
+                self.sensory, 
+                get_vram_status=self.get_vram_status,
+                get_lab_state=self.get_lab_state,
+                is_deep_thought_reachable=self.is_deep_thought_reachable,
+                trigger_morning_briefing=self.trigger_morning_briefing,
+                waterfall_queue=self.waterfall_queue,
+                set_active_domain=self.update_active_domain
+            )
+            logger.info("[FOYER] [FEAT-490] Resident nodes and CognitiveHub hot-reloaded successfully. vLLM VRAM preserved.")
             return web.json_response({
                 "status": "success",
                 "message": f"Resident nodes hot-reloaded successfully (commit: {getattr(self, 'boot_commit', 'unknown')}). vLLM VRAM preserved.",
