@@ -250,6 +250,9 @@
     *   **Engine**: `clara-dna` FastMCP server (`AcmeLab/src/clara_dna_mcp_server.py`) using `chromadb.HttpClient` on port `8001`. Zero VRAM, zero GPU, <1MB RAM.
     *   **Registration**: Registered in `~/.gemini/config/mcp_config.json` (AGY) and `HomeLabAI/.opencode.json` (OpenAgent).
     *   **Tools**: Exposes `query_dna()`, `get_protocol()`, and `list_collections()`.
+3.  **Response Transparency Badge Protocol (UI Feedback Loop)**:
+    *   **Rule**: Every builder agent response renders a compact top-level header summarizing ambient memories and active CLaRa anchors (e.g. `> 🧠 **Active Memory**: [ICM: ...] • [CLaRa: ...]`).
+    *   **Purpose**: Provides immediate real-time verification that semantic memory retrieval is active and healthy on every turn, allowing rapid feedback and anchor tuning without polluting terminal stderr/stdout streams.
 
 ### LAB-013: ICM Embedding Model Swap (The Real 2GB Memory Reclaim)
 **Objective**: Eliminate the ~2GB resident RAM footprint of `icm serve` by swapping the embedding model weights from the multilingual behemoth to a lightweight English model. This was the *actual* memory-pressure fix — the store data (memories.db) was only ~10MB, and no amount of curation reclaimed the resident weights.
