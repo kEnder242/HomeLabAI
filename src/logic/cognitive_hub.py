@@ -1150,12 +1150,11 @@ class CognitiveHub:
             "version": LAB_VERSION
         })
 
-        # [FEAT-529] Physical Stopwatch: Record Stage 1 Triage Duration
-        t_triage_end = time.perf_counter()
-        d_triage = max(0.001, round(t_triage_end - t0_start, 3))
-        d_pinky = 0.0
-        d_brain = 0.0
-        d_thought = 0.0
+        # [FEAT-529] Physical Stopwatch: Record Stage 1 Triage Elapsed Checkpoint
+        t_triage_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
+        t_pinky_elapsed = t_triage_elapsed
+        t_brain_elapsed = 0.0
+        t_oracle_elapsed = 0.0
 
         # [Triage Intent Gate] Check if triage output requests morning briefing
         intent_lower = str(t_parsed.get("inferred_intent", "")).lower()
@@ -1338,20 +1337,17 @@ class CognitiveHub:
                     d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
                     d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
                 else:
-                    t_b_start = time.perf_counter()
-                    await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context)
-                    d_brain = max(0.001, round(time.perf_counter() - t_b_start, 3))
-                    d_thought = getattr(self, "_last_thought_duration", 0.0)
+                    await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context, t_turn_start=t0_start)
+                    t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
+                    t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
             else:
                 # Brain leads Turn 1 (Single Execution Guarantee)
-                t_b_start = time.perf_counter()
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context)
-                d_brain = max(0.001, round(time.perf_counter() - t_b_start, 3))
-                d_thought = getattr(self, "_last_thought_duration", 0.0)
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context, t_turn_start=t0_start)
+                t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
+                t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
         elif lead_node == "both":
             # Both speak on Turn 1 ("Hey mice!")
             full_pinky_text = ""
-            t_p_start = time.perf_counter()
             async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
                 tools=[], temperature=0.7, request_id=request_id,
@@ -1360,11 +1356,10 @@ class CognitiveHub:
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
                     break
-            d_pinky = max(0.001, round(time.perf_counter() - t_p_start, 3))
-            t_b_start = time.perf_counter()
-            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id)
-            d_brain = max(0.001, round(time.perf_counter() - t_b_start, 3))
-            d_thought = getattr(self, "_last_thought_duration", 0.0)
+            t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
+            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, t_turn_start=t0_start)
+            t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
+            t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
         else:
             # [FEAT-457] Single-Layer Speculative Context Pre-fetch:
             # Launch Brain's RAG context retrieval immediately in the background while Pinky speaks.
@@ -1374,7 +1369,6 @@ class CognitiveHub:
 
             # Pinky leads Turn 1 (Default for PINKY or NONE)
             full_pinky_text = ""
-            t_p_start = time.perf_counter()
             async for token in self._process_node_stream(
                 "pinky", turn, context, "Pinky (Response)", 
                 tools=[], temperature=0.7, request_id=request_id,
@@ -1383,7 +1377,7 @@ class CognitiveHub:
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
                     break
-            d_pinky = max(0.001, round(time.perf_counter() - t_p_start, 3))
+            t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
             
             # Intercept morning briefing tool call from Pinky's response
             if "trigger_morning_briefing" in full_pinky_text:
@@ -1399,10 +1393,9 @@ class CognitiveHub:
             # Turn 2: Brain interjects if interest is high
             if self.current_interest > 0.5:
                 logging.info(f"[HUB] [FEAT-457] Interest high ({self.current_interest:.2f} > 0.5): Triggering Brain interjection with pre-fetched context.")
-                t_b_start = time.perf_counter()
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, prefetch_task=brain_prefetch_task)
-                d_brain = max(0.001, round(time.perf_counter() - t_b_start, 3))
-                d_thought = getattr(self, "_last_thought_duration", 0.0)
+                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, prefetch_task=brain_prefetch_task, t_turn_start=t0_start)
+                t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
+                t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
             else:
                 # Preemption: Interest is low, cleanly cancel/discard speculative pre-fetch without penalty
                 if brain_prefetch_task and not brain_prefetch_task.done():
@@ -1412,7 +1405,6 @@ class CognitiveHub:
         # [FEAT-356] Unified Session Ledger: Record turn summary
         turn_ledger = f"User: {turn}"
         turn_num = len(self.round_table_memory) + 1
-        t_summary_start = time.perf_counter()
         pinky_res = self.turn_thought_trace.get("pinky")
         if pinky_res:
             turn_ledger += f"\nPinky: {pinky_res}"
@@ -1429,18 +1421,18 @@ class CognitiveHub:
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, str(critique_res)[:200])
         self.round_table_memory.append(turn_ledger)
-        d_summary = max(0.001, round(time.perf_counter() - t_summary_start, 3))
+        t_judgment_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
 
-        # [FEAT-525] Delta-T & Blackboard Telemetry Bridge (100% Physical Silicon Stopwatch)
-        # Invariant: Round Table Delta Telemetry is strictly and exclusively recorded for Full Round Table deliberations.
-        if d_brain > 0.0001 and d_thought > 0.0001:
+        # [FEAT-525] Live Round Table Elapsed Time & Blackboard Telemetry Bridge
+        # Invariant: Elapsed telemetry is strictly and exclusively recorded for Full Round Table deliberations.
+        if t_brain_elapsed > 0.0001 and t_oracle_elapsed > t_brain_elapsed:
             try:
                 deltas_dict = {
-                    "triage": d_triage,
-                    "pinky_stance": d_pinky,
-                    "brain_arch": d_brain,
-                    "oracle": d_thought,
-                    "pinky_judgment": d_summary
+                    "triage": t_triage_elapsed,
+                    "pinky_stance": t_pinky_elapsed,
+                    "brain_arch": t_brain_elapsed,
+                    "oracle": t_oracle_elapsed,
+                    "pinky_judgment": t_judgment_elapsed
                 }
                 topic_name = str(t_parsed.get("domain", "standard")).upper() if t_parsed else "STANDARD"
                 scope_name = "CONTEXT_SCOPE_LONG"
@@ -1456,7 +1448,7 @@ class CognitiveHub:
                         consensus=consensus_text
                     )
             except Exception as e:
-                logging.warning(f"[HUB] [FEAT-525] Round table delta logging skipped: {e}")
+                logging.warning(f"[HUB] [FEAT-525] Round table elapsed logging skipped: {e}")
 
         # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
         try:
@@ -1889,7 +1881,7 @@ class CognitiveHub:
 
         return result_text
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None, rag_context=None):
+    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None, rag_context=None, t_turn_start=None):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         vibe = triage.get("vibe", "").upper()
@@ -1952,6 +1944,10 @@ class CognitiveHub:
                 if shutdown_event and shutdown_event.is_set():
                     break
 
+        # Record elapsed checkpoint after Brain local baseline
+        if t_turn_start is not None:
+            self._last_t_brain_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
+
         # Step 4: Remote escalation to Deep Thought (Kender), passing the query, distilled
         # strategic brief, AND the local Brain synthesis as grounding context upstream.
         dt_response = ""
@@ -1998,6 +1994,8 @@ class CognitiveHub:
         t_crit_start = time.perf_counter()
         await self.evaluate_grounding(strategic_source, strategic_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
         self._last_thought_duration += max(0.001, round(time.perf_counter() - t_crit_start, 3))
+        if t_turn_start is not None:
+            self._last_t_oracle_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
 
     async def _run_two_mice_handover(
         self,

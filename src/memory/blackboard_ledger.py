@@ -60,17 +60,19 @@ class BlackboardLedger:
             output_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table_deltas.json")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        d1 = float(deltas.get("triage", 0.0))
-        d2 = float(deltas.get("pinky_stance", 0.0))
-        d3 = float(deltas.get("brain_arch", 0.0))
-        d4 = float(deltas.get("oracle", 0.0))
-        d5 = float(deltas.get("pinky_judgment", 0.0))
+        # True monotonic elapsed checkpoints from turn start (t1 -> t5)
+        t1_elapsed = round(float(deltas.get("triage", 0.0)), 3)
+        t2_elapsed = round(float(deltas.get("pinky_stance", t1_elapsed)), 3)
+        t3_elapsed = round(float(deltas.get("brain_arch", t2_elapsed)), 3)
+        t4_elapsed = round(float(deltas.get("oracle", t3_elapsed)), 3)
+        t5_elapsed = round(float(deltas.get("pinky_judgment", t4_elapsed)), 3)
 
-        c1 = round(d1, 3)
-        c2 = round(c1 + d2, 3)
-        c3 = round(c2 + d3, 3)
-        c4 = round(c3 + d4, 3)
-        c5 = round(c4 + d5, 3)
+        # Derived isolated stage durations from checkpoints
+        d1 = t1_elapsed
+        d2 = max(0.001, round(t2_elapsed - t1_elapsed, 3))
+        d3 = max(0.001, round(t3_elapsed - t2_elapsed, 3))
+        d4 = max(0.001, round(t4_elapsed - t3_elapsed, 3))
+        d5 = max(0.001, round(t5_elapsed - t4_elapsed, 3))
 
         turn_entry = {
             "turn": int(turn),
@@ -80,9 +82,36 @@ class BlackboardLedger:
             "scope": scope or "CONTEXT_SCOPE_LONG",
             "turn_mode": "FULL_ROUND_TABLE",
             "is_full_round_table": True,
-            "deltas": {"triage": d1, "pinky_stance": d2, "brain_arch": d3, "oracle": d4, "pinky_judgment": d5},
-            "cumulative": {"triage": c1, "pinky_stance": c2, "brain_arch": c3, "oracle": c4, "pinky_judgment": c5},
-            "total_s": c5,
+            "checkpoints_elapsed_s": {
+                "triage": t1_elapsed,
+                "pinky_stance": t2_elapsed,
+                "brain_arch": t3_elapsed,
+                "oracle": t4_elapsed,
+                "pinky_judgment": t5_elapsed
+            },
+            "deltas_elapsed_s": {
+                "triage": d1,
+                "pinky_stance": d2,
+                "brain_arch": d3,
+                "oracle": d4,
+                "pinky_judgment": d5
+            },
+            "cumulative": {
+                "triage": t1_elapsed,
+                "pinky_stance": t2_elapsed,
+                "brain_arch": t3_elapsed,
+                "oracle": t4_elapsed,
+                "pinky_judgment": t5_elapsed
+            },
+            "deltas": {
+                "triage": d1,
+                "pinky_stance": d2,
+                "brain_arch": d3,
+                "oracle": d4,
+                "pinky_judgment": d5
+            },
+            "total_elapsed_s": t5_elapsed,
+            "total_s": t5_elapsed,
             "distillation_bullets": bullets if bullets else ["Live turn registered."],
             "consensus_1liner": consensus if consensus else "Consensus nominal."
         }
