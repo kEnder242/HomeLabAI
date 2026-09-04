@@ -361,7 +361,7 @@
     *   Full forensics in `SPRINT_PLAN_SPR_49_0.md` §4 — entry is the cross-reference canonicalization.
 
 ### LAB-019: AGY Ambient Memory & Knowledge Hook (ICM + ClaraDB)
-**Objective**: Bridge the Antigravity CLI (AGY) runtime to both ICM (Infinite Context Memory) and ClaraDB (ChromaDB port 8001) using AGY's native lifecycle hook engine (`hooks.json`), eliminating static prompt cruft while dynamically volunteering relevant memory and BKM/FEAT anchors on every turn.
+**Objective**: Bridge the Antigravity CLI (AGY) runtime to both ICM (Infinite Context Memory) and ClaraDB (ChromaDB port 8001) using AGY's native lifecycle hook engine (`hooks.json`), eliminating static prompt cruft while dynamically volunteering relevant memory, recent sprint decisions, and BKM/FEAT anchors on every turn.
 
 1.  **The One-Liner (hook configuration & registration)**:
     ```json
@@ -378,17 +378,24 @@
       }
     }
     ```
-2.  **The Core Logic & Architecture (The 3 Operational Tiers)**:
-    *   **Tier 1: Generous Session Orientation (`invocationNum == 1`)** — At session ignition or post-restart, the hook fires `icm wake-up -t 250 -p Dev_Lab`, injecting ~250 tokens of active sprint state, preferences, and recent architectural decisions into the initial turn. Zero recurring cost on later turns.
-    *   **Tier 2: Fast-Path ClaraDB Resolution** — Fast regex detection (`\bBKM-\d+\b`, `\bFEAT-\d+\b`) intercepts exact identifiers and queries ChromaDB port 8001 (`behavioral_dna` and `feature_dna`) in <2ms, injecting exact protocol titles and feature lifecycle statuses without full-file reads on `Protocols.md` (300KB+) or `FeatureTracker.md` (200KB+).
-    *   **Tier 3: Frugal Ambient Volunteer & QQ Boost (`invocationNum > 1`)**:
+2.  **The Core Logic & Architecture (The 4 Operational Tiers)**:
+    *   **Tier 1: Generous Session Orientation & Recency Flush (`invocationNum == 1`)**:
+        *   **Core Invariants**: Injects `icm wake-up -t 200 -p Dev_Lab` (core operational rules, prompt cleanliness, BKM invariants).
+        *   **Chronological Recency Flush**: Automatically extracts the top 4 newest memories (`icm list -a -s created`) created in the last session or yesterday, ensuring recent sprint breakthroughs and architectural decisions flush up into context immediately on session start.
+    *   **Tier 2: Fast-Path Exact ClaraDB Resolution**: Fast regex detection (`\bBKM-\d+\b`, `\bFEAT-\d+\b`, `\bLAB-\d+\b`) intercepts exact identifiers and queries ChromaDB port 8001 (`behavioral_dna` and `feature_dna`) in <2ms, injecting exact titles, statuses, and infrastructure descriptions without reading multi-hundred kilobyte files.
+    *   **Tier 3: Dynamic Distance Banding & Cluster Density (Reverse Lookups)**:
+        *   Replaces rigid top-k slicing with adaptive distance gating (<15ms FastEmbed probe).
+        *   Computes minimum cluster distance ($d_{min}$). A candidate is admitted if $d \le 0.55$, within $+0.10$ of $d_{min}$ ($d \le d_{min} + 0.10, d < 0.62$), or matches keyword overlap ($d \le 0.60$).
+        *   **Dynamic Clustering**: Captures all related sibling features in a cluster (e.g., "Audio PCM" clusters `FEAT-059`, `FEAT-427`, and `FEAT-428`) while preserving 1-match precision when an isolated match occurs, avoiding token pollution.
+    *   **Tier 4: Frugal Ambient Volunteer & QQ Boost (`invocationNum > 1`)**:
         *   **Standard Prompts**: Strips XML tags, skips shallow turns ("ok", "thanks", "done" → 0 tokens injected). Queries ICM hybrid search; volunteers top 1–2 facts strictly when similarity score $\ge 0.45$ (<75 tokens).
-        *   **QQ Boost (BKM-004)**: When a prompt begins with `QQ:`, the hook recognizes a high-altitude architectural inquiry. It strips the `QQ` prefix to maximize embedding vector density, expands recall limit to 3, and lowers threshold to 0.40 to supply dense research grounding for diagnostic answers.
+        *   **QQ Boost (BKM-004)**: When a prompt begins with `QQ:`, the hook recognizes a high-altitude architectural inquiry. It strips the `QQ` prefix to maximize embedding vector density, widens recall (limit=3, threshold=0.40), and relaxes distance banding to provide rich research grounding for diagnostic answers.
 3.  **Why It Mattered**:
     *   Eliminated the need for stale static rules in `~/.gemini/GEMINI.md` (which previously hallucinated ambient `<claude-mem-context>` injections).
     *   Solves the "unknown unknowns" problem: native MCP tools (`icm_recall`, `query_dna`) require the agent to already know what to ask for, whereas the ambient hook automatically volunteers relevant context from the database into the prompt boundary before the model begins reasoning.
 4.  **The Scars & Gotchas**:
-    *   The hook MUST execute under `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3` to resolve the `chromadb` client dependencies.
+    *   The hook MUST execute under `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3` to resolve the `chromadb` client and `fastembed` dependencies.
     *   Shallow prompt filtering is critical: without word-count/shallow-word gates, generic pleasantries produce ~0.40 baseline cosine similarity against dense sentence embeddings, creating prompt noise.
     *   `QQ` is an inquiry boundary that demands boosted factual context, not context suppression.
+
 
