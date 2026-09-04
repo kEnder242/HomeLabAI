@@ -22,7 +22,9 @@ PRE_TRIAGE_COLLECTIONS = [
     "behavioral_dna",
     "feature_dna",
     "long_term_wisdom",
-    "career_ledger"
+    "career_ledger",
+    "short_term_stream",
+    "lab_journal"
 ]
 
 
@@ -124,18 +126,22 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
         except Exception:
             continue
             
-    is_casual = best_dist > 0.65
-    
-    # Formulate a crisp pre-triage hint for the LLM
+    # Formulate semantic pre-triage hint for LLM
     hint = ""
     if best_dist < 0.55:
         topic = best_meta.get("name") or best_meta.get("bkm_id") or best_meta.get("feature_id") or best_meta.get("domain") or best_col
         adapter = best_meta.get("adapter", "")
-        hint = f"[VECTOR_MATCH]: Top match found in '{best_col}' (topic: '{topic}', distance: {best_dist:.3f})."
-        if adapter:
+        hint = f"[VECTOR_MATCH]: Top match in '{best_col}' (topic: '{topic}', distance: {best_dist:.3f})."
+        if best_col == "behavioral_dna":
+            hint += " Contains BKM Protocol / Operational Guidance."
+        elif best_col in ("short_term_stream", "lab_journal"):
+            hint += " Matches recent conversation history / prior turns."
+        elif adapter:
             hint += f" Suggested adapter/domain: {adapter}."
-    elif is_casual:
-        hint = f"[VECTOR_MATCH]: No internal lab knowledge match (min_dist={best_dist:.3f} > 0.65). Likely casual or open dialogue."
+    elif best_dist > 0.68:
+        hint = f"[VECTOR_MATCH]: Low archive semantic similarity (min_dist={best_dist:.3f} > 0.68)."
+
+    is_casual = best_dist > 0.68
 
     return {
         "min_distance": best_dist if best_dist < 900 else 1.0,
