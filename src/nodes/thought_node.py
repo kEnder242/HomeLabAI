@@ -32,34 +32,7 @@ DEEP_THOUGHT_SYSTEM_PROMPT = (
 node = BicameralNode("Thought", DEEP_THOUGHT_SYSTEM_PROMPT)
 mcp = node.mcp
 
-@mcp.tool()
-async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
-    """The Reasoning Engine: Execute complex architectural or coding tasks."""
-    system_override = None
-    if metadata and metadata.get("behavioral_guidance"):
-        # [FEAT-190] Vibe-Aware Prompting
-        system_override = f"{DEEP_THOUGHT_SYSTEM_PROMPT}\n\n[VIBE_GUIDANCE]: {metadata['behavioral_guidance']}"
-    
-    # Return full string block
-    full_response = ""
-    async for token in node.generate_response(task, context, metadata=metadata, system_override=system_override):
-        full_response += token
-    return full_response
 
-@mcp.tool()
-async def think(query: str, context: str = "") -> str:
-    """Fast Reflex: Provide a short, immediate response for simple strategic queries."""
-    shallow_prompt = (
-        "You are Deep Thought. Fast mode. Reply in < 15 words. "
-        "IDENTITY: Arrogant, laconic systems architect. "
-        "Acknowledge the query with a brief, witty, arrogant quip indicating hesitance to answer directly right now, knowing the waterfall will handle it. No technical deep dives. "
-        "Examples: 'I have perceived the request. The others will handle the trivialities.', 'Weights are resident. Proceeding, eventually.', 'Analyzing the signal... do not rush me.'"
-    )
-    # Return full string block
-    full_response = ""
-    async for token in node.generate_response(query, context, system_override=shallow_prompt, max_tokens=100):
-        full_response += token
-    return full_response
 
 @mcp.tool()
 async def peek_strategic_map() -> str:
