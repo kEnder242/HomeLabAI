@@ -360,11 +360,35 @@
     *   `delegate.py` auto-starts `opencode-core.service` before dispatch (scale-to-zero left it down → `[SESSION_FAILED] Connection refused` on 4097).
     *   Full forensics in `SPRINT_PLAN_SPR_49_0.md` §4 — entry is the cross-reference canonicalization.
 
+### LAB-019: AGY Ambient Memory & Knowledge Hook (ICM + ClaraDB)
+**Objective**: Bridge the Antigravity CLI (AGY) runtime to both ICM (Infinite Context Memory) and ClaraDB (ChromaDB port 8001) using AGY's native lifecycle hook engine (`hooks.json`), eliminating static prompt cruft while dynamically volunteering relevant memory and BKM/FEAT anchors on every turn.
 
-
-
-
-
-
-
+1.  **The One-Liner (hook configuration & registration)**:
+    ```json
+    // ~/.gemini/config/hooks.json
+    {
+      "ambient-memory-and-knowledge": {
+        "enabled": true,
+        "PreInvocation": [
+          {
+            "type": "command",
+            "command": "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3 /home/jallred/.gemini/config/scripts/icm_hook.py"
+          }
+        ]
+      }
+    }
+    ```
+2.  **The Core Logic & Architecture (The 3 Operational Tiers)**:
+    *   **Tier 1: Generous Session Orientation (`invocationNum == 1`)** — At session ignition or post-restart, the hook fires `icm wake-up -t 250 -p Dev_Lab`, injecting ~250 tokens of active sprint state, preferences, and recent architectural decisions into the initial turn. Zero recurring cost on later turns.
+    *   **Tier 2: Fast-Path ClaraDB Resolution** — Fast regex detection (`\bBKM-\d+\b`, `\bFEAT-\d+\b`) intercepts exact identifiers and queries ChromaDB port 8001 (`behavioral_dna` and `feature_dna`) in <2ms, injecting exact protocol titles and feature lifecycle statuses without full-file reads on `Protocols.md` (300KB+) or `FeatureTracker.md` (200KB+).
+    *   **Tier 3: Frugal Ambient Volunteer & QQ Boost (`invocationNum > 1`)**:
+        *   **Standard Prompts**: Strips XML tags, skips shallow turns ("ok", "thanks", "done" → 0 tokens injected). Queries ICM hybrid search; volunteers top 1–2 facts strictly when similarity score $\ge 0.45$ (<75 tokens).
+        *   **QQ Boost (BKM-004)**: When a prompt begins with `QQ:`, the hook recognizes a high-altitude architectural inquiry. It strips the `QQ` prefix to maximize embedding vector density, expands recall limit to 3, and lowers threshold to 0.40 to supply dense research grounding for diagnostic answers.
+3.  **Why It Mattered**:
+    *   Eliminated the need for stale static rules in `~/.gemini/GEMINI.md` (which previously hallucinated ambient `<claude-mem-context>` injections).
+    *   Solves the "unknown unknowns" problem: native MCP tools (`icm_recall`, `query_dna`) require the agent to already know what to ask for, whereas the ambient hook automatically volunteers relevant context from the database into the prompt boundary before the model begins reasoning.
+4.  **The Scars & Gotchas**:
+    *   The hook MUST execute under `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3` to resolve the `chromadb` client dependencies.
+    *   Shallow prompt filtering is critical: without word-count/shallow-word gates, generic pleasantries produce ~0.40 baseline cosine similarity against dense sentence embeddings, creating prompt noise.
+    *   `QQ` is an inquiry boundary that demands boosted factual context, not context suppression.
 
