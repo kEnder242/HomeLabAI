@@ -218,3 +218,21 @@ PYTHONPATH=. .venv/bin/pytest src/tests/test_override_parser.py \
                              src/tests/test_audio_pipeline.py \
                              src/tests/test_sprint60_integration.py
 ```
+
+---
+
+## 15. Sprint 71 Live Elapsed Telemetry & Silicon Stability Gauntlet (SPR-71.0)
+Verification instruments validating `FEAT-265` mandatory blocking status timeout, `FEAT-525` Live Round Table elapsed time checkpoints, and non-mocked physical silicon deliberations.
+
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Live Elapsed Time UI** | `src/tests/test_benchmarks_elapsed_time_ui.py` | **ACTIVE** | [FEAT-525] [GOLD] Playwright DOM test validating the "LIVE ROUND TABLE ELAPSED TIME" tab, canvas dimensions, and expandable "LIVE ELAPSED CHECKPOINTS" ledger drawer. |
+| **Sprint 71 Stability Gauntlet** | `src/tests/test_live_sprint71_stability.py` | **ACTIVE** | [FEAT-265/525] [GOLD] Live silicon test suite exercising fresh bytecode integrity, stale client commit rejection (WS 1008), dialogue roll-up, and full 5-stage Round Table deliberation timing. |
+
+---
+**Sprint 71 Certification Runner**:
+```bash
+PYTHONPATH=. .venv/bin/pytest src/tests/test_benchmarks_elapsed_time_ui.py \
+                             src/tests/test_live_sprint71_stability.py -v
+```
+
