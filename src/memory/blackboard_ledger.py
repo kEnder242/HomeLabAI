@@ -72,18 +72,14 @@ class BlackboardLedger:
         c4 = round(c3 + d4, 3)
         c5 = round(c4 + d5, 3)
 
-        is_full = (d3 > 0.0001 and d4 > 0.0001)
-        is_two_mice = (d3 > 0.0001 and d4 <= 0.0001)
-        mode = "FULL_ROUND_TABLE" if is_full else ("TWO_MICE_HANDOVER" if is_two_mice else "FAST_DIALOGUE")
-
         turn_entry = {
             "turn": int(turn),
             "timestamp": int(time.time()),
             "time_str": time.strftime("%H:%M:%S"),
-            "topic": topic or "LIVE_TURN",
+            "topic": topic or "ROUND_TABLE_DELIBERATION",
             "scope": scope or "CONTEXT_SCOPE_LONG",
-            "turn_mode": mode,
-            "is_full_round_table": is_full,
+            "turn_mode": "FULL_ROUND_TABLE",
+            "is_full_round_table": True,
             "deltas": {"triage": d1, "pinky_stance": d2, "brain_arch": d3, "oracle": d4, "pinky_judgment": d5},
             "cumulative": {"triage": c1, "pinky_stance": c2, "brain_arch": c3, "oracle": c4, "pinky_judgment": c5},
             "total_s": c5,
