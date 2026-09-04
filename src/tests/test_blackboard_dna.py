@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from memory.blackboard_ledger import BlackboardLedger, ContextScope
+from memory.blackboard_ledger import BlackboardLedgerV2, ContextScope
 from logic.cognitive_hub import CognitiveHub
 
 def test_blackboard_ledger():
-    ledger = BlackboardLedger()
+    ledger = BlackboardLedgerV2()
     
     # Test record_bullet
     ledger.record_bullet(1, "Alice", "First bullet")
