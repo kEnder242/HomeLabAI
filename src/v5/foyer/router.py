@@ -643,7 +643,8 @@ class FoyerRouter:
                 if _hr.returncode == 0 and _hr.stdout.strip():
                     old_commit = getattr(self, "boot_commit", "unknown")
                     self.boot_commit = _hr.stdout.strip()
-                    logger.info(f"[FOYER] [FEAT-490] Refreshed acknowledged commit: {old_commit} -> {self.boot_commit}")
+                    self.boot_timestamp = int(time.time())
+                    logger.info(f"[FOYER] [FEAT-490] Refreshed acknowledged commit: {old_commit} -> {self.boot_commit} (Timestamp: {self.boot_timestamp})")
             except Exception as ge:
                 logger.warning(f"[FOYER] [FEAT-490] Could not refresh commit hash on reload: {ge}")
 
