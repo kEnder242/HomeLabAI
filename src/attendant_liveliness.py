@@ -170,9 +170,37 @@ def restart_foyer_process() -> bool:
         logger.error(f"[SUPERVISOR] Failed to restart Foyer process: {e}")
         return False
 
+PENDING_RESET_PATH = os.path.join(PORTFOLIO_DIR, "field_notes/data/pending_reset.json")
+
+def load_pending_reset() -> dict:
+    if os.path.exists(PENDING_RESET_PATH):
+        try:
+            with open(PENDING_RESET_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"pending_action": "NONE", "action_level": 0, "timer_expiry_ts": 0}
+
+def clear_pending_reset():
+    state_data = {
+        "pending_action": "NONE",
+        "action_level": 0,
+        "timer_expiry_ts": 0,
+        "triggered_at_ts": int(time.time()),
+        "last_commit": "cleared",
+        "reasons": []
+    }
+    try:
+        temp_path = PENDING_RESET_PATH + ".tmp"
+        with open(temp_path, "w") as f:
+            json.dump(state_data, f, indent=2)
+        os.replace(temp_path, PENDING_RESET_PATH)
+    except Exception as e:
+        logger.warning(f"Failed to clear pending_reset.json: {e}")
+
 def run_supervisory_tick(dry_run: bool = False) -> str:
     """
-    Executes a single 30-minute supervisory check.
+    Executes a single supervisory check with pending rolling reset support.
     """
     logger.info("=== Starting Supervisory Health & Liveness Tick ===")
     
@@ -181,8 +209,37 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
     if not is_active:
         logger.info(f"Lab is in intentional dormant state ({state_reason}). Skipping supervisory reloads/resets.")
         return f"SKIP_{state_reason}"
+
+    # Gate 2: Check Git 10-Minute Rolling Reset Queue
+    pending = load_pending_reset()
+    pending_action = pending.get("pending_action", "NONE")
+    expiry_ts = pending.get("timer_expiry_ts", 0)
+    now = time.time()
+
+    if pending_action != "NONE" and expiry_ts > 0:
+        if now >= expiry_ts:
+            logger.info(f"⏱️ 10-Minute quiet window expired for pending action: {pending_action} (Commit: {pending.get('last_commit')})")
+            if dry_run:
+                logger.info(f"[DRY-RUN] Would execute expired pending action: {pending_action}")
+                return f"DRY_RUN_EXPIRED_{pending_action}"
+            
+            if pending_action == "DEEP_RESET":
+                logger.info("Executing queued DEEP_RESET via OS process bounce...")
+                restart_foyer_process()
+                clear_pending_reset()
+                return "EXECUTED_EXPIRED_DEEP_RESET"
+            elif pending_action == "SOFT_RELOAD":
+                logger.info("Executing queued SOFT_RELOAD via reload_residents...")
+                reload_resp = call_attendant_api('POST', RELOAD_URL)
+                logger.info(f"Reload response: {reload_resp}")
+                clear_pending_reset()
+                return "EXECUTED_EXPIRED_SOFT_RELOAD"
+        else:
+            remaining_sec = int(expiry_ts - now)
+            logger.info(f"⏳ Active rolling quiet window: Pending {pending_action} ({remaining_sec}s / {remaining_sec/60:.1f}m remaining). Holding.")
+            return f"PENDING_{pending_action}_HOLDING ({remaining_sec}s left)"
         
-    # Gate 2: Probe Foyer HTTP Status endpoint
+    # Gate 3: Probe Foyer HTTP Status endpoint
     status_resp = call_attendant_api('GET', STATUS_URL, timeout=8)
     
     if status_resp.get("status") == "error":
@@ -198,6 +255,7 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
         else:
             logger.info("Executing process resurrection...")
             restart_foyer_process()
+            clear_pending_reset()
             return "RECOVERED_PORT_HANG"
             
     # Lab is running & responsive
@@ -207,22 +265,23 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
     
     logger.info(f"Foyer is {foyer_state} (Boot Commit: {boot_commit}, Boot Timestamp: {boot_ts})")
     
-    # Gate 3: Evaluate modified files
+    # Gate 4: Evaluate uncommitted/stale modified files on disk
     if boot_ts > 0:
         deep_files, resident_files = check_modified_files(boot_ts)
         
         if deep_files:
-            logger.warning(f"Deep architectural files changed since boot ({len(deep_files)} files): {deep_files[:3]}")
+            logger.warning(f"Deep architectural files changed on disk ({len(deep_files)} files): {deep_files[:3]}")
             if dry_run:
                 logger.info("[DRY-RUN] Would trigger Hard Reset for deep architectural changes.")
                 return "DRY_RUN_DEEP_HARD_RESET"
             else:
                 logger.info("Triggering clean OS process restart for deep file changes...")
                 restart_foyer_process()
+                clear_pending_reset()
                 return "EXECUTED_DEEP_HARD_RESET"
                 
         elif resident_files:
-            logger.info(f"Resident node files changed since boot ({len(resident_files)} files): {resident_files[:3]}")
+            logger.info(f"Resident node files changed on disk ({len(resident_files)} files): {resident_files[:3]}")
             if dry_run:
                 logger.info("[DRY-RUN] Would trigger Soft Reload (reload_residents).")
                 return "DRY_RUN_SOFT_RELOAD"
@@ -230,6 +289,7 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
                 logger.info("Triggering fast soft hot-reload (VRAM preserved)...")
                 reload_resp = call_attendant_api('POST', RELOAD_URL)
                 logger.info(f"Reload response: {reload_resp}")
+                clear_pending_reset()
                 return "EXECUTED_SOFT_RELOAD"
                 
     logger.info("✅ Systems Nominal. No code changes require reload. Foyer is healthy.")

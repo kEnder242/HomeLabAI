@@ -980,6 +980,10 @@ class FoyerRouter:
         status_dict["session_token"] = self.session_token
         status_dict["boot_commit"] = getattr(self, "boot_commit", "unknown")
         status_dict["boot_timestamp"] = getattr(self, "boot_timestamp", 0)
+        is_dirty, pending_action, remaining_sec = self.get_pending_reset_state()
+        status_dict["dirty"] = is_dirty
+        status_dict["pending_action"] = pending_action
+        status_dict["seconds_to_reset"] = remaining_sec
         return web.json_response(status_dict)
 
     async def handle_logs(self, request):
@@ -1158,8 +1162,31 @@ class FoyerRouter:
             return web.json_response({"status": "QUEUED", "id": event.id})
         return web.json_response({"status": "ERROR", "message": "No query provided"}, status=400)
 
+    def get_pending_reset_state(self) -> tuple:
+        """Checks if lab is in a dirty state pending rolling reset."""
+        reset_file = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+        if os.path.exists(reset_file):
+            try:
+                with open(reset_file, "r") as f:
+                    data = json.load(f)
+                expiry = data.get("timer_expiry_ts", 0)
+                action = data.get("pending_action", "NONE")
+                now = time.time()
+                if action != "NONE" and expiry > now:
+                    return True, action, int(expiry - now)
+            except Exception:
+                pass
+        return False, "NONE", 0
+
     async def handle_websocket(self, ws_request):
         # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
+        # [FEAT-537] Git-Anchored 10-Minute Rolling Reset & Dirty Gate:
+        is_dirty, pending_action, remaining_sec = self.get_pending_reset_state()
+        if is_dirty:
+            peer = ws_request.remote
+            logger.warning(f"[FOYER] Rejected WS connection from {peer}: Lab is DIRTY (Pending {pending_action} in {remaining_sec}s)")
+            raise web.HTTPServiceUnavailable(reason=f"Lab is DIRTY: Pending {pending_action} in {remaining_sec}s. Please trigger reset or wait.")
+
         # [FEAT-426] Origin Security & Lab Key Guard:
         # A PRESENT-but-invalid X-Lab-Key header is rejected with 403.
         presented_commit = ws_request.headers.get("X-Client-Commit", "")
