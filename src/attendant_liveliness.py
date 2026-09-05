@@ -148,6 +148,27 @@ def check_modified_files(boot_ts: float) -> Tuple[List[str], List[str]]:
                 
     return deep_changed, resident_changed
 
+def restart_foyer_process() -> bool:
+    """Terminates and restarts the Foyer daemon with new bytecode."""
+    logger.info("[SUPERVISOR] Executing clean OS process bounce for Foyer...")
+    try:
+        subprocess.run(["pkill", "-9", "acme_foyer_v5"], capture_output=True)
+        subprocess.run(["pkill", "-9", "acme_ignition_"], capture_output=True)
+        time.sleep(2)
+        
+        py_bin = os.path.join(LAB_DIR, ".venv/bin/python3")
+        acme_lab_path = os.path.join(LAB_DIR, "src/acme_lab.py")
+        cmd = [py_bin, acme_lab_path, "--mode", "SERVICE_UNATTENDED", "--disable-ear"]
+        
+        log_out = open(os.path.join(BASE_DIR, "attendant.log"), "a")
+        proc = subprocess.Popen(cmd, stdout=log_out, stderr=log_out, start_new_session=True, cwd=LAB_DIR)
+        logger.info(f"[SUPERVISOR] Launched Foyer process (PID: {proc.pid})")
+        time.sleep(3)
+        return True
+    except Exception as e:
+        logger.error(f"[SUPERVISOR] Failed to restart Foyer process: {e}")
+        return False
+
 def run_supervisory_tick(dry_run: bool = False) -> str:
     """
     Executes a single 30-minute supervisory check.
@@ -174,12 +195,8 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
             logger.info("[DRY-RUN] Would trigger hard_reset for unresponsive Foyer port.")
             return "DRY_RUN_HARD_RESET"
         else:
-            logger.info("Executing recovery cleanup & restart...")
-            cleanup_resp = call_attendant_api('POST', CLEANUP_URL)
-            logger.info(f"Cleanup response: {cleanup_resp}")
-            start_payload = {"mode": "SERVICE_UNATTENDED", "disable_ear": True}
-            start_resp = call_attendant_api('POST', START_URL, json_payload=start_payload)
-            logger.info(f"Start response: {start_resp}")
+            logger.info("Executing process resurrection...")
+            restart_foyer_process()
             return "RECOVERED_PORT_HANG"
             
     # Lab is running & responsive
@@ -199,9 +216,8 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
                 logger.info("[DRY-RUN] Would trigger Hard Reset for deep architectural changes.")
                 return "DRY_RUN_DEEP_HARD_RESET"
             else:
-                logger.info("Triggering full lab reset for deep file changes...")
-                call_attendant_api('POST', CLEANUP_URL)
-                call_attendant_api('POST', START_URL, json_payload={"mode": "SERVICE_UNATTENDED", "disable_ear": True})
+                logger.info("Triggering clean OS process restart for deep file changes...")
+                restart_foyer_process()
                 return "EXECUTED_DEEP_HARD_RESET"
                 
         elif resident_files:
