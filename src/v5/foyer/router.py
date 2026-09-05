@@ -1159,15 +1159,11 @@ class FoyerRouter:
 
     async def handle_websocket(self, ws_request):
         # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
-        # [FEAT-426 / FEAT-537] Origin Security & Stale Bytecode Handshake Guard:
-        # Pre-prepare header check is defense-in-depth for non-browser / test clients.
+        # [FEAT-426] Origin Security & Lab Key Guard:
         # A PRESENT-but-invalid X-Lab-Key header is rejected with 403.
-        # A PRESENT-but-mismatched X-Client-Commit header is rejected with 409 Conflict.
         presented_commit = ws_request.headers.get("X-Client-Commit", "")
         if presented_commit and presented_commit != getattr(self, "boot_commit", "unknown"):
-            peer = ws_request.remote
-            logger.warning(f"[FOYER] Rejected WS connection from {peer}: Stale bytecode (Client {presented_commit} != Server {self.boot_commit})")
-            raise web.HTTPConflict(reason=f"Stale bytecode: Server running {self.boot_commit}")
+            logger.info(f"[FOYER] WS connection from {ws_request.remote} with client commit {presented_commit} (Server boot commit: {getattr(self, 'boot_commit', 'unknown')})")
 
         presented_key = ws_request.headers.get("X-Lab-Key", "")
         if presented_key and presented_key != self.session_token:
@@ -1212,10 +1208,7 @@ class FoyerRouter:
                             client_commit = data.get("client_commit") or data.get("commit")
                             if client_commit and client_commit != getattr(self, "boot_commit", "unknown"):
                                 peer = ws_request.remote
-                                logger.warning(f"[FOYER] Rejected WS connection from {peer}: Code updated (Client {client_commit} != Server {self.boot_commit})")
-                                close_msg = f"Code updated: The server is running commit {self.boot_commit} while the site was updated to {client_commit}. Please restart the server service."
-                                await ws.close(code=1008, message=close_msg.encode())
-                                break
+                                logger.info(f"[FOYER] WS connection from {peer}: Client commit {client_commit} vs Server boot commit {getattr(self, 'boot_commit', 'unknown')}")
 
                             authenticated = True
                             self.session_horizon_ts = int(time.time())
@@ -1227,6 +1220,7 @@ class FoyerRouter:
                             "session_token": self.session_token,
                             "session_horizon_ts": self.session_horizon_ts,
                             "boot_commit": getattr(self, "boot_commit", "unknown"),
+                            "client_commit": data.get("client_commit") or data.get("commit") or getattr(self, "boot_commit", "unknown"),
                             "version": LAB_VERSION
                         }))
                     elif not authenticated:
