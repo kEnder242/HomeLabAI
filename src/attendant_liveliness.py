@@ -1,131 +1,283 @@
+#!/usr/bin/env python3
+"""
+[FEAT-149] Resident Liveness & 30-Minute Attendant Supervisor
+[FEAT-537] Internal State-Aware Bytecode & Resilience Engine
+
+Supervisory Engine Roles:
+1. State & Lockfile Awareness: Respects status.json ('SLEEP', 'SHUTDOWN', 'MAINTENANCE') and maintenance locks.
+2. 30-Minute Cadence: Polling loop to ensure the lab is never offline or hung unexpectedly.
+3. 2-Tier Recovery Hierarchy:
+   - Resident Node changes -> Soft Reload (POST /reload_residents, <100ms, VRAM preserved)
+   - Deep Risk changes / Socket Hung -> Hard Reset (POST /hard_reset / Process resurrection)
+"""
+
 import requests
 import time
 import sys
 import hashlib
 import os
+import json
+import argparse
+import logging
+from typing import Tuple, List
 
-# Configuration
+# Configuration & Paths
+BASE_DIR = "/home/jallred/Dev_Lab"
+PORTFOLIO_DIR = os.path.join(BASE_DIR, "Portfolio_Dev")
+LAB_DIR = os.path.join(BASE_DIR, "HomeLabAI")
+STATUS_JSON_PATH = os.path.join(PORTFOLIO_DIR, "field_notes/data/status.json")
+STYLE_CSS_PATH = os.path.join(PORTFOLIO_DIR, "field_notes/style.css")
+MAINTENANCE_LOCK_PATHS = [
+    os.path.join(LAB_DIR, "run/maintenance.lock"),
+    os.path.join(PORTFOLIO_DIR, "field_notes/data/maintenance.lock")
+]
+
 ATTENDANT_URL = 'http://localhost:8765'
-STATUS_URL = f'{ATTENDANT_URL}/status'
+STATUS_URL = f'{ATTENDANT_URL}/status?timeout=5'
 START_URL = f'{ATTENDANT_URL}/start'
 STOP_URL = f'{ATTENDANT_URL}/stop'
-CLEANUP_URL = f'{ATTENDANT_URL}/hard_reset' # [FIX] Map to existing hard_reset endpoint
+RELOAD_URL = f'{ATTENDANT_URL}/reload_residents'
+CLEANUP_URL = f'{ATTENDANT_URL}/hard_reset'
 
-TIMEOUT_SEC = 240 # 4 minutes total timeout for full lifecycle
-POLL_INTERVAL_SEC = 5 # Poll every 5 seconds
+TIMEOUT_SEC = 240
+POLL_INTERVAL_SEC = 5
+DEFAULT_SUPERVISORY_INTERVAL_SEC = 1800 # 30 minutes
 
-def get_lab_key():
-    """Calculates the dynamic Lab Key from style.css MD5."""
-    # Force absolute path resolution
-    base_dir = "/home/jallred/Dev_Lab"
-    css_path = os.path.join(base_dir, "Portfolio_Dev/field_notes/style.css")
-    
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [ATTENDANT-SUPERVISOR] %(message)s"
+)
+logger = logging.getLogger("attendant_supervisor")
+
+def get_lab_key() -> str:
+    """Calculates dynamic Lab Key from style.css MD5."""
     try:
-        with open(css_path, "rb") as f:
-            return hashlib.md5(f.read()).hexdigest()[:8]
+        if os.path.exists(STYLE_CSS_PATH):
+            with open(STYLE_CSS_PATH, "rb") as f:
+                return hashlib.md5(f.read()).hexdigest()[:8]
     except Exception as e:
-        print(f"[Monitor] WARNING: Could not calculate Lab Key at {css_path}: {e}")
-        return "ERROR_KEY"
+        logger.warning(f"Could not calculate Lab Key at {STYLE_CSS_PATH}: {e}")
+    return "ERROR_KEY"
 
-def call_attendant_api(method, url, json_payload=None):
+def call_attendant_api(method: str, url: str, json_payload=None, timeout: int = 10) -> dict:
     key = get_lab_key()
     headers = {
         'Content-Type': 'application/json',
         'X-Lab-Key': key
     }
     try:
-        if method == 'GET':
-            response = requests.get(url, headers=headers, timeout=10)
-        elif method == 'POST':
-            response = requests.post(url, json=json_payload, headers=headers, timeout=10)
+        if method.upper() == 'GET':
+            response = requests.get(url, headers=headers, timeout=timeout)
+        elif method.upper() == 'POST':
+            response = requests.post(url, json=json_payload, headers=headers, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"[Monitor] ERROR: Attendant API call failed for {url} ({method}): {e}", file=sys.stderr)
         return {"status": "error", "message": str(e)}
 
-def main():
+def check_lab_state_and_locks() -> Tuple[bool, str]:
+    """
+    Checks on-disk state.
+    Returns (is_active_target, state_description).
+    If state is SLEEP, SHUTDOWN, or MAINTENANCE lock exists, returns False.
+    """
+    for lock_path in MAINTENANCE_LOCK_PATHS:
+        if os.path.exists(lock_path):
+            return False, f"MAINTENANCE_LOCK ({os.path.basename(lock_path)})"
+    
+    if os.path.exists(STATUS_JSON_PATH):
+        try:
+            with open(STATUS_JSON_PATH, "r") as f:
+                data = json.load(f)
+            state = data.get("state", "UNKNOWN").upper()
+            if state in ["SLEEP", "SHUTDOWN", "HIBERNATING", "MAINTENANCE"]:
+                return False, f"INTENTIONAL_{state}"
+            elif state == "OPERATIONAL":
+                return True, "OPERATIONAL"
+        except Exception as e:
+            logger.warning(f"Error reading {STATUS_JSON_PATH}: {e}")
+            
+    return True, "DEFAULT_OPERATIONAL"
+
+def check_modified_files(boot_ts: float) -> Tuple[List[str], List[str]]:
+    """
+    Categorizes files modified in HomeLabAI/src since boot_timestamp.
+    Returns (deep_changed_files, resident_changed_files).
+    """
+    deep_changed = []
+    resident_changed = []
+    
+    src_dir = os.path.join(LAB_DIR, "src")
+    if not os.path.exists(src_dir):
+        return deep_changed, resident_changed
+
+    deep_prefixes = [
+        os.path.join(src_dir, "v5/foyer"),
+        os.path.join(src_dir, "lab_attendant.py"),
+    ]
+    
+    resident_prefixes = [
+        os.path.join(src_dir, "logic"),
+        os.path.join(src_dir, "nodes"),
+        os.path.join(src_dir, "data"),
+        os.path.join(src_dir, "equipment"),
+        os.path.join(src_dir, "curator"),
+        os.path.join(src_dir, "compiler"),
+    ]
+
+    for root, dirs, files in os.walk(src_dir):
+        if "__pycache__" in root or ".git" in root:
+            continue
+        for file in files:
+            if not file.endswith((".py", ".json", ".yaml", ".yml", ".sh")):
+                continue
+            fpath = os.path.join(root, file)
+            try:
+                mtime = os.path.getmtime(fpath)
+                if mtime > boot_ts:
+                    rel_path = os.path.relpath(fpath, LAB_DIR)
+                    is_deep = any(fpath.startswith(dp) for dp in deep_prefixes)
+                    if is_deep:
+                        deep_changed.append(rel_path)
+                    else:
+                        is_resident = any(fpath.startswith(rp) for rp in resident_prefixes)
+                        if is_resident:
+                            resident_changed.append(rel_path)
+            except OSError:
+                continue
+                
+    return deep_changed, resident_changed
+
+def run_supervisory_tick(dry_run: bool = False) -> str:
+    """
+    Executes a single 30-minute supervisory check.
+    """
+    logger.info("=== Starting Supervisory Health & Liveness Tick ===")
+    
+    # Gate 1: Check on-disk state & maintenance locks
+    is_active, state_reason = check_lab_state_and_locks()
+    if not is_active:
+        logger.info(f"Lab is in intentional dormant state ({state_reason}). Skipping supervisory reloads/resets.")
+        return f"SKIP_{state_reason}"
+        
+    # Gate 2: Probe Foyer HTTP Status endpoint
+    status_resp = call_attendant_api('GET', STATUS_URL, timeout=8)
+    
+    if status_resp.get("status") == "error":
+        logger.warning(f"First probe failed: {status_resp.get('message')}. Retrying after 3s...")
+        time.sleep(3)
+        status_resp = call_attendant_api('GET', STATUS_URL, timeout=8)
+        
+    if status_resp.get("status") == "error":
+        logger.critical(f"Foyer port 8765 is UNRESPONSIVE: {status_resp.get('message')}")
+        if dry_run:
+            logger.info("[DRY-RUN] Would trigger hard_reset for unresponsive Foyer port.")
+            return "DRY_RUN_HARD_RESET"
+        else:
+            logger.info("Executing recovery cleanup & restart...")
+            cleanup_resp = call_attendant_api('POST', CLEANUP_URL)
+            logger.info(f"Cleanup response: {cleanup_resp}")
+            start_payload = {"mode": "SERVICE_UNATTENDED", "disable_ear": True}
+            start_resp = call_attendant_api('POST', START_URL, json_payload=start_payload)
+            logger.info(f"Start response: {start_resp}")
+            return "RECOVERED_PORT_HANG"
+            
+    # Lab is running & responsive
+    foyer_state = status_resp.get("state", "OPERATIONAL")
+    boot_ts = status_resp.get("boot_timestamp") or status_resp.get("state_changed_at", 0)
+    boot_commit = status_resp.get("boot_commit", "unknown")
+    
+    logger.info(f"Foyer is {foyer_state} (Boot Commit: {boot_commit}, Boot Timestamp: {boot_ts})")
+    
+    # Gate 3: Evaluate modified files
+    if boot_ts > 0:
+        deep_files, resident_files = check_modified_files(boot_ts)
+        
+        if deep_files:
+            logger.warning(f"Deep architectural files changed since boot ({len(deep_files)} files): {deep_files[:3]}")
+            if dry_run:
+                logger.info("[DRY-RUN] Would trigger Hard Reset for deep architectural changes.")
+                return "DRY_RUN_DEEP_HARD_RESET"
+            else:
+                logger.info("Triggering full lab reset for deep file changes...")
+                call_attendant_api('POST', CLEANUP_URL)
+                call_attendant_api('POST', START_URL, json_payload={"mode": "SERVICE_UNATTENDED", "disable_ear": True})
+                return "EXECUTED_DEEP_HARD_RESET"
+                
+        elif resident_files:
+            logger.info(f"Resident node files changed since boot ({len(resident_files)} files): {resident_files[:3]}")
+            if dry_run:
+                logger.info("[DRY-RUN] Would trigger Soft Reload (reload_residents).")
+                return "DRY_RUN_SOFT_RELOAD"
+            else:
+                logger.info("Triggering fast soft hot-reload (VRAM preserved)...")
+                reload_resp = call_attendant_api('POST', RELOAD_URL)
+                logger.info(f"Reload response: {reload_resp}")
+                return "EXECUTED_SOFT_RELOAD"
+                
+    logger.info("✅ Systems Nominal. No code changes require reload. Foyer is healthy.")
+    return "OK_NOMINAL"
+
+def run_legacy_boot_monitor():
+    """Legacy boot monitor loop for manual full restarts."""
     start_time = time.time()
-    print('--- Starting Lab Attendant Liveliness Monitor (v1.0) ---')
+    logger.info("Starting Lab Attendant Boot Monitor (Legacy)")
     print(f"Total timeout: {TIMEOUT_SEC}s")
 
-    # --- Phase 1: Initial Status Check ---
-    print("\n[Monitor] Phase 1: Checking current Lab status...")
     current_status = call_attendant_api('GET', STATUS_URL)
-
-    if current_status.get('status') == 'error':
-        print(f"[Monitor] FATAL: Could not connect to Lab Attendant. Is the service running? {current_status.get('message')}")
-        sys.exit(1)
-
-    initial_lab_running = current_status.get('foyer_up', False)
     initial_lab_ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
     lab_pid = current_status.get('attendant_pid', 'N/A')
 
     if initial_lab_ready:
         print(f"\n[Monitor] ✅ Lab is already READY (PID: {lab_pid})!")
         sys.exit(0)
-    elif initial_lab_running:
-        print(f"\n[Monitor] Lab is running (PID: {lab_pid}) but not READY. Attempting to stop for a clean restart.")
-        stop_response = call_attendant_api('POST', STOP_URL)
-        if stop_response.get('status') == 'error':
-            print(f"[Monitor] ERROR: Failed to stop Lab server: {stop_response.get('message')}")
-            sys.exit(1)
-        # Give a moment for process to terminate
-        time.sleep(POLL_INTERVAL_SEC)
-    else:
-        print("\n[Monitor] Lab is not running. Proceeding with cleanup and start.")
 
-    # --- Phase 2: Cleanup and Start Lab Server ---
-    print("\n[Monitor] Phase 2: Performing cleanup...")
-    cleanup_response = call_attendant_api('POST', CLEANUP_URL)
-    if cleanup_response.get('status') == 'error':
-        print(f"[Monitor] ERROR: Failed to cleanup Lab resources: {cleanup_response.get('message')}")
-        sys.exit(1)
-    print("[Monitor] Cleanup complete.")
+    print("\n[Monitor] Performing cleanup and start...")
+    call_attendant_api('POST', CLEANUP_URL)
+    call_attendant_api('POST', START_URL, json_payload={"mode": "SERVICE_UNATTENDED", "disable_ear": True})
 
-    print("\n[Monitor] Phase 2: Starting Lab server...")
-    start_payload = {"mode": "SERVICE_UNATTENDED", "disable_ear": True}
-    start_response = call_attendant_api('POST', START_URL, json_payload=start_payload)
-    if start_response.get('status') == 'error':
-        print(f"[Monitor] ERROR: Failed to start Lab server: {start_response.get('message')}")
-        sys.exit(1)
-    print(f"[Monitor] Lab server launched. PID: {start_response.get('pid')}")
-    time.sleep(POLL_INTERVAL_SEC) # Give server a moment to boot
-
-    # --- Phase 3: Poll for Readiness ---
-    print("\n[Monitor] Phase 3: Polling for Lab readiness...")
     poll_start_time = time.time()
     while time.time() - start_time < TIMEOUT_SEC:
         current_status = call_attendant_api('GET', STATUS_URL)
-        if current_status.get('status') == 'error':
-            print(f"[Monitor] ERROR: Could not connect to Lab Attendant during polling. {current_status.get('message')}")
-            sys.exit(1)
-
-        running = current_status.get('foyer_up', False)
-# [FEAT-165] Resident Handshake Gate
-        ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
-        mode = current_status.get('engine_mode', 'UNKNOWN')
-        lab_pid = current_status.get('lab_pid', 'N/A')
-        last_logs = current_status.get('last_log_lines', [])
-
-        print(f'\n[Monitor] Lab Status (Mode: {mode}, PID: {lab_pid}) - Running: {running}, Ready: {ready}')
-        if last_logs:
-            for line in last_logs:
-                print(f'\t[LAB LOG] {line}')
-
-        if not running and not ready and (time.time() - poll_start_time > 10): # Grace period for boot
-            print('[Monitor] FATAL: Lab server died prematurely during polling. Aborting.')
-            print('         Check lab_attendant.log or `sudo journalctl -u lab-attendant.service` for details.')
-            sys.exit(1)
-
-        if ready:
-            print('\n[Monitor] ✅ Lab is fully READY!')
-            sys.exit(0)
-
+        if current_status.get('status') != 'error':
+            ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
+            if ready:
+                print('\n[Monitor] ✅ Lab is fully READY!')
+                sys.exit(0)
         time.sleep(POLL_INTERVAL_SEC)
 
     print('\n[Monitor] ❌ Timeout: Lab did not become ready within allocated time.')
     sys.exit(1)
+
+def main():
+    parser = argparse.ArgumentParser(description="Lab Attendant Liveliness & 30-Minute Supervisory Watchdog")
+    parser.add_argument("--supervise", "--daemon", action="store_true", help="Run continuous supervisory loop (default every 30m)")
+    parser.add_argument("--interval", type=int, default=DEFAULT_SUPERVISORY_INTERVAL_SEC, help="Supervisory interval in seconds (default: 1800)")
+    parser.add_argument("--once", action="store_true", help="Run a single supervisory check and exit")
+    parser.add_argument("--dry-run", action="store_true", help="Evaluate health and code changes without sending commands")
+    parser.add_argument("--boot-monitor", action="store_true", help="Run legacy boot monitor until lab is ready")
+
+    args = parser.parse_args()
+
+    if args.boot_monitor:
+        run_legacy_boot_monitor()
+        return
+
+    if args.supervise:
+        logger.info(f"Starting continuous supervisor loop (interval: {args.interval}s / {args.interval//60}m)...")
+        try:
+            while True:
+                run_supervisory_tick(dry_run=args.dry_run)
+                logger.info(f"Sleeping for {args.interval}s until next supervisory cycle...")
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            logger.info("Supervisor stopped by user.")
+            sys.exit(0)
+    else:
+        # Default to single tick
+        result = run_supervisory_tick(dry_run=args.dry_run)
+        print(f"[RESULT] {result}")
+        sys.exit(0 if not result.startswith("ERROR") else 1)
 
 if __name__ == "__main__":
     main()
