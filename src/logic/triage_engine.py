@@ -14,6 +14,7 @@ Class 1 Design: zero third-party dependencies beyond the Python standard library
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from typing import Any
@@ -458,8 +459,9 @@ class TriageEngine:
     @staticmethod
     def _build_triage_mode_context() -> str:
         """Build the system context block sent alongside the triage prompt."""
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
         return (
-            "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
+            f"[MODE]: UNIFIED PRE-REFLECTION & TRIAGE (Runtime: Acme Lab, Date: {now_str}, Current Year: 2026)\n"
             + _BRAIN_PERSONA_SPEC
             + "\n"
             "Translate user intent (I think the user is trying to say...).\n"
