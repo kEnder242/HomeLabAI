@@ -153,19 +153,33 @@ def quiesce_vllm() -> bool:
     except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
 
-    # Step 3: Hard Verification — Poll VRAM usage for up to 30s until < 1500MB
-    logger.info("[FEAT-213] Verifying physical VRAM eviction via NVML/nvidia-smi...")
+    # Step 3: Check VRAM drain. If still allocated after 5s, enforce direct process termination
     t0 = time.time()
     while time.time() - t0 < 30:
         vram_used = get_vram_usage()
-        if 0 < vram_used < 1500:
+        if 0 < vram_used < 1500 or vram_used == 0:
             logger.info(f"[FEAT-213] VRAM eviction confirmed ({vram_used} MB used < 1500 MB threshold).")
             write_step_log("QUIESCE_OK", f"VRAM evicted ({vram_used} MB used)")
             return True
-        elif vram_used == 0:
-            logger.info("[FEAT-213] GPU query returned 0 MB, assuming VRAM evicted.")
-            write_step_log("QUIESCE_OK", "VRAM query 0 (evicted)")
-            return True
+        
+        # If after 5s VRAM is still held, enforce targeted process eviction
+        if time.time() - t0 > 5:
+            logger.info(f"[FEAT-213] VRAM still held ({vram_used} MB). Enforcing targeted vLLM process eviction...")
+            try:
+                pid_file = os.path.expanduser("~/Dev_Lab/HomeLabAI/run/vllm.pid")
+                if os.path.exists(pid_file):
+                    try:
+                        with open(pid_file, "r") as pf:
+                            p_id = int(pf.read().strip())
+                        subprocess.run(["kill", "-9", str(p_id)], check=False)
+                        os.remove(pid_file)
+                    except Exception:
+                        pass
+                subprocess.run(["pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+                subprocess.run(["pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
+            except Exception as pe:
+                logger.warning(f"[FEAT-213] Direct process eviction warning: {pe}")
+
         time.sleep(2)
 
     logger.critical(f"[FEAT-213] VRAM eviction timed out! Current usage: {get_vram_usage()} MB >= 1500 MB.")
