@@ -401,4 +401,34 @@
     *   Shallow prompt filtering is critical: without word-count/shallow-word gates, generic pleasantries produce ~0.40 baseline cosine similarity against dense sentence embeddings, creating prompt noise.
     *   `QQ` is an inquiry boundary that demands boosted factual context, not context suppression.
 
+### LAB-020: Cloudflare Zero Trust Ingress, Argo Tunnel & API Infrastructure
+**Objective**: Document the Cloudflare edge networking topology, Argo Tunnel daemon, Zero Trust Access ingress routing, and API authentication credentials for `jason-lab.dev`.
+
+1.  **Argo Tunnel & Ingress Routing Topology**:
+    *   **Daemon Unit**: `systemd` service `cloudflared.service`
+    *   **Tunnel UUID**: `7e416f2e-b7dc-4088-937f-ee6ca913dcbb`
+    *   **System Config**: `/etc/cloudflared/config.yml`
+    *   **User Config**: `/home/jallred/.cloudflared/config.yml`
+    *   **Subdomain Ingress Mapping**:
+        *   `monitor.jason-lab.dev` ➔ `http://localhost:3000` (Grafana / Prometheus)
+        *   `code.jason-lab.dev` ➔ `http://localhost:8080` (code-server / IDE)
+        *   `notes.jason-lab.dev/attendant/` ➔ `http://localhost:8765` (Foyer REST API)
+        *   `notes.jason-lab.dev` ➔ `http://localhost:9001` (Field Notes Dashboard)
+        *   `acme.jason-lab.dev` ➔ `http://localhost:8765` (Intercom / Foyer WebSocket)
+        *   `pager.jason-lab.dev` ➔ `http://localhost:8765` / `:8501` (Neural Pager)
+
+2.  **API Identifiers & Key/Token Locations**:
+    *   **Cloudflare Account ID**: `c58aa4580ff695cce2f611177d2173a5`
+    *   **Zone ID (`jason-lab.dev`)**: `c560564464f6202dde62e8e67649f79c`
+    *   **Tunnel Credentials File**: `/home/jallred/.cloudflared/7e416f2e-b7dc-4088-937f-ee6ca913dcbb.json`
+    *   **Origin Certificate & Embedded Token**: `/home/jallred/.cloudflared/cert.pem`
+        *   *Contains base64 Argo Tunnel Token scoped for DNS routing & tunnel lifecycle.*
+    *   **Zero Trust Access Audit Permissions**:
+        *   Querying edge login audit logs via `https://api.cloudflare.com/client/v4/accounts/{account_id}/access/logs/access_requests` requires an API Token with `com.cloudflare.api.account.access:read` scope (set via `CLOUDFLARE_API_TOKEN` environment variable).
+
+3.  **User Authentication & Audit Tooling**:
+    *   **Audit Script**: `Portfolio_Dev/field_notes/utils/list_access_logins.py`
+    *   **Header Propagation**: Cloudflare Zero Trust forwards authenticated user identities via the `Cf-Access-Authenticated-User-Email` HTTP header on ingress.
+
+
 
