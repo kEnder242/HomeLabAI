@@ -29,8 +29,10 @@ def _get_closed_port() -> int:
         return s.getsockname()[1]
 
 
+from unittest.mock import patch
+
 async def _run_relay(port: int) -> tuple:
-    """Drive a SpeculativeTriageRelay whose Kender port is unreachable."""
+    """Drive a SpeculativeTriageRelay whose Kender/M5 ports are unreachable."""
 
     async def _kender_fn(query, context, schema, rid):
         # The fast gate must prevent Kender from ever being dispatched.
@@ -43,12 +45,11 @@ async def _run_relay(port: int) -> tuple:
         broadcast_callback=lambda *a, **k: None,
         kender_fn=_kender_fn,
         vllm_fn=_vllm_fn,
-        t_warm=1.25,
-        kender_host="127.0.0.1",
-        kender_port=port,
+        t_warmed=1.25,
         socket_timeout=0.2,
     )
-    return await relay.relay("query", "context", {}, "test_request")
+    with patch("src.logic.speculative_triage.resolve_active_deep_thought_target", return_value={"id": "LOCAL", "name": "LOCAL", "host": "127.0.0.1", "port": 8088}):
+        return await relay.relay("query", "context", {}, "test_request")
 
 
 def test_probe_tcp_refused_fast() -> None:

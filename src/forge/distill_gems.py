@@ -9,27 +9,13 @@ import sys
 from infra.montana import reclaim_logger
 reclaim_logger("DistillForge")
 
+from infra.engine_client import query_sovereign_engine, resolve_active_deep_thought_target
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [FORGE] %(message)s')
 
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 TRAINING_DATA_PATH = os.path.join(os.path.dirname(__file__), "training_data.jsonl")
-INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
-
-def get_brain_url():
-    try:
-        with open(INFRA_CONFIG, "r") as f:
-            infra = json.load(f)
-        primary = infra.get("nodes", {}).get("brain", {}).get("primary", "KENDER")
-        host_cfg = infra.get("hosts", {}).get(primary, {})
-        ip = host_cfg.get("ip_hint", "192.168.1.26")
-        port = host_cfg.get("ollama_port", 11434)
-        return f"http://{ip}:{port}/api/chat"
-    except Exception as e:
-        logging.error(f"Failed to resolve Brain URL: {e}")
-        return "http://192.168.1.26:11434/api/chat"
-
-BRAIN_URL = get_brain_url()
 
 DISTILL_PROMPT = """
 You are the High-Fidelity Distillation Engine of Acme Lab.
@@ -48,26 +34,30 @@ RULES:
 """
 
 def distill_gem(gem):
-    payload = {
-        "model": "llama3:latest",
-        "messages": [{"role": "user", "content": DISTILL_PROMPT.format(gem_json=json.dumps(gem))}],
-        "stream": False,
-        "format": "json"
-    }
-    
+    prompt = DISTILL_PROMPT.format(gem_json=json.dumps(gem))
     try:
-        response = requests.post(BRAIN_URL, json=payload, timeout=60)
-        if response.status_code == 200:
-            content = response.json().get("message", {}).get("content", "")
-            return json.loads(content)
-        else:
-            logging.error(f"Brain error: {response.status_code}")
+        res = query_sovereign_engine(
+            prompt=prompt,
+            system_prompt="You are the High-Fidelity Distillation Engine of Acme Lab.",
+            json_mode=True,
+            timeout=60.0
+        )
+        if isinstance(res, dict) and "instruction" in res and "response" in res:
+            return res
+        elif isinstance(res, str):
+            try:
+                parsed = json.loads(res)
+                if isinstance(parsed, dict) and "instruction" in parsed and "response" in parsed:
+                    return parsed
+            except Exception:
+                pass
     except Exception as e:
         logging.error(f"Distillation failed: {e}")
     return None
 
 def main(limit=None):
-    logging.info(f"Starting Distillation Pipeline. Target: {BRAIN_URL}")
+    active_seat = resolve_active_deep_thought_target()
+    logging.info(f"Starting Distillation Pipeline. Target Engine Seat: {active_seat.get('name')} ({active_seat.get('host')}:{active_seat.get('port')})")
     
     gems = []
     json_files = glob.glob(os.path.join(DATA_DIR, "*.json"))

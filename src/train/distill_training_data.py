@@ -4,8 +4,7 @@ import aiohttp
 import asyncio
 import re
 
-KENDER_URL = "http://192.168.1.26:11434/api/generate"
-MODEL = "llama3.1:8b" # Or whichever model is loaded
+from infra.engine_client import async_query_sovereign_engine, resolve_active_deep_thought_target
 
 # Source files
 PORTFOLIO_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
@@ -28,21 +27,25 @@ Format output as a JSON array of objects with 'instruction' and 'response' keys.
 
 # [FEAT-092] Persona De-personalization (Cognitive Firewall)
 async def generate_pairs(session, prompt, context, persona):
-    payload = {
-        "model": MODEL,
-        "prompt": f"{prompt}\n\n[CONTEXT]:\n{context[:2000]}", # Limit context to avoid timeout
-        "stream": False,
-        "options": {"temperature": 0.3}
-    }
+    query = f"[CONTEXT]:\n{context[:2000]}"
     try:
-        async with session.post(KENDER_URL, json=payload, timeout=60) as resp:
-            data = await resp.json()
-            raw_text = data.get("response", "")
-            # Try to parse JSON from the response
-            match = re.search(r"(\[.*\])", raw_text, re.DOTALL)
+        data = await async_query_sovereign_engine(
+            prompt=query,
+            system_prompt=prompt,
+            json_mode=True,
+            temperature=0.3,
+            timeout=60.0
+        )
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict):
+            return [data]
+        elif isinstance(data, str):
+            match = re.search(r"(\[.*\]|\{.*\})", data, re.DOTALL)
             if match:
-                return json.loads(match.group(1))
-            return []
+                parsed = json.loads(match.group(1))
+                return parsed if isinstance(parsed, list) else [parsed]
+        return []
     except Exception as e:
         print(f"Error distilling for {persona}: {e}")
         return []
