@@ -30,7 +30,7 @@ async def deep_think(task: str, context: str = "", metadata: dict = None) -> str
     
     # Return full string block
     full_response = ""
-    async for token in node.generate_response(task, context, metadata=metadata, system_override=system_override):
+    async for token in node.generate_response(task, context, metadata=metadata, system_override=system_override, max_tokens=1500):
         full_response += token
     return full_response
 
