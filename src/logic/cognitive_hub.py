@@ -53,6 +53,19 @@ _QPR_NOISE_PATTERNS = [
 ]
 
 
+def sanitize_spoken_dialogue(text: str) -> str:
+    """[FEAT-558] Circuit Breaker: Strips internal reflection tags (<thought>...</thought>) and role markup."""
+    if not text:
+        return ""
+    # Strip <thought>...</thought> blocks (multiline)
+    sanitized = re.sub(r"<thought>.*?</thought>", "", str(text), flags=re.DOTALL | re.IGNORECASE)
+    # Strip orphan tags
+    sanitized = re.sub(r"</?(?:thought|pinky|brain|system|context)[^>]*>", "", sanitized, flags=re.IGNORECASE)
+    # Collapse excess whitespace
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    return sanitized
+
+
 def qpr_refine_query(query: str) -> str:
     """
     [FEAT-442] QPR Pre-Retrieval Query De-Noising.
@@ -1342,6 +1355,17 @@ class CognitiveHub:
                 "and subconscious dreams consolidated during nightly runs. Explain what nodes debated, "
                 "the key decisions or validation wisdom stored, and any resulting system changes.)"
             )
+        elif t_parsed.get("domain") == "unclear":
+            # [FEAT-559] Pinky as the Speculative Domain Foil for Ambiguous Queries
+            self.current_interest = min(self.current_interest, 0.4)
+            rag_context = ""
+            context = f"Triage Situation: {t_parsed.get('situation', 'Ambiguous intent')}"
+            behavioral_guidance = (
+                "[MODE]: SPECULATIVE_FOIL (Triage intent is ambiguous. "
+                "Do NOT guess or fabricate historical facts. "
+                "Deliver a playful, in-character 1-sentence quip that poses the likely options, "
+                "e.g., 'Are we checking our live GPU vitals right now, or looking back at old test logs?')"
+            )
         else:
             # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
             behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
@@ -1475,26 +1499,28 @@ class CognitiveHub:
                     brain_prefetch_task.cancel()
                     logging.info(f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context.")
 
-        # [FEAT-356] Unified Session Ledger: Record turn summary (Sanitized for Auto-Regressive Health)
-        turn_ledger = f"User: {turn}"
+        # [FEAT-356 / FEAT-558] Unified Session Ledger: Record turn summary (Sanitized for Auto-Regressive Health)
+        clean_user = sanitize_spoken_dialogue(turn)
+        turn_ledger = f"User: {clean_user}"
         turn_num = len(self.round_table_memory) + 1
         pinky_res = self.turn_thought_trace.get("pinky")
         if pinky_res:
-            clean_pinky = re.sub(r'\s+', ' ', str(pinky_res)).strip()
-            if not clean_pinky.startswith('{"score"') and not clean_pinky.startswith('{ "score"'):
+            clean_pinky = sanitize_spoken_dialogue(str(pinky_res))
+            if clean_pinky and not clean_pinky.startswith('{"score"') and not clean_pinky.startswith('{ "score"'):
                 turn_ledger += f"\nPinky: {clean_pinky[:300]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_bullet(turn_num, "pinky", clean_pinky[:200])
         brain_res = self.turn_thought_trace.get("thought") or self.turn_thought_trace.get("brain")
         if brain_res:
-            clean_brain = re.sub(r'\s+', ' ', str(brain_res)).strip()
-            turn_ledger += f"\nBrain: {clean_brain[:400]}"
+            clean_brain = sanitize_spoken_dialogue(str(brain_res))
+            if clean_brain:
+                turn_ledger += f"\nBrain: {clean_brain[:400]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_bullet(turn_num, "brain", clean_brain[:200])
         critique_res = self.turn_thought_trace.get("critique")
         if critique_res:
-            clean_critique = re.sub(r'\s+', ' ', str(critique_res)).strip()
-            if not clean_critique.startswith('{"score"') and not clean_critique.startswith('{ "score"'):
+            clean_critique = sanitize_spoken_dialogue(str(critique_res))
+            if clean_critique and not clean_critique.startswith('{"score"') and not clean_critique.startswith('{ "score"'):
                 turn_ledger += f"\nPinky Summary: {clean_critique[:200]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, clean_critique[:200])
@@ -1892,6 +1918,9 @@ class CognitiveHub:
         Passes AI-produced HyDE vector text or utilizes pre-triage vector probe results from
         ChromaDB collections to bypass redundant database lookups (0ms cache hits)."""
         if "archive" not in self.residents:
+            return ""
+        domain_val = str(t_parsed.get("domain", "")).lower() if isinstance(t_parsed, dict) else ""
+        if domain_val in ("lab_internal", "unclear", "feedback", "unknown", "standard"):
             return ""
         hyde, hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
         # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB

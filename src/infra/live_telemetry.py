@@ -391,10 +391,99 @@ def get_collector() -> LiveTelemetryCollector:
     return _collector
 
 
+def get_host_vitals() -> Dict[str, Any]:
+    """[FEAT-557] Real-time host & silicon vitals query (NVML, psutil, CPU load, Model residency)."""
+    import datetime
+    vitals: Dict[str, Any] = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "gpu": {
+            "vram_used_mb": 0.0,
+            "vram_total_mb": 0.0,
+            "vram_pct": 0.0,
+            "power_w": 0.0,
+            "gpu_name": "NVIDIA GeForce RTX 2080 Ti"
+        },
+        "host_ram": {
+            "used_gb": 0.0,
+            "total_gb": 0.0,
+            "available_gb": 0.0,
+            "percent": 0.0
+        },
+        "cpu": {
+            "load_1m": 0.0,
+            "load_5m": 0.0,
+            "load_15m": 0.0,
+            "core_count": os.cpu_count() or 4
+        },
+        "model_residency": {
+            "active_model": "llama-3.2-3b-awq",
+            "active_lora": None,
+            "foyer_state": "OPERATIONAL"
+        }
+    }
+    # 1. GPU VRAM & Power
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        used_mb = round(info.used / (1024**2), 1)
+        total_mb = round(info.total / (1024**2), 1)
+        vitals["gpu"]["vram_used_mb"] = used_mb
+        vitals["gpu"]["vram_total_mb"] = total_mb
+        vitals["gpu"]["vram_pct"] = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0
+        try:
+            pwr = pynvml.nvmlDeviceGetPowerUsage(handle)
+            vitals["gpu"]["power_w"] = round(pwr / 1000.0, 1)
+        except Exception:
+            pass
+    except Exception:
+        col = get_collector()
+        snap = col.snapshot()
+        vitals["gpu"]["vram_used_mb"] = snap.vram_used_mb
+        vitals["gpu"]["vram_total_mb"] = snap.vram_total_mb
+        vitals["gpu"]["vram_pct"] = snap.vram_pct
+        vitals["gpu"]["power_w"] = snap.gpu_power_w
+
+    # 2. Host RAM
+    try:
+        vm = psutil.virtual_memory()
+        vitals["host_ram"]["used_gb"] = round((vm.total - vm.available) / (1024**3), 2)
+        vitals["host_ram"]["total_gb"] = round(vm.total / (1024**3), 2)
+        vitals["host_ram"]["available_gb"] = round(vm.available / (1024**3), 2)
+        vitals["host_ram"]["percent"] = vm.percent
+    except Exception:
+        pass
+
+    # 3. CPU Load
+    try:
+        load = os.getloadavg()
+        vitals["cpu"]["load_1m"] = round(load[0], 2)
+        vitals["cpu"]["load_5m"] = round(load[1], 2)
+        vitals["cpu"]["load_15m"] = round(load[2], 2)
+    except Exception:
+        pass
+
+    # 4. Status / Model Residency
+    try:
+        if os.path.exists(STATUS_JSON):
+            with open(STATUS_JSON, "r") as f:
+                s_data = json.load(f)
+                vitals["model_residency"]["foyer_state"] = s_data.get("state", "OPERATIONAL")
+                vitals["model_residency"]["active_lora"] = s_data.get("live_telemetry", {}).get("active_lora")
+    except Exception:
+        pass
+
+    return vitals
+
+
 # ---------------------------------------------------------------------------
 # Standalone smoke runner: python3 src/infra/live_telemetry.py
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     snap = record_live_benchmarks()
+    print("=== LIVE METRICS SNAPSHOT ===")
     print(json.dumps(snap, indent=2))
+    print("\n=== GET_HOST_VITALS() ===")
+    print(json.dumps(get_host_vitals(), indent=2))
