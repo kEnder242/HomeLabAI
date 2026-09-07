@@ -150,7 +150,7 @@ class BicameralNode:
         self._start_telemetry_relay()
 
         @self.mcp.tool()
-        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.1, use_lora: bool = True, response_format: dict = None, request_id: str = "default", max_tokens: int = 1000) -> str:
+        async def think(query: str, context: str = "", tools: list = None, behavioral_guidance: str = "", internal: bool = False, temperature: float = 0.0, repetition_penalty: float = 1.1, use_lora: bool = True, response_format: dict = None, request_id: str = "default", max_tokens: int = 1500) -> str:
             """
             [FEAT-240.2] The Relay Pattern: Standard-compliant 'Thinking' turn.
             Supports real-time token yielding to the Hub for internal waterfall streaming.
@@ -456,7 +456,7 @@ class BicameralNode:
                 self._session = None
             return False, f"Connection failed: {e}"
 
-    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1000, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.1, use_lora=True, tools=None, response_format=None, request_id="default"):
+    async def generate_response(self, query, context="", metadata=None, system_override=None, max_tokens=1500, disable_tools=False, source_name=None, temperature=0.2, repetition_penalty=1.1, use_lora=True, tools=None, response_format=None, request_id="default"):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         # [FEAT-462] Warming Anchor Hold-The-Line Loop
         if not self._engine_cache or (time.time() - self._last_probe > self._probe_ttl_success):

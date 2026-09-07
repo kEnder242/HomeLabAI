@@ -834,7 +834,7 @@ class CognitiveHub:
             self.session_buffers[buf_key] = ""
             
             # [FEAT-523] Token Budget: Clamp casual/low-interest turns to 150 tokens to prevent runaway loops
-            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1000))
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1500))
             call_task = asyncio.create_task(node.call_tool("think", arguments={
                 "query": query, "context": context, "tools": tools or [], 
                 "behavioral_guidance": guidance,
