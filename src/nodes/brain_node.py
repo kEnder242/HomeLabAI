@@ -68,5 +68,15 @@ async def ping_engine(force: bool = False) -> str:
     return json.dumps({"success": success, "message": msg})
 
 
+@mcp.tool()
+async def get_host_vitals() -> str:
+    """[FEAT-557] Query live host hardware telemetry (GPU VRAM, host RAM, CPU load average, active model residency)."""
+    try:
+        from infra.live_telemetry import get_host_vitals as _ghv
+        return json.dumps(_ghv(), indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
+
+
 if __name__ == "__main__":
     node.run() # [FEAT-240] Run the Native Sampling Bridge

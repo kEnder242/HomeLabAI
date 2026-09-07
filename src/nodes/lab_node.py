@@ -180,5 +180,14 @@ async def build_semantic_map() -> str:
     except Exception as e:
         return f"Error building semantic map: {e}"
 
+@mcp.tool()
+async def get_host_vitals() -> str:
+    """[FEAT-557] Query live host hardware telemetry (GPU VRAM, host RAM, CPU load average, active model residency)."""
+    try:
+        from infra.live_telemetry import get_host_vitals as _ghv
+        return json.dumps(_ghv(), indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
+
 if __name__ == "__main__":
     node.run()

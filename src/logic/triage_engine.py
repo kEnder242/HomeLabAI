@@ -364,7 +364,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 },
                 "domain": {
                     "type": "string",
-                    "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream"],
+                    "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback", "unclear"],
                 },
                 "casual": {"type": "number"},
                 "intrigue": {"type": "number"},
@@ -465,14 +465,19 @@ class TriageEngine:
             + _BRAIN_PERSONA_SPEC
             + "\n"
             "Translate user intent (I think the user is trying to say...).\n"
+            "Grammatical Tense & Temporal Horizon Rules:\n"
+            "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
+            "  * Immediate Horizon / Peer Reference ('what did Pinky mean?', 'you just said...', 'today') -> domain: \"lab_internal\", vibe: \"CASUAL\" (Sliding multi-turn memory, Zero Archive RAG).\n"
+            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"exp_tlm\" or \"lab_history\" (ChromaDB RAG).\n"
+            "  * Ambiguous / Underspecified -> domain: \"unclear\", hyde_vector_text: \"\" (Pinky Speculative Foil).\n"
             "HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n"
             "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
             "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs.\n"
             "  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs.\n"
             "  4. lab_history (18-Year Archive): historical project notes (2005-2025).\n"
-            "If the intent maps to a domain, synthesize a 3-part Composite HyDE Vector:\n"
+            "If the intent maps to an archival domain (exp_*, lab_history), synthesize a 3-part Composite HyDE Vector:\n"
             "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\n"
-            "If NOT mapped, set hyde_vector_text: \"\" and vibe: CASUAL."
+            "If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: \"\" and vibe: CASUAL."
         )
 
     @staticmethod

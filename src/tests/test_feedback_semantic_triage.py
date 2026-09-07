@@ -111,3 +111,74 @@ def test_triage_taxonomy_registers_meta_feedback():
     assert rule["addressed_to"] == "SYSTEM"
     assert rule["importance"] == 0.0
     assert rule["default_domain"] == "feedback"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPRINT 75 TESTS: Tense-Aware Triage, Host Vitals & Dialogue Sanitizer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_present_tense_live_vitals_routes_to_lab_internal():
+    """[Story 75.2] Present tense live vitals queries route to lab_internal."""
+    t_parsed = {
+        "inferred_intent": "query live memory",
+        "addressed_to": "NONE",
+        "vibe": "OPERATIONAL",
+        "domain": "lab_internal",
+        "casual": 0.2,
+        "intrigue": 0.5,
+        "importance": 0.5,
+        "hyde_vector_text": "",
+    }
+    vibe, domain = classify_vibe_and_domain("what does the memory look like?", t_parsed)
+    assert domain == "lab_internal"
+    assert is_control_plane_feedback({"vibe": vibe, "domain": domain}) is False
+
+
+def test_ambiguous_query_routes_to_unclear():
+    """[Story 75.2] Ambiguous queries can be classified to domain 'unclear'."""
+    t_parsed = {
+        "inferred_intent": "ambiguous turn",
+        "addressed_to": "NONE",
+        "vibe": "CASUAL",
+        "domain": "unclear",
+        "casual": 0.5,
+        "intrigue": 0.5,
+        "importance": 0.3,
+        "hyde_vector_text": "",
+    }
+    vibe, domain = classify_vibe_and_domain("wait, check that again", t_parsed)
+    assert domain == "unclear"
+
+
+def test_sanitize_spoken_dialogue_circuit_breaker():
+    """[Story 75.4 / FEAT-558] Circuit breaker strips <thought> tags and role markup."""
+    from src.logic.cognitive_hub import sanitize_spoken_dialogue
+
+    dirty_text = "<thought>Thinking about PCIe error counts in 2018...</thought> The current GPU VRAM usage is 7.3 GB."
+    cleaned = sanitize_spoken_dialogue(dirty_text)
+    assert "<thought>" not in cleaned
+    assert "PCIe error counts" not in cleaned
+    assert "The current GPU VRAM usage is 7.3 GB." in cleaned
+
+    multiline_dirty = """<thought>
+    Internal monologue step 1
+    Internal monologue step 2
+    </thought>
+    <PINKY>Narf! All systems are green!</PINKY>"""
+    cleaned_multi = sanitize_spoken_dialogue(multiline_dirty)
+    assert "Internal monologue" not in cleaned_multi
+    assert "Narf! All systems are green!" in cleaned_multi
+
+
+def test_get_host_vitals_telemetry():
+    """[Story 75.3 / FEAT-557] Host vitals query returns live hardware metrics."""
+    from src.infra.live_telemetry import get_host_vitals
+
+    vitals = get_host_vitals()
+    assert "gpu" in vitals
+    assert "host_ram" in vitals
+    assert "cpu" in vitals
+    assert "model_residency" in vitals
+    assert vitals["host_ram"]["total_gb"] > 0
+    assert vitals["cpu"]["core_count"] > 0
+
