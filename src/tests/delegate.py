@@ -422,7 +422,17 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
     # Build dynamic prompt blueprint based on mode
-    if mode == "plan":
+    if mode == "oracle":
+        mandate_block = """[LONG-CONTEXT SYNTHESIS & INSIGHT ORACLE DIRECTIVE — READ-ONLY]
+You are the Cloud Oracle (Powered by Nemotron-120B / Command-A+ / Groq-70B).
+You are strictly an advisory synthesizer. You MUST NOT edit files or emit file edit tool calls.
+Your goal is high-level conceptual structuring, thematic clustering, and adversarial review:
+  1. THEMATIC CLUSTERING & RECURRING AXIOMS: Group raw notes without altering verbatim origin quotes.
+  2. SEQUENCED OUTLINE PROPOSAL: Structured sections with proposed WIS-xxx mappings.
+  3. ADVERSARIAL PEER REVIEW: Scrutinize logical gaps, KV/context assumptions, and missing literature.
+  4. ACADEMIC TAXONOMY BRIDGES: Map informal engineering idioms to formal literature citations."""
+        note_block = "[NOTE] Output the conceptual synthesis / adversarial review report in markdown only. Apply ZERO file edits."
+    elif mode == "plan":
         mandate_block = """[READ-ONLY PLANNING DIRECTIVE — NO CODE EDITS]
 You are Prometheus (Lead Architect). You MUST NOT edit files, run code modifications, or emit file edit tool calls.
 Inspect the target files and output a structured plan:
@@ -944,7 +954,7 @@ if __name__ == "__main__":
     parser.add_argument("--sprint-doc", default=None, help="Path to Master Sprint Plan (e.g. Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md) to automatically inject Tier-1 Executive Summary")
     parser.add_argument("--target", default=None, help="Actual file(s) Atlas is permitted to edit (omit to default to --reference). Separate multiple paths with commas.")
     parser.add_argument("--details", required=not _retro_mode, help="Detailed requirements")
-    parser.add_argument("--mode", choices=["execute", "plan", "investigate"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), or investigate (read-only diagnostic)")
+    parser.add_argument("--mode", choices=["execute", "plan", "investigate", "oracle"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), investigate (read-only diagnostic), or oracle (read-only long-context synthesis/review)")
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
