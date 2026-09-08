@@ -96,29 +96,44 @@ def restart_attendant_immediately():
 def evaluate_files(repo_name: str, files: list) -> tuple:
     """
     Evaluates modified files and returns (required_level, reasons, attendant_changed).
+    Inverted Soft Logic: Any active code/config file triggers at least SOFT_RELOAD.
+    DEEP_RESET: Foyer architecture, entrypoints, infrastructure, and configuration.
     """
     required_level = LEVEL_NONE
     reasons = []
     attendant_changed = False
 
+    # Passive extensions and paths that NEVER trigger a reset
+    PASSIVE_EXTS = (".md", ".txt", ".log", ".html", ".css", ".svg", ".png", ".jpg", ".jpeg", ".lock")
+    PASSIVE_PATTERNS = ("docs/", "field_notes/data/", "field_notes/cache/", ".locks/", ".gitignore", "pytest.ini")
+
     for f in files:
-        # Normalize relative path
+        # Check if file is purely passive documentation, media, or data log
+        if any(f.endswith(ext) for ext in PASSIVE_EXTS) or any(pat in f for pat in PASSIVE_PATTERNS):
+            continue
+
         if repo_name == "HomeLabAI":
             if f in ["src/lab_attendant.py", "src/attendant_liveliness.py"]:
                 attendant_changed = True
                 reasons.append(f"{f} (Attendant Core)")
 
-            if f.startswith("src/v5/foyer/") or f == "src/acme_lab.py":
+            # Deep Reset: Core architecture, networking, infra, and system config
+            if (f.startswith("src/v5/foyer/") or 
+                f == "src/acme_lab.py" or 
+                f.startswith("src/infra/") or 
+                f.startswith("config/")):
                 required_level = max(required_level, LEVEL_DEEP)
-                reasons.append(f"{f} (Deep Foyer Architecture)")
-            elif any(f.startswith(p) for p in ["src/logic/", "src/nodes/", "src/data/", "src/equipment/", "src/curator/", "src/compiler/"]):
+                reasons.append(f"{f} (Deep Core/Infra Architecture)")
+            else:
+                # Inverted Logic: All other active code/modules require SOFT_RELOAD
                 required_level = max(required_level, LEVEL_SOFT)
-                reasons.append(f"{f} (Resident Module)")
+                reasons.append(f"{f} (Active Module)")
+
         elif repo_name == "Portfolio_Dev":
-            # Portfolio_Dev code changes
-            if f.startswith("field_notes/") and f.endswith((".py", ".sh")):
+            # Portfolio_Dev active code changes
+            if f.endswith((".py", ".sh", ".js")):
                 required_level = max(required_level, LEVEL_SOFT)
-                reasons.append(f"{f} (Portfolio Code)")
+                reasons.append(f"{f} (Portfolio Active Code)")
 
     return required_level, reasons, attendant_changed
 
