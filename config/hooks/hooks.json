@@ -1,0 +1,11 @@
+{
+  "ambient-memory-and-knowledge": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3 /home/jallred/.gemini/config/scripts/icm_hook.py"
+      }
+    ]
+  }
+}
