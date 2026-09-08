@@ -426,9 +426,19 @@
     *   **Zero Trust Access Audit Permissions**:
         *   Querying edge login audit logs via `https://api.cloudflare.com/client/v4/accounts/{account_id}/access/logs/access_requests` requires an API Token with `com.cloudflare.api.account.access:read` scope (set via `CLOUDFLARE_API_TOKEN` environment variable).
 
-3.  **User Authentication & Audit Tooling**:
-    *   **Audit Script**: `Portfolio_Dev/field_notes/utils/list_access_logins.py`
-    *   **Header Propagation**: Cloudflare Zero Trust forwards authenticated user identities via the `Cf-Access-Authenticated-User-Email` HTTP header on ingress.
+### LAB-021: Cross-Node Ambient Memory Mesh & Tailscale ClaraDB Ingress
+**Objective**: Enable remote client nodes (e.g. M5 MacBook Air) running Antigravity CLI / AGY to securely access ClaraDB (port 8001) and shared ICM ambient memory over Tailscale without public exposure.
+
+1. **Topology & Host Addressing**:
+   * **Host Workstation (z87-Linux)**: `100.122.230.81` (Tailscale) / `127.0.0.1` (Local).
+   * **Remote Node (M5 Air)**: `100.101.45.10` (Tailscale).
+   * **Daemon Unit**: `chroma-server.service` on port `8001`.
+2. **Hardening Standard**:
+   * ChromaDB server binds strictly to `127.0.0.1` and `100.122.230.81` (never `0.0.0.0`).
+   * Remote `icm_hook.py` on client nodes uses 200ms socket pre-check (`probe_tcp`) against `100.122.230.81:8001`, falling back to local/cached state on network partition without blocking CLI turn latency.
+3. **Workspace Customization Tracking**:
+   * Lifecycle hook definitions tracked in repository Git under `.agents/hooks.json` and `.agents/scripts/icm_hook.py` (mirrored to `HomeLabAI/config/hooks/`).
+
 
 
 
