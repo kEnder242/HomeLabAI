@@ -188,11 +188,44 @@ def probe_claradb(text: str, is_qq: bool = False):
                     if is_qq:
                         is_in_band = is_in_band or (dist <= 0.60)
                         
-                    if is_in_band:
-                        res_str = f"- [{bkm_id}] {name}" if bkm_id else f"- {name}"
-                        if res_str not in results:
-                            results.append(res_str)
+            # Query sprint_dna if prompt targets sprints or stories
+            sprint_triggers = {"sprint", "story", "retro", "plan", "archive"}
+            sprint_kw = any(t in words for t in sprint_triggers) or bool(re.search(r"\b(SPR-\d+|Story\s*\d+)\b", text, re.IGNORECASE))
+            if sprint_kw:
+                try:
+                    col_spr = client.get_collection("sprint_dna")
+                    r_spr = col_spr.query(query_embeddings=[emb], n_results=3)
+                    spr_dists = r_spr.get("distances", [[]])[0]
+                    for i, dist in enumerate(spr_dists):
+                        meta = r_spr["metadatas"][0][i]
+                        sid = meta.get("sprint_id", "SPR")
+                        st_id = meta.get("story_id")
+                        level = meta.get("level", "CHUNK")
+                        w = meta.get("recency_weight", 1.0)
+                        if dist <= 0.65:
+                            label = f"- [{sid}:{st_id}] ({level}, w={w:.2f})" if st_id else f"- [{sid}] ({level}, w={w:.2f})"
+                            if label not in results:
+                                results.append(label)
+                except Exception:
+                    pass
 
+            # Query philosophy_dna if prompt targets wisdom or philosophy
+            phl_triggers = {"philosophy", "wisdom", "origin", "synthesis", "gem", "pearl", "vector"}
+            if any(t in words for t in phl_triggers) or bool(re.search(r"\b(WIS-\d+|PHL-\d+)\b", text, re.IGNORECASE)):
+                try:
+                    col_phl = client.get_collection("philosophy_dna")
+                    r_phl = col_phl.query(query_embeddings=[emb], n_results=2)
+                    phl_dists = r_phl.get("distances", [[]])[0]
+                    for i, dist in enumerate(phl_dists):
+                        meta = r_phl["metadatas"][0][i]
+                        wid = meta.get("wisdom_id", "WIS")
+                        title = meta.get("title", "Wisdom")
+                        if dist <= 0.65:
+                            res_str = f"- [{wid}] {title}"
+                            if res_str not in results:
+                                results.append(res_str)
+                except Exception:
+                    pass
     except Exception:
         pass
 
