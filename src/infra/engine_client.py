@@ -32,10 +32,11 @@ def load_engine_seats() -> List[Dict[str, Any]]:
             "id": "M5_AIR",
             "name": "M5_AIR",
             "host": "192.168.1.46",
+            "fallback_hosts": ["100.101.45.10", "jasons-macbook-air"],
             "port": 8000,
             "protocol": "OPENAI",
-            "probe_path": "/v1/chat/completions",
-            "probe_payload": {"model": "mlx-community--Qwen3.8-27B-4bit", "messages": [{"role": "user", "content": "."}], "max_tokens": 1},
+            "probe_path": "/v1/models",
+            "probe_payload": None,
             "default_model": "mlx-community--Qwen3.8-27B-4bit",
             "t_warmed": 0.09,
             "t_cold": 0.85
@@ -93,17 +94,31 @@ def probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PR
         return False
 
 def probe_seat(seat: Dict[str, Any]) -> bool:
-    """[FEAT-531] Generic declarative seat health probe."""
-    host = seat.get("host", "127.0.0.1")
+    """[FEAT-531] Generic declarative seat health probe with Tailscale/multi-host fallback."""
+    candidate_hosts = []
+    primary_host = seat.get("host")
+    if primary_host:
+        candidate_hosts.append(primary_host)
+    fallback_hosts = seat.get("fallback_hosts", [])
+    if isinstance(fallback_hosts, list):
+        for fh in fallback_hosts:
+            if fh and fh not in candidate_hosts:
+                candidate_hosts.append(fh)
+    if not candidate_hosts:
+        candidate_hosts = ["127.0.0.1"]
+
     port = seat.get("port", 80)
-    if not probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
-        return False
-    
     probe_path = seat.get("probe_path", "/v1/models")
-    url = f"http://{host}:{port}{probe_path}"
     payload = seat.get("probe_payload")
     t_probe = 2.0 * seat.get("t_cold", 0.85)
-    return probe_http(url, payload=payload, timeout=t_probe)
+
+    for host in candidate_hosts:
+        if probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
+            url = f"http://{host}:{port}{probe_path}"
+            if probe_http(url, payload=payload, timeout=t_probe):
+                seat["active_host"] = host
+                return True
+    return False
 
 def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
@@ -167,7 +182,7 @@ def query_sovereign_engine(
 
     for seat in candidates:
         seat_id = seat.get("id", "UNKNOWN")
-        host = seat.get("host", "127.0.0.1")
+        host = seat.get("active_host") or seat.get("host", "127.0.0.1")
         port = seat.get("port", 80)
         protocol = seat.get("protocol", "OPENAI").upper()
         model = seat.get("default_model") or (seat.get("probe_payload", {}) or {}).get("model") or "default"
