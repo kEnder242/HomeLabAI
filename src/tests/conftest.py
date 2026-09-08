@@ -95,12 +95,26 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
     return True
 
 
+PENDING_RESET_PATH = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+
+def get_pending_reset_info() -> dict:
+    """[FEAT-537] Reads pending reset action and quiet window state."""
+    import json
+    if os.path.exists(PENDING_RESET_PATH):
+        try:
+            with open(PENDING_RESET_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"pending_action": "NONE", "action_level": 0, "timer_expiry_ts": 0, "reasons": []}
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session):
     """Pytest session start hook to verify boot commit consistency.
 
     Computes local git commit and fetches served commit from lab-attendant.
-    Prints warnings if mismatch or unreachable, OK if match.
+    Prints actionable SOFT_RELOAD / DEEP_RESET warnings if mismatch detected.
     """
     local_commit, served_commit, is_vocal_status = get_bytecode_status()
 
@@ -115,8 +129,16 @@ def pytest_sessionstart(session):
         if local_commit == served_commit:
             print(f"✅ boot commit OK: {local_commit}{vocal_tag}")
         else:
+            pending = get_pending_reset_info()
+            action = pending.get("pending_action", "SOFT_RELOAD")
+            if action == "NONE":
+                action = "SOFT_RELOAD"
+            
+            reasons = pending.get("reasons", [])
+            reason_str = f"\nTrigger: {reasons[0]}" if reasons else ""
+
             _print_warning_box(
-                f"[WARN] STALE BYTECODE\nLocal:  {local_commit}\nServed: {served_commit}{vocal_tag}"
+                f"[WARN] STALE BYTECODE ({action})\nLocal:   {local_commit}\nServed:  {served_commit}{vocal_tag}{reason_str}"
             )
     elif local_commit:
         _print_warning_box(
@@ -196,9 +218,26 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     global _LOCAL_COMMIT, _SERVED_COMMIT
     if _LOCAL_COMMIT and _SERVED_COMMIT:
         if _LOCAL_COMMIT != _SERVED_COMMIT:
+            import time
+            pending = get_pending_reset_info()
+            action = pending.get("pending_action", "SOFT_RELOAD")
+            if action == "NONE":
+                action = "SOFT_RELOAD"
+            expiry = pending.get("timer_expiry_ts", 0)
+            now = time.time()
+            rem = f" ({int((expiry - now)/60)}m quiet window)" if expiry > now else ""
+            reasons = pending.get("reasons", [])
+            reasons_str = f"\nTriggered by: {', '.join(reasons[:2])}" if reasons else ""
+
+            if action == "DEEP_RESET":
+                fix_msg = "Core architecture changed. OS process bounce required (or wait for auto-reboot)."
+            else:
+                fix_msg = "Resident modules changed. Fast hot-reload available via POST /reload_residents (VRAM preserved)."
+
             terminalreporter.section("⚠️ LIVE LAB SYNCHRONIZATION NOTICE (BKM-024)", sep="=", yellow=True)
             terminalreporter.write_line(
-                f"STALE BYTECODE DETECTED: Local HEAD ({_LOCAL_COMMIT}) != Served ({_SERVED_COMMIT})\n"
+                f"STALE BYTECODE DETECTED [{action}{rem}]: Local HEAD ({_LOCAL_COMMIT}) != Served ({_SERVED_COMMIT})\n"
+                f"Prescription: {fix_msg}{reasons_str}\n"
                 "Fast unit tests/mocks verified isolated logic, but final task certification requires\n"
                 "verifying against the active running daemon (matching Git HEAD) and live endpoints."
             )
