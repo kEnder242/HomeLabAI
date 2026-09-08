@@ -162,9 +162,10 @@ def live_vocal():
     """
     if _LOCAL_COMMIT and _SERVED_COMMIT and _LOCAL_COMMIT != _SERVED_COMMIT:
         pytest.fail(
-            f"LIVE IS GOD VIOLATION: Stale bytecode served on port 8765!\n"
-            f"Local: {_LOCAL_COMMIT} | Served: {_SERVED_COMMIT}\n"
-            f"Action required: 'sudo systemctl restart lab-attendant.service'"
+            f"LIVE INTEGRITY VIOLATION (BKM-024): Stale bytecode served on port 8765!\n"
+            f"Local Git HEAD:    {_LOCAL_COMMIT}\n"
+            f"Served Boot Commit: {_SERVED_COMMIT}\n"
+            f"Action required: Restart the Foyer daemon or execute 'sudo systemctl restart lab-attendant.service'"
         )
 
     try:
@@ -188,3 +189,24 @@ def _print_warning_box(message: str):
     for line in lines:
         print(f"| {line.ljust(max_len)} |")
     print(border)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Prints a clear live verification reminder at the very end of every test run."""
+    global _LOCAL_COMMIT, _SERVED_COMMIT
+    if _LOCAL_COMMIT and _SERVED_COMMIT:
+        if _LOCAL_COMMIT != _SERVED_COMMIT:
+            terminalreporter.section("⚠️ LIVE LAB SYNCHRONIZATION NOTICE (BKM-024)", sep="=", yellow=True)
+            terminalreporter.write_line(
+                f"STALE BYTECODE DETECTED: Local HEAD ({_LOCAL_COMMIT}) != Served ({_SERVED_COMMIT})\n"
+                "Fast unit tests/mocks verified isolated logic, but final task certification requires\n"
+                "verifying against the active running daemon (matching Git HEAD) and live endpoints."
+            )
+        else:
+            terminalreporter.write_line(f"🎯 Live Lab Synchronized: Boot commit {_SERVED_COMMIT} matches Local HEAD.")
+    elif _LOCAL_COMMIT and not _SERVED_COMMIT:
+        terminalreporter.section("ℹ️ OFFLINE TEST RUN NOTICE (BKM-024)", sep="=", yellow=True)
+        terminalreporter.write_line(
+            "Lab server on port 8765 is offline. Fast mocks passed, but final live certification is pending."
+        )
+
