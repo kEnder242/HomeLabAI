@@ -654,27 +654,34 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
 │  1. Node Kender (Windows RTX 4090 24GB VRAM / Ollama):                                  │
 │     - Model: hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL (9.16 GB resident).                │
 │     - Headroom: ~14.8 GB dedicated VRAM for KV cache + dynamic host RAM paging.          │
-│     - Swarm Role: Layer 2 Orchestrator (Atlas) — absorbs broad sprint plans, global      │
-│       state, and sequences task dependencies. Pure routing (NO CODE EDITS).              │
+│     - Swarm Roles:                                                                       │
+│       * Layer 2 Conductor (Atlas): Absorbs sprint plan, sequences cascade dependencies.  │
+│       * Stage 2 Scout (Librarian): Read/grep anchor discovery (NO file edits, NO bash).  │
+│       * Stage 4 Verifier (Momus): Bash/pytest runner & traceback parser (NO code edits). │
 │                                                                                          │
-│  2. Node Brain (Apple M5 Air 32GB Unified Memory / oMLX dflash):                         │
+│  2. Node Brain (Apple M5 Air 32GB Unified Memory / oMLX dflash via Headroom :8002):      │
 │     - Model: mlx-community--Qwen3.8-27B-4bit (15.2 GB resident).                         │
+│     - Headroom Proxy (:8002): Compresses prompt prefill KV caches to prevent Metal OOM.  │
 │     - Metal Memory Ceiling: iogpu.wired_limit_mb caps wired GPU memory at ~24.46 GB.     │
-│       A 27B model prefilling > 4k tokens triggers immediate Metal allocation panic.      │
-│     - Swarm Role: Layer 3 Fast Worker (Sisyphus-Junior) — bounded (< 1.5k tok) code     │
-│       stub fill via clara-dna_safe_patch. Heavy search/tools disabled.                   │
+│     - Swarm Role: Stage 3 Surgical Worker (Sisyphus-Junior) — bounded (< 1.5k tok) code │
+│       patching via clara-dna_safe_patch. Heavy search, bash, and test tools DENIED.     │
 │                                                                                          │
-│  SWARM TOPOLOGY INVERSION LAW:                                                           │
-│  - Broad Context (Tier 1 Sprint) MUST flow into 4090 Atlas (Flexible RAM ceiling).       │
-│  - Narrow Contracts (Tier 2 AST Stubs) MUST flow into M5 Air Junior (Fast, strict cap).  │
-│  - Violating this hierarchy by feeding 10k token plans to M5 Air blows the Metal limit;  │
-│    forcing 4090 to execute code edits ties up the orchestrator on low-tier syntax.       │
+│  THE 4-STAGE AGENT CASCADE (AUTONOMOUS SWARM FLOW):                                      │
+│  To prevent Layer 1 (AGY) from excessive "spoon-feeding" token traps while protecting    │
+│  small local model contexts, Atlas drives a 4-stage sequential subagent cascade:         │
+│  1. Stage 1 (Atlas): Ingest sprint plan on disk, establish task sequence.                │
+│  2. Stage 2 (Librarian): Inspect target code & extract exact incumbent anchors/imports.  │
+│  3. Stage 3 (Sisyphus-Junior): Apply surgical diff via clara-dna_safe_patch.            │
+│  4. Stage 4 (Momus): Execute verification command via bash, parse and digest tracebacks. │
+│  * Ephemeral Context Rule: Each stage runs via task(), auto-flushing context on exit.    │
 │                                                                                          │
 │  SCARS RETROSPECTIVE:                                                                    │
 │  - Scar #1: Feeding broad sprint context directly to M5 Air 27B caused silent kernel     │
 │    hangs when Metal prefill activation buffers exceeded wired unified memory limits.     │
 │  - Scar #2: Atlas attempting direct file editing caused hallucinated imports; resolved   │
-│    by hard-pinning Atlas permissions to edit:deny and task(category="unspecified-low").  │
+│    by hard-pinning Atlas permissions to edit:deny and delegating via task().             │
+│  - Scar #3: Junior running tests polluted its context with verbose traceback dumps;     │
+│    resolved by isolating test execution and linting to Momus (Stage 4).                  │
 │                                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
