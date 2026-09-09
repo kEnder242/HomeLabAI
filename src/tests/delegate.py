@@ -480,12 +480,10 @@ Edit Target(s): {target_files or reference_file}
 [ORCHESTRATION INSTRUCTIONS FOR ATLAS]
 1. Use the `read` tool to read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
 2. Use the `read` tool to read the incumbent target file ({target_files.split(",")[0] if target_files else reference_file}) to verify line numbers and anchors.
-3. Sequence multi-file changes across progressive stages:
-   - [STAGE 1: INTERFACE_CONTRACT_STUB]: Add method stub to target file using exact code from sprint spec. (Verify: ruff check <target_file>).
-   - [STAGE 2: TEST_HARNESS_CREATION]: Create test file.
-   - [STAGE 3: CALLER_INTEGRATION_WIRING]: Wire caller modules.
-   - [STAGE 4: FULL_SILICON_CONVERGENCE]: Run full pytest suite.
-4. Formulate task() using exact verbatim Python code from the sprint spec:
+3. Sequence micro-tasks to Junior via task(category="{_atlas_dispatch_category}", ...):
+   - Junior's only role is surgical code modification via clara-dna_safe_patch (or write for new files).
+   - Junior has NO bash and runs NO tests.
+4. Formulate task() using exact verbatim code anchors from the sprint spec:
    task(
        category="{_atlas_dispatch_category}",
        prompt=(
@@ -493,13 +491,15 @@ Edit Target(s): {target_files or reference_file}
            "- Target File: <path>\\n"
            "- Tool: clara-dna_safe_patch (or write for new files)\\n"
            "[OLD CODE / ANCHOR]\\n<exact incumbent code block from file>\\n"
-           "[NEW CODE IMPLEMENTATION]\\n<exact new code from sprint spec>\\n"
-           "[VERIFICATION COMMAND]\\n<stage verification command>"
+           "[NEW CODE IMPLEMENTATION]\\n<exact new code from sprint spec>"
        )
    )
-5. If incumbent file anchors do not match sprint description, emit [BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH].
-6. When Junior completes, synthesize a 2-line completion report with test results."""
-        note_block = f"[NOTE] Read Story {story_num} in '{reference_file}'{_sprint_line_pointer}. Read target file. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...)."
+5. Review Junior's output:
+   - Junior reports non-blocking lint errors from clara-dna_safe_patch.
+   - You (Atlas) own the `bash` tool. Run pytest, ruff, or validation commands yourself.
+   - If tests fail or linting requires cleanup, dispatch a new micro-task to Junior with the exact fix.
+6. When all stages and verification commands pass, synthesize a 2-line completion report to AGY."""
+        note_block = f"[NOTE] Read Story {story_num} in '{reference_file}'{_sprint_line_pointer}. Read target file. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...). Run pytest/bash verification yourself."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
