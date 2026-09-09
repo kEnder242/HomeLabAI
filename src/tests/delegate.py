@@ -547,15 +547,16 @@ Sprint Reference: {effective_sprint_doc}
 ---
 """
     elif local_only and effective_sprint_doc:
-        tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
-Sprint Reference: {effective_sprint_doc} (Available on disk for full architectural context & diagrams)
+        # [Sprint 76 Action 4] Lean Local Anchor: Zero prompt bloat. Point directly to disk.
+        tier1_block = f"""[TIER 1: SOVEREIGN SPRINT CONTEXT]
+- Reference File: {effective_sprint_doc} (On disk; inspect via read tool if architectural context is needed)
 
 ---
 """
 
-    # Optional target file snippet injection to prevent M5 Air memory ceiling blowouts
+    # Optional target file snippet injection (bypassed in local_only mode to preserve M5 Air prefill headroom)
     target_snippet_block = ""
-    if target_files and os.path.exists(target_files.split(",")[0].strip()):
+    if not local_only and target_files and os.path.exists(target_files.split(",")[0].strip()):
         first_target = target_files.split(",")[0].strip()
         try:
             with open(first_target, "r") as tf:
@@ -655,14 +656,22 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if not model_ladder:
             model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
 
+    # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air / KENDER)
+    if local_only:
+        est_tokens = len(prompt) // 4
+        if est_tokens > 12000:
+            log_step(story_num, "LOCAL_CONTEXT_OVERFLOW", f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 12,000 tokens to prevent oMLX prefill memory guard crashes. Decompose via Atlas first.")
+            return
+
     attempt = 0
     while attempt < max_retries:
         attempt += 1
-        if attempt > 1:
+        # [Sprint 76 Action 3] Always guarantee a fresh session on local silicon to prevent tool history compounding
+        if attempt > 1 or local_only or not session_id:
             try:
                 session_payload = {
                     "directory": target_dir,
-                    "title": f"{session_title} (Fallback Attempt {attempt})"
+                    "title": f"{session_title} (Attempt {attempt})"
                 }
                 s_req = urllib.request.Request(
                     f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -672,7 +681,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 with urllib.request.urlopen(s_req, timeout=10) as s_resp:
                     s_data = json.loads(s_resp.read().decode("utf-8"))
                     session_id = s_data["id"]
-                    log_step(story_num, "SESSION_RECREATED", f"Created fresh session {session_id} for fallback attempt {attempt}")
+                    log_step(story_num, "SESSION_FRESH", f"Using fresh session {session_id} for attempt {attempt}")
             except Exception:
                 pass
 
@@ -978,7 +987,8 @@ if __name__ == "__main__":
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
     parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
-    parser.add_argument("--local-only", action="store_true", help="Force 100 percent sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
+    parser.add_argument("--local-only", action="store_true", default=True, help="Force 100 percent sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks) [DEFAULT: True]")
+    parser.add_argument("--no-local-only", dest="local_only", action="store_false", help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)")
     parser.add_argument("--cloud-only", action="store_true", help="Force 100 percent cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")
     parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
     parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
