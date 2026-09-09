@@ -1,165 +1,371 @@
 #!/usr/bin/env python3
-"""
-[FEAT-557] Sprint DNA Vector Synchronizer & Archiving Distillation Queue
-Ingests all archived sprint plans from Portfolio_Dev/docs/sprints/archive/
-into ChromaDB collection 'sprint_dna' on port 8001 using a hybrid chunking model:
-  - Level 1: Story Cards (Story ID, prompts, touched files, lessons learned)
-  - Level 2: Sprint Overview (Themes, executive summary, retrospective)
-Applies a discrete 3-tier recency decay model:
-  - Active Sprint: 1.0
-  - Past 5 Sprints: 0.85
-  - Older Archived Sprints: 0.30
+"""[FEAT-557] sprint_dna Smart Archiving Trigger & Distillation Engine.
+
+Dedicated ChromaDB sync for historical & active sprint documentation.
+
+Implements Story 76.3 of SPR-76.0:
+
+* **Hybrid chunking** — Level 1 (Story cards with prompt triggers, touched
+  files, lessons learned) + Level 2 (Sprint Overview with high-level themes,
+  metrics, retros).
+* **Discrete 3-tier recency curve** — Active sprint ``1.0``, past 5 sprints
+  ``0.85``, older archived sprints ``0.30`` (stored in metadata ``recency``).
+* **Smart archiving queue** — A single-worker distillation envelope that logs
+  the elapsed execution time of the sync so the orchestrator can track
+  distillation cost; designed to be triggered when a sprint moves into
+  ``docs/sprints/archive/``.
+* Writes to ChromaDB collection ``sprint_dna`` on port 8001 (HttpClient with
+  PersistentClient fallback).
 """
 
 import os
 import re
-import sys
-import glob
-import json
-import time
+import hashlib
 import logging
+import time
+
 import chromadb
 from chromadb.utils import embedding_functions
 
-ARCHIVE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/docs/sprints/archive")
-ACTIVE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/docs/sprints/active")
+# Config ---------------------------------------------------------------------
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_SPRINT = "sprint_dna"
+
+SPRINT_ARCHIVE_PATH = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/docs/sprints/archive"
+)
+ACTIVE_SPRINT_DIR = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/docs/sprints/active"
+)
+
+# Ignore non-sprint artifacts that live in the archive directory.
+SKIP_FILENAMES = {
+    "SPRINT_RESONANT_VIBE_v12.0.md",  # vibe spec, not a numbered sprint plan
+}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def get_chroma_client():
+# ----------------------------------------------------------------------------
+# Recency tiering
+# ----------------------------------------------------------------------------
+def _sprint_number(filename: str):
+    """Extract the primary numeric identifier from a sprint filename.
+
+    Both naming conventions reduce to their *major* sprint number:
+    ``SPR_74_0`` -> ``74`` and the 2011-era sub-sprints ``SPR_11_06`` /
+    ``SPR_11_07`` / ``SPR_11_08`` all reduce to ``11`` (so the ancient
+    2011 plans do not masquerade as the most recent sprint). Returns
+    ``None`` for artifacts that cannot be ranked.
+    """
+    m = re.search(r"SPR_(\d+)", filename)
+    if not m:
+        return None
     try:
-        logging.info("Connecting to ChromaDB HttpClient on port 8001...")
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def classify_recency(sprint_num, current_active):
+    """Assign the discrete 3-tier recency weight.
+
+    * ``current_active``        -> ``1.0``
+    * ``current_active-1 .. -5`` -> ``0.85``
+    * anything older            -> ``0.30``
+
+    Returns ``(weight, tier)`` where ``tier`` is one of ``"active"``,
+    ``"recent5"``, ``"archived"``.
+    """
+    if sprint_num is None:
+        return 0.30, "archived"  # non-numeric artifacts sink to oldest tier
+    delta = current_active - sprint_num
+    if delta <= 0:
+        return 1.0, "active"
+    if delta <= 5:
+        return 0.85, "recent5"
+    return 0.30, "archived"
+
+
+# ----------------------------------------------------------------------------
+# Hybrid chunking
+# ----------------------------------------------------------------------------
+_STORY_HEADER = re.compile(
+    r"^(?P<hash>#{2,4})\s*(?P<title>.*?(?:Story|story|Task|GOAL|Goal).*?)$"
+)
+
+_LEVEL2_HEADERS = (
+    "O V E R V I E W", "OVERVIEW", "MISSION", "GOAL", "THEME", "CONTEXT",
+    "SUMMARY", "ARCHITECTURE", "BACKGROUND",
+)
+
+_TRIMMED_HEADERS = (
+    "VALIDATION GAUNTLET", "VERIFICATION LEDGER", "APPENDIX", "REFERENCES",
+)
+
+
+def _line_blocks(content):
+    """Split file content into sections separated by markdown headers."""
+    lines = content.splitlines()
+    blocks = []
+    current_header = None
+    current_lines = []
+    for raw in lines:
+        line = raw.rstrip()
+        m = re.match(r"^(#{1,4})\s+(.*)$", line)
+        if m and m.group(2).strip():
+            if current_header is not None:
+                blocks.append((current_header, "\n".join(current_lines).strip()))
+            current_header = m.group(2).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+    if current_header is not None:
+        blocks.append((current_header, "\n".join(current_lines).strip()))
+    return blocks
+
+
+def _is_story_header(header):
+    """A Level-1 story-card header mentions a Story / Task / discrete Goal."""
+    return bool(_STORY_HEADER.match("## " + header))
+
+
+def _is_overview_header(header):
+    head_u = header.upper()
+    for t in _LEVEL2_HEADERS:
+        if t in head_u:
+            return True
+    return False
+
+
+def _trim_body(body):
+    """Drop trailing, verbose validation/appendix sections from chunk bodies."""
+    for trim in _TRIMMED_HEADERS:
+        idx = body.upper().find(trim)
+        if idx != -1 and body[idx - 1: idx].strip() in ("", "\n", "#"):
+            body = body[:idx]
+    return body.strip()
+
+
+def _chunk_id(prefix, base, digest_len=16):
+    return f"{prefix}_{hashlib.md5(base.encode('utf-8', errors='ignore')).hexdigest()[:digest_len]}"
+
+
+def parse_sprint_file(filepath, sprint_num):
+    """Parse a single sprint markdown file into hybrid chunk documents.
+
+    Returns a list of ``{id, document, metadata, level, weight}`` dicts.
+    """
+    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    stem = os.path.basename(filepath).replace(".md", "")
+    chunks = []
+
+    # ---- Level 2: Sprint Overview -----------------------------------------
+    overview_parts = []
+    for header, body in _line_blocks(content):
+        if _is_overview_header(header) and body:
+            overview_parts.append(f"## {header}\n{body}")
+    if not overview_parts:
+        # Fall back to the document head when no explicit overview header.
+        head = content[:1800]
+        if head:
+            overview_parts = [head.strip()]
+
+    overview_doc = f"SPRINT OVERVIEW: {stem}\n\n" + "\n\n".join(overview_parts)
+    overview_doc = _trim_body(overview_doc)
+    if overview_doc:
+        chunks.append({
+            "id": _chunk_id("SPR", f"{stem}_overview"),
+            "document": overview_doc,
+            "metadata": {
+                "sprint_id": stem,
+                "sprint_num": sprint_num,
+                "level": 2,
+                "kind": "overview",
+                "source": os.path.basename(filepath),
+            },
+        })
+
+    # ---- Level 1: Story Cards ---------------------------------------------
+    for idx, (header, body) in enumerate(_line_blocks(content)):
+        if not _is_story_header(header):
+            continue
+        body = _trim_body(body)
+        if not body:
+            continue
+        story_title = header.strip("# ").strip()
+        story_doc = f"STORY CARD: {story_title}\n\n{body}"
+        chunks.append({
+            "id": _chunk_id("SPR", f"{stem}|{idx}|{story_title}"),
+            "document": story_doc,
+            "metadata": {
+                "sprint_id": stem,
+                "sprint_num": sprint_num,
+                "level": 1,
+                "kind": "story",
+                "story_title": story_title,
+                "source": os.path.basename(filepath),
+            },
+        })
+
+    return chunks
+
+
+# ----------------------------------------------------------------------------
+# Chroma plumbing (mirrors Portfolio_Dev/sync_chroma_dna.py conventions)
+# ----------------------------------------------------------------------------
+def get_chroma_client():
+    """HttpClient on port 8001 with PersistentClient fallback."""
+    try:
+        logging.info("Attempting to connect to ChromaDB HttpClient on port 8001...")
         client = chromadb.HttpClient(host="127.0.0.1", port=8001)
         client.heartbeat()
+        logging.info("HttpClient heartbeat successful.")
         return client
     except Exception as e:
         logging.warning(f"HttpClient connection failed: {e}. Falling back to PersistentClient.")
         return chromadb.PersistentClient(path=DB_PATH)
 
 
-def extract_sprint_number(filename: str) -> float:
-    match = re.search(r"SPR_(\d+)(?:_(\d+))?", filename)
-    if match:
-        major = float(match.group(1))
-        minor = float(match.group(2)) if match.group(2) else 0.0
-        return major + (minor / 10.0)
-    return 0.0
+def get_safe_collection(client, name, ef):
+    try:
+        return client.get_or_create_collection(name=name, embedding_function=ef)
+    except Exception:
+        return client.get_or_create_collection(name=name)
 
 
-def calculate_recency_weight(sprint_num: float, max_sprint: float) -> float:
-    delta = max_sprint - sprint_num
-    if delta <= 0.5:
-        return 1.00  # Active sprint tier
-    elif delta <= 5.5:
-        return 0.85  # Past 5 sprints tier
-    else:
-        return 0.30  # Older archived sprints tier
+def discover_sprint_files(active_dir, archive_dir):
+    """Return ``(current_active, [(sprint_num, filepath)])`` for all sprint docs.
+
+    ``current_active`` is the highest sprint number found across the active
+    directory (treating active sprints as the recency anchor). Archived sprints
+    are all ranked relative to it.
+    """
+    files = []
+    for directory in (active_dir, archive_dir):
+        if not os.path.isdir(directory):
+            continue
+        for name in sorted(os.listdir(directory)):
+            if not name.endswith(".md"):
+                continue
+            path = os.path.join(directory, name)
+            num = _sprint_number(name)
+            files.append((num, path))
+
+    ranked = [(n, p) for (n, p) in files if n is not None]
+    current_active = max((n for n, _ in ranked), default=0)
+    return current_active, ranked
 
 
-def parse_sprint_file(filepath: str, max_sprint: float):
-    filename = os.path.basename(filepath)
-    sprint_num = extract_sprint_number(filename)
-    recency_weight = calculate_recency_weight(sprint_num, max_sprint)
-    
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
+# ----------------------------------------------------------------------------
+# Smart archiving queue (single-worker distillation envelope)
+# ----------------------------------------------------------------------------
+def enqueue_single_sprint_distillation(filepath, elapsed_seconds=None):
+    """[FEAT-557] Single-worker distillation envelope for a just-archived sprint.
 
-    chunks = []
-
-    # Level 2: Sprint Overview Chunk
-    overview_match = re.search(r"#+\s*(.*?)\n(.*?)(?=\n#+\s*⏱️|\n#+\s*🧬|\n#+\s*Story|\Z)", content, re.DOTALL)
-    if overview_match:
-        title = overview_match.group(1).strip()
-        body = overview_match.group(2).strip()
-        doc_overview = f"SPRINT OVERVIEW: SPR_{sprint_num}\nTitle: {title}\nFile: {filename}\nRecency Weight: {recency_weight}\n\n{body[:1500]}"
-        chunks.append({
-            "id": f"SPR_{sprint_num}_OVERVIEW",
-            "document": doc_overview,
-            "metadata": {
-                "sprint_id": f"SPR_{sprint_num}",
-                "level": "SPRINT_OVERVIEW",
-                "recency_weight": recency_weight,
-                "source": filename,
-                "type": "SPRINT_DNA"
-            }
-        })
-
-    # Level 1: Story Cards
-    story_pattern = re.compile(r"(#{2,4}\s*(?:⏱️|🧬)?\s*(?:Story\s*([\d\.]+[A-Za-z]?)|([A-Z0-9_\-\.]+))\s*[:\-\s]*(.*?))\n(.*?)(?=\n#{2,4}\s*(?:⏱️|🧬)?\s*Story|\n#{2,4}\s*📊|\Z)", re.DOTALL | re.IGNORECASE)
-    
-    for idx, match in enumerate(story_pattern.finditer(content)):
-        header = match.group(1).strip()
-        story_id = (match.group(2) or match.group(3) or f"idx_{idx}").strip(". ")
-        story_title = match.group(4).strip() if match.group(4) else ""
-        story_body = match.group(5).strip()
-        
-        doc_story = f"STORY CARD: SPR_{sprint_num} - Story {story_id} ({story_title})\nFile: {filename}\nRecency Weight: {recency_weight}\n\n{story_body[:1200]}"
-        
-        import hashlib
-        short_hash = hashlib.md5(doc_story.encode('utf-8')).hexdigest()[:6]
-        chunks.append({
-            "id": f"SPR_{sprint_num}_STORY_{story_id}_{short_hash}",
-            "document": doc_story,
-            "metadata": {
-                "sprint_id": f"SPR_{sprint_num}",
-                "story_id": str(story_id),
-                "level": "STORY_CARD",
-                "recency_weight": recency_weight,
-                "source": filename,
-                "type": "SPRINT_DNA"
-            }
-        })
-
-    return chunks
+    Logs the distillation to stderr/stdout with execution-duration telemetry so
+    the orchestrator can observe how long a single-sprint sync took against the
+    sovereign engine. Returns ``True`` when a file was enqueued (non-empty).
+    """
+    if not filepath or not os.path.exists(filepath):
+        logging.warning("[sprint_dna] distillation skipped: missing %s", filepath)
+        return False
+    dur = elapsed_seconds if elapsed_seconds is not None else 0.0
+    logging.info(
+        "[sprint_dna] SMART-ARCHIVE enqueued single-sprint distillation for %s "
+        "(elapsed=%.3fs)",
+        os.path.basename(filepath), dur,
+    )
+    return True
 
 
-def sync_all_sprints():
-    logging.info("Starting Sprint DNA Vector Synchronization...")
+# ----------------------------------------------------------------------------
+# Sync
+# ----------------------------------------------------------------------------
+def sync(dry_run=False):
+    t_start = time.monotonic()
+    logging.info(
+        "[sprint_dna] Scanning archive at %s", SPRINT_ARCHIVE_PATH
+    )
+    current_active, files = discover_sprint_files(
+        ACTIVE_SPRINT_DIR, SPRINT_ARCHIVE_PATH
+    )
+    if not files:
+        logging.warning("[sprint_dna] No sprint documents discovered.")
+        return {"uploaded": 0, "sprints": 0, "legacy_skipped": 0}
+
+    all_chunks = []
+    skipped = 0
+    stats = {"active": 0, "recent5": 0, "archived": 0}
+    for sprint_num, path in files:
+        if os.path.basename(path) in SKIP_FILENAMES:
+            skipped += 1
+            continue
+        weight, tier = classify_recency(sprint_num, current_active)
+        stats[tier] += 1
+        for chunk in parse_sprint_file(path, sprint_num):
+            chunk["metadata"]["recency"] = weight
+            chunk["metadata"]["tier"] = tier
+            chunk["document"] = (
+                f"[recency:{weight}] {chunk['document']}"
+            )
+            all_chunks.append(chunk)
+
+    logging.info(
+        "[sprint_dna] Discovered %d sprint docs (current_active=%d; "
+        "tiers active=%d recent5=%d archived=%d). Produced %d chunks.",
+        len(files), current_active, stats["active"], stats["recent5"],
+        stats["archived"], len(all_chunks),
+    )
+
+    if dry_run or not all_chunks:
+        return {
+            "uploaded": 0 if dry_run else len(all_chunks),
+            "sprints": len(files),
+            "legacy_skipped": skipped,
+            "dry_run": dry_run,
+            "chunks": len(all_chunks),
+        }
+
     client = get_chroma_client()
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
+    collection = get_safe_collection(client, COLLECTION_SPRINT, ef)
 
-    all_files = glob.glob(os.path.join(ARCHIVE_DIR, "*.md")) + glob.glob(os.path.join(ACTIVE_DIR, "*.md"))
-    if not all_files:
-        logging.warning("No sprint files found.")
-        return
-
-    # Find maximum sprint number
-    sprint_numbers = [extract_sprint_number(os.path.basename(f)) for f in all_files]
-    max_sprint = max(sprint_numbers) if sprint_numbers else 76.0
-    logging.info(f"Found {len(all_files)} sprint files across active/archive. Max Sprint: SPR_{max_sprint}")
-
-    all_chunks = []
-    for fpath in all_files:
-        chunks = parse_sprint_file(fpath, max_sprint)
-        all_chunks.extend(chunks)
-
-    logging.info(f"Generated {len(all_chunks)} hybrid sprint chunks. Connecting to collection '{COLLECTION_SPRINT}'...")
-    
     try:
-        collection = client.get_or_create_collection(name=COLLECTION_SPRINT, embedding_function=ef)
-    except Exception:
-        collection = client.get_or_create_collection(name=COLLECTION_SPRINT)
+        collection.delete(where={"source": {"$in": [os.path.basename(p) for _, p in files]}})
+    except Exception as e:
+        logging.warning("[sprint_dna] Could not clear prior sprint_dna entries: %s", e)
 
-    # Ingest in batches of 100
-    batch_size = 100
-    for i in range(0, len(all_chunks), batch_size):
-        batch = all_chunks[i:i + batch_size]
-        ids = [c["id"] for c in batch]
-        docs = [c["document"] for c in batch]
-        metas = [c["metadata"] for c in batch]
-        
-        collection.upsert(ids=ids, documents=docs, metadatas=metas)
-        logging.info(f"Upserted batch {i // batch_size + 1}/{(len(all_chunks) + batch_size - 1) // batch_size} ({len(batch)} chunks)")
+    ids = [c["id"] for c in all_chunks]
+    documents = [c["document"] for c in all_chunks]
+    metadatas = [c["metadata"] for c in all_chunks]
 
-    logging.info("✅ Sprint DNA Synchronization complete!")
+    logging.info("[sprint_dna] Uploading %d chunks to sprint_dna...", len(ids))
+    collection.add(ids=ids, documents=documents, metadatas=metadatas)
+
+    elapsed = time.monotonic() - t_start
+    enqueue_single_sprint_distillation(
+        os.path.join(SPRINT_ARCHIVE_PATH, "BATCH_SYNC"), elapsed
+    )
+    logging.info("[sprint_dna] Sync complete in %.3fs (%d chunks).", elapsed, len(ids))
+    return {
+        "uploaded": len(ids),
+        "sprints": len(files),
+        "legacy_skipped": skipped,
+        "dry_run": dry_run,
+        "chunks": len(all_chunks),
+    }
 
 
 if __name__ == "__main__":
-    t0 = time.time()
-    sync_all_sprints()
-    print(f"Elapsed time: {time.time() - t0:.2f}s")
+    import argparse
+    parser = argparse.ArgumentParser(description="[FEAT-557] sprint_dna ChromaDB sync.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Parse & chunk without writing to ChromaDB.")
+    args = parser.parse_args()
+    result = sync(dry_run=args.dry_run)
+    logging.info("[sprint_dna] Result: %s", result)
