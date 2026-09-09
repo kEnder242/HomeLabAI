@@ -306,6 +306,15 @@ def main():
         print(json.dumps({"injectSteps": []}))
         return
 
+    # [Action 1: Junior / Air Context Bypass]
+    # Sisyphus-Junior and local worker executions MUST NOT receive ambient wake-up packs,
+    # recent memories, or ClaraDB/ICM injections. Only Node KENDER (Atlas/Ollama) receives JIT context.
+    agent_name = (payload.get("agent") or payload.get("agentName") or "").lower()
+    session_title = (payload.get("sessionTitle") or payload.get("title") or "").lower()
+    if "junior" in agent_name or "junior" in session_title or "air" in agent_name:
+        print(json.dumps({"injectSteps": []}))
+        return
+
     inv_num = payload.get("invocationNum", 1)
     workspace_paths = payload.get("workspacePaths", [])
     project = os.path.basename(workspace_paths[0]) if workspace_paths else "Dev_Lab"

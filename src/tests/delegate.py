@@ -317,26 +317,21 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     if not target_dir or target_dir == os.path.expanduser("~"):
         target_dir = DEFAULT_TARGET_DIR
-    target_dir = os.path.abspath(target_dir)
-
-    # Map short agent names to exact registered OpenCode agent names.
-    AGENT_MAP = {
-        "atlas": "atlas",
-        "prometheus": "prometheus",
-        "sisyphus": "sisyphus",
-        "sisyphus-junior": "sisyphus-junior",
-    }
-    if not agent or agent == "sisyphus":
-        if mode in ("plan", "investigate"):
-            agent_key = "prometheus"
-        else:
-            agent_key = "sisyphus"
+    # [Action 3: Canonical Agent Routing]
+    # Local implies Atlas (Node KENDER 4090) decomposing tasks to Junior (M5 Air).
+    # Cloud implies Prometheus (cloud planner/swarm).
+    # Oracle mode remains supported as a distinct mode contract.
+    if mode == "oracle":
+        agent = "oracle"
+    elif local_only:
+        agent = "atlas"
+    elif cloud_only:
+        agent = "prometheus"
     else:
-        agent_key = agent.lower()
-    agent = AGENT_MAP.get(agent_key, agent_key)
+        agent = "prometheus"
 
     _target_display = target_files if target_files else reference_file
-    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (reference: {reference_file}, target: {_target_display})")
+    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (agent: {agent}, reference: {reference_file}, target: {_target_display})")
 
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
@@ -985,14 +980,19 @@ if __name__ == "__main__":
     parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
-    parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
+    parser.add_argument("--agent", default=None, help="[DEPRECATED / UNSUPPORTED] Do not specify --agent. Routing is strictly driven by --local-only (Atlas -> Junior) or --cloud-only (Prometheus).")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
-    parser.add_argument("--local-only", action="store_true", default=True, help="Force 100 percent sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks) [DEFAULT: True]")
+    parser.add_argument("--local-only", action="store_true", default=True, help="Force 100 percent sovereign local execution (Atlas on KENDER 4090 decomposes to Junior on M5 Air, zero cloud fallbacks) [DEFAULT: True]")
     parser.add_argument("--no-local-only", dest="local_only", action="store_false", help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)")
-    parser.add_argument("--cloud-only", action="store_true", help="Force 100 percent cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")
+    parser.add_argument("--cloud-only", action="store_true", help="Force 100 percent cloud swarm execution (Prometheus -> Cloud Swarm, zero local hardware fallbacks)")
     parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
     parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
     args = parser.parse_args()
+
+    # [Action 3: Rejection of --agent flag]
+    if args.agent is not None:
+        print("[!] ERROR: The --agent flag is deprecated and unsupported. Routing is strictly driven by delegation targets: --local-only implies Atlas -> Junior; --cloud-only implies Prometheus.", file=sys.stderr, flush=True)
+        sys.exit(2)
 
     # [FEAT-515 / Task 69.6.1] Interactive Session Resume Handler
     if args.resume:
