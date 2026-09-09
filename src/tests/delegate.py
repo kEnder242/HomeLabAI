@@ -310,7 +310,7 @@ def _is_provider_reachable(provider_id: str) -> bool:
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=False, cloud_only=False):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=True, cloud_only=False):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
@@ -510,12 +510,10 @@ Edit Target(s): {target_files or reference_file}
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
 
 [STATIC RULES — L3 INVARIANTS]
-- Research is DONE. Do NOT use search, grep, or find tools across the repository.
-- You operate strictly within the assigned target files and function stubs.
-- NEVER use destructive bash file overwrites (e.g. echo >, cat << 'EOF' >) on existing codebase files.
-- Modifying Existing Files: Always invoke the `clara-dna_safe_patch` MCP tool.
-- Creating New Files: Use the standard `write` tool.
-- Never import new external dependencies without explicit authorization in the story spec.
+- Research is COMPLETE. Operate strictly within the assigned target files and function stubs.
+- Use `clara-dna_safe_patch` for modifying existing files to preserve context anchors.
+- Use the `write` tool (or bash heredoc when creating new directories) when creating brand new greenfield files.
+- Preserve all existing comments, docstrings, and test coverage unrelated to the assigned modification.
 
 [DYNAMIC INGESTION — TASK CONTEXT]
 - Your contract is the Tier 2 specification injected below. It contains exact file paths, symbol anchors, and expected behavior.
@@ -549,15 +547,16 @@ Sprint Reference: {effective_sprint_doc}
 ---
 """
     elif local_only and effective_sprint_doc:
-        tier1_block = f"""[TIER 1: GLOBAL SPRINT SITUATIONAL AWARENESS]
-Sprint Reference: {effective_sprint_doc} (Available on disk for full architectural context & diagrams)
+        # [Sprint 76 Action 4] Lean Local Anchor: Zero prompt bloat. Point directly to disk.
+        tier1_block = f"""[TIER 1: SOVEREIGN SPRINT CONTEXT]
+- Reference File: {effective_sprint_doc} (On disk; inspect via read tool if architectural context is needed)
 
 ---
 """
 
-    # Optional target file snippet injection to prevent M5 Air memory ceiling blowouts
+    # Optional target file snippet injection (bypassed in local_only mode to preserve M5 Air prefill headroom)
     target_snippet_block = ""
-    if target_files and os.path.exists(target_files.split(",")[0].strip()):
+    if not local_only and target_files and os.path.exists(target_files.split(",")[0].strip()):
         first_target = target_files.split(",")[0].strip()
         try:
             with open(first_target, "r") as tf:
@@ -657,14 +656,22 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if not model_ladder:
             model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
 
+    # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air / KENDER)
+    if local_only:
+        est_tokens = len(prompt) // 4
+        if est_tokens > 12000:
+            log_step(story_num, "LOCAL_CONTEXT_OVERFLOW", f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 12,000 tokens to prevent oMLX prefill memory guard crashes. Decompose via Atlas first.")
+            return
+
     attempt = 0
     while attempt < max_retries:
         attempt += 1
-        if attempt > 1:
+        # [Sprint 76 Action 3] Always guarantee a fresh session on local silicon to prevent tool history compounding
+        if attempt > 1 or local_only or not session_id:
             try:
                 session_payload = {
                     "directory": target_dir,
-                    "title": f"{session_title} (Fallback Attempt {attempt})"
+                    "title": f"{session_title} (Attempt {attempt})"
                 }
                 s_req = urllib.request.Request(
                     f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -674,7 +681,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 with urllib.request.urlopen(s_req, timeout=10) as s_resp:
                     s_data = json.loads(s_resp.read().decode("utf-8"))
                     session_id = s_data["id"]
-                    log_step(story_num, "SESSION_RECREATED", f"Created fresh session {session_id} for fallback attempt {attempt}")
+                    log_step(story_num, "SESSION_FRESH", f"Using fresh session {session_id} for attempt {attempt}")
             except Exception:
                 pass
 
@@ -794,15 +801,31 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         duration = time.time() - start_time
 
         if post_result is not None:
-            finish = post_result.get("info", {}).get("finish", "unknown")
-            tokens = post_result.get("info", {}).get("tokens", {})
+            # [FEAT-556 / Swarm Hardening] Check for provider API errors embedded in payload
+            api_err = None
+            if isinstance(post_result, dict):
+                if "error" in post_result.get("info", {}):
+                    api_err = post_result["info"]["error"]
+                elif post_result.get("name") in ("APIError", "UnknownError") or "error" in post_result:
+                    api_err = post_result.get("data") or post_result.get("error")
+
+            finish = post_result.get("info", {}).get("finish", "unknown") if isinstance(post_result, dict) else "unknown"
+            tokens = post_result.get("info", {}).get("tokens", {}) if isinstance(post_result, dict) else {}
             log_step(story_num, "COMPLETE", f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}")
             log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
 
             # [BKM-033 / BKM-034] Extract and display execution response & Handover Reflection directly from in-flight chunk
-            parts = post_result.get("parts", [])
+            parts = post_result.get("parts", []) if isinstance(post_result, dict) else []
             text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
             full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
+
+            # If provider returned an error and no text, trigger fallback to next model in ladder
+            if api_err and not full_text:
+                err_msg = api_err.get("data", {}).get("message") if isinstance(api_err, dict) else str(api_err)
+                log_step(story_num, "API_ERROR_DETECTED", f"Provider API Error on attempt {attempt}/{max_retries}: {err_msg}", severity="WARNING")
+                if attempt < max_retries:
+                    print(f"[!] [STORY {story_num}] Provider {current_model.get('providerID')}/{current_model.get('modelID')} error: {err_msg[:120]}... Falling back to next model in ladder...", flush=True)
+                    continue
 
             # [FEAT-496] Passive Swarm Telemetry Tap
             _log_live_usage_telemetry(story_num, sprint_num, title, current_model, duration, tokens, len(full_text))
@@ -866,7 +889,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 # [FEAT-515 / Task 69.6.2] Silent Failure Escalation Gate
                 # Core Law: "Fix the delegation infrastructure; do not manually finish the sprint."
                 is_silent_failure = (finish == "unknown")
-                if is_silent_failure:
+                if is_silent_failure and attempt < max_retries:
+                    log_step(story_num, "SILENT_FAILURE_RETRY", f"Attempt {attempt}/{max_retries} returned zero text/tools. Falling back to next model in ladder...", severity="WARNING")
+                    print(f"[!] [STORY {story_num}] Model {current_model.get('providerID')}/{current_model.get('modelID')} returned no output. Retrying with next model in ladder...", flush=True)
+                    continue
+                elif is_silent_failure:
                     log_step(story_num, "SILENT_DELEGATION_FAILURE",
                              f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
                              f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
@@ -913,7 +940,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     except Exception:
                         pass
 
-                    print("\n[!!!] DELEGATION HALTED: Silent failure detected. The delegation infrastructure needs fixing.", flush=True)
+                    print("\n[!!!] DELEGATION HALTED: Silent failure detected across all ladder attempts. The delegation infrastructure needs fixing.", flush=True)
                     print(f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}", flush=True)
                     print("[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log", flush=True)
                     _cleanup_active_session()
@@ -960,7 +987,8 @@ if __name__ == "__main__":
     parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
     parser.add_argument("--agent", default="atlas", help="Target agent persona override for testing (default: atlas)")
     parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
-    parser.add_argument("--local-only", action="store_true", help="Force 100 percent sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks)")
+    parser.add_argument("--local-only", action="store_true", default=True, help="Force 100 percent sovereign local execution (M5 Air for architect/plan, Windows KENDER for coder/execute, zero cloud fallbacks) [DEFAULT: True]")
+    parser.add_argument("--no-local-only", dest="local_only", action="store_false", help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)")
     parser.add_argument("--cloud-only", action="store_true", help="Force 100 percent cloud swarm execution (OpenRouter / OpenCode cloud models, zero local hardware fallbacks)")
     parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
     parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
