@@ -198,6 +198,74 @@ def probe_claradb(text: str, is_qq: bool = False):
 
     return results
 
+# [FEAT-557] Targeted sprint_dna ambient gate ---------------------------------
+_SPRINT_KEYWORD_RE = re.compile(
+    r"\b(?:SPR(?:INT)?[-_ ]?\d+|Story\s+\d+\.\d+|sprint_dna)\b|\bsprint\b|\bplan\b|\bretro\b",
+    re.IGNORECASE,
+)
+
+
+def is_sprint_query(text: str) -> bool:
+    """True when the prompt carries sprint-planning keyword anchors.
+
+    Gates ``sprint_dna`` retrieval to prompts that are actually about sprint
+    history / story evolution / planning/retrospection, keeping the hook
+    targeted (per Story 76.3) rather than firing on every turn.
+    """
+    if not text:
+        return False
+    return bool(_SPRINT_KEYWORD_RE.search(text))
+
+
+def probe_sprint_dna(text: str, limit: int = 4, timeout: float = 0.150):
+    """Query the ``sprint_dna`` collection when sprint keywords are present.
+
+    150ms fail-open: any connection / query issue returns an empty list so the
+    ambient hook never blocks or stalls the main prompt pipeline.
+
+    Returns a list of human-readable lines like
+    ``- [SPR_74_0] Overview (recency 0.85)``.
+    """
+    if not is_sprint_query(text):
+        return []
+    try:
+        # NOTE: `get_chroma_client()` imports chromadb internally; we never
+        # reference the module name here, so no local import is required.
+        client = get_chroma_client()
+        if not client:
+            return []
+        col = client.get_collection("sprint_dna")
+        res = col.query(query_texts=[text[:500]], n_results=limit)
+    except Exception:
+        return []
+
+    results = []
+    metas = (res.get("metadatas") or [[]])[0] or []
+    docs = (res.get("documents") or [[]])[0] or []
+    ids = (res.get("ids") or [[]])[0] or []
+    for i, meta in enumerate(metas):
+        sprint_id = meta.get("sprint_id", ids[i][:14] if i < len(ids) else "SPR")
+        weight = meta.get("recency", 0.0)
+        level = meta.get("level", 2)
+        kind = meta.get("kind", "overview")
+        snippet = ""
+        if i < len(docs) and docs[i]:
+            snippet = next(
+                (ln.strip() for ln in docs[i].splitlines()
+                 if ln.strip() and not ln.startswith("STORY") and not ln.startswith("SPRINT")),
+                ""
+            )
+            snippet = snippet[:80]
+        line = f"- [sprint_dna:{sprint_id}] L{level} {kind} (recency {weight})"
+        if snippet:
+            line += f" — {snippet}"
+        if line not in results:
+            results.append(line)
+        if len(results) >= limit:
+            break
+    return results
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -280,6 +348,16 @@ def main():
     if clara_hits:
         ambient_lines.append("[ClaraDB Anchors & Matches]")
         ambient_lines.extend(clara_hits[:6])
+
+    # Step A.1: [FEAT-557] Targeted sprint_dna hook (fails open in <=150ms)
+    if is_sprint_query(search_query):
+        sprint_hits = probe_sprint_dna(search_query)
+        if sprint_hits:
+            if not ambient_lines:
+                ambient_lines.append("[Sprint DNA Anchors]")
+            else:
+                ambient_lines.append("\n[Sprint DNA Anchors]")
+            ambient_lines.extend(sprint_hits)
 
     # Step B: ICM Recall
     if len(search_words) >= 2 and search_query.lower() not in SHALLOW_PROMPTS:
