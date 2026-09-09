@@ -659,12 +659,14 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
 │       * Stage 2 Scout (Librarian): Read/grep anchor discovery (NO file edits, NO bash).  │
 │       * Stage 4 Verifier (Momus): Bash/pytest runner & traceback parser (NO code edits). │
 │                                                                                          │
-│  2. Node Brain (Apple M5 Air 32GB Unified Memory / oMLX dflash via Headroom :8002):      │
+│  2. Node Brain (Apple M5 Air 32GB Unified Memory / oMLX via Headroom :8002):              │
 │     - Model: mlx-community--Qwen3.8-27B-4bit (15.2 GB resident).                         │
 │     - Headroom Proxy (:8002): Compresses prompt prefill KV caches to prevent Metal OOM.  │
 │     - Metal Memory Ceiling: iogpu.wired_limit_mb caps wired GPU memory at ~24.46 GB.     │
-│     - Swarm Role: Stage 3 Surgical Worker (Sisyphus-Junior) — bounded (< 1.5k tok) code │
-│       patching via clara-dna_safe_patch. Heavy search, bash, and test tools DENIED.     │
+│     - Swarm Roles:                                                                       │
+│       * Stage 3 Surgical Worker (Sisyphus-Junior): Bounded (<1.5k tok) code patching.    │
+│       * Blocker Surgeon (Daedalus): 27B deep-reasoning AST/syntax solver summoned ONLY   │
+│         when Junior or verification fails. Bounded context (<1.5k tok), no bash.         │
 │                                                                                          │
 │  THE 4-STAGE AGENT CASCADE (AUTONOMOUS SWARM FLOW):                                      │
 │  To prevent Layer 1 (AGY) from excessive "spoon-feeding" token traps while protecting    │
@@ -673,6 +675,7 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
 │  2. Stage 2 (Librarian): Inspect target code & extract exact incumbent anchors/imports.  │
 │  3. Stage 3 (Sisyphus-Junior): Apply surgical diff via clara-dna_safe_patch.            │
 │  4. Stage 4 (Momus): Execute verification command via bash, parse and digest tracebacks. │
+│  * Escalation Gate: If Momus fails, Atlas summons Daedalus on M5 Air 27B to resolve it. │
 │  * Ephemeral Context Rule: Each stage runs via task(), auto-flushing context on exit.    │
 │                                                                                          │
 │  SCARS RETROSPECTIVE:                                                                    │

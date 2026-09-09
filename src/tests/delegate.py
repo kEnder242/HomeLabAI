@@ -491,10 +491,10 @@ Edit Target(s): {target_files or reference_file}
 4. [STAGE 3: VERIFICATION & LINT RUNNER]
    - Dispatch task(category="{_atlas_dispatch_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus.
    - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
-   - If tests fail, re-dispatch Stage 2 to Junior with the exact anchor fix.
+   - If Momus reports failure, dispatch task(category="{_atlas_dispatch_category}", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Daedalus (M5 Air 27B) to solve the subtle AST/escaping error.
 5. [STAGE 4: SYNTHESIS & REPORT]
    - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
-        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus."
+        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus, escalate to Daedalus on error."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
