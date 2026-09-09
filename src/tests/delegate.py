@@ -477,29 +477,24 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-[ORCHESTRATION INSTRUCTIONS FOR ATLAS]
-1. Use the `read` tool to read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
-2. Use the `read` tool to read the incumbent target file ({target_files.split(",")[0] if target_files else reference_file}) to verify line numbers and anchors.
-3. Sequence micro-tasks to Junior via task(category="{_atlas_dispatch_category}", ...):
-   - Junior's only role is surgical code modification via clara-dna_safe_patch (or write for new files).
-   - Junior has NO bash and runs NO tests.
-4. Formulate task() using exact verbatim code anchors from the sprint spec:
-   task(
-       category="{_atlas_dispatch_category}",
-       prompt=(
-           "[TASK: Modify target file for Story {story_num}]\\n"
-           "- Target File: <path>\\n"
-           "- Tool: clara-dna_safe_patch (or write for new files)\\n"
-           "[OLD CODE / ANCHOR]\\n<exact incumbent code block from file>\\n"
-           "[NEW CODE IMPLEMENTATION]\\n<exact new code from sprint spec>"
-       )
-   )
-5. Review Junior's output:
-   - Junior reports non-blocking lint errors from clara-dna_safe_patch.
-   - You (Atlas) own the `bash` tool. Run pytest, ruff, or validation commands yourself.
-   - If tests fail or linting requires cleanup, dispatch a new micro-task to Junior with the exact fix.
-6. When all stages and verification commands pass, synthesize a 2-line completion report to AGY."""
-        note_block = f"[NOTE] Read Story {story_num} in '{reference_file}'{_sprint_line_pointer}. Read target file. Spoon-feed Junior with exact code anchors via task(category=\"{_atlas_dispatch_category}\", ...). Run pytest/bash verification yourself."
+        mandate_block = f"""[STORY {story_num}: {title}]
+Sprint Reference: {reference_file}{_sprint_line_pointer}
+Edit Target(s): {target_files or reference_file}
+
+[ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 4-STAGE CASCADE]
+1. Read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
+2. [STAGE 1: ANCHOR RESOLUTION]
+   - If line numbers or incumbent code anchors are unknown, dispatch task(category="{_atlas_dispatch_category}", prompt="[LIBRARIAN: Inspect {target_files or reference_file} and extract exact code anchors for Story {story_num}]").
+3. [STAGE 2: SURGICAL CODE MODIFICATION]
+   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[TASK: Modify {target_files or reference_file} for Story {story_num}] - Tool: clara-dna_safe_patch ...") to Junior.
+   - Junior has NO bash and runs NO tests. Junior relays non-blocking lint errors from safe_patch.
+4. [STAGE 3: VERIFICATION & LINT RUNNER]
+   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus.
+   - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
+   - If tests fail, re-dispatch Stage 2 to Junior with the exact anchor fix.
+5. [STAGE 4: SYNTHESIS & REPORT]
+   - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
+        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
