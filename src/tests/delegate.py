@@ -305,7 +305,7 @@ def _is_provider_reachable(provider_id: str) -> bool:
     if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
         return _ping_host("192.168.1.26", 11434, timeout=0.5)
     if "m5" in provider_id or "mlx" in provider_id:
-        return _ping_host("192.168.1.46", 8000, timeout=0.5)
+        return _ping_host("192.168.1.46", 8002, timeout=0.5)
     return True
 
 
