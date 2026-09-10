@@ -315,6 +315,8 @@ class BicameralNode:
             base_url = f"http://{resolved_ip}:{port}"
         elif self.primary_host == "M5_AIR":
             engine_type = "OMLX" # oMLX on M5 Air uses OpenAI /v1/ API, distinct from local vLLM
+            # mlx_port (default 8000) = native oMLX inference endpoint (/v1/models, /v1/chat/completions)
+            # headroom_port (default 8002) = Headroom compression proxy (use for /compress, /thinking, etc.)
             port = host_cfg.get("mlx_port", 8000)
             base_url = f"http://{resolved_ip}:{port}"
         else:
