@@ -627,7 +627,10 @@ class FoyerRouter:
             web.post('/reload_residents', self.handle_reload_residents),
             web.post('/attendant/reload_residents', self.handle_reload_residents),
             # [LAB-088] EarNode Emergency Deafness: Manual rearm endpoint
-            web.post('/rearm_ear', self.handle_rearm_ear)
+            web.post('/rearm_ear', self.handle_rearm_ear),
+            # [FEAT-561] Wisdom Studio Direct Save Endpoint
+            web.post('/wisdom/save', self.handle_wisdom_save),
+            web.post('/attendant/wisdom/save', self.handle_wisdom_save)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -676,6 +679,55 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-490] Hot-reload failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_wisdom_save(self, request):
+        """[FEAT-561] REST endpoint for Wisdom Studio direct in-place card saving to disk."""
+        try:
+            payload = await request.json()
+            if isinstance(payload, list):
+                cards = payload
+                collection = "wisdom"
+            elif isinstance(payload, dict):
+                cards = payload.get("cards", [])
+                collection = payload.get("collection", "wisdom")
+            else:
+                return web.json_response({"status": "ERROR", "message": "Invalid payload format; expected list or dict with 'cards'"}, status=400)
+
+            if not isinstance(cards, list):
+                return web.json_response({"status": "ERROR", "message": "'cards' must be a list"}, status=400)
+
+            # Determine target file
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            if collection in ("philosophy", "philosophy_dna"):
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "philosophy_data.json")
+            elif collection in ("writer", "paper", "writer_dna"):
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+            else:
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+
+            os.makedirs(os.path.dirname(target_file), exist_ok=True)
+            atomic_write_json(target_file, cards)
+            logger.info(f"[FOYER] [FEAT-561] Successfully saved {len(cards)} wisdom card(s) to {target_file}")
+
+            # Trigger automated rebuild of wisdom.html
+            rebuild_script = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "wisdom_build.py")
+            if os.path.exists(rebuild_script):
+                try:
+                    subprocess.run([sys.executable, rebuild_script], capture_output=True, text=True, timeout=10)
+                    logger.info("[FOYER] [FEAT-561] Rebuilt wisdom.html cleanly.")
+                except Exception as b_err:
+                    logger.warning(f"[FOYER] [FEAT-561] Note: wisdom_build.py notification: {b_err}")
+
+            return web.json_response({
+                "status": "success",
+                "message": f"Saved {len(cards)} card(s) to {os.path.basename(target_file)}",
+                "count": len(cards),
+                "target": target_file,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-561] Wisdom save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
