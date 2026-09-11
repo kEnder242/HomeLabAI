@@ -210,7 +210,7 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
         logger.info(f"Lab is in intentional dormant state ({state_reason}). Skipping supervisory reloads/resets.")
         return f"SKIP_{state_reason}"
 
-    # Gate 2: Check Git 10-Minute Rolling Reset Queue
+    # Gate 2: Check Git 30-Minute Rolling Reset Queue
     pending = load_pending_reset()
     pending_action = pending.get("pending_action", "NONE")
     expiry_ts = pending.get("timer_expiry_ts", 0)
@@ -218,7 +218,7 @@ def run_supervisory_tick(dry_run: bool = False) -> str:
 
     if pending_action != "NONE" and expiry_ts > 0:
         if now >= expiry_ts:
-            logger.info(f"⏱️ 10-Minute quiet window expired for pending action: {pending_action} (Commit: {pending.get('last_commit')})")
+            logger.info(f"⏱️ 30-Minute quiet window expired for pending action: {pending_action} (Commit: {pending.get('last_commit')})")
             if dry_run:
                 logger.info(f"[DRY-RUN] Would execute expired pending action: {pending_action}")
                 return f"DRY_RUN_EXPIRED_{pending_action}"

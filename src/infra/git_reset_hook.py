@@ -39,7 +39,7 @@ ACTION_LEVELS = {
     "DEEP_RESET": LEVEL_DEEP
 }
 
-ROLLING_TIMER_SECONDS = 600 # 10 minutes
+ROLLING_TIMER_SECONDS = 1800 # 30 minutes
 
 def get_committed_files(repo_path: str) -> list:
     """Gets list of files modified in the latest commit."""
@@ -209,7 +209,7 @@ def main():
         minutes_left = (expiry_ts - now) / 60.0
         escalation_note = " (ESCALATED)" if new_level > existing_level and existing_active else ""
         print(f"🔒 [Git Hook] Lab marked DIRTY: Pending {new_action}{escalation_note}")
-        print(f"⏱️ [Git Hook] 10-Minute Rolling Timer reset: Auto-executes at {time.strftime('%H:%M:%S', time.localtime(expiry_ts))} ({minutes_left:.1f}m quiet window)")
+        print(f"⏱️ [Git Hook] 30-Minute Rolling Timer reset: Auto-executes at {time.strftime('%H:%M:%S', time.localtime(expiry_ts))} ({minutes_left:.1f}m quiet window)")
         print(f"📋 [Git Hook] Reasons: {', '.join(reasons[:3]) if reasons else 'Commit updates'}")
     else:
         # Passive commit: If no active timer, maintain NONE
@@ -230,7 +230,7 @@ def main():
             existing["timer_expiry_ts"] = int(now + ROLLING_TIMER_SECONDS)
             existing["last_commit"] = commit_hash
             save_pending_reset(existing)
-            print(f"⏱️ [Git Hook] Timer topped up to 10m for active {existing['pending_action']} (Commit {commit_hash}).")
+            print(f"⏱️ [Git Hook] Timer topped up to 30m for active {existing['pending_action']} (Commit {commit_hash}).")
 
 if __name__ == "__main__":
     main()
