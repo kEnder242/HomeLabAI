@@ -204,7 +204,7 @@ All diagnostic forensics MUST reference the canonical black box log:
 2.  **Sync-Gate & Fresh Bytecode**: Pytest automatically checks local Git HEAD against the served boot commit. If a mismatch is detected, the Agent must trigger a daemon restart/reload rather than ignoring the stale state.
 3.  **State Trust**: Do not assume background processes persisted cleanly across git commits or code refactors. Re-verify liveness and run live integration queries after every service restart.
 
-### BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
+## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
 1.  **Task Verbosity**: Tasks must NOT be one-liners. They must include the 'Why' (Rationale), the 'How' (Mechanism), and the 'Proof' (Verification). Include verbatim snippets/reports from discussions to anchor the task.
 2.  **Historical Trace**: Sprints must document the forensic anchors (logs, code fragments) that justify the change.
@@ -725,7 +725,7 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
 
 ---
 
-### [BKM-051] Subagent MCP Tool Scoping & Context Ballast Protocol
+## BKM-051: Subagent MCP Tool Scoping & Context Ballast Protocol
 **Feature Anchor:** `[FEAT-526]` / `[BKM-051]`  
 **Domain:** OpenAgent Swarm Topology, MCP Overhead Mitigation & Subagent Prompt Budget  
 **Status:** ACTIVE / MANDATORY  
@@ -749,11 +749,10 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    }
    ```
 3. **Target Worker Input Ceiling:** A worker subagent's initial prompt MUST stay below **1,500 tokens**.
-```
 
 ---
 
-### [BKM-049] Tri-Loop Story Delegation & Diagnostic Protocol
+## BKM-049: Tri-Loop Story Delegation & Diagnostic Protocol
 **Feature Anchor:** `[FEAT-522]` / `[BKM-049]`  
 **Domain:** Swarm Delegation, Autonomous Subagent Execution & Harness Diagnostics  
 **Status:** ACTIVE / MANDATORY  
@@ -797,7 +796,7 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 
 ---
 
-### [BKM-052] Sovereign Driver Protocol (Stateless Serialized Delegation for Fallback LLMs)
+## BKM-052: Sovereign Driver Protocol (Stateless Serialized Delegation for Fallback LLMs)
 **Feature Anchor:** `[FEAT-530]` / `[BKM-052]`  
 **Domain:** External Orchestration Fallback, Token Quota Exhaustion & Headless Dispatch  
 **Status:** ACTIVE / MANDATORY  
@@ -861,7 +860,7 @@ For each story:
 
 ---
 
-## [BKM-053] Multi-Remote Secondary Git Mirror & Cloud Redundancy Protocol
+## BKM-053: Multi-Remote Secondary Git Mirror & Cloud Redundancy Protocol
 **Feature Anchor:** `[BKM-053]`  
 **Domain:** Disaster Recovery, Cloud Redundancy & Sovereign Git Transport  
 **Status:** DESIGN / BACKLOG  
