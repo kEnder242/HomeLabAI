@@ -875,3 +875,21 @@ git remote set-url --add --push origin <primary-origin-url>
 git remote set-url --add --push origin <secondary-mirror-url>
 ```
 When manual syncs or authorized replication scripts execute `git push origin <branch>`, Git automatically distributes commits synchronously to both hosting endpoints without introducing manual workflow steps.
+
+---
+
+## BKM-054: Zero In-Process PyTorch on Orchestrator Host (Precomputed & Offloaded Embeddings Law)
+**Feature Anchor:** `[FEAT-567]` / `[BKM-054]`  
+**Domain:** Memory Guard, System Stability & Zero-Torch Orchestration Architecture  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+The orchestrator host (`z87-Linux`) has a strict 16GB physical RAM ceiling shared with running browser sessions, Xorg, VS Code / Antigravity CLI, system daemons, and background monitors. Loading PyTorch (`import torch`), CUDA libraries, or `SentenceTransformer` directly inside the orchestrator's Python process consumes 2.5GB to 4.5GB of unpageable RSS, rapidly triggering Linux OOM killer reboots or silent Xorg desktop session resets during active sprints.
+
+### 2. The Invariant Rules
+1. **Zero In-Process PyTorch:** All orchestrator Python scripts (including fast test suites, CLI tools, and background sync workers) are STRICTLY FORBIDDEN from importing `torch`, `torchvision`, or `sentence_transformers` in-process on `z87-Linux`.
+2. **Dual Path for Embeddings:**
+   - **Path A (Remote Offload):** Query silicon endpoints (e.g. M5 Air via REST on port 8000 or local vLLM on port 8088) to generate dense embeddings.
+   - **Path B (Precomputed Embeddings):** Use pre-generated vector caches (`.npy` or `.json` fixtures) stored in the repo or ChromaDB collections for similarity lookups and dedup testing.
+3. **AST Lint Guard:** Automated linters and pre-commit hooks (`FEAT-567`) must actively audit orchestrator code to reject any PR or commit introducing direct `torch` imports.
+
