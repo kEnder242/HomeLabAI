@@ -262,6 +262,24 @@ def run_dream_cycle():
         logger.info("[DREAM] dream_cycle.py not found; skipping dream pass.")
 
 
+def run_wisdom_refine():
+    """[FEAT-562 / Story 77.2] Automated Nightly Wisdom Synthesis Refiner & Semantic Deduplication Pass."""
+    logger.info("[WISDOM] Initiating Wisdom Synthesis Refiner and Deduplication Pass...")
+    write_step_log("WISDOM_REFINE_START")
+    script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/refine_wisdom.py")
+    if os.path.exists(script):
+        try:
+            py_bin = os.path.join(LAB_DIR, ".venv/bin/python3")
+            res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
+            logger.info(f"[WISDOM] Wisdom refinement completed with return code {res.returncode}")
+            write_step_log("WISDOM_REFINE_COMPLETE", f"returncode={res.returncode}")
+        except Exception as e:
+            logger.warning(f"[WISDOM] Wisdom refinement warning: {e}")
+            write_step_log("WISDOM_REFINE_ERROR", str(e))
+    else:
+        logger.info("[WISDOM] refine_wisdom.py not found; skipping refinement pass.")
+
+
 def run_benchmark_sweep():
     """[FEAT-495] Dynamic Federated Benchmark Sweep across all active hardware seats."""
     bench_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/bench_models.py")
@@ -347,6 +365,10 @@ def main():
     # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
     logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
     run_dream_cycle()
+
+    # 8b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
+    logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
+    run_wisdom_refine()
 
     # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
     logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")
