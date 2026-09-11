@@ -317,16 +317,21 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     if not target_dir or target_dir == os.path.expanduser("~"):
         target_dir = DEFAULT_TARGET_DIR
+
+    # [BKM-049] Enforce mutual exclusivity between local_only and cloud_only
+    if cloud_only:
+        local_only = False
+
     # [Action 3: Canonical Agent Routing]
     # Local implies Atlas (Node KENDER 4090) decomposing tasks to Junior (M5 Air).
-    # Cloud implies Prometheus (cloud planner/swarm).
+    # Cloud implies Prometheus (cloud planner) or Sisyphus (cloud executor).
     # Oracle mode remains supported as a distinct mode contract.
     if mode == "oracle":
         agent = "oracle"
+    elif cloud_only:
+        agent = "sisyphus" if mode == "execute" else "prometheus"
     elif local_only:
         agent = "atlas"
-    elif cloud_only:
-        agent = "prometheus"
     else:
         agent = "prometheus"
 
@@ -981,6 +986,8 @@ if __name__ == "__main__":
     parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
     parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
     args = parser.parse_args()
+    if args.cloud_only:
+        args.local_only = False
 
     # [Action 3: Rejection of --agent flag]
     if args.agent is not None:
