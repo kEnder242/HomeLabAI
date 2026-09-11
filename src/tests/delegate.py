@@ -477,10 +477,6 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-        mandate_block = f"""[STORY {story_num}: {title}]
-Sprint Reference: {reference_file}{_sprint_line_pointer}
-Edit Target(s): {target_files or reference_file}
-
 [ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 4-STAGE CASCADE]
 1. Read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
 2. [STAGE 1: ANCHOR RESOLUTION]
