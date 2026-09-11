@@ -309,6 +309,56 @@ def _is_provider_reachable(provider_id: str) -> bool:
     return True
 
 
+def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "") -> dict:
+    """[BKM-049] Mandatory Three-Tier Diagnostic Probes between execution retries.
+    1. Server & Silicon State (Port 4097, Port 8000, GPU/sockets)
+    2. Session Transcripts & Logs (OpenCode service state)
+    3. Harness & Configuration Audit
+    """
+    diag = {
+        "story": story_num,
+        "attempt": attempt,
+        "reason": reason,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "opencode_rest": _ping_host("127.0.0.1", OPENCODE_REST_PORT),
+        "m5_silicon": _ping_host("192.168.1.46", 8000),
+        "w4090_silicon": _ping_host("192.168.1.26", 11434),
+    }
+
+    try:
+        j_res = subprocess.run(
+            ["journalctl", "--user", "-u", "opencode-core.service", "-n", "3", "--no-pager"],
+            capture_output=True, text=True, timeout=2.0
+        )
+        diag["journal_tail"] = j_res.stdout.strip().splitlines()[-2:] if j_res.stdout else []
+    except Exception:
+        diag["journal_tail"] = []
+
+    summary_str = (
+        f"[BKM-049 DIAGNOSTIC] Attempt {attempt} ({reason}): "
+        f"REST:4097={'UP' if diag['opencode_rest'] else 'DOWN'} | "
+        f"M5:8000={'UP' if diag['m5_silicon'] else 'DOWN'} | "
+        f"W4090:11434={'UP' if diag['w4090_silicon'] else 'DOWN'}"
+    )
+    log_step(story_num, "BKM049_DIAGNOSTICS", summary_str, severity="WARNING")
+    print(f"\n🩺 {summary_str}", flush=True)
+
+    try:
+        subprocess.run(
+            [
+                "icm", "store",
+                "-t", "errors-resolved",
+                "-c", f"BKM-049 Diagnostics for Story {story_num} (Attempt {attempt}, {reason}): {summary_str}",
+                "-i", "medium",
+                "-k", f"bkm049,diagnostics,retry,story-{story_num}"
+            ],
+            capture_output=True, text=True, check=False
+        )
+    except Exception:
+        pass
+    return diag
+
+
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
 def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=True, cloud_only=False):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
@@ -821,6 +871,10 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             # [FEAT-496] Passive Swarm Telemetry Tap
             _log_live_usage_telemetry(story_num, sprint_num, title, current_model, duration, tokens, len(full_text))
 
+            blocker_match = None
+            blocker_text = ""
+            is_silent_failure = False
+
             if full_text:
                 print("\n" + "═" * 80, flush=True)
                 print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
@@ -939,6 +993,79 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 else:
                     # Non-unknown finish with empty text (e.g. tool-only response) — warn but don't halt
                     print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk (finish={finish}). Check Web UI.", flush=True)
+
+            # [BKM-049] Automated Verification Execution & 3-Fix-Retry Loop
+            is_valid_cmd = verification and verification.strip() and verification.strip().lower() not in (
+                "post-dispatch agy validation", "none", "n/a", "manual", "post-dispatch validation"
+            )
+            if is_valid_cmd and (full_text or not is_silent_failure):
+                log_step(story_num, "RUN_VERIFICATION", f"Executing verification command: {verification}")
+                print(f"\n🔍 [STORY {story_num}] Running verification: {verification}", flush=True)
+                try:
+                    v_res = subprocess.run(
+                        verification,
+                        shell=True,
+                        cwd=target_dir or os.getcwd(),
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+                    if v_res.returncode == 0:
+                        log_step(story_num, "VERIFICATION_SUCCESS", f"Verification passed cleanly: {verification}")
+                        print(f"✅ [STORY {story_num}] Verification PASSED.", flush=True)
+                        _ACTIVE_SESSION_ID = None
+                        return
+                    else:
+                        v_output = (v_res.stdout + "\n" + v_res.stderr).strip()
+                        log_step(story_num, "VERIFICATION_FAILED", f"Verification failed (code {v_res.returncode}): {v_output[:300]}", severity="WARNING")
+                        print(f"❌ [STORY {story_num}] Verification FAILED (code {v_res.returncode}):\n{v_output[:500]}", flush=True)
+                        if attempt < max_retries:
+                            _run_bkm049_diagnostics(story_num, attempt, reason="verification_failed")
+                            prompt = (
+                                f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
+                                f"The previous implementation for Story {story_num}: '{title}' FAILED verification.\n\n"
+                                f"Command: {verification}\n"
+                                f"Exit Code: {v_res.returncode}\n"
+                                f"Output:\n{v_output[:2500]}\n\n"
+                                f"Target Scope: {target_files or reference_file}\n"
+                                f"Repair the code surgically using clara-dna_safe_patch to fix all errors and satisfy verification. "
+                                f"Ensure no syntax errors or breaking changes are introduced."
+                            )
+                            print(f"[!] [STORY {story_num}] Retrying with Attempt {attempt + 1}/{max_retries}...", flush=True)
+                            continue
+                        else:
+                            log_step(story_num, "VERIFICATION_EXHAUSTED", f"All {max_retries} attempts failed verification.", severity="CRITICAL")
+                            _cleanup_active_session()
+                            sys.exit(1)
+                except subprocess.TimeoutExpired:
+                    log_step(story_num, "VERIFICATION_TIMEOUT", f"Verification timed out after 120s: {verification}", severity="WARNING")
+                    if attempt < max_retries:
+                        _run_bkm049_diagnostics(story_num, attempt, reason="verification_timeout")
+                        prompt = (
+                            f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
+                            f"The previous implementation for Story {story_num} timed out during verification ({verification}).\n"
+                            f"Resolve infinite loops or blocking calls."
+                        )
+                        continue
+                    else:
+                        _cleanup_active_session()
+                        sys.exit(1)
+            else:
+                # If no verification command provided, check for blocker report
+                if blocker_match and attempt < max_retries:
+                    _run_bkm049_diagnostics(story_num, attempt, reason="blocker_detected")
+                    prompt = (
+                        f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
+                        f"A blocker was identified during Story {story_num} execution:\n"
+                        f"{blocker_text}\n\n"
+                        f"Resolve this blocker or provide a clean alternative implementation within assigned target scope."
+                    )
+                    print(f"[!] [STORY {story_num}] Blocker detected. Retrying with Attempt {attempt + 1}/{max_retries}...", flush=True)
+                    continue
+                elif blocker_match:
+                    log_step(story_num, "BLOCKER_HALT", f"Blocker could not be resolved after {max_retries} attempts: {blocker_text}", severity="CRITICAL")
+                    _cleanup_active_session()
+                    sys.exit(1)
 
             _ACTIVE_SESSION_ID = None
             return
