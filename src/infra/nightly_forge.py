@@ -269,7 +269,9 @@ def run_wisdom_refine():
     script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/refine_wisdom.py")
     if os.path.exists(script):
         try:
-            py_bin = os.path.join(LAB_DIR, ".venv/bin/python3")
+            py_bin = os.path.join(BASE_DIR, ".venv/bin/python3")
+            if not os.path.exists(py_bin):
+                py_bin = sys.executable
             res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
             logger.info(f"[WISDOM] Wisdom refinement completed with return code {res.returncode}")
             write_step_log("WISDOM_REFINE_COMPLETE", f"returncode={res.returncode}")
@@ -278,6 +280,26 @@ def run_wisdom_refine():
             write_step_log("WISDOM_REFINE_ERROR", str(e))
     else:
         logger.info("[WISDOM] refine_wisdom.py not found; skipping refinement pass.")
+
+
+def run_sprint_dna_sync():
+    """[FEAT-557 / Story 77.0] Automated Sprint DNA ChromaDB Sync & Manifest Compilation Pass."""
+    logger.info("[SPRINT_DNA] Initiating Sprint DNA sync and manifest compilation...")
+    write_step_log("SPRINT_DNA_START")
+    script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/curator/sync_sprint_dna.py")
+    if os.path.exists(script):
+        try:
+            py_bin = os.path.join(BASE_DIR, ".venv/bin/python3")
+            if not os.path.exists(py_bin):
+                py_bin = sys.executable
+            res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
+            logger.info(f"[SPRINT_DNA] Sprint DNA sync completed with return code {res.returncode}")
+            write_step_log("SPRINT_DNA_COMPLETE", f"returncode={res.returncode}")
+        except Exception as e:
+            logger.warning(f"[SPRINT_DNA] Sprint DNA sync warning: {e}")
+            write_step_log("SPRINT_DNA_ERROR", str(e))
+    else:
+        logger.info("[SPRINT_DNA] sync_sprint_dna.py not found; skipping sync pass.")
 
 
 def run_benchmark_sweep():
@@ -369,6 +391,10 @@ def main():
     # 8b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
     logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
     run_wisdom_refine()
+
+    # 8c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557]
+    logger.info("[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation...")
+    run_sprint_dna_sync()
 
     # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
     logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")

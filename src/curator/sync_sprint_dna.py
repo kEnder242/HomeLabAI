@@ -20,6 +20,7 @@ Implements Story 76.3 of SPR-76.0:
 
 import os
 import re
+import json
 import hashlib
 import logging
 import time
@@ -36,6 +37,12 @@ SPRINT_ARCHIVE_PATH = os.path.expanduser(
 )
 ACTIVE_SPRINT_DIR = os.path.expanduser(
     "~/Dev_Lab/Portfolio_Dev/docs/sprints/active"
+)
+SPRINT_DATA_OUTPUT = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/sprint_data.json"
+)
+DNA_MANIFEST_PATH = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/dna_manifest.json"
 )
 
 # Ignore non-sprint artifacts that live in the archive directory.
@@ -282,6 +289,124 @@ def enqueue_single_sprint_distillation(filepath, elapsed_seconds=None):
 
 
 # ----------------------------------------------------------------------------
+# Sprint Card Manifest Compilation
+# ----------------------------------------------------------------------------
+def clean_sprint_title(line, sprint_id):
+    line = re.sub(r"^#+\s*", "", line).strip()
+    line = re.sub(r"^[🚀🎯🕵️🛠️\s]+", "", line).strip()
+    line = re.sub(r"^(?:SPRINT\s+(?:PLAN|LOG)|Sprint\s+(?:Plan|Log))[:\s]*", "", line, flags=re.IGNORECASE).strip()
+    line = re.sub(r"^\[?SPR[-_]\d+(?:[-_]\d+)?\]?[:\s]*", "", line, flags=re.IGNORECASE).strip()
+    line = re.sub(r"^\d+\.\d+[:\s]*", "", line).strip()
+    return line or f"Sprint {sprint_id}"
+
+
+def parse_single_sprint_card(filepath):
+    bn = os.path.basename(filepath)
+    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    m = re.search(r"SPR_(\d+)(?:_(\d+))?", bn)
+    if not m:
+        return None
+    major = int(m.group(1))
+    minor = int(m.group(2)) if m.group(2) is not None else 0
+    sprint_id = f"SPR-{major}.{minor}"
+
+    lines = content.splitlines()
+    first_h1 = ""
+    for l in lines:
+        if l.startswith("# "):
+            first_h1 = l
+            break
+
+    title = clean_sprint_title(first_h1, sprint_id)
+
+    # Extract Theme
+    theme = ""
+    for i, l in enumerate(lines):
+        if "**Theme:**" in l or "**THEME:**" in l:
+            theme = re.split(r"\*\*Theme:\*\*", l, flags=re.IGNORECASE)[-1].strip()
+            j = i + 1
+            while j < len(lines) and lines[j].strip() and not lines[j].strip().startswith("**") and not lines[j].strip().startswith("#"):
+                theme += " " + lines[j].strip()
+                j += 1
+            break
+
+    # Extract Mission/Goal
+    narrative = ""
+    m_miss = re.search(
+        r"##\s*(?:🎯\s*)?(?:THE\s+MISSION|OVERVIEW|MISSION|GOAL)[^\n]*\n+([^#\n]+(?:\n+[^#\n]+)?)",
+        content,
+        re.IGNORECASE,
+    )
+    if m_miss:
+        narrative = m_miss.group(1).strip()
+    elif theme:
+        narrative = theme
+    else:
+        paragraphs = [
+            p.strip()
+            for p in content.split("\n\n")
+            if p.strip() and not p.strip().startswith("#")
+        ]
+        narrative = paragraphs[0] if paragraphs else f"Sprint {sprint_id} execution plan and tasks."
+
+    narrative = re.sub(r"\s+", " ", narrative)[:400].strip()
+    origin_text = theme or narrative
+
+    is_active = "active" in filepath
+    tier = "ACTIVE" if is_active else "COMPLETED"
+    rel_path = filepath.split("Dev_Lab/")[-1] if "Dev_Lab/" in filepath else filepath
+
+    return {
+        "id": sprint_id,
+        "title": title,
+        "origin": {
+            "text": origin_text[:350],
+            "source": bn,
+        },
+        "synthesis": {
+            "narrative_context": narrative,
+            "lab_anchors": [rel_path],
+            "review_notes": "Active sprint in execution." if is_active else "Archived sprint record.",
+        },
+        "metadata": {
+            "tags": [f"sprint-{major}", "sprint-plan"],
+            "status": tier,
+            "bucket_id": "bucket_5_infra",
+        },
+        "_sort_key": (major, minor),
+    }
+
+
+def compile_sprint_manifest(files):
+    cards = []
+    for _, filepath in files:
+        bn = os.path.basename(filepath)
+        if bn in SKIP_FILENAMES or "ORACLE" in bn:
+            continue
+        card = parse_single_sprint_card(filepath)
+        if card:
+            cards.append(card)
+
+    by_id = {}
+    for c in cards:
+        sid = c["id"]
+        if sid not in by_id:
+            by_id[sid] = c
+        else:
+            if c["metadata"]["status"] == "ACTIVE" and by_id[sid]["metadata"]["status"] != "ACTIVE":
+                by_id[sid] = c
+            elif "PLAN" in c["origin"]["source"] and "PLAN" not in by_id[sid]["origin"]["source"]:
+                by_id[sid] = c
+
+    sorted_cards = sorted(by_id.values(), key=lambda x: x["_sort_key"], reverse=True)
+    for c in sorted_cards:
+        del c["_sort_key"]
+    return sorted_cards
+
+
+# ----------------------------------------------------------------------------
 # Sync
 # ----------------------------------------------------------------------------
 def sync(dry_run=False):
@@ -295,6 +420,9 @@ def sync(dry_run=False):
     if not files:
         logging.warning("[sprint_dna] No sprint documents discovered.")
         return {"uploaded": 0, "sprints": 0, "legacy_skipped": 0}
+
+    sprint_cards = compile_sprint_manifest(files)
+    logging.info("[sprint_dna] Compiled %d high-level sprint cards.", len(sprint_cards))
 
     all_chunks = []
     skipped = 0
@@ -320,10 +448,32 @@ def sync(dry_run=False):
         stats["archived"], len(all_chunks),
     )
 
+    # Emit sprint_data.json and update dna_manifest.json
+    if not dry_run and sprint_cards:
+        try:
+            os.makedirs(os.path.dirname(SPRINT_DATA_OUTPUT), exist_ok=True)
+            with open(SPRINT_DATA_OUTPUT, "w", encoding="utf-8") as f:
+                json.dump(sprint_cards, f, indent=2)
+            logging.info("[sprint_dna] Emitted %d cards to %s", len(sprint_cards), SPRINT_DATA_OUTPUT)
+        except Exception as e:
+            logging.error("[sprint_dna] Failed to emit sprint_data.json: %s", e)
+
+        try:
+            if os.path.exists(DNA_MANIFEST_PATH):
+                with open(DNA_MANIFEST_PATH, "r", encoding="utf-8") as f:
+                    manifest_data = json.load(f)
+                manifest_data["sprint"] = sprint_cards
+                with open(DNA_MANIFEST_PATH, "w", encoding="utf-8") as f:
+                    json.dump(manifest_data, f, indent=2)
+                logging.info("[sprint_dna] Updated %d sprint cards in %s", len(sprint_cards), DNA_MANIFEST_PATH)
+        except Exception as e:
+            logging.error("[sprint_dna] Failed to update dna_manifest.json: %s", e)
+
     if dry_run or not all_chunks:
         return {
             "uploaded": 0 if dry_run else len(all_chunks),
             "sprints": len(files),
+            "sprint_cards_compiled": len(sprint_cards),
             "legacy_skipped": skipped,
             "dry_run": dry_run,
             "chunks": len(all_chunks),
@@ -355,6 +505,7 @@ def sync(dry_run=False):
     return {
         "uploaded": len(ids),
         "sprints": len(files),
+        "sprint_cards_compiled": len(sprint_cards),
         "legacy_skipped": skipped,
         "dry_run": dry_run,
         "chunks": len(all_chunks),
