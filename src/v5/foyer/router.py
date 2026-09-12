@@ -632,7 +632,9 @@ class FoyerRouter:
             web.post('/wisdom/save', self.handle_wisdom_save),
             web.post('/attendant/wisdom/save', self.handle_wisdom_save),
             web.post('/wisdom/save_card', self.handle_wisdom_save_card),
-            web.post('/attendant/wisdom/save_card', self.handle_wisdom_save_card)
+            web.post('/attendant/wisdom/save_card', self.handle_wisdom_save_card),
+            web.post('/timeline/save_card', self.handle_wisdom_save_card),
+            web.post('/attendant/timeline/save_card', self.handle_wisdom_save_card)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -744,7 +746,10 @@ class FoyerRouter:
 
             card_id = card["id"]
             dev_lab_root = os.path.expanduser("~/Dev_Lab")
-            if collection in ("philosophy", "philosophy_dna"):
+            is_timeline = collection in ("timeline", "discovery", "timeline_dna", "disc") or str(card_id).startswith("DISC-")
+            if is_timeline:
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "timeline_data.json")
+            elif collection in ("philosophy", "philosophy_dna"):
                 target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "philosophy_data.json")
             elif collection in ("writer", "paper", "writer_dna"):
                 target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
@@ -770,22 +775,77 @@ class FoyerRouter:
                     break
 
             if found_idx >= 0:
-                existing_cards[found_idx] = card
+                if is_timeline:
+                    existing_item = existing_cards[found_idx]
+                    synth = card.get("synthesis", {})
+                    meta = card.get("metadata", {})
+                    new_title = synth.get("title") or card.get("title")
+                    if new_title:
+                        existing_item["title"] = new_title
+                    new_summary = synth.get("narrative_context") or card.get("origin", {}).get("text") or card.get("summary")
+                    if new_summary:
+                        existing_item["summary"] = new_summary
+                    if meta.get("tags"):
+                        existing_item["tags"] = meta["tags"]
+                    if meta.get("bucket_id"):
+                        existing_item["bucket_id"] = meta["bucket_id"]
+                    existing_cards[found_idx] = existing_item
+                else:
+                    existing_cards[found_idx] = card
                 action_taken = "updated"
             else:
-                existing_cards.append(card)
+                if is_timeline:
+                    synth = card.get("synthesis", {})
+                    meta = card.get("metadata", {})
+                    today_str = time.strftime("%Y-%m-%d")
+                    item = {
+                        "id": card_id,
+                        "title": synth.get("title") or card.get("title", card_id),
+                        "conception_date": card.get("conception_date", today_str),
+                        "implementation_date": card.get("implementation_date", today_str),
+                        "bucket_id": meta.get("bucket_id", "distillation"),
+                        "lane": card.get("lane", "Distillation & Synthesis"),
+                        "origin_artifact": card.get("origin", {}).get("source", "Wisdom Studio"),
+                        "sprint_ref": card.get("sprint_ref", ""),
+                        "code_anchors": synth.get("lab_anchors", []),
+                        "arxiv_inspiration": None,
+                        "summary": synth.get("narrative_context") or card.get("origin", {}).get("text", ""),
+                        "status": meta.get("status", "MATURE"),
+                        "tags": meta.get("tags", [])
+                    }
+                    existing_cards.append(item)
+                else:
+                    existing_cards.append(card)
                 action_taken = "appended"
 
             os.makedirs(os.path.dirname(target_file), exist_ok=True)
             atomic_write_json(target_file, existing_cards)
             logger.info(f"[FOYER] [FEAT-568] Surgically {action_taken} card {card_id} in {target_file}")
 
+            # Mirror update into dna_manifest.json discovery collection
+            if is_timeline:
+                manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+                if os.path.exists(manifest_file):
+                    try:
+                        with open(manifest_file, "r", encoding="utf-8") as mf:
+                            mdata = json.load(mf)
+                        disc_list = mdata.get("discovery", [])
+                        m_idx = next((i for i, dc in enumerate(disc_list) if dc.get("id") == card_id), -1)
+                        if m_idx >= 0:
+                            disc_list[m_idx] = card
+                        else:
+                            disc_list.append(card)
+                        mdata["discovery"] = disc_list
+                        atomic_write_json(manifest_file, mdata)
+                    except Exception as m_err:
+                        logger.warning(f"[FOYER] Could not update dna_manifest.json discovery: {m_err}")
+
             # Non-blocking instant ChromaDB single-document upsert (<15ms)
             chroma_synced = False
             try:
                 import chromadb
                 client = chromadb.HttpClient(host="127.0.0.1", port=8001)
-                coll_name = "long_term_wisdom" if collection in ("wisdom", "writer", "philosophy") else collection
+                coll_name = "discovery" if is_timeline else ("long_term_wisdom" if collection in ("wisdom", "writer", "philosophy") else collection)
                 chroma_coll = client.get_or_create_collection(coll_name)
                 
                 doc_text = card.get("synthesis", {}).get("narrative_context") or card.get("origin", {}).get("text") or card.get("title") or ""
@@ -812,6 +872,14 @@ class FoyerRouter:
                     subprocess.run([sys.executable, rebuild_script], capture_output=True, text=True, timeout=10)
                 except Exception as b_err:
                     pass
+
+            if is_timeline:
+                timeline_script = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "timeline_build.py")
+                if os.path.exists(timeline_script):
+                    try:
+                        subprocess.run([sys.executable, timeline_script], capture_output=True, text=True, timeout=10)
+                    except Exception as t_err:
+                        pass
 
             return web.json_response({
                 "status": "success",
