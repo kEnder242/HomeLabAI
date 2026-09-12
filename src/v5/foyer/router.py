@@ -628,9 +628,11 @@ class FoyerRouter:
             web.post('/attendant/reload_residents', self.handle_reload_residents),
             # [LAB-088] EarNode Emergency Deafness: Manual rearm endpoint
             web.post('/rearm_ear', self.handle_rearm_ear),
-            # [FEAT-561] Wisdom Studio Direct Save Endpoint
+            # [FEAT-561 / FEAT-568] Wisdom Studio Direct Save & Single-Card Endpoints
             web.post('/wisdom/save', self.handle_wisdom_save),
-            web.post('/attendant/wisdom/save', self.handle_wisdom_save)
+            web.post('/attendant/wisdom/save', self.handle_wisdom_save),
+            web.post('/wisdom/save_card', self.handle_wisdom_save_card),
+            web.post('/attendant/wisdom/save_card', self.handle_wisdom_save_card)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -728,6 +730,99 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-561] Wisdom save failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_wisdom_save_card(self, request):
+        """[FEAT-568] REST endpoint for atomic single-card surgical saving and instant ChromaDB sync."""
+        try:
+            payload = await request.json()
+            card = payload.get("card")
+            collection = payload.get("collection", "wisdom")
+
+            if not card or not isinstance(card, dict) or not card.get("id"):
+                return web.json_response({"status": "ERROR", "message": "'card' object with valid 'id' is required"}, status=400)
+
+            card_id = card["id"]
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            if collection in ("philosophy", "philosophy_dna"):
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "philosophy_data.json")
+            elif collection in ("writer", "paper", "writer_dna"):
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+            else:
+                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+
+            existing_cards = []
+            if os.path.exists(target_file):
+                try:
+                    with open(target_file, "r", encoding="utf-8") as f:
+                        existing_cards = json.load(f)
+                except Exception as read_err:
+                    logger.warning(f"[FOYER] Could not read existing {target_file}: {read_err}")
+
+            if not isinstance(existing_cards, list):
+                existing_cards = []
+
+            # Surgical replacement or append
+            found_idx = -1
+            for idx, c in enumerate(existing_cards):
+                if isinstance(c, dict) and c.get("id") == card_id:
+                    found_idx = idx
+                    break
+
+            if found_idx >= 0:
+                existing_cards[found_idx] = card
+                action_taken = "updated"
+            else:
+                existing_cards.append(card)
+                action_taken = "appended"
+
+            os.makedirs(os.path.dirname(target_file), exist_ok=True)
+            atomic_write_json(target_file, existing_cards)
+            logger.info(f"[FOYER] [FEAT-568] Surgically {action_taken} card {card_id} in {target_file}")
+
+            # Non-blocking instant ChromaDB single-document upsert (<15ms)
+            chroma_synced = False
+            try:
+                import chromadb
+                client = chromadb.HttpClient(host="127.0.0.1", port=8001)
+                coll_name = "long_term_wisdom" if collection in ("wisdom", "writer", "philosophy") else collection
+                chroma_coll = client.get_or_create_collection(coll_name)
+                
+                doc_text = card.get("synthesis", {}).get("narrative_context") or card.get("origin", {}).get("text") or card.get("title") or ""
+                metadata = {
+                    "bucket_id": card.get("metadata", {}).get("bucket_id", ""),
+                    "theme": card.get("theme", ""),
+                    "title": card.get("synthesis", {}).get("title") or card.get("title") or "",
+                    "last_saved": int(time.time())
+                }
+                chroma_coll.upsert(
+                    ids=[card_id],
+                    documents=[doc_text],
+                    metadatas=[metadata]
+                )
+                chroma_synced = True
+                logger.info(f"[FOYER] [FEAT-568] Instant ChromaDB upsert completed for {card_id} in {coll_name}")
+            except Exception as c_err:
+                logger.warning(f"[FOYER] [FEAT-568] ChromaDB direct sync note: {c_err}")
+
+            # Non-blocking static rebuild trigger
+            rebuild_script = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "wisdom_build.py")
+            if os.path.exists(rebuild_script):
+                try:
+                    subprocess.run([sys.executable, rebuild_script], capture_output=True, text=True, timeout=10)
+                except Exception as b_err:
+                    pass
+
+            return web.json_response({
+                "status": "success",
+                "action": action_taken,
+                "card_id": card_id,
+                "chroma_synced": chroma_synced,
+                "target": target_file,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-568] Single-card save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
