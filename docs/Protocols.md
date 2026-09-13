@@ -270,7 +270,11 @@ All diagnostic forensics MUST reference the canonical black box log:
 
 ### 1. Document Architecture
 *   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_X.md`.
-*   **Structure**: Every task MUST include a **How** (the technical implementation path), a **Why** (the strategic rationale), and an **Agent/Category Tag** (e.g., `[hephaestus / unspecified-high]`, `[Sisyphus-Junior / quick]`) to specify execution routing.
+*   **Structure**: Every task/story MUST include:
+    - **How**: Technical implementation path.
+    - **Why**: Strategic architectural rationale.
+    - **Assigned Owner**: Explicit execution tier (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). Direct code modifications by AGY on swarm-tagged stories are strictly forbidden per `BKM-049`.
+    - **Target Files**: Explicit file paths targeted for modification.
 *   **Pointers**: Conductor-level plans (`conductor/tracks/<track_id>/plan.md`) must contain explicit pointers to the Master Sprint Plan and any relevant forensic audits or BKMs.
 
 ### 2. The Planning Phase (The "Greenlight" Gate)
@@ -793,6 +797,14 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
    - **Progressing:** If tokens are actively flowing and constructive work is progressing, extend the timer window.
    - **Stalled:** If token generation is dead, or the agent is spinning in an unresolvable tool retry loop or orphaned subagent wait, only then terminate the attempt.
 3. **Mandatory Zombie Cleanup:** When an attempt is halted, timed out, or interrupted, the harness (`delegate.py`) and orchestrator MUST issue an explicit `POST /session/{id}/abort` frame to the OpenCode REST port. Never allow orphaned subagent loops to churn GPU silicon after client disconnects.
+
+#### 5. The Story Owner Tag & Anti-Bypass Guard
+1. **Mandatory Owner Tag in Sprint Stories:** Every story defined in `SPRINT_PLAN_*.md` MUST specify an explicit `Assigned Owner:` tag:
+   - `[SWARM:LOCAL]`: Story is assigned to local silicon execution via `delegate.py`.
+   - `[SWARM:CLOUD]`: Story is assigned to cloud swarm burst via `delegate.py`.
+   - `[AGY:PRIMARY]`: Story is architectural, diagnostic, or governance work reserved for the primary orchestrator.
+2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing Attempt 1 (Local) via `delegate.py`.
+3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after Attempt 1 (and Attempt 2 if applicable) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
 
 ---
 
