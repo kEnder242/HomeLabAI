@@ -634,7 +634,14 @@ class FoyerRouter:
             web.post('/wisdom/save_card', self.handle_wisdom_save_card),
             web.post('/attendant/wisdom/save_card', self.handle_wisdom_save_card),
             web.post('/timeline/save_card', self.handle_wisdom_save_card),
-            web.post('/attendant/timeline/save_card', self.handle_wisdom_save_card)
+            web.post('/attendant/timeline/save_card', self.handle_wisdom_save_card),
+            # [FEAT-581] Composable Writer Studio Paper Dataset Endpoints
+            web.get('/paper/list', self.handle_paper_list),
+            web.get('/attendant/paper/list', self.handle_paper_list),
+            web.get('/paper/load', self.handle_paper_load),
+            web.get('/attendant/paper/load', self.handle_paper_load),
+            web.post('/paper/save', self.handle_paper_save),
+            web.post('/attendant/paper/save', self.handle_paper_save)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -892,6 +899,120 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-568] Single-card save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_paper_list(self, request):
+        """[FEAT-581] REST endpoint returning list of available papers from manifest.json."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "papers", "manifest.json")
+            if not os.path.exists(manifest_file):
+                return web.json_response({"status": "error", "message": "manifest.json not found"}, status=404)
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return web.json_response({"status": "success", "manifest": data})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-581] Paper list failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_load(self, request):
+        """[FEAT-581] REST endpoint to load a specific paper dataset."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            file_name = request.query.get("file")
+            paper_id = request.query.get("id")
+
+            if not file_name and paper_id:
+                manifest_file = os.path.join(papers_dir, "manifest.json")
+                if os.path.exists(manifest_file):
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    for p in mdata.get("papers", []):
+                        if p.get("id") == paper_id:
+                            file_name = p.get("file")
+                            break
+
+            if not file_name:
+                manifest_file = os.path.join(papers_dir, "manifest.json")
+                if os.path.exists(manifest_file):
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    papers = mdata.get("papers", [])
+                    if papers:
+                        file_name = papers[0].get("file")
+
+            if not file_name:
+                return web.json_response({"status": "error", "message": "No paper specified"}, status=400)
+
+            # Prevent directory traversal
+            safe_name = os.path.basename(file_name)
+            paper_path = os.path.join(papers_dir, safe_name)
+            if not os.path.exists(paper_path):
+                return web.json_response({"status": "error", "message": f"Paper file {safe_name} not found"}, status=404)
+
+            with open(paper_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            return web.json_response({"status": "success", "paper": data, "file": safe_name})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-581] Paper load failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_save(self, request):
+        """[FEAT-581] REST endpoint to save paper edits and trigger build_writer.py."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            payload = await request.json()
+
+            paper = payload.get("paper") or payload
+            file_name = payload.get("file") or request.query.get("file")
+
+            if not file_name:
+                paper_id = paper.get("id")
+                manifest_file = os.path.join(papers_dir, "manifest.json")
+                if os.path.exists(manifest_file):
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    for p in mdata.get("papers", []):
+                        if p.get("id") == paper_id:
+                            file_name = p.get("file")
+                            break
+
+            if not file_name:
+                file_name = "paper_jitc_intuition.json"
+
+            safe_name = os.path.basename(file_name)
+            target_path = os.path.join(papers_dir, safe_name)
+
+            # Update updated_at timestamp
+            paper["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            # Atomic write
+            atomic_write_json(target_path, paper)
+            logger.info(f"[FOYER] [FEAT-581] Atomically saved paper {paper.get('id')} to {target_path}")
+
+            # Non-blocking trigger of build_writer.py
+            build_script = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts", "build_writer.py")
+            if os.path.exists(build_script):
+                try:
+                    py_bin = os.path.join(dev_lab_root, "HomeLabAI", ".venv", "bin", "python3")
+                    if not os.path.exists(py_bin):
+                        py_bin = sys.executable
+                    subprocess.run([py_bin, build_script], capture_output=True, text=True, timeout=15)
+                    logger.info("[FOYER] [FEAT-582] build_writer.py recompile completed successfully.")
+                except Exception as b_err:
+                    logger.warning(f"[FOYER] [FEAT-582] build_writer.py recompile note: {b_err}")
+
+            return web.json_response({
+                "status": "success",
+                "paper_id": paper.get("id"),
+                "file": safe_name,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-581] Paper save failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
         """REST endpoint for remote control UI."""
