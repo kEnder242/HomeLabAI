@@ -18,6 +18,8 @@ import time
 import datetime
 import logging
 import shutil
+import json
+import fcntl
 import requests
 import subprocess
 
@@ -130,6 +132,85 @@ def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
         return True  # Non-fatal
 
 MAINTENANCE_LOCK_PATH = os.path.join(HOMELAB_DIR, "run", "maintenance.lock")
+NIGHTLY_LOCK_PATH = os.path.join(HOMELAB_DIR, "run", "nightly_forge.lock")
+NIGHTLY_STATE_PATH = os.path.join(HOMELAB_DIR, "run", "nightly_forge_state.json")
+
+
+def check_and_acquire_nightly_lock():
+    """
+    [FEAT-213 / SCAR-036] Wait & Defer to Winner Mutex Protocol.
+    Acquires an exclusive blocking kernel lock. If another instance is running,
+    blocks and waits. Once the lock is acquired, checks the shared state ledger:
+    if the nightly sweep was already completed within the debounce window (12 hours),
+    defers to the winner and exits cleanly (code 0).
+    """
+    os.makedirs(os.path.dirname(NIGHTLY_LOCK_PATH), exist_ok=True)
+    lock_fd = open(NIGHTLY_LOCK_PATH, "w")
+
+    # Non-blocking probe to detect if another instance is actively running
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        logger.info(f"[MUTEX] Acquired exclusive nightly_forge lock (PID: {os.getpid()}).")
+    except (BlockingIOError, IOError):
+        logger.info(f"[MUTEX] Another nightly_forge instance is running. Waiting for winner to complete...")
+        write_step_log("MUTEX_WAITING", "Another instance running; blocking until release")
+        # Blocking wait for the winner to finish
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        logger.info(f"[MUTEX] Lock released by previous instance. Acquired exclusive lock (PID: {os.getpid()}).")
+
+    # Now that we hold the lock, check if the nightly sweep was already completed recently
+    if os.path.exists(NIGHTLY_STATE_PATH):
+        try:
+            with open(NIGHTLY_STATE_PATH, "r") as sf:
+                state_data = json.load(sf)
+            last_completion = state_data.get("last_completed_timestamp", 0)
+            elapsed_hours = (time.time() - last_completion) / 3600.0
+            if state_data.get("status") == "COMPLETED" and elapsed_hours < 12.0:
+                winner_pid = state_data.get("winner_pid", "unknown")
+                logger.info(f"[DEFER] Deferring to winner: Nightly sweep was already completed {elapsed_hours:.1f}h ago by PID {winner_pid}. Exiting cleanly.")
+                write_step_log("DEFERRED_TO_WINNER", f"Already completed by PID {winner_pid}")
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
+                sys.exit(0)
+        except Exception as e:
+            logger.warning(f"[MUTEX] Could not inspect state ledger: {e}")
+
+    # Mark state as RUNNING in shared state ledger
+    try:
+        with open(NIGHTLY_STATE_PATH, "w") as sf:
+            json.dump({
+                "status": "RUNNING",
+                "winner_pid": os.getpid(),
+                "started_at": time.time(),
+                "started_iso": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            }, sf, indent=2)
+    except Exception as e:
+        logger.warning(f"[MUTEX] Could not write running state: {e}")
+
+    return lock_fd
+
+
+def record_nightly_completion(lock_fd, status="COMPLETED"):
+    """Record completion status in state ledger and release lock."""
+    try:
+        with open(NIGHTLY_STATE_PATH, "w") as sf:
+            json.dump({
+                "status": status,
+                "winner_pid": os.getpid(),
+                "last_completed_timestamp": time.time() if status == "COMPLETED" else 0,
+                "completed_iso": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            }, sf, indent=2)
+    except Exception as e:
+        logger.warning(f"[MUTEX] Could not record completion state: {e}")
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+        except Exception:
+            pass
 
 
 def quiesce_vllm() -> bool:
@@ -321,89 +402,103 @@ def run_benchmark_sweep():
 
 
 def main():
-    logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED (LOCAL Z87) ===")
-    write_step_log("ORCHESTRATION_INIT")
-
-    # 1. Pre-Flight System & RAM Health Telemetry
+    lock_fd = check_and_acquire_nightly_lock()
     try:
-        load_avg = os.getloadavg()
-        mem_info = shutil.disk_usage("/")
-        logger.info(f"[PROBE] Pre-Flight Health: Load={load_avg} | Disk Free={mem_info.free // (1024*1024)}MB")
-        write_step_log("PRE_FLIGHT_PROBE", f"load_avg={load_avg}, disk_free_mb={mem_info.free // (1024*1024)}")
-    except Exception as e:
-        logger.warning(f"[PROBE] Health probe warning: {e}")
+        logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED (LOCAL Z87) ===")
+        write_step_log("ORCHESTRATION_INIT")
 
-    # 1b. [LAB-109] GPU Power Limit Pre-Flight Check
-    logger.info("[NIGHTLY STEP 1b] GPU Power Limit Verification...")
-    gpu_power_ok = verify_gpu_power_limit(max_limit_watts=170)
-    if not gpu_power_ok:
-        logger.warning("[LAB-109] GPU power limit verification failed. Forge will proceed but hardware may be at risk.")
+        # 1. Pre-Flight System & RAM Health Telemetry
+        try:
+            load_avg = os.getloadavg()
+            mem_info = shutil.disk_usage("/")
+            logger.info(f"[PROBE] Pre-Flight Health: Load={load_avg} | Disk Free={mem_info.free // (1024*1024)}MB")
+            write_step_log("PRE_FLIGHT_PROBE", f"load_avg={load_avg}, disk_free_mb={mem_info.free // (1024*1024)}")
+        except Exception as e:
+            logger.warning(f"[PROBE] Health probe warning: {e}")
 
-    # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
-    logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce for Training...")
-    quiesced = quiesce_vllm()
+        # 1b. [LAB-109] GPU Power Limit Pre-Flight Check
+        logger.info("[NIGHTLY STEP 1b] GPU Power Limit Verification...")
+        gpu_power_ok = verify_gpu_power_limit(max_limit_watts=170)
+        if not gpu_power_ok:
+            logger.warning("[LAB-109] GPU power limit verification failed. Forge will proceed but hardware may be at risk.")
 
-    if not quiesced:
-        logger.critical("[FATAL] [NIGHTLY FORGE] Cannot proceed with LoRA training: VRAM was NOT evicted. Aborting training to protect host memory stability.")
-        write_step_log("UNSLOTH_FORGE_ABORTED", "VRAM not free - aborting to prevent collision")
-        if os.path.exists(MAINTENANCE_LOCK_PATH):
-            try:
-                os.remove(MAINTENANCE_LOCK_PATH)
-            except Exception:
-                pass
-        # Re-ignite lab back to operational
-        re_ignite_vllm()
-        return
+        # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
+        logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce for Training...")
+        quiesced = quiesce_vllm()
 
-    # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
-    logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
-    write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
-    time.sleep(15)
-
-    training_ok = False
-    try:
-        # 4. Heavy LoRA Training Pass (02:00 AM) - 100% Local on z87-Linux RTX 2080 Ti
-        logger.info("[NIGHTLY STEP 2/4 - FORGE] Executing Local Unsloth LoRA Fine-Tuning Pass...")
-        training_ok = run_unsloth_forge()
-        if not training_ok:
-            logger.error("[FATAL] [NIGHTLY FORGE] LoRA training pass failed. Aborting sweep to prevent uncoordinated daytime scans.")
-            write_step_log("SWEEP_ABORTED_ON_TRAIN_FAIL", "Aborting mass scan due to training failure")
+        if not quiesced:
+            logger.critical("[FATAL] [NIGHTLY FORGE] Cannot proceed with LoRA training: VRAM was NOT evicted. Aborting training to protect host memory stability.")
+            write_step_log("UNSLOTH_FORGE_ABORTED", "VRAM not free - aborting to prevent collision")
+            if os.path.exists(MAINTENANCE_LOCK_PATH):
+                try:
+                    os.remove(MAINTENANCE_LOCK_PATH)
+                except Exception:
+                    pass
+            # Re-ignite lab back to operational
+            re_ignite_vllm()
             return
-            
-        # 5. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
-        logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown...")
-        write_step_log("TRAINING_SETTLING", "Sleeping 15s")
+
+        # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
+        logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
+        write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
         time.sleep(15)
+
+        training_ok = False
+        try:
+            # 4. Heavy LoRA Training Pass (02:00 AM) - 100% Local on z87-Linux RTX 2080 Ti
+            logger.info("[NIGHTLY STEP 2/4 - FORGE] Executing Local Unsloth LoRA Fine-Tuning Pass...")
+            training_ok = run_unsloth_forge()
+            if not training_ok:
+                logger.error("[FATAL] [NIGHTLY FORGE] LoRA training pass failed. Aborting sweep to prevent uncoordinated daytime scans.")
+                write_step_log("SWEEP_ABORTED_ON_TRAIN_FAIL", "Aborting mass scan due to training failure")
+                return
+                
+            # 5. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
+            logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown...")
+            write_step_log("TRAINING_SETTLING", "Sleeping 15s")
+            time.sleep(15)
+        finally:
+            # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
+            logger.info("[NIGHTLY STEP 3/4] Re-igniting Foyer state to OPERATIONAL...")
+            re_ignite_vllm()
+
+        if not training_ok:
+            return
+
+        # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
+        logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")
+        run_mass_scan()
+
+        # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
+        logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
+        run_dream_cycle()
+
+        # 8b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
+        logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
+        run_wisdom_refine()
+
+        # 8c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557]
+        logger.info("[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation...")
+        run_sprint_dna_sync()
+
+        # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
+        logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")
+        run_benchmark_sweep()
+
+        logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
+        write_step_log("ORCHESTRATION_COMPLETE", "All nightly maintenance and benchmark phases passed")
+        record_nightly_completion(lock_fd, status="COMPLETED")
+    except Exception as e:
+        logger.error(f"[FATAL] Nightly forge encountered unhandled exception: {e}")
+        record_nightly_completion(lock_fd, status="FAILED")
+        raise
     finally:
-        # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
-        logger.info("[NIGHTLY STEP 3/4] Re-igniting Foyer state to OPERATIONAL...")
-        re_ignite_vllm()
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+        except Exception:
+            pass
 
-    if not training_ok:
-        return
-
-    # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
-    logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")
-    run_mass_scan()
-
-    # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
-    logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
-    run_dream_cycle()
-
-    # 8b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
-    logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
-    run_wisdom_refine()
-
-    # 8c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557]
-    logger.info("[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation...")
-    run_sprint_dna_sync()
-
-    # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
-    logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")
-    run_benchmark_sweep()
-
-    logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
-    write_step_log("ORCHESTRATION_COMPLETE", "All nightly maintenance and benchmark phases passed")
 
 if __name__ == "__main__":
     main()
