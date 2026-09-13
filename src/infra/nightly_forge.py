@@ -24,9 +24,12 @@ import subprocess
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [NIGHTLY FORGE] %(message)s")
 logger = logging.getLogger("nightly_forge")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # HomeLabAI/src
+HOMELAB_DIR = os.path.dirname(BASE_DIR)  # HomeLabAI
+LAB_ROOT = os.path.dirname(HOMELAB_DIR)  # Dev_Lab
+VENV_PYTHON = os.path.join(HOMELAB_DIR, ".venv", "bin", "python3")
 FOYER_URL = "http://localhost:8765"
-DATASET_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/journal_ledger.jsonl")
+DATASET_PATH = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data", "journal_ledger.jsonl")
 OUTPUT_LORA_DIR = "/speedy/models/adapters/cli_voice_v1"
 try:
     from infra.pager_relay import trigger_pager
@@ -126,7 +129,7 @@ def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
         logger.warning(f"[LAB-109] Power limit verification error: {e}")
         return True  # Non-fatal
 
-MAINTENANCE_LOCK_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/run/maintenance.lock")
+MAINTENANCE_LOCK_PATH = os.path.join(HOMELAB_DIR, "run", "maintenance.lock")
 
 
 def quiesce_vllm() -> bool:
@@ -166,7 +169,7 @@ def quiesce_vllm() -> bool:
         if time.time() - t0 > 5:
             logger.info(f"[FEAT-213] VRAM still held ({vram_used} MB). Enforcing targeted vLLM process eviction...")
             try:
-                pid_file = os.path.expanduser("~/Dev_Lab/HomeLabAI/run/vllm.pid")
+                pid_file = os.path.join(HOMELAB_DIR, "run", "vllm.pid")
                 if os.path.exists(pid_file):
                     try:
                         with open(pid_file, "r") as pf:
@@ -215,7 +218,9 @@ def run_mass_scan():
     """Run note ingestion loop."""
     logger.info("[SPR-52.0] Initiating mass scan step...")
     write_step_log("MASS_SCAN_START")
-    cmd = ["python3", os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/mass_scan.py"), "--once"]
+    script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "mass_scan.py")
+    py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+    cmd = [py_bin, script, "--once"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     logger.info(f"[SPR-52.0] Mass scan complete with return code {res.returncode}")
     write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
@@ -266,12 +271,10 @@ def run_wisdom_refine():
     """[FEAT-562 / Story 77.2] Automated Nightly Wisdom Synthesis Refiner & Semantic Deduplication Pass."""
     logger.info("[WISDOM] Initiating Wisdom Synthesis Refiner and Deduplication Pass...")
     write_step_log("WISDOM_REFINE_START")
-    script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/refine_wisdom.py")
+    script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "refine_wisdom.py")
     if os.path.exists(script):
         try:
-            py_bin = os.path.join(BASE_DIR, ".venv/bin/python3")
-            if not os.path.exists(py_bin):
-                py_bin = sys.executable
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
             logger.info(f"[WISDOM] Wisdom refinement completed with return code {res.returncode}")
             write_step_log("WISDOM_REFINE_COMPLETE", f"returncode={res.returncode}")
@@ -286,12 +289,10 @@ def run_sprint_dna_sync():
     """[FEAT-557 / Story 77.0] Automated Sprint DNA ChromaDB Sync & Manifest Compilation Pass."""
     logger.info("[SPRINT_DNA] Initiating Sprint DNA sync and manifest compilation...")
     write_step_log("SPRINT_DNA_START")
-    script = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/curator/sync_sprint_dna.py")
+    script = os.path.join(HOMELAB_DIR, "src", "curator", "sync_sprint_dna.py")
     if os.path.exists(script):
         try:
-            py_bin = os.path.join(BASE_DIR, ".venv/bin/python3")
-            if not os.path.exists(py_bin):
-                py_bin = sys.executable
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
             logger.info(f"[SPRINT_DNA] Sprint DNA sync completed with return code {res.returncode}")
             write_step_log("SPRINT_DNA_COMPLETE", f"returncode={res.returncode}")
@@ -304,10 +305,11 @@ def run_sprint_dna_sync():
 
 def run_benchmark_sweep():
     """[FEAT-495] Dynamic Federated Benchmark Sweep across all active hardware seats."""
-    bench_script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/bench_models.py")
+    bench_script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "bench_models.py")
     if os.path.exists(bench_script):
         try:
-            res = subprocess.run([sys.executable, bench_script, "--no-serve"], capture_output=True, text=True, timeout=120)
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+            res = subprocess.run([py_bin, bench_script, "--no-serve"], capture_output=True, text=True, timeout=120)
             if res.returncode == 0:
                 last_line = res.stdout.strip().splitlines()[-1] if res.stdout else "Success"
                 logger.info(f"[BENCHMARK] Sweep complete: {last_line}")
