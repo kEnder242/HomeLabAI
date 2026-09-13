@@ -762,11 +762,11 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 **Status:** ACTIVE / MANDATORY  
 
 #### 1. The Tri-Loop Law
-1. **Three-Tier Escalation Ladder:** A story assigned to delegation executes through a strictly structured 3-tier escalation ladder:
-   * **Attempt 1: Sovereign Local Silicon (`[SWARM:LOCAL]`)** — Windows RTX 4090 (Atlas) + macOS M5 Air (Junior). 100% private, sovereign execution.
-   * **Attempt 2: Cloud Swarm (`[SWARM:CLOUD]`)** — OpenCode Cloud / OpenRouter / DeepSeek / Cohere. Burst capacity for complex reasoning when local models hit context or syntax boundaries.
-   * **Attempt 3: Primary Agent (`[AGY:TAKEOVER]`)** — AGY executes direct AST implementation and architectural certification, preserving primary tokens.
-2. **Never Blindly Retry:** A retry between tiers is strictly defined as an execution attempt preceded by root-cause diagnosis. Simply tweaking prompt wording without fixing underlying tool/permission mismatch is an invariant violation.
+1. **Execution Tiers & Retry Boundaries:**
+   * **`[SWARM:LOCAL]` (The 3-Loop Diagnostic Mandate):** When targeting sovereign local silicon (Windows RTX 4090 Atlas + macOS M5 Air Junior), the orchestrator MUST execute up to **3 full diagnostic remediation rounds on local silicon** (Attempt 1a → diagnose & fix harness/prompt/knobs → Attempt 1b → Attempt 1c). Any failure on Attempt 1 requires the orchestrator to diagnose the failure, adjust the harness/config/prompt, and retry on local. Local silicon is NEVER abandoned after a single failure. Only after all 3 diagnosed local attempts are exhausted does the story escalate to Cloud Swarm (`[SWARM:CLOUD]`), followed by Primary Takeover (`[AGY:TAKEOVER]`).
+   * **`[SWARM:CLOUD]` (Direct Cloud Route):** When a story is tagged `[SWARM:CLOUD]`, local attempts are skipped entirely. The dispatch routes directly to Cloud Swarm (Groq / OpenCode Cloud / Big-Pickle / Cohere). If Cloud Swarm fails, it skips local retries and routes straight to Primary Takeover (`[AGY:TAKEOVER]`).
+   * **`[AGY:PRIMARY]` (Direct Architectural Core):** Architectural scaffolding, protocol governance, and schema bootstrap executed directly by the primary agent.
+2. **Never Blindly Retry:** A retry within local silicon (or between escalation tiers) is strictly defined as an execution attempt preceded by root-cause diagnosis. Simply tweaking prompt wording without fixing underlying tool/permission/harness mismatch is an invariant violation.
 3. **Safe-Patch Mandate (Anti-Bash-Clobber):** Subagents MUST NOT use destructive bash file writes (`cat << 'EOF' >` or `echo >`) on existing codebase files. Subagents must invoke `clara-dna_safe_patch` (or atomic patchers) for existing files, reserving `write` strictly for new standalone files.
 
 #### 2. Mandatory Diagnostics Between Retries
@@ -800,11 +800,11 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 
 #### 5. The Story Owner Tag & Anti-Bypass Guard
 1. **Mandatory Owner Tag in Sprint Stories:** Every story defined in `SPRINT_PLAN_*.md` MUST specify an explicit `Assigned Owner:` tag:
-   - `[SWARM:LOCAL]`: Story is assigned to local silicon execution via `delegate.py`.
-   - `[SWARM:CLOUD]`: Story is assigned to cloud swarm burst via `delegate.py`.
+   - `[SWARM:LOCAL]`: Story is assigned to local silicon execution via `delegate.py` with up to 3 diagnostic remediation rounds on local silicon.
+   - `[SWARM:CLOUD]`: Story is assigned to cloud swarm burst via `delegate.py` directly, skipping local retries.
    - `[AGY:PRIMARY]`: Story is architectural, diagnostic, or governance work reserved for the primary orchestrator.
-2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing Attempt 1 (Local) via `delegate.py`.
-3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after Attempt 1 (and Attempt 2 if applicable) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
+2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing delegation attempts via `delegate.py` (including all 3 local diagnostic rounds for `[SWARM:LOCAL]`).
+3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier (and its required diagnostic retries) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
 
 ---
 
