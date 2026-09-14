@@ -124,3 +124,15 @@ pytest HomeLabAI/src/tests/test_delegation_canary.py -v       # live delegation 
 - Swarm Topology: Atlas (RTX 4090) → Sisyphus-Junior (RTX 4090 / Kender Ollama) 100% Certified.
 - M5 Air Role: High-fidelity CoT speculative triage and deep reasoning (read-focused, low-tool).
 
+---
+
+## 🚨 Post-Mortem: Sprint 78 Local Silicon Memory Ceilings & Forgotten Invariants (2026-09-13)
+
+### The 5 Missed & Forgotten Strategies
+1. **Atlas 4-Stage Cascade Bypassed:** Direct worker routing (`agent="Sisyphus-Junior"`) dumped raw story context into the worker, violating BKM-047 and skipping Librarian anchor extraction.
+2. **Tool Denial Casing Mismatch:** PascalCase `"Sisyphus-Junior"` vs lowercase `"sisyphus-junior"` failed to match in `oh-my-openagent.json`, attaching all 31 ICM and search tools (+12k token schema ballast).
+3. **Ollama 4090 Modelfile Pinning Dropped:** Defaulting to `hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL` (40k context) caused Ollama to blow past 24GB VRAM and evict to host CPU RAM (0.5 tok/s). Fixed by pinning `qwen3-14b-16k:latest` (`num_ctx 16384`).
+4. **M5 Air Prefill vs. KV Cache Ceiling:** TurboQuant 4-bit compresses the KV cache (~1.5 GB for 131k context), but CANNOT compress intermediate forward pass activations. Input prompts > 6,000 tokens breach macOS Metal's 24.46 GB wired limit (`iogpu.wired_limit_mb`).
+5. **Ambient Hook Injection on Workers:** Pre-prompt ambient memory hooks injected 24+ lines into programmatic worker dispatches. Fixed by bypassing injection when swarm delegation markers are present.
+
+
