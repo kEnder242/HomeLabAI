@@ -653,7 +653,11 @@ class FoyerRouter:
             web.post('/paper/archive', self.handle_paper_archive),
             web.post('/attendant/paper/archive', self.handle_paper_archive),
             web.post('/paper/synthesize', self.handle_paper_synthesize),
-            web.post('/attendant/paper/synthesize', self.handle_paper_synthesize)
+            web.post('/attendant/paper/synthesize', self.handle_paper_synthesize),
+            web.post('/paper/review_consistency', self.handle_paper_review_consistency),
+            web.post('/attendant/paper/review_consistency', self.handle_paper_review_consistency),
+            web.post('/paper/discover_citations', self.handle_paper_discover_citations),
+            web.post('/attendant/paper/discover_citations', self.handle_paper_discover_citations)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1284,6 +1288,138 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-584] Paragraph synthesis failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_review_consistency(self, request):
+        """[FEAT-586] REST endpoint to evaluate prose grounding against attached bone collections & citations."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            payload = await request.json()
+            tier = payload.get("tier", "paragraph")
+            target_id = payload.get("id") or payload.get("paragraph_id")
+            text_content = payload.get("text", "")
+            citations = payload.get("citations", [])
+
+            # Hydrate citation summaries from dna_manifest.json
+            manifest_path = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+            dna_lookup = {}
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as mf:
+                        m_raw = json.load(mf)
+                        for col in ["epistemology", "behavioral", "features", "empirical", "prior_art", "philosophy", "wisdom", "discovery"]:
+                            for item in m_raw.get(col, []):
+                                i_id = item.get("id")
+                                if i_id:
+                                    dna_lookup[i_id] = item
+                except Exception as ex:
+                    logger.warning(f"[FOYER] [FEAT-586] Manifest load warning: {ex}")
+
+            text_lower = text_content.lower()
+            grounded = []
+            ungrounded = []
+            notes = []
+
+            for cite in citations:
+                item = dna_lookup.get(cite, {})
+                title = (item.get("title") or item.get("rule") or item.get("concept") or "").lower()
+                origin = (item.get("origin_text") or item.get("verbatim") or item.get("narrative") or "").lower()
+
+                # Extract significant keywords (len >= 4)
+                keywords = set(re.findall(r'\b[a-zA-Z]{4,}\b', f"{title} {cite}"))
+                # Check for direct anchor mention or keyword overlap
+                direct_anchor = cite.lower() in text_lower
+                overlap = any(kw in text_lower for kw in keywords if kw not in {"paper", "section", "system", "using", "with", "this", "that", "from"})
+
+                if direct_anchor or overlap:
+                    grounded.append(cite)
+                else:
+                    ungrounded.append(cite)
+                    t_label = item.get("title") or cite
+                    notes.append(f"[{cite}] '{t_label}' attached but lacks keyword/thematic grounding in current prose.")
+
+            consistent = (len(ungrounded) == 0)
+            summary_msg = "All attached citations are grounded in prose." if consistent else f"{len(ungrounded)} citation(s) lack grounding in prose and are flagged for pruning or wordsmithing."
+
+            return web.json_response({
+                "status": "success",
+                "tier": tier,
+                "id": target_id,
+                "consistent": consistent,
+                "grounded": grounded,
+                "ungrounded": ungrounded,
+                "notes": notes,
+                "summary": summary_msg,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-586] Consistency review failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_discover_citations(self, request):
+        """[FEAT-586] REST endpoint to discover and bubble up related DNA citations for written prose."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            payload = await request.json()
+            tier = payload.get("tier", "paragraph")
+            target_id = payload.get("id") or payload.get("paragraph_id")
+            text_content = payload.get("text", "")
+            existing_cites = set(payload.get("existing_citations", []))
+            top_k = int(payload.get("top_k", 6))
+
+            # Hydrate citation items from dna_manifest.json
+            manifest_path = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+            candidates = []
+            if os.path.exists(manifest_path):
+                with open(manifest_path, "r", encoding="utf-8") as mf:
+                    m_raw = json.load(mf)
+                    all_items = []
+                    for col, items in m_raw.items():
+                        if isinstance(items, list):
+                            for it in items:
+                                if isinstance(it, dict) and it.get("id"):
+                                    all_items.append((col, it))
+
+                text_words = set(re.findall(r'\b[a-zA-Z]{4,}\b', text_content.lower()))
+                for col, item in all_items:
+                    cid = item.get("id")
+                    if cid in existing_cites:
+                        continue
+
+                    title = item.get("title") or item.get("rule") or item.get("concept") or cid
+                    desc = item.get("origin_text") or item.get("narrative") or item.get("summary") or ""
+                    tags = item.get("tags") or []
+
+                    corpus = f"{cid} {title} {desc} {' '.join(tags)}".lower()
+                    corpus_words = set(re.findall(r'\b[a-zA-Z]{4,}\b', corpus))
+
+                    overlap = text_words.intersection(corpus_words)
+                    score = len(overlap) / (len(text_words) + 1e-5) if text_words else 0.0
+
+                    if score > 0.05 or len(overlap) >= 2:
+                        candidates.append({
+                            "id": cid,
+                            "collection": col,
+                            "title": title,
+                            "origin_text": desc[:160],
+                            "score": round(score, 3),
+                            "overlap_terms": list(overlap)[:4]
+                        })
+
+                # Sort by score descending
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+                candidates = candidates[:top_k]
+
+            return web.json_response({
+                "status": "success",
+                "tier": tier,
+                "id": target_id,
+                "candidates": candidates,
+                "count": len(candidates),
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-586] Citation discovery failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
