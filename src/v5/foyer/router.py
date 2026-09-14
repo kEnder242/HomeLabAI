@@ -639,13 +639,19 @@ class FoyerRouter:
             web.post('/attendant/philosophy/save_card', self.handle_wisdom_save_card),
             web.post('/timeline/save_card', self.handle_wisdom_save_card),
             web.post('/attendant/timeline/save_card', self.handle_wisdom_save_card),
-            # [FEAT-581 / FEAT-584] Composable Writer Studio Paper Dataset & Synthesis Endpoints
+            # [FEAT-581 / FEAT-584 / FEAT-585] Composable Writer Studio Paper Dataset & Synthesis Endpoints
             web.get('/paper/list', self.handle_paper_list),
             web.get('/attendant/paper/list', self.handle_paper_list),
             web.get('/paper/load', self.handle_paper_load),
             web.get('/attendant/paper/load', self.handle_paper_load),
             web.post('/paper/save', self.handle_paper_save),
             web.post('/attendant/paper/save', self.handle_paper_save),
+            web.post('/paper/validate', self.handle_paper_validate),
+            web.post('/attendant/paper/validate', self.handle_paper_validate),
+            web.post('/paper/rename', self.handle_paper_rename),
+            web.post('/attendant/paper/rename', self.handle_paper_rename),
+            web.post('/paper/archive', self.handle_paper_archive),
+            web.post('/attendant/paper/archive', self.handle_paper_archive),
             web.post('/paper/synthesize', self.handle_paper_synthesize),
             web.post('/attendant/paper/synthesize', self.handle_paper_synthesize)
         ])
@@ -991,6 +997,23 @@ class FoyerRouter:
             safe_name = os.path.basename(file_name)
             target_path = os.path.join(papers_dir, safe_name)
 
+            # Schema validation
+            try:
+                scripts_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts")
+                if scripts_dir not in sys.path:
+                    sys.path.append(scripts_dir)
+                from validate_paper_schema import validate_paper_dict
+                valid, errors = validate_paper_dict(paper, source_name=safe_name)
+                if not valid:
+                    logger.warning(f"[FOYER] [FEAT-585] Schema validation failed on save: {errors}")
+                    return web.json_response({
+                        "status": "error",
+                        "message": "Paper failed schema validation",
+                        "errors": errors
+                    }, status=400)
+            except Exception as v_err:
+                logger.warning(f"[FOYER] [FEAT-585] Schema validator check note: {v_err}")
+
             # Update updated_at timestamp
             paper["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -1018,6 +1041,176 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-581] Paper save failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_validate(self, request):
+        """[FEAT-585] REST endpoint to validate candidate paper payload against schema."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            payload = await request.json()
+            paper = payload.get("paper") or payload
+            scripts_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.append(scripts_dir)
+            from validate_paper_schema import validate_paper_dict
+            valid, errors = validate_paper_dict(paper, source_name=paper.get("id", "candidate"))
+            return web.json_response({
+                "status": "success" if valid else "error",
+                "valid": valid,
+                "errors": errors
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-585] Paper validate failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_rename(self, request):
+        """[FEAT-581] REST endpoint to rename paper title/file representation and update manifest."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            manifest_file = os.path.join(papers_dir, "manifest.json")
+            payload = await request.json()
+
+            paper_id = payload.get("paper_id") or payload.get("id")
+            new_title = payload.get("new_title")
+            new_subtitle = payload.get("new_subtitle")
+            new_file = payload.get("new_file")
+
+            if not paper_id:
+                return web.json_response({"status": "error", "message": "Missing paper_id"}, status=400)
+
+            if not os.path.exists(manifest_file):
+                return web.json_response({"status": "error", "message": "manifest.json not found"}, status=404)
+
+            with open(manifest_file, "r", encoding="utf-8") as mf:
+                mdata = json.load(mf)
+
+            found_entry = None
+            for p in mdata.get("papers", []):
+                if p.get("id") == paper_id:
+                    found_entry = p
+                    break
+
+            if not found_entry:
+                return web.json_response({"status": "error", "message": f"Paper {paper_id} not in manifest"}, status=404)
+
+            old_file = found_entry.get("file", f"{paper_id}.json")
+            old_path = os.path.join(papers_dir, old_file)
+
+            if not os.path.exists(old_path):
+                return web.json_response({"status": "error", "message": f"Old paper file {old_file} not found"}, status=404)
+
+            with open(old_path, "r", encoding="utf-8") as pf:
+                paper_data = json.load(pf)
+
+            if new_title:
+                paper_data["title"] = new_title
+                found_entry["title"] = new_title
+            if new_subtitle is not None:
+                paper_data["subtitle"] = new_subtitle
+                found_entry["subtitle"] = new_subtitle
+
+            target_file = old_file
+            if new_file and new_file != old_file:
+                target_file = os.path.basename(new_file)
+                found_entry["file"] = target_file
+
+            target_path = os.path.join(papers_dir, target_file)
+            paper_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            atomic_write_json(target_path, paper_data)
+            atomic_write_json(manifest_file, mdata)
+
+            if target_file != old_file and os.path.exists(old_path):
+                try:
+                    os.remove(old_path)
+                except Exception as del_err:
+                    logger.warning(f"[FOYER] [FEAT-581] Could not remove old file {old_file}: {del_err}")
+
+            # Recompile writer.html and main.tex
+            build_script = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts", "build_writer.py")
+            if os.path.exists(build_script):
+                try:
+                    py_bin = os.path.join(dev_lab_root, "HomeLabAI", ".venv", "bin", "python3")
+                    if not os.path.exists(py_bin):
+                        py_bin = sys.executable
+                    subprocess.run([py_bin, build_script], capture_output=True, text=True, timeout=15)
+                except Exception as b_err:
+                    logger.warning(f"[FOYER] [FEAT-581] build_writer note: {b_err}")
+
+            logger.info(f"[FOYER] [FEAT-581] Renamed paper {paper_id} to file {target_file}")
+            return web.json_response({
+                "status": "success",
+                "paper_id": paper_id,
+                "file": target_file,
+                "title": paper_data.get("title"),
+                "subtitle": paper_data.get("subtitle")
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-581] Paper rename failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_archive(self, request):
+        """[FEAT-581] REST endpoint to snapshot paper state to archive directory and commit locally (Option A)."""
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            archive_dir = os.path.join(papers_dir, "archive")
+            os.makedirs(archive_dir, exist_ok=True)
+
+            payload = await request.json()
+            paper_id = payload.get("paper_id") or payload.get("id", "PAPER-001")
+            file_name = payload.get("file")
+
+            if not file_name:
+                manifest_file = os.path.join(papers_dir, "manifest.json")
+                if os.path.exists(manifest_file):
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    for p in mdata.get("papers", []):
+                        if p.get("id") == paper_id:
+                            file_name = p.get("file")
+                            break
+
+            if not file_name:
+                file_name = "paper_jitc_intuition.json"
+
+            source_path = os.path.join(papers_dir, os.path.basename(file_name))
+            if not os.path.exists(source_path):
+                return web.json_response({"status": "error", "message": f"Paper file {file_name} not found"}, status=404)
+
+            with open(source_path, "r", encoding="utf-8") as pf:
+                paper_data = json.load(pf)
+
+            ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+            archive_filename = f"{paper_id}_{ts}.json"
+            archive_path = os.path.join(archive_dir, archive_filename)
+
+            atomic_write_json(archive_path, paper_data)
+            logger.info(f"[FOYER] [FEAT-581] Option A: Archived {paper_id} to {archive_path}")
+
+            # Local git stage and commit
+            commit_hash = "uncommitted"
+            try:
+                pdev_dir = os.path.join(dev_lab_root, "Portfolio_Dev")
+                subprocess.run(["git", "add", f"papers/archive/{archive_filename}"], cwd=pdev_dir, capture_output=True, text=True, timeout=10)
+                c_res = subprocess.run(["git", "commit", "-m", f"archive(paper): snapshot {paper_id} at {ts} [Option A]"], cwd=pdev_dir, capture_output=True, text=True, timeout=10)
+                if c_res.returncode == 0:
+                    r_res = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=pdev_dir, capture_output=True, text=True, timeout=5)
+                    commit_hash = r_res.stdout.strip()
+            except Exception as g_err:
+                logger.warning(f"[FOYER] [FEAT-581] Git commit archive note: {g_err}")
+
+            return web.json_response({
+                "status": "success",
+                "paper_id": paper_id,
+                "archive_file": archive_filename,
+                "path": f"papers/archive/{archive_filename}",
+                "git_commit": commit_hash,
+                "timestamp": ts
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-581] Paper archive failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_paper_synthesize(self, request):
