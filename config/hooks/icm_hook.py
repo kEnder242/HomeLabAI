@@ -417,12 +417,14 @@ def main():
         print(json.dumps({"injectSteps": []}))
         return
 
-    # [Action 1: Junior / Air Context Bypass]
-    # Sisyphus-Junior and local worker executions MUST NOT receive ambient wake-up packs,
-    # recent memories, or ClaraDB/ICM injections. Only Node KENDER (Atlas/Ollama) receives JIT context.
+    # [Action 1: Junior / Air Context & Swarm Delegation Bypass]
+    # Sisyphus-Junior, Atlas cascade workers, and programmatic delegation dispatches
+    # MUST NOT receive ambient wake-up packs, recent memories, or ClaraDB/ICM injections.
     agent_name = (payload.get("agent") or payload.get("agentName") or "").lower()
     session_title = (payload.get("sessionTitle") or payload.get("title") or "").lower()
-    if "junior" in agent_name or "junior" in session_title or "air" in agent_name:
+    user_input_raw = (payload.get("userMessage") or payload.get("prompt") or payload.get("last_user_message") or "")
+    if ("junior" in agent_name or "junior" in session_title or "air" in agent_name or
+            any(marker in user_input_raw for marker in ["[STORY DELEGATION TARGET", "[TASK:", "[ORCHESTRATION INSTRUCTIONS", "[SPOON-FED TASK", "[MOMUS:", "[LIBRARIAN:"])):
         print(json.dumps({"injectSteps": []}))
         return
 

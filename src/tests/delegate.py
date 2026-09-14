@@ -653,11 +653,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     local_cfg = aliases.get("local_bicameral", {})
                     log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (Windows 4090 Atlas + M5 Air Junior). Zero cloud fallbacks.")
                     if mode in ("plan", "investigate") or agent in ("prometheus", "atlas", "architect"):
-                        model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"})]
+                        model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})]
                     else:
                         model_ladder = [
                             local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}),
-                            local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"})
+                            local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})
                         ]
                 elif cloud_only:
                     log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (Groq/OpenCode/Cohere). Zero local silicon fallbacks.")
@@ -688,7 +688,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             model_ladder = [
                 {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
                 {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"},
+                {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"},
             ]
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
