@@ -371,17 +371,13 @@ class FoyerRouter:
             detail="kender_online" if kender_online else "local_fallback",
         )
 
-        # Stages 2-4 run inside the hub; guarded by a total-budget timeout.
+        # [INVARIANT: NON-BLOCKING STREAMING - NEVER WRAP IN MONOLITHIC TIMEOUT]
+        # [FEAT-233 / FEAT-486] Direct asynchronous execution. Per-stage timeouts are handled
+        # internally within CognitiveHub so that Pinky's conversational triage streams sub-second
+        # without being blocked or dropped by an outer monolithic timeout clamp.
         shutdown_ev = asyncio.Event()
         try:
-            await asyncio.wait_for(
-                self.cognitive.process_query(query, shutdown_event=shutdown_ev, request_id=request_id),
-                timeout=STAGE_TIMEOUTS["stage4_dt_synthesis"] * 4,
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"[SPR-52.0] Division of Labor exceeded total budget for {request_id}")
-            await self._emit_stage_progress("stage4_dt_synthesis", request_id, "FAILED", detail="total_timeout")
-            await self._stream_pinky_fallback(request_id)
+            await self.cognitive.process_query(query, shutdown_event=shutdown_ev, request_id=request_id)
         except Exception as e:
             logger.error(f"[SPR-52.0] Division of Labor failed for {request_id}: {e}")
             await self.broadcast({
@@ -550,7 +546,12 @@ class FoyerRouter:
                             return
 
                         data = await r.json()
-                        models = [m.get("name") for m in data.get("models", [])]
+                        models = []
+                        if isinstance(data, dict):
+                            if "models" in data and isinstance(data["models"], list):
+                                models = [m.get("name") for m in data["models"] if isinstance(m, dict)]
+                            elif "data" in data and isinstance(data["data"], list):
+                                models = [m.get("id") for m in data["data"] if isinstance(m, dict)]
                         if not models:
                             self.thought_online = False
                             return
