@@ -1365,7 +1365,7 @@ class FoyerRouter:
             target_id = payload.get("id") or payload.get("paragraph_id")
             text_content = payload.get("text", "")
             existing_cites = set(payload.get("existing_citations", []))
-            top_k = int(payload.get("top_k", 6))
+            top_k = int(payload.get("top_k", 20))
 
             # Hydrate citation items from dna_manifest.json
             manifest_path = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
@@ -1396,7 +1396,7 @@ class FoyerRouter:
                     overlap = text_words.intersection(corpus_words)
                     score = len(overlap) / (len(text_words) + 1e-5) if text_words else 0.0
 
-                    if score > 0.05 or len(overlap) >= 2:
+                    if score > 0.02 or len(overlap) >= 1:
                         candidates.append({
                             "id": cid,
                             "collection": col,
