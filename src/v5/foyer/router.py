@@ -635,6 +635,8 @@ class FoyerRouter:
             web.post('/attendant/wisdom/save', self.handle_wisdom_save),
             web.post('/wisdom/save_card', self.handle_wisdom_save_card),
             web.post('/attendant/wisdom/save_card', self.handle_wisdom_save_card),
+            web.post('/philosophy/save_card', self.handle_wisdom_save_card),
+            web.post('/attendant/philosophy/save_card', self.handle_wisdom_save_card),
             web.post('/timeline/save_card', self.handle_wisdom_save_card),
             web.post('/attendant/timeline/save_card', self.handle_wisdom_save_card),
             # [FEAT-581] Composable Writer Studio Paper Dataset Endpoints
