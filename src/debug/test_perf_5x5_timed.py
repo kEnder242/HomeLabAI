@@ -24,7 +24,7 @@ INTERCOM_URL = "http://localhost:9001/intercom.html"
 def get_lab_status():
     """Query live attendant status to determine ignition state and duration."""
     try:
-        req = urllib.request.Request(f"{ATTENDANT_URL}/status", headers={"User-Agent": "perf-5x5-harness"})
+        req = urllib.request.Request(f"{ATTENDANT_URL}/status?timeout=1", headers={"User-Agent": "perf-5x5-harness"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
                 return json.loads(resp.read().decode("utf-8"))
