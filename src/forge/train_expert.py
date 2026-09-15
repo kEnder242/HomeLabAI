@@ -8,23 +8,20 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:128")
 # Preload CUDA 13 runtime libraries from pip virtualenv
 _cu13_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
 if os.path.exists(_cu13_dir):
-    _nvjit = os.path.join(_cu13_dir, "libnvJitLink.so.13")
-    if os.path.exists(_nvjit):
-        try:
-            ctypes.CDLL(_nvjit, mode=ctypes.RTLD_GLOBAL)
-        except Exception:
-            pass
+    os.environ["LD_LIBRARY_PATH"] = f"{_cu13_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+    for lib in ["libnvJitLink.so.13", "libcudart.so.13", "libcublas.so.13"]:
+        _p = os.path.join(_cu13_dir, lib)
+        if os.path.exists(_p):
+            try:
+                ctypes.CDLL(_p, mode=ctypes.RTLD_GLOBAL)
+            except Exception:
+                pass
 
-try:
-    from unsloth import FastLanguageModel
-    import torch
-    from trl import SFTTrainer
-    from transformers import TrainingArguments, TrainerCallback
-    from datasets import load_dataset
-except ImportError:
-    print("Unsloth not installed. Skipping actual import.")
-    FastLanguageModel = None
-    TrainerCallback = object
+from unsloth import FastLanguageModel
+import torch
+from trl import SFTTrainer
+from transformers import TrainingArguments, TrainerCallback
+from datasets import load_dataset
 
 import datetime
 import json
@@ -162,19 +159,6 @@ def train_expert(dataset_path: str, output_dir: str, steps: int = 100, model_nam
     """
     print(f"Starting training on {dataset_path} -> {output_dir} ({steps} steps, pacing_delay={pacing_delay}s)", flush=True)
     t0 = time.monotonic()
-    if FastLanguageModel is None:
-        print("Mocking training completion since Unsloth is missing.", flush=True)
-        os.makedirs(output_dir, exist_ok=True)
-        with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
-            f.write('{"mock": true}')
-        record_forge_telemetry(
-            output_dir=output_dir,
-            steps=steps,
-            runtime_s=1.0,
-            pacing_delay=pacing_delay,
-            step_metrics=[{"step": steps, "loss": 3.5, "grad_norm": 1.5, "learning_rate": 1e-4, "epoch": 1.0}]
-        )
-        return
 
     max_seq_length = 1024  # [FEAT-452] Clamped to 1024 to guarantee zero CUDA VRAM fragmentation on Turing SM 7.5
     dtype = None 

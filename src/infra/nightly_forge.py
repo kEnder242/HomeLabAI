@@ -309,15 +309,20 @@ def run_mass_scan():
 def run_unsloth_forge() -> bool:
     """[FEAT-160] Run Unsloth LoRA fine-tuning locally on z87 (--local path)."""
     train_script = os.path.join(BASE_DIR, "forge", "train_expert.py")
+    py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
     cmd = [
-        sys.executable, train_script,
+        py_bin, train_script,
         "--dataset", DATASET_PATH,
         "--output", OUTPUT_LORA_DIR,
     ]
     write_step_log("UNSLOTH_FORGE_START", f"cmd={' '.join(cmd)}")
     logger.info(f"[FEAT-160] Executing command: {' '.join(cmd)}")
+    env = os.environ.copy()
+    _cu13_dir = os.path.join(HOMELAB_DIR, ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
+    if os.path.exists(_cu13_dir):
+        env["LD_LIBRARY_PATH"] = f"{_cu13_dir}:{env.get('LD_LIBRARY_PATH', '')}"
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if res.returncode == 0:
             logger.info("[FEAT-160] LoRA training pass completed successfully.")
             write_step_log("UNSLOTH_FORGE_COMPLETE", "returncode=0")
