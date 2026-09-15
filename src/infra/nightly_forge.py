@@ -136,13 +136,13 @@ NIGHTLY_LOCK_PATH = os.path.join(HOMELAB_DIR, "run", "nightly_forge.lock")
 NIGHTLY_STATE_PATH = os.path.join(HOMELAB_DIR, "run", "nightly_forge_state.json")
 
 
-def check_and_acquire_nightly_lock():
+def check_and_acquire_nightly_lock(force: bool = False):
     """
     [FEAT-213 / SCAR-036] Wait & Defer to Winner Mutex Protocol.
     Acquires an exclusive blocking kernel lock. If another instance is running,
     blocks and waits. Once the lock is acquired, checks the shared state ledger:
-    if the nightly sweep was already completed within the debounce window (12 hours),
-    defers to the winner and exits cleanly (code 0).
+    if the nightly sweep was already completed within the debounce window (12 hours)
+    and force is False, defers to the winner and exits cleanly (code 0).
     """
     os.makedirs(os.path.dirname(NIGHTLY_LOCK_PATH), exist_ok=True)
     lock_fd = open(NIGHTLY_LOCK_PATH, "w")
@@ -159,7 +159,7 @@ def check_and_acquire_nightly_lock():
         logger.info(f"[MUTEX] Lock released by previous instance. Acquired exclusive lock (PID: {os.getpid()}).")
 
     # Now that we hold the lock, check if the nightly sweep was already completed recently
-    if os.path.exists(NIGHTLY_STATE_PATH):
+    if not force and os.path.exists(NIGHTLY_STATE_PATH):
         try:
             with open(NIGHTLY_STATE_PATH, "r") as sf:
                 state_data = json.load(sf)
@@ -314,6 +314,7 @@ def run_unsloth_forge() -> bool:
         py_bin, train_script,
         "--dataset", DATASET_PATH,
         "--output", OUTPUT_LORA_DIR,
+        "--steps", "150",
     ]
     write_step_log("UNSLOTH_FORGE_START", f"cmd={' '.join(cmd)}")
     logger.info(f"[FEAT-160] Executing command: {' '.join(cmd)}")
@@ -407,7 +408,13 @@ def run_benchmark_sweep():
 
 
 def main():
-    lock_fd = check_and_acquire_nightly_lock()
+    import argparse
+    parser = argparse.ArgumentParser(description="Nightly Forge Orchestrator")
+    parser.add_argument("--forge-only", action="store_true", help="Run only the quiesce, unsloth training, and re-ignition phases")
+    parser.add_argument("--force", action="store_true", help="Bypass 12-hour debounce check")
+    args = parser.parse_args()
+
+    lock_fd = check_and_acquire_nightly_lock(force=args.force)
     try:
         logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED (LOCAL Z87) ===")
         write_step_log("ORCHESTRATION_INIT")
@@ -468,6 +475,12 @@ def main():
             re_ignite_vllm()
 
         if not training_ok:
+            return
+
+        if args.forge_only:
+            logger.info("=== NIGHTLY FORGE (FORGE ONLY) COMPLETE ===")
+            write_step_log("ORCHESTRATION_COMPLETE", "Forge-only pass completed successfully (150 steps)")
+            record_nightly_completion(lock_fd, status="COMPLETED")
             return
 
         # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
