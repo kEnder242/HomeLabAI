@@ -1025,6 +1025,40 @@ class FoyerRouter:
             atomic_write_json(target_path, paper)
             logger.info(f"[FOYER] [FEAT-581] Atomically saved paper {paper.get('id')} to {target_path}")
 
+            # Register in manifest.json if new or updated
+            manifest_file = os.path.join(papers_dir, "manifest.json")
+            if os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    papers_list = mdata.get("papers", [])
+                    found = False
+                    for idx, p in enumerate(papers_list):
+                        if p.get("id") == paper.get("id") or p.get("file") == safe_name:
+                            papers_list[idx]["title"] = paper.get("title", p.get("title"))
+                            papers_list[idx]["subtitle"] = paper.get("subtitle", p.get("subtitle"))
+                            papers_list[idx]["file"] = safe_name
+                            papers_list[idx]["updated_at"] = paper.get("updated_at")
+                            found = True
+                            break
+                    if not found:
+                        papers_list.append({
+                            "id": paper.get("id", f"PAPER-{len(papers_list)+1:03d}"),
+                            "slug": paper.get("slug", safe_name.replace(".json", "")),
+                            "title": paper.get("title", "Untitled Paper"),
+                            "subtitle": paper.get("subtitle", ""),
+                            "file": safe_name,
+                            "author": paper.get("author", "Jason Allred"),
+                            "date": paper.get("date", datetime.date.today().isoformat()),
+                            "status": paper.get("status", "DRAFT"),
+                            "created_at": paper.get("created_at", paper.get("updated_at")),
+                            "updated_at": paper.get("updated_at")
+                        })
+                    mdata["papers"] = papers_list
+                    atomic_write_json(manifest_file, mdata)
+                except Exception as m_err:
+                    logger.warning(f"[FOYER] [FEAT-581] manifest.json update note: {m_err}")
+
             # Non-blocking trigger of build_writer.py
             build_script = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts", "build_writer.py")
             if os.path.exists(build_script):
