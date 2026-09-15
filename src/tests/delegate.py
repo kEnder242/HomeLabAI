@@ -109,6 +109,122 @@ def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO
         _log_pager_event(f"[{step_name}] {message}", severity=severity)
 
 
+def _log_delegation_ledger(
+    sprint_num: int,
+    story_num: any,
+    title: str,
+    mode: str,
+    tier: str,
+    target_scope: str,
+    session_id: str,
+    duration_s: float,
+    tokens: dict,
+    status: str,
+    attempts: int = 1,
+    verification_cmd: str = "",
+    verification_passed: bool = False,
+    error_reason: str = "",
+    model_name: str = ""
+):
+    """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl."""
+    ledger_entry = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "sprint": sprint_num,
+        "story": str(story_num),
+        "title": title,
+        "mode": mode,
+        "tier": tier,
+        "target_scope": target_scope or "",
+        "session_id": session_id or "",
+        "duration_s": round(duration_s, 2),
+        "tokens": tokens or {},
+        "status": status,
+        "attempts": attempts,
+        "verification_cmd": verification_cmd or "",
+        "verification_passed": verification_passed,
+        "error_reason": error_reason or "",
+        "model": model_name or "unknown"
+    }
+    line = json.dumps(ledger_entry) + "\n"
+    paths = [
+        os.path.expanduser("~/Dev_Lab/HomeLabAI/data/delegation_ledger.jsonl"),
+        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl")
+    ]
+    for p in paths:
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "a") as f:
+                f.write(line)
+        except Exception:
+            pass
+
+
+def show_delegation_ledger(limit: int = 20):
+    """Display the recent delegation history ledger from delegation_ledger.jsonl."""
+    ledger_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/data/delegation_ledger.jsonl")
+    if not os.path.exists(ledger_path):
+        ledger_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl")
+    if not os.path.exists(ledger_path):
+        print("ℹ️ No delegation ledger entries recorded yet.")
+        return
+
+    entries = []
+    try:
+        with open(ledger_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    entries.append(json.loads(line))
+    except Exception as e:
+        print(f"❌ Error reading delegation ledger: {e}")
+        return
+
+    if not entries:
+        print("ℹ️ Delegation ledger is empty.")
+        return
+
+    recent = entries[-limit:]
+    print("=" * 110)
+    print(f"📜 DELEGATION EXECUTION LEDGER (Showing last {len(recent)} of {len(entries)} entries)")
+    print("=" * 110)
+    print(f"{'TIMESTAMP':<20} | {'SPRINT':<6} | {'STORY':<8} | {'TIER':<14} | {'STATUS':<20} | {'DUR(s)':<7} | {'MODEL'}")
+    print("-" * 110)
+
+    local_total = 0
+    local_success = 0
+    cloud_total = 0
+    cloud_success = 0
+
+    for e in entries:
+        tier = e.get("tier", "")
+        status = e.get("status", "")
+        is_success = (status == "SUCCESS")
+        if "LOCAL" in tier:
+            local_total += 1
+            if is_success: local_success += 1
+        elif "CLOUD" in tier:
+            cloud_total += 1
+            if is_success: cloud_success += 1
+
+    for r in recent:
+        ts = r.get("timestamp", "")[:19]
+        spr = f"SPR-{r.get('sprint', '?')}"
+        sty = str(r.get("story", "?"))[:8]
+        tier = r.get("tier", "?")[:14]
+        status = r.get("status", "?")[:20]
+        dur = f"{r.get('duration_s', 0):.1f}"
+        model = str(r.get("model", "?"))[:30]
+        print(f"{ts:<20} | {spr:<6} | {sty:<8} | {tier:<14} | {status:<20} | {dur:<7} | {model}")
+
+    print("=" * 110)
+    print(f"📊 HISTORICAL AGGREGATE SUMMARY:")
+    l_rate = (local_success / local_total * 100) if local_total else 0.0
+    c_rate = (cloud_success / cloud_total * 100) if cloud_total else 0.0
+    print(f"  [SWARM:LOCAL] Runs: {local_total:<4} | Successes: {local_success:<4} | Success Rate: {l_rate:.1f}%")
+    print(f"  [SWARM:CLOUD] Runs: {cloud_total:<4} | Successes: {cloud_success:<4} | Success Rate: {c_rate:.1f}%")
+    print("=" * 110)
+
+
 def check_cloud_quota(provider="opencode"):
     """
     [FEAT-Q01] Quick cloud quota & rate limit sentinel check.
@@ -885,6 +1001,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             blocker_text = ""
             is_silent_failure = False
 
+            tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
+            model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}" if current_model else "unknown"
+
             if full_text:
                 print("\n" + "═" * 80, flush=True)
                 print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
@@ -953,6 +1072,12 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                              f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
                              f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
                              severity="CRITICAL")
+
+                    _log_delegation_ledger(
+                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                        session_id, duration, tokens, "SILENT_FAILURE", attempt, verification,
+                        False, "Silent failure across all ladder attempts", model_str
+                    )
 
                     # Persist to delegation_failures.log for retrospective analysis
                     try:
@@ -1023,6 +1148,10 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     if v_res.returncode == 0:
                         log_step(story_num, "VERIFICATION_SUCCESS", f"Verification passed cleanly: {verification}")
                         print(f"✅ [STORY {story_num}] Verification PASSED.", flush=True)
+                        _log_delegation_ledger(
+                            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                            session_id, duration, tokens, "SUCCESS", attempt, verification, True, "", model_str
+                        )
                         _ACTIVE_SESSION_ID = None
                         return
                     else:
@@ -1045,6 +1174,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                             continue
                         else:
                             log_step(story_num, "VERIFICATION_EXHAUSTED", f"All {max_retries} attempts failed verification.", severity="CRITICAL")
+                            _log_delegation_ledger(
+                                sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                                session_id, duration, tokens, "VERIFICATION_FAILED", attempt, verification,
+                                False, v_output[:200], model_str
+                            )
                             _cleanup_active_session()
                             sys.exit(1)
                 except subprocess.TimeoutExpired:
@@ -1058,6 +1192,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         )
                         continue
                     else:
+                        _log_delegation_ledger(
+                            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                            session_id, duration, tokens, "VERIFICATION_TIMEOUT", attempt, verification,
+                            False, "Verification timed out after 120s", model_str
+                        )
                         _cleanup_active_session()
                         sys.exit(1)
             else:
@@ -1074,15 +1213,27 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     continue
                 elif blocker_match:
                     log_step(story_num, "BLOCKER_HALT", f"Blocker could not be resolved after {max_retries} attempts: {blocker_text}", severity="CRITICAL")
+                    _log_delegation_ledger(
+                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                        session_id, duration, tokens, "BLOCKER_HALT", attempt, verification,
+                        False, blocker_text[:200], model_str
+                    )
                     _cleanup_active_session()
                     sys.exit(1)
 
+            _log_delegation_ledger(
+                sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                session_id, duration, tokens, "COMPLETED_UNVERIFIED", attempt, verification,
+                None, "", model_str
+            )
             _ACTIVE_SESSION_ID = None
             return
 
         if post_exception is not None:
             e = post_exception
             err_ctx = _format_error_context(e)
+            tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
+            model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}" if current_model else "unknown"
             if isinstance(e, urllib.error.HTTPError) and e.code in (502, 503, 504, 429) and attempt < max_retries:
                 backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
                 msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s...\n{err_ctx}"
@@ -1095,15 +1246,22 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 time.sleep(backoff)
             else:
                 log_step(story_num, "FAILED", f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}", severity="CRITICAL")
+                _log_delegation_ledger(
+                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                    session_id, duration, {}, "DISPATCH_FAILED", attempt, verification,
+                    False, str(e)[:200], model_str
+                )
                 sys.exit(1)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
     parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
+    parser.add_argument("--ledger", "--show-ledger", dest="show_ledger", action="store_true", help="Display the structured delegation execution ledger table, then exit")
     _retro_mode = "--retrospective" in sys.argv
+    _ledger_mode = any(arg in sys.argv for arg in ("--ledger", "--show-ledger"))
     _resume_mode = "--resume" in sys.argv
-    _need_story_args = not (_retro_mode or _resume_mode)
+    _need_story_args = not (_retro_mode or _ledger_mode or _resume_mode)
     parser.add_argument("--sprint", required=_need_story_args, type=int, help="Sprint number")
     parser.add_argument("--story", required=_need_story_args, type=str, help="Story number (e.g. 709, 709B)")
     parser.add_argument("--title", required=_need_story_args, help="Story title")
@@ -1125,6 +1283,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.cloud_only:
         args.local_only = False
+
+    if args.show_ledger:
+        show_delegation_ledger(limit=30)
+        sys.exit(0)
 
     # [Action 3: Rejection of --agent flag]
     if args.agent is not None:
