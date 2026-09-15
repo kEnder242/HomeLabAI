@@ -31,22 +31,30 @@ OPENCODE_WEB_URL = f"http://127.0.0.1:{OPENCODE_WEB_PORT}/"
 _ACTIVE_SESSION_ID = None
 
 
+def _nuke_all_sessions():
+    """[BKM-034] Unconditionally abort all in-flight and orphaned sessions on OpenCode REST port 4097."""
+    try:
+        req_list = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session")
+        with urllib.request.urlopen(req_list, timeout=1.5) as resp:
+            sessions = json.loads(resp.read().decode("utf-8"))
+        if isinstance(sessions, list):
+            for s in sessions:
+                sid = s.get("id")
+                if sid:
+                    try:
+                        req_abort = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort", method="POST")
+                        urllib.request.urlopen(req_abort, timeout=0.8)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 def _cleanup_active_session():
-    """Auto-abort and delete in-flight REST session on task termination or exit."""
+    """Auto-abort and delete all in-flight REST sessions on task termination or exit."""
     global _ACTIVE_SESSION_ID
-    if _ACTIVE_SESSION_ID:
-        sid = _ACTIVE_SESSION_ID
-        _ACTIVE_SESSION_ID = None
-        try:
-            req_abort = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort", method="POST")
-            urllib.request.urlopen(req_abort, timeout=1.5)
-        except Exception:
-            pass
-        try:
-            req_del = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}", method="DELETE")
-            urllib.request.urlopen(req_del, timeout=1.5)
-        except Exception:
-            pass
+    _ACTIVE_SESSION_ID = None
+    _nuke_all_sessions()
 
 
 def _sig_term_handler(signum, frame):
@@ -435,6 +443,8 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
             active_session_valid = False
 
     if not active_session_valid:
+        # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
+        _nuke_all_sessions()
         try:
             session_payload = {
                 "directory": target_dir,
