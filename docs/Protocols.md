@@ -908,3 +908,25 @@ The orchestrator host (`z87-Linux`) has a strict 16GB physical RAM ceiling share
    - **Path B (Precomputed Embeddings):** Use pre-generated vector caches (`.npy` or `.json` fixtures) stored in the repo or ChromaDB collections for similarity lookups and dedup testing.
 3. **AST Lint Guard:** Automated linters and pre-commit hooks (`FEAT-567`) must actively audit orchestrator code to reject any PR or commit introducing direct `torch` imports.
 
+---
+
+## BKM-055: The Decoupled Artifact Law (Cache-First ASTs & Independent Compilation)
+**Feature Anchor:** `[FEAT-581]` / `[FEAT-582]` / `[FEAT-588]` / `[BKM-055]`  
+**Domain:** Document Architecture, AST Provenance & Deterministic Synthesis  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+Runtime execution (such as vector databases, embeddings, and model daemons) is volatile, latency-prone, and ephemeral. Artifacts of record (technical papers, engineering resumes, architectural specs) must remain decoupled, immutable, and self-contained. An interactive document editor or compiler must never stall on network requests or depend on live database daemons to hydrate its view or generate static outputs.
+
+### 2. The Invariant Rules
+1. **Tri-Phase Document Lifecycle (Discover $\rightarrow$ Curate $\rightarrow$ Generate):**
+   - **Phase 1: Discover (On-Demand Vector Query):** ChromaDB lookups across DNA collections (`PHL`, `WIS`, `FEAT`, `DISC`, `paper_dna_<slug>`) occur strictly upon explicit user trigger (e.g. document import or objective paste). Discovered matches are deposited directly into the document AST's `_candidate_pool[]`.
+   - **Phase 2: Curate (Interactive Waterline):** The author or combinatorial optimizer promotes candidates "Above Water" into the tier's `bone_collection[]` (Root/Section) or `citations[]` (Paragraph/Bullet). Changes are saved directly into the paper's JSON AST.
+   - **Phase 3: Generate (Deterministic AST Compilation):** Document compilers (`build_writer.py`, LaTeX engines) assemble outputs strictly from the cached AST `bone_collection[]` and verbatim text nodes with zero runtime database connectivity.
+2. **Multi-Tier Hierarchical AST Caching:**
+   - Every level of the document AST (Paper Root, Section, Paragraph/Bullet) must maintain its own dedicated `bone_collection[]` (or `citations[]`) and `_candidate_pool[]` arrays.
+   - Opening, navigating, or collapsing sections in `writer.html` must operate client-side with 0ms latency without making REST calls to ChromaDB.
+3. **Anti-Embellishment Functional Decoupling:**
+   - Machine intelligence applied to technical resumes or publications is strictly constrained to **combinatorial judgment** (relevance scoring, auto-pruning recommendations, and evidence chip attachment).
+   - Generative hallucination or prose embellishment is strictly forbidden; all synthesized outputs must assemble verbatim human bullet points and tangible repository citations.
+
