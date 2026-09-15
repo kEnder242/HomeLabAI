@@ -15,7 +15,7 @@ from playwright.async_api import async_playwright
 
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 PORTFOLIO_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev"
-ATTENDANT_URL = "http://127.0.0.1:8000"
+ATTENDANT_URL = "http://127.0.0.1:8765"
 INTERCOM_URL = "http://localhost:9001/intercom.html"
 STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
 
@@ -149,7 +149,7 @@ async def main():
     
     async with async_playwright() as p:
         total_wins = 0
-        cycles = [5, 10, 15, 20, 25] # Wait units (seconds in fast mode, minutes in full mode)
+        cycles = [0, 5, 10, 20, 40]  # [BKM-010 / ICM] Canonical Staged Quiescence Intervals (0m -> 5m -> 10m -> 20m -> 40m = 75m)
         
         for i, wait_time in enumerate(cycles):
             cycle_id = i + 1
