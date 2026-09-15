@@ -1922,6 +1922,97 @@ class FoyerRouter:
                 pass
         return False, "NONE", 0
 
+    def clear_pending_reset(self):
+        """[FEAT-537] Atomically clears pending_reset.json."""
+        reset_file = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+        state_data = {
+            "pending_action": "NONE",
+            "action_level": 0,
+            "timer_expiry_ts": 0,
+            "triggered_at_ts": int(time.time()),
+            "last_commit": "cleared",
+            "reasons": []
+        }
+        try:
+            temp_path = reset_file + ".tmp"
+            with open(temp_path, "w") as f:
+                json.dump(state_data, f, indent=2)
+            os.replace(temp_path, reset_file)
+        except Exception as e:
+            logger.warning(f"[FOYER] Failed to clear pending_reset.json: {e}")
+
+    async def evaluate_rolling_reset(self):
+        """[FEAT-537] Attendant-native 30-minute quiet window rolling reset evaluator."""
+        reset_file = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+        if not os.path.exists(reset_file):
+            return
+
+        try:
+            with open(reset_file, "r") as f:
+                data = json.load(f)
+        except Exception:
+            return
+
+        action = data.get("pending_action", "NONE")
+        expiry = data.get("timer_expiry_ts", 0)
+        commit = data.get("last_commit", "unknown")
+        now = time.time()
+
+        if action != "NONE" and expiry > 0 and now >= expiry:
+            logger.info(f"[FEAT-537][ATTENDANT] ⏱️ 30-Minute quiet window expired for pending action: {action} (Commit: {commit})")
+            
+            # Check client connections - hold if clients active unless past 2x quiet window
+            if len(self.connected_clients) > 0 and (now - expiry) < 1800:
+                logger.info(f"[FEAT-537][ATTENDANT] Holding {action}: {len(self.connected_clients)} active client(s) connected.")
+                return
+
+            if action == "SOFT_RELOAD":
+                logger.info("[FEAT-537][ATTENDANT] Executing autonomous SOFT_RELOAD for resident nodes...")
+                self.clear_pending_reset()
+                try:
+                    # Update acknowledged commit
+                    try:
+                        _hr = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                             capture_output=True, text=True, cwd=LAB_DIR, timeout=5)
+                        if _hr.returncode == 0 and _hr.stdout.strip():
+                            self.boot_commit = _hr.stdout.strip()
+                            self.boot_timestamp = int(time.time())
+                    except Exception:
+                        pass
+
+                    await self.residents.shutdown()
+                    await self.residents.boot_all()
+                    
+                    import importlib
+                    import logic.cognitive_hub
+                    importlib.reload(logic.cognitive_hub)
+                    from logic.cognitive_hub import CognitiveHub
+                    
+                    self.cognitive = CognitiveHub(
+                        self.residents.residents, 
+                        self.broadcast, 
+                        self.sensory, 
+                        get_vram_status=self.get_vram_status,
+                        get_lab_state=self.get_lab_state,
+                        is_deep_thought_reachable=self.is_deep_thought_reachable,
+                        trigger_morning_briefing=self.trigger_morning_briefing,
+                        waterfall_queue=self.waterfall_queue,
+                        set_active_domain=self.update_active_domain
+                    )
+                    logger.info(f"[FEAT-537][ATTENDANT] ✅ Resident stack successfully reloaded on commit {self.boot_commit}.")
+                except Exception as e:
+                    logger.error(f"[FEAT-537][ATTENDANT] ❌ Soft reload failed: {e}")
+
+            elif action == "DEEP_RESET":
+                logger.info("[FEAT-537][ATTENDANT] Executing autonomous DEEP_RESET via in-place process re-execution (os.execv)...")
+                self.clear_pending_reset()
+                await asyncio.sleep(1.0)
+                python_bin = sys.executable
+                script_path = os.path.abspath(sys.argv[0])
+                args = [python_bin, script_path] + sys.argv[1:]
+                logger.info(f"[FEAT-537][ATTENDANT] In-place re-exec: {' '.join(args)}")
+                os.execv(python_bin, args)
+
     async def handle_websocket(self, ws_request):
         # [FEAT-326] Socket Persistence: 300s heartbeat for cold-wake resilience
         # [FEAT-537] Git-Anchored 10-Minute Rolling Reset & Dirty Gate:
@@ -2407,15 +2498,8 @@ class FoyerRouter:
                 if collected > 0:
                     logger.debug(f"[LAB-096][GC] Scavenger collected {collected} unreachable objects.")
 
-                # 1. Periodic Nibble (Artifact Scanning) - DISABLED for Gauntlet
-                if False and time.time() - last_nibble_time > 600:
-                    last_nibble_time = time.time()
-                    nibbler = os.path.join(WORKSPACE_DIR, "field_notes/nibble_v2.py")
-                    if os.path.exists(nibbler):
-                        # Use system python to avoid venv dependency in the subprocess call if needed
-                        # but standard is to use the active executable
-                        logger.info("[ALARM] Triggering Nibbler...")
-                        subprocess.Popen([sys.executable, nibbler, "--one-turn"])
+                # [FEAT-537] Attendant-Native 30-Minute Quiet Window Rolling Reset Evaluator
+                await self.evaluate_rolling_reset()
             except Exception as e:
                 logger.error(f"[ALARM] Scheduled tasks failure: {e}")
             

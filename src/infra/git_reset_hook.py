@@ -80,19 +80,6 @@ def get_commit_hash(repo_path: str) -> str:
     except Exception:
         return "unknown"
 
-def restart_attendant_immediately():
-    """Immediately bounces the attendant supervisor if its code changed."""
-    print("⚡ [Git Hook] Attendant code modified! Executing immediate Attendant restart...")
-    try:
-        subprocess.run(["pkill", "-f", "attendant_liveliness.py"], capture_output=True)
-        py_bin = os.path.join(LAB_DIR, ".venv/bin/python3")
-        att_script = os.path.join(LAB_DIR, "src/attendant_liveliness.py")
-        log_out = open(os.path.join(BASE_DIR, "attendant.log"), "a")
-        proc = subprocess.Popen([py_bin, att_script, "--supervise"], stdout=log_out, stderr=log_out, start_new_session=True)
-        print(f"✅ [Git Hook] Lab Attendant restarted immediately (PID: {proc.pid})")
-    except Exception as e:
-        print(f"❌ [Git Hook] Failed to restart Attendant: {e}")
-
 def evaluate_files(repo_name: str, files: list) -> tuple:
     """
     Evaluates modified files and returns (required_level, reasons, attendant_changed).
@@ -171,10 +158,7 @@ def main():
     if not files:
         sys.exit(0)
 
-    req_level, reasons, attendant_changed = evaluate_files(repo_name, files)
-
-    if attendant_changed:
-        restart_attendant_immediately()
+    req_level, reasons, _ = evaluate_files(repo_name, files)
 
     # Load existing state for monotonic escalation
     existing = load_pending_reset()
