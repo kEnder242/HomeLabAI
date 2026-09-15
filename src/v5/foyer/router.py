@@ -1633,6 +1633,9 @@ class FoyerRouter:
         logger.info(f"[FOYER_BOOT] V5 Foyer Router starting background tasks... (Token: {self.session_token})")
         self.record_pager("Foyer Logic Hub Started.", source="Foyer")
         
+        # [FEAT-537] Clear any stale pending reset states on fresh boot
+        self.clear_pending_reset()
+        
         # [FEAT-145] VRAM Fragmentation Optimization: Load EarNode FIRST (if enabled)
         if not self.disable_ear:
             logger.info("[BOOT] Pre-emptively loading Sensory EarNode...")
