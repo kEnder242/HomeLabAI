@@ -196,13 +196,16 @@ All diagnostic forensics MUST reference the canonical black box log:
 8.  **Non-Blocking HyDE Synthesis**: Triage and HyDE vector generation must NEVER block on local VRAM status or output empty filler. When the local engine is warming (`not get_vram_status()`), `cognitive_hub.py` must route `triage_mode_context` immediately to Deep Thought on KENDER (`192.168.1.26:11434`) for instant 3-part Composite HyDE query synthesis (`[VALIDATION] | [STRATEGY] | [SRE]`).
 
 ## BKM-024: Validation-Aware Synchronization & Live Verification
-**Objective**: Maintain continuous lab liveness and ensure physical daemon processes and silicon endpoints match active sprint code before task certification.
+**Objective**: Lab must be current and left in a recoverable state that will recover to live automatically, ensuring physical daemon processes and silicon endpoints match active sprint code before task certification.
 
-1.  **Two-Tier Verification Standard**:
-    *   **Tier 1 (Fast Mock Isolation)**: Unit tests and mocked suites are encouraged for rapid iteration during local coding.
+1.  **The Recoverable State Invariant**:
+    *   **Liveness $\neq$ Static Immobility**: Heavy compute operations (Nightly Forge training, VRAM reallocation, deep service resets) are legitimate lifecycle transitions. Quiescing or restarting the lab is expected when needed.
+    *   **Automatic Self-Healing**: Any process that claims exclusive hardware/VRAM or pauses the lab must be protected by a mutex/lockfile (`run/maintenance.lock`) and include a deterministic error-recovery path (`finally:` block) that wakes or restarts the service back to `OPERATIONAL` without requiring human intervention.
+2.  **Two-Tier Verification Standard**:
+    *   **Tier 1 (Fast Mock Isolation)**: Unit tests and mocked suites are encouraged for rapid iteration during local coding, offline AST/schema parsing, and edge-case unit verification.
     *   **Tier 2 (Mandatory Live Certification)**: No task or bugfix may be marked complete based on mock tests alone. The Agent must verify against the active running daemon (`http://127.0.0.1:8765/status` matching local Git HEAD) and reachable hardware silicon seats.
-2.  **Sync-Gate & Fresh Bytecode**: Pytest automatically checks local Git HEAD against the served boot commit. If a mismatch is detected, the Agent must trigger a daemon restart/reload rather than ignoring the stale state.
-3.  **State Trust**: Do not assume background processes persisted cleanly across git commits or code refactors. Re-verify liveness and run live integration queries after every service restart.
+3.  **Sync-Gate & Fresh Bytecode (Git Anchor Contract)**: Pytest automatically checks local Git HEAD against the served boot commit (`git_anchor.json` == `daemon.boot_commit` == `git rev-parse HEAD`). If a mismatch is detected, the Agent must trigger a daemon restart/reload rather than ignoring the stale state.
+4.  **State Trust**: Do not assume background processes persisted cleanly across git commits or code refactors. Re-verify liveness and run live integration queries after every service restart.
 
 ## BKM-020: High-Fidelity Sprint Documentation (Intent Preservation)
 **Objective**: Prevent 'Loss of Intent' during context-window shifts or session restores.
