@@ -31,7 +31,7 @@ HOMELAB_DIR = os.path.dirname(BASE_DIR)  # HomeLabAI
 LAB_ROOT = os.path.dirname(HOMELAB_DIR)  # Dev_Lab
 VENV_PYTHON = os.path.join(HOMELAB_DIR, ".venv", "bin", "python3")
 FOYER_URL = "http://localhost:8765"
-DATASET_PATH = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data", "journal_ledger.jsonl")
+DATASET_PATH = os.path.join(BASE_DIR, "forge", "expertise", "master_forge_curriculum.jsonl")
 OUTPUT_LORA_DIR = "/speedy/models/adapters/cli_voice_v1"
 try:
     from infra.pager_relay import trigger_pager
@@ -308,6 +308,16 @@ def run_mass_scan():
 
 def run_unsloth_forge() -> bool:
     """[FEAT-160] Run Unsloth LoRA fine-tuning locally on z87 (--local path)."""
+    # Pre-flight check: ensure master curriculum exists and has valid pairs
+    if not os.path.exists(DATASET_PATH) or os.path.getsize(DATASET_PATH) == 0:
+        logger.info("[FEAT-160] Master curriculum missing or empty. Auto-building via build_lora_datasets.py...")
+        try:
+            blender_script = os.path.join(BASE_DIR, "forge", "build_lora_datasets.py")
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+            subprocess.run([py_bin, blender_script], check=True, timeout=60)
+        except Exception as be:
+            logger.warning(f"[FEAT-160] Warning during auto-dataset build: {be}")
+
     train_script = os.path.join(BASE_DIR, "forge", "train_expert.py")
     py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
     cmd = [
