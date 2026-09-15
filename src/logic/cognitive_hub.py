@@ -1617,46 +1617,47 @@ class CognitiveHub:
             return
             
         logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
-        # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Summary Blend
-        evidence_block = f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n" if rag_context else ""
-        critique_query = build_critic_prompt(
-            user_query=text,
-            technical_summary=evidence_block or text,
-            persona_name="Pinky"
-        )
+        try:
+            # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Summary Blend
+            evidence_block = f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n" if rag_context else ""
+            critique_query = build_critic_prompt(
+                user_query=text,
+                technical_summary=evidence_block or text,
+                persona_name="Pinky"
+            )
 
-        eval_schema = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "coherence_evaluation",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 1, "maximum": 5},
-                        "reasoning": {"type": "string"},
-                        "slop_found": {"type": "boolean"},
-                        "retort": {"type": "string"}
-                    },
-                    "required": ["score", "reasoning", "slop_found", "retort"]
+            eval_schema = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "coherence_evaluation",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "score": {"type": "integer", "minimum": 1, "maximum": 5},
+                            "reasoning": {"type": "string"},
+                            "slop_found": {"type": "boolean"},
+                            "retort": {"type": "string"}
+                        },
+                        "required": ["score", "reasoning", "slop_found", "retort"]
+                    }
                 }
             }
-        }
 
-        # Vibe-Aware Tone mapping
-        vibe = self.current_vibe.upper() if hasattr(self, 'current_vibe') and self.current_vibe else "CASUAL"
-        vibe_tone = "Tone guidance: Casual, friendly, peer-to-peer."
-        if vibe == "TECHNICAL":
-            vibe_tone = "Tone guidance: Grounded, slightly critique-oriented, checking technical viability."
-        elif vibe == "HISTORICAL":
-            vibe_tone = "Tone guidance: Reflective, nostalgic, referencing previous engineering scars."
-        elif vibe == "FORENSIC":
-            vibe_tone = "Tone guidance: Cynical, investigative, auditing telemetry patterns."
-        elif vibe == "META":
-            vibe_tone = "Tone guidance: Self-aware, observing the lab's state machine."
-        elif vibe == "OPERATIONAL":
-            vibe_tone = "Tone guidance: Direct, diagnostic-focused, emphasizing active system state and logs."
-        elif vibe == "ANALYTICAL":
-            vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
+            # Vibe-Aware Tone mapping
+            vibe = self.current_vibe.upper() if hasattr(self, 'current_vibe') and self.current_vibe else "CASUAL"
+            vibe_tone = "Tone guidance: Casual, friendly, peer-to-peer."
+            if vibe == "TECHNICAL":
+                vibe_tone = "Tone guidance: Grounded, slightly critique-oriented, checking technical viability."
+            elif vibe == "HISTORICAL":
+                vibe_tone = "Tone guidance: Reflective, nostalgic, referencing previous engineering scars."
+            elif vibe == "FORENSIC":
+                vibe_tone = "Tone guidance: Cynical, investigative, auditing telemetry patterns."
+            elif vibe == "META":
+                vibe_tone = "Tone guidance: Self-aware, observing the lab's state machine."
+            elif vibe == "OPERATIONAL":
+                vibe_tone = "Tone guidance: Direct, diagnostic-focused, emphasizing active system state and logs."
+            elif vibe == "ANALYTICAL":
+                vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
             # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
             eval_text = ""
