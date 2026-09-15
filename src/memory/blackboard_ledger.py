@@ -1,4 +1,8 @@
+# [FEAT-523] Round Table Context Scope & Blackboard Ledger
+# [FEAT-529] Atomic delta export engine for live turn memory to round table delta-t bridge
 import time
+import json
+import os
 import logging
 from enum import Enum
 from typing import Dict, List, Any, Optional
@@ -9,25 +13,59 @@ class ContextScope(Enum):
     LONG = "LONG"   # Long-form injected context (e.g. Pinky, Brain)
 
 class BlackboardLedger:
-    """[FEAT-523] Round Table Blackboard Ledger for inter-turn distillation & consensus DNA."""
-    def __init__(self):
+    """[FEAT-523 / FEAT-529] Round Table Blackboard Ledger for inter-turn distillation, bounded context pruning & consensus DNA."""
+    def __init__(self, max_turns: int = 15):
+        self.max_turns = max_turns
         self.bullets: List[Dict[str, Any]] = []
         self.consensus_1liners: List[Dict[str, Any]] = []
+        self.archived_bullets: List[Dict[str, Any]] = []
+        self.archived_consensus: List[Dict[str, Any]] = []
+
+    def prune_context(self, max_turns: Optional[int] = None):
+        """[FEAT-523] Bounded context pruning: keep only the most recent N turns in active memory."""
+        limit = max_turns if max_turns is not None else self.max_turns
+        if not limit or limit <= 0:
+            return
+
+        # Find distinct turns across bullets and consensus
+        all_turns = sorted(set(b["turn"] for b in self.bullets) | set(c["turn"] for c in self.consensus_1liners))
+        if len(all_turns) > limit:
+            cutoff_turn = all_turns[-limit]
+            
+            # Archive older bullets
+            keep_bullets = []
+            for b in self.bullets:
+                if b["turn"] >= cutoff_turn:
+                    keep_bullets.append(b)
+                else:
+                    self.archived_bullets.append(b)
+            self.bullets = keep_bullets
+
+            # Archive older consensus lines
+            keep_consensus = []
+            for c in self.consensus_1liners:
+                if c["turn"] >= cutoff_turn:
+                    keep_consensus.append(c)
+                else:
+                    self.archived_consensus.append(c)
+            self.consensus_1liners = keep_consensus
 
     def record_bullet(self, turn: int, author: str, bullet: str):
         self.bullets.append({
-            "turn": turn,
-            "author": author,
-            "bullet": bullet,
+            "turn": int(turn),
+            "author": str(author),
+            "bullet": str(bullet),
             "ts": time.time()
         })
+        self.prune_context()
 
     def record_consensus(self, turn: int, consensus_line: str):
         self.consensus_1liners.append({
-            "turn": turn,
-            "consensus": consensus_line,
+            "turn": int(turn),
+            "consensus": str(consensus_line),
             "ts": time.time()
         })
+        self.prune_context()
 
     def get_summary(self, turn: Optional[int] = None) -> str:
         lines = []
@@ -43,19 +81,39 @@ class BlackboardLedger:
                 lines.append(f"{c['consensus']}")
         return "\n".join(lines)
 
+    def get_bounded_prompt_context(self, max_turns: int = 10) -> str:
+        """Return a compact, bounded context summary of the latest N turns for resident model prompt injection."""
+        all_turns = sorted(set(b["turn"] for b in self.bullets) | set(c["turn"] for c in self.consensus_1liners))
+        if not all_turns:
+            return ""
+
+        target_turns = all_turns[-max_turns:]
+        sections = []
+        for t in target_turns:
+            turn_bullets = [b for b in self.bullets if b["turn"] == t]
+            turn_consensus = [c for c in self.consensus_1liners if c["turn"] == t]
+            
+            t_lines = [f"### Round Table Turn {t}:"]
+            for b in turn_bullets:
+                t_lines.append(f"  * [{b['author'].upper()}]: {b['bullet']}")
+            for c in turn_consensus:
+                t_lines.append(f"  * Consensus: {c['consensus']}")
+            sections.append("\n".join(t_lines))
+
+        return "\n\n".join(sections)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "bullets": list(self.bullets),
             "consensus": list(self.consensus_1liners),
+            "archived_bullets_count": len(self.archived_bullets),
+            "archived_consensus_count": len(self.archived_consensus),
             "count_bullets": len(self.bullets),
             "count_consensus": len(self.consensus_1liners)
         }
 
     def append_round_table_delta(self, turn: int, topic: str, scope: str, deltas: Dict[str, float], bullets: List[str], consensus: str, output_path: Optional[str] = None) -> Dict[str, Any]:
         """[FEAT-529] Atomic delta export engine for live turn memory to round table delta-t bridge."""
-        import json
-        import os
-
         if output_path is None:
             output_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table_deltas.json")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -167,6 +225,13 @@ class BlackboardLedger:
                 )
         except Exception as e:
             logging.warning(f"[BLACKBOARD] Non-fatal ChromaDB sync failed: {e}")
+
+
+def append_round_table_delta(turn: int, topic: str, scope: str, deltas: Dict[str, float], bullets: List[str], consensus: str, output_path: Optional[str] = None) -> Dict[str, Any]:
+    """Module-level helper to append a round table delta atomically."""
+    ledger = BlackboardLedger()
+    return ledger.append_round_table_delta(turn, topic, scope, deltas, bullets, consensus, output_path=output_path)
+
 
 # Backward-compatibility alias
 BlackboardLedgerV2 = BlackboardLedger
