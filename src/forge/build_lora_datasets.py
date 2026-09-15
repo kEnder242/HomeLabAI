@@ -15,6 +15,7 @@ import json
 import os
 import random
 from pathlib import Path
+from typing import Optional, Dict, List, Any
 
 # --- Absolute Paths ---
 EXPERTISE_DIR = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise")
@@ -27,6 +28,13 @@ SENTINEL_OUT = EXPERTISE_DIR / "lab_sentinel_training.jsonl"
 GEMS_OUT = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/training_data.jsonl")
 
 MASTER_CURRICULUM_OUT = EXPERTISE_DIR / "master_forge_curriculum.jsonl"
+
+CURRICULUM_DISTRIBUTION = {
+    "voice": 0.40,
+    "pedigree": 0.35,
+    "sentinel": 0.15,
+    "gems": 0.10
+}
 
 
 def build_sentinel_dataset():
@@ -170,7 +178,7 @@ def _load_jsonl_dataset(path: Path) -> list:
     return records
 
 
-def build_master_curriculum(target_size: int = 1000, seed: int = 3407) -> Path:
+def build_master_curriculum(output_path: Optional[Path] = None, target_size: int = 1000, seed: int = 3407) -> Path:
     """
     [FEAT-160] / [Story 83.1]
     Assembles master_forge_curriculum.jsonl with strict curriculum ratios:
@@ -181,6 +189,7 @@ def build_master_curriculum(target_size: int = 1000, seed: int = 3407) -> Path:
     """
     print("\n--- Assembling Multi-Curriculum Master Forge Dataset ---")
     random.seed(seed)
+    dest_path = Path(output_path) if output_path else MASTER_CURRICULUM_OUT
 
     voice_items = _load_jsonl_dataset(VOICE_OUT)
     history_items = _load_jsonl_dataset(HISTORY_OUT)
@@ -189,20 +198,22 @@ def build_master_curriculum(target_size: int = 1000, seed: int = 3407) -> Path:
 
     print(f"Pool sizes: Voice={len(voice_items)}, History={len(history_items)}, Sentinel={len(sentinel_items)}, Gems={len(gems_items)}")
 
-    target_voice = int(target_size * 0.40)
-    target_history = int(target_size * 0.35)
-    target_sentinel = int(target_size * 0.15)
+    target_voice = int(target_size * CURRICULUM_DISTRIBUTION["voice"])
+    target_history = int(target_size * CURRICULUM_DISTRIBUTION["pedigree"])
+    target_sentinel = int(target_size * CURRICULUM_DISTRIBUTION["sentinel"])
     target_gems = target_size - (target_voice + target_history + target_sentinel)
 
     def sample_or_upsample(pool: list, target_count: int, label: str) -> list:
         if not pool:
             print(f"⚠️ Warning: Pool '{label}' is empty! Skipping.")
             return []
+        stream_key = "pedigree" if label.lower() == "history" else label.lower()
         if len(pool) >= target_count:
-            return random.sample(pool, target_count)
-        # Upsample with replacement if pool has fewer items
-        print(f"ℹ️ Upsampling '{label}' from {len(pool)} to {target_count} items.")
-        return [random.choice(pool) for _ in range(target_count)]
+            chosen = random.sample(pool, target_count)
+        else:
+            print(f"ℹ️ Upsampling '{label}' from {len(pool)} to {target_count} items.")
+            chosen = [random.choice(pool) for _ in range(target_count)]
+        return [{**item, "stream": stream_key} for item in chosen]
 
     curriculum = []
     curriculum.extend(sample_or_upsample(voice_items, target_voice, "Voice"))
@@ -213,12 +224,13 @@ def build_master_curriculum(target_size: int = 1000, seed: int = 3407) -> Path:
     # Shuffle combined dataset to interleave concepts
     random.shuffle(curriculum)
 
-    with open(MASTER_CURRICULUM_OUT, "w") as f:
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest_path, "w") as f:
         for item in curriculum:
             f.write(json.dumps(item) + "\n")
 
-    print(f"✅ Master Forge Curriculum Ready: {len(curriculum)} pairs -> {MASTER_CURRICULUM_OUT}\n")
-    return MASTER_CURRICULUM_OUT
+    print(f"✅ Master Forge Curriculum Ready: {len(curriculum)} pairs -> {dest_path}\n")
+    return dest_path
 
 
 if __name__ == "__main__":
