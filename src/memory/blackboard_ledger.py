@@ -128,7 +128,7 @@ class BlackboardLedger:
 
         updated = False
         for idx, r in enumerate(records):
-            if r.get("turn") == turn:
+            if r.get("timestamp") == turn_entry["timestamp"]:
                 records[idx] = turn_entry
                 updated = True
                 break

@@ -1658,13 +1658,16 @@ class CognitiveHub:
         elif vibe == "ANALYTICAL":
             vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
-        try:
-            # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique
+            # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
             eval_text = ""
             async for token in self._process_node_stream(
-                "pinky", critique_query, f"Technical Output to evaluate:\n{text}", "Pinky (Coherence Critic)",
+                "pinky", critique_query, f"Technical Output from Brain to evaluate:\n{text}", "Pinky (Coherence Critic)",
                 tools=[], temperature=0.2, response_format=eval_schema, request_id=request_id,
-                behavioral_guidance=f"Act as a strict Coherence Critic. Check for logic errors, slop, or inconsistency. {vibe_tone}"
+                behavioral_guidance=(
+                    f"You are Pinky. Brain has just given the technical stance above. "
+                    f"Respond directly to Brain in your authentic witty peer voice, reviewing the technical truth, "
+                    f"scars, and giving consensus. Never speak about yourself in the third person. {vibe_tone}"
+                )
             ):
                 eval_text += token
             
