@@ -657,7 +657,10 @@ class FoyerRouter:
             web.post('/paper/review_consistency', self.handle_paper_review_consistency),
             web.post('/attendant/paper/review_consistency', self.handle_paper_review_consistency),
             web.post('/paper/discover_citations', self.handle_paper_discover_citations),
-            web.post('/attendant/paper/discover_citations', self.handle_paper_discover_citations)
+            web.post('/attendant/paper/discover_citations', self.handle_paper_discover_citations),
+            # [SPR-82.1] Generic Document Ingestion -> Two-Tier AST (/paper/import)
+            web.post('/paper/import', self.handle_paper_import),
+            web.post('/attendant/paper/import', self.handle_paper_import)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1099,6 +1102,128 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-585] Paper validate failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_import(self, request):
+        """[SPR-82.1] POST /paper/import — Generic document ingestion into the canonical two-tier AST.
+
+        Accepts raw Markdown, plain text, or JSON document content (payload shapes:
+        {'content': str|dict, 'title'?, 'slug'?, 'format'?}, {'document': ...}, or a
+        bare canonical AST object with 'sections'). Parses via
+        Portfolio_Dev/scripts/parse_document_to_ast.py, strictly validates the result
+        against v5/foyer/validate_paper_schema.py, then atomically persists it to
+        Portfolio_Dev/papers/ and registers it in manifest.json.
+        """
+        try:
+            dev_lab_root = "/home/jallred/Dev_Lab"
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            payload = await request.json()
+
+            title = payload.get("title")
+            slug = payload.get("slug")
+            source_format = payload.get("format") or payload.get("source_format")
+            content = payload.get("content")
+            if content is None:
+                content = payload.get("document")
+            if content is None and isinstance(payload, dict) and "sections" in payload:
+                content = payload
+            if content is None:
+                return web.json_response({
+                    "status": "error",
+                    "message": "Missing document content. Send {'content': <markdown|text|json>}."
+                }, status=400)
+
+            scripts_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.append(scripts_dir)
+            from parse_document_to_ast import parse_document
+
+            try:
+                ast = parse_document(content, title=title, slug=slug, source_format=source_format)
+            except ValueError as parse_err:
+                logger.warning(f"[FOYER] [SPR-82.1] Unparseable document content: {parse_err}")
+                return web.json_response({
+                    "status": "error",
+                    "message": f"Document content could not be parsed: {parse_err}"
+                }, status=400)
+
+            from v5.foyer.validate_paper_schema import validate_paper_dict
+            valid, errors = validate_paper_dict(ast, source_name=slug or ast.get("title") or "imported")
+            if not valid:
+                logger.warning(f"[FOYER] [SPR-82.1] Imported document failed two-tier AST validation: {errors}")
+                return web.json_response({
+                    "status": "error",
+                    "message": "Imported document failed two-tier AST schema validation",
+                    "errors": errors
+                }, status=400)
+
+            safe_slug = re.sub(r"[^a-z0-9_-]+", "-", (slug or ast.get("title") or "imported").lower().strip())
+            safe_slug = safe_slug.strip("-") or "imported"
+            safe_name = f"paper_{safe_slug}.json"
+            target_path = os.path.join(papers_dir, safe_name)
+            ast.setdefault("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat())
+            atomic_write_json(target_path, ast)
+            logger.info(f"[FOYER] [SPR-82.1] Imported document -> {safe_name} ({len(ast.get('sections', []))} sections)")
+
+            # Register in manifest.json if available (mirrors handle_paper_save)
+            manifest_file = os.path.join(papers_dir, "manifest.json")
+            if os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    papers_list = mdata.get("papers", [])
+                    entry_id = ast.get("id") or f"PAPER-{safe_slug.upper()}"
+                    found = False
+                    for idx, p in enumerate(papers_list):
+                        if p.get("file") == safe_name or p.get("id") == entry_id:
+                            papers_list[idx]["title"] = ast.get("title", p.get("title"))
+                            papers_list[idx]["file"] = safe_name
+                            papers_list[idx]["updated_at"] = ast.get("updated_at")
+                            found = True
+                            break
+                    if not found:
+                        papers_list.append({
+                            "id": ast.get("id") or f"PAPER-{len(papers_list)+1:03d}",
+                            "slug": safe_slug,
+                            "title": ast.get("title", "Imported Document"),
+                            "subtitle": ast.get("subtitle", ""),
+                            "file": safe_name,
+                            "author": ast.get("author", "Jason Allred"),
+                            "date": ast.get("date", datetime.date.today().isoformat()),
+                            "status": ast.get("status", "DRAFT"),
+                            "created_at": ast.get("created_at", ast.get("updated_at")),
+                            "updated_at": ast.get("updated_at")
+                        })
+                    mdata["papers"] = papers_list
+                    atomic_write_json(manifest_file, mdata)
+                except Exception as m_err:
+                    logger.warning(f"[FOYER] [SPR-82.1] manifest.json update note: {m_err}")
+
+            section_count = len(ast.get("sections", []))
+            paragraph_count = sum(len(s.get("paragraphs", [])) for s in ast.get("sections", []))
+            all_sections = ast.get("sections", [])
+            bone_count = (len(ast.get("bone_collection", []))
+                          + sum(len(s.get("bone_collection", [])) for s in all_sections)
+                          + sum(len(p.get("bone_collection", [])) for s in all_sections for p in s.get("paragraphs", [])))
+            candidate_count = (len(ast.get("_candidate_pool", []))
+                               + sum(len(s.get("_candidate_pool", [])) for s in all_sections)
+                               + sum(len(p.get("_candidate_pool", [])) for s in all_sections for p in s.get("paragraphs", [])))
+
+            return web.json_response({
+                "status": "success",
+                "file": safe_name,
+                "title": ast.get("title"),
+                "ast": ast,
+                "stats": {
+                    "sections": section_count,
+                    "paragraphs": paragraph_count,
+                    "bone_collection": bone_count,
+                    "candidate_pool": candidate_count,
+                },
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-82.1] Paper import failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_paper_rename(self, request):
