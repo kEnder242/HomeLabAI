@@ -38,7 +38,7 @@
         "KENDER": {
             "ip_hint": "192.168.1.26",
             "ollama_port": 11434,
-            "default_model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL"
+            "default_model": "qwen3-14b-16k:latest"
         },
         "localhost": {
             "ip_hint": "127.0.0.1",
@@ -52,9 +52,9 @@
             "name": "M5_AIR",
             "host": "192.168.1.46",
             "fallback_hosts": ["100.101.45.10", "jasons-macbook-air"],
-            "port": 8002,
+            "port": 8000,
             "protocol": "OPENAI",
-            "probe_path": "/status",
+            "probe_path": "/v1/models",
             "probe_payload": null,
             "default_model": "mlx-community--Qwen3.5-9B-4bit",
             "t_warmed": 0.09,
