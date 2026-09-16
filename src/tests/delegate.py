@@ -16,6 +16,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from typing import Any, Dict, List, Optional
 
 # [LAB-099] Thermal & Thread Safety: Limit C-extension worker threads to prevent 8-core CPU thermal overload
 os.environ["OMP_NUM_THREADS"] = "2"
@@ -433,21 +434,44 @@ def _is_provider_reachable(provider_id: str) -> bool:
     return True
 
 
-def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "") -> dict:
+def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", session_id: Optional[str] = None) -> dict:
     """[BKM-049] Mandatory Three-Tier Diagnostic Probes between execution retries.
-    1. Server & Silicon State (Port 4097, Port 8000, GPU/sockets)
-    2. Session Transcripts & Logs (OpenCode service state)
+    1. Server & Silicon State (Port 4097, Port 8002/8000, GPU/sockets)
+    2. Session Transcripts & Messages (OpenCode REST messages, compaction loops, tool rejections)
     3. Harness & Configuration Audit
     """
+    sid = session_id or _ACTIVE_SESSION_ID
     diag = {
         "story": story_num,
         "attempt": attempt,
         "reason": reason,
+        "session_id": sid,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "opencode_rest": _ping_host("127.0.0.1", OPENCODE_REST_PORT),
-        "m5_silicon": _ping_host("192.168.1.46", 8000),
+        "m5_silicon": _ping_host("192.168.1.46", 8002) or _ping_host("192.168.1.46", 8000),
         "w4090_silicon": _ping_host("192.168.1.26", 11434),
+        "session_turns": 0,
+        "session_errors": []
     }
+
+    # Deep Session Message Inspection via REST
+    if sid and diag["opencode_rest"]:
+        try:
+            m_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/message")
+            with urllib.request.urlopen(m_req, timeout=3.0) as m_resp:
+                msgs = json.loads(m_resp.read().decode("utf-8"))
+                diag["session_turns"] = len(msgs)
+                
+                # Scan messages for compaction loops, provider errors, and tool failures
+                for m in msgs[-15:]:
+                    for p in m.get("parts", []):
+                        t = p.get("text", "")
+                        if "exceeded" in t.lower() or "limit" in t.lower() or "error" in t.lower() or "compaction" in t.lower():
+                            snip = t.strip()[:180]
+                            if snip not in diag["session_errors"]:
+                                diag["session_errors"].append(snip)
+        except Exception:
+            pass
 
     try:
         j_res = subprocess.run(
@@ -458,14 +482,20 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "") -> d
     except Exception:
         diag["journal_tail"] = []
 
+    err_summary = f" | Errors: {diag['session_errors'][:2]}" if diag["session_errors"] else ""
     summary_str = (
         f"[BKM-049 DIAGNOSTIC] Attempt {attempt} ({reason}): "
         f"REST:4097={'UP' if diag['opencode_rest'] else 'DOWN'} | "
-        f"M5:8000={'UP' if diag['m5_silicon'] else 'DOWN'} | "
-        f"W4090:11434={'UP' if diag['w4090_silicon'] else 'DOWN'}"
+        f"M5:8002={'UP' if diag['m5_silicon'] else 'DOWN'} | "
+        f"W4090:11434={'UP' if diag['w4090_silicon'] else 'DOWN'} | "
+        f"Turns: {diag['session_turns']}{err_summary}"
     )
     log_step(story_num, "BKM049_DIAGNOSTICS", summary_str, severity="WARNING")
     print(f"\n🩺 {summary_str}", flush=True)
+    if diag["session_errors"]:
+        print(f"   └─ Subagent Internal Errors Detected ({len(diag['session_errors'])}):", flush=True)
+        for se in diag["session_errors"]:
+            print(f"      • {se}", flush=True)
 
     try:
         subprocess.run(
@@ -481,6 +511,35 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "") -> d
     except Exception:
         pass
     return diag
+
+
+def _verify_and_sync_service_freshness(story_num):
+    """[FEAT-553] Verify opencode-core.service PID was started after latest config mtime. Auto-restart if stale."""
+    configs = [
+        os.path.expanduser("~/Dev_Lab/opencode.json"),
+        os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json"),
+        os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
+    ]
+    existing_configs = [c for c in configs if os.path.exists(c)]
+    if not existing_configs:
+        return
+
+    try:
+        res = subprocess.run(["systemctl", "--user", "show", "opencode-core.service", "--property=MainPID"], capture_output=True, text=True, check=False)
+        pid_str = res.stdout.strip().split("=")[-1]
+        if not pid_str or pid_str == "0":
+            return
+        pid = int(pid_str)
+        proc_stat = os.stat(f"/proc/{pid}")
+        proc_start_time = proc_stat.st_mtime
+
+        stale_configs = [c for c in existing_configs if os.path.getmtime(c) > proc_start_time]
+        if stale_configs:
+            log_step(story_num, "STALE_SERVICE_SYNC", f"Config modification detected after service start ({', '.join(os.path.basename(c) for c in stale_configs)}). Hot-restarting opencode-core.service...")
+            subprocess.run(["systemctl", "--user", "restart", "opencode-core.service"], check=False)
+            time.sleep(2.0)
+    except Exception as e:
+        pass
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
@@ -514,6 +573,7 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
+    _verify_and_sync_service_freshness(story_num)
     
     # Auto-start opencode-core.service if inactive (Scale-to-Zero resilience)
     try:
@@ -777,8 +837,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 aliases = cfg_obj.get("swarm_aliases", {})
                 if local_only:
                     local_cfg = aliases.get("local_bicameral", {})
-                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (Windows 4090 Atlas + M5 Air Junior). Zero cloud fallbacks.")
-                    if mode in ("plan", "investigate") or agent in ("prometheus", "atlas", "architect"):
+                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (M5 Air Junior + Windows 4090 Atlas). Zero cloud fallbacks.")
+                    if mode in ("plan", "investigate"):
                         model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})]
                     else:
                         model_ladder = [
@@ -823,11 +883,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if not model_ladder:
             model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
 
-    # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air / KENDER)
+    # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air 32k with TurboQuant Headroom)
     if local_only:
         est_tokens = len(prompt) // 4
-        if est_tokens > 12000:
-            log_step(story_num, "LOCAL_CONTEXT_OVERFLOW", f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 12,000 tokens to prevent oMLX prefill memory guard crashes. Decompose via Atlas first.")
+        if est_tokens > 28000:
+            log_step(story_num, "LOCAL_CONTEXT_OVERFLOW", f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 28,000 tokens. Decompose prompt first.")
             return
 
     attempt = 0

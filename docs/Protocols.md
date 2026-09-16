@@ -930,3 +930,33 @@ Runtime execution (such as vector databases, embeddings, and model daemons) is v
    - Machine intelligence applied to technical resumes or publications is strictly constrained to **combinatorial judgment** (relevance scoring, auto-pruning recommendations, and evidence chip attachment).
    - Generative hallucination or prose embellishment is strictly forbidden; all synthesized outputs must assemble verbatim human bullet points and tangible repository citations.
 
+---
+
+## BKM-057: Config-to-Daemon Freshness Synchronization Protocol
+**Feature Anchor:** `[FEAT-553]` / `[BKM-057]`  
+**Domain:** Infrastructure, Service Daemons & Delegation Pre-Flight  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+Editing configuration files on disk (`opencode.json`, `infrastructure.json`, `oh-my-openagent.json`) does not alter the in-memory state of running background services. Running workloads against a stale background daemon silently reproduces old bugs, ignores updated context boundaries, and wastes tokens on dead execution paths.
+
+### 2. The Invariant Rules
+1. **Timestamp Comparison Before Dispatch:** Before executing swarm delegations, the launcher (`delegate.py`) must inspect the running process start time via systemd (`/proc/<pid>` start time) and compare it against the latest `os.path.getmtime` of all active configuration files.
+2. **Automated Zero-Downtime Hot Restart:** If any configuration file is newer than the service start time, `delegate.py` must automatically trigger a clean service restart (`systemctl --user restart opencode-core.service`), verify port health, and log `[STALE_SERVICE_SYNC]` before dispatching.
+3. **No Blind Retries on Unrefreshed Daemons:** Never re-attempt failed delegations after config edits without confirming daemon recreation.
+
+---
+
+## BKM-058: Communication & User-First Acknowledgment Protocol
+**Feature Anchor:** `[BKM-058]` / `[AGENTS.md Law 6]`  
+**Domain:** Agent Human-Interaction, Operational Transparency  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+Autonomous agent speed must never come at the expense of operator transparency. When an operator asks a question, raises a concern, or points out a system discrepancy, executing silent automated fixes behind the scenes creates confusion and prevents the operator from validating their insight.
+
+### 2. The Invariant Rules
+1. **Acknowledge in Text First:** Always answer, validate, and explain the user's specific observation in the visible text response *before* executing code fixes or triggering background state transitions.
+2. **Explicit Attribution:** Clearly state the root cause and confirm the validity of the user's insight so the human operator knows their feedback made a concrete difference.
+3. **No Silent Mutations:** Background modifications must be explicitly summarized with actionable rationale.
+
