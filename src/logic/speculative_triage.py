@@ -32,7 +32,7 @@ def _load_engine_seats() -> List[Dict[str, Any]]:
             "port": 8000,
             "protocol": "OPENAI",
             "probe_path": "/v1/chat/completions",
-            "probe_payload": {"model": "mlx-community--Qwen3.8-27B-4bit", "messages": [{"role": "user", "content": "."}], "max_tokens": 1},
+            "probe_payload": {"model": "mlx-community--Qwen3.5-9B-4bit", "messages": [{"role": "user", "content": "."}], "max_tokens": 1},
             "t_warmed": 0.09,
             "t_cold": 0.85
         },

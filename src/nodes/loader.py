@@ -374,7 +374,7 @@ class BicameralNode:
                         available = [m["id"] for m in model_objs]
                         max_model_len = 262144
                         # oMLX on M5 Air hosts its own distinct models (e.g. Qwen3.8-27B); never unified-base
-                        probe_model = host_cfg.get("default_model", available[0] if available else "mlx-community--Qwen3.8-27B-4bit")
+                        probe_model = host_cfg.get("default_model", available[0] if available else "mlx-community--Qwen3.5-9B-4bit")
                         probe_url = f"{base_url}/v1/chat/completions"
                         probe_payload = {
                             "model": probe_model,
