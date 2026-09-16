@@ -110,6 +110,99 @@ def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO
         _log_pager_event(f"[{step_name}] {message}", severity=severity)
 
 
+def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", status: str = "", error_reason: str = "") -> dict:
+    """[FEAT-552] Extract OpenCode, Headroom, and Task configuration knobs for matrix scorecard."""
+    knobs = {
+        "compaction_auto": False,
+        "compaction_prune": False,
+        "routes_through_headroom": False,
+        "model_configured_context": 0,
+        "active_mcp_servers": [],
+        "server_kv_mode": "unknown",
+        "server_drafter": "none",
+        "server_chunked_prefill": False,
+        "task_archetype": "safe_patch",
+        "language_target": "python",
+        "failure_bucket": "SUCCESS" if status.upper() == "SUCCESS" else "UNKNOWN"
+    }
+
+    # 1. Parse client configuration from opencode.json
+    opencode_cfg_path = os.path.expanduser("~/Dev_Lab/opencode.json")
+    if os.path.exists(opencode_cfg_path):
+        try:
+            with open(opencode_cfg_path, "r") as cf:
+                content = cf.read()
+                # Strip simple json comments if present
+                clean_lines = [l for l in content.splitlines() if not l.strip().startswith("//")]
+                cfg = json.loads("\n".join(clean_lines))
+                
+                comp = cfg.get("compaction", {})
+                knobs["compaction_auto"] = comp.get("auto", True)
+                knobs["compaction_prune"] = comp.get("prune", True)
+                
+                mcp = cfg.get("mcp", {})
+                knobs["active_mcp_servers"] = [k for k, v in mcp.items() if isinstance(v, dict) and v.get("enabled", True)]
+                
+                # Model specific limits and baseURL
+                providers = cfg.get("provider", {})
+                for p_name, p_info in providers.items():
+                    base_url = p_info.get("options", {}).get("baseURL", "")
+                    if "8002" in base_url and ("m5" in model_name.lower() or "mlx" in model_name.lower()):
+                        knobs["routes_through_headroom"] = True
+                    models = p_info.get("models", {})
+                    for m_id, m_data in models.items():
+                        if m_id in model_name or model_name in m_id:
+                            knobs["model_configured_context"] = m_data.get("limit", {}).get("context", 0)
+        except Exception:
+            pass
+
+    # 2. Probe server-side Headroom state (Port 8002)
+    try:
+        req = urllib.request.Request("http://192.168.1.46:8002/status")
+        with urllib.request.urlopen(req, timeout=0.5) as resp:
+            hdata = json.loads(resp.read().decode("utf-8"))
+            knobs["server_kv_mode"] = hdata.get("mode", "unknown")
+            knobs["server_drafter"] = hdata.get("drafter") or "none"
+            knobs["server_chunked_prefill"] = hdata.get("chunked_prefill", False)
+    except Exception:
+        pass
+
+    # 3. Derive task archetype & language target
+    if target_scope:
+        targets = [t.strip() for t in target_scope.split(",") if t.strip()]
+        if any("test" in t.lower() for t in targets):
+            knobs["task_archetype"] = "test_suite"
+        elif any(not os.path.exists(t) for t in targets):
+            knobs["task_archetype"] = "greenfield"
+        else:
+            knobs["task_archetype"] = "safe_patch"
+            
+        if any(t.endswith(".js") for t in targets):
+            knobs["language_target"] = "javascript"
+        elif any(t.endswith(".html") or t.endswith(".css") for t in targets):
+            knobs["language_target"] = "html_css"
+        elif any(t.endswith(".md") for t in targets):
+            knobs["language_target"] = "markdown"
+
+    # 4. Classify failure bucket
+    if status.upper() != "SUCCESS":
+        err_lower = (error_reason or "").lower()
+        if "context" in err_lower or "exceed" in err_lower or "n_ctx" in err_lower:
+            knobs["failure_bucket"] = "CONTEXT_OVERFLOW"
+        elif "timeout" in err_lower or "504" in err_lower:
+            knobs["failure_bucket"] = "SOCKET_TIMEOUT"
+        elif "compaction" in err_lower:
+            knobs["failure_bucket"] = "COMPACTION_LOOP"
+        elif "gateway" in err_lower or "502" in err_lower or "forwarding failed" in err_lower:
+            knobs["failure_bucket"] = "GATEWAY_DISCONNECT"
+        elif "reject" in err_lower or "tool" in err_lower:
+            knobs["failure_bucket"] = "TOOL_REJECTION"
+        else:
+            knobs["failure_bucket"] = "PROVIDER_ERROR"
+
+    return knobs
+
+
 def _log_delegation_ledger(
     sprint_num: int,
     story_num: any,
@@ -128,6 +221,8 @@ def _log_delegation_ledger(
     model_name: str = ""
 ):
     """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl."""
+    knobs = _extract_telemetry_knobs(target_scope, model_name, status, error_reason)
+    
     ledger_entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "sprint": sprint_num,
@@ -144,7 +239,8 @@ def _log_delegation_ledger(
         "verification_cmd": verification_cmd or "",
         "verification_passed": verification_passed,
         "error_reason": error_reason or "",
-        "model": model_name or "unknown"
+        "model": model_name or "unknown",
+        "knobs": knobs
     }
     line = json.dumps(ledger_entry) + "\n"
     paths = [
