@@ -19,6 +19,8 @@ _fastembed_model = None
 _chroma_client = None
 
 PRE_TRIAGE_COLLECTIONS = [
+    "rdna",
+    "philosophy_dna",
     "behavioral_dna",
     "feature_dna",
     "long_term_wisdom",
