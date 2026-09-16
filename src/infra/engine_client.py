@@ -37,7 +37,7 @@ def load_engine_seats() -> List[Dict[str, Any]]:
             "protocol": "OPENAI",
             "probe_path": "/v1/models",
             "probe_payload": None,
-            "default_model": "mlx-community--Qwen3.8-27B-4bit",
+            "default_model": "mlx-community--Qwen3.5-9B-4bit",
             "t_warmed": 0.09,
             "t_cold": 0.85
         },

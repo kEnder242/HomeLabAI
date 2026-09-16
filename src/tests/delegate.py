@@ -974,7 +974,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})]
                     else:
                         model_ladder = [
-                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}),
+                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}),
                             local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})
                         ]
                 elif cloud_only:
@@ -995,7 +995,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     if not model_ladder:
         if local_only:
-            model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.8-27B-4bit"}]
+            model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}]
         elif cloud_only:
             model_ladder = [
                 {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
