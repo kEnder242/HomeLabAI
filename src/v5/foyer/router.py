@@ -658,6 +658,9 @@ class FoyerRouter:
             web.post('/attendant/paper/review_consistency', self.handle_paper_review_consistency),
             web.post('/paper/discover_citations', self.handle_paper_discover_citations),
             web.post('/attendant/paper/discover_citations', self.handle_paper_discover_citations),
+            # [SPR-82.2] Paper-Scoped ChromaDB DNA: hybrid cross-collection queries
+            web.post('/paper/query_scoped_dna', self.handle_paper_query_scoped_dna),
+            web.post('/attendant/paper/query_scoped_dna', self.handle_paper_query_scoped_dna),
             # [SPR-82.1] Generic Document Ingestion -> Two-Tier AST (/paper/import)
             web.post('/paper/import', self.handle_paper_import),
             web.post('/attendant/paper/import', self.handle_paper_import)
@@ -1199,6 +1202,15 @@ class FoyerRouter:
                 except Exception as m_err:
                     logger.warning(f"[FOYER] [SPR-82.1] manifest.json update note: {m_err}")
 
+            # [SPR-82.2] Paper-scoped ChromaDB DNA collection sync (best-effort; BKM-055 offline-safe)
+            dna_sync = {}
+            try:
+                from curator.sync_paper_dna import sync_paper_dna
+                dna_sync = sync_paper_dna(ast, slug=safe_slug)
+            except Exception as dna_err:
+                logger.warning(f"[FOYER] [SPR-82.2] paper_dna_<{safe_slug}> sync note: {dna_err}")
+                dna_sync = {"status": "error", "error": str(dna_err), "slug": safe_slug}
+
             section_count = len(ast.get("sections", []))
             paragraph_count = sum(len(s.get("paragraphs", [])) for s in ast.get("sections", []))
             all_sections = ast.get("sections", [])
@@ -1220,6 +1232,7 @@ class FoyerRouter:
                     "bone_collection": bone_count,
                     "candidate_pool": candidate_count,
                 },
+                "dna_sync": dna_sync,
                 "timestamp": int(time.time())
             })
         except Exception as e:
@@ -1579,6 +1592,52 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-586] Citation discovery failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_query_scoped_dna(self, request):
+        """[SPR-82.2] POST /paper/query_scoped_dna — hybrid cross-collection paper DNA search.
+
+        Executes a hybrid vector search across the global DNA collections
+        (feature_dna, behavioral_dna, long_term_wisdom) and, when a paper
+        ``slug`` is supplied, the paper-scoped ``paper_dna_<slug>`` collection.
+        Payload: {'query': str, 'slug'?: str, 'top_k'?: int, 'collections'?: [..]}.
+        Results are merged, de-duplicated by (collection, id), and ranked by
+        similarity score (1 - distance). Degrades gracefully (empty results)
+        when ChromaDB is unreachable — never fatal to the caller.
+        """
+        try:
+            payload = await request.json()
+            raw_query = payload.get("query") or payload.get("text")
+            if not raw_query or not str(raw_query).strip():
+                return web.json_response({
+                    "status": "error",
+                    "message": "Missing query text (send {'query': <str>})."
+                }, status=400)
+            query = str(raw_query).strip()
+            slug = payload.get("slug")
+            try:
+                top_k = int(payload.get("top_k", 10))
+            except (TypeError, ValueError):
+                top_k = 10
+            collections = payload.get("collections") or None
+
+            from curator.sync_paper_dna import query_hybrid_dna
+            results = query_hybrid_dna(
+                query,
+                slug=slug or None,
+                collections=collections,
+                top_k=top_k,
+            )
+            return web.json_response({
+                "status": "success",
+                "query": query,
+                "slug": slug or None,
+                "results": results,
+                "count": len(results),
+                "timestamp": int(time.time()),
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-82.2] Scoped DNA query failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
