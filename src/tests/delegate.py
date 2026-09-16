@@ -110,14 +110,21 @@ def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO
         _log_pager_event(f"[{step_name}] {message}", severity=severity)
 
 
-def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", status: str = "", error_reason: str = "") -> dict:
-    """[FEAT-552] Extract OpenCode, Headroom, and Task configuration knobs for matrix scorecard."""
+def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", status: str = "", error_reason: str = "", agent_role: str = "") -> dict:
+    """[FEAT-552] Extract OpenCode, OpenAgent, Infrastructure, Headroom, and Task configuration knobs for matrix scorecard."""
     knobs = {
         "compaction_auto": False,
         "compaction_prune": False,
         "routes_through_headroom": False,
         "model_configured_context": 0,
         "active_mcp_servers": [],
+        "active_plugins": [],
+        "disabled_tools": [],
+        "disabled_agents": [],
+        "agent_role": agent_role or "unknown",
+        "agent_role_model": "unknown",
+        "primary_thought_node": "unknown",
+        "active_thought_lora": None,
         "server_kv_mode": "unknown",
         "server_drafter": "none",
         "server_chunked_prefill": False,
@@ -132,18 +139,17 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         try:
             with open(opencode_cfg_path, "r") as cf:
                 content = cf.read()
-                # Strip simple json comments if present
                 clean_lines = [l for l in content.splitlines() if not l.strip().startswith("//")]
                 cfg = json.loads("\n".join(clean_lines))
                 
                 comp = cfg.get("compaction", {})
                 knobs["compaction_auto"] = comp.get("auto", True)
                 knobs["compaction_prune"] = comp.get("prune", True)
+                knobs["active_plugins"] = cfg.get("plugin", [])
                 
                 mcp = cfg.get("mcp", {})
                 knobs["active_mcp_servers"] = [k for k, v in mcp.items() if isinstance(v, dict) and v.get("enabled", True)]
                 
-                # Model specific limits and baseURL
                 providers = cfg.get("provider", {})
                 for p_name, p_info in providers.items():
                     base_url = p_info.get("options", {}).get("baseURL", "")
@@ -156,7 +162,36 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         except Exception:
             pass
 
-    # 2. Probe server-side Headroom state (Port 8002)
+    # 2. Parse OpenAgent swarm configuration from oh-my-openagent.json
+    omo_cfg_paths = [
+        os.path.expanduser("~/.config/opencode/oh-my-openagent.json"),
+        os.path.expanduser("~/Dev_Lab/oh-my-openagent.json")
+    ]
+    for omo_path in omo_cfg_paths:
+        if os.path.exists(omo_path):
+            try:
+                with open(omo_path, "r") as omo_f:
+                    omo_cfg = json.load(omo_f)
+                    knobs["disabled_tools"] = omo_cfg.get("disabled_tools", [])
+                    knobs["disabled_agents"] = omo_cfg.get("disabled_agents", [])
+                    if agent_role and agent_role in omo_cfg.get("agents", {}):
+                        knobs["agent_role_model"] = omo_cfg["agents"][agent_role].get("model", "unknown")
+                break
+            except Exception:
+                pass
+
+    # 3. Parse Infrastructure configuration from infrastructure.json
+    infra_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+    if os.path.exists(infra_path):
+        try:
+            with open(infra_path, "r") as inf_f:
+                inf_cfg = json.load(inf_f)
+                knobs["primary_thought_node"] = inf_cfg.get("nodes", {}).get("thought", {}).get("primary", "unknown")
+                knobs["active_thought_lora"] = inf_cfg.get("nodes", {}).get("thought", {}).get("lora_name")
+        except Exception:
+            pass
+
+    # 4. Probe server-side Headroom state (Port 8002)
     try:
         req = urllib.request.Request("http://192.168.1.46:8002/status")
         with urllib.request.urlopen(req, timeout=0.5) as resp:
@@ -167,7 +202,7 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
     except Exception:
         pass
 
-    # 3. Derive task archetype & language target
+    # 5. Derive task archetype & language target
     if target_scope:
         targets = [t.strip() for t in target_scope.split(",") if t.strip()]
         if any("test" in t.lower() for t in targets):
@@ -184,7 +219,7 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         elif any(t.endswith(".md") for t in targets):
             knobs["language_target"] = "markdown"
 
-    # 4. Classify failure bucket
+    # 6. Classify failure bucket
     if status.upper() != "SUCCESS":
         err_lower = (error_reason or "").lower()
         if "context" in err_lower or "exceed" in err_lower or "n_ctx" in err_lower:
@@ -218,10 +253,11 @@ def _log_delegation_ledger(
     verification_cmd: str = "",
     verification_passed: bool = False,
     error_reason: str = "",
-    model_name: str = ""
+    model_name: str = "",
+    agent_role: str = ""
 ):
     """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl."""
-    knobs = _extract_telemetry_knobs(target_scope, model_name, status, error_reason)
+    knobs = _extract_telemetry_knobs(target_scope, model_name, status, error_reason, agent_role=agent_role)
     
     ledger_entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
