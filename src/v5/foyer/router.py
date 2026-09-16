@@ -663,7 +663,10 @@ class FoyerRouter:
             web.post('/attendant/paper/query_scoped_dna', self.handle_paper_query_scoped_dna),
             # [SPR-82.1] Generic Document Ingestion -> Two-Tier AST (/paper/import)
             web.post('/paper/import', self.handle_paper_import),
-            web.post('/attendant/paper/import', self.handle_paper_import)
+            web.post('/attendant/paper/import', self.handle_paper_import),
+            # [SPR-82.3] Target Objective / JD Matching Engine (/paper/evaluate_objective)
+            web.post('/paper/evaluate_objective', self.handle_paper_evaluate_objective),
+            web.post('/attendant/paper/evaluate_objective', self.handle_paper_evaluate_objective)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1638,6 +1641,58 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [SPR-82.2] Scoped DNA query failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_evaluate_objective(self, request):
+        """[SPR-82.3] POST /paper/evaluate_objective — Target Objective / JD matching engine.
+
+        Evaluates a target objective / Job Description against every section,
+        paragraph, and bullet of a paper's two-tier AST (the node set synced
+        into ``paper_dna_<slug>``). Embeds the objective with the ONNX MiniLM
+        embedding function (BKM-054: strictly zero in-process torch), scores
+        each node with cosine similarity (0.00 – 1.00), and tags the bullet
+        action: KEEP (>= 0.70), REVIEW (0.50 <= score < 0.70), PRUNE (< 0.50).
+        Also queries the global DNA collections (feature_dna, behavioral_dna,
+        long_term_wisdom) for recommended chip attachments.
+        Payload: {'objective': str, 'slug'?: str, 'ast'?: dict, 'top_k'?: int,
+        'collections'?: [..]}. 400 on a missing objective, 404 when the slug
+        resolves to no imported paper, 500 for other failures.
+        """
+        try:
+            payload = await request.json()
+            raw_objective = payload.get("objective") or payload.get("text")
+            if not raw_objective or not str(raw_objective).strip():
+                return web.json_response({
+                    "status": "error",
+                    "message": "Missing target objective (send {'objective': <str>})."
+                }, status=400)
+            objective = str(raw_objective).strip()
+            slug = payload.get("slug")
+            ast = payload.get("ast")
+            try:
+                top_k = int(payload.get("top_k", 5))
+            except (TypeError, ValueError):
+                top_k = 5
+            collections = payload.get("collections") or None
+
+            from curator.objective_evaluator import PaperNotFoundError, evaluate_objective
+            result = evaluate_objective(
+                objective,
+                slug=slug or None,
+                ast=ast or None,
+                top_k=top_k,
+                collections=collections,
+            )
+            return web.json_response({
+                "status": "success",
+                **result,
+                "timestamp": int(time.time()),
+            })
+        except PaperNotFoundError as e:
+            logger.warning(f"[FOYER] [SPR-82.3] Objective evaluation paper not found: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=404)
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-82.3] Objective evaluation failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):

@@ -240,9 +240,7 @@ def sync_paper_dna(paper_path_or_dict, slug=None, dry_run=False):
         }
 
     client = get_chroma_client()
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name=DEFAULT_EMBEDDING_MODEL
-    )
+    ef = embedding_functions.ONNXMiniLM_L6_V2()
     collection = get_safe_collection(client, collection_name(resolved_slug), ef)
 
     try:
