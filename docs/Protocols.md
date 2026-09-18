@@ -332,46 +332,39 @@ All diagnostic forensics MUST reference the canonical black box log:
 ---
 
 ## BKM-034: Swarm Delegation — Dual Orchestrator Protocol
-**Objective**: Establish a high-efficiency, token-optimized delegation workflow between the Strategic Orchestrator (**Antigravity / Gemini**) and the tactical developer swarm (**OpenAgent**).
+**Playbook Reference:** [Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md](../../Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md)  
+**Feature Anchor:** `[BKM-034]` / `[FEAT-552]` / `[FEAT-515]`  
+**Status:** ACTIVE / MANDATORY  
 
-1. **REST Dispatch Law**:
-   * All task dispatches to OpenAgent MUST use the formalized Python launcher [**src/tests/delegate.py**](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py) (`POST http://127.0.0.1:4097/session/<id>/message`).
-   * Direct invocation of `opencode run --attach` is **strictly forbidden** (it is a blocking TUI that hangs indefinitely when port 4096 is idle).
-   * Dispatch syntax:
-     ```bash
-     python3 src/tests/delegate.py --sprint <S> --story <N> --title "<Title>" --reference "<plan_path>" --target "<file_paths>" --details "<spec>" --dir "<workspace_dir>" --mode execute
-     ```
+### 1. The Principle
+All tactical engineering tasks delegated to the autonomous swarm communicate exclusively through the standardized launcher [`HomeLabAI/src/tests/delegate.py`](https://github.com/kEnder242/HomeLabAI/blob/main/src/tests/delegate.py) on REST port `4097` (`codex serve`).
 
-2. **The Two-Tier Payload Standard ([BKM-043])**:
-   Every delegation prompt dispatched to OpenAgent MUST be structured in two tiers to provide maximum architectural coherence with zero prompt wandering:
-   * **Tier 1 (Global Situational Awareness)**: The overarching Sprint Theme, Executive Summary, and Story Matrix (~20–30 lines). Tells the agent where its piece fits in the machine.
-   * **Tier 2 (Bounded Story Contract)**: The 4-Anchor Prompt Standard (`Grep-Stable Code Anchor`, `Import Anchor`, `Path Anchor`, `Surgical Delta & Concrete Test Assertions`). Strictly binds the agent's write tools to assigned target files.
-   * **Sprint Doc Pointer**: Pointers to the active sprint plan on disk (e.g. `Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md`) for deep context lookups without copy-paste truncation.
+### 2. Live CLI Introspection
+To inspect live flags, choices, and defaults without reading source code:
+```bash
+HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py --help
+```
 
-3. **Git Forensic Ownership Gate**:
-   * Subagent workers edit files and run local test suites, but are **strictly prohibited from executing `git commit`**.
-   * The Strategic Orchestrator audits `git diff`, verifies `pytest` output, and performs all git commits.
+### 3. Canonical Invocation Template
+```bash
+HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py \
+  --sprint <N> \
+  --story <X.Y> \
+  --title "<Story Title>" \
+  --reference <Sprint_Plan_Path> \
+  --target "<comma_separated_target_files>" \
+  --mode {execute|plan|investigate|oracle} \
+  {--local-only | --cloud-only} \
+  --details "<4_Anchor_Specification>"
+```
 
-4. **The Tri-Loop Feedback & Remediation Engine**:
-   * **In-Flight Handover Reflection**: `delegate.py` automatically extracts the subagent's `[HANDOVER REFLECTION]` directly from the in-memory completion chunk and prints it front-and-center in the terminal output, auto-storing friction in ICM (`errors-resolved`).
-   * **The Tri-Loop Remediation Ladder**:
-     - **Loop A (Fast In-Session Re-fire / Test Trace Remediation)**: If `pytest` or compiler execution fails, re-fire into the *same persistent session* (`--session-id`) passing the exact traceback snippet without cold-starting daemons.
-     - **Loop B (Anti-Drift / Stub-Tightening Re-fire)**: If a subagent drifts into repository exploration or edits unassigned files, re-fire with an explicit line-range diff anchor and tightened scope.
-     - **Loop C (Hard Blocker & Harness Escalation)**: If a subagent emits `[BLOCKER REPORT: <CATEGORY>]` or halts on an interactive popup / silent finish (`finish=unknown`), `delegate.py` immediately breaks out (Exit Code 2: `AWAITING_INPUT`), logs to `delegation_failures.log`, and yields to the Strategic Orchestrator / Human Driver via `--resume <session_id> --answer <choice>`. Never bypass a delegation harness failure to finish a sprint manually.
-
-5. **Session Continuity & Context Re-use (`--session-id`)**:
-   * For related stories within the same sprint phase (e.g., Phase 1: Stories 65.1 & 65.2), orchestrators should reuse persistent session IDs (`--session-id sprint-65`) to preserve warmed repo file trees, terminal test execution history, and recent diffs in OpenCode's working context.
-   * **Circuit Breaker**: If a session exceeds 30+ tool calls or shows signs of hallucination/looping, the orchestrator terminates the session and creates a fresh session ID (`--session-id sprint-65-phase2`).
-
-6. **The Mandatory Post-Delegation Intent & Omissions Audit**:
-   * Before staging and committing any delegated story, the Strategic Orchestrator MUST conduct an explicit **Intent & Omissions Audit** beyond the literal `git diff`:
-     1. **Contract Completeness**: Were all functional requirements in `--details` implemented, or did the subagent silently skip a secondary sub-clause?
-     2. **Dead-Code & Inert Artifacts**: Did the code change leave inert variables or orphaned functions? Are they safely documented per minimal-edit discipline?
-     3. **Boundary Integrity**: Did the subagent create or modify any files outside the assigned `--target` list?
-     4. **Test Realism & Coverage**: Do the new tests genuinely assert the behavioral contract rather than mocking out the core logic?
-
-> [!NOTE]
-> For internal swarm topology, model tool-calling constraints (KENDER/Qwen3), OmO `task()` mechanics, and socket proxy architecture, refer to [**OPENAGENT_HANDOVER_PLAYBOOK.md**](../../Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md).
+### 4. Invariant Rules
+1. **Sovereign Execution Tiers:**
+   * `--local-only` (Default): Routes to local silicon (Atlas on Kender RTX 4070 $\rightarrow$ Junior on M5 Air).
+   * `--cloud-only`: Routes directly to Prometheus / Cloud Swarm.
+2. **Single-Tenant Zombie Eviction:** `delegate.py` automatically sweeps and aborts orphaned sessions on port `4097` upon pre-flight and termination.
+3. **Payload Structure ([BKM-043]):** All `--details` specifications must adhere strictly to the 4-Anchor Standard (`Import Anchor`, `Path Anchor`, `Exact Signatures`, `Output Shape Template`).
+4. **Diagnostic Escalation ([BKM-049]):** Interactive halts or blockers emit Exit Code 2 (`AWAITING_INPUT`) for orchestrator intervention via `--resume <session_id> --answer <choice>`.
 
 ---
 
