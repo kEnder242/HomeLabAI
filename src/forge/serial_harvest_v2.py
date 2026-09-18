@@ -121,6 +121,9 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
             }
             with open(RAW_STAGE_1_FILE, "a") as f:
                 f.write(json.dumps(entry) + "\n")
+            
+            # [FEAT-592] Stage candidate for DNA Forge review
+            stage_dna_candidate(summary, content, log_file_path)
             return True
 
         except asyncio.TimeoutError:
@@ -130,6 +133,40 @@ async def harvest_gem(websocket, prompt, summary, file_path, log_file_path):
             logging.error(f"  [Error] During recv: {e}")
             break
     return False
+
+def stage_dna_candidate(summary: str, raw_text: str, source: str):
+    """[FEAT-592] Appends candidate proposal to data/dna_candidates.json for DNA Forge review."""
+    candidates_file = FIELD_NOTES_DATA_DIR / "dna_candidates.json"
+    candidates = []
+    if candidates_file.exists():
+        try:
+            with open(candidates_file, "r", encoding="utf-8") as f:
+                candidates = json.load(f)
+        except Exception:
+            candidates = []
+
+    proposal = {
+        "id": f"PROP-{int(time.time())}-{len(candidates)+1}",
+        "domain": "WIS",
+        "title": summary[:80].strip(),
+        "summary": summary.strip(),
+        "narrative_context": raw_text[:300].strip(),
+        "origin": {
+            "author": "serial_harvest_v2",
+            "text": raw_text.strip(),
+            "source": str(source),
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        },
+        "status": "PROPOSED",
+        "tags": ["harvested-dialogue", "candidate"]
+    }
+    candidates.append(proposal)
+    tmp_path = str(candidates_file) + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(candidates, f, indent=2)
+    import os
+    os.replace(tmp_path, str(candidates_file))
+
 
 async def main(limit=None):
     logging.info("Starting Serial Harvest v2.0...")

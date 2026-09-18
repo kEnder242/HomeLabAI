@@ -400,6 +400,25 @@ def run_sprint_dna_sync():
         logger.info("[SPRINT_DNA] sync_sprint_dna.py not found; skipping sync pass.")
 
 
+def run_journal_to_dna_bridge():
+    """[FEAT-592] Automated Journal Ledger to Polymorphic DNA Ingestion Bridge."""
+    logger.info("[JOURNAL_DNA_BRIDGE] Initiating Historical Journal to DNA Ingestion Bridge...")
+    write_step_log("JOURNAL_DNA_BRIDGE_START")
+    script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "journal_to_dna_bridge.py")
+    if os.path.exists(script):
+        try:
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+            res = subprocess.run([py_bin, script], capture_output=True, text=True, timeout=300)
+            logger.info(f"[JOURNAL_DNA_BRIDGE] Bridge completed with return code {res.returncode}")
+            write_step_log("JOURNAL_DNA_BRIDGE_COMPLETE", f"returncode={res.returncode}")
+        except Exception as e:
+            logger.warning(f"[JOURNAL_DNA_BRIDGE] Bridge execution warning: {e}")
+            write_step_log("JOURNAL_DNA_BRIDGE_ERROR", str(e))
+    else:
+        logger.info("[JOURNAL_DNA_BRIDGE] journal_to_dna_bridge.py not found; skipping bridge pass.")
+
+
+
 def run_benchmark_sweep():
     """[FEAT-495] Dynamic Federated Benchmark Sweep across all active hardware seats."""
     bench_script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "bench_models.py")
@@ -497,7 +516,12 @@ def main():
         logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")
         run_mass_scan()
 
+        # 7b. Historical Journal to Polymorphic DNA Ingestion Bridge [FEAT-592]
+        logger.info("[NIGHTLY BRIDGE] Bridging newly distilled gems into Polymorphic DNA Forge...")
+        run_journal_to_dna_bridge()
+
         # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
+
         logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
         run_dream_cycle()
 
