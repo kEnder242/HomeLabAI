@@ -141,8 +141,20 @@ def build_critic_prompt(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. parse_critic_payload
+# 4. parse_critic_payload & DnaProposal
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class DnaProposal:
+    """[FEAT-590] Structured candidate proposal for CLaRa-DNA update."""
+    id: str
+    domain: str
+    title: str
+    summary: str
+    rationale: str = ""
+    tags: list[str] = field(default_factory=list)
+    status: str = "PROPOSED"
+
 
 @dataclass
 class CriticResult:
@@ -153,6 +165,7 @@ class CriticResult:
     score: int = 5
     reasoning: str = ""
     slop_found: bool = False
+    dna_proposal: DnaProposal | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -239,12 +252,30 @@ def _coerce_result(data: dict[str, Any]) -> CriticResult:
     reasoning = str(data.get("reasoning", "")).strip() if data.get("reasoning") else ""
     slop_found = bool(data.get("slop_found", False))
 
+    # [FEAT-590] Extract candidate DNA proposal if present
+    proposal = None
+    prop_data = data.get("dna_proposal")
+    if isinstance(prop_data, dict) and (prop_data.get("title") or prop_data.get("summary")):
+        p_tags = prop_data.get("tags", [])
+        if isinstance(p_tags, str):
+            p_tags = [t.strip() for t in p_tags.split(",")]
+        proposal = DnaProposal(
+            id=str(prop_data.get("id", "PROPOSED-001")),
+            domain=str(prop_data.get("domain", "BKM")),
+            title=str(prop_data.get("title", "Proposed Empirical Anchor")),
+            summary=str(prop_data.get("summary", "")),
+            rationale=str(prop_data.get("rationale", "")),
+            tags=p_tags,
+            status=str(prop_data.get("status", "PROPOSED")),
+        )
+
     return CriticResult(
         cartoon_retort=retort,
         critique_suggestions=suggestions,
         score=score,
         reasoning=reasoning,
         slop_found=slop_found,
+        dna_proposal=proposal,
         raw=data,
     )
 
