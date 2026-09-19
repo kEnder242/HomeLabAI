@@ -666,7 +666,19 @@ class FoyerRouter:
             web.post('/attendant/paper/import', self.handle_paper_import),
             # [SPR-82.3] Target Objective / JD Matching Engine (/paper/evaluate_objective)
             web.post('/paper/evaluate_objective', self.handle_paper_evaluate_objective),
-            web.post('/attendant/paper/evaluate_objective', self.handle_paper_evaluate_objective)
+            web.post('/attendant/paper/evaluate_objective', self.handle_paper_evaluate_objective),
+            # [SPR-84.4 / FEAT-594] Lens Crafter: Rubric Compiler (/paper/craft_lens)
+            web.post('/paper/craft_lens', self.handle_paper_craft_lens),
+            web.post('/attendant/paper/craft_lens', self.handle_paper_craft_lens),
+            # [SPR-84.5 / FEAT-594] Paper Grading Engine (/paper/grade_paper)
+            web.post('/paper/grade_paper', self.handle_paper_grade_paper),
+            web.post('/attendant/paper/grade_paper', self.handle_paper_grade_paper),
+            # [SPR-84.8] Agentic Arxiv & Research Citation Expansion (/paper/expand_citations)
+            web.post('/paper/expand_citations', self.handle_paper_expand_citations),
+            web.post('/attendant/paper/expand_citations', self.handle_paper_expand_citations),
+            # [SPR-85.1 / FEAT-596] DNA Synapse Graph (/dna/connections_graph)
+            web.get('/dna/connections_graph', self.handle_dna_connections_graph),
+            web.get('/attendant/dna/connections_graph', self.handle_dna_connections_graph)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1693,6 +1705,74 @@ class FoyerRouter:
             return web.json_response({"status": "error", "message": str(e)}, status=404)
         except Exception as e:
             logger.error(f"[FOYER] [SPR-82.3] Objective evaluation failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_craft_lens(self, request):
+        """[SPR-84.4 / FEAT-594] POST /paper/craft_lens — compiles raw advice/JD into structured JSON rubric."""
+        try:
+            payload = await request.json()
+            lens_id = payload.get("lens_id") or "custom_lens"
+            content = payload.get("content") or ""
+            title = payload.get("title")
+            
+            from curator.lens_service import craft_lens
+            result = craft_lens(lens_id, content, title=title)
+            return web.json_response({"status": "success", "lens": result, "timestamp": int(time.time())})
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-84.4] craft_lens failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_grade_paper(self, request):
+        """[SPR-84.5 / FEAT-594] POST /paper/grade_paper — chunk-by-chunk rubric evaluation."""
+        try:
+            payload = await request.json()
+            paper_id = payload.get("paper_id", "PAPER-RESUME")
+            revision_id = payload.get("revision_id", "v1_baseline")
+            lens_id = payload.get("lens_id", "farah_sharghi_recruiter_v1")
+            
+            from curator.lens_service import grade_paper
+            result = grade_paper(paper_id=paper_id, revision_id=revision_id, lens_id=lens_id)
+            return web.json_response(result)
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-84.5] grade_paper failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_expand_citations(self, request):
+        """[SPR-84.8] POST /paper/expand_citations — agentic arXiv & research discovery."""
+        try:
+            payload = await request.json()
+            topic = payload.get("topic") or payload.get("query") or ""
+            node_id = payload.get("node_id")
+            top_k = int(payload.get("top_k", 3))
+            
+            from curator.lens_service import expand_citations
+            result = expand_citations(topic=topic, node_id=node_id, top_k=top_k)
+            return web.json_response(result)
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-84.8] expand_citations failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_dna_connections_graph(self, request):
+        """[SPR-85.1 / FEAT-596] GET /dna/connections_graph — compiles multi-domain DNA synapse graph."""
+        try:
+            graph_file = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_connections_graph.json")
+            if os.path.exists(graph_file):
+                with open(graph_file, "r", encoding="utf-8") as f:
+                    graph = json.load(f)
+                return web.json_response(graph)
+            
+            # Dynamic fallback compilation if static file not found
+            manifest_path = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_manifest.json")
+            if os.path.exists(manifest_path):
+                import subprocess
+                subprocess.run(["python3", os.path.join(WORKSPACE_DIR, "scripts/generate_connections_graph.py")], timeout=10)
+                if os.path.exists(graph_file):
+                    with open(graph_file, "r", encoding="utf-8") as f:
+                        graph = json.load(f)
+                    return web.json_response(graph)
+            return web.json_response({"status": "ok", "nodes": [], "links": [], "census": {}})
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-85.1] handle_dna_connections_graph failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
