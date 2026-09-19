@@ -102,3 +102,25 @@ def test_dna_connections_graph():
     census = graph["census"]
     for d in ["PHL", "WIS", "BKM", "FEAT"]:
         assert d in census
+
+
+def test_draft_decomposition():
+    """Test [FEAT-597] Draft Ingestion & Semantic Decomposition."""
+    from curator.draft_decomposer import decompose_draft
+    
+    note = """
+    # Architectural Invariant: Sovereign Vector Projections
+    We discovered that discrete DNA tokens convey large compressed semantic meanings.
+    
+    Rule: Never mutate underlying technical facts when adjusting voice styles.
+    """
+    res = decompose_draft(note)
+    assert res.get("title") == "Architectural Invariant: Sovereign Vector Projections"
+    chunks = res.get("chunks", [])
+    assert len(chunks) == 2
+    domains = [c.get("proposed_domain") for c in chunks]
+    assert "BKM" in domains or "PHL" in domains or "WIS" in domains
+    bone_scaffold = res.get("suggested_bone_collection")
+    assert bone_scaffold is not None
+    assert len(bone_scaffold.get("bones", [])) == 2
+
