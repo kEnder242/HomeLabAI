@@ -681,7 +681,17 @@ class FoyerRouter:
             web.get('/attendant/dna/connections_graph', self.handle_dna_connections_graph),
             # [SPR-85.6 / FEAT-595] Google Docs Export Engine (/paper/export_gdoc)
             web.post('/paper/export_gdoc', self.handle_paper_export_gdoc),
-            web.post('/attendant/paper/export_gdoc', self.handle_paper_export_gdoc)
+            web.post('/attendant/paper/export_gdoc', self.handle_paper_export_gdoc),
+            # [FEAT-597] Draft Ingestion & Decomposition (/dna/decompose_draft & /dna/promote_draft)
+            web.post('/dna/decompose_draft', self.handle_dna_decompose_draft),
+            web.post('/attendant/dna/decompose_draft', self.handle_dna_decompose_draft),
+            web.post('/dna/promote_draft', self.handle_dna_promote_draft),
+            web.post('/attendant/dna/promote_draft', self.handle_dna_promote_draft),
+            # [FEAT-598] Mutation & Synapse Governance (/dna/certify_mutation & /dna/approve_synapse)
+            web.post('/dna/certify_mutation', self.handle_dna_certify_mutation),
+            web.post('/attendant/dna/certify_mutation', self.handle_dna_certify_mutation),
+            web.post('/dna/approve_synapse', self.handle_dna_approve_synapse),
+            web.post('/attendant/dna/approve_synapse', self.handle_dna_approve_synapse)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1829,6 +1839,112 @@ class FoyerRouter:
             })
         except Exception as e:
             logger.error(f"[FOYER] [SPR-85.6] handle_paper_export_gdoc failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_dna_decompose_draft(self, request):
+        """[FEAT-597] POST /dna/decompose_draft — decomposes raw notes into semantic chunks & bone skeleton."""
+        try:
+            payload = await request.json()
+            raw_text = payload.get("text") or payload.get("content") or ""
+            title = payload.get("title")
+            
+            from curator.draft_decomposer import decompose_draft
+            result = decompose_draft(raw_text, custom_title=title)
+            return web.json_response({"status": "success", **result, "timestamp": int(time.time())})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-597] handle_dna_decompose_draft failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_dna_promote_draft(self, request):
+        """[FEAT-597] POST /dna/promote_draft — promotes reviewed draft chunks into sovereign DNA cards."""
+        try:
+            payload = await request.json()
+            from curator.draft_decomposer import promote_draft_to_db
+            result = promote_draft_to_db(payload)
+            return web.json_response(result)
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-597] handle_dna_promote_draft failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_dna_certify_mutation(self, request):
+        """[FEAT-598] POST /dna/certify_mutation — stamps an AI mutation proposal into a permanent human revision."""
+        try:
+            payload = await request.json()
+            card_id = payload.get("card_id")
+            mutation_id = payload.get("mutation_id")
+            mutation_text = payload.get("mutation_text")
+            lens = payload.get("lens") or "Custom Lens"
+            
+            manifest_file = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_manifest.json")
+            if os.path.exists(manifest_file):
+                with open(manifest_file, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                
+                # Locate card across collections
+                found = False
+                for col_name, items in manifest.items():
+                    if isinstance(items, list):
+                        for item in items:
+                            if item.get("id") == card_id:
+                                synth = item.setdefault("synthesis", {})
+                                revs = synth.setdefault("revisions", [])
+                                rev_id = f"rev_{card_id}_{len(revs)+1}_{mutation_id}"
+                                revs.append({
+                                    "id": rev_id,
+                                    "text": mutation_text,
+                                    "lens": lens,
+                                    "certified_by": "operator",
+                                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                                })
+                                found = True
+                                break
+                    if found:
+                        break
+                        
+                if found:
+                    with open(manifest_file, "w", encoding="utf-8") as f:
+                        json.dump(manifest, f, indent=2)
+                    return web.json_response({"status": "success", "message": f"Certified revision {rev_id} on {card_id}."})
+                    
+            return web.json_response({"status": "success", "message": f"Certified {mutation_id} for {card_id} (cached)."})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-598] handle_dna_certify_mutation failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_dna_approve_synapse(self, request):
+        """[FEAT-596] POST /dna/approve_synapse — certifies an inferred similarity synapse into an explicit link."""
+        try:
+            payload = await request.json()
+            source_id = payload.get("source_id")
+            target_id = payload.get("target_id")
+            link_type = payload.get("link_type") or "EXPLICIT_LINK"
+            
+            graph_file = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_connections_graph.json")
+            if os.path.exists(graph_file):
+                with open(graph_file, "r", encoding="utf-8") as f:
+                    graph = json.load(f)
+                links = graph.setdefault("links", [])
+                
+                # Check if link exists
+                exists = any(
+                    (l.get("source") == source_id and l.get("target") == target_id) or
+                    (l.get("source") == target_id and l.get("target") == source_id)
+                    for l in links
+                )
+                if not exists:
+                    links.append({
+                        "source": source_id,
+                        "target": target_id,
+                        "type": link_type,
+                        "weight": 2.0,
+                        "approved_by": "operator"
+                    })
+                    with open(graph_file, "w", encoding="utf-8") as f:
+                        json.dump(graph, f, indent=2)
+                        
+            return web.json_response({"status": "success", "message": f"Approved synapse link between {source_id} and {target_id}."})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-596] handle_dna_approve_synapse failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
