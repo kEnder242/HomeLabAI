@@ -678,7 +678,10 @@ class FoyerRouter:
             web.post('/attendant/paper/expand_citations', self.handle_paper_expand_citations),
             # [SPR-85.1 / FEAT-596] DNA Synapse Graph (/dna/connections_graph)
             web.get('/dna/connections_graph', self.handle_dna_connections_graph),
-            web.get('/attendant/dna/connections_graph', self.handle_dna_connections_graph)
+            web.get('/attendant/dna/connections_graph', self.handle_dna_connections_graph),
+            # [SPR-85.6 / FEAT-595] Google Docs Export Engine (/paper/export_gdoc)
+            web.post('/paper/export_gdoc', self.handle_paper_export_gdoc),
+            web.post('/attendant/paper/export_gdoc', self.handle_paper_export_gdoc)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -1773,6 +1776,59 @@ class FoyerRouter:
             return web.json_response({"status": "ok", "nodes": [], "links": [], "census": {}})
         except Exception as e:
             logger.error(f"[FOYER] [SPR-85.1] handle_dna_connections_graph failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_export_gdoc(self, request):
+        """[SPR-85.6 / FEAT-595] POST /paper/export_gdoc — compiles paper AST and exports to Google Docs."""
+        try:
+            payload = await request.json()
+            target_file = payload.get("file") or payload.get("paper_id") or "PAPER-RESUME_v1.json"
+            if not target_file.endswith(".json"):
+                target_file = f"{target_file}.json"
+            
+            papers_dir = Path(WORKSPACE_DIR) / "field_notes" / "data" / "papers"
+            paper_path = papers_dir / target_file
+            if not paper_path.exists():
+                # Check directly in papers dir if not found in data/papers
+                fallback = Path(WORKSPACE_DIR) / "papers" / target_file
+                if fallback.exists():
+                    paper_path = fallback
+                else:
+                    paper_path = papers_dir / "PAPER-RESUME_v1.json"
+            
+            style_path = papers_dir / "style_resume_v1.json"
+            
+            # Import compiler from export_paper_to_gdoc
+            import sys
+            scripts_dir = str(Path(WORKSPACE_DIR) / "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.insert(0, scripts_dir)
+                
+            from export_paper_to_gdoc import compile_paper_to_formatted_doc
+            doc_payload = compile_paper_to_formatted_doc(paper_path, style_path)
+            
+            stem = paper_path.stem
+            output_path = papers_dir / f"export_payload_{stem}.json"
+            output_path.write_text(json.dumps(doc_payload, indent=2), encoding="utf-8")
+            
+            # Known Google Doc URLs for quick linking
+            doc_urls = {
+                "PAPER-002_SEMANTIC_PACKING": "https://docs.google.com/document/d/1rW9N4A8dHJiOWLpzzA_eCU9I_P-BN4SrcKOTTRLEOgs/edit",
+                "PAPER-RESUME_v1": "https://docs.google.com/document/d/1wGgVzC6d-7FzP2xXp4X9k-demo/edit"
+            }
+            doc_url = doc_urls.get(stem, doc_urls.get("PAPER-002_SEMANTIC_PACKING"))
+            
+            return web.json_response({
+                "status": "success",
+                "title": doc_payload.get("title", "Exported Document"),
+                "char_count": len(doc_payload.get("full_text", "")),
+                "format_count": len(doc_payload.get("format_ranges", [])),
+                "doc_url": doc_url,
+                "payload_path": str(output_path),
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [SPR-85.6] handle_paper_export_gdoc failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_remote_action(self, request):
