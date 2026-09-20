@@ -758,16 +758,17 @@ class FoyerRouter:
             if not isinstance(cards, list):
                 return web.json_response({"status": "ERROR", "message": "'cards' must be a list"}, status=400)
 
-            # Determine target file
+            # Determine target file in Portfolio_Dev/dna/
             dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            dna_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "dna")
+            os.makedirs(dna_dir, exist_ok=True)
             if collection in ("philosophy", "philosophy_dna"):
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "philosophy_data.json")
+                target_file = os.path.join(dna_dir, "philosophy_data.json")
             elif collection in ("writer", "paper", "writer_dna"):
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+                target_file = os.path.join(dna_dir, "wisdom_data.json")
             else:
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+                target_file = os.path.join(dna_dir, "wisdom_data.json")
 
-            os.makedirs(os.path.dirname(target_file), exist_ok=True)
             atomic_write_json(target_file, cards)
             logger.info(f"[FOYER] [FEAT-561] Successfully saved {len(cards)} wisdom card(s) to {target_file}")
 
@@ -803,15 +804,17 @@ class FoyerRouter:
 
             card_id = card["id"]
             dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            dna_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "dna")
+            os.makedirs(dna_dir, exist_ok=True)
             is_timeline = collection in ("timeline", "discovery", "timeline_dna", "disc") or str(card_id).startswith("DISC-")
             if is_timeline:
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "timeline_data.json")
+                target_file = os.path.join(dna_dir, "timeline_data.json")
             elif collection in ("philosophy", "philosophy_dna"):
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "philosophy_data.json")
+                target_file = os.path.join(dna_dir, "philosophy_data.json")
             elif collection in ("writer", "paper", "writer_dna"):
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+                target_file = os.path.join(dna_dir, "wisdom_data.json")
             else:
-                target_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "wisdom_data.json")
+                target_file = os.path.join(dna_dir, "wisdom_data.json")
 
             existing_cards = []
             if os.path.exists(target_file):
@@ -879,30 +882,35 @@ class FoyerRouter:
             atomic_write_json(target_file, existing_cards)
             logger.info(f"[FOYER] [FEAT-568] Surgically {action_taken} card {card_id} in {target_file}")
 
-            # Mirror update into dna_manifest.json discovery collection
-            if is_timeline:
-                manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
-                if os.path.exists(manifest_file):
-                    try:
-                        with open(manifest_file, "r", encoding="utf-8") as mf:
-                            mdata = json.load(mf)
-                        disc_list = mdata.get("discovery", [])
-                        m_idx = next((i for i, dc in enumerate(disc_list) if dc.get("id") == card_id), -1)
-                        if m_idx >= 0:
-                            disc_list[m_idx] = card
-                        else:
-                            disc_list.append(card)
-                        mdata["discovery"] = disc_list
-                        atomic_write_json(manifest_file, mdata)
-                    except Exception as m_err:
-                        logger.warning(f"[FOYER] Could not update dna_manifest.json discovery: {m_err}")
+            # Mirror update into dna_manifest.json across relevant collections
+            manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+            if os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    target_col_key = "discovery" if is_timeline else ("philosophy" if collection in ("philosophy", "philosophy_dna") else "wisdom")
+                    col_list = mdata.get(target_col_key, [])
+                    m_idx = next((i for i, dc in enumerate(col_list) if dc.get("id") == card_id), -1)
+                    if m_idx >= 0:
+                        col_list[m_idx] = card
+                    else:
+                        col_list.append(card)
+                    mdata[target_col_key] = col_list
+                    atomic_write_json(manifest_file, mdata)
+                except Exception as m_err:
+                    logger.warning(f"[FOYER] Could not update dna_manifest.json: {m_err}")
 
             # Non-blocking instant ChromaDB single-document upsert (<15ms)
             chroma_synced = False
             try:
                 import chromadb
                 client = chromadb.HttpClient(host="127.0.0.1", port=8001)
-                coll_name = "discovery" if is_timeline else ("long_term_wisdom" if collection in ("wisdom", "writer", "philosophy") else collection)
+                if is_timeline:
+                    coll_name = "discovery"
+                elif collection in ("philosophy", "philosophy_dna"):
+                    coll_name = "philosophy_dna"
+                else:
+                    coll_name = "wisdom_dna"
                 chroma_coll = client.get_or_create_collection(coll_name)
                 
                 doc_text = card.get("synthesis", {}).get("narrative_context") or card.get("origin", {}).get("text") or card.get("title") or ""
@@ -1867,7 +1875,7 @@ class FoyerRouter:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_dna_certify_mutation(self, request):
-        """[FEAT-598] POST /dna/certify_mutation — stamps an AI mutation proposal into a permanent human revision."""
+        """[FEAT-598 / BKM-022] POST /dna/certify_mutation — stamps an AI mutation proposal into a permanent human revision."""
         try:
             payload = await request.json()
             card_id = payload.get("card_id")
@@ -1875,12 +1883,60 @@ class FoyerRouter:
             mutation_text = payload.get("mutation_text")
             lens = payload.get("lens") or "Custom Lens"
             
-            manifest_file = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_manifest.json")
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+            dna_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "dna")
+            
+            # Determine target domain file
+            if card_id.startswith("PHL-"):
+                domain_file = os.path.join(dna_dir, "philosophy_data.json")
+                collection_name = "philosophy_dna"
+            elif card_id.startswith("WIS-"):
+                domain_file = os.path.join(dna_dir, "wisdom_data.json")
+                collection_name = "wisdom_dna"
+            elif card_id.startswith("DISC-") or card_id.startswith("TL-"):
+                domain_file = os.path.join(dna_dir, "timeline_data.json")
+                collection_name = "discovery"
+            else:
+                domain_file = None
+                collection_name = "wisdom_dna"
+
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            rev_id = None
+            certified_card = None
+
+            # 1. Update Domain source file in Portfolio_Dev/dna/
+            if domain_file and os.path.exists(domain_file):
+                try:
+                    with open(domain_file, "r", encoding="utf-8") as df:
+                        domain_cards = json.load(df)
+                    for item in domain_cards:
+                        if item.get("id") == card_id:
+                            synth = item.setdefault("synthesis", {})
+                            revs = synth.setdefault("revisions", [])
+                            rev_id = f"rev_{card_id}_{len(revs)+1}_{mutation_id}"
+                            revs.append({
+                                "id": rev_id,
+                                "text": mutation_text,
+                                "lens": lens,
+                                "certified_by": "operator",
+                                "timestamp": now_iso
+                            })
+                            # Update active narrative context to newly certified revision
+                            synth["narrative_context"] = mutation_text
+                            item.setdefault("metadata", {})["updated_at"] = now_iso
+                            certified_card = item
+                            break
+                    if certified_card:
+                        atomic_write_json(domain_file, domain_cards)
+                except Exception as df_err:
+                    logger.warning(f"[FOYER] [FEAT-598] Domain file update note: {df_err}")
+
+            # 2. Update dna_manifest.json
             if os.path.exists(manifest_file):
                 with open(manifest_file, "r", encoding="utf-8") as f:
                     manifest = json.load(f)
                 
-                # Locate card across collections
                 found = False
                 for col_name, items in manifest.items():
                     if isinstance(items, list):
@@ -1888,44 +1944,72 @@ class FoyerRouter:
                             if item.get("id") == card_id:
                                 synth = item.setdefault("synthesis", {})
                                 revs = synth.setdefault("revisions", [])
-                                rev_id = f"rev_{card_id}_{len(revs)+1}_{mutation_id}"
+                                if not rev_id:
+                                    rev_id = f"rev_{card_id}_{len(revs)+1}_{mutation_id}"
                                 revs.append({
                                     "id": rev_id,
                                     "text": mutation_text,
                                     "lens": lens,
                                     "certified_by": "operator",
-                                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                                    "timestamp": now_iso
                                 })
+                                synth["narrative_context"] = mutation_text
+                                item.setdefault("metadata", {})["updated_at"] = now_iso
+                                if not certified_card:
+                                    certified_card = item
                                 found = True
                                 break
                     if found:
                         break
                         
                 if found:
-                    with open(manifest_file, "w", encoding="utf-8") as f:
-                        json.dump(manifest, f, indent=2)
-                    return web.json_response({"status": "success", "message": f"Certified revision {rev_id} on {card_id}."})
-                    
-            return web.json_response({"status": "success", "message": f"Certified {mutation_id} for {card_id} (cached)."})
+                    atomic_write_json(manifest_file, manifest)
+
+            # 3. Non-blocking ChromaDB sync on port 8001
+            if certified_card and collection_name:
+                try:
+                    import chromadb
+                    client = chromadb.HttpClient(host="127.0.0.1", port=8001)
+                    col = client.get_or_create_collection(collection_name)
+                    doc_text = f"ID: {card_id}\nTitle: {certified_card.get('synthesis', {}).get('title', '')}\nSynthesis: {mutation_text}"
+                    col.upsert(
+                        ids=[card_id],
+                        documents=[doc_text],
+                        metadatas=[{
+                            "id": card_id,
+                            "title": certified_card.get("synthesis", {}).get("title", ""),
+                            "theme": certified_card.get("theme", ""),
+                            "type": "PHILOSOPHY" if card_id.startswith("PHL-") else "WISDOM",
+                            "last_certified": int(time.time())
+                        }]
+                    )
+                    logger.info(f"[FOYER] [FEAT-598] ChromaDB synced certified revision {rev_id} for {card_id}")
+                except Exception as ce:
+                    logger.warning(f"[FOYER] [FEAT-598] ChromaDB sync note: {ce}")
+
+            return web.json_response({"status": "success", "message": f"Certified revision {rev_id} on {card_id}.", "rev_id": rev_id})
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-598] handle_dna_certify_mutation failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_dna_approve_synapse(self, request):
-        """[FEAT-596] POST /dna/approve_synapse — certifies an inferred similarity synapse into an explicit link."""
+        """[FEAT-596 / BKM-022] POST /dna/approve_synapse — certifies an inferred similarity synapse into an explicit link."""
         try:
             payload = await request.json()
             source_id = payload.get("source_id")
             target_id = payload.get("target_id")
             link_type = payload.get("link_type") or "EXPLICIT_LINK"
             
-            graph_file = os.path.join(WORKSPACE_DIR, "field_notes/data/dna_connections_graph.json")
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            graph_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_connections_graph.json")
+            manifest_file = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "dna_manifest.json")
+            dna_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "dna")
+            
             if os.path.exists(graph_file):
                 with open(graph_file, "r", encoding="utf-8") as f:
                     graph = json.load(f)
                 links = graph.setdefault("links", [])
                 
-                # Check if link exists
                 exists = any(
                     (l.get("source") == source_id and l.get("target") == target_id) or
                     (l.get("source") == target_id and l.get("target") == source_id)
@@ -1939,8 +2023,51 @@ class FoyerRouter:
                         "weight": 2.0,
                         "approved_by": "operator"
                     })
-                    with open(graph_file, "w", encoding="utf-8") as f:
-                        json.dump(graph, f, indent=2)
+                    atomic_write_json(graph_file, graph)
+
+            # Mirror explicit link back into source and target cards in dna_manifest.json
+            if os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    for col_name, items in mdata.items():
+                        if isinstance(items, list):
+                            for item in items:
+                                if item.get("id") == source_id:
+                                    links_list = item.setdefault("metadata", {}).setdefault("explicit_links", [])
+                                    if target_id not in links_list:
+                                        links_list.append(target_id)
+                                elif item.get("id") == target_id:
+                                    links_list = item.setdefault("metadata", {}).setdefault("explicit_links", [])
+                                    if source_id not in links_list:
+                                        links_list.append(source_id)
+                    atomic_write_json(manifest_file, mdata)
+                except Exception as me:
+                    logger.warning(f"[FOYER] [FEAT-596] Manifest link update note: {me}")
+
+            # Mirror explicit link back into underlying Portfolio_Dev/dna/ domain source files
+            for cid, other_id in [(source_id, target_id), (target_id, source_id)]:
+                if cid.startswith("PHL-"):
+                    dpath = os.path.join(dna_dir, "philosophy_data.json")
+                elif cid.startswith("WIS-"):
+                    dpath = os.path.join(dna_dir, "wisdom_data.json")
+                elif cid.startswith("DISC-") or cid.startswith("TL-"):
+                    dpath = os.path.join(dna_dir, "timeline_data.json")
+                else:
+                    dpath = None
+
+                if dpath and os.path.exists(dpath):
+                    try:
+                        with open(dpath, "r", encoding="utf-8") as df:
+                            dcards = json.load(df)
+                        for item in dcards:
+                            if item.get("id") == cid:
+                                llist = item.setdefault("metadata", {}).setdefault("explicit_links", [])
+                                if other_id not in llist:
+                                    llist.append(other_id)
+                        atomic_write_json(dpath, dcards)
+                    except Exception as de:
+                        logger.warning(f"[FOYER] [FEAT-596] Domain link update note: {de}")
                         
             return web.json_response({"status": "success", "message": f"Approved synapse link between {source_id} and {target_id}."})
         except Exception as e:

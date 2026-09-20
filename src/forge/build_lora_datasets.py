@@ -19,20 +19,30 @@ from typing import Optional, Dict, List, Any
 
 # --- Absolute Paths ---
 EXPERTISE_DIR = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise")
+DEV_LAB = Path("/home/jallred/Dev_Lab")
+DNA_DIR = DEV_LAB / "Portfolio_Dev" / "dna"
+PHILOSOPHY_JSON = DNA_DIR / "philosophy_data.json"
+WISDOM_JSON = DNA_DIR / "wisdom_data.json"
+RDNA_JSON = DNA_DIR / "rdna_questions.json"
+PROTOCOLS_MD = DEV_LAB / "HomeLabAI" / "docs" / "Protocols.md"
+FEATURES_MD = DEV_LAB / "Portfolio_Dev" / "FeatureTracker.md"
+
 HISTORY_RAW = EXPERTISE_DIR / "bkm_master_manifest.jsonl"
 VOICE_RAW = EXPERTISE_DIR / "cli_voice_dataset.jsonl"
 
 HISTORY_OUT = EXPERTISE_DIR / "lab_history_training.jsonl"
 VOICE_OUT = EXPERTISE_DIR / "cli_voice_training.jsonl"
 SENTINEL_OUT = EXPERTISE_DIR / "lab_sentinel_training.jsonl"
+DNA_OUT = EXPERTISE_DIR / "dna_polymorphic_training.jsonl"
 GEMS_OUT = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/training_data.jsonl")
 
 MASTER_CURRICULUM_OUT = EXPERTISE_DIR / "master_forge_curriculum.jsonl"
 
 CURRICULUM_DISTRIBUTION = {
-    "voice": 0.40,
-    "pedigree": 0.35,
-    "sentinel": 0.15,
+    "voice": 0.30,
+    "pedigree": 0.25,
+    "dna": 0.25,
+    "sentinel": 0.10,
     "gems": 0.10
 }
 
@@ -88,6 +98,116 @@ def build_sentinel_dataset():
         for entry in dataset:
             f.write(json.dumps(entry) + "\n")
     print(f"✅ Sentinel Forge Ready: {len(dataset)} pairs.")
+    return len(dataset)
+
+
+def build_dna_polymorphic_dataset():
+    """
+    [FEAT-598 / Story 86.5]
+    Builds idiographic stamp recognition and Reverse DNA training pairs from all 5 DNA domains:
+    - PHL (Philosophy DNA) -> [PHL-xxx]
+    - WIS (Wisdom DNA) -> [WIS-xxx]
+    - BKM (Behavioral Protocols) -> [BKM-xxx]
+    - FEAT (Feature DNA) -> [FEAT-xxx]
+    - RDNA (Reverse DNA) -> Natural Language Queries -> Target DNA Stamps
+    """
+    print(f"Building Polymorphic DNA Dataset -> {DNA_OUT}")
+    dataset = []
+
+    # 1. Ingest Philosophy DNA (PHL)
+    if PHILOSOPHY_JSON.exists():
+        try:
+            with open(PHILOSOPHY_JSON, "r", encoding="utf-8") as f:
+                phl_cards = json.load(f)
+            for card in phl_cards:
+                cid = card.get("id", "PHL-UNK")
+                title = card.get("synthesis", {}).get("title") or card.get("title", "")
+                narrative = card.get("synthesis", {}).get("narrative_context", "")
+                quote = card.get("origin", {}).get("text", "")
+                anchors = card.get("synthesis", {}).get("lab_anchors", [])
+                
+                # Idiographic stamp prompt
+                dataset.append({
+                    "instruction": f"Explain the architectural philosophy defined in [{cid}] ({title}).",
+                    "input": "",
+                    "output": f"ID: [{cid}]\nTitle: {title}\nOrigin Quote: \"{quote}\"\n\nSynthesis: {narrative}\nLab Anchors: {', '.join(anchors)}"
+                })
+                # Concept prompt
+                dataset.append({
+                    "instruction": f"What is the core principle of '{title}' in the Federated Lab?",
+                    "input": "",
+                    "output": f"Governed by [{cid}]: {narrative}"
+                })
+        except Exception as pe:
+            print(f"⚠️ Warning reading {PHILOSOPHY_JSON}: {pe}")
+
+    # 2. Ingest Wisdom DNA (WIS)
+    if WISDOM_JSON.exists():
+        try:
+            with open(WISDOM_JSON, "r", encoding="utf-8") as f:
+                wis_cards = json.load(f)
+            for card in wis_cards:
+                cid = card.get("id", "WIS-UNK")
+                title = card.get("synthesis", {}).get("title") or card.get("title", "")
+                narrative = card.get("synthesis", {}).get("narrative_context", "")
+                origin = card.get("origin", {}).get("text", "")
+                
+                dataset.append({
+                    "instruction": f"Recall empirical validation findings from [{cid}] ({title}).",
+                    "input": "",
+                    "output": f"[{cid}] {title}:\n{narrative}\n\nEmpirical Root: {origin}"
+                })
+        except Exception as we:
+            print(f"⚠️ Warning reading {WISDOM_JSON}: {we}")
+
+    # 3. Ingest Reverse DNA (RDNA) Questions
+    if RDNA_JSON.exists():
+        try:
+            with open(RDNA_JSON, "r", encoding="utf-8") as f:
+                rdna_entries = json.load(f)
+            for item in rdna_entries:
+                qid = item.get("id", "RDNA-UNK")
+                target_dna = item.get("target_dna", {})
+                target_id = target_dna.get("id", "")
+                target_title = target_dna.get("title", "")
+                primary_q = item.get("question", "")
+                variants = item.get("question_variants", [])
+                
+                for q in ([primary_q] + variants):
+                    if q:
+                        dataset.append({
+                            "instruction": f"Resolve engineering inquiry to governing DNA: '{q}'",
+                            "input": "",
+                            "output": f"This inquiry is governed by [{target_id}] ({target_title}). Refer to CLaRa-DNA collection '{target_dna.get('collection', 'philosophy_dna')}'."
+                        })
+        except Exception as re_err:
+            print(f"⚠️ Warning reading {RDNA_JSON}: {re_err}")
+
+    # 4. Ingest Protocols (BKM) from Protocols.md
+    if PROTOCOLS_MD.exists():
+        try:
+            import re
+            content = PROTOCOLS_MD.read_text(encoding="utf-8")
+            bkm_sections = re.findall(r"(###?\s*\[(BKM-\d+)\].*?)(?=###?\s*\[BKM-\d+\]|\Z)", content, re.DOTALL)
+            for sec_text, bkm_id in bkm_sections:
+                header_line = sec_text.strip().split("\n")[0]
+                title_match = re.search(r"\[(BKM-\d+)\]\s*(.*?)(?:\n|\Z)", header_line)
+                name = title_match.group(2).strip() if title_match else bkm_id
+                dataset.append({
+                    "instruction": f"What is the operational mandate and objective of protocol [{bkm_id}] ({name})?",
+                    "input": "",
+                    "output": sec_text.strip()[:1000]
+                })
+        except Exception as bke:
+            print(f"⚠️ Warning reading {PROTOCOLS_MD}: {bke}")
+
+    # Write output
+    DNA_OUT.parent.mkdir(parents=True, exist_ok=True)
+    with open(DNA_OUT, "w", encoding="utf-8") as f:
+        for entry in dataset:
+            f.write(json.dumps(entry) + "\n")
+
+    print(f"✅ Polymorphic DNA Forge Ready: {len(dataset)} pairs -> {DNA_OUT}")
     return len(dataset)
 
 
@@ -180,11 +300,12 @@ def _load_jsonl_dataset(path: Path) -> list:
 
 def build_master_curriculum(output_path: Optional[Path] = None, target_size: int = 1000, seed: int = 3407) -> Path:
     """
-    [FEAT-160] / [Story 83.1]
+    [FEAT-160] / [Story 86.5]
     Assembles master_forge_curriculum.jsonl with strict curriculum ratios:
-      - 40% User Voice & Cadence
-      - 35% Engineering Pedigree & BKMs
-      - 15% Sentinel Vibe & Triage
+      - 30% User Voice & Cadence
+      - 25% Engineering Pedigree & BKMs
+      - 25% Polymorphic DNA & Idiographic Stamps (PHL, WIS, FEAT, RDNA)
+      - 10% Sentinel Vibe & Triage
       - 10% Curated Rank 4 Pearls
     """
     print("\n--- Assembling Multi-Curriculum Master Forge Dataset ---")
@@ -193,21 +314,23 @@ def build_master_curriculum(output_path: Optional[Path] = None, target_size: int
 
     voice_items = _load_jsonl_dataset(VOICE_OUT)
     history_items = _load_jsonl_dataset(HISTORY_OUT)
+    dna_items = _load_jsonl_dataset(DNA_OUT)
     sentinel_items = _load_jsonl_dataset(SENTINEL_OUT)
     gems_items = _load_jsonl_dataset(GEMS_OUT)
 
-    print(f"Pool sizes: Voice={len(voice_items)}, History={len(history_items)}, Sentinel={len(sentinel_items)}, Gems={len(gems_items)}")
+    print(f"Pool sizes: Voice={len(voice_items)}, History={len(history_items)}, DNA={len(dna_items)}, Sentinel={len(sentinel_items)}, Gems={len(gems_items)}")
 
     target_voice = int(target_size * CURRICULUM_DISTRIBUTION["voice"])
     target_history = int(target_size * CURRICULUM_DISTRIBUTION["pedigree"])
+    target_dna = int(target_size * CURRICULUM_DISTRIBUTION["dna"])
     target_sentinel = int(target_size * CURRICULUM_DISTRIBUTION["sentinel"])
-    target_gems = target_size - (target_voice + target_history + target_sentinel)
+    target_gems = target_size - (target_voice + target_history + target_dna + target_sentinel)
 
     def sample_or_upsample(pool: list, target_count: int, label: str) -> list:
         if not pool:
             print(f"⚠️ Warning: Pool '{label}' is empty! Skipping.")
             return []
-        stream_key = "pedigree" if label.lower() == "history" else label.lower()
+        stream_key = label.lower()
         if len(pool) >= target_count:
             chosen = random.sample(pool, target_count)
         else:
@@ -218,6 +341,7 @@ def build_master_curriculum(output_path: Optional[Path] = None, target_size: int
     curriculum = []
     curriculum.extend(sample_or_upsample(voice_items, target_voice, "Voice"))
     curriculum.extend(sample_or_upsample(history_items, target_history, "History"))
+    curriculum.extend(sample_or_upsample(dna_items, target_dna, "DNA"))
     curriculum.extend(sample_or_upsample(sentinel_items, target_sentinel, "Sentinel"))
     curriculum.extend(sample_or_upsample(gems_items, target_gems, "Gems"))
 
@@ -238,4 +362,5 @@ if __name__ == "__main__":
     build_history_dataset()
     build_voice_dataset()
     build_sentinel_dataset()
+    build_dna_polymorphic_dataset()
     build_master_curriculum(target_size=1000)
