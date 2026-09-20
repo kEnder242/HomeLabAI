@@ -23,30 +23,14 @@ BONE_COLLECTIONS_PATH = DATA_DIR / "bone_collections.json"
 CONNECTIONS_GRAPH_PATH = DATA_DIR / "dna_connections_graph.json"
 
 
-def infer_domain(text: str) -> str:
-    """Classifies a semantic chunk into the most appropriate DNA domain."""
-    t = text.lower()
-    if any(k in t for k in ["rule", "protocol", "mandate", "bkm", "must always", "invariant", "never propose", "strictly"]):
-        return "BKM"
-    if any(k in t for k in ["axiom", "philosophy", "phl", "paradigm", "first principle", "belief", "mental model"]):
-        return "PHL"
-    if any(k in t for k in ["feat-", "feature", "capability", "endpoint", "architecture", "engine", "service", "system"]):
-        return "FEAT"
-    if any(k in t for k in ["discovery", "timeline", "milestone", "breakthrough", "eureka", "found that"]):
-        return "DISC"
-    if any(k in t for k in ["sprint", "story", "ladder", "backlog"]):
-        return "SPRINT"
-    if any(k in t for k in ["question", "how do we", "what is", "why does"]):
-        return "RDNA"
-    return "WIS"
-
-
 def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
     """
-    Decomposes unstructured notes into:
-    - Extracted / generated Title & Summary
-    - Paragraph-level semantic chunks classified by DNA domain
-    - Suggested Bone Collection skeleton tying the chunks together
+    [FEAT-597 / BKM-024 / PHL-035]
+    Pure Live Silicon DNA Decomposer.
+    Decomposes unstructured stream-of-consciousness text into polymorphic DNA pearls
+    via live resident vLLM on RTX 2080 Ti (port 8088).
+    
+    INVARIANT: Fail-fast if live vLLM is unreachable or generation fails. Zero regex fallbacks.
     """
     cleaned = raw_text.strip()
     if not cleaned:
@@ -57,98 +41,134 @@ def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
             "suggested_bone_collection": {"name": "Empty Draft Scaffold", "bones": []}
         }
 
-    lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
-
-    # Extract title
-    title = custom_title
-    if not title:
-        first_line = lines[0] if lines else "Untitled Synthesis Draft"
+    # Extract author-specified header if present
+    if not custom_title:
+        first_line = cleaned.split("\n")[0].strip()
         if first_line.startswith("#"):
-            title = first_line.lstrip("#").strip()
-        elif len(first_line) < 80:
-            title = first_line
-        else:
-            title = first_line[:60].strip() + "..."
+            custom_title = first_line.lstrip("#").strip()
 
-    # Split into paragraph chunks (group lines separated by blank lines or headers)
-    raw_paragraphs = re.split(r'\n\s*\n', cleaned)
-    chunks = []
-    chunk_idx = 1
+    import requests
 
-    for p in raw_paragraphs:
-        p_clean = p.strip()
-        if not p_clean:
-            continue
-        # If this chunk starts with top title header, strip the heading line
-        if p_clean.startswith("#") and "\n" in p_clean:
-            p_lines = p_clean.split("\n")
-            p_clean = "\n".join(p_lines[1:]).strip()
-            if not p_clean:
-                continue
-        elif p_clean.startswith("#") and not ("\n" in p_clean) and len(raw_paragraphs) > 1:
-            continue
+    vllm_url = "http://127.0.0.1:8088/v1/chat/completions"
+    
+    system_prompt = (
+        "You are the Sovereign Federated Lab DNA Decomposer and Knowledge Architect.\n"
+        "Your task is to decompose raw engineering notes, retrospective logs, or architectural stream-of-consciousness "
+        "into discrete, atomic, high-signal DNA pearls.\n\n"
+        "DNA DOMAIN TAXONOMY (Strictly assign one per chunk):\n"
+        "- 'BKM': Best Known Method / Hard Invariant / Operational Rule / Protocol Mandate\n"
+        "- 'PHL': Philosophical Axiom / Guiding North Star / First Principle\n"
+        "- 'WIS': Hard-Won Wisdom / Battle Scars / Post-Mortem Insight\n"
+        "- 'FEAT': System Capability / Technical Feature / Architecture Subsystem\n"
+        "- 'DISC': Breakthrough Discovery / Benchmark Finding / Research Milestone\n"
+        "- 'RDNA': Reverse DNA / Inverted Inquiry / Diagnostic Question Anchor\n"
+        "- 'SPRINT': Agile Cadence / Execution Horizon / Story Packaging\n\n"
+        "RESPONSE FORMAT:\n"
+        "You MUST respond with valid JSON ONLY (enclosed in ```json ... ``` or raw JSON) matching this exact schema:\n"
+        "{\n"
+        '  "title": "Synthesized Synthesis Title",\n'
+        '  "summary": "1-2 sentence overarching summary of the decomposed pearls",\n'
+        '  "chunks": [\n'
+        "    {\n"
+        '      "chunk_id": "CHUNK-01",\n'
+        '      "proposed_domain": "BKM|PHL|WIS|FEAT|DISC|RDNA|SPRINT",\n'
+        '      "title": "Punchy Atomic Title (max 60 chars)",\n'
+        '      "narrative": "Crisp, synthesized explanation of this single pearl",\n'
+        '      "origin_verbatim": "Exact source text snippet this was extracted from",\n'
+        '      "suggested_tags": ["tag1", "tag2"],\n'
+        '      "mutations": [\n'
+        '        {"id": "mut_active", "lens": "Active Voice", "text": "Active first-person engineering statement."},\n'
+        '        {"id": "mut_recruiter", "lens": "Executive / STAR", "text": "Executive impact statement."}\n'
+        "      ]\n"
+        "    }\n"
+        "  ],\n"
+        '  "suggested_bone_collection": {\n'
+        '    "name": "Track: <Title>",\n'
+        '    "bones": [\n'
+        '      {"id": "CHUNK-01", "title": "<Title>", "domain": "<DOMAIN>"}\n'
+        "    ]\n"
+        "  }\n"
+        "}"
+    )
 
-        domain = infer_domain(p_clean)
+    user_prompt = f"Decompose the following text into atomic DNA pearls:\n\n{cleaned}"
+    if custom_title:
+        user_prompt = f"Target Title: {custom_title}\n\n" + user_prompt
+
+    payload = {
+        "model": "local-unified-base",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.15,
+        "max_tokens": 2048
+    }
+
+    try:
+        resp = requests.post(vllm_url, json=payload, timeout=30)
+        if resp.status_code != 200:
+            raise RuntimeError(f"vLLM returned HTTP {resp.status_code}: {resp.text}")
         
-        # Extract chunk title
-        p_lines = [l.strip() for l in p_clean.split("\n") if l.strip()]
-        first_p_line = p_lines[0] if p_lines else f"Chunk {chunk_idx}"
-        if first_p_line.startswith("#") or first_p_line.startswith("- **") or first_p_line.startswith("**"):
-            c_title = re.sub(r'^[#\-\*\s]+', '', first_p_line).split(":")[0].strip()
-        else:
-            c_title = (first_p_line[:50] + "...") if len(first_p_line) > 50 else first_p_line
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+    except Exception as e:
+        # Strict BKM-024 Invariant: Do NOT mask with regex. Fail fast.
+        raise RuntimeError(f"[BKM-024] Live Silicon Decomposition Failed on vLLM (port 8088): {e}") from e
 
-        # Auto-extract tags
-        words = set(re.findall(r'\b[A-Za-z0-9_-]{4,15}\b', p_clean.lower()))
-        sample_tags = []
-        for w in ["architecture", "vector", "triage", "silicon", "gpu", "testing", "resume", "lens", "memory", "synapse", "cache", "protocol", "synthesis"]:
-            if w in words:
-                sample_tags.append(w)
-        if not sample_tags:
-            sample_tags = [domain.lower()]
+    # Parse JSON from model output
+    cleaned_json = content.strip()
+    if "```json" in cleaned_json:
+        cleaned_json = cleaned_json.split("```json")[1].split("```")[0].strip()
+    elif "```" in cleaned_json:
+        cleaned_json = cleaned_json.split("```")[1].split("```")[0].strip()
 
-        # Generate sample mutations (Voice Vector proposals)
-        mutations = [
-            {
-                "id": f"mut_{chunk_idx}_active",
-                "lens": "Active Voice / High Energy",
-                "text": f"Enforces {c_title.lower()} across operational pipelines with zero latency."
-            },
-            {
-                "id": f"mut_{chunk_idx}_recruiter",
-                "lens": "Executive Recruiter / Impact",
-                "text": f"Architected and deployed {c_title.lower()}, accelerating synthesis speed and governance."
-            }
+    try:
+        parsed = json.loads(cleaned_json)
+    except Exception as e:
+        raise RuntimeError(f"[BKM-024] vLLM generated invalid JSON structure: {e}\nRaw Output: {content[:300]}") from e
+
+    # Validate schema basics
+    if not isinstance(parsed, dict) or "chunks" not in parsed:
+        raise RuntimeError(f"[BKM-024] vLLM output missing 'chunks' array. Raw: {content[:300]}")
+
+    if custom_title:
+        parsed["title"] = custom_title
+        if "suggested_bone_collection" in parsed:
+            parsed["suggested_bone_collection"]["name"] = f"Track: {custom_title}"
+
+    # Ensure chunk_ids and index consistency
+    for idx, c in enumerate(parsed.get("chunks", []), 1):
+        c["chunk_id"] = f"CHUNK-{idx:02d}"
+        c["proposed_domain"] = str(c.get("proposed_domain") or "WIS").upper()
+        if c["proposed_domain"] not in ["PHL", "WIS", "BKM", "FEAT", "DISC", "RDNA", "SPRINT"]:
+            c["proposed_domain"] = "WIS"
+        if not c.get("origin_verbatim"):
+            c["origin_verbatim"] = c.get("narrative", "")
+        if not c.get("suggested_tags"):
+            c["suggested_tags"] = [c["proposed_domain"].lower()]
+        if not c.get("mutations"):
+            c["mutations"] = [
+                {"id": f"mut_{idx}_active", "lens": "Active Voice", "text": f"Enforces {c.get('title','').lower()} with zero latency."},
+                {"id": f"mut_{idx}_recruiter", "lens": "Executive / STAR", "text": f"Architected and governed {c.get('title','').lower()}."}
+            ]
+
+    # Sync suggested bones
+    if "suggested_bone_collection" not in parsed or not parsed["suggested_bone_collection"]:
+        parsed["suggested_bone_collection"] = {
+            "name": f"Track: {parsed.get('title', 'Synthesis Draft')}",
+            "bones": [
+                {"id": c["chunk_id"], "title": c["title"], "domain": c["proposed_domain"]}
+                for c in parsed.get("chunks", [])
+            ]
+        }
+    else:
+        parsed["suggested_bone_collection"]["bones"] = [
+            {"id": c["chunk_id"], "title": c["title"], "domain": c["proposed_domain"]}
+            for c in parsed.get("chunks", [])
         ]
 
-        chunks.append({
-            "chunk_id": f"CHUNK-{chunk_idx:02d}",
-            "proposed_domain": domain,
-            "title": c_title,
-            "narrative": p_clean,
-            "origin_verbatim": p_clean,
-            "suggested_tags": sample_tags,
-            "mutations": mutations,
-            "active_revision": None
-        })
-        chunk_idx += 1
-
-    # Suggested Bone Collection Skeleton
-    bone_name = f"Track: {title}"
-    suggested_bones = [
-        {"id": c["chunk_id"], "title": c["title"], "domain": c["proposed_domain"]}
-        for c in chunks
-    ]
-
-    return {
-        "title": title,
-        "summary": f"Decomposed {len(chunks)} discrete semantic units across {len(set(c['proposed_domain'] for c in chunks))} domains.",
-        "chunks": chunks,
-        "suggested_bone_collection": {
-            "name": bone_name,
-            "bones": suggested_bones
-        }
-    }
+    return parsed
 
 
 def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
