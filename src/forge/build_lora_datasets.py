@@ -101,6 +101,34 @@ def build_sentinel_dataset():
     return len(dataset)
 
 
+def _build_dna_synthesis_index() -> Dict[str, str]:
+    """
+    [Story 865] Builds a {card_id -> narrative_context} index from the Philosophy
+    and Wisdom DNA JSON collections so Reverse DNA (RDNA) pairs can surface the
+    substantive synthesis behind a governing stamp, not just the routing indirection.
+    """
+    index: Dict[str, str] = {}
+    for path in (PHILOSOPHY_JSON, WISDOM_JSON):
+        if not path.exists():
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cards = json.load(f)
+            for card in cards:
+                cid = card.get("id")
+                if not cid:
+                    continue
+                narrative = card.get("synthesis", {}).get("narrative_context", "")
+                title = card.get("synthesis", {}).get("title") or card.get("title", "")
+                if narrative:
+                    index[cid] = narrative
+                elif title:
+                    index[cid] = title
+        except Exception:
+            continue
+    return index
+
+
 def build_dna_polymorphic_dataset():
     """
     [FEAT-598 / Story 86.5]
@@ -160,11 +188,15 @@ def build_dna_polymorphic_dataset():
         except Exception as we:
             print(f"⚠️ Warning reading {WISDOM_JSON}: {we}")
 
-    # 3. Ingest Reverse DNA (RDNA) Questions
+# 3. Ingest Reverse DNA (RDNA) Questions
     if RDNA_JSON.exists():
         try:
             with open(RDNA_JSON, "r", encoding="utf-8") as f:
                 rdna_entries = json.load(f)
+            # [Story 865] Enrich RDNA outputs with the substantive synthesis behind
+            # each governing stamp — the model must learn the answer substance, not
+            # just the routing indirection (Finding 5 of SPRINT_86 report).
+            synthesis_index = _build_dna_synthesis_index()
             for item in rdna_entries:
                 qid = item.get("id", "RDNA-UNK")
                 target_dna = item.get("target_dna", {})
@@ -172,13 +204,18 @@ def build_dna_polymorphic_dataset():
                 target_title = target_dna.get("title", "")
                 primary_q = item.get("question", "")
                 variants = item.get("question_variants", [])
-                
+                collection = target_dna.get("collection", "philosophy_dna")
+                synthesis = synthesis_index.get(target_id, "")
+
                 for q in ([primary_q] + variants):
                     if q:
+                        stamp_line = f"This inquiry is governed by [{target_id}] ({target_title}). Refer to CLaRa-DNA collection '{collection}'."
+                        if synthesis:
+                            stamp_line += f"\n\nSynthesis: {synthesis[:600]}"
                         dataset.append({
                             "instruction": f"Resolve engineering inquiry to governing DNA: '{q}'",
                             "input": "",
-                            "output": f"This inquiry is governed by [{target_id}] ({target_title}). Refer to CLaRa-DNA collection '{target_dna.get('collection', 'philosophy_dna')}'."
+                            "output": stamp_line
                         })
         except Exception as re_err:
             print(f"⚠️ Warning reading {RDNA_JSON}: {re_err}")
@@ -200,6 +237,52 @@ def build_dna_polymorphic_dataset():
                 })
         except Exception as bke:
             print(f"⚠️ Warning reading {PROTOCOLS_MD}: {bke}")
+
+    # 5. Ingest Feature DNA (FEAT) from FeatureTracker.md
+    # [Story 865] Previously FEATURES_MD was defined and never referenced — 430+
+    # FEAT entries produced zero training pairs (Finding 5 of SPRINT_86 report).
+    if FEATURES_MD.exists():
+        try:
+            import re
+            content = FEATURES_MD.read_text(encoding="utf-8")
+            feat_sections = re.findall(r"(^##+\s*\[(FEAT-\d+)\].*?)(?=^##+\s*\[FEAT-\d+\]|\Z)", content, re.MULTILINE | re.DOTALL)
+            for sec_text, feat_id in feat_sections:
+                header_line = sec_text.strip().split("\n")[0]
+                name = re.sub(r"^##+\s*\[FEAT-\d+\]\s*", "", header_line).strip()
+                # Drop trailing tags like [SCAR #5] and leading/embedded [DEFEATURED] markers.
+                name = re.sub(r"\s*\[(?:SCAR #?\d+|DEFEATURED)\]\s*$", "", name).strip()
+                name = re.sub(r"^\s*\[DEFEATURED\]\s*", "", name).strip()
+                if not name:
+                    name = feat_id
+                fields = {
+                    k.strip(): re.sub(r"\s+", " ", v).strip()[:600]
+                    for k, v in re.findall(r"\*\*([A-Za-z #0-9]+):\*\*\s*(.*?)(?=\n\*\*|\Z)", sec_text, re.DOTALL)
+                }
+
+                # Idiographic feature card prompt
+                card_parts = [f"ID: [{feat_id}]", f"Title: {name}"]
+                status = fields.get("Status", "")
+                if status:
+                    card_parts.append(f"Status: {status}")
+                for label in ("Logic", "Rationale", "Mechanism", "Reason", "Verification"):
+                    value = fields.get(label, "")
+                    if value:
+                        card_parts.append(f"{label}: {value}")
+                dataset.append({
+                    "instruction": f"Explain the technical capability defined in [{feat_id}] ({name}).",
+                    "input": "",
+                    "output": "\n".join(card_parts)
+                })
+                # Implementation mechanism prompt (stamp + substantive mechanism)
+                mechanism = fields.get("Mechanism", "")
+                if mechanism:
+                    dataset.append({
+                        "instruction": f"How is the Feature DNA defined in [{feat_id}] ({name}) implemented in the Federated Lab?",
+                        "input": "",
+                        "output": f"Governed by [{feat_id}] ({name}): {mechanism}"
+                    })
+        except Exception as fe:
+            print(f"⚠️ Warning reading {FEATURES_MD}: {fe}")
 
     # Write output
     DNA_OUT.parent.mkdir(parents=True, exist_ok=True)

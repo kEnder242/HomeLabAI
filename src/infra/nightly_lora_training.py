@@ -376,12 +376,18 @@ def dataset_for_adapter(adapter: str) -> Path:
     return fallback
 
 
-def ensure_datasets() -> None:
-    """Auto-build the dataset foundation if the fallback master curriculum is missing."""
+def ensure_datasets(force: bool = False) -> None:
+    """[Story 864] Auto-build the dataset foundation when the master curriculum is missing.
+
+    ``force=True`` bypasses the fallback-existence shortcut so the dataset builder
+    always reruns (e.g. after curriculum composition changes), mirroring the
+    ``--force`` CLI semantics that already bypass the 12-hour debounce gate.
+    """
     fallback = EXPERTISE_DIR / FALLBACK_DATASET
-    if fallback.exists() and fallback.stat().st_size > 0:
+    if not force and fallback.exists() and fallback.stat().st_size > 0:
         return
-    logger.info("[DATASET] Master curriculum missing; auto-building via build_lora_datasets.py...")
+    reason = "Force-rebuild requested" if force else "Master curriculum missing"
+    logger.info(f"[DATASET] {reason}; auto-building via build_lora_datasets.py...")
     py_bin = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
     if not BUILD_DATASETS_SCRIPT.exists():
         logger.warning(f"[DATASET] {BUILD_DATASETS_SCRIPT} not found; cannot auto-build.")
@@ -580,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
         write_step_log("ORCHESTRATION_INIT", f"adapters={adapters}")
 
         verify_gpu_power_limit(max_limit_watts=170)
-        ensure_datasets()
+        ensure_datasets(force=args.force)  # [Story 864] --force reruns the dataset builder.
 
         if not quiesce_vllm():
             logger.critical("[FATAL] VRAM not evicted; aborting to protect host stability.")

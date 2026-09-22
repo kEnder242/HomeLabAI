@@ -807,8 +807,12 @@ class FoyerRouter:
             dna_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "dna")
             os.makedirs(dna_dir, exist_ok=True)
             is_timeline = collection in ("timeline", "discovery", "timeline_dna", "disc") or str(card_id).startswith("DISC-")
+            # [STORY-868] RDNA cards route to their own source file, not wisdom_data.json
+            is_rdna = collection in ("rdna", "rdna_questions", "rdna_dna") or str(card_id).startswith("RDNA-")
             if is_timeline:
                 target_file = os.path.join(dna_dir, "timeline_data.json")
+            elif is_rdna:
+                target_file = os.path.join(dna_dir, "rdna_questions.json")
             elif collection in ("philosophy", "philosophy_dna"):
                 target_file = os.path.join(dna_dir, "philosophy_data.json")
             elif collection in ("writer", "paper", "writer_dna"):
@@ -888,7 +892,7 @@ class FoyerRouter:
                 try:
                     with open(manifest_file, "r", encoding="utf-8") as mf:
                         mdata = json.load(mf)
-                    target_col_key = "discovery" if is_timeline else ("philosophy" if collection in ("philosophy", "philosophy_dna") else "wisdom")
+                    target_col_key = "discovery" if is_timeline else ("philosophy" if collection in ("philosophy", "philosophy_dna") else ("rdna" if is_rdna else "wisdom"))
                     col_list = mdata.get(target_col_key, [])
                     m_idx = next((i for i, dc in enumerate(col_list) if dc.get("id") == card_id), -1)
                     if m_idx >= 0:
@@ -907,6 +911,8 @@ class FoyerRouter:
                 client = chromadb.HttpClient(host="127.0.0.1", port=8001)
                 if is_timeline:
                     coll_name = "discovery"
+                elif is_rdna:
+                    coll_name = "rdna"
                 elif collection in ("philosophy", "philosophy_dna"):
                     coll_name = "philosophy_dna"
                 else:
@@ -1905,6 +1911,18 @@ class FoyerRouter:
             rev_id = None
             certified_card = None
 
+            # [STORY-866] After certification, remove the certifying mutation from pending
+            # candidates so it no longer re-appears as an uncertified proposal (Finding 6).
+            def _drop_certified_mutation(card):
+                """Remove mutation(s) matching mutation_id from card or card.synthesis mutations arrays."""
+                for container in (card, card.get("synthesis") or {}):
+                    muts = container.get("mutations")
+                    if isinstance(muts, list):
+                        container["mutations"] = [
+                            m for m in muts
+                            if m.get("id") != mutation_id and m.get("mutation_id") != mutation_id
+                        ]
+
             # 1. Update Domain source file in Portfolio_Dev/dna/
             if domain_file and os.path.exists(domain_file):
                 try:
@@ -1925,6 +1943,8 @@ class FoyerRouter:
                             # Update active narrative context to newly certified revision
                             synth["narrative_context"] = mutation_text
                             item.setdefault("metadata", {})["updated_at"] = now_iso
+                            # [STORY-866] Remove the certified mutation from pending candidates
+                            _drop_certified_mutation(item)
                             certified_card = item
                             break
                     if certified_card:
@@ -1955,6 +1975,8 @@ class FoyerRouter:
                                 })
                                 synth["narrative_context"] = mutation_text
                                 item.setdefault("metadata", {})["updated_at"] = now_iso
+                                # [STORY-866] Remove the certified mutation from pending candidates
+                                _drop_certified_mutation(item)
                                 if not certified_card:
                                     certified_card = item
                                 found = True

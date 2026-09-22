@@ -14,12 +14,21 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-PORTFOLIO_DIR = BASE_DIR / "Portfolio_Dev"
+DEV_LAB_ROOT = BASE_DIR.parent
+# Canonical portfolio checkout (mirrors router.py / dna_forge_build.py). Falls back
+# to the repo-local copy for hermetic deployments where it is the live checkout.
+_canonical_portfolio = DEV_LAB_ROOT / "Portfolio_Dev"
+PORTFOLIO_DIR = _canonical_portfolio if _canonical_portfolio.exists() else BASE_DIR / "Portfolio_Dev"
 DNA_DIR = PORTFOLIO_DIR / "dna"
 DATA_DIR = PORTFOLIO_DIR / "field_notes" / "data"
 MANIFEST_PATH = DATA_DIR / "dna_manifest.json"
 WISDOM_PATH = DNA_DIR / "wisdom_data.json"
 PHILOSOPHY_PATH = DNA_DIR / "philosophy_data.json"
+RDNA_PATH = DNA_DIR / "rdna_questions.json"
+TIMELINE_PATH = DNA_DIR / "timeline_data.json"
+SPRINT_DATA_PATH = DATA_DIR / "sprint_data.json"
+PROTOCOLS_PATH = BASE_DIR / "docs" / "Protocols.md"
+FEATURE_TRACKER_PATH = PORTFOLIO_DIR / "FeatureTracker.md"
 BONE_COLLECTIONS_PATH = DATA_DIR / "bone_collections.json"
 CONNECTIONS_GRAPH_PATH = DATA_DIR / "dna_connections_graph.json"
 
@@ -172,6 +181,102 @@ def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
     return parsed
 
 
+def _read_json_safe(path: Path) -> Any:
+    """[STORY 86.9] Read any JSON source file; returns [] on absence or parse failure."""
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _max_numeric_id(entries: Any, prefix: str) -> int:
+    """[STORY 86.9] Highest integer suffix among entries whose id matches f"{prefix}-\\d+". Returns 0 if none."""
+    if isinstance(entries, dict):
+        entries = entries.get("cards", [])
+    max_num = 0
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        eid = str(entry.get("id", "") or "")
+        m = re.search(rf"\b{re.escape(prefix)}-(\d+)", eid)
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return max_num
+
+
+def _max_markdown_id(md_path: Path, prefix: str) -> int:
+    """[STORY 86.9] Highest f"{prefix}-\\d+" occurrence found in a Markdown source file. Returns 0 if unreadable."""
+    if not md_path.exists():
+        return 0
+    try:
+        text = md_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return 0
+    return max((int(n) for n in re.findall(rf"\b{re.escape(prefix)}-(\d+)", text)), default=0)
+
+
+def _domain_source_max_id(dom: str) -> int:
+    """
+    [STORY 86.9] Maximum existing numeric ID for a domain from its authoritative
+    source of truth, so draft promotion can never collide with foundational cards:
+      - BKM   -> HomeLabAI/docs/Protocols.md              (matching BKM-\\d+)
+      - FEAT  -> Portfolio_Dev/FeatureTracker.md          (matching FEAT-\\d+)
+      - RDNA  -> Portfolio_Dev/dna/rdna_questions.json    (ids matching RDNA-\\d+)
+      - DISC  -> Portfolio_Dev/dna/timeline_data.json     (ids matching DISC-\\d+)
+    Domains without a dedicated source (SPRINT, ...) return 0 and fall back to
+    manifest-scan only.
+    """
+    if dom == "BKM":
+        return _max_markdown_id(PROTOCOLS_PATH, "BKM")
+    if dom == "FEAT":
+        return _max_markdown_id(FEATURE_TRACKER_PATH, "FEAT")
+    if dom == "RDNA":
+        return _max_numeric_id(_read_json_safe(RDNA_PATH), "RDNA")
+    if dom == "DISC":
+        return _max_numeric_id(_read_json_safe(TIMELINE_PATH), "DISC")
+    return 0
+
+
+def _trigger_static_html_rebuild(created_cards: List[Dict[str, Any]]) -> None:
+    """
+    [STORY 86.7] Fire-and-forget background rebuild of static HTML generators so
+    newly promoted draft cards appear immediately without manual intervention:
+      - dna_forge_build.py: aggregates BKM/FEAT/RDNA/DISC/SPRINT into dna_forge.html
+      - wisdom_build.py:    regenerates wisdom.html whenever WIS/PHL cards were promoted
+    Never blocks or fails the promotion transaction.
+    """
+    if not created_cards:
+        return
+    try:
+        import subprocess
+        import sys
+    except Exception:
+        return
+    build_dir = PORTFOLIO_DIR / "field_notes"
+    scripts = ["dna_forge_build.py"]
+    domains = {str(c.get("domain", "")).upper() for c in created_cards}
+    if domains & {"WIS", "PHL"}:
+        scripts.append("wisdom_build.py")
+    for script in scripts:
+        script_path = build_dir / script
+        if not script_path.exists():
+            continue
+        try:
+            subprocess.Popen(
+                [sys.executable, str(script_path)],
+                cwd=str(build_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            # A failed rebuild must never roll back an already-persisted promotion.
+            continue
+
+
 def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     [FEAT-597 / BKM-022 / BKM-041]
@@ -252,9 +357,14 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
             nums = [int(re.search(r'\d+', card.get("id", "0")).group()) for card in philosophy_cards if re.search(r'\d+', card.get("id", "0"))]
             next_num = max(nums, default=0) + 1
         else:
+            # [STORY 86.9] Lift the ID floor from the authoritative domain source
+            # file(s) (Protocols.md / FeatureTracker.md / rdna_questions.json /
+            # timeline_data.json) so an empty or gapped manifest can never collide
+            # with foundational IDs (e.g. BKM-001) on draft card promotion.
             existing_col = manifest.get(col_key, [])
             nums = [int(re.search(r'\d+', card.get("id", "0")).group()) for card in existing_col if re.search(r'\d+', card.get("id", "0"))]
-            next_num = max(nums, default=len(existing_col)) + 1
+            source_max = _domain_source_max_id(dom)
+            next_num = max(max(nums, default=0), source_max) + 1
 
         new_id = f"{dom}-{next_num:03d}"
 
@@ -369,6 +479,11 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
         })
 
         atomic_write_json(str(BONE_COLLECTIONS_PATH), bone_cols)
+
+    # [STORY 86.7] Background rebuild of static HTML so newly promoted cards
+    # appear immediately in dna_forge.html / wisdom.html without manual builds.
+    if created_cards:
+        _trigger_static_html_rebuild(created_cards)
 
     return {
         "status": "success",
