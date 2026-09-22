@@ -981,4 +981,34 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 2. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
 3. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
 
+---
+
+## BKM-061: Multi-Tier Swarm Audit & Adversarial Oracle Protocol
+**Feature Anchor:** `[FEAT-477]` / `[FEAT-582]` / `[BKM-061]`  
+**Domain:** Codebase Health, Verification Rigor, Post-Sprint & Pre-Commit Audits  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+A single model inspecting a wide codebase experiences severe context dilution and misses subtle failure modes (stale lockouts, orphan code, VRAM collisions, and ID collision vectors). Codebase and sprint audits must be executed via an isolated, multi-tier process that decouples specialized domain investigation from synthesis and adversarial critique.
+
+### 2. The 4-Tier Audit Anatomy
+1. **Tier 1 — Parallel Specialized Swarm (4-Way Subagent Dispatches):**
+   * *Pipeline & Daemon Auditor:* Audits background jobs, systemd units, execution order, and stale lockout flags (`nightly_forge.py`, `nightly_lora_training.py`).
+   * *Backend & Router Auditor:* Audits REST endpoints, database atomicity, ID allocation counters, and disk vs. DB serialization (`router.py`, `draft_decomposer.py`).
+   * *Frontend & UX Flow Auditor:* Audits UI event reactivity, DOM pills, client-side data binding, and build script linkages (`dna_forge_build.py`, `writer.html`).
+   * *Schema & Invariant Auditor:* Audits JSON data completeness across legacy and newly added entries, git pre-commit hooks, and vector DB sync idempotency (`*.json`, `.git/hooks/pre-commit`).
+2. **Tier 2 — Synthesized Deficiency Matrix:**
+   * Aggregate all subagent findings into a ranked deficiency matrix (`CRITICAL_BREAKAGES`, `ID_COLLISIONS`, `STALE_LOCKOUTS`, `ORPHAN_CODE`, `UX_STALE_STATES`).
+3. **Tier 3 — Dual Adversarial Oracle Review:**
+   * *Architecture & Invariants Oracle:* Evaluates mathematical bounds, vector thresholds (e.g. HyDE bypass cosine distance), schema invariants, and graph link integrity.
+   * *Side Effects & Blast Radius Oracle:* Evaluates operational collisions (e.g. VRAM concurrency, process isolation), backwards compatibility shims, and deprecation blast radii.
+4. **Tier 4 — Live Invariant Certification (BKM-024):**
+   * Execute deterministic roundtrip unit tests (`test_dna_roundtrip_consistency.py`).
+   * Verify all active daemons match local Git HEAD.
+
+### 3. Operational Modes (Token Thrift vs. Deep Sleuth)
+* **Mode A (Thrift / Local Delegation):** Uses fast local or lightweight subagents targeted strictly at modified files in git diff.
+* **Mode B (Deep Burn / Unknown-Knowns Sleuth):** Uses deep-thinking reasoning models and historical archive searches to uncover forgotten dependencies and architectural drift across sprints.
+
+
 
