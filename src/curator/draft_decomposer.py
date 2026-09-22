@@ -30,6 +30,7 @@ SPRINT_DATA_PATH = DATA_DIR / "sprint_data.json"
 PROTOCOLS_PATH = BASE_DIR / "docs" / "Protocols.md"
 FEATURE_TRACKER_PATH = PORTFOLIO_DIR / "FeatureTracker.md"
 BONE_COLLECTIONS_PATH = DATA_DIR / "bone_collections.json"
+BONES_DIR = DATA_DIR / "bones"
 CONNECTIONS_GRAPH_PATH = DATA_DIR / "dna_connections_graph.json"
 
 
@@ -116,7 +117,7 @@ def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
     }
 
     try:
-        resp = requests.post(vllm_url, json=payload, timeout=30)
+        resp = requests.post(vllm_url, json=payload, timeout=120)
         if resp.status_code != 200:
             raise RuntimeError(f"vLLM returned HTTP {resp.status_code}: {resp.text}")
         
@@ -461,7 +462,7 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
     created_collection_id = None
     if bone_col and created_bone_items:
         col_name = bone_col.get("name") or "Promoted Track Collection"
-        created_collection_id = f"bone_{col_name.lower().replace(' ', '_').replace(':', '')}"
+        created_collection_id = f"bone_{col_name.lower().replace(' ', '_').replace(':', '').replace('-', '_')}"
         
         bone_cols = []
         if BONE_COLLECTIONS_PATH.exists():
@@ -479,6 +480,31 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
         })
 
         atomic_write_json(str(BONE_COLLECTIONS_PATH), bone_cols)
+
+        # [FEAT-601] Save 1:1 Source Bone Collection scratchpad
+        slug = col_name.lower().replace(" ", "_").replace(":", "").replace("-", "_")
+        BONES_DIR.mkdir(parents=True, exist_ok=True)
+        source_bones_path = BONES_DIR / f"{slug}_bones.json"
+        source_bone_data = {
+            "id": created_collection_id,
+            "name": col_name,
+            "theme": bone_col.get("theme", "Systems Architecture & Automation"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "bones": [
+                {
+                    "sequence": idx + 1,
+                    "id": c.get("id"),
+                    "domain": c.get("domain", "WIS"),
+                    "title": c.get("synthesis", {}).get("title"),
+                    "origin_verbatim": c.get("origin", {}).get("text"),
+                    "revisions": c.get("synthesis", {}).get("revisions", []),
+                    "mutations": c.get("synthesis", {}).get("mutations", [])
+                }
+                for idx, c in enumerate(created_cards)
+            ]
+        }
+        atomic_write_json(str(source_bones_path), source_bone_data)
 
     # [STORY 86.7] Background rebuild of static HTML so newly promoted cards
     # appear immediately in dna_forge.html / wisdom.html without manual builds.
