@@ -49,9 +49,21 @@ Decouple atomic semantic meaning from narrative presentation by establishing **1
   - Ingest inaugural card `[VIBE-001]` ("The Granularity Triad: DNA Ideas, Certified Revisions, and Narrative Spines").
   - Wire `vibe_data.json` into `sync_chroma_dna.py`, `dna_forge_build.py`, and `build_lora_datasets.py`.
 
+### Phase 6: `writer.html` Words-First Prose & Inline Citation UX Alignment (`FEAT-606`)
+- [ ] **Story 87.8 [AGY:PRIMARY]: `writer.html` Words-First Prose Editor & Inline Anchor Pills**
+  - Refactor `Portfolio_Dev/field_notes/writer.html` so the primary editing pane displays clean, natural prose first.
+  - Render inline citation anchors (`[PHL-231] R1 style=Heading`) as subtle, interactive DOM pills trailing their respective sentences/paragraphs.
+  - Implement the **Selection Citation Inserter**: highlighting text allows the author to search ChromaDB/Bones and attach a DNA citation tag in one click.
+- [ ] **Story 87.9 [AGY:PRIMARY]: Live In-Place Lens Swapping & Drawer Integration**
+  - Clicking any citation badge in `writer.html` opens the Lens Drawer showing available revisions ($R1, R2$) and candidate mutations ($M1, M2$).
+  - Selecting a revision swaps the preceding sentence/paragraph in-place within the editor without disturbing surrounding text.
+  - Add Foyer REST endpoints (`/paper/swap_lens`, `/paper/cite_selection`) in `HomeLabAI/src/v5/foyer/router.py`.
+
 ---
 
 ## 🛡️ Invariant Check & Verification Gate
 - Fast unit tests verify AST/macro transformations hermetically.
 - Live test asserts exact string identity between decomposed raw sources and $R1$ bone reconstructions.
+- `writer.html` verified live in browser rendering words-first prose and interactive citation badges.
 - Live attending daemon on port 8765 and ChromaDB on port 8001 verified against Git HEAD.
+
