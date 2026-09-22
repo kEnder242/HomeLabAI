@@ -236,3 +236,31 @@ PYTHONPATH=. .venv/bin/pytest src/tests/test_benchmarks_elapsed_time_ui.py \
                              src/tests/test_live_sprint71_stability.py -v
 ```
 
+---
+
+## 16. Sprint 86 DNA Dropped Ball, Draft Ingestion & Polymorphic Vector Diagnostics (SPR-86.0 / SPR-86.1)
+Diagnostic, verification, and shakedown instruments validating the Sprint 86 Polymorphic DNA architecture, semantic draft decomposition, mutation governance, and ChromaDB vector synchronization.
+
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Paper Engine & Draft Decomposer** | `src/tests/test_paper_engine.py` | **ACTIVE** | [FEAT-597] [GOLD] Live silicon test validating AST lens crafting, citation expansion, connection graphs, and vLLM semantic draft decomposition. |
+| **Live Pre-Reflection Triage** | `src/tests/test_live_pre_reflection_triage.py` | **ACTIVE** | [FEAT-583/584/586] [GOLD] Live Foyer daemon integration suite verifying EWMA latency estimations, RDNA HyDE bypass (<0.45 distance), and triage engine preferences. |
+| **Journal-to-DNA Bridge** | `src/tests/test_journal_to_dna_bridge.py` | **ACTIVE** | [FEAT-592] [GOLD] Unit test suite verifying note ingestion extraction, gem fingerprinting idempotency, and polymorphic WIS card schema compliance. |
+| **Draft Promotion & Safe ID Allocation** | `src/tests/test_draft_promotion_unit.py` | **ACTIVE** | [FEAT-597/BKM-060] [GOLD] Unit test suite verifying collision-safe ID allocation across BKM, FEAT, RDNA, DISC and non-blocking background HTML rebuild dispatch. |
+| **Mutation Certification & Cleanup** | `src/tests/test_mutation_certification_unit.py` | **ACTIVE** | [FEAT-598] [GOLD] Unit test suite verifying certified mutation proposals are purged from candidate arrays while revision histories increment. |
+| **Polymorphic LoRA Dataset Invariant** | `src/tests/test_polymorphic_lora_dataset_unit.py` | **ACTIVE** | [FEAT-582] [GOLD] Unit test suite verifying polymorphic DNA dataset balance, 430+ FEAT section regex ingestion, and RDNA narrative context enrichment. |
+| **Schema Backfill Verification** | `../Portfolio_Dev/scripts/backfill_card_schema.py` | **ACTIVE** | [FEAT-582] Diagnostic migration script verifying 100% of WIS and PHL cards have initialized `mutations: []` and `revisions: []` structures. |
+| **ChromaDB Idempotency & Dry-Run** | `../Portfolio_Dev/sync_chroma_dna.py` | **ACTIVE** | [FEAT-582] Diagnostic probe testing ChromaDB sync state, SHA256 checksum caching (`.sync_checksums.json`), and `--dry-run` inspection. |
+
+---
+**Sprint 86 Certification Runner**:
+```bash
+PYTHONPATH=src .venv/bin/pytest src/tests/test_draft_promotion_unit.py \
+                                src/tests/test_mutation_certification_unit.py \
+                                src/tests/test_polymorphic_lora_dataset_unit.py \
+                                src/tests/test_journal_to_dna_bridge.py \
+                                src/tests/test_paper_engine.py \
+                                src/tests/test_live_pre_reflection_triage.py -v
+```
+
+

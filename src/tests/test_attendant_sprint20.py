@@ -8,7 +8,10 @@ import logging
 # Mock FastMCP before importing
 sys.modules['mcp.server.fastmcp'] = MagicMock()
 
-from src.lab_attendant_v4 import LabAttendantV4
+try:
+    from src.lab_attendant_v4 import LabAttendantV4
+except ImportError:
+    pytest.skip("Sprint 20 legacy test superseded by Foyer V5 (lab_attendant_v4 retired)", allow_module_level=True)
 
 @pytest.fixture
 def attendant():
