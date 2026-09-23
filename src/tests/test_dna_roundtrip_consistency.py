@@ -70,6 +70,32 @@ When using agents to code, long context becomes a problem.
     assert "Local models hold offline" in chunks[2]["text"]
 
 
+def test_words_first_inline_citation_parsing():
+    """
+    Test words-first inline citation grammar:
+    "I walked the dog" [PHL-231] R1 style=Heading
+    """
+    doc = """
+# Dog Paper
+
+"I walked the dog" [PHL-231] R1 style=Heading
+
+It was a crisp morning with cold fog rolling over the grass. [WIS-102] R1
+"""
+    chunks = parse_markdown_with_dna_macros(doc)
+    assert len(chunks) == 3
+    assert "Dog Paper" in chunks[0]["text"]
+    assert chunks[1]["text"] == "I walked the dog"
+    assert chunks[1]["macro"]["id"] == "PHL-231"
+    assert chunks[1]["macro"]["revision"] == "R1"
+    assert chunks[1]["macro"]["style"] == "heading"
+
+    assert "It was a crisp morning" in chunks[2]["text"]
+    assert chunks[2]["macro"]["id"] == "WIS-102"
+    assert chunks[2]["macro"]["revision"] == "R1"
+
+
+
 def test_bone_collection_roundtrip_exact_identity():
     """
     [FEAT-604 Invariant]
