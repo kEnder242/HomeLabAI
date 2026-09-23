@@ -14,12 +14,23 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-PORTFOLIO_DIR = BASE_DIR / "Portfolio_Dev"
+DEV_LAB_ROOT = BASE_DIR.parent
+# Canonical portfolio checkout (mirrors router.py / dna_forge_build.py). Falls back
+# to the repo-local copy for hermetic deployments where it is the live checkout.
+_canonical_portfolio = DEV_LAB_ROOT / "Portfolio_Dev"
+PORTFOLIO_DIR = _canonical_portfolio if _canonical_portfolio.exists() else BASE_DIR / "Portfolio_Dev"
+DNA_DIR = PORTFOLIO_DIR / "dna"
 DATA_DIR = PORTFOLIO_DIR / "field_notes" / "data"
 MANIFEST_PATH = DATA_DIR / "dna_manifest.json"
-WISDOM_PATH = DATA_DIR / "wisdom_data.json"
-PHILOSOPHY_PATH = DATA_DIR / "philosophy_data.json"
+WISDOM_PATH = DNA_DIR / "wisdom_data.json"
+PHILOSOPHY_PATH = DNA_DIR / "philosophy_data.json"
+RDNA_PATH = DNA_DIR / "rdna_questions.json"
+TIMELINE_PATH = DNA_DIR / "timeline_data.json"
+SPRINT_DATA_PATH = DATA_DIR / "sprint_data.json"
+PROTOCOLS_PATH = BASE_DIR / "docs" / "Protocols.md"
+FEATURE_TRACKER_PATH = PORTFOLIO_DIR / "FeatureTracker.md"
 BONE_COLLECTIONS_PATH = DATA_DIR / "bone_collections.json"
+BONES_DIR = DATA_DIR / "bones"
 CONNECTIONS_GRAPH_PATH = DATA_DIR / "dna_connections_graph.json"
 
 
@@ -106,7 +117,7 @@ def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
     }
 
     try:
-        resp = requests.post(vllm_url, json=payload, timeout=30)
+        resp = requests.post(vllm_url, json=payload, timeout=120)
         if resp.status_code != 200:
             raise RuntimeError(f"vLLM returned HTTP {resp.status_code}: {resp.text}")
         
@@ -171,15 +182,123 @@ def decompose_draft(raw_text: str, custom_title: str = None) -> Dict[str, Any]:
     return parsed
 
 
+def _read_json_safe(path: Path) -> Any:
+    """[STORY 86.9] Read any JSON source file; returns [] on absence or parse failure."""
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _max_numeric_id(entries: Any, prefix: str) -> int:
+    """[STORY 86.9] Highest integer suffix among entries whose id matches f"{prefix}-\\d+". Returns 0 if none."""
+    if isinstance(entries, dict):
+        entries = entries.get("cards", [])
+    max_num = 0
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        eid = str(entry.get("id", "") or "")
+        m = re.search(rf"\b{re.escape(prefix)}-(\d+)", eid)
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return max_num
+
+
+def _max_markdown_id(md_path: Path, prefix: str) -> int:
+    """[STORY 86.9] Highest f"{prefix}-\\d+" occurrence found in a Markdown source file. Returns 0 if unreadable."""
+    if not md_path.exists():
+        return 0
+    try:
+        text = md_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return 0
+    return max((int(n) for n in re.findall(rf"\b{re.escape(prefix)}-(\d+)", text)), default=0)
+
+
+def _domain_source_max_id(dom: str) -> int:
+    """
+    [STORY 86.9] Maximum existing numeric ID for a domain from its authoritative
+    source of truth, so draft promotion can never collide with foundational cards:
+      - BKM   -> HomeLabAI/docs/Protocols.md              (matching BKM-\\d+)
+      - FEAT  -> Portfolio_Dev/FeatureTracker.md          (matching FEAT-\\d+)
+      - RDNA  -> Portfolio_Dev/dna/rdna_questions.json    (ids matching RDNA-\\d+)
+      - DISC  -> Portfolio_Dev/dna/timeline_data.json     (ids matching DISC-\\d+)
+    Domains without a dedicated source (SPRINT, ...) return 0 and fall back to
+    manifest-scan only.
+    """
+    if dom == "BKM":
+        return _max_markdown_id(PROTOCOLS_PATH, "BKM")
+    if dom == "FEAT":
+        return _max_markdown_id(FEATURE_TRACKER_PATH, "FEAT")
+    if dom == "RDNA":
+        return _max_numeric_id(_read_json_safe(RDNA_PATH), "RDNA")
+    if dom == "DISC":
+        return _max_numeric_id(_read_json_safe(TIMELINE_PATH), "DISC")
+    return 0
+
+
+def _trigger_static_html_rebuild(created_cards: List[Dict[str, Any]]) -> None:
+    """
+    [STORY 86.7] Fire-and-forget background rebuild of static HTML generators so
+    newly promoted draft cards appear immediately without manual intervention:
+      - dna_forge_build.py: aggregates BKM/FEAT/RDNA/DISC/SPRINT into dna_forge.html
+      - wisdom_build.py:    regenerates wisdom.html whenever WIS/PHL cards were promoted
+    Never blocks or fails the promotion transaction.
+    """
+    if not created_cards:
+        return
+    try:
+        import subprocess
+        import sys
+    except Exception:
+        return
+    build_dir = PORTFOLIO_DIR / "field_notes"
+    scripts = ["dna_forge_build.py"]
+    domains = {str(c.get("domain", "")).upper() for c in created_cards}
+    if domains & {"WIS", "PHL"}:
+        scripts.append("wisdom_build.py")
+    for script in scripts:
+        script_path = build_dir / script
+        if not script_path.exists():
+            continue
+        try:
+            subprocess.Popen(
+                [sys.executable, str(script_path)],
+                cwd=str(build_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            # A failed rebuild must never roll back an already-persisted promotion.
+            continue
+
+
 def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
+    [FEAT-597 / BKM-022 / BKM-041]
     Promotes validated draft chunks into permanent sovereign DNA cards
-    in data/dna_manifest.json and ChromaDB.
+    in Portfolio_Dev/dna/*.json, dna_manifest.json, and ChromaDB (:8001).
     """
+    try:
+        from infra.atomic_io import atomic_write_json
+    except ImportError:
+        def atomic_write_json(path, data, indent=2):
+            import tempfile, os
+            dir_name = os.path.dirname(os.path.abspath(path))
+            with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
+                json.dump(data, tf, indent=indent)
+                temp_name = tf.name
+            os.replace(temp_name, path)
+
     chunks = payload.get("chunks", [])
     bone_col = payload.get("suggested_bone_collection") or {}
     
-    # Load manifest
+    # Load manifest and domain source files
     manifest = {}
     if MANIFEST_PATH.exists():
         try:
@@ -188,11 +307,37 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             manifest = {}
 
+    wisdom_cards = []
+    if WISDOM_PATH.exists():
+        try:
+            with open(WISDOM_PATH, "r", encoding="utf-8") as f:
+                wisdom_cards = json.load(f)
+        except Exception:
+            wisdom_cards = []
+
+    philosophy_cards = []
+    if PHILOSOPHY_PATH.exists():
+        try:
+            with open(PHILOSOPHY_PATH, "r", encoding="utf-8") as f:
+                philosophy_cards = json.load(f)
+        except Exception:
+            philosophy_cards = []
+
     created_cards = []
     created_bone_items = []
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # Determine highest ID per collection
+    # Chroma client for atomic sync
+    chroma_client = None
+    try:
+        import chromadb
+        chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
+    except Exception:
+        chroma_client = None
+
+    wisdom_modified = False
+    philosophy_modified = False
+
     for c in chunks:
         dom = c.get("proposed_domain", "WIS").upper()
         col_key = {
@@ -205,19 +350,36 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
             "RDNA": "rdna"
         }.get(dom, "wisdom")
 
-        existing_col = manifest.get(col_key, [])
-        next_num = len(existing_col) + 1
+        # Determine next ID accurately from source of truth
+        if dom == "WIS":
+            nums = [int(re.search(r'\d+', card.get("id", "0")).group()) for card in wisdom_cards if re.search(r'\d+', card.get("id", "0"))]
+            next_num = max(nums, default=0) + 1
+        elif dom == "PHL":
+            nums = [int(re.search(r'\d+', card.get("id", "0")).group()) for card in philosophy_cards if re.search(r'\d+', card.get("id", "0"))]
+            next_num = max(nums, default=0) + 1
+        else:
+            # [STORY 86.9] Lift the ID floor from the authoritative domain source
+            # file(s) (Protocols.md / FeatureTracker.md / rdna_questions.json /
+            # timeline_data.json) so an empty or gapped manifest can never collide
+            # with foundational IDs (e.g. BKM-001) on draft card promotion.
+            existing_col = manifest.get(col_key, [])
+            nums = [int(re.search(r'\d+', card.get("id", "0")).group()) for card in existing_col if re.search(r'\d+', card.get("id", "0"))]
+            source_max = _domain_source_max_id(dom)
+            next_num = max(max(nums, default=0), source_max) + 1
+
         new_id = f"{dom}-{next_num:03d}"
 
         new_card = {
             "id": new_id,
             "domain": dom,
-            "title": c.get("title") or f"{dom} Artifact {next_num}",
-            "status": "APPROVED",
+            "theme": c.get("theme") or ("Memory & JITC" if dom == "PHL" else "Systems Architecture & Automation"),
+            "paper_order": next_num,
             "origin": {
+                "author": c.get("author") or "jallred",
                 "text": c.get("origin_verbatim", ""),
                 "source": "Drafting Studio Promotion",
-                "timestamp": timestamp
+                "immutable": True,
+                "created_at": timestamp
             },
             "synthesis": {
                 "title": c.get("title") or f"{dom} Artifact {next_num}",
@@ -237,31 +399,70 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
             },
             "metadata": {
                 "tags": c.get("suggested_tags", [dom.lower()]),
+                "explicit_links": [],
                 "status": "APPROVED",
-                "promoted_from_draft": True
+                "bucket_id": "bucket_1_jitc" if dom == "PHL" else "bucket_architecture"
             }
         }
 
+        # Update specific domain file array
+        if dom == "WIS":
+            wisdom_cards.append(new_card)
+            wisdom_modified = True
+        elif dom == "PHL":
+            philosophy_cards.append(new_card)
+            philosophy_modified = True
+
+        # Update manifest
         if col_key not in manifest:
             manifest[col_key] = []
         manifest[col_key].append(new_card)
 
+        # Sync to ChromaDB collection
+        if chroma_client:
+            try:
+                target_col_name = "philosophy_dna" if dom == "PHL" else "wisdom_dna"
+                col = chroma_client.get_or_create_collection(target_col_name)
+                doc_text = f"ID: {new_id}\nTitle: {new_card['synthesis']['title']}\nSynthesis: {new_card['synthesis']['narrative_context']}"
+                col.upsert(
+                    ids=[new_id],
+                    documents=[doc_text],
+                    metadatas=[{
+                        "id": new_id,
+                        "title": new_card["synthesis"]["title"],
+                        "theme": new_card["theme"],
+                        "type": "PHILOSOPHY" if dom == "PHL" else "WISDOM",
+                        "tags": ",".join(new_card["metadata"]["tags"])
+                    }]
+                )
+            except Exception as ce:
+                pass
+
         created_cards.append(new_card)
         created_bone_items.append({
             "id": new_id,
-            "title": new_card["title"],
+            "title": new_card["synthesis"]["title"],
             "domain": dom
         })
 
-    # Save manifest
-    with open(MANIFEST_PATH, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2)
+    # Atomically persist domain files
+    if wisdom_modified:
+        WISDOM_PATH.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(str(WISDOM_PATH), wisdom_cards)
+
+    if philosophy_modified:
+        PHILOSOPHY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(str(PHILOSOPHY_PATH), philosophy_cards)
+
+    # Atomically persist manifest
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(str(MANIFEST_PATH), manifest)
 
     # Save bone collection if provided
     created_collection_id = None
     if bone_col and created_bone_items:
         col_name = bone_col.get("name") or "Promoted Track Collection"
-        created_collection_id = f"bone_{col_name.lower().replace(' ', '_').replace(':', '')}"
+        created_collection_id = f"bone_{col_name.lower().replace(' ', '_').replace(':', '').replace('-', '_')}"
         
         bone_cols = []
         if BONE_COLLECTIONS_PATH.exists():
@@ -278,8 +479,37 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
             "created_at": timestamp
         })
 
-        with open(BONE_COLLECTIONS_PATH, "w", encoding="utf-8") as f:
-            json.dump(bone_cols, f, indent=2)
+        atomic_write_json(str(BONE_COLLECTIONS_PATH), bone_cols)
+
+        # [FEAT-601] Save 1:1 Source Bone Collection scratchpad
+        slug = col_name.lower().replace(" ", "_").replace(":", "").replace("-", "_")
+        BONES_DIR.mkdir(parents=True, exist_ok=True)
+        source_bones_path = BONES_DIR / f"{slug}_bones.json"
+        source_bone_data = {
+            "id": created_collection_id,
+            "name": col_name,
+            "theme": bone_col.get("theme", "Systems Architecture & Automation"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "bones": [
+                {
+                    "sequence": idx + 1,
+                    "id": c.get("id"),
+                    "domain": c.get("domain", "WIS"),
+                    "title": c.get("synthesis", {}).get("title"),
+                    "origin_verbatim": c.get("origin", {}).get("text"),
+                    "revisions": c.get("synthesis", {}).get("revisions", []),
+                    "mutations": c.get("synthesis", {}).get("mutations", [])
+                }
+                for idx, c in enumerate(created_cards)
+            ]
+        }
+        atomic_write_json(str(source_bones_path), source_bone_data)
+
+    # [STORY 86.7] Background rebuild of static HTML so newly promoted cards
+    # appear immediately in dna_forge.html / wisdom.html without manual builds.
+    if created_cards:
+        _trigger_static_html_rebuild(created_cards)
 
     return {
         "status": "success",

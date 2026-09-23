@@ -5,11 +5,13 @@
 # [FEAT-136] Safe-Pilot Autonomous Ignition [SCAR #4]
 Nightly Maintenance, Quiesce, Unsloth Training & Re-ignition Orchestrator (2:00 AM).
 
-Execution Flow:
-1. Quiesce Foyer / vLLM (POST /status_update -> HIBERNATING) to reclaim VRAM.
-2. Execute mass_scan.py --once to ingest raw notes and extract Rank 4 Gems.
-3. Run Unsloth fine-tuning via src/forge/train_expert.py (FEAT-160 / FEAT-214).
-4. Re-ignite Foyer / vLLM (POST /status_update -> OPERATIONAL) to hot-reload LoRA.
+Execution Flow (SPRINT-86 Finding 1 order: ingestion BEFORE training):
+1. Pre-flight health probe & GPU power limit verification.
+2. Pre-Training Ingestion: mass_scan.py --once + journal_to_dna_bridge.py ingest today's notes/Gems.
+3. Quiesce Foyer / vLLM (POST /status_update -> HIBERNATING) to reclaim VRAM.
+4. Run discrete multi-adapter Unsloth fine-tuning via infra/nightly_lora_training.py (Story 83.7, FEAT-160 / FEAT-214) on freshly ingested gems.
+5. Re-ignite Foyer / vLLM (POST /status_update -> OPERATIONAL) to hot-reload LoRA.
+6. Post-training refinement (dream cycle, wisdom refine, sprint DNA sync) + benchmark sweep.
 """
 
 import sys
@@ -60,7 +62,7 @@ def write_step_log(step_name: str, details: str = "", severity: str = "INFO"):
         "UNSLOTH_FORGE_COMPLETE": "LoRA Fine-Tuning Completed (Adapter Saved to cli_voice_v1)",
         "UNSLOTH_FORGE_FAILED": f"LoRA Fine-Tuning Failed: {details}",
         "RE_IGNITE_OK": "Foyer State Restored to OPERATIONAL (LoRA Active)",
-        "MASS_SCAN_START": "Mass Scan & Gem Refinement Window Active (03:00 - 05:00 AM)",
+        "MASS_SCAN_START": "Pre-Training Mass Scan & Gem Refinement Pass (ingests today's notes before LoRA forge)",
         "MASS_SCAN_COMPLETE": "Mass Scan & Gem Refinement Window Completed",
         "DREAM_CYCLE_START": "Subconscious Dreaming Pass Initiated",
         "DREAM_CYCLE_COMPLETE": "Subconscious Dreaming Cycle Completed",
@@ -307,7 +309,55 @@ def run_mass_scan():
     write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
 
 def run_unsloth_forge() -> bool:
-    """[FEAT-160] Run Unsloth LoRA fine-tuning locally on z87 (--local path)."""
+    """[FEAT-160] Run the discrete multi-LoRA training pipeline locally on z87.
+
+    [Story 863] Delegates the nightly training stage to
+    ``infra.nightly_lora_training`` (Story 83.7), which trains the four
+    domain-specialized adapters (cli_voice_v1, lab_history_v1, triage_v1,
+    reviewer_v1) in isolated subprocesses with per-pass VRAM drain gating.
+    Falls back to the legacy single-adapter ``train_expert.py`` pass only when
+    the multi-adapter module is unavailable (degraded mode).
+    """
+    multi_module = os.path.join(BASE_DIR, "infra", "nightly_lora_training.py")
+    if not os.path.exists(multi_module):
+        logger.warning("[FEAT-160] infra/nightly_lora_training.py not found; falling back to legacy single-adapter train_expert.py pass.")
+        return _run_legacy_single_adapter_forge()
+
+    py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+    cmd = [py_bin, "-m", "infra.nightly_lora_training", "--force"]
+    write_step_log("UNSLOTH_FORGE_START", f"cmd={' '.join(cmd)} (discrete multi-adapter pipeline)")
+    logger.info(f"[FEAT-160] Executing discrete multi-LoRA pipeline: {' '.join(cmd)}")
+    env = os.environ.copy()
+    _cu13_dir = os.path.join(HOMELAB_DIR, ".venv/lib/python3.12/site-packages/nvidia/cu13/lib")
+    if os.path.exists(_cu13_dir):
+        env["LD_LIBRARY_PATH"] = f"{_cu13_dir}:{env.get('LD_LIBRARY_PATH', '')}"
+    # Expose HomeLabAI/src so the module resolves via `python -m infra.nightly_lora_training`.
+    env["PYTHONPATH"] = BASE_DIR + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=BASE_DIR)
+    except Exception as e:
+        logger.error(f"[FEAT-160] Error executing nightly_lora_training module: {e}")
+        write_step_log("UNSLOTH_FORGE_ERROR", str(e))
+        return False
+
+    trained, status = _parse_lora_summary(res.stdout)
+    if res.returncode == 0 and status == "SUCCESS":
+        logger.info(f"[FEAT-160] Multi-adapter LoRA training completed: adapters={trained}")
+        write_step_log("UNSLOTH_FORGE_COMPLETE", f"returncode=0 status={status} adapters={trained}")
+        return True
+
+    logger.error(f"[FEAT-160] Multi-adapter LoRA training incomplete (code {res.returncode}, status={status}): trained={trained}")
+    err_tail = (res.stderr or "")[-200:].strip()
+    write_step_log("UNSLOTH_FORGE_FAILED", f"returncode={res.returncode} status={status} trained={trained} stderr={err_tail}")
+    return False
+
+
+def _run_legacy_single_adapter_forge() -> bool:
+    """[FEAT-160] Legacy single-adapter ``train_expert.py`` pass (degraded mode).
+
+    Preserved as the fallback path when the discrete multi-adapter module
+    (infra/nightly_lora_training.py) is unavailable on disk.
+    """
     # Pre-flight check: ensure master curriculum exists and has valid pairs
     if not os.path.exists(DATASET_PATH) or os.path.getsize(DATASET_PATH) == 0:
         logger.info("[FEAT-160] Master curriculum missing or empty. Auto-building via build_lora_datasets.py...")
@@ -346,6 +396,30 @@ def run_unsloth_forge() -> bool:
         logger.error(f"[FEAT-160] Error executing train_expert.py: {e}")
         write_step_log("UNSLOTH_FORGE_ERROR", str(e))
         return False
+
+
+def _parse_lora_summary(stdout: str):
+    """Parse the structured JSON summary emitted by ``infra.nightly_lora_training``.
+
+    The pipeline prints exactly one JSON line: {"adapters_trained": [...],
+    "status": "...", "duration_s": ...}. Returns (adapters_trained, status);
+    defaults to ([], "UNKNOWN") when the line is missing or malformed.
+    """
+    trained: list = []
+    status = "UNKNOWN"
+    for line in reversed(stdout.strip().splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(payload, dict) and "status" in payload:
+            trained = payload.get("adapters_trained", []) or []
+            status = str(payload.get("status", "UNKNOWN")).upper()
+            break
+    return trained, status
 
 def run_dream_cycle():
     """[FEAT-067 / VIBE-005] Run Subconscious Dreaming pass across newly refined Rank 4/5 gems."""
@@ -439,7 +513,7 @@ def run_benchmark_sweep():
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Nightly Forge Orchestrator")
-    parser.add_argument("--forge-only", action="store_true", help="Run only the quiesce, unsloth training, and re-ignition phases")
+    parser.add_argument("--forge-only", action="store_true", help="Run only the pre-training ingestion, quiesce, unsloth training, and re-ignition phases (skip post-training refinement & benchmarks)")
     parser.add_argument("--force", action="store_true", help="Bypass 12-hour debounce check")
     args = parser.parse_args()
 
@@ -463,8 +537,17 @@ def main():
         if not gpu_power_ok:
             logger.warning("[LAB-109] GPU power limit verification failed. Forge will proceed but hardware may be at risk.")
 
-        # 2. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
-        logger.info("[NIGHTLY STEP 2/4] Requesting Foyer VRAM Quiesce for Training...")
+        # 2. Pre-Training Ingestion Phase: fresh notes/Gems MUST feed tonight's LoRA pass
+        #    (SPRINT-86 Finding 1 inversion: ingestion fires BEFORE quiesce + training)
+        logger.info("[NIGHTLY STEP 2 - PRE-TRAINING INGESTION] Initiating Note Ingestion & Mass Scan (feeding tonight's LoRA dataset)...")
+        run_mass_scan()
+
+        # 2b. Historical Journal to Polymorphic DNA Ingestion Bridge [FEAT-592] (PRE-TRAINING)
+        logger.info("[NIGHTLY BRIDGE - PRE-TRAINING] Bridging historical journal ledger into Polymorphic DNA Forge...")
+        run_journal_to_dna_bridge()
+
+        # 3. Quiesce Phase: Request Foyer HIBERNATING state to drain VRAM
+        logger.info("[NIGHTLY STEP 3 - QUIESCE] Requesting Foyer VRAM Quiesce for Training...")
         quiesced = quiesce_vllm()
 
         if not quiesced:
@@ -479,28 +562,29 @@ def main():
             re_ignite_vllm()
             return
 
-        # 3. Cooldown Phase 1: 15s VRAM Drain Settling Window
+        # 4. Cooldown Phase 1: 15s VRAM Drain Settling Window
         logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
         write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
         time.sleep(15)
 
         training_ok = False
         try:
-            # 4. Heavy LoRA Training Pass (02:00 AM) - 100% Local on z87-Linux RTX 2080 Ti
-            logger.info("[NIGHTLY STEP 2/4 - FORGE] Executing Local Unsloth LoRA Fine-Tuning Pass...")
+            # 4b. Heavy LoRA Training Pass (02:00 AM) - 100% Local on z87-Linux RTX 2080 Ti
+            #     (runs on today's freshly ingested gems; SPRINT-86 Finding 1 inversion)
+            logger.info("[NIGHTLY STEP 4 - FORGE] Executing Local Unsloth LoRA Fine-Tuning Pass on freshly ingested gems...")
             training_ok = run_unsloth_forge()
             if not training_ok:
                 logger.error("[FATAL] [NIGHTLY FORGE] LoRA training pass failed. Aborting sweep to prevent uncoordinated daytime scans.")
-                write_step_log("SWEEP_ABORTED_ON_TRAIN_FAIL", "Aborting mass scan due to training failure")
+                write_step_log("SWEEP_ABORTED_ON_TRAIN_FAIL", "Aborting post-training sweep due to training failure")
                 return
                 
-            # 5. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
+            # 4c. Cooldown Phase 2: 15s Post-Training Thermal Settling Window
             logger.info("[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown...")
             write_step_log("TRAINING_SETTLING", "Sleeping 15s")
             time.sleep(15)
         finally:
-            # 6. Re-Ignition Phase: Restore Foyer OPERATIONAL state
-            logger.info("[NIGHTLY STEP 3/4] Re-igniting Foyer state to OPERATIONAL...")
+            # 5. Re-Ignition Phase: Restore Foyer OPERATIONAL state
+            logger.info("[NIGHTLY STEP 5 - RE-IGNITION] Re-igniting Foyer state to OPERATIONAL...")
             re_ignite_vllm()
 
         if not training_ok:
@@ -512,29 +596,20 @@ def main():
             record_nightly_completion(lock_fd, status="COMPLETED")
             return
 
-        # 7. Note Ingestion & Mass Scan Refinement Phase (Active Window: 3:00 AM – 5:00 AM)
-        logger.info("[NIGHTLY STEP 4/4] Initiating Note Ingestion & Mass Scan (Window: 3:00 AM – 5:00 AM)...")
-        run_mass_scan()
-
-        # 7b. Historical Journal to Polymorphic DNA Ingestion Bridge [FEAT-592]
-        logger.info("[NIGHTLY BRIDGE] Bridging newly distilled gems into Polymorphic DNA Forge...")
-        run_journal_to_dna_bridge()
-
-        # 8. Post-Scan Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
-
-        logger.info("[NIGHTLY POST-SCAN] Initiating Post-Scan Subconscious Dreaming on newly refined gems...")
+        # 6. Post-Training Subconscious Dreaming & WYWO (05:00 AM – 05:30 AM)
+        logger.info("[NIGHTLY STEP 6 - POST-TRAINING REFINEMENT] Initiating Subconscious Dreaming on newly refined gems...")
         run_dream_cycle()
 
-        # 8b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
+        # 6b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562]
         logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
         run_wisdom_refine()
 
-        # 8c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557]
+        # 6c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557]
         logger.info("[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation...")
         run_sprint_dna_sync()
 
-        # 9. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
-        logger.info("[NIGHTLY STEP 5/5] Executing Dynamic Federated Benchmark Sweep...")
+        # 7. Dynamic Federated Benchmark Sweep (05:30 AM) [FEAT-495]
+        logger.info("[NIGHTLY FINAL STEP - BENCHMARK] Executing Dynamic Federated Benchmark Sweep...")
         run_benchmark_sweep()
 
         logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
