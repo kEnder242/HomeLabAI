@@ -303,15 +303,33 @@ def re_ignite_vllm():
     return False
 
 def run_mass_scan():
-    """Run note ingestion loop."""
-    logger.info("[SPR-52.0] Initiating mass scan step...")
-    write_step_log("MASS_SCAN_START")
+    """[FEAT-416 / SPR-52.0] Run note ingestion loop with strict 05:00 AM cutoff & 3.5-hour max budget.
+
+    Guarantees that background scanning NEVER runs past 05:00 AM, preserving
+    a clean buffer for morning interactive lab usage.
+    """
+    now = datetime.datetime.now()
+    if 5 <= now.hour < 22:
+        logger.info(f"[FEAT-416] Current time ({now.strftime('%H:%M:%S')}) is past the 05:00 AM strict cutoff. Skipping tail mass scan to protect morning work window.")
+        write_step_log("MASS_SCAN_SKIPPED_CUTOFF", f"time={now.strftime('%H:%M:%S')} past 05:00 AM")
+        return
+
+    # Compute exact seconds remaining until 05:00:00 AM (capped to 3.5h / 12600s max)
+    seconds_to_5am = (5 - now.hour) * 3600 - now.minute * 60 - now.second
+    scan_timeout = min(max(seconds_to_5am, 60), 12600)
+
+    logger.info(f"[SPR-52.0 / FEAT-416] Initiating mass scan step (Strict 05:00 AM Cutoff: timeout={scan_timeout}s / {scan_timeout/60:.1f}m)...")
+    write_step_log("MASS_SCAN_START", f"timeout_seconds={scan_timeout}")
     script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "mass_scan.py")
     py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
     cmd = [py_bin, script, "--once"]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    logger.info(f"[SPR-52.0] Mass scan complete with return code {res.returncode}")
-    write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=scan_timeout)
+        logger.info(f"[SPR-52.0] Mass scan complete with return code {res.returncode}")
+        write_step_log("MASS_SCAN_COMPLETE", f"returncode={res.returncode}")
+    except subprocess.TimeoutExpired:
+        logger.warning(f"[FEAT-416] Mass scan reached 05:00 AM strict cutoff ({scan_timeout}s). Gracefully terminated scan.")
+        write_step_log("MASS_SCAN_CUTOFF_REACHED", f"terminated_at_5am after {scan_timeout}s")
 
 def run_unsloth_forge() -> bool:
     """[FEAT-160] Run the discrete multi-LoRA training pipeline locally on z87.
