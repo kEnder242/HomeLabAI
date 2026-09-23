@@ -682,7 +682,13 @@ class FoyerRouter:
             # [SPR-85.6 / FEAT-595] Google Docs Export Engine (/paper/export_gdoc)
             web.post('/paper/export_gdoc', self.handle_paper_export_gdoc),
             web.post('/attendant/paper/export_gdoc', self.handle_paper_export_gdoc),
+            # [FEAT-606] Words-First Inline DNA Citation & Lens Swapper (/paper/swap_lens & /paper/cite_selection)
+            web.post('/paper/swap_lens', self.handle_paper_swap_lens),
+            web.post('/attendant/paper/swap_lens', self.handle_paper_swap_lens),
+            web.post('/paper/cite_selection', self.handle_paper_cite_selection),
+            web.post('/attendant/paper/cite_selection', self.handle_paper_cite_selection),
             # [FEAT-597] Draft Ingestion & Decomposition (/dna/decompose_draft & /dna/promote_draft)
+
             web.post('/dna/decompose_draft', self.handle_dna_decompose_draft),
             web.post('/attendant/dna/decompose_draft', self.handle_dna_decompose_draft),
             web.post('/dna/promote_draft', self.handle_dna_promote_draft),
@@ -1855,7 +1861,200 @@ class FoyerRouter:
             logger.error(f"[FOYER] [SPR-85.6] handle_paper_export_gdoc failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
+    async def handle_paper_swap_lens(self, request):
+        """[FEAT-606] POST /paper/swap_lens — swaps node/paragraph text in-place with target lens/revision."""
+        try:
+            payload = await request.json()
+            paper_id = payload.get("paper_id") or "PAPER-001"
+            paragraph_id = payload.get("paragraph_id") or payload.get("node_id")
+            target_text = payload.get("target_text")
+            target_lens = payload.get("target_lens")
+            target_rev = payload.get("target_revision", "R1")
+
+            if not paragraph_id or target_text is None:
+                return web.json_response({"status": "error", "message": "Missing paragraph_id or target_text"}, status=400)
+
+            dev_lab_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            manifest_file = os.path.join(papers_dir, "manifest.json")
+
+            target_file = None
+            if os.path.exists(manifest_file):
+                with open(manifest_file, "r", encoding="utf-8") as mf:
+                    mdata = json.load(mf)
+                    for p in mdata.get("papers", []):
+                        if p.get("id") == paper_id:
+                            target_file = p.get("file")
+                            break
+
+            if not target_file:
+                target_file = f"{paper_id}.json"
+
+            paper_path = os.path.join(papers_dir, target_file)
+            if not os.path.exists(paper_path):
+                # Check data/papers fallback
+                alt_path = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "papers", target_file)
+                if os.path.exists(alt_path):
+                    paper_path = alt_path
+                else:
+                    return web.json_response({"status": "error", "message": f"Paper file {target_file} not found"}, status=404)
+
+            with open(paper_path, "r", encoding="utf-8") as pf:
+                paper_data = json.load(pf)
+
+            found = False
+            # Search sections -> paragraphs / nodes / roles
+            for sec in paper_data.get("sections", []):
+                for par in sec.get("paragraphs", []):
+                    if par.get("id") == paragraph_id or par.get("node_id") == paragraph_id:
+                        par["text"] = target_text
+                        par["active_lens"] = target_lens
+                        par["active_revision"] = target_rev
+                        par["dirty"] = True
+                        found = True
+                        break
+                if found: break
+                for node in sec.get("nodes", []):
+                    if node.get("id") == paragraph_id or node.get("node_id") == paragraph_id:
+                        node["text"] = target_text
+                        node["active_lens"] = target_lens
+                        node["active_revision"] = target_rev
+                        node["dirty"] = True
+                        found = True
+                        break
+                if found: break
+                for role in sec.get("roles", []):
+                    for bullet in role.get("bullets", []):
+                        if bullet.get("id") == paragraph_id or bullet.get("node_id") == paragraph_id:
+                            bullet["text"] = target_text
+                            bullet["active_lens"] = target_lens
+                            bullet["active_revision"] = target_rev
+                            bullet["dirty"] = True
+                            found = True
+                            break
+                    if found: break
+
+            if not found:
+                return web.json_response({"status": "error", "message": f"Paragraph/node {paragraph_id} not found in paper"}, status=404)
+
+            paper_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            atomic_write_json(paper_path, paper_data)
+
+            logger.info(f"[FOYER] [FEAT-606] Swapped lens for {paragraph_id} in {paper_id} -> {target_lens} ({target_rev})")
+            return web.json_response({
+                "status": "success",
+                "paper_id": paper_id,
+                "paragraph_id": paragraph_id,
+                "active_lens": target_lens,
+                "active_revision": target_rev,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-606] handle_paper_swap_lens failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_cite_selection(self, request):
+        """[FEAT-606] POST /paper/cite_selection — attaches DNA citation anchor tag to specified node."""
+        try:
+            payload = await request.json()
+            paper_id = payload.get("paper_id") or "PAPER-001"
+            paragraph_id = payload.get("paragraph_id") or payload.get("node_id")
+            dna_id = payload.get("dna_id")
+            revision = payload.get("revision", "R1")
+            style = payload.get("style", "paragraph")
+            lens = payload.get("lens")
+
+            if not paragraph_id or not dna_id:
+                return web.json_response({"status": "error", "message": "Missing paragraph_id or dna_id"}, status=400)
+
+            dev_lab_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            papers_dir = os.path.join(dev_lab_root, "Portfolio_Dev", "papers")
+            manifest_file = os.path.join(papers_dir, "manifest.json")
+
+            target_file = None
+            if os.path.exists(manifest_file):
+                with open(manifest_file, "r", encoding="utf-8") as mf:
+                    mdata = json.load(mf)
+                    for p in mdata.get("papers", []):
+                        if p.get("id") == paper_id:
+                            target_file = p.get("file")
+                            break
+
+            if not target_file:
+                target_file = f"{paper_id}.json"
+
+            paper_path = os.path.join(papers_dir, target_file)
+            if not os.path.exists(paper_path):
+                alt_path = os.path.join(dev_lab_root, "Portfolio_Dev", "field_notes", "data", "papers", target_file)
+                if os.path.exists(alt_path):
+                    paper_path = alt_path
+                else:
+                    return web.json_response({"status": "error", "message": f"Paper file {target_file} not found"}, status=404)
+
+            with open(paper_path, "r", encoding="utf-8") as pf:
+                paper_data = json.load(pf)
+
+            found = False
+            for sec in paper_data.get("sections", []):
+                for par in sec.get("paragraphs", []):
+                    if par.get("id") == paragraph_id or par.get("node_id") == paragraph_id:
+                        if "citations" not in par: par["citations"] = []
+                        if dna_id not in par["citations"]: par["citations"].append(dna_id)
+                        par["active_dna_id"] = dna_id
+                        par["active_revision"] = revision
+                        if style: par["style"] = style
+                        if lens: par["active_lens"] = lens
+                        par["dirty"] = True
+                        found = True
+                        break
+                if found: break
+                for node in sec.get("nodes", []):
+                    if node.get("id") == paragraph_id or node.get("node_id") == paragraph_id:
+                        if "citations" not in node: node["citations"] = []
+                        if dna_id not in node["citations"]: node["citations"].append(dna_id)
+                        node["active_dna_id"] = dna_id
+                        node["active_revision"] = revision
+                        if style: node["style"] = style
+                        if lens: node["active_lens"] = lens
+                        node["dirty"] = True
+                        found = True
+                        break
+                if found: break
+                for role in sec.get("roles", []):
+                    for bullet in role.get("bullets", []):
+                        if bullet.get("id") == paragraph_id or bullet.get("node_id") == paragraph_id:
+                            if "citations" not in bullet: bullet["citations"] = []
+                            if dna_id not in bullet["citations"]: bullet["citations"].append(dna_id)
+                            bullet["active_dna_id"] = dna_id
+                            bullet["active_revision"] = revision
+                            if style: bullet["style"] = style
+                            if lens: bullet["active_lens"] = lens
+                            bullet["dirty"] = True
+                            found = True
+                            break
+                    if found: break
+
+            if not found:
+                return web.json_response({"status": "error", "message": f"Paragraph/node {paragraph_id} not found in paper"}, status=404)
+
+            paper_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            atomic_write_json(paper_path, paper_data)
+
+            logger.info(f"[FOYER] [FEAT-606] Attached citation {dna_id} ({revision}) to {paragraph_id} in {paper_id}")
+            return web.json_response({
+                "status": "success",
+                "paper_id": paper_id,
+                "paragraph_id": paragraph_id,
+                "dna_id": dna_id,
+                "revision": revision,
+                "timestamp": int(time.time())
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-606] handle_paper_cite_selection failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
     async def handle_dna_decompose_draft(self, request):
+
         """[FEAT-597] POST /dna/decompose_draft — decomposes raw notes into semantic chunks & bone skeleton."""
         try:
             payload = await request.json()
