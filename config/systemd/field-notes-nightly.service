@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-TimeoutStartSec=14400
+TimeoutStartSec=12600
 MemoryHigh=5.5G
 MemoryMax=6.5G
 ManagedOOMMemoryPressure=kill

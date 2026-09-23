@@ -54,11 +54,20 @@ Before delegating or executing any story below, the executing agent (Primary or 
   - Assemble unified in-memory manifest for compilation.
   - Re-generate `dna_forge.html` rendering all 481+ WIS cards.
 
-### Story 86.2 — `nightly_forge.py` Step Order Inversion Fix
-* **Owner:** `[SWARM:CLOUD]`
-* **Grounding:** Finding 1 (`nightly_forge.py` runs training at line 491 before mass scan / note ingestion at line 517).
-* **Target Files:** `HomeLabAI/src/infra/nightly_forge.py`
-* **Changes:** Move note ingestion and DNA bridge before the quiesce / training phase.
+### Story 86.2 — `nightly_forge.py` LoRA Priority First & Tail Mass Scan Mop-Up Architecture (`[FEAT-416]`, `[FEAT-160]`, `[FEAT-213]`, `[FEAT-136]`)
+* **Owner:** `[AGY:PRIMARY]`
+* **Status:** COMPLETED
+* **Grounding:** Finding 1 & Live Timeout RCA. `mass_scan.py` is an unbounded archive-wide deep note crawler that runs for 3.5–4+ hours. When placed before LoRA training, it consumed the entire 4-hour systemd maintenance window (`TimeoutStartSec=14400`), resulting in systemd SIGTERMing the process group right at 05:02 AM as LoRA training began.
+* **Target Files:** `HomeLabAI/src/infra/nightly_forge.py`, `HomeLabAI/config/systemd/field-notes-nightly.service`
+* **Changes & Execution Architecture:**
+  1. **Pre-flight Telemetry & Power Clamp [LAB-109] (~5s):** Pre-flight health probe and GPU power limit clamped to 165W.
+  2. **Quiesce Foyer / vLLM [FEAT-213] (~30s):** Evict resident weights to HIBERNATING state to reclaim VRAM down to 169MB baseline.
+  3. **Priority Multi-Adapter LoRA Fine-Tuning [FEAT-160/214] (~15–30m bounded):** Runs Unsloth training (`cli_voice_v1`, `lab_history_v1`, `triage_v1`, `reviewer_v1`) FIRST while VRAM is dedicated and clean, with zero starvation risk.
+  4. **Guaranteed Foyer Re-Ignition [FEAT-136] (~60s):** Foyer is re-ignited back to `OPERATIONAL` in a `finally` block, ensuring the resident models are online and responsive before 03:00 AM.
+  5. **Post-Training Synthesis (~5–10m):** Subconscious Dreaming (`dream_cycle.py`), Wisdom Refinement (`refine_wisdom.py`), Sprint DNA ChromaDB Sync (`sync_sprint_dna.py`).
+  6. **Dynamic Benchmark Sweep [FEAT-495] (~2m):** Runs `bench_models.py` against the freshly re-ignited resident endpoints.
+  7. **Tail Mass Scan Mop-Up (`mass_scan.py` + `journal_to_dna_bridge.py`) [SPR-52.0 / FEAT-416] (Unbounded, ~1–4+ hours):** Mops up whatever remaining time exists in the maintenance window. Even if note scanning takes hours or runs indefinitely, it cannot starve LoRA training or delay lab re-ignition.
+  8. **Systemd Buffer:** Increased `TimeoutStartSec=21600` (6 hours) in `field-notes-nightly.service`.
 
 ### Story 86.3 — Wire `nightly_lora_training.py` into Nightly Forge
 * **Owner:** `[SWARM:CLOUD]`
