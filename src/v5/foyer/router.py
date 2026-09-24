@@ -697,7 +697,10 @@ class FoyerRouter:
             web.post('/dna/certify_mutation', self.handle_dna_certify_mutation),
             web.post('/attendant/dna/certify_mutation', self.handle_dna_certify_mutation),
             web.post('/dna/approve_synapse', self.handle_dna_approve_synapse),
-            web.post('/attendant/dna/approve_synapse', self.handle_dna_approve_synapse)
+            web.post('/attendant/dna/approve_synapse', self.handle_dna_approve_synapse),
+            # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Hook
+            web.post('/ambient_recall', self.handle_ambient_recall),
+            web.post('/attendant/ambient_recall', self.handle_ambient_recall)
         ])
         
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
@@ -2500,6 +2503,24 @@ class FoyerRouter:
             return web.Response(status=200)
         except Exception as e:
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
+
+    async def handle_ambient_recall(self, request):
+        """[FEAT-600 / LAB-019] Fast, in-memory ambient memory & knowledge recall hook.
+
+        Receives AGY PreInvocation JSON payload over HTTP, validates turn-boundary gating
+        (only runs on USER_INPUT), queries resident ChromaDB & ICM, and returns
+        injectSteps in <5ms.
+        """
+        try:
+            payload = await request.json()
+            from curator.ambient_recall import execute_ambient_recall
+            # Run in executor to avoid blocking the aiohttp event loop with sync embedding/Chroma calls
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, execute_ambient_recall, payload)
+            return web.json_response(res)
+        except Exception as e:
+            logger.error(f"[FOYER] handle_ambient_recall failed: {e}")
+            return web.json_response({"injectSteps": [], "error": str(e)}, status=500)
 
     async def on_startup(self, app):
         """[FEAT-339] Clean task scheduling on event loop start."""
