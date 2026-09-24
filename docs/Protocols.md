@@ -64,14 +64,14 @@
     *   Rollback Plan: Steps to revert changes if the system becomes unstable.
 4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) and run the full test suite before handing back control.
 
-## BKM-009: The Checkpoint Protocol (Save State)
-**Objective**: Ensure 100% state persistence for session continuity.
-**Trigger**: "Checkpoint", "Save", "Close up shop", or end of a feature sprint.
+## BKM-009: Local Git Checkpoint & Session Continuity Protocol (Save State)
+**Objective**: Ensure 100% state persistence for session continuity via local Git commits without remote exposure.
+**Trigger / Aliases**: "Checkpoint", "Save", "Save to git", "Add to git", "Save state", "Close up shop", "Wrap up", or end of a feature sprint.
 
 1.  **State Snapshot**: Wrap the current environment state in a <state_snapshot> XML block (Goal, Constraints, Knowledge, Trail, FS State, Recent Actions, Tasks).
 2.  **Status Sync**: Update `ProjectStatus.md` and `Portfolio_Dev/00_FEDERATED_STATUS.md`.
 3.  **Memory**: Save key architectural decisions to Long-Term Memory.
-4.  **Persistence**: `git add .` and `git commit` with a semantic message. (NEVER push).
+4.  **Persistence**: `git add .` and `git commit` with a semantic message. (NEVER push to remotes without explicit user manual push directive).
 5.  **Handover**: Provide a 1-sentence summary of "Where we are" and "What to do next."
 
 ## BKM-010: Debug Co-Pilot (Interactive Mode)
@@ -426,11 +426,13 @@ HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py \
 
 ## BKM-040: Virtual Environment Hygiene & Git Curation
 **Objective**: Prevent virtual environment context-bleeding and indexing bloat across subagent swarms.
+**Trigger / Aliases**: "git", "git discipline", "venv", "virtual environment", "commit locally", "no push"
 
 1. **Single Canonical Venv**: The primary canonical Python environment is pre-configured at `HomeLabAI/.venv`. Always activate or use `HomeLabAI/.venv/bin/python` for all execution. Workspace sub-directories (e.g., `Portfolio_Dev`) must NOT contain local `venv` or `.venv` copies.
 2. **Git Ignore Hardening**: Every workspace repository must explicitly ignore `venv/`, `.venv/`, `env/`, and `*.egg-info/` in its root `.gitignore`.
 3. **Agent Indexing Isolation**: Agentic search/scan tools (e.g., `opencode`, `codex`, `ripgrep`) must respect `.gitignore` to avoid indexing thousands of site-packages files that cause memory ballooning.
 4. **Pre-Commit Verification**: Before staging changes, agents must verify `git status --porcelain` contains no untracked environment or binary build artifacts.
+5. **Local-Only Git Boundary**: All automated and agentic commit actions must remain strictly local. Executing `git push` to remote origins without an explicit manual user directive is strictly forbidden.
 
 ---
 

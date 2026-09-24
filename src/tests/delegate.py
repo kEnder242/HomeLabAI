@@ -949,7 +949,6 @@ Sprint Reference: {effective_sprint_doc}
     ambient_grounding_block = ""
     if not local_only:
         try:
-            import urllib.request
             req_payload = json.dumps({"prompt": f"{title} {details[:300]}", "invocationNum": 1, "agent": agent}).encode("utf-8")
             amb_req = urllib.request.Request("http://127.0.0.1:8765/ambient_recall", data=req_payload, headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
