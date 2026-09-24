@@ -39,7 +39,7 @@
         "KENDER": {
             "ip_hint": "192.168.1.26",
             "ollama_port": 11434,
-            "default_model": "qwen3-14b-16k:latest"
+            "default_model": "qwen3:14b"
         },
         "localhost": {
             "ip_hint": "127.0.0.1",
@@ -70,7 +70,7 @@
             "protocol": "OLLAMA",
             "probe_path": "/api/tags",
             "probe_payload": null,
-            "default_model": "qwen3-14b-16k:latest",
+            "default_model": "qwen3:14b",
             "t_warmed": 0.04,
             "t_cold": 0.2,
             "vram_gb": 24,
@@ -112,11 +112,11 @@
     },
     "swarm_aliases": {
         "champion_reasoner": [
-            {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"},
+            {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}
         ],
         "champion_coder": [
-            {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"},
+            {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}
         ],
         "fast_worker": [
@@ -128,12 +128,13 @@
             {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
             {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-            {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"}
+            {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
         ],
         "local_bicameral": {
-            "architect": {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"},
+            "reasoner": {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
+            "architect": {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
             "coder": {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"},
-            "fallback_coder": {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"}
+            "fallback_coder": {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
         }
     }
 }

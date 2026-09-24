@@ -190,7 +190,7 @@ Diagnostic and verification test suites validating the Sprint 59 Modular Satelli
 ---
 **Standard Certification Runner**:
 ```bash
-PYTHONPATH=. .venv/bin/pytest src/tests/test_sprint59_integration.py \
+PYTHONPATH=. python -m pytest src/tests/test_sprint59_integration.py \
                              src/tests/test_binary_evaluator_unit.py \
                              src/tests/test_context_compiler.py \
                              src/tests/test_feedback_interceptor.py \
@@ -213,7 +213,7 @@ PYTHONPATH=. .venv/bin/pytest src/tests/test_sprint59_integration.py \
 ---
 **Sprint 60 Certification Runner**:
 ```bash
-PYTHONPATH=. .venv/bin/pytest src/tests/test_override_parser.py \
+PYTHONPATH=. python -m pytest src/tests/test_override_parser.py \
                              src/tests/test_maintenance_sweeper.py \
                              src/tests/test_audio_pipeline.py \
                              src/tests/test_sprint60_integration.py
@@ -232,7 +232,7 @@ Verification instruments validating `FEAT-265` mandatory blocking status timeout
 ---
 **Sprint 71 Certification Runner**:
 ```bash
-PYTHONPATH=. .venv/bin/pytest src/tests/test_benchmarks_elapsed_time_ui.py \
+PYTHONPATH=. python -m pytest src/tests/test_benchmarks_elapsed_time_ui.py \
                              src/tests/test_live_sprint71_stability.py -v
 ```
 
@@ -255,7 +255,7 @@ Diagnostic, verification, and shakedown instruments validating the Sprint 86 Pol
 ---
 **Sprint 86 Certification Runner**:
 ```bash
-PYTHONPATH=src .venv/bin/pytest src/tests/test_draft_promotion_unit.py \
+PYTHONPATH=src python -m pytest src/tests/test_draft_promotion_unit.py \
                                 src/tests/test_mutation_certification_unit.py \
                                 src/tests/test_polymorphic_lora_dataset_unit.py \
                                 src/tests/test_journal_to_dna_bridge.py \
