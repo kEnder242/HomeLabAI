@@ -444,7 +444,7 @@ def _parse_lora_summary(stdout: str):
             break
     return trained, status
 
-def run_dream_cycle():
+def run_dream_cycle() -> dict:
     """[FEAT-067 / VIBE-005] Run Subconscious Dreaming pass across newly refined Rank 4/5 gems."""
     logger.info("[DREAM] Initiating Subconscious Dreaming Cycle on refined archive gems...")
     write_step_log("DREAM_CYCLE_START")
@@ -454,11 +454,24 @@ def run_dream_cycle():
             res = subprocess.run([sys.executable, dream_script], capture_output=True, text=True, timeout=900)
             logger.info(f"[DREAM] Subconscious Dreaming completed with return code {res.returncode}")
             write_step_log("DREAM_CYCLE_COMPLETE", f"returncode={res.returncode}")
+            for line in reversed(res.stdout.strip().splitlines()):
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        return json.loads(line)
+                    except Exception:
+                        pass
+            if res.returncode == 0:
+                return {"status": "PASS", "turns_synthesized": 1, "items_refined": 0, "raw": res.stdout.strip()}
+            else:
+                return {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": res.stderr.strip() or res.stdout.strip()}
         except Exception as e:
             logger.warning(f"[DREAM] Dreaming cycle warning: {e}")
             write_step_log("DREAM_CYCLE_ERROR", str(e))
+            return {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": str(e)}
     else:
         logger.info("[DREAM] dream_cycle.py not found; skipping dream pass.")
+        return {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": "dream_cycle.py not found"}
 
 
 def run_wisdom_refine():
@@ -639,14 +652,19 @@ def evaluate_nightly_accountability(telemetry_dict: dict) -> dict:
     # Check 6: Round Table Accountability Probe
     probe_telemetry = telemetry_dict.get("round_table_probe", {})
     probe_status = probe_telemetry.get("status", "PASS")
-    probe_ok = probe_status == "PASS"
+    critic_score = float(probe_telemetry.get("critic_score", 0.0))
+    min_critic = float(thresholds.get("round_table_probe", {}).get("min_critic_score", 0.70))
+    probe_ok = (probe_status == "PASS") and (critic_score >= min_critic)
     checks.append({
         "name": "Synthetic Morning Round Table Probe",
         "passed": probe_ok,
-        "detail": f"Greeting Latency: {probe_telemetry.get('greeting_latency_ms', 0)}ms, Status: {probe_status}"
+        "detail": f"Greeting Latency: {probe_telemetry.get('greeting_latency_ms', 0)}ms, Critic Score: {critic_score:.2f}, Status: {probe_status}"
     })
     if not probe_ok:
-        discrepancies.append(f"Round table probe returned {probe_status}: {probe_telemetry.get('error', 'Circuit failure')}")
+        if probe_status != "PASS":
+            discrepancies.append(f"Round table probe returned {probe_status}: {probe_telemetry.get('error', 'Circuit failure')}")
+        else:
+            discrepancies.append(f"Round table critic score {critic_score:.2f} failed threshold (min {min_critic:.2f}).")
 
     # Compute Overall Accountability Status
     all_passed = all(c["passed"] for c in checks)
@@ -694,6 +712,9 @@ def main():
     args = parser.parse_args()
 
     lock_fd = check_and_acquire_nightly_lock(force=args.force)
+    gpu_power_ok = False
+    quiesced = False
+    training_ok = False
     try:
         logger.info("=== [FEAT-160/FEAT-213] NIGHTLY FORGE ORCHESTRATION INITIATED (LOCAL Z87) ===")
         write_step_log("ORCHESTRATION_INIT")
@@ -731,6 +752,17 @@ def main():
                     pass
             # Re-ignite lab back to operational
             re_ignite_vllm()
+            
+            # Emergency Failure Digest
+            evaluate_nightly_accountability({
+                "gpu_power_clamped": gpu_power_ok,
+                "vram_quiesced": False,
+                "lora_status": "ABORTED_QUIESCE_FAIL",
+                "adapters_trained": [],
+                "re_ignited": True,
+                "dream_telemetry": {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": "Aborted during quiesce"},
+                "round_table_probe": {"status": "FAIL", "error": "Skipped due to quiesce failure"}
+            })
             return
 
         # Settling Cooldown 1: 15s post-quiesce VRAM drain
@@ -745,7 +777,6 @@ def main():
         # It trains discrete adapters (cli_voice_v1, lab_history_v1, triage_v1, reviewer_v1).
         # Placed FIRST in the maintenance window so it runs on clean VRAM with zero contention,
         # perfectly bounded within 15-30 minutes, without risk of starvation.
-        training_ok = False
         try:
             logger.info("[NIGHTLY STEP 3 - LoRA FORGE] Executing Local Unsloth Multi-Adapter LoRA Fine-Tuning Pass...")
             training_ok = run_unsloth_forge()
@@ -769,6 +800,15 @@ def main():
             re_ignite_vllm()
 
         if not training_ok:
+            evaluate_nightly_accountability({
+                "gpu_power_clamped": gpu_power_ok,
+                "vram_quiesced": quiesced,
+                "lora_status": "FAILED",
+                "adapters_trained": [],
+                "re_ignited": True,
+                "dream_telemetry": {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": "Training failed"},
+                "round_table_probe": {"status": "FAIL", "error": "Skipped due to training failure"}
+            })
             return
 
         if args.forge_only:
@@ -783,7 +823,7 @@ def main():
         # WHY: Generates subconscious dreams on high-rank gems, dedupes wisdom cards,
         # and synchronizes ChromaDB polymorphic DNA collections.
         logger.info("[NIGHTLY STEP 5 - POST-TRAINING REFINEMENT] Initiating Subconscious Dreaming on newly refined gems...")
-        run_dream_cycle()
+        dream_telemetry = run_dream_cycle()
 
         # 5b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562] (~1-2m)
         logger.info("[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass...")
@@ -799,6 +839,10 @@ def main():
         # WHY: Validates TTFT, ITL, and throughput on the freshly re-ignited resident models.
         logger.info("[NIGHTLY STEP 6 - BENCHMARK] Executing Dynamic Federated Benchmark Sweep...")
         run_benchmark_sweep()
+
+        # Settling Cooldown 3: 5s socket draining settling window before Round Table Probe
+        logger.info("[NIGHTLY COOLDOWN 3] Settling 5s for socket draining before Round Table Probe...")
+        time.sleep(5)
 
         # =========================================================================
         # STEP 6b: SYNTHETIC MORNING ROUND TABLE PROBE [FEAT-608 / Story 88.3]
@@ -816,7 +860,7 @@ def main():
             "lora_status": "COMPLETED" if training_ok else "FAILED",
             "adapters_trained": ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"] if training_ok else [],
             "re_ignited": True,
-            "dream_telemetry": {"status": "PASS", "turns_synthesized": 3, "items_refined": 1},
+            "dream_telemetry": dream_telemetry,
             "round_table_probe": probe_result
         }
         digest = evaluate_nightly_accountability(telemetry_payload)
@@ -839,6 +883,18 @@ def main():
         record_nightly_completion(lock_fd, status="COMPLETED")
     except Exception as e:
         logger.error(f"[FATAL] Nightly forge encountered unhandled exception: {e}")
+        try:
+            evaluate_nightly_accountability({
+                "gpu_power_clamped": gpu_power_ok,
+                "vram_quiesced": quiesced,
+                "lora_status": "FAILED_EXCEPTION",
+                "adapters_trained": [],
+                "re_ignited": False,
+                "dream_telemetry": {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": str(e)},
+                "round_table_probe": {"status": "FAIL", "error": str(e)}
+            })
+        except Exception:
+            pass
         record_nightly_completion(lock_fd, status="FAILED")
         raise
     finally:

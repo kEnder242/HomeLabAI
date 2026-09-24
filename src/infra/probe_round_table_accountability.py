@@ -23,6 +23,28 @@ logger = logging.getLogger("RoundTableProbe")
 
 DEFAULT_FOYER_URL = os.environ.get("FOYER_URL", "http://127.0.0.1:8765")
 
+def load_probe_thresholds() -> Dict[str, Any]:
+    """Loads probe thresholds from lab_accountability_thresholds.json."""
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "config",
+        "lab_accountability_thresholds.json"
+    )
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                data = json.load(f)
+                return data.get("round_table_probe", {})
+        except Exception:
+            pass
+    return {
+        "max_triage_latency_ms": 400,
+        "min_pinky_tokens": 10,
+        "min_brain_tokens": 50,
+        "min_thought_tokens": 40,
+        "min_critic_score": 0.70
+    }
+
 
 async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str) -> Dict[str, Any]:
     """Measures quick reflex / greeting latency against Foyer."""
@@ -57,6 +79,9 @@ async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str
 
 async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url: str) -> Dict[str, Any]:
     """Injects a synthetic probe query to test full multi-node round table deliberation."""
+    thresholds = load_probe_thresholds()
+    min_critic = float(thresholds.get("min_critic_score", 0.70))
+
     start = time.perf_counter()
     url = f"{base_url}/inject"
     payload = {
@@ -70,13 +95,26 @@ async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url:
             if resp.status == 200:
                 data = await resp.json()
                 event_id = data.get("id")
+                critic_score = float(data.get("critic_score", 0.95))
+                ok_status = data.get("status") in ("QUEUED", "OK", "SUCCESS")
+                
+                if ok_status and critic_score >= min_critic:
+                    status = "PASS"
+                    err = None
+                elif ok_status:
+                    status = "DEGRADED"
+                    err = f"Critic score {critic_score:.2f} below threshold {min_critic:.2f}"
+                else:
+                    status = "FAIL"
+                    err = f"Foyer inject status: {data.get('status')}"
+
                 return {
-                    "status": "PASS" if data.get("status") in ("QUEUED", "OK", "SUCCESS") else "DEGRADED",
+                    "status": status,
                     "latency_ms": round(elapsed_ms, 2),
                     "event_id": event_id,
                     "triage_routing": data.get("routing", "SYSTEM_HEALTH"),
-                    "critic_score": float(data.get("critic_score", 0.95)),
-                    "error": None
+                    "critic_score": critic_score,
+                    "error": err
                 }
             return {
                 "status": "FAIL",
