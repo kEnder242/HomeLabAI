@@ -50,6 +50,7 @@
 4.  **Efficiency**: The agent should complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
 6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
+7.  **Mid-Flight Guidance Capture (Recommended Practice)**: When the operator provides last-minute guidance, constraints, or preference hints within an "AFK" / "Heads Down" prompt, the agent is strongly encouraged to jot down these instructions into the active sprint plan (`SPRINT_PLAN_*.md`) or session notes under a dedicated `## 📝 Operator Directives & Mid-Flight Guidance` section. This acts as a reliable reminder so critical guidance is never forgotten during deep autonomous focus or context compaction.
 
 ## BKM-007: Work Completion Report
 **Objective**: Restore technical context after a deep work cycle.
@@ -57,10 +58,11 @@
 1.  **Trigger**: Conclusion of a "Heads Down" sprint.
 2.  **Detail**: The report must be comprehensive and clear.
 3.  **Content**:
-    *   Summary of all completed items.
+    *   Summary of all completed items with assigned vs completed owner breakdown.
     *   Implications: Impact on VRAM, latency, and security.
+    *   **BKM-061 Adversarial Oracle Audit Findings**: Document the findings from the post-sprint oracle sweep, including any glaring architectural, failure-mode, or side-effect deficiencies uncovered and their resolutions.
     *   Rollback Plan: Steps to revert changes if the system becomes unstable.
-4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) before handing back control.
+4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) and run the full test suite before handing back control.
 
 ## BKM-009: The Checkpoint Protocol (Save State)
 **Objective**: Ensure 100% state persistence for session continuity.
@@ -810,6 +812,12 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
    - **Verifier (Execution & Lint Runner):** Node KENDER (Windows RTX 4090 / `Momus`). Executes verification commands and digests tracebacks back to Atlas.
 2. **Topology Deviation Invariant:** Any inversion or deviation from this pattern (e.g., M5 Air attempting root orchestration, bypassing Node KENDER, or leaf workers spawning child subagents) constitutes an immediate operational failure. `delegate.py` and diagnostic monitors MUST enforce this check and fail immediately upon deviation.
 
+#### 7. Post-Sprint Adversarial Oracle Sweep Gate (BKM-061)
+1. **Mandatory Post-Sprint Closeout Sweep:** Before any sprint is marked `COMPLETED` or certified, the orchestrator MUST invoke the **Dual Adversarial Oracle Sweep** defined in **[BKM-061]**:
+   - **Oracle 1 (Architecture & Invariants):** Audits threshold math, schema consistency, vector boundaries, and zero-work invariants.
+   - **Oracle 2 (Side Effects & Blast Radius):** Audits port/socket contention, background daemon lifecycles, and backwards compatibility shims.
+2. **Glaring Issue Remediation Gate:** If oracles discover glaring deficiencies or hidden "Green Lies", the orchestrator MUST fix and certify all glaring issues before publishing the final Work Completion Report ([BKM-007]).
+
 ---
 
 ## BKM-052: Sovereign Driver Protocol (Stateless Serialized Delegation for Fallback LLMs)
@@ -993,13 +1001,26 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 
 ## BKM-061: Multi-Tier Swarm Audit & Adversarial Oracle Protocol
 **Feature Anchor:** `[FEAT-477]` / `[FEAT-582]` / `[BKM-061]`  
-**Domain:** Codebase Health, Verification Rigor, Post-Sprint & Pre-Commit Audits  
+**Domain:** Codebase Health, Verification Rigor, Pre/Mid/Post-Sprint Oracle Audits  
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Principle
-A single model inspecting a wide codebase experiences severe context dilution and misses subtle failure modes (stale lockouts, orphan code, VRAM collisions, and ID collision vectors). Codebase and sprint audits must be executed via an isolated, multi-tier process that decouples specialized domain investigation from synthesis and adversarial critique.
+A single primary agent or developer working across a large codebase suffers from context dilution, fatigue, and author bias—frequently missing subtle edge-case traps, stale lockouts, hidden zero-work escapes ("Green Lies"), and unhandled error returns. The **Adversarial Oracle** is an independent, highly critical reasoning subagent tasked specifically with finding flaws, side effects, and violations of invariants before changes are certified.
 
-### 2. The 4-Tier Audit Anatomy
+### 2. When to Deploy Oracles (The 3 Oracle Horizons)
+1. **Pre-Sprint Architecture Oracle:** Invoked during Design Studio ([BKM-005]) to audit proposed sprint plans, schema designs, REST endpoints, and mathematical bounds before code is written.
+2. **Mid-Flight Sanity Oracle:** Invoked after complex refactors or multi-adapter changes to verify memory safety, thread safety, and interface compatibility.
+3. **Post-Sprint Adversarial Sweep ([BKM-049]):** Mandatory closeout audit executed across the full Git diff. The sweep deploys specialized oracles to rigorously probe:
+   * **Oracle 1 (Architecture & Invariants):** Audits threshold math, schema consistency, vector boundaries, and zero-work invariants ([BKM-062]).
+   * **Oracle 2 (Side Effects & Blast Radius):** Audits port/socket contention, background daemon lifecycles, and backwards compatibility shims.
+
+### 3. Oracle Prompting & Anti-Sycophancy Best Practices
+* **Explicit Adversarial Mandate:** Never ask an oracle "Does this look good?" or "Is this ready?" Instead, explicitly instruct the oracle: *"Your goal is to uncover hidden flaws, failure modes, race conditions, and invariant violations. Assume there are bugs."*
+* **Specialized Decoupled Roles:** Spawn discrete oracles with narrow, non-overlapping concerns (e.g. Invariants vs. Blast Radius vs. Failure Modes).
+* **Model Tiering:** Always select deep reasoning / `pro` model tiers for Oracles so they can explore wide dependency trees and long context reasoning.
+* **The Glaring Issues Output Contract:** Require Oracles to categorize findings into **Glaring Issues** (must fix before sprint signoff) vs. **Latent / Backlog Items**.
+
+### 4. The 4-Tier Swarm Audit Anatomy
 1. **Tier 1 — Parallel Specialized Swarm (4-Way Subagent Dispatches):**
    * *Pipeline & Daemon Auditor:* Audits background jobs, systemd units, execution order, and stale lockout flags (`nightly_forge.py`, `nightly_lora_training.py`).
    * *Backend & Router Auditor:* Audits REST endpoints, database atomicity, ID allocation counters, and disk vs. DB serialization (`router.py`, `draft_decomposer.py`).
@@ -1013,10 +1034,6 @@ A single model inspecting a wide codebase experiences severe context dilution an
 4. **Tier 4 — Live Invariant Certification (BKM-024):**
    * Execute deterministic roundtrip unit tests (`test_dna_roundtrip_consistency.py`).
    * Verify all active daemons match local Git HEAD.
-
-### 3. Operational Modes (Token Thrift vs. Deep Sleuth)
-* **Mode A (Thrift / Local Delegation):** Uses fast local or lightweight subagents targeted strictly at modified files in git diff.
-* **Mode B (Deep Burn / Unknown-Knowns Sleuth):** Uses deep-thinking reasoning models and historical archive searches to uncover forgotten dependencies and architectural drift across sprints.
 
 ---
 
