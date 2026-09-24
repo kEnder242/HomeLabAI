@@ -420,7 +420,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 ambient_lines.extend(seg_lines)
 
     duration_ms = round((time.time() - t_start) * 1000, 2)
-    breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in all_anchors[:4]]) if all_anchors else 'Nominal'} ({len(all_anchors)} hits • {duration_ms}ms)"
+    breadcrumb = f"> DNA **Grounding**: {' '.join([f'[{a}]' for a in all_anchors[:4]]) if all_anchors else 'Nominal'} ({len(all_anchors)} hits • {duration_ms}ms)"
 
     if ambient_lines:
         # Prepend explicit breadcrumb anchor to injected message
