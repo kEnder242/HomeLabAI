@@ -40,6 +40,24 @@ VENV_PYTHON = os.path.join(HOMELAB_DIR, ".venv", "bin", "python3")
 FOYER_URL = "http://localhost:8765"
 DATASET_PATH = os.path.join(BASE_DIR, "forge", "expertise", "master_forge_curriculum.jsonl")
 OUTPUT_LORA_DIR = "/speedy/models/adapters/cli_voice_v1"
+NIGHTLY_FORGE_LOG = os.path.join(HOMELAB_DIR, "run", "nightly_forge.log")
+
+# Configure Dual-Tier Logging [FEAT-602]
+os.makedirs(os.path.join(HOMELAB_DIR, "run"), exist_ok=True)
+logger = logging.getLogger("nightly_forge")
+logger.setLevel(logging.INFO)
+
+# Console handler (compact phase milestone view)
+if not logger.handlers:
+    c_handler = logging.StreamHandler(sys.stdout)
+    c_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] [NIGHTLY FORGE] %(message)s"))
+    logger.addHandler(c_handler)
+
+    # File handler (granular step traces in HomeLabAI/run/nightly_forge.log)
+    f_handler = logging.FileHandler(NIGHTLY_FORGE_LOG, mode="a")
+    f_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s"))
+    logger.addHandler(f_handler)
+
 try:
     from infra.pager_relay import trigger_pager
 except ImportError:
@@ -50,14 +68,15 @@ except ImportError:
             pass
 
 def write_step_log(step_name: str, details: str = "", severity: str = "INFO"):
-    """[FEAT-213 / BKM-014] Write atomic step progress to /tmp/nightly_forge_step.log and Neural Pager."""
+    """[FEAT-213 / FEAT-602 / BKM-014] Write atomic step progress to /tmp/nightly_forge_step.log and HomeLabAI/run/nightly_forge.log."""
     timestamp = datetime.datetime.now().isoformat()
     log_line = f"[{timestamp}] [{step_name}] {details}\n"
-    try:
-        with open("/tmp/nightly_forge_step.log", "a") as f:
-            f.write(log_line)
-    except Exception as e:
-        logger.warning(f"Failed to write step log: {e}")
+    for log_path in ["/tmp/nightly_forge_step.log", NIGHTLY_FORGE_LOG]:
+        try:
+            with open(log_path, "a") as f:
+                f.write(log_line)
+        except Exception as e:
+            logger.warning(f"Failed to write step log ({log_path}): {e}")
 
     # Broadcast significant milestones to Neural Pager & status.html interleaved logs
     milestones = {
@@ -71,6 +90,7 @@ def write_step_log(step_name: str, details: str = "", severity: str = "INFO"):
         "MASS_SCAN_COMPLETE": "Tail Mop-Up Mass Scan Pass Completed",
         "DREAM_CYCLE_START": "Subconscious Dreaming Pass Initiated",
         "DREAM_CYCLE_COMPLETE": "Subconscious Dreaming Cycle Completed",
+        "ACCOUNTABILITY_DIGEST": f"Nightly Accountability Digest: {details}",
         "ORCHESTRATION_COMPLETE": "Nightly Maintenance & Forge Pipeline Completed Successfully"
     }
     if step_name in milestones:
@@ -237,14 +257,11 @@ def quiesce_vllm() -> bool:
     try:
         # Step 1: Release all resident models from VRAM
         # Step 2: Signal SLEEP and SHUTDOWN state to the Foyer state machine
-        try:
-            requests.post(f"{FOYER_URL}/sleep", timeout=10)
-            requests.post(f"{FOYER_URL}/shutdown", timeout=10)
-            requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
-
-except Exception as e:
+        requests.post(f"{FOYER_URL}/sleep", timeout=10)
+        requests.post(f"{FOYER_URL}/shutdown", timeout=10)
+        requests.post(f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10)
+    except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
-        raise
 
     # Step 3: Check VRAM drain. If still allocated after 5s, enforce direct process termination
     t0 = time.time()
@@ -704,6 +721,27 @@ def evaluate_nightly_accountability(telemetry_dict: dict) -> dict:
         logger.info(f"[ACCOUNTABILITY] Wrote authoritative digest to {digest_path} (Status: {overall_status})")
     except Exception as e:
         logger.error(f"[ACCOUNTABILITY] Failed to write digest JSON: {e}")
+
+    # Broadcast digest to Neural Pager & Intercom [FEAT-602]
+    write_step_log(
+        "ACCOUNTABILITY_DIGEST",
+        f"Status={overall_status} ({digest['passed_checks']}/{digest['total_checks']} checks passed)",
+        severity="INFO" if overall_status == "PASS" else "WARNING"
+    )
+    try:
+        requests.post(
+            f"{FOYER_URL}/broadcast",
+            json={
+                "type": "accountability_digest",
+                "status": overall_status,
+                "passed": digest["passed_checks"],
+                "total": digest["total_checks"],
+                "timestamp": digest["timestamp"]
+            },
+            timeout=2
+        )
+    except Exception:
+        pass
 
     return digest
 

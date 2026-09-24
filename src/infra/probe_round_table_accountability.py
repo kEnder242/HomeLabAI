@@ -77,7 +77,7 @@ async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str
         }
 
 
-async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url: str) -> Dict[str, Any]:
+async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url: str, topic: str = "Audit active silicon residency and memory topology.") -> Dict[str, Any]:
     """Injects a synthetic probe query to test full multi-node round table deliberation."""
     thresholds = load_probe_thresholds()
     min_critic = float(thresholds.get("min_critic_score", 0.70))
@@ -85,7 +85,7 @@ async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url:
     start = time.perf_counter()
     url = f"{base_url}/inject"
     payload = {
-        "query": "[ACCOUNTABILITY_PROBE] Audit active silicon residency and memory topology.",
+        "query": f"[ACCOUNTABILITY_PROBE] {topic}",
         "source": "SYNTHETIC_PROBE"
     }
 
@@ -130,7 +130,7 @@ async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url:
         }
 
 
-async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_URL) -> Dict[str, Any]:
+async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_URL, topic: str = "Audit active silicon residency and memory topology.") -> Dict[str, Any]:
     """
     Executes the unified Round Table Accountability Probe.
     Returns telemetry adhering to FEAT-608 / LAB-110 and BKM-062.
@@ -150,7 +150,7 @@ async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_UR
         greeting = await probe_greeting_latency(session, foyer_url)
 
         # Step 2: Deliberation circuit test
-        circuit = await probe_deliberation_circuit(session, foyer_url)
+        circuit = await probe_deliberation_circuit(session, foyer_url, topic=topic)
 
     total_latency_ms = (time.perf_counter() - start_total) * 1000.0
 
