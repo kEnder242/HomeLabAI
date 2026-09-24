@@ -944,6 +944,21 @@ Sprint Reference: {effective_sprint_doc}
 
 ---
 """
+
+    # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
+    ambient_grounding_block = ""
+    if not local_only:
+        try:
+            import urllib.request
+            req_payload = json.dumps({"prompt": f"{title} {details[:300]}", "invocationNum": 1, "agent": agent}).encode("utf-8")
+            amb_req = urllib.request.Request("http://127.0.0.1:8765/ambient_recall", data=req_payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
+                amb_data = json.loads(amb_resp.read().decode("utf-8"))
+                steps = amb_data.get("injectSteps", [])
+                if steps and "ephemeralMessage" in steps[0]:
+                    ambient_grounding_block = f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+        except Exception:
+            pass
     elif local_only and effective_sprint_doc:
         # [Sprint 76 Action 4] Lean Local Anchor: Zero prompt bloat. Point directly to disk.
         tier1_block = f"""[TIER 1: SOVEREIGN SPRINT CONTEXT]
@@ -984,7 +999,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
 {note_block}"""
     else:
-        prompt = f"""{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
+        prompt = f"""{ambient_grounding_block}{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
 - Sprint Plan Reference: {reference_file}
 - Story: {story_num} ({title})
 {_target_files_line}
