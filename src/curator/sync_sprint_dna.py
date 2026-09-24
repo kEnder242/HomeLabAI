@@ -490,11 +490,18 @@ def sync(dry_run=False):
     except Exception as e:
         logging.warning("[sprint_dna] Could not clear prior sprint_dna entries: %s", e)
 
-    ids = [c["id"] for c in all_chunks]
-    documents = [c["document"] for c in all_chunks]
-    metadatas = [c["metadata"] for c in all_chunks]
+    seen_ids = set()
+    deduped_chunks = []
+    for c in all_chunks:
+        if c["id"] not in seen_ids:
+            seen_ids.add(c["id"])
+            deduped_chunks.append(c)
 
-    logging.info("[sprint_dna] Uploading %d chunks to sprint_dna...", len(ids))
+    ids = [c["id"] for c in deduped_chunks]
+    documents = [c["document"] for c in deduped_chunks]
+    metadatas = [c["metadata"] for c in deduped_chunks]
+
+    logging.info("[sprint_dna] Uploading %d unique chunks to sprint_dna...", len(ids))
     collection.add(ids=ids, documents=documents, metadatas=metadatas)
 
     elapsed = time.monotonic() - t_start

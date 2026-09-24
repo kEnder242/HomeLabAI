@@ -1,0 +1,18 @@
+{
+  "power_clamp_watts": 165,
+  "vram_quiesce_max_mb": 250,
+  "min_curriculum_dialogue_pairs": 100,
+  "min_lora_adapters_trained_green": 3,
+  "min_lora_steps_per_adapter": 100,
+  "max_maintenance_duration_hours": 3.5,
+  "strict_cutoff_hour": 5,
+  "dream_min_tokens_synthesized": 50,
+  "round_table_probe": {
+    "max_triage_latency_ms": 400,
+    "min_pinky_tokens": 10,
+    "min_brain_tokens": 50,
+    "min_thought_tokens": 40,
+    "min_critic_score": 0.70
+  },
+  "min_chromadb_vectors": 500
+}

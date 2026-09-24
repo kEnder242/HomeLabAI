@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/bash
 # Acme Lab CI/CD Suite (Pytest Version)
 
 echo "🔍 Priming components..."
-.venv/bin/python src/preflight_check.py
+python src/preflight_check.py
 
 echo "🧪 Running Pytest suite..."
-.venv/bin/pytest src/test_*.py
+python -m pytest src/test_*.py

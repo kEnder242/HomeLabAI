@@ -628,6 +628,7 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", sess
         print(f"   └─ Subagent Internal Errors Detected ({len(diag['session_errors'])}):", flush=True)
         for se in diag["session_errors"]:
             print(f"      • {se}", flush=True)
+    print("   💡 [PLAYBOOK AUDIT]: Review OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls (MCP bloat, agent inversion, root indexing, concurrency deadlocks).", flush=True)
 
     try:
         subprocess.run(
@@ -675,30 +676,67 @@ def _verify_and_sync_service_freshness(story_num):
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent="sisyphus", max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=True, cloud_only=False):
+def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent=None, max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=True, cloud_only=False):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
 
-    if not target_dir or target_dir == os.path.expanduser("~"):
-        target_dir = DEFAULT_TARGET_DIR
+    # [Directory Protection Pre-Check]
+    # Automatically infer target_dir if omitted, and verify .opencodeignore exists.
+    if not target_dir or target_dir == DEFAULT_TARGET_DIR or target_dir == os.path.expanduser("~"):
+        probe = target_files or reference_file or ""
+        candidate = None
+        for part in probe.replace(",", " ").split():
+            clean_part = part.strip()
+            if clean_part and os.path.exists(clean_part):
+                p_dir = clean_part if os.path.isdir(clean_part) else os.path.dirname(clean_part)
+                # Walk up until finding a directory with .opencodeignore that isn't the root monorepo
+                curr = os.path.abspath(p_dir)
+                while curr and curr != "/" and curr != os.path.expanduser("~"):
+                    if os.path.exists(os.path.join(curr, ".opencodeignore")) and not os.path.exists(os.path.join(curr, ".gitmodules")):
+                        candidate = curr
+                        break
+                    curr = os.path.dirname(curr)
+                if candidate:
+                    break
+        target_dir = candidate if candidate else target_dir
+
+    # Pre-check protection: target_dir must contain .opencodeignore and must not be root monorepo
+    if not os.path.exists(os.path.join(target_dir, ".opencodeignore")):
+        print(f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is unprotected (missing .opencodeignore).", file=sys.stderr)
+        print("   Scoping to an unprotected directory risks severe workspace token bloat.", file=sys.stderr)
+        print("   Specify a valid project directory via --dir or ensure .opencodeignore exists.", file=sys.stderr)
+        sys.exit(1)
+
+    if os.path.exists(os.path.join(target_dir, ".gitmodules")):
+        print(f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is the top-level monorepo root.", file=sys.stderr)
+        print("   Direct monorepo root indexing is forbidden by playbook (causes multi-repo context explosion).", file=sys.stderr)
+        print("   Scope delegation to a child submodule directory (e.g. --dir HomeLabAI).", file=sys.stderr)
+        sys.exit(1)
 
     # [BKM-049] Enforce mutual exclusivity between local_only and cloud_only
     if cloud_only:
         local_only = False
 
-    # [Action 3: Canonical Agent Routing]
-    # Local implies Atlas (Node KENDER 4090) decomposing tasks to Junior (M5 Air).
-    # Cloud implies Prometheus (cloud planner) or Sisyphus (cloud executor).
-    # Oracle mode remains supported as a distinct mode contract.
+    # [Canonical Topology Gate: Local = Atlas/Junior | Cloud = Sisyphus/Prometheus/Oracle]
     if mode == "oracle":
         agent = "oracle"
     elif cloud_only:
-        agent = "sisyphus" if mode == "execute" else "prometheus"
+        if agent and agent not in ("sisyphus", "prometheus", "oracle", "default"):
+            print(f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud-only mode.", file=sys.stderr)
+            print("   Cloud execution strictly routes to Sisyphus (Executor), Prometheus (Planner), or Oracle (Synthesizer).", file=sys.stderr)
+            print("   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.", file=sys.stderr)
+            sys.exit(1)
+        agent = agent if agent else ("sisyphus" if mode == "execute" else "prometheus")
     elif local_only:
-        agent = "atlas"
+        if agent and agent not in ("atlas", "sisyphus-junior", "junior", "momus", "librarian", "default"):
+            print(f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --local-only mode.", file=sys.stderr)
+            print("   Local execution strictly routes to Atlas (KENDER 4090 Conductor) or Junior (M5 Air Leaf Worker).", file=sys.stderr)
+            print("   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.", file=sys.stderr)
+            sys.exit(1)
+        agent = agent if agent else "atlas"
     else:
-        agent = "prometheus"
+        agent = agent if agent else "atlas"
 
     _target_display = target_files if target_files else reference_file
     log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (agent: {agent}, reference: {reference_file}, target: {_target_display})")
@@ -756,7 +794,8 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         try:
             session_payload = {
                 "directory": target_dir,
-                "title": session_title
+                "title": session_title,
+                "agent": agent
             }
             req = urllib.request.Request(
                 f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -860,7 +899,7 @@ Edit Target(s): {target_files or reference_file}
 4. [STAGE 3: VERIFICATION & LINT RUNNER]
    - Dispatch task(category="{_atlas_dispatch_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus.
    - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
-   - If Momus reports failure, dispatch task(category="{_atlas_dispatch_category}", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Daedalus (M5 Air 27B) to solve the subtle AST/escaping error.
+   - If Momus reports failure, dispatch task(category="coder", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Junior (M5 Air) to solve the subtle AST/escaping error.
 5. [STAGE 4: SYNTHESIS & REPORT]
    - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
         note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus, escalate to Daedalus on error."
@@ -969,13 +1008,15 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 aliases = cfg_obj.get("swarm_aliases", {})
                 if local_only:
                     local_cfg = aliases.get("local_bicameral", {})
-                    log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing 100% Sovereign Local Silicon (M5 Air Junior + Windows 4090 Atlas). Zero cloud fallbacks.")
-                    if mode in ("plan", "investigate"):
-                        model_ladder = [local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})]
-                    else:
+                    if agent in ("atlas", "librarian", "momus"):
+                        log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: qwen3:14b). Zero cloud fallbacks.")
                         model_ladder = [
-                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}),
-                            local_cfg.get("fallback_coder", {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"})
+                            local_cfg.get("reasoner") or local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3:14b"})
+                        ]
+                    else:
+                        log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: mlx-community--Qwen3.5-9B-4bit). Zero cloud fallbacks.")
+                        model_ladder = [
+                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"})
                         ]
                 elif cloud_only:
                     log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (Groq/OpenCode/Cohere). Zero local silicon fallbacks.")
@@ -995,7 +1036,10 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     if not model_ladder:
         if local_only:
-            model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}]
+            if agent in ("atlas", "librarian", "momus"):
+                model_ladder = [{"providerID": "my-windows-4090", "modelID": "qwen3:14b"}]
+            else:
+                model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}]
         elif cloud_only:
             model_ladder = [
                 {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
@@ -1006,7 +1050,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             model_ladder = [
                 {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
                 {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "my-windows-4090", "modelID": "qwen3-14b-16k:latest"},
+                {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
             ]
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
@@ -1030,7 +1074,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             try:
                 session_payload = {
                     "directory": target_dir,
-                    "title": f"{session_title} (Attempt {attempt})"
+                    "title": f"{session_title} (Attempt {attempt})",
+                    "agent": agent
                 }
                 s_req = urllib.request.Request(
                     f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -1327,12 +1372,12 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             )
             if is_valid_cmd and (full_text or not is_silent_failure):
                 log_step(story_num, "RUN_VERIFICATION", f"Executing verification command: {verification}")
-                print(f"\n🔍 [STORY {story_num}] Running verification: {verification}", flush=True)
                 try:
+                    monorepo_root = os.path.expanduser("~/Dev_Lab")
                     v_res = subprocess.run(
                         verification,
                         shell=True,
-                        cwd=target_dir or os.getcwd(),
+                        cwd=monorepo_root if os.path.exists(monorepo_root) else (target_dir or os.getcwd()),
                         capture_output=True,
                         text=True,
                         timeout=120
@@ -1479,11 +1524,6 @@ if __name__ == "__main__":
     if args.show_ledger:
         show_delegation_ledger(limit=30)
         sys.exit(0)
-
-    # [Action 3: Rejection of --agent flag]
-    if args.agent is not None:
-        print("[!] ERROR: The --agent flag is deprecated and unsupported. Routing is strictly driven by delegation targets: --local-only implies Atlas -> Junior; --cloud-only implies Prometheus.", file=sys.stderr, flush=True)
-        sys.exit(2)
 
     # [FEAT-515 / Task 69.6.1] Interactive Session Resume Handler
     if args.resume:

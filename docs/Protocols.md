@@ -802,6 +802,14 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing delegation attempts via `delegate.py` (including all 3 local diagnostic rounds for `[SWARM:LOCAL]`).
 3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier (and its required diagnostic retries) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
 
+#### 6. Sovereign Local Silicon Topology Invariant (KENDER -> Air)
+1. **The Sovereign Conductor & Leaf Worker Pattern:**
+   `[SWARM:LOCAL]` execution MUST strictly adhere to the canonical bicameral silicon topology:
+   - **Conductor (Root Dispatch):** Node KENDER (Windows RTX 4090 Ollama: `qwen3-14b-16k:latest` / `Atlas`). Receives the sprint story, conducts the 4-stage cascade, and dispatches bounded leaf tasks.
+   - **Leaf Worker (Surgical Patching):** Node Brain (macOS M5 Air MLX: `mlx-community--Qwen3.5-9B-4bit` / `Sisyphus-Junior` or `Daedalus`). Receives spoon-fed 4-anchor tasks from Atlas, applies atomic `clara-dna_safe_patch` edits, and is strictly forbidden from delegating further (`task: deny`).
+   - **Verifier (Execution & Lint Runner):** Node KENDER (Windows RTX 4090 / `Momus`). Executes verification commands and digests tracebacks back to Atlas.
+2. **Topology Deviation Invariant:** Any inversion or deviation from this pattern (e.g., M5 Air attempting root orchestration, bypassing Node KENDER, or leaf workers spawning child subagents) constitutes an immediate operational failure. `delegate.py` and diagnostic monitors MUST enforce this check and fail immediately upon deviation.
+
 ---
 
 ## BKM-052: Sovereign Driver Protocol (Stateless Serialized Delegation for Fallback LLMs)
@@ -1009,6 +1017,26 @@ A single model inspecting a wide codebase experiences severe context dilution an
 ### 3. Operational Modes (Token Thrift vs. Deep Sleuth)
 * **Mode A (Thrift / Local Delegation):** Uses fast local or lightweight subagents targeted strictly at modified files in git diff.
 * **Mode B (Deep Burn / Unknown-Knowns Sleuth):** Uses deep-thinking reasoning models and historical archive searches to uncover forgotten dependencies and architectural drift across sprints.
+
+---
+
+## BKM-062: The Green-Lie Prevention & Quantifiable Accountability Mandate
+**Feature Anchor:** `[FEAT-607]` / `[FEAT-608]` / `[LAB-110]` / `[BKM-062]`  
+**Domain:** Operational Rigor, Lab Accountability, Telemetry Invariants, Zero-Work Detection  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+A lab status or test step that reports exit code `0` or `ONLINE` while doing zero work (0 items processed, 0 tokens generated, 0 mutations certified, or silent exceptions caught and swallowed) is "The Green Lie". Green status is strictly reserved for non-zero verifiable progress matching configured health thresholds. Zero-work exits and silent passes are fatal errors (RED).
+
+### 2. The Invariant Rules
+1. **Zero-Work Exit Is A Fatal Defect:** Any pipeline stage or daemon sweep that completes with exit code 0 but records 0 items, 0 tokens, or 0 steps when work was queued or expected MUST be classified as `FAILED` (RED).
+2. **Tri-State Quantifiable Accountability:** All automated processes must be evaluated against explicit thresholds loaded from `HomeLabAI/config/lab_accountability_thresholds.json`:
+   - `GREEN (PASS)`: Verifiable non-zero progress meeting or exceeding target metrics.
+   - `AMBER (DEGRADED)`: Partial throughput or elevated latency within acceptable fallback margins.
+   - `RED (CRITICAL)`: Silent passes, zero items processed, fatal crashes, unhandled timeouts, or persona mute errors.
+3. **The Green-Lie Sentry Mandate:** If individual daemons (e.g., Foyer, vLLM, Deep Thought) report `ONLINE`, but synthetic morning round table probes or nightly sweeps fail, the dashboard (`status.html`) MUST display a prominent `DISCREPANCY ALERT` banner. Never allow green daemon indicators to mask broken conversational circuits.
+4. **Authoritative Nightly Digest:** The 11-stage nightly sweep must emit a consolidated `daily_accountability_digest.json` and a formatted `[+] ACCOUNTABILITY DIGEST` entry in the interleaved system log, recording exact per-stage metrics, overall status, and fallback justifications.
+5. **Zero-Mock Policy for Live Validation (BKM-024):** Synthetic morning probes and health checks must run live end-to-end HTTP/REST requests against running silicon engines (Foyer :8765, vLLM :8088, M5 Air :8000). Mocks are strictly forbidden for live certification.
 
 
 

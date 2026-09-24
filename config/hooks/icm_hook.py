@@ -613,6 +613,12 @@ def main():
                 ambient_lines.append("[ClaraDB Anchors & Matches]")
                 ambient_lines.extend(seg_lines)
 
+    # 3.5 Handover Playbook Reminder Injection (BKM-049 / Delegation Awareness)
+    query_lower = search_query.lower()
+    if any(k in query_lower for k in ("delegate", "delegation", "bkm-049", "bkm049", "swarm", "handover", "retry")):
+        ambient_lines.append("[💡 PLAYBOOK AUDIT REMINDER]")
+        ambient_lines.append("  - Read OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls: MCP bloat, agent inversion, root indexing, concurrency deadlocks.")
+
     # 4. Global Fallback if no lines generated
     if not ambient_lines:
         literal_fallbacks = extract_literal_ids(search_query)
