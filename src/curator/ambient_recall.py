@@ -117,6 +117,14 @@ def extract_prompt_segments(cleaned: str) -> list[dict]:
     return segments if segments else [{'id': '1', 'label': 'Query', 'text': cleaned}]
 
 
+BKM_FASTPATH_TRIGGERS = [
+    (re.compile(r"\b(?:save\s+to\s+git|add\s+to\s+git|upload\s+to\s+git|checkpoint|save\s+state|commit\s+locally)\b", re.IGNORECASE), "BKM-009", "Local Git Checkpoint & Session Continuity Protocol"),
+    (re.compile(r"\b(?:git\s+push|push\s+origin|never\s+push|git\s+discipline|git\s+boundary)\b", re.IGNORECASE), "BKM-040", "Virtual Environment Hygiene & Git Curation"),
+    (re.compile(r"\b(?:dual\s+push|git\s+mirror|secondary\s+mirror|cloud\s+redundancy)\b", re.IGNORECASE), "BKM-053", "Multi-Remote Secondary Git Mirror & Cloud Redundancy Protocol"),
+    (re.compile(r"\b(?:tri-loop|delegation\s+owner|story\s+owner|owner\s+tag)\b", re.IGNORECASE), "BKM-049", "Tri-Loop Story Delegation & Owner Tag Mandate"),
+]
+
+
 def extract_literal_ids(text: str) -> list[str]:
     results = []
     bkms = re.findall(r"\b(BKM-\d{3})\b", text, re.IGNORECASE)
@@ -135,6 +143,12 @@ def extract_literal_ids(text: str) -> list[str]:
         results.append(f"- [{w.upper()}] (Literal Philosophy Anchor)")
     for s in sorted(set(sprs)):
         results.append(f"- [{s.upper()}] (Literal Sprint Anchor)")
+
+    # Fast-path natural language trigger resolution
+    for pattern, bkm_id, name in BKM_FASTPATH_TRIGGERS:
+        if pattern.search(text) and f"- [{bkm_id}]" not in "".join(results):
+            results.append(f"- [{bkm_id}] {name} (Trigger Match)")
+
     return results
 
 
@@ -171,9 +185,14 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
     if seen_ids is None:
         seen_ids = set()
 
-    bkms = re.findall(r"\b(BKM-\d{3})\b", text, re.IGNORECASE)
-    feats = re.findall(r"\b(FEAT-\d{3,4})\b", text, re.IGNORECASE)
-    labs = re.findall(r"\b(LAB-\d{3})\b", text, re.IGNORECASE)
+    bkms = list(re.findall(r"\b(BKM-\d{3})\b", text, re.IGNORECASE))
+    feats = list(re.findall(r"\b(FEAT-\d{3,4})\b", text, re.IGNORECASE))
+    labs = list(re.findall(r"\b(LAB-\d{3})\b", text, re.IGNORECASE))
+
+    # Fast-path natural language trigger injection
+    for pattern, bkm_id, _ in BKM_FASTPATH_TRIGGERS:
+        if pattern.search(text) and bkm_id not in bkms:
+            bkms.append(bkm_id)
 
     if not client:
         return extract_literal_ids(text)
