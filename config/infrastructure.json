@@ -121,14 +121,17 @@
         ],
         "fast_worker": [
             {"providerID": "openrouter", "modelID": "free"},
-            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-            {"providerID": "opencode", "modelID": "big-pickle"}
+            {"providerID": "opencode", "modelID": "big-pickle"},
+            {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
         ],
         "default_ladder": [
             {"providerID": "openrouter", "modelID": "free"},
-            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
             {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
+        ],
+        "oracle": [
+            {"providerID": "openrouter", "modelID": "free"},
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],
         "local_bicameral": {
             "reasoner": {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},

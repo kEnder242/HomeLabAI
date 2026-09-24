@@ -1037,13 +1037,28 @@ A single primary agent or developer working across a large codebase suffers from
 
 ---
 
-## BKM-062: The Green-Lie Prevention & Quantifiable Accountability Mandate
+## BKM-062: Fail-Fast & Explicit Failure Propagation Mandate
 **Feature Anchor:** `[FEAT-607]` / `[FEAT-608]` / `[LAB-110]` / `[BKM-062]`  
-**Domain:** Operational Rigor, Lab Accountability, Telemetry Invariants, Zero-Work Detection  
+**Colloquial Alias:** "Green-Lie Prevention"  
+**Domain:** Operational Rigor, Lab Accountability, Telemetry Invariants, Fail-Fast Design Pattern  
 **Status:** ACTIVE / MANDATORY  
 
-### 1. The Principle
-A lab status or test step that reports exit code `0` or `ONLINE` while doing zero work (0 items processed, 0 tokens generated, 0 mutations certified, or silent exceptions caught and swallowed) is "The Green Lie". Green status is strictly reserved for non-zero verifiable progress matching configured health thresholds. Zero-work exits and silent passes are fatal errors (RED).
+### 1. The Principle (Positive Framing)
+Every telemetry-emitting function MUST produce verifiable, non-zero, live-sourced output — or return an explicit `FAIL` with a descriptive error. Errors and failures must propagate up through call chains explicitly; they must never be swallowed, absorbed into a silent `except` block, or replaced with a hardcoded success stub.
+
+**The Fail-Fast Design Pattern Applied:** Surface errors at the earliest possible point. Never recover silently to a plausible-looking success state. A system that lies green while broken is worse than one that fails loudly.
+
+**Colloquial name — "The Green Lie":** A lab status or test step that reports exit code `0` or `ONLINE` while doing zero work (0 items processed, 0 tokens generated, 0 mutations certified, or silent exceptions caught and swallowed). Green status is strictly reserved for non-zero verifiable progress.
+
+### 1b. JITC Hook Trigger Phrases (for ambient retrieval)
+This BKM should be retrieved during coding moments involving:
+- Writing a `try/except` block in a telemetry or pipeline function
+- Adding a fallback return value in an error branch (e.g. `return {"status": "ok"}`)
+- Writing any function that emits `turns_synthesized`, `items_refined`, `status`, or health metrics
+- Adding a hardcoded dict as a return value on exception
+- Writing silent exception swallowing (`except Exception: pass`)
+- Writing health-check probes or nightly sweep stages
+- Adding `time.sleep()` near subprocess calls without explicit error propagation
 
 ### 2. The Invariant Rules
 1. **Zero-Work Exit Is A Fatal Defect:** Any pipeline stage or daemon sweep that completes with exit code 0 but records 0 items, 0 tokens, or 0 steps when work was queued or expected MUST be classified as `FAILED` (RED).
