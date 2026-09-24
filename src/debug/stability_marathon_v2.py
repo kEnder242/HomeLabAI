@@ -2,8 +2,6 @@ import asyncio
 import aiohttp
 import time
 import sys
-import subprocess
-import os
 import json
 
 ATTENDANT_URL = "http://localhost:8765"

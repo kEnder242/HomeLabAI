@@ -1,8 +1,5 @@
 import asyncio
 from playwright.async_api import async_playwright
-import subprocess
-import os
-import json
 import requests
 
 # --- Paths ---
@@ -45,7 +42,7 @@ async def run_remote_control_simulation():
             await asyncio.sleep(2) # Allow DOM to settle
             print("[+] Vital sync confirmed.")
         except Exception as e:
-            print(f"[-] FAILURE: UI failed to fetch vitals. Dumping state...")
+            print("[-] FAILURE: UI failed to fetch vitals. Dumping state...")
             raise e
         
         # 3. Test Cycle: HIBERNATE -> START -> PAUSE -> STOP

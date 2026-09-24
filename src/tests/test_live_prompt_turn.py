@@ -28,7 +28,6 @@ for mod in ['chromadb', 'aiohttp', 'fastmcp', 'fastembed']:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
-import src.nodes.archive_node
 
 
 async def evaluate_live_turn(query: str, target_year: str = None, dry_run: bool = False):

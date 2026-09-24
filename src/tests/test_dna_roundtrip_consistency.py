@@ -9,9 +9,6 @@ Asserts mathematical identity:
   Delta(Original Source, Reconstruct(Bone Collection, R1)) == 0
 """
 
-import os
-import json
-import pytest
 import sys
 from pathlib import Path
 
@@ -23,7 +20,6 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(HOME_DIR / "src"))
 
 from dna_macro_compiler import (
-    DNAMacro,
     parse_macro_string,
     parse_markdown_with_dna_macros,
     reconstruct_source_from_bones,

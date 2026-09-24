@@ -8,7 +8,6 @@ Draft Ingestion, Semantic Chunk Decomposition, DNA Domain Classifier & Bone Sugg
 
 import json
 import re
-import time
 import datetime
 from pathlib import Path
 from typing import Dict, Any, List
@@ -288,7 +287,8 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
         from infra.atomic_io import atomic_write_json
     except ImportError:
         def atomic_write_json(path, data, indent=2):
-            import tempfile, os
+            import tempfile
+            import os
             dir_name = os.path.dirname(os.path.abspath(path))
             with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
                 json.dump(data, tf, indent=indent)
@@ -435,7 +435,7 @@ def promote_draft_to_db(payload: Dict[str, Any]) -> Dict[str, Any]:
                         "tags": ",".join(new_card["metadata"]["tags"])
                     }]
                 )
-            except Exception as ce:
+            except Exception:
                 pass
 
         created_cards.append(new_card)

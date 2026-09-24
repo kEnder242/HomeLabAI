@@ -1,6 +1,5 @@
 import pytest
 import asyncio
-import json
 import time
 from playwright.async_api import async_playwright
 from tests.conftest import assert_live_bytecode

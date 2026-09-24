@@ -12,10 +12,9 @@ Assembles master_forge_curriculum.jsonl from curated foundations:
 """
 
 import json
-import os
 import random
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict
 
 # --- Absolute Paths ---
 EXPERTISE_DIR = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise")

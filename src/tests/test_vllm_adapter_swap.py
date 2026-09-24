@@ -1,7 +1,6 @@
 import pytest
 import sys
 import os
-import json
 import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,7 +18,6 @@ class _MockContent:
 
 @pytest.mark.asyncio
 async def test_vllm_lora_request_construction(monkeypatch):
-    import aiohttp
 
     node = BicameralNode("brain", "test prompt")
     node.lora_name = "default_lora"
@@ -76,7 +74,6 @@ async def test_vllm_lora_request_construction(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_role_token_dynamic_swap(monkeypatch):
-    import aiohttp
 
     node = BicameralNode("brain", "test prompt")
     node.lora_name = "default_lora"

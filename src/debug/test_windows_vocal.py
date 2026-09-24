@@ -1,7 +1,6 @@
 import asyncio
 import aiohttp
 import json
-import sys
 
 HUB_URL = "ws://127.0.0.1:8765"
 

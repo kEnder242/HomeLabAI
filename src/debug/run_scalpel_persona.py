@@ -1,5 +1,3 @@
-import sys
-import os
 from atomic_patcher import apply_batch_refinement
 
 target_pinky = "HomeLabAI/src/nodes/pinky_node.py"

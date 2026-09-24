@@ -1,9 +1,6 @@
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-import os
 import sys
-import logging
 
 # Mock FastMCP before importing
 sys.modules['mcp.server.fastmcp'] = MagicMock()

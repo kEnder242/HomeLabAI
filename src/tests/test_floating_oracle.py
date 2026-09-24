@@ -10,7 +10,6 @@ Tests:
 """
 
 import json
-import os
 
 from src.logic.floating_oracle import (
     harvest_validation_scar,

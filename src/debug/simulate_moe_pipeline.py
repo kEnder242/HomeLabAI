@@ -141,7 +141,7 @@ async def verify_latency_hiding(metrics: PipelineMetrics) -> bool:
     rag_finish_before_warming = metrics.rag_retrieval_end <= metrics.model_warming_end
     workspace_finish_before_warming = metrics.workspace_context_end <= metrics.model_warming_end
 
-    print(f"\n✅ Latency Hiding Verification:")
+    print("\n✅ Latency Hiding Verification:")
     print(f"   RAG Retrieval: {rag_duration:.2f}s (Finished before warming: {rag_finish_before_warming})")
     print(f"   Workspace Collection: {workspace_duration:.2f}s (Finished before warming: {workspace_finish_before_warming})")
     print(f"   Model Warming: {warming_duration:.2f}s")

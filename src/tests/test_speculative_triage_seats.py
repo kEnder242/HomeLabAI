@@ -1,9 +1,7 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from logic.speculative_triage import (
     _load_engine_seats,
-    _probe_seat,
     resolve_active_deep_thought_target,
     SpeculativeTriageRelay
 )

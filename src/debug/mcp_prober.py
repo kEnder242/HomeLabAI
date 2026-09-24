@@ -1,7 +1,5 @@
 import asyncio
 import json
-import sys
-import subprocess
 
 async def probe_node():
     # Start the node process

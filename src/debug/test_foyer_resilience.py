@@ -2,7 +2,6 @@ import asyncio
 import json
 import websockets
 import time
-import threading
 
 # [FEAT-339] Foyer Resilience Test (The "Drunken Foyer" Simulator)
 # Specifically sends concurrent queries during the ignition/wake-up window.

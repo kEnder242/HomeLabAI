@@ -1,8 +1,7 @@
 import asyncio
 import json
-import time
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 # [FEAT-200] UI Debug Visibility
 # Configure logging for forensic visibility

@@ -2,10 +2,6 @@
 [FEAT-607 / LAB-110] Unit Test: Nightly Accountability Evaluator & Green Lie Sentry
 Tests evaluate_nightly_accountability against mock pass/degraded/fail telemetries.
 """
-import pytest
-import os
-import json
-import tempfile
 from infra.nightly_forge import evaluate_nightly_accountability
 
 

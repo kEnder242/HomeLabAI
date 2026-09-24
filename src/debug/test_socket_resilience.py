@@ -1,8 +1,6 @@
 import asyncio
 import aiohttp
-import json
 import os
-import sys
 
 # Ensure we are in the right directory
 _SELF_DIR = os.path.dirname(os.path.abspath(__file__))

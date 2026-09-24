@@ -3,7 +3,6 @@ import aiohttp
 import json
 import os
 import psutil
-import time
 
 ATTENDANT_URL = "http://localhost:8765"
 STATUS_JSON = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"

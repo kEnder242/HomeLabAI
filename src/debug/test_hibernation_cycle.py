@@ -2,8 +2,6 @@ import asyncio
 import aiohttp
 import subprocess
 import time
-import json
-import os
 import hashlib
 
 # --- Config ---
@@ -32,7 +30,7 @@ async def run_cycle(iteration):
     key = get_key()
     headers = {"X-Lab-Key": key, "Content-Type": "application/json"}
     
-    print(f"\n" + "="*50)
+    print("\n" + "="*50)
     print(f"--- ITERATION {iteration}/3 ---")
     
     # [FEAT-265.28] Physical Settle: Wait for VOCAL baseline before starting cycle

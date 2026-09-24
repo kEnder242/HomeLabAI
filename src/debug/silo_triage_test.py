@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 import json
-import logging
 
 # Setup paths for imports
 SRC_DIR = os.path.join(os.getcwd(), "HomeLabAI/src")

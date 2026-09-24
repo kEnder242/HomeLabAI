@@ -114,7 +114,7 @@ async def run_live_sprint65_gauntlet():
                                     # Critic check (FEAT-489)
                                     if "Narf! The retort went missing." in token:
                                         critic_error = True
-                                        logging.error(f"[CRITIC ERROR] Retort went missing!")
+                                        logging.error("[CRITIC ERROR] Retort went missing!")
 
                                     if data.get("final", False):
                                         logging.info(f"[STREAM FINAL] Source: {source} | Channel: {channel} | Token: {token[:60]}...")

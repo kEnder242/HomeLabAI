@@ -78,7 +78,7 @@ async def test_live_sprint71_dialogue_roll_up():
                 received_msgs.append(msg)
                 source = msg.get("brain_source", "")
                 text = msg.get("brain", "")
-                if ("Pinky" in source or "Pinky" in msg.get("source", "")) and not "HyDE" in source and not "Triage" in source:
+                if ("Pinky" in source or "Pinky" in msg.get("source", "")) and "HyDE" not in source and "Triage" not in source:
                     found_pinky = True
                     break
             except asyncio.TimeoutError:
@@ -134,7 +134,7 @@ async def test_live_sprint71_full_round_table_deliberation():
                 if "Consensus" in source or "Pinky Summary" in source or "blackboard" in msg_type:
                     found_response = True
                     break
-                elif ("Pinky" in source or "Brain" in source) and not "HyDE" in source and not "Triage" in source and len(text) > 10:
+                elif ("Pinky" in source or "Brain" in source) and "HyDE" not in source and "Triage" not in source and len(text) > 10:
                     found_response = True
                     # Don't break immediately; allow remaining stages (Brain RAG / Oracle / Consensus) to stream
             except asyncio.TimeoutError:

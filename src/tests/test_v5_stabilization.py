@@ -1,10 +1,5 @@
 import asyncio
-import json
-import logging
 import pytest
-import threading
-import queue
-import time
 from collections import deque
 from infra.cognitive_audit import CognitiveAudit
 

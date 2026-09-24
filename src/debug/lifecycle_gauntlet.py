@@ -12,7 +12,6 @@ import logging
 import sys
 import os
 import aiohttp
-import json
 import argparse
 from pathlib import Path
 
@@ -89,7 +88,7 @@ async def main():
     parser.add_argument("--steps", type=int, default=5, help="Training steps per adapter.")
     args = parser.parse_args()
 
-    logging.info(f"Initiating Lifecycle Gauntlet Shakedown (v3.0)...")
+    logging.info("Initiating Lifecycle Gauntlet Shakedown (v3.0)...")
     
     # Check dependencies
     if not (SCRIPTS_DIR / "serial_harvest_v2.py").exists():

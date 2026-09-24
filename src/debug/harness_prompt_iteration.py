@@ -2,7 +2,6 @@ import requests
 import json
 import time
 import argparse
-import sys
 
 VLLM_URL = "http://localhost:8088/v1/chat/completions"
 
@@ -21,7 +20,7 @@ def test_prompt(system_prompt, user_query, temperature=0.2, repetition_penalty=1
         "stream": False
     }
     
-    print(f"\n--- 🧪 Prompt Iteration Test ---")
+    print("\n--- 🧪 Prompt Iteration Test ---")
     print(f"[CONFIG]: Temp={temperature}, Penalty={repetition_penalty}")
     print(f"[QUERY]: {user_query}")
     

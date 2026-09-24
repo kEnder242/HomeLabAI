@@ -2,8 +2,6 @@ import asyncio
 import websockets
 import json
 import time
-import sys
-import os
 
 async def run_semantic_verification():
     """

@@ -13,9 +13,7 @@ Usage:
 import os
 import sys
 import re
-import hashlib
 import subprocess
-import logging
 import asyncio
 from mcp.server.fastmcp import FastMCP
 

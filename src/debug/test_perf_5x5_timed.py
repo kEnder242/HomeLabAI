@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import sys
 import time
 import argparse
@@ -83,7 +82,7 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
         # 4. Dispatch Query & Measure
         send_t = time.time()
         await page.keyboard.press("Enter")
-        print(f"[*] Query Dispatched at t=0.00s. Monitoring for Warming Pop & Real Engine Response...")
+        print("[*] Query Dispatched at t=0.00s. Monitoring for Warming Pop & Real Engine Response...")
         
         warming_pop_t = None
         real_answer_t = None
@@ -168,7 +167,7 @@ async def run_cycle(cycle_id, total_cycles, wait_mins, p_instance, force_cold=Fa
 
         if success:
             print(f"    [🏆 REAL ANSWER] Source: {real_answer_src} | TTFT: {real_answer_t:.2f}s | Length: {len(real_answer_text)} chars")
-            print(f"    [📊 LIVELINESS BENCHMARK]:")
+            print("    [📊 LIVELINESS BENCHMARK]:")
             print(f"       * Dead Air (WITH Crosstalk):    {max_dead_air_with_crosstalk:.2f}s max gap")
             print(f"       * Dead Air (WITHOUT Crosstalk): {dead_air_without_crosstalk:.2f}s (Total TTFT)")
             print(f"       * Crosstalk Heavy Lifting:      {heavy_lifting_saved_s:.2f}s perceived wait reduction ({heavy_lifting_pct:.1f}%)")

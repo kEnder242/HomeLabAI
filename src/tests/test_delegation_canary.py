@@ -2,7 +2,6 @@
 [FEAT-513 / SPR-69.4] Bicameral Local Delegation Canary
 A stub-and-fill target for certifying Atlas (4090) -> Sisyphus-Junior (M5 Air) delegation.
 """
-import pytest
 
 
 def compute_xor_checksum(values: list[int]) -> int:

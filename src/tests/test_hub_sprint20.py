@@ -1,7 +1,5 @@
 import pytest
-import asyncio
-import json
-from unittest.mock import AsyncMock, MagicMock, ANY
+from unittest.mock import AsyncMock, MagicMock
 from src.logic.cognitive_hub import CognitiveHub
 
 @pytest.fixture

@@ -10,10 +10,8 @@ Tests:
 5. Dry-run and live bridge execution.
 """
 
-import os
 import sys
 import json
-import pytest
 from pathlib import Path
 
 # Paths
@@ -26,8 +24,7 @@ from journal_to_dna_bridge import (
     map_theme_and_bucket,
     extract_title_and_narrative,
     run_bridge,
-    WISDOM_DATA_PATH,
-    LEDGER_PATH
+    WISDOM_DATA_PATH
 )
 
 

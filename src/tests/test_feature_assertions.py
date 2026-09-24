@@ -1,6 +1,5 @@
 import pytest
 import json
-import os
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 from src.logic.cognitive_hub import CognitiveHub

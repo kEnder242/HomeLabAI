@@ -1,11 +1,9 @@
 import asyncio
 import json
-import os
 import fcntl
 import time
 import logging
 import websockets
-from unittest.mock import AsyncMock, MagicMock
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='[TEST] %(message)s')

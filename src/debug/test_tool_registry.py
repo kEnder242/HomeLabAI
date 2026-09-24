@@ -2,13 +2,13 @@ import pytest
 import json
 import os
 import sys
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # 1. Archive Node Tests
-from nodes.archive_node import list_cabinet, read_document, build_cv_summary
+from nodes.archive_node import read_document, build_cv_summary
 
 @pytest.mark.asyncio
 async def test_archive_list_cabinet():

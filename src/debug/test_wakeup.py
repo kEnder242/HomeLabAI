@@ -1,12 +1,11 @@
 import asyncio
 import websockets
 import json
-import time
 import aiohttp
 
 async def test_wakeup():
     uri = "ws://localhost:8765"
-    print(f"--- [TEST] Triggering Wake-up Handshake ---")
+    print("--- [TEST] Triggering Wake-up Handshake ---")
     try:
         async with websockets.connect(uri) as ws:
             # 1. Send Handshake

@@ -7,7 +7,6 @@ Verifies that:
 """
 
 import pytest
-import hashlib
 from unittest.mock import AsyncMock, MagicMock
 from logic.cognitive_hub import CognitiveHub
 

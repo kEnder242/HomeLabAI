@@ -1,7 +1,5 @@
 import asyncio
 import aiohttp
-import time
-import json
 
 HUB_URL = "http://127.0.0.1:8765/hub"
 ATTENDANT_URL = "http://127.0.0.1:8765"

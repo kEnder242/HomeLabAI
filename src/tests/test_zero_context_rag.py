@@ -6,9 +6,8 @@ for mod in ["chromadb", "aiohttp", "fastmcp", "fastembed", "nodes.loader", "load
         sys.modules[mod] = MagicMock()
 
 import json
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
-import pytest
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

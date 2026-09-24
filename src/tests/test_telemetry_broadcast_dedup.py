@@ -1,6 +1,5 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from logic.cognitive_hub import CognitiveHub
 
 @pytest.mark.asyncio

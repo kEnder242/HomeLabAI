@@ -1,7 +1,4 @@
 import asyncio
-import psutil
-import os
-import time
 
 async def simulate_reap_race():
     print("[*] Simulating vLLM Worker Spawning...")

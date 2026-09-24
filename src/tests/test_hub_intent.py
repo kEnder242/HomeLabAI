@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, ANY
 from src.logic.cognitive_hub import CognitiveHub
 

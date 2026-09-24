@@ -1,7 +1,5 @@
 import pytest
-import pytest_asyncio
 import httpx
-import asyncio
 import socket
 import os
 import glob

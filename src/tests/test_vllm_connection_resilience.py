@@ -2,7 +2,7 @@ import asyncio
 import sys
 import os
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 import aiohttp
 from yarl import URL
 

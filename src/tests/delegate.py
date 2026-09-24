@@ -16,7 +16,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 # [LAB-099] Thermal & Thread Safety: Limit C-extension worker threads to prevent 8-core CPU thermal overload
 os.environ["OMP_NUM_THREADS"] = "2"
@@ -350,7 +350,7 @@ def show_delegation_ledger(limit: int = 20):
         print(f"{ts:<20} | {spr:<6} | {sty:<8} | {tier:<14} | {status:<20} | {dur:<7} | {model}")
 
     print("=" * 110)
-    print(f"📊 HISTORICAL AGGREGATE SUMMARY:")
+    print("📊 HISTORICAL AGGREGATE SUMMARY:")
     l_rate = (local_success / local_total * 100) if local_total else 0.0
     c_rate = (cloud_success / cloud_total * 100) if cloud_total else 0.0
     print(f"  [SWARM:LOCAL] Runs: {local_total:<4} | Successes: {local_success:<4} | Success Rate: {l_rate:.1f}%")
@@ -671,7 +671,7 @@ def _verify_and_sync_service_freshness(story_num):
             log_step(story_num, "STALE_SERVICE_SYNC", f"Config modification detected after service start ({', '.join(os.path.basename(c) for c in stale_configs)}). Hot-restarting opencode-core.service...")
             subprocess.run(["systemctl", "--user", "restart", "opencode-core.service"], check=False)
             time.sleep(2.0)
-    except Exception as e:
+    except Exception:
         pass
 
 

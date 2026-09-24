@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 
 def list_all_everywhere():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"

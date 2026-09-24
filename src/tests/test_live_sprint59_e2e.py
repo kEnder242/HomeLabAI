@@ -26,9 +26,9 @@ LEDGER_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/valid
 
 async def run_live_fire_suite():
     uri = "ws://127.0.0.1:8765"
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"🔥 [LIVE FIRE] Connecting to Running Lab Service: {uri}")
-    print(f"========================================================")
+    print("========================================================")
 
     # 0. Fetch session_token from /status
     try:
@@ -126,9 +126,9 @@ async def run_live_fire_suite():
             except asyncio.TimeoutError:
                 break
 
-    print(f"\n========================================================")
-    print(f"✅ [LIVE FIRE COMPLETE] Active daemon successfully verified on ws://127.0.0.1:8765!")
-    print(f"========================================================\n")
+    print("\n========================================================")
+    print("✅ [LIVE FIRE COMPLETE] Active daemon successfully verified on ws://127.0.0.1:8765!")
+    print("========================================================\n")
 
 
 if __name__ == "__main__":

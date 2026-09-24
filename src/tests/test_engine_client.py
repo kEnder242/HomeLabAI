@@ -1,5 +1,3 @@
-import pytest
-import unittest
 from unittest.mock import patch, MagicMock
 import json
 import socket
@@ -7,7 +5,6 @@ import socket
 from infra.engine_client import (
     load_engine_seats,
     probe_tcp,
-    probe_seat,
     resolve_active_deep_thought_target,
     query_sovereign_engine
 )

@@ -9,7 +9,6 @@ file edits to subagents and verify completion.
 import importlib.util
 import inspect
 import os
-import sys
 
 DELEGATE_PATH = os.path.join(os.path.dirname(__file__), "delegate.py")
 

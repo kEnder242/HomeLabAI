@@ -3,7 +3,6 @@ Unit Test Suite for [FEAT-582 / Story 86.5]:
 Polymorphic LoRA Dataset Invariant, Domain Completeness, and Balance.
 """
 
-import pytest
 from forge.build_lora_datasets import (
     build_dna_polymorphic_dataset,
     _build_dna_synthesis_index,

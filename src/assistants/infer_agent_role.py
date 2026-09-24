@@ -15,7 +15,6 @@
 """
 
 from typing import Optional
-import re
 
 
 # Role priority for conflict resolution (higher index = more specific)

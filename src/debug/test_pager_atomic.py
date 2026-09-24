@@ -1,7 +1,6 @@
 import os
 import json
 import time
-import subprocess
 from src.infra.atomic_io import atomic_write_json
 
 def test_pager_atomic():

@@ -1,6 +1,4 @@
 import psutil
-import json
-import os
 
 def get_hog_report():
     print("=== 🐗 SYSTEM RESOURCE BALANCE SHEET ===")
@@ -65,7 +63,7 @@ def get_hog_report():
         pct = (val / total_used_mib) * 100 if total_used_mib > 0 else 0
         print(f"{cat:<25} | {val:>12.1f} | {pct:>7.1f}%")
     
-    print(f"\nTop Consumers (>100MiB):")
+    print("\nTop Consumers (>100MiB):")
     detailed_hogs.sort(key=lambda x: x['rss'], reverse=True)
     for h in detailed_hogs[:15]:
         print(f"  - [{h['cat']}] {h['name']} (PID {h['pid']}): {h['rss']:.1f} MiB")

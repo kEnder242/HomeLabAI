@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import sys
-import logging
 
 # Setup Path
 LAB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,11 +47,11 @@ async def test_rag_logic():
                 
             print(f"  Sources Found: {len(sources)}")
             if s['expect_sources'] and not sources:
-                print(f"  WARNING: Expected sources for query but got none.")
+                print("  WARNING: Expected sources for query but got none.")
             elif not s['expect_sources'] and sources:
                 print(f"  FAILED: Unexpected sources for query: {sources}")
             else:
-                print(f"  PASSED: Source expectation met.")
+                print("  PASSED: Source expectation met.")
                 
             if len(text) > 50:
                 print(f"  Text Preview: {text[:60]}...")

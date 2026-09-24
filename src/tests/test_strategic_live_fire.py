@@ -2,7 +2,6 @@ import asyncio
 import json
 import websockets
 import sys
-import os
 
 async def live_fire_test():
     uri = "ws://localhost:8765"

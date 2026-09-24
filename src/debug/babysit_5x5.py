@@ -1,8 +1,6 @@
 import asyncio
 import os
 import subprocess
-import time
-import sys
 
 # [Task 5.4] The Babysitter: Executes the 5x5 Gauntlet and polls output
 # This prevents the AI CLI from timing out during the 75-minute wait.

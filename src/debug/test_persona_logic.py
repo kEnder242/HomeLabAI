@@ -2,7 +2,6 @@ import asyncio
 import json
 import websockets
 import time
-import logging
 
 # Configuration
 HUB_URL = "ws://localhost:8765"

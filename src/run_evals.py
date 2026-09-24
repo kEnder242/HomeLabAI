@@ -24,7 +24,6 @@ import time
 import uuid
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 import aiohttp
 

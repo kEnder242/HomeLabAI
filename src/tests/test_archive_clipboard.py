@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,9 +15,7 @@ from nodes.archive_node import (
     scribble_to_clipboard, 
     read_clipboard, 
     clear_clipboard, 
-    get_context, 
-    SESSION_CLIPBOARD,
-    DATA_DIR
+    get_context
 )
 
 async def test_archive_clipboard_logic():
@@ -88,7 +86,7 @@ async def test_archive_clipboard_logic():
             ctx_res_raw = await get_context("RAPL kernel fix")
             ctx_res = json.loads(ctx_res_raw)
             
-            print(f"[STEP 3] get_context triggered expansion.")
+            print("[STEP 3] get_context triggered expansion.")
             
             # Check if neighbors were added to clipboard
             cb_after = await read_clipboard()

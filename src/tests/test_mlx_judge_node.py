@@ -5,7 +5,7 @@ import asyncio
 
 # Ensure HomeLabAI/src is on sys.path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from nodes.mlx_judge_node import MLXAsyncJudge, judge_driver
+from nodes.mlx_judge_node import judge_driver
 
 
 @pytest.mark.asyncio

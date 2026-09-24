@@ -96,12 +96,12 @@ async def run_cycle(cycle):
     print(f"\n[*] Starting Rude Cycle {cycle}/5...")
     
     # 1. Force Hibernate (H2 - Lean Sleep)
-    print(f"    [Action] Entering Lean Sleep (H2)...")
+    print("    [Action] Entering Lean Sleep (H2)...")
     requests.post("http://localhost:8765/status_update", json={"state": "HIBERNATING"}, timeout=5)
     time.sleep(10) # Settle
     
     # 2. Fire Rude Storm (5 concurrent queries to sleeping lab)
-    print(f"    [Action] Launching 5-node 'Wake-on-Intent' storm...")
+    print("    [Action] Launching 5-node 'Wake-on-Intent' storm...")
     
     # Thermal baseline (raw millidegrees + degC) right before the storm
     raw_start = _read_raw_temp()

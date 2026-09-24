@@ -92,7 +92,7 @@ def dedupe():
         for p in final_prompts:
             f_out.write(json.dumps({"prompt": p}) + "\n")
 
-    logging.info(f"De-duplication Finished.")
+    logging.info("De-duplication Finished.")
     logging.info(f"Final Diversity: {count_final} unique directives (Compression: {((1 - count_final/count_total)*100):.1f}%)")
     logging.info(f"Deduped manifest saved to: {DEDUPED_PROMPT_FILE}")
 

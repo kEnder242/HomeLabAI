@@ -1,7 +1,6 @@
 import asyncio
 import json
 import websockets
-import os
 import time
 import requests
 

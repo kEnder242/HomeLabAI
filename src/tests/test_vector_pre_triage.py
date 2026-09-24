@@ -1,4 +1,3 @@
-import pytest
 from logic.vector_pre_triage import probe_clara_dna_sync
 
 def test_casual_greeting_probe():

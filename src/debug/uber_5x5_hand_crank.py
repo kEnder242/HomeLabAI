@@ -1,10 +1,7 @@
 import asyncio
-import json
 import os
 import time
-import requests
 import hashlib
-import subprocess
 from playwright.async_api import async_playwright
 
 # [TEST-54] THE UBER 5x5 HAND-CRANK GAUNTLET

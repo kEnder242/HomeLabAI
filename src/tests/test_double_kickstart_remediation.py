@@ -4,7 +4,6 @@ Verifies that:
 2. bridge_signal_clean still synthesizes valid non-JSON prose for real user queries.
 3. speculative_triage._is_valid_triage rejects any dict containing warming indicators.
 """
-import pytest
 from logic.cognitive_hub import CognitiveHub
 from logic.speculative_triage import SpeculativeTriageRelay
 

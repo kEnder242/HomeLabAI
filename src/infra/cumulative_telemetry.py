@@ -65,7 +65,7 @@ def log_telemetry_event(source: str, task_title: str, seat: str, provider: str, 
 
         # 2. Update cumulative_tokens.json atomically
         _update_cumulative_totals(source, seat, tier, tokens_generated, duration_seconds)
-    except Exception as e:
+    except Exception:
         pass
 
 

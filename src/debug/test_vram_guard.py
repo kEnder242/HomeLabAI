@@ -36,7 +36,7 @@ def check_inference():
         return False
 
 def audit_gate():
-    print(f"--- 🩺 Silicon Wall Audit: vLLM 0.17 Stability ---")
+    print("--- 🩺 Silicon Wall Audit: vLLM 0.17 Stability ---")
     start_time = time.time()
     last_vram = 0
     passed_wall = False

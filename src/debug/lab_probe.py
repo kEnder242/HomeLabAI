@@ -1,6 +1,5 @@
 import requests
 import time
-import json
 
 URL = "http://localhost:8765"
 

@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 
 def final_attempt():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"

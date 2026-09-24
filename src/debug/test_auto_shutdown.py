@@ -1,7 +1,5 @@
 import asyncio
 import websockets
-import sys
-import time
 
 async def test():
     uri = "ws://localhost:8765"

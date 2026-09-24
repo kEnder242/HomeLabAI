@@ -1,9 +1,7 @@
 import asyncio
 import aiohttp
 import time
-import sys
 import subprocess
-import json
 
 # --- Paths ---
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
@@ -44,7 +42,7 @@ async def flood_intercom(target_url, count=30):
                     msg = await asyncio.wait_for(ws.receive(), timeout=3.0)
                     await ws.close()
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     start_t = time.time()

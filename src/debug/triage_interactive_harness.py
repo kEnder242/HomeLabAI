@@ -1,8 +1,6 @@
 import requests
 import json
 import time
-import os
-import sys
 
 ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "http://localhost:8765"
@@ -111,7 +109,7 @@ def main():
                 run_triage(query)
             elif cmd == 'burst':
                 query = parts[1] if len(parts) > 1 else "[ME] hello"
-                print(f"🔥 Initiating BURST MODE (5 concurrent queries)...")
+                print("🔥 Initiating BURST MODE (5 concurrent queries)...")
                 import threading
                 def _burst():
                     run_triage(query)

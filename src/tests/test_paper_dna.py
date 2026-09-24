@@ -35,7 +35,6 @@ if SCRIPTS_DIR not in sys.path:
 
 from curator.sync_paper_dna import (  # noqa: E402
     COLLECTION_PREFIX,
-    GLOBAL_COLLECTIONS,
     build_chunks,
     collection_name,
     delete_paper_dna_collection,

@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 import json
-import logging
 
 # Setup paths for imports
 SRC_DIR = os.path.join(os.getcwd(), "HomeLabAI/src")
@@ -44,7 +43,7 @@ async def run_hub_mimic_test():
     query = "[ME] Status of the lab?"
     
     # Mimic _process_node_stream logic
-    print(f"[2] Calling 'think' tool (internal=True)...")
+    print("[2] Calling 'think' tool (internal=True)...")
     
     # Since we can't easily run the full MCP server + client in this script without complex setup,
     # we will just call the tool method directly if we can find it.
