@@ -363,8 +363,8 @@
     *   `delegate.py` auto-starts `opencode-core.service` before dispatch (scale-to-zero left it down → `[SESSION_FAILED] Connection refused` on 4097).
     *   Full forensics in `SPRINT_PLAN_SPR_49_0.md` §4 — entry is the cross-reference canonicalization.
 
-### LAB-019: AGY Ambient Memory & Knowledge Hook (ICM + ClaraDB)
-**Objective**: Bridge the Antigravity CLI (AGY) runtime to both ICM (Infinite Context Memory) and ClaraDB (ChromaDB port 8001) using AGY's native lifecycle hook engine (`hooks.json`), eliminating static prompt cruft while dynamically volunteering relevant memory, recent sprint decisions, and BKM/FEAT anchors on every turn.
+### LAB-019: AGY Ambient Memory & Knowledge Hook (ICM + ClaraDB Micro-Bridge)
+**Objective**: Bridge the Antigravity CLI (AGY) runtime to both ICM (Infinite Context Memory) and ClaraDB (ChromaDB port 8001) using AGY's native lifecycle hook engine (`hooks.json`) and a resident Foyer micro-bridge, eliminating static prompt cruft while dynamically volunteering relevant memory, recent sprint decisions, and BKM/FEAT anchors on every turn.
 
 1.  **The One-Liner (hook configuration & registration)**:
     ```json
@@ -375,31 +375,28 @@
         "PreInvocation": [
           {
             "type": "command",
-            "command": "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3 /home/jallred/.gemini/config/scripts/icm_hook.py"
+            "command": "/home/jallred/.gemini/config/scripts/ambient_hook.sh"
           }
         ]
       }
     }
     ```
 2.  **The Core Logic & Architecture (The 4 Operational Tiers)**:
-    *   **Tier 1: Generous Session Orientation & Recency Flush (`invocationNum == 1`)**:
-        *   **Core Invariants**: Injects `icm wake-up -t 200 -p Dev_Lab` (core operational rules, prompt cleanliness, BKM invariants).
-        *   **Chronological Recency Flush**: Automatically extracts the top 4 newest memories (`icm list -a -s created`) created in the last session or yesterday, ensuring recent sprint breakthroughs and architectural decisions flush up into context immediately on session start.
-    *   **Tier 2: Fast-Path Exact ClaraDB Resolution**: Fast regex detection (`\bBKM-\d+\b`, `\bFEAT-\d+\b`, `\bLAB-\d+\b`) intercepts exact identifiers and queries ChromaDB port 8001 (`behavioral_dna` and `feature_dna`) in <2ms, injecting exact titles, statuses, and infrastructure descriptions without reading multi-hundred kilobyte files.
-    *   **Tier 3: Dynamic Distance Banding & Cluster Density (Reverse Lookups)**:
-        *   Replaces rigid top-k slicing with adaptive distance gating (<15ms FastEmbed probe).
-        *   Computes minimum cluster distance ($d_{min}$). A candidate is admitted if $d \le 0.55$, within $+0.10$ of $d_{min}$ ($d \le d_{min} + 0.10, d < 0.62$), or matches keyword overlap ($d \le 0.60$).
-        *   **Dynamic Clustering**: Captures all related sibling features in a cluster (e.g., "Audio PCM" clusters `FEAT-059`, `FEAT-427`, and `FEAT-428`) while preserving 1-match precision when an isolated match occurs, avoiding token pollution.
-    *   **Tier 4: Frugal Ambient Volunteer & QQ Boost (`invocationNum > 1`)**:
-        *   **Standard Prompts**: Strips XML tags, skips shallow turns ("ok", "thanks", "done" → 0 tokens injected). Queries ICM hybrid search; volunteers top 1–2 facts strictly when similarity score $\ge 0.45$ (<75 tokens).
-        *   **QQ Boost (BKM-004)**: When a prompt begins with `QQ:`, the hook recognizes a high-altitude architectural inquiry. It strips the `QQ` prefix to maximize embedding vector density, widens recall (limit=3, threshold=0.40), and relaxes distance banding to provide rich research grounding for diagnostic answers.
+    *   **Tier 1: Turn-Boundary Gating & Transcript Inspection**:
+        *   AGY's `PreInvocation` triggers on every intermediate planning step. The hook inspects `transcript.jsonl` and strictly executes semantic search only when the immediate prior event is `USER_INPUT`. On intermediate tool iterations, it exits in <1ms without touching databases.
+    *   **Tier 2: Resident Memory Micro-Bridge (Foyer :8765 / CLaRa :8001)**:
+        *   Replaced heavy Python CLI execution (`python3 icm_hook.py`) with a lightweight shell script `ambient_hook.sh` issuing a 2ms `curl` POST to Foyer's `/ambient_recall` endpoint. Embedding models and ChromaDB clients remain warm in daemon RAM.
+    *   **Tier 3: Dynamic Distance Banding & Cluster Density**:
+        *   Adaptive distance gating (<15ms FastEmbed probe in resident RAM). Admitted if $d \le 0.55$, within $+0.10$ of $d_{min}$ ($d \le d_{min} + 0.10, d < 0.62$), or matches keyword overlap ($d \le 0.60$).
+    *   **Tier 4: Transparent Grounding Breadcrumbs**:
+        *   Injects a standardized top-level breadcrumb header (`> 🧬 **Grounding**: [BKM-xxx] [FEAT-yyy] (N hits • Xms)`) allowing operator and agent to verify retrieval health deterministically without conversational commentary.
 3.  **Why It Mattered**:
-    *   Eliminated the need for stale static rules in `~/.gemini/GEMINI.md` (which previously hallucinated ambient `<claude-mem-context>` injections).
-    *   Solves the "unknown unknowns" problem: native MCP tools (`icm_recall`, `query_dna`) require the agent to already know what to ask for, whereas the ambient hook automatically volunteers relevant context from the database into the prompt boundary before the model begins reasoning.
+    *   Eliminated ~300ms Python cold start latency per tool iteration.
+    *   Eliminated token bloat from repeated prompt context injection across intermediate tool loops.
+    *   Solves the "unknown unknowns" problem without slowing down the agent loop.
 4.  **The Scars & Gotchas**:
-    *   The hook MUST execute under `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3` to resolve the `chromadb` client and `fastembed` dependencies.
-    *   Shallow prompt filtering is critical: without word-count/shallow-word gates, generic pleasantries produce ~0.40 baseline cosine similarity against dense sentence embeddings, creating prompt noise.
-    *   `QQ` is an inquiry boundary that demands boosted factual context, not context suppression.
+    *   `PreInvocation` in AGY is per-*model invocation*, NOT per-turn. Turn-boundary gating is mandatory to prevent execution thrash.
+    *   `ambient_hook.sh` uses `--max-time 0.25` fail-open fallback (`{"injectSteps":[]}`) so agent execution never stalls if the background daemon is restarting.
 
 ### LAB-020: Cloudflare Zero Trust Ingress, Argo Tunnel & API Infrastructure
 **Objective**: Document the Cloudflare edge networking topology, Argo Tunnel daemon, Zero Trust Access ingress routing, and API authentication credentials for `jason-lab.dev`.
