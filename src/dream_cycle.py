@@ -138,11 +138,15 @@ class DreamManager:
                 }
         else:
             logging.info("💤 No chaotic memories found. Transitioning to Refinement Dreaming...")
-            refined = await self.run_refinement_dream()
-            if refined:
-                items_refined = 1
-            else:
-                error_message = "Zero chaotic turns synthesized and zero archive items refined (BKM-062 Zero-Work Exit Invariant)"
+            try:
+                refined = await self.run_refinement_dream()
+                if refined:
+                    items_refined = 1
+                else:
+                    error_message = "Zero chaotic turns synthesized and zero archive items refined (BKM-062 Zero-Work Exit Invariant)"
+            except Exception as e:
+                error_message = f"Refinement Dreaming Error: {e}"
+                logging.error(error_message)
 
         duration_seconds = time.time() - start_time
         timestamp = datetime.now().isoformat()
@@ -164,17 +168,31 @@ class DreamManager:
     async def run_refinement_dream(self):
         """[FEAT-127.1] Recursive Refinement: Upgrade Tier 2 artifacts to Tier 1."""
         logging.info("💎 Initiating Deep Refinement of the 18-year archive...")
-        
-        cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
-        files = json.loads(cabinet_res.content[0].text)
+        try:
+            cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
+            raw_files = cabinet_res.content[0].text if (cabinet_res and cabinet_res.content) else "[]"
+            files = json.loads(raw_files) if raw_files else []
+        except Exception as e:
+            logging.warning(f"[DREAM] Could not list archive cabinet: {e}")
+            return False
+
         if not files:
             return False
         
-        target_file = random.choice([f for f in files if f.endswith(".json")])
+        target_files = [f for f in files if f.endswith(".json")]
+        if not target_files:
+            return False
+        target_file = random.choice(target_files)
         logging.info(f"📂 Selected target for refinement: {target_file}")
         
-        doc_res = await self.archive.call_tool("read_document", arguments={"filename": target_file})
-        content = json.loads(doc_res.content[0].text)
+        try:
+            doc_res = await self.archive.call_tool("read_document", arguments={"filename": target_file})
+            raw_doc = doc_res.content[0].text if (doc_res and doc_res.content) else "[]"
+            content = json.loads(raw_doc) if raw_doc else []
+        except Exception as e:
+            logging.warning(f"[DREAM] Could not read document {target_file}: {e}")
+            return False
+
         if not isinstance(content, list) or not content:
             return False
         
@@ -212,6 +230,14 @@ async def main():
     ready, model_name = await ensure_engine_ready()
     if not ready:
         logging.error("❌ Lab could not be ignited for Dreaming. Aborting.")
+        print(json.dumps({
+            "status": "FAIL",
+            "turns_synthesized": 0,
+            "items_refined": 0,
+            "duration_seconds": 0.0,
+            "timestamp": "",
+            "error": "Lab could not be ignited for Dreaming"
+        }))
         return
 
     env = os.environ.copy()
@@ -223,10 +249,19 @@ async def main():
             async with ClientSession(ar, aw) as archive:
                 await archive.initialize()
                 manager = DreamManager(archive)
-                await manager.run_cycle()
+                telemetry = await manager.run_cycle()
+                print(json.dumps(telemetry))
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
+        print(json.dumps({
+            "status": "FAIL",
+            "turns_synthesized": 0,
+            "items_refined": 0,
+            "duration_seconds": 0.0,
+            "timestamp": "",
+            "error": str(e)
+        }))
 
 if __name__ == "__main__":
     asyncio.run(main())

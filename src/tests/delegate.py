@@ -1019,10 +1019,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                             local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"})
                         ]
                 elif cloud_only:
-                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (Groq/OpenCode/Cohere). Zero local silicon fallbacks.")
+                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/Cohere). Zero local silicon fallbacks.")
                     model_ladder = aliases.get("fast_worker", [
-                        {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
-                        {"providerID": "opencode", "modelID": "big-pickle"},
+                        {"providerID": "openrouter", "modelID": "free"},
                         {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
                     ])
                 elif agent in ("prometheus", "atlas", "architect"):
@@ -1035,7 +1034,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             log_step(story_num, "CONFIG_LOAD_WARN", f"Could not load swarm_aliases from {cfg_path}: {e}")
 
     if not model_ladder:
-        raise RuntimeError(f"No valid model ladder could be derived from {cfg_path} for agent='{agent}' (local_only={local_only}, cloud_only={cloud_only})")
+        log_step(story_num, "FALLBACK_LADDER", f"Using resilient default cloud fallback ladder for agent='{agent}'.")
+        model_ladder = [
+            {"providerID": "openrouter", "modelID": "free"},
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+        ]
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
     if not local_only:
