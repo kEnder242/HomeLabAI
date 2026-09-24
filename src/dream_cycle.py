@@ -95,35 +95,71 @@ class DreamManager:
         self.archive = archive
 
     async def run_cycle(self):
+        """[FEAT-607 / LAB-110] Accountable Dream Cycle with Telemetry & Zero-Work Guard."""
+        import time
+        from datetime import datetime
+
+        start_time = time.time()
         logging.info("📥 Recalling chaotic memories from the stream...")
         result = await self.archive.call_tool("get_stream_dump", arguments={})
         data = json.loads(result.content[0].text)
         docs = data.get("documents", [])
         ids = data.get("ids", [])
 
-        if not docs:
+        turns_synthesized = 0
+        items_refined = 0
+        error_message = None
+
+        if docs:
+            turns_synthesized = len(docs)
+            logging.info(f"🧠 Synthesizing {turns_synthesized} turns via The Brain...")
+            narrative_input = "\n---\n".join(docs)
+            prompt = (
+                "Synthesize these interaction logs into a high-density 'Diamond Wisdom' paragraph. "
+                "Analyze the technical progression, identifying specific decisions made and validation scars uncovered. "
+                "STRICT: NO ROLEPLAY. Provide a professional report suitable for long-term strategic grounding."
+            )
+
+            try:
+                summary = await remote_brain_think(prompt, narrative_input)
+                logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
+                await self.archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
+                logging.info("✅ Stream Dream Cycle Finished. The Lab has evolved.")
+            except Exception as e:
+                error_message = f"Synthesis Error: {e}"
+                logging.error(error_message)
+                return {
+                    "status": "FAIL",
+                    "turns_synthesized": turns_synthesized,
+                    "items_refined": items_refined,
+                    "duration_seconds": time.time() - start_time,
+                    "timestamp": datetime.now().isoformat(),
+                    "error": error_message
+                }
+        else:
             logging.info("💤 No chaotic memories found. Transitioning to Refinement Dreaming...")
-            await self.run_refinement_dream()
-            return
+            refined = await self.run_refinement_dream()
+            if refined:
+                items_refined = 1
+            else:
+                error_message = "Zero chaotic turns synthesized and zero archive items refined (BKM-062 Zero-Work Exit Invariant)"
 
-        logging.info(f"🧠 Synthesizing {len(docs)} turns via The Brain...")
-        narrative_input = "\n---\n".join(docs)
-        prompt = (
-            "Synthesize these interaction logs into a high-density 'Diamond Wisdom' paragraph. "
-            "Analyze the technical progression, identifying specific decisions made and validation scars uncovered. "
-            "STRICT: NO ROLEPLAY. Provide a professional report suitable for long-term strategic grounding."
-        )
+        duration_seconds = time.time() - start_time
+        timestamp = datetime.now().isoformat()
 
-        # In V5, we prefer calling nodes directly if we have the session
-        # but the Hub orchestrates models. 
-        # For simplicity in this background task, we use the Hub's REST interface.
-        summary = await remote_brain_think(prompt, narrative_input)
-        
-        # Consolidation
-        logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
-# [FEAT-126] Yearly Summary Injection
-        await self.archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
-        logging.info("✅ Dream Cycle Finished. The Lab has evolved.")
+        if turns_synthesized > 0 or items_refined > 0:
+            status = "PASS"
+        else:
+            status = "FAIL"
+
+        return {
+            "status": status,
+            "turns_synthesized": turns_synthesized,
+            "items_refined": items_refined,
+            "duration_seconds": duration_seconds,
+            "timestamp": timestamp,
+            "error": error_message
+        }
 
     async def run_refinement_dream(self):
         """[FEAT-127.1] Recursive Refinement: Upgrade Tier 2 artifacts to Tier 1."""
@@ -132,7 +168,7 @@ class DreamManager:
         cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
         files = json.loads(cabinet_res.content[0].text)
         if not files:
-            return
+            return False
         
         target_file = random.choice([f for f in files if f.endswith(".json")])
         logging.info(f"📂 Selected target for refinement: {target_file}")
@@ -140,12 +176,12 @@ class DreamManager:
         doc_res = await self.archive.call_tool("read_document", arguments={"filename": target_file})
         content = json.loads(doc_res.content[0].text)
         if not isinstance(content, list) or not content:
-            return
+            return False
         
         candidates = [i for i in content if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")]
         if not candidates:
             logging.info("✨ This sector is already optimized. Returning to sleep.")
-            return
+            return False
             
         target_item = random.choice(candidates)
         logging.info(f"🎯 Refining artifact: {target_item.get('summary')[:50]}...")

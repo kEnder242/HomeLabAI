@@ -1031,27 +1031,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     model_ladder = aliases.get("champion_coder", [])
                 else:
                     model_ladder = aliases.get("default_ladder", [])
-        except Exception:
-            pass
+        except Exception as e:
+            log_step(story_num, "CONFIG_LOAD_WARN", f"Could not load swarm_aliases from {cfg_path}: {e}")
 
     if not model_ladder:
-        if local_only:
-            if agent in ("atlas", "librarian", "momus"):
-                model_ladder = [{"providerID": "my-windows-4090", "modelID": "qwen3:14b"}]
-            else:
-                model_ladder = [{"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}]
-        elif cloud_only:
-            model_ladder = [
-                {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
-                {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
-            ]
-        else:
-            model_ladder = [
-                {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
-                {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "my-windows-4090", "modelID": "qwen3:14b"},
-            ]
+        raise RuntimeError(f"No valid model ladder could be derived from {cfg_path} for agent='{agent}' (local_only={local_only}, cloud_only={cloud_only})")
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
     if not local_only:
