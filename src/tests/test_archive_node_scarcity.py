@@ -23,7 +23,6 @@ if 'nodes.loader' not in sys.modules:
     sys.modules['nodes.loader'] = mock_loader
     sys.modules['loader'] = mock_loader
 
-import pytest
 
 
 class TestArchiveNodeScarcity:

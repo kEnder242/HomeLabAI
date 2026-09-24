@@ -42,13 +42,13 @@ async def test_live_fire():
                         print(f"  [RECV] {source}: {text[:100]}...")
 
                     if "Triage starting" in text or "Triage Attempt" in text:
-                        print(f"✅ FOUND: Triage Started")
+                        print("✅ FOUND: Triage Started")
                         found_triage_start = True
                     if "Triage successful" in text or "Triage Result:" in text:
-                        print(f"✅ FOUND: Triage Success")
+                        print("✅ FOUND: Triage Success")
                         found_triage_success = True
                     if "Initiating Deep Thought" in text or "Pinky (Response)" in text:
-                        print(f"✅ FOUND: Response Phase")
+                        print("✅ FOUND: Response Phase")
                         found_uplink = True
                         
                     if found_triage_start and found_triage_success and found_uplink:

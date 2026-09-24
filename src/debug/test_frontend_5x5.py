@@ -1,10 +1,7 @@
 import asyncio
-import json
-import os
 import time
 import requests
 import hashlib
-import subprocess
 from playwright.async_api import async_playwright
 
 # [TEST-53] The Uber-Frontend Gauntlet
@@ -111,14 +108,14 @@ async def trigger_cycle(cycle_id, p_instance):
                 
                 # [Task 19.9.1] Assert Cached Lobby Relay
                 if hub_operational_time > 0 and hub_operational_time < brain_responded_time:
-                    print(f"    [🚨] FAILURE: Brain responded AFTER Hub was operational. Cached Lobby Relay failed.")
+                    print("    [🚨] FAILURE: Brain responded AFTER Hub was operational. Cached Lobby Relay failed.")
                 elif hub_operational_time == 0:
                     # Check log evidence in previous turns confirmed this works, but we re-verify
-                    print(f"    [⚡] SPEED WIN: Brain responded BEFORE Hub was fully operational! Cached Relay active.")
+                    print("    [⚡] SPEED WIN: Brain responded BEFORE Hub was fully operational! Cached Relay active.")
                 
                 # Check for RAG successful retrieval markers
                 if "Anchor" in text or "Work history" in text:
-                    print(f"    [🏆] RAG SINCERITY: Archive context detected in response.")
+                    print("    [🏆] RAG SINCERITY: Archive context detected in response.")
                 
                 success = True
                 break

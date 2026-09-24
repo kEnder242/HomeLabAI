@@ -1,9 +1,7 @@
 import asyncio
-import json
 import os
-import time
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='[TEST] %(message)s')
@@ -37,7 +35,7 @@ async def test_v5_alarm_healing():
         print("[STEP 2] Verifying error detection...")
         try:
             await asyncio.wait_for(task, timeout=10)
-        except Exception as e:
+        except Exception:
             # We expect run_nightly_tasks to handle the internal exception and log it
             pass
         

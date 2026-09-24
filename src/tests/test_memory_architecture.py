@@ -13,11 +13,7 @@ Verifies:
 """
 
 import hashlib
-import json
-import os
-import time
 import numpy as np
-import pytest
 from collections import deque
 
 from logic.cognitive_hub import CognitiveHub

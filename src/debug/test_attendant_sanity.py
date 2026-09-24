@@ -1,6 +1,5 @@
 import asyncio
 import aiohttp
-import pytest
 
 ATTENDANT_URL = "http://localhost:8765"
 

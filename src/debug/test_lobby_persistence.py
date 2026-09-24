@@ -1,9 +1,7 @@
 import asyncio
-import json
 import requests
 import time
 import hashlib
-import subprocess
 
 ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://localhost:8765"

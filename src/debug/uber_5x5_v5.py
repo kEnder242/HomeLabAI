@@ -1,9 +1,7 @@
 import asyncio
-import json
 import os
 import sys
 import time
-import requests
 import hashlib
 import subprocess
 from playwright.async_api import async_playwright
@@ -62,7 +60,7 @@ async def evaluate_fidelity(cycle_id, page):
     has_refusal_payload = False
     if '"refusal": true' in full_dom.lower() and 'premise_mismatch' in full_dom.lower():
         has_refusal_payload = True
-        print(f"    [Audit] Refusal Payload Detected — intercepting as 5/5 PASS")
+        print("    [Audit] Refusal Payload Detected — intercepting as 5/5 PASS")
 
     # 5. Semantic Content Check
     has_vocal = any(x.lower() in full_dom.lower() for x in ["<thought>", "archives", "pecistressor", "validation", "scar", "narf", "focus", "sync", "intuition"])

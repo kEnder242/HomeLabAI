@@ -2,7 +2,6 @@ import asyncio
 import json
 import aiohttp
 import sys
-import os
 import time
 
 # Paths

@@ -7,7 +7,6 @@ import asyncio
 import json
 import socket
 import sys
-import os
 import pytest
 
 # ---------------------------------------------------------------------------

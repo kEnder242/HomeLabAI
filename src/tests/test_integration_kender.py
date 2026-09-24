@@ -3,8 +3,6 @@
 Probes the remote Ollama instance on 192.168.1.26:11434 and validates
 model availability and basic chat completion functionality.
 """
-import json
-import os
 import socket
 import sys
 import pytest

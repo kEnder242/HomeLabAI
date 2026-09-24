@@ -1,6 +1,5 @@
 import json
 import logging
-import sys
 from typing import Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 from infra.montana import reclaim_logger

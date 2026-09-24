@@ -9,7 +9,6 @@ grounded validation anchors from config/validation_anchors.json.
 import asyncio
 import json
 import logging
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -100,7 +99,7 @@ async def test_live_cognitive_rag_anchors():
 
     async with aiohttp.ClientSession() as session:
         # 2. Connect to Foyer WebSocket endpoint
-        ws_url = f"ws://127.0.0.1:8765/hub"
+        ws_url = "ws://127.0.0.1:8765/hub"
         try:
             async with session.ws_connect(ws_url, timeout=aiohttp.ClientWSTimeout(ws_close=5.0)) as ws:
                 # 3. Authenticated Handshake (FEAT-426)

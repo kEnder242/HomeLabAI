@@ -4,7 +4,6 @@ Verifies that when hibernation.enabled is False in infrastructure.json:
 2. router.websocket_handler suppresses idle disconnect timer.
 """
 import pytest
-import os
 import json
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -40,7 +39,6 @@ async def test_manager_skips_afk_when_hibernation_disabled(tmp_path):
 
 @pytest.mark.asyncio
 async def test_manager_enables_afk_when_hibernation_true(tmp_path):
-    from v5.ignition.manager import IgnitionManager
     
     infra_file = tmp_path / "infrastructure.json"
     infra_file.write_text(json.dumps({

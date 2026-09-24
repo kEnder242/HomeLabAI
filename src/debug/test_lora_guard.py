@@ -65,7 +65,7 @@ async def main():
     print("\n[*] Cycle 3: Reasoning Consistency...")
     ok, down = await send_query("[ME] What is the current Lab Floor memory footprint?")
     if ok:
-        print(f"    [WIN 3] PASS: System stable.")
+        print("    [WIN 3] PASS: System stable.")
     else:
         print("    [FAIL] Cycle 3.")
         return

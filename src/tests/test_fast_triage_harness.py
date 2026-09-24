@@ -1,4 +1,3 @@
-import pytest
 
 def test_no_hardcoded_greeting_lists():
     """[BKM-015 Enforcement]: Ensure cognitive_hub.py contains zero static greeting string lists in executable code."""

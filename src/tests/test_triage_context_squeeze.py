@@ -1,7 +1,7 @@
 """[FEAT-519] Unit Test: Triage Context Squeeze & Token Cap."""
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
 async def test_triage_strips_round_table_memory():

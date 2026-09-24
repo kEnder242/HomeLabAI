@@ -1,5 +1,4 @@
 import requests
-import json
 import time
 
 STYLE_KEY = "92e785ba"

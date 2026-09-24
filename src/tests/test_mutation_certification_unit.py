@@ -3,10 +3,6 @@ Unit Test Suite for [FEAT-598 / Story 86.6]:
 Mutation Certification, Array Cleanup, and Revision Promotion.
 """
 
-import pytest
-import json
-import tempfile
-from pathlib import Path
 
 
 def test_mutation_cleanup_logic():

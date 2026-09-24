@@ -2,7 +2,6 @@ import pytest
 import sys
 import os
 import json
-import aiohttp
 from unittest.mock import patch, AsyncMock
 
 # Adjust sys.path to find nodes

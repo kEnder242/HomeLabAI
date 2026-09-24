@@ -1,6 +1,5 @@
 import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
 
 
 def resolve_hyde_vector(deep_thought_text: str = None, pinky_text: str = None, raw_query: str = ""):

@@ -11,7 +11,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 try:
     import aiohttp

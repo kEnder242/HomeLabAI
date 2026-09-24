@@ -4,7 +4,6 @@ import time
 import requests
 import subprocess
 import sys
-import psutil
 
 # [FEAT-322] Shadow Deadlock Reproduction Harness v3 (PORT PERSISTENCE)
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"

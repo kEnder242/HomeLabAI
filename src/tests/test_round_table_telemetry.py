@@ -1,7 +1,6 @@
 import os
 import json
 import tempfile
-import pytest
 from memory.blackboard_ledger import BlackboardLedger
 
 def test_blackboard_ledger_append_delta():

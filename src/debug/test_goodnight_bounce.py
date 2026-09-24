@@ -36,7 +36,7 @@ async def test_bounce():
                 "type": "text_input", 
                 "content": json.dumps({"tool": "close_lab", "parameters": {}})
             }
-            print(f"[TRIGGER] Sending explicit tool call...")
+            print("[TRIGGER] Sending explicit tool call...")
             await ws.send(json.dumps(payload))
             
             # 3. Wait for shutdown broadcast
@@ -80,7 +80,7 @@ async def test_bounce():
                 print(f"⚠️  Attendant reports process death: {err}")
                 bounce_detected = True
 
-        except Exception as e:
+        except Exception:
             # Attendant might be briefly unreachable during service restarts
             pass
             

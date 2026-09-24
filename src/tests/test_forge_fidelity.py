@@ -3,12 +3,11 @@ import os
 import sys
 import json
 import tempfile
-import pytest
 from typing import Dict, List, Any, Callable
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from forge.build_lora_datasets import build_master_curriculum, CURRICULUM_DISTRIBUTION
+from forge.build_lora_datasets import build_master_curriculum
 
 # Canonical probe prompts for post-training validation
 CANONICAL_PROBES = [

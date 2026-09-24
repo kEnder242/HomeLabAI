@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 import datetime
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 try:
     from acme_lab import AcmeLab
@@ -81,7 +80,6 @@ async def test_induction_storm_prevention(lab):
 @pytest.mark.asyncio
 async def test_actual_loop_execution(lab):
     """Simulates the AcmeLab.scheduled_tasks_loop to prove the mutex holds over multiple iterations."""
-    from acme_lab import AcmeLab
     
     # Setup mock environment
     mock_now = datetime.datetime(2026, 4, 22, 2, 0, 0) # 2:00 AM

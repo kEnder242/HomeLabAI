@@ -2,7 +2,6 @@
 Test suite for Reverse DNA (RDNA) Question Matching and Bidirectional Linking.
 Sprint: SPR-83.0 / Story 83.3
 """
-import pytest
 from logic.vector_pre_triage import probe_clara_dna_sync
 
 

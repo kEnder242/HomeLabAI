@@ -1,8 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright
 import subprocess
-import time
-import os
 
 # --- Paths ---
 INTERCOM_URL = "http://localhost:9001/intercom.html" # Assuming field-notes is running on 9001

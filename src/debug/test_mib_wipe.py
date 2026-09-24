@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import time
 
 # Ensure we can import acme_lab
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

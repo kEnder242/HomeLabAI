@@ -1,6 +1,5 @@
 import socket
 import sys
-import time
 
 def check_port(host, port):
     try:

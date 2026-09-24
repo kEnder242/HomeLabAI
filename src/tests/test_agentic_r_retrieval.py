@@ -1,12 +1,10 @@
-import pytest
 import os
 import sys
-import json
 
 # Ensure HomeLabAI root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.nodes.archive_node import compute_mmr_ranking, execute_grep_search_pivot, get_context
+from src.nodes.archive_node import compute_mmr_ranking, execute_grep_search_pivot
 
 
 def test_compute_mmr_ranking_penalizes_redundant_chunks():

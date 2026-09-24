@@ -1,7 +1,5 @@
 import asyncio
-import os
 import json
-import logging
 import pytest
 from recruiter import NightlyRecruiter
 from dream_cycle import DreamManager
@@ -50,7 +48,6 @@ async def test_recruiter_expansion_on_no_jobs():
     async def mock_verify(jobs): return []
     r.verify_and_score_jobs = mock_verify
     
-    from recruiter import run_recruiter_task
     # This should trigger run_synergy_scan
     await r.run_synergy_scan()
     print("[PASS] Recruiter expansion logic executed.")

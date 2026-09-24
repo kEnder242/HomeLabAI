@@ -1,6 +1,5 @@
-import asyncio
 import unittest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 from nodes.loader import BicameralNode
 
 class TestFederatedFailover(unittest.IsolatedAsyncioTestCase):

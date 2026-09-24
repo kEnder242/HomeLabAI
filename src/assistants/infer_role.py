@@ -6,7 +6,6 @@ Usage: Infer agent role/type from task context at RUN time.
 """
 
 from typing import Optional
-import re
 
 
 def infer_role_from_prompt(prompt: str, task: Optional[str] = None) -> str:

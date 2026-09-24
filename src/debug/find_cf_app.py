@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 
 def find_by_aud():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"

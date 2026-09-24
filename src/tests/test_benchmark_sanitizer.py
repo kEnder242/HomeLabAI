@@ -3,7 +3,6 @@
 Validates that export_public_benchmarks.py strips LAN IPs, session tokens, and local paths.
 """
 import json
-import pytest
 from pathlib import Path
 import sys
 

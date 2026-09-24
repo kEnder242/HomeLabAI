@@ -1,4 +1,3 @@
-import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PORT = 9402

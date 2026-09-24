@@ -3,11 +3,9 @@ Unit Test Suite for [FEAT-597 / FEAT-582 / BKM-060]:
 Draft Promotion, Safe Non-WIS ID Allocation & Background Static HTML Rebuild Trigger.
 """
 
-import pytest
-import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from curator.draft_decomposer import (
     promote_draft_to_db,

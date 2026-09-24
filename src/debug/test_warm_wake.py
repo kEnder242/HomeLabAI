@@ -2,9 +2,7 @@ import asyncio
 import aiohttp
 import time
 import json
-import os
 import psutil
-import subprocess
 
 # [FEAT-337] Warm Wake Validation Harness
 # Used for certifying sub-second wake performance and Zero Layering.

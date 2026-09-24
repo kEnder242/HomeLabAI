@@ -118,14 +118,14 @@ async def run_cycle(cycle):
     key = get_key()
     
     # 1. Natural Hibernate (H2 - Lean Sleep)
-    print(f"    [Action] Entering Lean Sleep (H2)...")
+    print("    [Action] Entering Lean Sleep (H2)...")
     subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:8765/hibernate?level=2&key={key}'], capture_output=True)
     time.sleep(5) # Minimum settle
 
     # 2. Launch Storm
     # 4 Pinky queries + 1 Strategic Brain query
     tasks = []
-    print(f"    [Action] Launching 5-node storm (4 local, 1 strategic)...")
+    print("    [Action] Launching 5-node storm (4 local, 1 strategic)...")
     for i in range(4):
         tasks.append(trigger_query(i, f"[ME] Rude probe {cycle}.{i}. Respond with ROGER."))
     

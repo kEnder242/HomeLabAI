@@ -6,9 +6,6 @@ test_paper_engine.py
 Tests for the Lens Crafter, Paper Grading Engine, Citation Expander, and Synapse Graph.
 """
 
-import os
-import json
-import pytest
 from pathlib import Path
 
 # Paths

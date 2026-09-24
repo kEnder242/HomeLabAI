@@ -17,10 +17,9 @@ import json
 import pytest
 import aiohttp
 import websockets
-from collections import deque
 
 from logic.cognitive_hub import CognitiveHub, BRAIN_PERSONA_SPEC
-from nodes.archive_node import select_vector_query, parse_multi_voice_hyde
+from nodes.archive_node import select_vector_query
 
 
 def _make_hub():

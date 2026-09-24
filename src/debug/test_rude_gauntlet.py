@@ -2,10 +2,8 @@ import asyncio
 import json
 import websockets
 import time
-import requests
 import hashlib
 import subprocess
-import os
 
 # [FEAT-342] The Rude Gauntlet
 # Certifies transition stability by sending concurrent queries to a HIBERNATING lab.
@@ -46,12 +44,12 @@ async def run_cycle(cycle):
     key = get_style_key()
     
     # 1. Force Hibernate (H2 - Lean Sleep)
-    print(f"    [Action] Entering Lean Sleep (H2)...")
+    print("    [Action] Entering Lean Sleep (H2)...")
     subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:8765/hibernate?level=2&key={key}'], capture_output=True)
     time.sleep(10) # Settle
 
     # 2. Fire Rude Storm (5 concurrent queries to sleeping lab)
-    print(f"    [Action] Launching 5-node 'Wake-on-Intent' storm...")
+    print("    [Action] Launching 5-node 'Wake-on-Intent' storm...")
     tasks = []
     for i in range(5):
         tasks.append(trigger_query(i, f"[ME] Rude Check {cycle}.{i}. Respond with ROGER."))

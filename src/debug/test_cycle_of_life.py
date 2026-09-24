@@ -1,7 +1,5 @@
 import asyncio
 import subprocess
-import os
-import psutil
 import time
 import requests
 

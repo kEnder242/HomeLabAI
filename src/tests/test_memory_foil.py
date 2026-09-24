@@ -1,6 +1,6 @@
 import asyncio
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 from logic.cognitive_hub import CognitiveHub
 
 async def test_persistent_foil_memory():

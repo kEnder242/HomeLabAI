@@ -1,6 +1,5 @@
 import asyncio
 import os
-import json
 import pytest
 from recruiter import NightlyRecruiter
 

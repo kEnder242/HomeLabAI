@@ -1,7 +1,5 @@
 import json
 import re
-import sys
-import os
 
 # Mock broadcast for testing
 async def mock_broadcast(msg):

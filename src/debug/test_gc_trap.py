@@ -2,7 +2,6 @@ import subprocess
 import time
 import os
 import gc
-import sys
 import psutil
 
 def spawn_and_lose_reference():

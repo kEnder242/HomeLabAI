@@ -1,7 +1,6 @@
 import os
 import json
 import socket
-import sys
 
 # Paths
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"

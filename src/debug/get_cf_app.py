@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 
 def get_app_details():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"

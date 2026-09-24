@@ -3,7 +3,6 @@ import json
 import pytest
 import websockets
 import time
-from src.infra.cognitive_audit import CognitiveAudit
 
 @pytest.mark.asyncio
 async def test_pi_to_21_digits_resonant_flow():
@@ -52,7 +51,7 @@ async def test_pi_to_21_digits_resonant_flow():
                     # Catch the technical truth even if source metadata is missing
                     if "3.14159" in text:
                         brain_text = text
-                        print(f"  [SYNERGY] Brain Derivation received (Technical Truth Verified).")
+                        print("  [SYNERGY] Brain Derivation received (Technical Truth Verified).")
                         if found_intuition: break
                 except asyncio.TimeoutError:
                     continue

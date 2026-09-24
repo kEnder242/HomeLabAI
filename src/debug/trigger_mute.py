@@ -1,7 +1,6 @@
 import asyncio
 import json
 import websockets
-import sys
 
 # [FEAT-055] Manual Task Trigger (Fast Alarm)
 async def trigger():

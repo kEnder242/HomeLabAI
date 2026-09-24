@@ -2,8 +2,6 @@ import asyncio
 import aiohttp
 import subprocess
 import time
-import json
-import os
 import hashlib
 
 # --- Config ---

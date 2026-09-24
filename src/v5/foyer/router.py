@@ -950,7 +950,7 @@ class FoyerRouter:
             if os.path.exists(rebuild_script):
                 try:
                     subprocess.run([sys.executable, rebuild_script], capture_output=True, text=True, timeout=10)
-                except Exception as b_err:
+                except Exception:
                     pass
 
             if is_timeline:
@@ -958,7 +958,7 @@ class FoyerRouter:
                 if os.path.exists(timeline_script):
                     try:
                         subprocess.run([sys.executable, timeline_script], capture_output=True, text=True, timeout=10)
-                    except Exception as t_err:
+                    except Exception:
                         pass
 
             return web.json_response({

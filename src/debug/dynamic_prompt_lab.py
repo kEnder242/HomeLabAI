@@ -3,7 +3,6 @@ import json
 import time
 import os
 import argparse
-import sys
 
 VLLM_URL = "http://localhost:8088/v1/chat/completions"
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -52,7 +51,7 @@ def run_test(config):
     }
     
     print(f"\n{'='*60}")
-    print(f"🧪 DYNAMIC PROMPT TEST")
+    print("🧪 DYNAMIC PROMPT TEST")
     print(f"{'='*60}")
     print(f"[SYSTEM]: {config['system'][:100]}...")
     print(f"[USER]:   {config['user']}")

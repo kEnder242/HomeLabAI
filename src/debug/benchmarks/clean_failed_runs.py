@@ -60,7 +60,7 @@ def main():
             keep.append(line)
 
     print(f"{'=' * 60}")
-    print(f"  BENCHMARK LEDGER MAINTENANCE")
+    print("  BENCHMARK LEDGER MAINTENANCE")
     print(f"  Ledger:    {LEDGER}")
     print(f"  Total:     {total} entries")
     print(f"  Failed:    {len(purged)} entries (ttft_ms=0 + [ERROR])")
@@ -78,7 +78,7 @@ def main():
             print(f"    - [{pid}] score={score} | {resp_preview}...")
 
     if not execute:
-        print(f"\n  [DRY-RUN] No changes written. Re-run with --execute to purge.")
+        print("\n  [DRY-RUN] No changes written. Re-run with --execute to purge.")
         return
 
     # Atomic write: .tmp then os.replace

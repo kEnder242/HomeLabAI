@@ -14,7 +14,6 @@ import sys
 import json
 import time
 import subprocess
-import logging
 
 BASE_DIR = "/home/jallred/Dev_Lab"
 PORTFOLIO_DIR = os.path.join(BASE_DIR, "Portfolio_Dev")
@@ -53,7 +52,7 @@ def get_committed_files(repo_path: str) -> list:
         )
         files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
         return files
-    except Exception as e:
+    except Exception:
         # Fallback to git show
         try:
             res = subprocess.run(

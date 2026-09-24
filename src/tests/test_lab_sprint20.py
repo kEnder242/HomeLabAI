@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 try:
     from src.acme_lab import AcmeLab

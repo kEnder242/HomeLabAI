@@ -31,7 +31,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 CITATION_PATTERN = re.compile(
     r"^(?:PHL|DISC|FEAT|BKM|PROTO|ARXIV|GEM|WIS|LAB)-[A-Za-z0-9_.\-]+$"

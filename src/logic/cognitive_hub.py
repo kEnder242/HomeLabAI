@@ -8,7 +8,6 @@ import time
 import random
 from v5.common.types import LAB_VERSION
 from logic.feedback_interceptor import record_feedback
-from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
 from logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
 from logic.triage_engine import (
     SpeakerRegistry,

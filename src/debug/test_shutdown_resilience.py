@@ -3,9 +3,6 @@ import json
 import websockets
 import time
 import aiohttp
-import subprocess
-import os
-import signal
 
 # Configuration
 HUB_URL = "ws://localhost:8765"

@@ -41,7 +41,7 @@ async def run_fast_integrated_test():
     with open(script_path, "w") as f:
         f.write(patched_content)
     
-    print(f"[EXEC] Spawning patched dream_voice_FAST.py...")
+    print("[EXEC] Spawning patched dream_voice_FAST.py...")
     # Add PYTHONPATH to env
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.abspath("HomeLabAI/src")

@@ -1,11 +1,9 @@
 import asyncio
 import json
-import logging
 import time
 import websockets
 import sys
 import os
-import uuid
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))

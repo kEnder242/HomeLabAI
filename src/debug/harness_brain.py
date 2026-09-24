@@ -51,7 +51,7 @@ async def run_experiment(name, query, context="", behavioral_guidance="", system
     if leaks:
         print(f"⚠️ IDENTITY LEAK DETECTED: {leaks}")
     else:
-        print(f"✅ CLEAN RESPONSE (No obvious identity leaks)")
+        print("✅ CLEAN RESPONSE (No obvious identity leaks)")
 
 async def main():
     # We must wait for the engine to be ready before testing

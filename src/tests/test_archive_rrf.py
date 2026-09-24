@@ -1,13 +1,11 @@
 import asyncio
 import json
-import os
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch, mock_open
 
 from nodes.archive_node import (
     rrf_fuse,
     keyword_search,
-    get_context,
-    DATA_DIR
+    get_context
 )
 
 async def test_archive_rrf_logic():

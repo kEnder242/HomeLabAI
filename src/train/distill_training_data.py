@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import re
 
-from infra.engine_client import async_query_sovereign_engine, resolve_active_deep_thought_target
+from infra.engine_client import async_query_sovereign_engine
 
 # Source files
 PORTFOLIO_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")

@@ -1,6 +1,5 @@
 import os
 import json
-import pytest
 from nodes.loader import BicameralNode
 
 COMPASS_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json")

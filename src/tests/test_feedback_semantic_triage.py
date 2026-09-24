@@ -17,7 +17,6 @@ META/feedback), this battery verifies the deterministic contract that gates it:
 
 import json
 
-import pytest
 
 from src.logic.triage_engine import (
     classify_vibe_and_domain,
