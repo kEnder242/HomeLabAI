@@ -461,10 +461,12 @@ def run_dream_cycle() -> dict:
                         return json.loads(line)
                     except Exception:
                         pass
-            if res.returncode == 0:
-                return {"status": "PASS", "turns_synthesized": 1, "items_refined": 0, "raw": res.stdout.strip()}
-            else:
-                return {"status": "FAIL", "turns_synthesized": 0, "items_refined": 0, "error": res.stderr.strip() or res.stdout.strip()}
+            return {
+                "status": "FAIL",
+                "turns_synthesized": 0,
+                "items_refined": 0,
+                "error": f"Invalid/missing structured JSON telemetry from dream_cycle (code {res.returncode}): {res.stdout.strip()[:100]}"
+            }
         except Exception as e:
             logger.warning(f"[DREAM] Dreaming cycle warning: {e}")
             write_step_log("DREAM_CYCLE_ERROR", str(e))
@@ -840,9 +842,9 @@ def main():
         logger.info("[NIGHTLY STEP 6 - BENCHMARK] Executing Dynamic Federated Benchmark Sweep...")
         run_benchmark_sweep()
 
-        # Settling Cooldown 3: 5s socket draining settling window before Round Table Probe
-        logger.info("[NIGHTLY COOLDOWN 3] Settling 5s for socket draining before Round Table Probe...")
-        time.sleep(5)
+        # Settling Cooldown 3: 60s socket draining and silicon quiescence window before Round Table Probe (BKM-044)
+        logger.info("[NIGHTLY COOLDOWN 3] Settling 60s for socket draining & silicon stabilization before Round Table Probe...")
+        time.sleep(60)
 
         # =========================================================================
         # STEP 6b: SYNTHETIC MORNING ROUND TABLE PROBE [FEAT-608 / Story 88.3]
