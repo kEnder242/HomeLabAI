@@ -120,14 +120,14 @@
             {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"}
         ],
         "fast_worker": [
-            {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
-            {"providerID": "opencode", "modelID": "big-pickle"},
-            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+            {"providerID": "openrouter", "modelID": "free"},
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
+            {"providerID": "opencode", "modelID": "big-pickle"}
         ],
         "default_ladder": [
-            {"providerID": "groq", "modelID": "llama-3.3-70b-versatile"},
-            {"providerID": "opencode", "modelID": "big-pickle"},
+            {"providerID": "openrouter", "modelID": "free"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
+            {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
         ],
         "local_bicameral": {
