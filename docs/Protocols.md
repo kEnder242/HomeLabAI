@@ -985,11 +985,11 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 ### 2. The Universal Taxonomy Matrix (How vs. Why vs. What vs. When)
 | Bucket | Prefix | Cognitive Purpose | Primary Question | Source of Record |
 | :--- | :--- | :--- | :--- | :--- |
-| **Philosophy** | `PHL-xxx` | Conceptual Worldviews & Invariant Epistemology | **WHY (First Principle)** | `philosophy_data.json` $\rightarrow$ `philosophy_dna` |
-| **Wisdom** | `WIS-xxx` | Practical Lessons, War Stories & Failure Scars | **WHY (Empirical)** | `stories.html` $\rightarrow$ `wisdom_data.json` $\rightarrow$ `philosophy_dna` |
+| **Inspirations** | `INS-xxx` *(alias: `PHL-xxx`)* | Conceptual Worldviews, Invariant Epistemology & Spark Insights | **WHY (First Principle)** | `inspiration_data.json` / `philosophy_data.json` $\rightarrow$ `philosophy_dna` |
+| **Wisdom** | `WIS-xxx` | Practical Lessons, War Stories & Failure Scars | **WHY (Empirical)** | `stories.html` $\rightarrow$ `wisdom_data.json` $\rightarrow$ `wisdom_dna` |
 | **Protocols** | `BKM-xxx` | Prescriptive Rules & Actionable Directives | **HOW (Mandate)** | `Protocols.md` $\rightarrow$ `behavioral_dna` |
 | **Features** | `FEAT-xxx` | Registered Capabilities & Architectural Specs | **WHAT (Mechanics)** | `FeatureTracker.md` $\rightarrow$ `feature_dna` |
-| **Vibes** | `VIBE-xxx` | Behavioral Persona & Conversational Tonality | **WHO (Tone)** | `FeatureTracker.md` $\rightarrow$ `feature_dna` |
+| **Vibes** | `VIBE-xxx` | Behavioral Persona & Conversational Tonality | **WHO (Tone)** | `vibe_data.json` / `FeatureTracker.md` $\rightarrow$ `vibe_dna` |
 | **Discoveries**| `DISC-xxx` | Distillation Insights & Subconscious Epiphanies | **WHAT (Insight)** | `discovery` collection $\rightarrow$ `DISC` ledger |
 | **Sprint DNA** | `SPR-xxx` | Active Sprint Plans, Story Cards & Decoupled ASTs | **WHEN (Active)** | `SPRINT_PLAN_*.md` $\rightarrow$ `sprint_dna` |
 | **Reverse DNA**| `RDNA-xxx` | Pre-Processed Question Space & HyDE Bypass | **WHEN / ASK** | `rdna_questions.json` $\rightarrow$ `rdna` |
@@ -997,8 +997,9 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 
 ### 3. The Invariant Rules
 1. **Separation of Bucket vs. Topic:** Never confuse the **DNA Bucket** (e.g. `BKM`) with the **Subject Topic Tag** (e.g. `#systems_architecture`, `#security`).
-2. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
-3. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
+2. **Polymorphic Aliasing (`INS` $\leftrightarrow$ `PHL`):** The prefix `INS` (Inspirations & Insights) is the canonical domain identifier for epistemological axioms. To prevent historical document drift and ensure zero broken links across code comments and papers, all ingestion parsers, MCP servers, and UI components must support polymorphic aliasing where `PHL-xxx` seamlessly resolves to `INS-xxx` and vice versa.
+3. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
+4. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
 
 ---
 
