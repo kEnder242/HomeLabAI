@@ -17,7 +17,7 @@ Welcome, Agent. You are operating within a **Federated Lab** architecture.
 | If you are looking for... | Go to... | Role |
 | :--- | :--- | :--- |
 | **Global Context & Cold Start** | `BOOTSTRAP_v4.4.md` | **The Bootloader**: Primary entry point & orientation |
-| **TACTICAL Protocols** | `HomeLabAI/docs/Protocols.md` | **The Law**: BKMs 001–039 (QQ, AFK, Attendant Restart) |
+| **TACTICAL Protocols** | `HomeLabAI/docs/Protocols.md` | **The Law**: BKMs 001–067 (QQ, AFK, Attendant Restart, Decoupled Sentry) |
 | **Physical Floor & Systemd** | `HomeLabAI/docs/LAB_INFRASTRUCTURE.md` | **The Physical Floor**: Storage mounts & systemd service inventory (`:8000`, `:8001`, `:4096`, `:4097`) |
 | **Swarm Delegation Playbook** | `Portfolio_Dev/OPENAGENT_HANDOVER_PLAYBOOK.md` | **The Swarm Playbook**: OpenAgent `task()` templates & KENDER execution |
 | **Diagnostic Script Map** | `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md` | **The Ledger**: Map of all tools and test scripts |
