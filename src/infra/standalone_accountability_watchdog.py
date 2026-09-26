@@ -6,6 +6,7 @@
 
 import argparse
 import datetime
+import fcntl
 import json
 import logging
 import os
@@ -137,11 +138,37 @@ def check_stale_locks():
             lock_pid = None
             try:
                 content = lock_path.read_text(encoding="utf-8").strip()
-                if content and content.isdigit():
-                    lock_pid = int(content)
-                    pid_alive = is_pid_alive(lock_pid)
+                if content:
+                    for line in content.splitlines():
+                        line_s = line.strip()
+                        if line_s.isdigit():
+                            lock_pid = int(line_s)
+                            break
+                        elif line_s.startswith("pid="):
+                            cand = line_s.split("=")[1].strip()
+                            if cand.isdigit():
+                                lock_pid = int(cand)
+                                break
+                    if lock_pid:
+                        pid_alive = is_pid_alive(lock_pid)
             except Exception:
                 pass
+
+            # Test kernel lock status via non-blocking probe
+            is_locked = False
+            try:
+                with open(lock_path, "a") as test_fd:
+                    try:
+                        fcntl.flock(test_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(test_fd, fcntl.LOCK_UN)
+                    except (OSError, BlockingIOError):
+                        is_locked = True
+            except Exception:
+                pass
+
+            if is_locked and pid_alive:
+                # Actively running process legitimately holds the lock
+                continue
 
             if age_s > 1800:  # 30+ minutes old
                 if lock_pid and not pid_alive:

@@ -235,6 +235,15 @@ def check_and_acquire_nightly_lock(force: bool = False):
             f"[MUTEX] Lock released by previous instance. Acquired exclusive lock (PID: {os.getpid()})."
         )
 
+    # Stamp PID into lockfile for observability
+    try:
+        lock_fd.seek(0)
+        lock_fd.truncate(0)
+        lock_fd.write(f"{os.getpid()}\n")
+        lock_fd.flush()
+    except Exception:
+        pass
+
     # Now that we hold the lock, check if the nightly sweep was already completed recently
     if not force and os.path.exists(NIGHTLY_STATE_PATH):
         try:
@@ -253,6 +262,8 @@ def check_and_acquire_nightly_lock(force: bool = False):
                 try:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
                     lock_fd.close()
+                    if os.path.exists(NIGHTLY_LOCK_PATH):
+                        os.remove(NIGHTLY_LOCK_PATH)
                 except Exception:
                     pass
                 sys.exit(0)
@@ -306,6 +317,11 @@ def record_nightly_completion(lock_fd, status="COMPLETED"):
             lock_fd.close()
         except Exception:
             pass
+        if os.path.exists(NIGHTLY_LOCK_PATH):
+            try:
+                os.remove(NIGHTLY_LOCK_PATH)
+            except Exception:
+                pass
 
 
 def quiesce_vllm() -> bool:
@@ -1270,6 +1286,11 @@ def main():
             lock_fd.close()
         except Exception:
             pass
+        if os.path.exists(NIGHTLY_LOCK_PATH):
+            try:
+                os.remove(NIGHTLY_LOCK_PATH)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

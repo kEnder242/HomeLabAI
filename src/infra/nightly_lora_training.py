@@ -563,6 +563,15 @@ def check_and_acquire_lock(force: bool = False):
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         logger.info(f"[MUTEX] Lock released by winner; acquired (PID {os.getpid()}).")
 
+    # Stamp PID into lockfile for observability
+    try:
+        lock_fd.seek(0)
+        lock_fd.truncate(0)
+        lock_fd.write(f"{os.getpid()}\n")
+        lock_fd.flush()
+    except Exception:
+        pass
+
     if not force and STATE_PATH.exists():
         try:
             state = json.loads(STATE_PATH.read_text())
@@ -575,8 +584,15 @@ def check_and_acquire_lock(force: bool = False):
                 write_step_log(
                     "DEFERRED_TO_WINNER", f"completed_by={state.get('winner_pid')}"
                 )
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                lock_fd.close()
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
+                try:
+                    LOCK_PATH.unlink(missing_ok=True)
+                except Exception:
+                    pass
                 return None
         except Exception as exc:
             logger.warning(f"[MUTEX] Could not inspect state ledger: {exc}")
@@ -625,6 +641,10 @@ def record_completion(lock_fd, status: str = "COMPLETED") -> None:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 lock_fd.close()
+            except Exception:
+                pass
+            try:
+                LOCK_PATH.unlink(missing_ok=True)
             except Exception:
                 pass
 
