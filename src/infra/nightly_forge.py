@@ -61,11 +61,14 @@ if not logger.handlers:
     logger.addHandler(c_handler)
 
     # File handler (granular step traces in HomeLabAI/run/nightly_forge.log)
-    f_handler = logging.FileHandler(NIGHTLY_FORGE_LOG, mode="a")
-    f_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
-    )
-    logger.addHandler(f_handler)
+    try:
+        f_handler = logging.FileHandler(NIGHTLY_FORGE_LOG, mode="a")
+        f_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
+        )
+        logger.addHandler(f_handler)
+    except (PermissionError, OSError):
+        pass
 
 try:
     from infra.pager_relay import trigger_pager
@@ -1096,14 +1099,13 @@ def main():
                     "SWEEP_ABORTED_ON_TRAIN_FAIL",
                     "Aborting downstream sweep due to training failure",
                 )
-                return
-
-            # Settling Cooldown 2: 15s post-training thermal settling
-            logger.info(
-                "[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown..."
-            )
-            write_step_log("TRAINING_SETTLING", "Sleeping 15s")
-            time.sleep(15)
+            else:
+                # Settling Cooldown 2: 15s post-training thermal settling
+                logger.info(
+                    "[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown..."
+                )
+                write_step_log("TRAINING_SETTLING", "Sleeping 15s")
+                time.sleep(15)
         finally:
             # =====================================================================
             # STEP 4: RE-IGNITION [FEAT-136] (~60s budget)
@@ -1136,6 +1138,7 @@ def main():
                     },
                 }
             )
+            record_nightly_completion(lock_fd, status="FAILED")
             return
 
         if args.forge_only:
