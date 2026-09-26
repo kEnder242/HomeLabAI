@@ -10,6 +10,7 @@ LAB_DIR = os.path.dirname(SRC_DIR)
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 OUTPUT_FILE = os.path.join(FORGE_DIR, "feedback_curriculum.jsonl")
 
+
 def harvest():
     if not os.path.exists(SERVER_LOG):
         print(f"Log file {SERVER_LOG} not found.")
@@ -27,7 +28,7 @@ def harvest():
                             continue
                         json_str = parts[1].strip()
                         data = json.loads(json_str)
-                        
+
                         # Filter for ⬆️ (UP) and ⬇️ (DOWN) votes
                         vote = data.get("vote", "")
                         if vote in ["⬆️", "⬇️", "UP", "DOWN"]:
@@ -41,13 +42,15 @@ def harvest():
     if curriculum:
         try:
             with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-                for item in curriculum:
-                    f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                f.writelines(
+                    json.dumps(item, ensure_ascii=False) + "\n" for item in curriculum
+                )
             print(f"Successfully harvested {len(curriculum)} packets to {OUTPUT_FILE}")
         except Exception as e:
             print(f"Error writing curriculum: {e}")
     else:
         print("No eligible feedback packets found in log.")
+
 
 if __name__ == "__main__":
     harvest()

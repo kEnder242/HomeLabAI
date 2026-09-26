@@ -1,8 +1,10 @@
+import gc
+import os
 import subprocess
 import time
-import os
-import gc
+
 import psutil
+
 
 def spawn_and_lose_reference():
     print("[DEBUG] Spawning child process (sleep 300)...")
@@ -12,16 +14,17 @@ def spawn_and_lose_reference():
         ["sleep", "300"],
         start_new_session=True,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stderr=subprocess.DEVNULL,
     )
     pid = proc.pid
     print(f"[DEBUG] Child spawned with PID: {pid}")
     return pid
 
+
 def test_trap():
     print("--- [GC TRAP TEST] ---")
     child_pid = spawn_and_lose_reference()
-    
+
     # Verify child is alive
     if psutil.pid_exists(child_pid):
         print(f"[VERIFY] Child {child_pid} is ALIVE.")
@@ -45,6 +48,7 @@ def test_trap():
         print("[DEBUG] Test cleanup complete.")
     except:
         pass
+
 
 if __name__ == "__main__":
     test_trap()

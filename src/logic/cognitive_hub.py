@@ -3,30 +3,41 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import time
-import random
-from v5.common.types import LAB_VERSION
+
 from logic.feedback_interceptor import record_feedback
-from logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
+from logic.override_parser import (
+    is_override_query,
+    parse_override_with_resident,
+    save_override_to_file,
+)
+from logic.speculative_triage import (
+    KENDER_HOST,
+    KENDER_PORT,
+    SOCKET_TIMEOUT_S,
+    SpeculativeTriageRelay,
+    _probe_tcp,
+)
 from logic.triage_engine import (
     SpeakerRegistry,
-    extract_latest_user_query,
-    scrub_hyde_vector,
     classify_vibe_and_domain,
+    extract_latest_user_query,
     is_control_plane_feedback,
-    validate_triage_payload
+    scrub_hyde_vector,
+    validate_triage_payload,
 )
-from nodes.pinky_critic_persona import (
-    build_critic_prompt,
-    parse_critic_payload,
-    format_chat_delivery,
-    format_crosstalk_telemetry
-)
-from logic.speculative_triage import SpeculativeTriageRelay, _probe_tcp, KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
 from logic.triage_policy_loader import TriagePolicyLoader
 from logic.vector_pre_triage import probe_clara_dna_sync
 from memory.blackboard_ledger import BlackboardLedger, ContextScope
+from nodes.pinky_critic_persona import (
+    build_critic_prompt,
+    format_chat_delivery,
+    format_crosstalk_telemetry,
+    parse_critic_payload,
+)
+from v5.common.types import LAB_VERSION
 
 # [FEAT-442] QPR Pre-Retrieval Query De-Noising Patterns
 # Strips conversational framing, filler, and politeness while preserving
@@ -34,21 +45,33 @@ from memory.blackboard_ledger import BlackboardLedger, ContextScope
 _QPR_NOISE_PATTERNS = [
     # Greetings / attention-getters (trailing \b avoids `yo` matching inside `you`)
     (r"(?i)\b(?:hey|hi|hello|yo|narf)\b\s*,?\s*", ""),
-# [FEAT-111] Cognitive Identity Lock
+    # [FEAT-111] Cognitive Identity Lock
     # Meta-cognitive framing
     (r"(?i)\b(I'm|I am)\s+(just\s+)?(wondering|curious|asking|hoping)\s+", ""),
     # Soft request preambles
-    (r"(?i)\b(can|could|would|will|do|did)\s+(you|we|I)\s+(please\s+)?(tell|show|find|look|check|help|give|run)\s+(me|us)?\s*", ""),
-    (r"(?i)\b(I want|I need|I'd like|I would like)\s+(to\s+)?(know|find|see|ask|understand|get|check)\s+", ""),
+    (
+        r"(?i)\b(can|could|would|will|do|did)\s+(you|we|I)\s+(please\s+)?(tell|show|find|look|check|help|give|run)\s+(me|us)?\s*",
+        "",
+    ),
+    (
+        r"(?i)\b(I want|I need|I'd like|I would like)\s+(to\s+)?(know|find|see|ask|understand|get|check)\s+",
+        "",
+    ),
     (r"(?i)\b(do you know|do we have|is there|are there|can you tell)\s+", ""),
     # Question openers
     (r"(?i)\b(what about|how about|what is|what's|what are|what're)\s+", ""),
     (r"(?i)\b(just\s+)?(trying\s+to\s+)?(figure|understand|remember|recall)\s+", ""),
     (r"(?i)\b(quick\s+)?question\s*:?\s*", ""),
     # Filler hedge words
-    (r"(?i)\b(actually|basically|honestly|literally|probably|maybe|perhaps|just|sort of|kind of)\s*,?\s*", ""),
+    (
+        r"(?i)\b(actually|basically|honestly|literally|probably|maybe|perhaps|just|sort of|kind of)\s*,?\s*",
+        "",
+    ),
     # Trailing politeness
-    (r"(?i)\s*,?\s*(please|thanks|thank you|cheers|appreciate it|if possible|if you can|when you get a chance)\s*$", ""),
+    (
+        r"(?i)\s*,?\s*(please|thanks|thank you|cheers|appreciate it|if possible|if you can|when you get a chance)\s*$",
+        "",
+    ),
 ]
 
 
@@ -57,9 +80,16 @@ def sanitize_spoken_dialogue(text: str) -> str:
     if not text:
         return ""
     # Strip <thought>...</thought> blocks (multiline)
-    sanitized = re.sub(r"<thought>.*?</thought>", "", str(text), flags=re.DOTALL | re.IGNORECASE)
+    sanitized = re.sub(
+        r"<thought>.*?</thought>", "", str(text), flags=re.DOTALL | re.IGNORECASE
+    )
     # Strip orphan tags
-    sanitized = re.sub(r"</?(?:thought|pinky|brain|system|context)[^>]*>", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(
+        r"</?(?:thought|pinky|brain|system|context)[^>]*>",
+        "",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
     # Collapse excess whitespace
     sanitized = re.sub(r"\s+", " ", sanitized).strip()
     return sanitized
@@ -99,6 +129,7 @@ def qpr_refine_query(query: str) -> str:
 
     return refined
 
+
 # [FEAT-451] Brain Persona Spec (Positive persona grounding, shares Brain's right-hemisphere personality)
 BRAIN_PERSONA_SPEC = (
     "[PERSONA]: You are Deep Thought - the Brain's pre-conscious analytical stream. "
@@ -115,9 +146,9 @@ DIRECT_RAW_QUERY = "direct_raw_query"
 # [FEAT-437/459] Unified HyDE & Greeting Synthesis Prompt (JSON)
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-    "1. \"is_casual\": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n"
-    "2. \"greeting\": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n"
-    "3. \"hyde_vector\": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as '[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>'; if casual, set to \"\").\n"
+    '1. "is_casual": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n'
+    '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
+    '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
     "Gate technical synthesis by the 4 domains: exp_tlm (Silicon Telemetry), exp_bkm (SRE Playbooks), exp_for (Forensic Logs), lab_history (18-Year Archive).\n"
     "Output ONLY valid JSON."
 )
@@ -126,10 +157,23 @@ _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
 def _load_hyde_synthesis_prompt():
     """[FEAT-437/438/459] Load Unified HYDE_SYNTHESIS_PROMPT dynamically from career_compass.json."""
     compass_paths = [
-        os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "Portfolio_Dev", "field_notes", "data", "career_compass.json")),
-        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json"),
+        os.path.normpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "..",
+                "Portfolio_Dev",
+                "field_notes",
+                "data",
+                "career_compass.json",
+            )
+        ),
+        os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json"
+        ),
     ]
-    
+
     keywords = []
     for path in compass_paths:
         if os.path.exists(path):
@@ -138,8 +182,12 @@ def _load_hyde_synthesis_prompt():
                     data = json.load(f)
                 mesh_terms = data.get("tier_2_keyword_mesh", {}).get("keywords", [])
                 if mesh_terms:
-                    keywords = mesh_terms[:30]  # Cap top 30 terms for clean prompt context
-                    logging.info(f"[FEAT-438] Loaded {len(keywords)} dynamic HyDE mesh terms from career_compass.json")
+                    keywords = mesh_terms[
+                        :30
+                    ]  # Cap top 30 terms for clean prompt context
+                    logging.info(
+                        f"[FEAT-438] Loaded {len(keywords)} dynamic HyDE mesh terms from career_compass.json"
+                    )
                     break
             except Exception as e:
                 logging.warning(f"Error reading career_compass.json at {path} ({e})")
@@ -148,9 +196,9 @@ def _load_hyde_synthesis_prompt():
         mesh_str = ", ".join(keywords)
         return (
             "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-            "1. \"is_casual\": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n"
-            "2. \"greeting\": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n"
-            "3. \"hyde_vector\": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as '[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>'; if casual, set to \"\").\n"
+            '1. "is_casual": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n'
+            '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
+            '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
             f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n"
             "Output ONLY valid JSON."
         )
@@ -160,13 +208,16 @@ def _load_hyde_synthesis_prompt():
 
 HYDE_SYNTHESIS_PROMPT = _load_hyde_synthesis_prompt()
 
+
 # [FEAT-T20.2] Lazy import — avoids hard dep if DCGM is absent
 def _get_telemetry_collector():
     try:
         from infra.telemetry_collector import get_collector
+
         return get_collector()
     except Exception:
         return None
+
 
 # [FEAT-488] Anti-Bleed Stream Sanitizer.
 # Small base models (Llama-3.2-3B) occasionally echo uppercase instruction headers
@@ -176,13 +227,21 @@ def _get_telemetry_collector():
 # preserving genuine response prose that does not begin with a rogue header.
 _ROGUE_PROMPT_MARKER_PATTERNS = (
     # GROUNDING_PROTOCOL: ... (header echo)
-    re.compile(r"^\s*\[?GROUNDING_PROTOCOL\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    re.compile(
+        r"^\s*\[?GROUNDING_PROTOCOL\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+    ),
     # [STANCE]: ... or STANCE: ...
-    re.compile(r"^\s*(?:\[STANCE\]\s*:?|STANCE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    re.compile(
+        r"^\s*(?:\[STANCE\]\s*:?|STANCE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+    ),
     # [ROUTE] or ROUTE: ...
-    re.compile(r"^\s*(?:\[ROUTE\]\s*:?|ROUTE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    re.compile(
+        r"^\s*(?:\[ROUTE\]\s*:?|ROUTE\s*:)[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+    ),
     # RAW CONTEXT APPEND ... (with optional brackets / colon)
-    re.compile(r"^\s*\[?RAW CONTEXT APPEND\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE),
+    re.compile(
+        r"^\s*\[?RAW CONTEXT APPEND\]?\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+    ),
     # Other guidance-frame header echoes
     re.compile(
         r"^\s*\[(?:BEHAVIORAL_GUIDANCE|GUIDANCE_FRAME|VIBE_GUIDANCE|DYNAMIC_CONTEXT|SYSTEM_DESIGN_STANCE)\]\s*:[^\n]*\n?",
@@ -305,7 +364,11 @@ def build_two_mice_stage_prompt(
     )
 
     if stage == 1:
-        historical = context.strip() if context else "[ZERO_CONTEXT]: No archive record retrieved."
+        historical = (
+            context.strip()
+            if context
+            else "[ZERO_CONTEXT]: No archive record retrieved."
+        )
         return (
             section
             + "[STAGE_1_INSTRUCTIONS]: You are Brain. Jason asked a technical question. Extract the exact "
@@ -362,15 +425,34 @@ def build_two_mice_stream_packet(
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
 # Objective: Manage multi-node reasoning waterfall and strategic routing.
 
+
 class CognitiveHub:
 
-
-    def __init__(self, residents, broadcast_callback, sensory_manager, get_vram_status, trigger_morning_briefing, last_prime_callback=None, waterfall_queue=None, hibernate_callback=None, set_active_domain=None, get_lab_state=None, is_deep_thought_reachable=None):
+    def __init__(
+        self,
+        residents,
+        broadcast_callback,
+        sensory_manager,
+        get_vram_status,
+        trigger_morning_briefing,
+        last_prime_callback=None,
+        waterfall_queue=None,
+        hibernate_callback=None,
+        set_active_domain=None,
+        get_lab_state=None,
+        is_deep_thought_reachable=None,
+    ):
         import subprocess
         import time
+
         # Capture boot commit from repo root
         try:
-            result = subprocess.run(['git', 'rev-parse', '--short=7', 'HEAD'], capture_output=True, text=True, cwd='/home/jallred/Dev_Lab/HomeLabAI')
+            result = subprocess.run(
+                ["git", "rev-parse", "--short=7", "HEAD"],
+                capture_output=True,
+                text=True,
+                cwd="/home/jallred/Dev_Lab/HomeLabAI",
+            )
             if result.returncode == 0 and result.stdout.strip():
                 self.boot_commit = result.stdout.strip()
             else:
@@ -379,6 +461,7 @@ class CognitiveHub:
             self.boot_commit = "unknown"
         self.boot_timestamp = int(time.time())
         from collections import defaultdict, deque
+
         self.residents = residents
         self.broadcast = broadcast_callback
         self.sensory = sensory_manager
@@ -387,7 +470,7 @@ class CognitiveHub:
         self.is_deep_thought_reachable = is_deep_thought_reachable
         self.trigger_morning_briefing_cb = trigger_morning_briefing
         self.last_prime_callback = last_prime_callback
-        self.waterfall_queue = waterfall_queue # [FEAT-233.2] Internal Token Buffer
+        self.waterfall_queue = waterfall_queue  # [FEAT-233.2] Internal Token Buffer
         self.hibernate_callback = hibernate_callback
         self.set_active_domain = set_active_domain
 
@@ -397,10 +480,10 @@ class CognitiveHub:
         self._boosted_interest = False
         self.current_topic = "INTERFACE"
         self.last_activity = time.time()
-        
+
         # [SPR-41_2] Context Starvation tracking: nodes that returned [ERROR: CONTEXT_STARVED]
         self.context_starved_nodes = set()
-        
+
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
         # [FEAT-456] Prior Turn Context Tracking for Fourth-Wall Supervision
@@ -412,21 +495,23 @@ class CognitiveHub:
         self.turn_thought_trace = {}
         # [FEAT-441-Cache] Lightweight RAG response cache (max 128, LRU eviction)
         self._rag_cache = {}
-        
+
         # [Task 6.3] Hygiene: Process Tracking
         self.processed_ids = deque(maxlen=1000)
         self.request_lock = asyncio.Lock()
-        
+
         # [FEAT-471] Dynamic Speaker Registry for Demarcation Sanitization
         self.speaker_registry = SpeakerRegistry()
 
         # [FEAT-350] Gibberish Guard: Stable Baseline
         self.consecutive_parse_failures = 0
         self.lora_enabled = True
-        self.triage_failures = 0 # [FEAT-270] Track consecutive failures
-        
+        self.triage_failures = 0  # [FEAT-270] Track consecutive failures
+
         # [FEAT-181] Semantic Integration
-        self.semantic_map_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
+        self.semantic_map_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json"
+        )
         self.semantic_map = {}
         if os.path.exists(self.semantic_map_path):
             try:
@@ -434,10 +519,15 @@ class CognitiveHub:
                     self.semantic_map = json.load(f)
             except Exception:
                 pass
-        
+
         # [BKM-015] Role Token Routing: Load tokens from config/role_tokens.json
         # Script-relative path: HomeLabAI/src/logic/ → ../../config/
-        self._config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config")
+        self._config_dir = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "config",
+        )
         self._role_tokens_path = os.path.join(self._config_dir, "role_tokens.json")
         self.role_tokens = {}
         if os.path.exists(self._role_tokens_path):
@@ -451,9 +541,30 @@ class CognitiveHub:
         # Tokens live in config/role_tokens.json (single source of truth);
         # routing targets are pre-defined per the role token contract.
         self._token_routes = {
-            "<|PINKY|>":   {"addressed_to": "PINKY",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.5, "casual": 0.3, "intrigue": 0.5},
-            "<|BRAIN|>":   {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
-            "<|THOUGHT|>": {"addressed_to": "BRAIN",  "vibe": "TECHNICAL", "domain": "standard", "importance": 0.8, "casual": 0.1, "intrigue": 0.7},
+            "<|PINKY|>": {
+                "addressed_to": "PINKY",
+                "vibe": "TECHNICAL",
+                "domain": "standard",
+                "importance": 0.5,
+                "casual": 0.3,
+                "intrigue": 0.5,
+            },
+            "<|BRAIN|>": {
+                "addressed_to": "BRAIN",
+                "vibe": "TECHNICAL",
+                "domain": "standard",
+                "importance": 0.8,
+                "casual": 0.1,
+                "intrigue": 0.7,
+            },
+            "<|THOUGHT|>": {
+                "addressed_to": "BRAIN",
+                "vibe": "TECHNICAL",
+                "domain": "standard",
+                "importance": 0.8,
+                "casual": 0.1,
+                "intrigue": 0.7,
+            },
         }
 
         self.auditor = None  # \[FEAT-190\] The Judge
@@ -466,7 +577,7 @@ class CognitiveHub:
             broadcast_callback=self.broadcast,
             kender_fn=self._dispatch_kender_triage,
             vllm_fn=self._dispatch_vllm_triage,
-            t_warmed=0.09
+            t_warmed=0.09,
         )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident
@@ -475,19 +586,26 @@ class CognitiveHub:
         except Exception:
             self._tel_collector = None
         for node in self.residents.values():
-            if hasattr(node, '_on_telemetry'):
+            if hasattr(node, "_on_telemetry"):
                 node._on_telemetry = self._collect_telemetry
             # Also wire on the underlying BicameralNode if wrapped
-            underlying = getattr(node, '_node', node)
-            if underlying is not node and hasattr(underlying, '_on_telemetry'):
+            underlying = getattr(node, "_node", node)
+            if underlying is not node and hasattr(underlying, "_on_telemetry"):
                 underlying._on_telemetry = self._collect_telemetry
-
 
     async def _dispatch_kender_triage(self, query, context, triage_schema, request_id):
         """[SPR-64_1] Dispatch triage to Remote Kender (Deep Thought)."""
         t_text = ""
         async for token in self._process_node_stream(
-            "thought", query, "", "Deep Thought (Triage)", tools=[], behavioral_guidance=context, temperature=0.2, response_format=triage_schema, request_id=request_id
+            "thought",
+            query,
+            "",
+            "Deep Thought (Triage)",
+            tools=[],
+            behavioral_guidance=context,
+            temperature=0.2,
+            response_format=triage_schema,
+            request_id=request_id,
         ):
             t_text += token
         return self.bridge_signal_clean(t_text)
@@ -496,7 +614,15 @@ class CognitiveHub:
         """[SPR-64_1] Dispatch triage to Local vLLM (Lab)."""
         t_text = ""
         async for token in self._process_node_stream(
-            "lab", query, "", "Lab (Triage)", tools=[], behavioral_guidance=context, temperature=0.0, response_format=triage_schema, request_id=request_id
+            "lab",
+            query,
+            "",
+            "Lab (Triage)",
+            tools=[],
+            behavioral_guidance=context,
+            temperature=0.0,
+            response_format=triage_schema,
+            request_id=request_id,
         ):
             t_text += token
         return self.bridge_signal_clean(t_text)
@@ -507,10 +633,12 @@ class CognitiveHub:
         return {
             "boot_commit": getattr(self, "boot_commit", "unknown"),
             "boot_timestamp": getattr(self, "boot_timestamp", 0),
-            "service": "lab-attendant"
+            "service": "lab-attendant",
         }
 
-    async def evaluate_response_async(self, query: str, response: str, session_id: str = "default"):
+    async def evaluate_response_async(
+        self, query: str, response: str, session_id: str = "default"
+    ):
         """[FEAT-433] Asynchronous Sanity Critic Protocol."""
         try:
             await asyncio.sleep(0.1)
@@ -521,7 +649,7 @@ class CognitiveHub:
                 "session_id": session_id,
                 "confidence": confidence,
                 "status": "VERIFIED" if confidence >= 0.90 else "REVIEW",
-                "message": "🛡️ Sanity Verified"
+                "message": "🛡️ Sanity Verified",
             }
             await self.broadcast(payload)
         except Exception as ex:
@@ -532,7 +660,7 @@ class CognitiveHub:
         if not preamble_text:
             return ""
         # Clean preamble roleplay text for ChromaDB vector search
-        hypothesis = re.sub(r'[*_\n]', ' ', preamble_text).strip()
+        hypothesis = re.sub(r"[*_\n]", " ", preamble_text).strip()
         logging.info(f"[FEAT-432] Open HyDE hypothesis captured: {hypothesis[:80]}...")
         return hypothesis
 
@@ -541,73 +669,136 @@ class CognitiveHub:
         for name, session in self.residents.items():
             # Handle mock objects in test environments
             is_mock = "Mock" in type(session).__name__
-            
+
             if is_mock:
                 # Store original methods if not already stored
                 if "_original_call_tool" not in session.__dict__:
                     session._original_call_tool = session.call_tool
                     session._original_list_tools = session.list_tools
-                
-                async def wrapped_call_tool(tool_name, arguments=None, *, session_ref=session, **kwargs):
+
+                async def wrapped_call_tool(
+                    tool_name, arguments=None, *, session_ref=session, **kwargs
+                ):
                     vibe = getattr(self, "current_vibe", "TECHNICAL")
                     if vibe != "META":
-                        blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                        blocked_keywords = [
+                            "git",
+                            "systemd",
+                            "systemctl",
+                            "state_machine",
+                            "close_lab",
+                            "bounce_node",
+                            "lab_train_adapter",
+                        ]
                         if any(kw in tool_name.lower() for kw in blocked_keywords):
-                            raise ValueError(f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')")
-                    return await session_ref._original_call_tool(tool_name, arguments=arguments, **kwargs)
-                    
+                            raise ValueError(
+                                f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')"
+                            )
+                    return await session_ref._original_call_tool(
+                        tool_name, arguments=arguments, **kwargs
+                    )
+
                 async def wrapped_list_tools(*args, session_ref=session, **kwargs):
                     resp = await session_ref._original_list_tools(*args, **kwargs)
                     vibe = getattr(self, "current_vibe", "TECHNICAL")
                     if vibe != "META":
-                        blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                        blocked_keywords = [
+                            "git",
+                            "systemd",
+                            "systemctl",
+                            "state_machine",
+                            "close_lab",
+                            "bounce_node",
+                            "lab_train_adapter",
+                        ]
                         if hasattr(resp, "tools"):
-                            resp.tools = [t for t in resp.tools if not any(kw in t.name.lower() for kw in blocked_keywords)]
+                            resp.tools = [
+                                t
+                                for t in resp.tools
+                                if not any(
+                                    kw in t.name.lower() for kw in blocked_keywords
+                                )
+                            ]
                     return resp
-                
+
                 from unittest.mock import AsyncMock
+
                 session.call_tool = AsyncMock(side_effect=wrapped_call_tool)
                 session.list_tools = AsyncMock(side_effect=wrapped_list_tools)
             else:
                 if "_original_call_tool" not in session.__dict__:
                     # Use object.__setattr__ to bypass mock or custom descriptors
-                    object.__setattr__(session, "_original_call_tool", session.call_tool)
-                    object.__setattr__(session, "_original_list_tools", session.list_tools)
-                    
-                    async def wrapped_call_tool(tool_name, arguments=None, *, session_ref=session, **kwargs):
+                    object.__setattr__(
+                        session, "_original_call_tool", session.call_tool
+                    )
+                    object.__setattr__(
+                        session, "_original_list_tools", session.list_tools
+                    )
+
+                    async def wrapped_call_tool(
+                        tool_name, arguments=None, *, session_ref=session, **kwargs
+                    ):
                         vibe = getattr(self, "current_vibe", "TECHNICAL")
                         if vibe != "META":
-                            blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                            blocked_keywords = [
+                                "git",
+                                "systemd",
+                                "systemctl",
+                                "state_machine",
+                                "close_lab",
+                                "bounce_node",
+                                "lab_train_adapter",
+                            ]
                             if any(kw in tool_name.lower() for kw in blocked_keywords):
-                                raise ValueError(f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')")
-                        return await session_ref._original_call_tool(tool_name, arguments=arguments, **kwargs)
-                        
+                                raise ValueError(
+                                    f"Tool '{tool_name}' blocked by Sandbox: Current vibe is '{vibe}' (requires 'META')"
+                                )
+                        return await session_ref._original_call_tool(
+                            tool_name, arguments=arguments, **kwargs
+                        )
+
                     async def wrapped_list_tools(*args, session_ref=session, **kwargs):
                         resp = await session_ref._original_list_tools(*args, **kwargs)
                         vibe = getattr(self, "current_vibe", "TECHNICAL")
                         if vibe != "META":
-                            blocked_keywords = ["git", "systemd", "systemctl", "state_machine", "close_lab", "bounce_node", "lab_train_adapter"]
+                            blocked_keywords = [
+                                "git",
+                                "systemd",
+                                "systemctl",
+                                "state_machine",
+                                "close_lab",
+                                "bounce_node",
+                                "lab_train_adapter",
+                            ]
                             if hasattr(resp, "tools"):
-                                resp.tools = [t for t in resp.tools if not any(kw in t.name.lower() for kw in blocked_keywords)]
+                                resp.tools = [
+                                    t
+                                    for t in resp.tools
+                                    if not any(
+                                        kw in t.name.lower() for kw in blocked_keywords
+                                    )
+                                ]
                         return resp
-                        
+
                     object.__setattr__(session, "call_tool", wrapped_call_tool)
                     object.__setattr__(session, "list_tools", wrapped_list_tools)
 
     async def handle_stream_token(self, data):
         """[FEAT-233.2] Ingests token into session buffers and audits for vetoes."""
-        raw_source = str(data.get("brain_source", data.get("source", "Unknown"))).lower()
-        
+        raw_source = str(
+            data.get("brain_source", data.get("source", "Unknown"))
+        ).lower()
+
         # [Task 14.3] Map raw node names to UI-friendly display names
         display_map = {
             "lab": "Lab (Triage)",
             "pinky": "Pinky (Response)",
             "brain": "Brain (Archive)",
-            "thought": "Deep Thought"
+            "thought": "Deep Thought",
         }
         source = display_map.get(raw_source, raw_source)
         data["brain_source"] = source
-        
+
         token = data.get("brain", "")
         # [FEAT-488] Anti-Bleed: strip echoed system-slot instruction headers
         # (GROUNDING_PROTOCOL:/[STANCE]:/[ROUTE]/RAW CONTEXT APPEND) from the token
@@ -621,7 +812,7 @@ class CognitiveHub:
 
         # [NEW] Push to waterfall queue for real-time UI delivery
         # [FEAT-361] 100% Transparency: No masking of inter-node whispers (internal triage suppressed from chat).
-        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+        if hasattr(self, "waterfall_queue") and self.waterfall_queue:
             if not data.get("internal", False) and "triage" not in raw_source.lower():
                 await self.waterfall_queue.put(data)
 
@@ -635,16 +826,24 @@ class CognitiveHub:
         """[FEAT-145] Cleans the raw LLM output for valid JSON blocks."""
         if not text:
             return None
-        
+
         if "{" not in text:
             # [FEAT-518] Double Kickstart Root Cause Fix:
             # Do NOT synthesize a fallback triage object if text is an engine warming notification
             clean_str = text.strip()
-            is_warming = any(w in clean_str.lower() for w in ["warming", "warming its anchors", "re-connecting momentarily"])
-            is_conn_error = any(e in clean_str for e in ["Error:", "vLLM connection", "Connect call failed"])
-            
+            is_warming = any(
+                w in clean_str.lower()
+                for w in ["warming", "warming its anchors", "re-connecting momentarily"]
+            )
+            is_conn_error = any(
+                e in clean_str
+                for e in ["Error:", "vLLM connection", "Connect call failed"]
+            )
+
             if len(clean_str) > 15 and not is_warming and not is_conn_error:
-                logging.info("[HUB] Non-JSON prose triage synthesized into fallback structure.")
+                logging.info(
+                    "[HUB] Non-JSON prose triage synthesized into fallback structure."
+                )
                 target = "NONE"
                 if any(w in clean_str.lower() for w in ["pinky"]):
                     target = "PINKY"
@@ -655,29 +854,40 @@ class CognitiveHub:
                 return {
                     "inferred_intent": clean_str[:100],
                     "addressed_to": target,
-                    "vibe": "TECHNICAL" if any(w in clean_str.lower() for w in ["crash", "error", "stability", "status", "debug"]) else "CASUAL",
+                    "vibe": (
+                        "TECHNICAL"
+                        if any(
+                            w in clean_str.lower()
+                            for w in ["crash", "error", "stability", "status", "debug"]
+                        )
+                        else "CASUAL"
+                    ),
                     "domain": "standard",
                     "casual": 0.5,
                     "intrigue": 0.5,
                     "importance": 0.5,
                     "situation": clean_str,
                     "hints": clean_str,
-                    "hyde_vector_text": clean_str
+                    "hyde_vector_text": clean_str,
                 }
 
             # [FIX] Silence [RAW_OUTPUT] for connection/warming errors to reduce UI noise
             if not is_conn_error and not is_warming:
                 msg = f"[RAW_OUTPUT] Missing JSON anchor. Text: {text[:200]}..."
                 logging.warning(f"[HUB] {msg}")
-                asyncio.create_task(self.broadcast({"type": "crosstalk", "brain": msg, "brain_source": "System"}))
+                asyncio.create_task(
+                    self.broadcast(
+                        {"type": "crosstalk", "brain": msg, "brain_source": "System"}
+                    )
+                )
             return None
 
         # [FEAT-347] Nuclear JSON Extractor: Multi-block match for 3B resilience
         # This handles cases where models output multiple blocks or trailing garbage.
-        json_blocks = re.findall(r'(\{.*?\})', text, re.DOTALL)
+        json_blocks = re.findall(r"(\{.*?\})", text, re.DOTALL)
         if not json_blocks:
             # Fallback to greedy if non-greedy fails
-            match = re.search(r'(\{.*\})', text, re.DOTALL)
+            match = re.search(r"(\{.*\})", text, re.DOTALL)
             if match:
                 json_blocks = [match.group(1)]
             else:
@@ -696,8 +906,8 @@ class CognitiveHub:
     async def monitor_task_with_tics(self, coro, node_id="lab"):
         """[FEAT-267] Display periodic 'Tics' (e.g., Narf!) during long node runs."""
         task = asyncio.create_task(coro)
-        
-# [FEAT-053] Contextual Tics
+
+        # [FEAT-053] Contextual Tics
         # Start a background tic broadcaster
         async def _tic_loop():
             current_delay = 5.0
@@ -706,17 +916,24 @@ class CognitiveHub:
                     await asyncio.sleep(current_delay)
                     if task.done():
                         break
-                        
+
                     # Request a context-aware tic/quip from the Lab node
                     tic_msg = ""
                     # Persona definition
-                    persona = "Pinky (character-faithful tic)" if node_id.lower() == "pinky" else "Deep Thought (Brain pre-conscious analytical stream - calm, non-interactive, never Pinky catchphrases)"
-                    
+                    persona = (
+                        "Pinky (character-faithful tic)"
+                        if node_id.lower() == "pinky"
+                        else "Deep Thought (Brain pre-conscious analytical stream - calm, non-interactive, never Pinky catchphrases)"
+                    )
+
                     try:
-                        tic_res = await self.residents["lab"].call_tool("think", {
-                            "query": f"[SYSTEM_TIC]: Provide a {persona} for the Lab's current state.",
-                            "temperature": 0.8
-                        })
+                        tic_res = await self.residents["lab"].call_tool(
+                            "think",
+                            {
+                                "query": f"[SYSTEM_TIC]: Provide a {persona} for the Lab's current state.",
+                                "temperature": 0.8,
+                            },
+                        )
                         tic_msg = tic_res.content[0].text
                     except Exception:
                         pass
@@ -724,19 +941,29 @@ class CognitiveHub:
                     if not tic_msg:
                         # Fallback to base persona tics/quips
                         if node_id.lower() == "pinky":
-                            tic_msg = random.choice(["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"])
+                            tic_msg = random.choice(
+                                ["Narf!", "Poit!", "Zort!", "Egad!", "Troz!"]
+                            )
                         else:
-                            tic_msg = "Analyzing parameters... deep thought in progress."
+                            tic_msg = (
+                                "Analyzing parameters... deep thought in progress."
+                            )
 
                     try:
-                        await self.broadcast({
-                            "type": "crosstalk",
-                            "brain": tic_msg,
-                            "brain_source": node_id.capitalize(),
-                            "channel": "insight" if node_id.lower() in ["brain", "thought"] else "chat",
-                            "final": False,
-                            "version": LAB_VERSION
-                        })
+                        await self.broadcast(
+                            {
+                                "type": "crosstalk",
+                                "brain": tic_msg,
+                                "brain_source": node_id.capitalize(),
+                                "channel": (
+                                    "insight"
+                                    if node_id.lower() in ["brain", "thought"]
+                                    else "chat"
+                                ),
+                                "final": False,
+                                "version": LAB_VERSION,
+                            }
+                        )
                         # Exponential backoff for tics to avoid spamming
                         current_delay = min(current_delay * 1.5, 15.0)
                     except Exception:
@@ -745,19 +972,44 @@ class CognitiveHub:
                         await asyncio.sleep(1.0)
                 except Exception:
                     break
-        
+
         asyncio.create_task(_tic_loop())
         return await task
 
-# [FEAT-408] Tool-Driven Waterfall Cascade
-    async def _process_node_stream(self, node_id, query, context, source_name, tools=None, behavioral_guidance="", shutdown_event=None, interest_threshold=0.0, temperature=0.0, repetition_penalty=1.1, retry_count=0, use_lora=True, response_format=None, request_id="default", scope=None, max_tokens=None):
+    # [FEAT-408] Tool-Driven Waterfall Cascade
+    async def _process_node_stream(
+        self,
+        node_id,
+        query,
+        context,
+        source_name,
+        tools=None,
+        behavioral_guidance="",
+        shutdown_event=None,
+        interest_threshold=0.0,
+        temperature=0.0,
+        repetition_penalty=1.1,
+        retry_count=0,
+        use_lora=True,
+        response_format=None,
+        request_id="default",
+        scope=None,
+        max_tokens=None,
+    ):
         """[FEAT-233.5] Internal Waterfall Proxy: Handshakes the node and yields tokens."""
         # [FEAT-519] Triage Context Squeeze: Never bloat triage queries with previous debate context
         is_triage = "triage" in source_name.lower()
         # [FEAT-523] Context Scope Enforcement: Triage, Deep Thought, and casual/low-interest turns use TURN isolation; active Mice debates use LONG
         if scope is None:
-            is_casual = getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" or getattr(self, "current_interest", 0.5) < 0.3
-            scope = ContextScope.TURN if (is_triage or is_casual or "deep" in source_name.lower()) else ContextScope.LONG
+            is_casual = (
+                getattr(self, "current_vibe", "TECHNICAL") == "CASUAL"
+                or getattr(self, "current_interest", 0.5) < 0.3
+            )
+            scope = (
+                ContextScope.TURN
+                if (is_triage or is_casual or "deep" in source_name.lower())
+                else ContextScope.LONG
+            )
 
         if scope == ContextScope.LONG:
             # First inject blackboard summary if available
@@ -766,13 +1018,15 @@ class CognitiveHub:
                 if bb_summary and "[BLACKBOARD_LEDGER]" not in query:
                     query += f"\n\n[BLACKBOARD_LEDGER]:\n{bb_summary}"
             if hasattr(self, "round_table_memory") and self.round_table_memory:
-                debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(self.round_table_memory)
+                debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(
+                    self.round_table_memory
+                )
                 if "[PREVIOUS_DEBATE]" not in query:
                     query += debate_context
 
         if node_id not in self.residents:
             return
-        
+
         # [Task 12.7] Ensure response_format is valid for Pydantic
         if response_format is None:
             response_format = {}
@@ -780,21 +1034,27 @@ class CognitiveHub:
         # [FEAT-242.1] Handshake Tic (Gated via FEAT-365)
         enabled = True
         try:
-             # Heuristic: Find config from the 'lab' resident if available
-             if "lab" in self.residents and hasattr(self.residents["lab"], "config"):
-                  enabled = self.residents["lab"].config.get("enable_reflexes", True)
+            # Heuristic: Find config from the 'lab' resident if available
+            if "lab" in self.residents and hasattr(self.residents["lab"], "config"):
+                enabled = self.residents["lab"].config.get("enable_reflexes", True)
         except Exception:
-             pass
+            pass
 
         if enabled:
-            channel = "insight" if "brain" in source_name.lower() or "thought" in source_name.lower() else "chat"
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": f"Initiating {source_name} intuition...",
-                "brain_source": source_name,
-                "final": False,
-                "channel": channel
-            })
+            channel = (
+                "insight"
+                if "brain" in source_name.lower() or "thought" in source_name.lower()
+                else "chat"
+            )
+            await self.broadcast(
+                {
+                    "type": "crosstalk",
+                    "brain": f"Initiating {source_name} intuition...",
+                    "brain_source": source_name,
+                    "final": False,
+                    "channel": channel,
+                }
+            )
 
         try:
             # [Task 2.3] Persona Interest: Adjust behavioral density based on scalar
@@ -808,7 +1068,7 @@ class CognitiveHub:
                 stance = "\n[STANCE]: ACADEMIC (Evidence-heavy, dense, refer to GEM/SCAR IDs)."
             elif self.current_interest < 0.3:
                 stance = "\n[STANCE]: INTERFACE (Witty, character-first, high brevity)."
-            
+
             guidance = stance
             if behavioral_guidance:
                 guidance += f"\n[BEHAVIORAL_GUIDANCE]: {behavioral_guidance}"
@@ -825,25 +1085,52 @@ class CognitiveHub:
 
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
-            
+
             # [Task 9.1] Isolated Buffer Key
-            name_map = {"lab": "lab", "pinky": "pinky", "brain": "brain", "thought": "deep thought"}
+            name_map = {
+                "lab": "lab",
+                "pinky": "pinky",
+                "brain": "brain",
+                "thought": "deep thought",
+            }
             src_key = name_map.get(node_id, node_id)
             buf_key = f"{request_id}_{src_key}"
             self.session_buffers[buf_key] = ""
-            
+
             # [FEAT-523] Token Budget: Clamp casual/low-interest turns to 150 tokens to prevent runaway loops
-            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else (150 if getattr(self, "current_interest", 0.5) < 0.3 or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL" else 1500))
-            call_task = asyncio.create_task(node.call_tool("think", arguments={
-                "query": query, "context": context, "tools": tools or [], 
-                "behavioral_guidance": guidance,
-                "temperature": temperature, "repetition_penalty": repetition_penalty,
-                "use_lora": use_lora, "response_format": response_format, 
-                "request_id": request_id,
-                "max_tokens": token_budget,
-                "internal": is_triage
-            }))
-            
+            token_budget = (
+                max_tokens
+                if max_tokens is not None
+                else (
+                    128
+                    if is_triage
+                    else (
+                        150
+                        if getattr(self, "current_interest", 0.5) < 0.3
+                        or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL"
+                        else 1500
+                    )
+                )
+            )
+            call_task = asyncio.create_task(
+                node.call_tool(
+                    "think",
+                    arguments={
+                        "query": query,
+                        "context": context,
+                        "tools": tools or [],
+                        "behavioral_guidance": guidance,
+                        "temperature": temperature,
+                        "repetition_penalty": repetition_penalty,
+                        "use_lora": use_lora,
+                        "response_format": response_format,
+                        "request_id": request_id,
+                        "max_tokens": token_budget,
+                        "internal": is_triage,
+                    },
+                )
+            )
+
             full_text = ""
             last_len = 0
             while not call_task.done():
@@ -852,23 +1139,29 @@ class CognitiveHub:
                 if len(curr_buffer) > last_len:
                     new_tokens = curr_buffer[last_len:]
                     full_text += new_tokens
-                    
+
                     # Check for peer-vote interest boosting signals [FEAT-238]
-                    if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                    if (
+                        "<boost_interest>" in full_text or "<upvote>" in full_text
+                    ) and not self._boosted_interest:
                         self._boosted_interest = True
                         old_interest = self.current_interest
                         self.current_interest = min(1.0, self.current_interest + 0.3)
-                        logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
-                        
+                        logging.info(
+                            f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
+                        )
+
                     yield new_tokens
                     last_len = len(curr_buffer)
-                    
+
                     # [FEAT-404] Context Starvation check: abort immediately if starvation detected
                     if "[ERROR: CONTEXT_STARVED]" in full_text:
-                        logging.warning(f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting.")
+                        logging.warning(
+                            f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting."
+                        )
                         call_task.cancel()
                         break
-                    
+
             # Get the final result and any remaining buffer
             try:
                 res = await call_task
@@ -878,75 +1171,94 @@ class CognitiveHub:
             if len(curr_buffer) > last_len:
                 new_tokens = curr_buffer[last_len:]
                 full_text += new_tokens
-                
+
                 # Check for peer-vote interest boosting signals [FEAT-238]
-                if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                if (
+                    "<boost_interest>" in full_text or "<upvote>" in full_text
+                ) and not self._boosted_interest:
                     self._boosted_interest = True
                     old_interest = self.current_interest
                     self.current_interest = min(1.0, self.current_interest + 0.3)
-                    logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
-                    
+                    logging.info(
+                        f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
+                    )
+
                 yield new_tokens
-                
+
             # If the node didn't stream anything (e.g. error or missing logic), fallback to the full response
             if not full_text:
-                if hasattr(res, 'content') and len(res.content) > 0:
+                if hasattr(res, "content") and len(res.content) > 0:
                     full_text = res.content[0].text
                 else:
                     full_text = str(res)
-                
+
                 # Check for peer-vote interest boosting signals [FEAT-238]
-                if ("<boost_interest>" in full_text or "<upvote>" in full_text) and not self._boosted_interest:
+                if (
+                    "<boost_interest>" in full_text or "<upvote>" in full_text
+                ) and not self._boosted_interest:
                     self._boosted_interest = True
                     old_interest = self.current_interest
                     self.current_interest = min(1.0, self.current_interest + 0.3)
-                    logging.info(f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}.")
-                    
+                    logging.info(
+                        f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
+                    )
+
                 yield full_text
-            
+
             # [SPR-41_2] Context Starvation Detection: if node returned CONTEXT_STARVED, bypass cascade
             if "[ERROR: CONTEXT_STARVED]" in full_text:
                 self.context_starved_nodes.add(node_id)
                 source_display = source_name or node_id
-                logging.warning(f"[HUB] {source_display} returned CONTEXT_STARVED token.")
-                await self.broadcast({
-                    "type": "crosstalk",
-                    "brain": f"[HUB] ⚠ Context Starvation detected from {source_display}. Cascade bypassed.",
-                    "brain_source": "System"
-                })
-            
+                logging.warning(
+                    f"[HUB] {source_display} returned CONTEXT_STARVED token."
+                )
+                await self.broadcast(
+                    {
+                        "type": "crosstalk",
+                        "brain": f"[HUB] ⚠ Context Starvation detected from {source_display}. Cascade bypassed.",
+                        "brain_source": "System",
+                    }
+                )
+
             self.turn_thought_trace[node_id] = full_text
             if node_id == "thought":
                 # [FEAT-470] Legacy backfill: alias Deep Thought -> "brain" only when the local
                 # Brain (shadow_brain_v2) leg did not already record its own synthesis.
                 self.turn_thought_trace.setdefault("brain", full_text)
-            self.session_buffers[buf_key] = "" # Clear buffer
-            
+            self.session_buffers[buf_key] = ""  # Clear buffer
+
             # [FEAT-287] Activity Latch
             if node_id in ["brain", "thought"]:
                 self.last_activity = time.time()
-                if hasattr(self, 'last_prime_callback') and self.last_prime_callback:
+                if hasattr(self, "last_prime_callback") and self.last_prime_callback:
                     self.last_prime_callback(time.time())
-            
-            # [Task 14.2] Drainer Primacy: Removed execute_dispatch(). 
+
+            # [Task 14.2] Drainer Primacy: Removed execute_dispatch().
             # The Foyer's waterfall_drainer handles the final Pop delivery.
-            
+
         except Exception as e:
             logging.error(f"[HUB] Stream from {node_id} failed: {e}")
 
-    async def execute_dispatch(self, text, source_name, shutdown_event=None, retry_count=0, final=False):
+    async def execute_dispatch(
+        self, text, source_name, shutdown_event=None, retry_count=0, final=False
+    ):
         """Dispatches a finalized block to the UI, stripped of redundant speaker prefixes."""
-        clean_text = self.speaker_registry.sanitize(text) if hasattr(self, "speaker_registry") else text
-        await self.broadcast({
-            "type": "chat",
-            "brain": clean_text,
-            "brain_source": source_name,
-            "final": final
-        })
+        clean_text = (
+            self.speaker_registry.sanitize(text)
+            if hasattr(self, "speaker_registry")
+            else text
+        )
+        await self.broadcast(
+            {
+                "type": "chat",
+                "brain": clean_text,
+                "brain_source": source_name,
+                "final": final,
+            }
+        )
 
     async def _check_dynamic_audit(self, source, token):
         """Placeholder for FEAT-190 The Judge."""
-        pass
 
     def _collect_telemetry(self, event: dict) -> None:
         """
@@ -978,49 +1290,56 @@ class CognitiveHub:
         except Exception as e:
             logging.debug(f"[TEL] Collect failed: {e}")
 
-# [FEAT-106] Async Coordination Engine
-    async def process_query(self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None):
+    # [FEAT-106] Async Coordination Engine
+    async def process_query(
+        self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None
+    ):
         """[FEAT-145] Main Reasoning Waterfall."""
         self.turn_thought_trace = {}
         if request_id is None:
             import uuid
+
             request_id = uuid.uuid4().hex[:8]
-        
+
         # [SPR-41_2] Reset context starvation tracker per query
         self.context_starved_nodes.clear()
-        
+
         # Initialize default vibe for Sandbox Tool Isolation
         self.current_vibe = "TECHNICAL"
         self._wrap_residents_for_sandbox()
-        
-        logging.info(f"[HUB_GUARD] Request {request_id} entering process_query. Set size: {len(self.processed_ids)}")
+
+        logging.info(
+            f"[HUB_GUARD] Request {request_id} entering process_query. Set size: {len(self.processed_ids)}"
+        )
         async with self.request_lock:
             if request_id in self.processed_ids:
                 logging.warning(f"[HUB_GUARD] REJECTED redundant request: {request_id}")
                 return
             self.processed_ids.append(request_id)
             logging.info(f"[HUB_GUARD] ACCEPTED request: {request_id}")
-        
+
         # [Task 9.7] Direct Intent Overrides
         if turn.startswith("[TRIGGER]"):
             task = turn.replace("[TRIGGER]", "").strip().lower()
             await self._run_triggered_task(task)
             return
 
-
-
         # [Goal 5/FEAT-145] Override Detection: Scan for override indicators (matching GEM-xxxx / BKM-xxx)
         is_override, gem_id = is_override_query(turn)
         if is_override and gem_id:
-            logging.info(f"[HUB] Goal 5: Override intent detected for {gem_id} in query: {turn}")
-            
+            logging.info(
+                f"[HUB] Goal 5: Override intent detected for {gem_id} in query: {turn}"
+            )
+
             # Start background crosstalk notify
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": f"[HUB] Processing correction for {gem_id}...",
-                "brain_source": "System"
-            })
-            
+            await self.broadcast(
+                {
+                    "type": "crosstalk",
+                    "brain": f"[HUB] Processing correction for {gem_id}...",
+                    "brain_source": "System",
+                }
+            )
+
             # Parse the override
             node = self.residents.get("pinky") or self.residents.get("brain")
             updates = await parse_override_with_resident(gem_id, turn, node)
@@ -1030,8 +1349,10 @@ class CognitiveHub:
                 confirm_msg = f"[SYSTEM]: Correction registered for {gem_id}. Applied updates: {updates}. This override will be active during the next compile."
             else:
                 confirm_msg = f"[SYSTEM]: Correction detected for {gem_id}, but failed to extract fields. No updates applied."
-                
-            await self._stream_message_to_ui(confirm_msg, source="System", request_id=request_id)
+
+            await self._stream_message_to_ui(
+                confirm_msg, source="System", request_id=request_id
+            )
             return
 
         # 1. Triage Phase
@@ -1045,7 +1366,7 @@ class CognitiveHub:
         # _intercept_control_plane_feedback short-circuit below). The legacy regex
         # based Fourth-Wall pre-filter (is_critique / _CRITIQUE_PATTERNS) is deprecated
         # in favor of this semantic path to avoid double-recording and brittle matching.
-        
+
         # [BKM-015] Role Token Routing: Bypass LLM triage if query contains a role token
         if self.role_tokens:
             for token in self.role_tokens:
@@ -1055,21 +1376,25 @@ class CognitiveHub:
                         turn = turn.replace(token, "").strip()
                         t_parsed = dict(route)
                         t_parsed["is_explicit_token"] = True
-                        logging.info(f"[HUB] Role token '{token}' detected. Direct routing to {t_parsed['addressed_to']}.")
-                        await self.broadcast({
-                            "type": "crosstalk",
-                            "brain": f"[HUB] Role token '{token}' → {t_parsed['addressed_to']}. Bypassing triage.",
-                            "brain_source": "System",
-                            "version": LAB_VERSION
-                        })
+                        logging.info(
+                            f"[HUB] Role token '{token}' detected. Direct routing to {t_parsed['addressed_to']}."
+                        )
+                        await self.broadcast(
+                            {
+                                "type": "crosstalk",
+                                "brain": f"[HUB] Role token '{token}' → {t_parsed['addressed_to']}. Bypassing triage.",
+                                "brain_source": "System",
+                                "version": LAB_VERSION,
+                            }
+                        )
                         break
-        
+
         # [FEAT-468/471] Extract clean user query from demarcated speaker history
         clean_user_query = extract_latest_user_query(turn)
 
         # [FEAT-533] [BKM-015-GUARD]: Pure prompt-guided semantic triage.
         # PROHIBITED: Hardcoded keyword string lists (e.g. raw_lower in [...]).
-        
+
         # [SPR-64_1 / FEAT-534] Speculative Triage Relay: Multi-Seat vs Local vLLM
         triage_schema = {
             "type": "json_schema",
@@ -1079,16 +1404,55 @@ class CognitiveHub:
                     "type": "object",
                     "properties": {
                         "inferred_intent": {"type": "string"},
-                        "addressed_to": {"type": "string", "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"]},
-                        "vibe": {"type": "string", "enum": ["TECHNICAL", "CASUAL", "HISTORICAL", "ANALYTICAL", "OPERATIONAL", "FORENSIC", "META", "WYWO", "SUPERVISORY"]},
-                        "domain": {"type": "string", "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "work_history", "acme_lab_history", "lab_history", "lab_internal", "dream_stream", "feedback", "unknown"]},
+                        "addressed_to": {
+                            "type": "string",
+                            "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"],
+                        },
+                        "vibe": {
+                            "type": "string",
+                            "enum": [
+                                "TECHNICAL",
+                                "CASUAL",
+                                "HISTORICAL",
+                                "ANALYTICAL",
+                                "OPERATIONAL",
+                                "FORENSIC",
+                                "META",
+                                "WYWO",
+                                "SUPERVISORY",
+                            ],
+                        },
+                        "domain": {
+                            "type": "string",
+                            "enum": [
+                                "exp_tlm",
+                                "exp_bkm",
+                                "exp_for",
+                                "standard",
+                                "work_history",
+                                "acme_lab_history",
+                                "lab_history",
+                                "lab_internal",
+                                "dream_stream",
+                                "feedback",
+                                "unknown",
+                            ],
+                        },
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
-                        "importance": {"type": "number"}
+                        "importance": {"type": "number"},
                     },
-                    "required": ["inferred_intent", "addressed_to", "vibe", "domain", "casual", "intrigue", "importance"]
-                }
-            }
+                    "required": [
+                        "inferred_intent",
+                        "addressed_to",
+                        "vibe",
+                        "domain",
+                        "casual",
+                        "intrigue",
+                        "importance",
+                    ],
+                },
+            },
         }
 
         # [FEAT-540] Multi-Collection CLaRa-DNA Vector Pre-Triage Probe
@@ -1096,35 +1460,37 @@ class CognitiveHub:
         pre_triage_res = probe_clara_dna_sync(clean_user_query)
         vector_hint = pre_triage_res.get("semantic_hint", "")
         # [FEAT-541] Pre-seed candidate RAG document chunk if high-confidence vector match
-        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get("best_doc"):
+        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get(
+            "best_doc"
+        ):
             self._last_pre_triage_doc = pre_triage_res["best_doc"]
         else:
             self._last_pre_triage_doc = ""
 
         triage_mode_context = (
-            '[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n'
-            'Analyze user query and return valid JSON with strictly decoupled entity targeting, archetype, and continuous scalars:\n'
-            '• ADDRESSED_TO (Strict Explicit Entity Naming Only):\n'
+            "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
+            "Analyze user query and return valid JSON with strictly decoupled entity targeting, archetype, and continuous scalars:\n"
+            "• ADDRESSED_TO (Strict Explicit Entity Naming Only):\n"
             '  - "NONE": Default when user does NOT explicitly name a character (e.g. "hi there", "status report", "how did 2018 RAPL work?").\n'
             '  - "PINKY": User explicitly calls out Pinky by name (e.g. "Pinky, what do you think?", "Hey Pinky").\n'
             '  - "BRAIN": User explicitly calls out Brain or Deep Thought (e.g. "Brain, analyze this", "Deep Thought").\n'
             '  - "MICE": User explicitly addresses both/group (e.g. "Hey guys", "Mice", "Both of you", "You two", "Team").\n'
             '  - "SYSTEM": User addresses meta/supervisor engine (e.g. "feedback: ...", "tweak scalars").\n'
-            '• 6 CORE ARCHETYPES (vibe & domain):\n'
+            "• 6 CORE ARCHETYPES (vibe & domain):\n"
             '  1. CASUAL: Conversational pleasantries, small talk ("hi", "hello", "good morning") -> vibe="CASUAL", domain="unknown".\n'
             '  2. WYWO: Standup briefs or overnight activity inquiries ("what did you do while I was out?", "morning briefing") -> vibe="WYWO", domain="acme_lab_history".\n'
             '  3. META: Supervisory feedback, prompt engineering discussions, triage adjustments, tone/verbosity critiques ("feedback: ...", "Visible Consensus spam") -> vibe="META", domain="feedback" or "lab_internal".\n'
             '  4. HISTORICAL: Questions on past Intel/career projects or specific years ("what did we do in 2018 for RAPL validation?") -> vibe="HISTORICAL", domain="work_history".\n'
             '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures ("check GPU VRAM status and thermal levels") -> vibe="OPERATIONAL", domain="exp_tlm".\n'
             '  6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night") -> vibe="FORENSIC", domain="exp_for".\n'
-            '• SCALAR RUBRIC:\n'
-            '  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n'
-            '  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n'
-            '  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n'
-            '• INFERRED INTENT: Concise 3-6 word action phrase.\n'
+            "• SCALAR RUBRIC:\n"
+            "  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n"
+            "  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n"
+            "  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n"
+            "• INFERRED INTENT: Concise 3-6 word action phrase.\n"
         )
         if vector_hint:
-            triage_mode_context += f'\n{vector_hint}\n'
+            triage_mode_context += f"\n{vector_hint}\n"
 
         # Execute relay
         winner = None
@@ -1141,14 +1507,24 @@ class CognitiveHub:
 
         if not t_parsed:
             logging.error("[HUB] All triage attempts failed. Falling back to default.")
-            t_parsed = {"vibe": "CASUAL", "addressed_to": "NONE", "importance": 0.5, "domain": "unknown", "casual": 0.5, "intrigue": 0.5, "inferred_intent": "fallback"}
+            t_parsed = {
+                "vibe": "CASUAL",
+                "addressed_to": "NONE",
+                "importance": 0.5,
+                "domain": "unknown",
+                "casual": 0.5,
+                "intrigue": 0.5,
+                "inferred_intent": "fallback",
+            }
             winner = "fallback"
-        
+
         # [FEAT-478] Canonical schema validation & field backfilling
         t_parsed = validate_triage_payload(t_parsed)
 
         # Post-process triage
-        vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_parsed)
+        vibe_override, domain_override = classify_vibe_and_domain(
+            clean_user_query, t_parsed
+        )
         t_parsed["vibe"] = vibe_override
         t_parsed["domain"] = domain_override
 
@@ -1157,22 +1533,26 @@ class CognitiveHub:
         t_parsed["_console_channel"] = routing_meta["channel"]
         t_parsed["_console_source"] = routing_meta["source"]
         t_parsed["_console_target"] = routing_meta["console"]
-        
+
         # Emit single clean pretty-printed triage JSON to the winning console (Option C)
         public_triage = {
-            k: v for k, v in t_parsed.items()
-            if not str(k).startswith("_") and k not in ["situation", "hints", "hyde_vector_text"]
+            k: v
+            for k, v in t_parsed.items()
+            if not str(k).startswith("_")
+            and k not in ["situation", "hints", "hyde_vector_text"]
         }
         triage_json_str = json.dumps(public_triage, indent=2)
-        await self.broadcast({
-            "type": "chat",
-            "brain": triage_json_str,
-            "brain_source": routing_meta["source"],
-            "channel": routing_meta["channel"],
-            "final": True,
-            "request_id": request_id,
-            "version": LAB_VERSION
-        })
+        await self.broadcast(
+            {
+                "type": "chat",
+                "brain": triage_json_str,
+                "brain_source": routing_meta["source"],
+                "channel": routing_meta["channel"],
+                "final": True,
+                "request_id": request_id,
+                "version": LAB_VERSION,
+            }
+        )
 
         # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
         # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
@@ -1181,28 +1561,30 @@ class CognitiveHub:
         # retrieval, interest boosts, and resident model debates. Record atomically to
         # the validation ledger (BKM-035) and emit a crisp in-character Pinky confirmation.
         if is_control_plane_feedback(t_parsed):
-            logging.info(f"[HUB] [FEAT-487] Semantic control-plane feedback turn: '{clean_user_query[:60]}'")
-            
+            logging.info(
+                f"[HUB] [FEAT-487] Semantic control-plane feedback turn: '{clean_user_query[:60]}'"
+            )
+
             # [FEAT-456] Retrieve previous full turn context including user's prior query
             prev_user_input = getattr(self, "last_user_query", "")
             prev_turn_text = getattr(self, "last_full_turn_text", "")
             if not prev_turn_text and self.round_table_memory:
                 prev_turn_text = str(self.round_table_memory[-1])
-            
+
             if not prev_user_input and prev_turn_text:
                 for line in prev_turn_text.splitlines():
                     if line.startswith("User:"):
                         prev_user_input = line[5:].strip()
                         break
-            
+
             flawed_output = ""
             if self.turn_thought_trace.get("pinky"):
                 flawed_output = str(self.turn_thought_trace.get("pinky"))
             elif prev_turn_text:
                 flawed_output = prev_turn_text
-                
+
             prev_triage = getattr(self, "last_triage_payload", {})
-            
+
             record_feedback(
                 query=prev_user_input or turn,
                 flawed_output=flawed_output,
@@ -1211,13 +1593,15 @@ class CognitiveHub:
                 previous_full_turn=prev_turn_text,
                 previous_triage=prev_triage,
             )
-            await self.broadcast({
-                "type": "thought_stream",
-                "source": "Pinky (Feedback)",
-                "token": "Narf! Feedback logged to the validation ledger.",
-                "final": True,
-                "request_id": request_id
-            })
+            await self.broadcast(
+                {
+                    "type": "thought_stream",
+                    "source": "Pinky (Feedback)",
+                    "token": "Narf! Feedback logged to the validation ledger.",
+                    "final": True,
+                    "request_id": request_id,
+                }
+            )
             turn_ledger = f"User (Feedback): {turn}"
             self.round_table_memory.append(turn_ledger)
             return
@@ -1230,8 +1614,14 @@ class CognitiveHub:
 
         # [Triage Intent Gate] Check if triage output requests morning briefing
         intent_lower = str(t_parsed.get("inferred_intent", "")).lower()
-        if "morning_briefing" in intent_lower or "morning briefing" in intent_lower or "trigger_morning_briefing" in intent_lower:
-            logging.info("[HUB] Triage Intent Gate: Morning briefing triggered via triage.")
+        if (
+            "morning_briefing" in intent_lower
+            or "morning briefing" in intent_lower
+            or "trigger_morning_briefing" in intent_lower
+        ):
+            logging.info(
+                "[HUB] Triage Intent Gate: Morning briefing triggered via triage."
+            )
             if trigger_briefing_callback:
                 await trigger_briefing_callback()
             else:
@@ -1242,30 +1632,36 @@ class CognitiveHub:
         vibe = t_parsed.get("vibe", "").upper()
         self.current_vibe = vibe
         self._wrap_residents_for_sandbox()
-        
+
         importance = float(t_parsed.get("importance", 0.5))
         casual = float(t_parsed.get("casual", 0.5))
         intrigue = float(t_parsed.get("intrigue", 0.5))
-        
+
         # [FEAT-484 / Springboard Pattern] Declarative Policy Springboard
         # Applies declarative importance_floor and interest_boost from config/triage_policy.json
         # while preserving the LLM's dynamic evaluation of turn nuance and complexity.
-        springboard = self.policy_loader.get_vibe_springboard(vibe) if hasattr(self, "policy_loader") and self.policy_loader else {"importance_floor": 0.0, "interest_boost": 0.0}
+        springboard = (
+            self.policy_loader.get_vibe_springboard(vibe)
+            if hasattr(self, "policy_loader") and self.policy_loader
+            else {"importance_floor": 0.0, "interest_boost": 0.0}
+        )
         importance_floor = springboard.get("importance_floor", 0.0)
         interest_boost = springboard.get("interest_boost", 0.0)
 
         effective_importance = max(importance, importance_floor)
-        base_interest = ((1.0 - (casual * 0.5)) * (intrigue + effective_importance)) / 2.0
+        base_interest = (
+            (1.0 - (casual * 0.5)) * (intrigue + effective_importance)
+        ) / 2.0
         final_interest = min(1.0, max(0.0, base_interest + interest_boost))
         self.current_interest = final_interest
         t_parsed["effective_importance"] = effective_importance
         t_parsed["calculated_interest"] = final_interest
-        
+
         target = t_parsed.get("addressed_to", "PINKY").lower()
-        
+
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
-        
+
         # [Task 15.1] Conversational Grace Override & [FEAT-458] Floating Validation Oracle
         behavioral_guidance = ""
         context = ""
@@ -1283,7 +1679,9 @@ class CognitiveHub:
         elif vibe == "WYWO":
             # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
             nightly_dialogue = "No recent nightly dialogue recorded."
-            dialogue_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json")
+            dialogue_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json"
+            )
             if os.path.exists(dialogue_path):
                 try:
                     with open(dialogue_path, "r") as f:
@@ -1292,9 +1690,11 @@ class CognitiveHub:
                             nightly_dialogue = f"Topic: {data.get('topic')}\nDialogue: {data.get('content')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
-            
+
             recruiter_report = "No recruiter report found."
-            recruiter_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
+            recruiter_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
+            )
             if os.path.exists(recruiter_path):
                 try:
                     with open(recruiter_path, "r") as f:
@@ -1303,9 +1703,11 @@ class CognitiveHub:
                             recruiter_report = f"Topic: {data.get('topic')}\nContent: {data.get('content')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load recruiter report: {e}")
-            
+
             system_status = "No system status found."
-            status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
+            status_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
+            )
             if os.path.exists(status_path):
                 try:
                     with open(status_path, "r") as f:
@@ -1313,9 +1715,11 @@ class CognitiveHub:
                         system_status = f"Status: {data.get('status', 'unknown')}\nDetails: {data.get('details', 'none')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load system status: {e}")
-            
+
             pager_activity = "No pager activity found."
-            pager_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+            pager_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+            )
             if os.path.exists(pager_path):
                 try:
                     with open(pager_path, "r") as f:
@@ -1324,12 +1728,15 @@ class CognitiveHub:
                             pager_activity = f"Activity: {data.get('activity')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load pager activity: {e}")
-            
+
             dreams = "No long-term subconscious dreams found."
             if "archive" in self.residents:
                 try:
-                    res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 2})
-                    if hasattr(res, 'content') and len(res.content) > 0:
+                    res = await self.residents["archive"].call_tool(
+                        "get_context",
+                        {"query": "Latest Diamond Wisdom synthesis", "n_results": 2},
+                    )
+                    if hasattr(res, "content") and len(res.content) > 0:
                         dreams = res.content[0].text
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
@@ -1358,7 +1765,9 @@ class CognitiveHub:
             # [FEAT-559] Pinky as the Speculative Domain Foil for Ambiguous Queries
             self.current_interest = min(self.current_interest, 0.4)
             rag_context = ""
-            context = f"Triage Situation: {t_parsed.get('situation', 'Ambiguous intent')}"
+            context = (
+                f"Triage Situation: {t_parsed.get('situation', 'Ambiguous intent')}"
+            )
             behavioral_guidance = (
                 "[MODE]: SPECULATIVE_FOIL (Triage intent is ambiguous. "
                 "Do NOT guess or fabricate historical facts. "
@@ -1400,7 +1809,7 @@ class CognitiveHub:
             lead_node = "pinky"
         elif target_upper in ["MICE", "BOTH"]:
             lead_node = "both"
-        else: # "NONE", "SYSTEM", ""
+        else:  # "NONE", "SYSTEM", ""
             if vibe == "CASUAL":
                 # Open room greeting / casual remark -> Both mice acknowledge with character brevity
                 lead_node = "both"
@@ -1417,8 +1826,14 @@ class CognitiveHub:
                 if "rag_context" in locals():
                     handover_context = context if context else rag_context
                 else:
-                    handover_context = context or await self._fetch_rag_context(turn, t_parsed)
-            if handover_context and self.current_interest >= TWO_MICE_FUNNEL_INTEREST and vibe != "CASUAL":
+                    handover_context = context or await self._fetch_rag_context(
+                        turn, t_parsed
+                    )
+            if (
+                handover_context
+                and self.current_interest >= TWO_MICE_FUNNEL_INTEREST
+                and vibe != "CASUAL"
+            ):
                 handover_success = await self._run_two_mice_handover(
                     turn,
                     focus_context=handover_context,
@@ -1429,74 +1844,151 @@ class CognitiveHub:
                     d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
                     d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
                 else:
-                    await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context, t_turn_start=t0_start)
-                    t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
-                    t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
+                    await self._run_brain_leg(
+                        turn,
+                        t_parsed,
+                        shutdown_event=shutdown_event,
+                        request_id=request_id,
+                        rag_context=rag_context,
+                        t_turn_start=t0_start,
+                    )
+                    t_brain_elapsed = getattr(
+                        self,
+                        "_last_t_brain_elapsed",
+                        round(time.perf_counter() - t0_start, 3),
+                    )
+                    t_oracle_elapsed = getattr(
+                        self,
+                        "_last_t_oracle_elapsed",
+                        round(time.perf_counter() - t0_start, 3),
+                    )
             else:
                 # Brain leads Turn 1 (Single Execution Guarantee)
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_context, t_turn_start=t0_start)
-                t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
-                t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
+                await self._run_brain_leg(
+                    turn,
+                    t_parsed,
+                    shutdown_event=shutdown_event,
+                    request_id=request_id,
+                    rag_context=rag_context,
+                    t_turn_start=t0_start,
+                )
+                t_brain_elapsed = getattr(
+                    self,
+                    "_last_t_brain_elapsed",
+                    round(time.perf_counter() - t0_start, 3),
+                )
+                t_oracle_elapsed = getattr(
+                    self,
+                    "_last_t_oracle_elapsed",
+                    round(time.perf_counter() - t0_start, 3),
+                )
         elif lead_node == "both":
             # Both speak on Turn 1 ("Hey mice!" or open casual greeting)
             full_pinky_text = ""
             p_temp = 0.4 if vibe == "CASUAL" else 0.7
             p_max_tokens = 35 if vibe == "CASUAL" else None
             async for token in self._process_node_stream(
-                "pinky", turn, context, "Pinky (Response)", 
-                tools=[], temperature=p_temp, request_id=request_id,
-                behavioral_guidance=behavioral_guidance, max_tokens=p_max_tokens
+                "pinky",
+                turn,
+                context,
+                "Pinky (Response)",
+                tools=[],
+                temperature=p_temp,
+                request_id=request_id,
+                behavioral_guidance=behavioral_guidance,
+                max_tokens=p_max_tokens,
             ):
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
                     break
             t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
-            await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, t_turn_start=t0_start)
-            t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
-            t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
+            await self._run_brain_leg(
+                turn,
+                t_parsed,
+                shutdown_event=shutdown_event,
+                request_id=request_id,
+                t_turn_start=t0_start,
+            )
+            t_brain_elapsed = getattr(
+                self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3)
+            )
+            t_oracle_elapsed = getattr(
+                self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3)
+            )
         else:
             # [FEAT-457] Single-Layer Speculative Context Pre-fetch:
             # Launch Brain's RAG context retrieval immediately in the background while Pinky speaks.
             brain_prefetch_task = None
-            if ("brain" in self.residents or "thought" in self.residents) and vibe != "CASUAL":
-                brain_prefetch_task = asyncio.create_task(self._fetch_rag_context(turn, t_parsed))
+            if (
+                "brain" in self.residents or "thought" in self.residents
+            ) and vibe != "CASUAL":
+                brain_prefetch_task = asyncio.create_task(
+                    self._fetch_rag_context(turn, t_parsed)
+                )
 
             # Pinky leads Turn 1 (Explicitly addressed to PINKY)
             full_pinky_text = ""
             p_temp = 0.4 if vibe == "CASUAL" else 0.7
             p_max_tokens = 35 if vibe == "CASUAL" else None
             async for token in self._process_node_stream(
-                "pinky", turn, context, "Pinky (Response)", 
-                tools=[], temperature=p_temp, request_id=request_id,
-                behavioral_guidance=behavioral_guidance, max_tokens=p_max_tokens
+                "pinky",
+                turn,
+                context,
+                "Pinky (Response)",
+                tools=[],
+                temperature=p_temp,
+                request_id=request_id,
+                behavioral_guidance=behavioral_guidance,
+                max_tokens=p_max_tokens,
             ):
                 full_pinky_text += token
                 if shutdown_event and shutdown_event.is_set():
                     break
             t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
-            
+
             # Intercept morning briefing tool call from Pinky's response
             if "trigger_morning_briefing" in full_pinky_text:
                 if brain_prefetch_task and not brain_prefetch_task.done():
                     brain_prefetch_task.cancel()
-                logging.info("[HUB] Intercepted trigger_morning_briefing tool call from Pinky's response.")
+                logging.info(
+                    "[HUB] Intercepted trigger_morning_briefing tool call from Pinky's response."
+                )
                 if trigger_briefing_callback:
                     await trigger_briefing_callback()
                 else:
                     await self.trigger_morning_briefing(request_id=request_id)
                 return
-            
+
             # Turn 2: Brain interjects if interest is high
             if self.current_interest > 0.5:
-                logging.info(f"[HUB] [FEAT-457] Interest high ({self.current_interest:.2f} > 0.5): Triggering Brain interjection with pre-fetched context.")
-                await self._run_brain_leg(turn, t_parsed, shutdown_event=shutdown_event, request_id=request_id, prefetch_task=brain_prefetch_task, t_turn_start=t0_start)
-                t_brain_elapsed = getattr(self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3))
-                t_oracle_elapsed = getattr(self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3))
+                logging.info(
+                    f"[HUB] [FEAT-457] Interest high ({self.current_interest:.2f} > 0.5): Triggering Brain interjection with pre-fetched context."
+                )
+                await self._run_brain_leg(
+                    turn,
+                    t_parsed,
+                    shutdown_event=shutdown_event,
+                    request_id=request_id,
+                    prefetch_task=brain_prefetch_task,
+                    t_turn_start=t0_start,
+                )
+                t_brain_elapsed = getattr(
+                    self,
+                    "_last_t_brain_elapsed",
+                    round(time.perf_counter() - t0_start, 3),
+                )
+                t_oracle_elapsed = getattr(
+                    self,
+                    "_last_t_oracle_elapsed",
+                    round(time.perf_counter() - t0_start, 3),
+                )
             else:
                 # Preemption: Interest is low, cleanly cancel/discard speculative pre-fetch without penalty
                 if brain_prefetch_task and not brain_prefetch_task.done():
                     brain_prefetch_task.cancel()
-                    logging.info(f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context.")
+                    logging.info(
+                        f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context."
+                    )
 
         # [FEAT-356 / FEAT-558] Unified Session Ledger: Record turn summary (Sanitized for Auto-Regressive Health)
         clean_user = sanitize_spoken_dialogue(turn)
@@ -1505,21 +1997,35 @@ class CognitiveHub:
         pinky_res = self.turn_thought_trace.get("pinky")
         if pinky_res:
             clean_pinky = sanitize_spoken_dialogue(str(pinky_res))
-            if clean_pinky and not clean_pinky.startswith('{"score"') and not clean_pinky.startswith('{ "score"'):
+            if (
+                clean_pinky
+                and not clean_pinky.startswith('{"score"')
+                and not clean_pinky.startswith('{ "score"')
+            ):
                 turn_ledger += f"\nPinky: {clean_pinky[:300]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.record_bullet(turn_num, "pinky", clean_pinky[:200])
-        brain_res = self.turn_thought_trace.get("thought") or self.turn_thought_trace.get("brain")
+                self.blackboard_ledger.record_bullet(
+                    turn_num, "pinky", clean_pinky[:200]
+                )
+        brain_res = self.turn_thought_trace.get(
+            "thought"
+        ) or self.turn_thought_trace.get("brain")
         if brain_res:
             clean_brain = sanitize_spoken_dialogue(str(brain_res))
             if clean_brain:
                 turn_ledger += f"\nBrain: {clean_brain[:400]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
-                self.blackboard_ledger.record_bullet(turn_num, "brain", clean_brain[:200])
+                self.blackboard_ledger.record_bullet(
+                    turn_num, "brain", clean_brain[:200]
+                )
         critique_res = self.turn_thought_trace.get("critique")
         if critique_res:
             clean_critique = sanitize_spoken_dialogue(str(critique_res))
-            if clean_critique and not clean_critique.startswith('{"score"') and not clean_critique.startswith('{ "score"'):
+            if (
+                clean_critique
+                and not clean_critique.startswith('{"score"')
+                and not clean_critique.startswith('{ "score"')
+            ):
                 turn_ledger += f"\nPinky Summary: {clean_critique[:200]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, clean_critique[:200])
@@ -1540,12 +2046,22 @@ class CognitiveHub:
                     "pinky_stance": t_pinky_elapsed,
                     "brain_arch": t_brain_elapsed,
                     "oracle": t_oracle_elapsed,
-                    "pinky_judgment": t_judgment_elapsed
+                    "pinky_judgment": t_judgment_elapsed,
                 }
-                topic_name = str(t_parsed.get("domain", "standard")).upper() if t_parsed else "STANDARD"
+                topic_name = (
+                    str(t_parsed.get("domain", "standard")).upper()
+                    if t_parsed
+                    else "STANDARD"
+                )
                 scope_name = "CONTEXT_SCOPE_LONG"
-                bullets_list = [f"{k.upper()}: {str(v)[:150]}" for k, v in self.turn_thought_trace.items() if v]
-                consensus_text = str(critique_res)[:200] if critique_res else "Consensus nominal."
+                bullets_list = [
+                    f"{k.upper()}: {str(v)[:150]}"
+                    for k, v in self.turn_thought_trace.items()
+                    if v
+                ]
+                consensus_text = (
+                    str(critique_res)[:200] if critique_res else "Consensus nominal."
+                )
                 if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                     self.blackboard_ledger.append_round_table_delta(
                         turn=turn_num,
@@ -1553,10 +2069,12 @@ class CognitiveHub:
                         scope=scope_name,
                         deltas=deltas_dict,
                         bullets=bullets_list,
-                        consensus=consensus_text
+                        consensus=consensus_text,
                     )
             except Exception as e:
-                logging.warning(f"[HUB] [FEAT-525] Round table elapsed logging skipped: {e}")
+                logging.warning(
+                    f"[HUB] [FEAT-525] Round table elapsed logging skipped: {e}"
+                )
 
         # [FEAT-441] 24-hour journal ledger: capture only spoken dialogue, non-fatal
         try:
@@ -1571,7 +2089,9 @@ class CognitiveHub:
         Non-fatal by contract: any persistence failure is logged and swallowed so
         the live dialogue turn is never interrupted.
         """
-        journal_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/journal_ledger.jsonl")
+        journal_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/journal_ledger.jsonl"
+        )
         try:
             os.makedirs(os.path.dirname(journal_path), exist_ok=True)
             surviving = []
@@ -1596,33 +2116,49 @@ class CognitiveHub:
         except Exception as e:
             logging.error(f"[HUB] Journal ledger write failed: {e}")
 
-# [FEAT-247] Physical Audit Gate
-    async def evaluate_grounding(self, source, text, interest=0.8, shutdown_event=None, request_id="default", rag_context=""):
+    # [FEAT-247] Physical Audit Gate
+    async def evaluate_grounding(
+        self,
+        source,
+        text,
+        interest=0.8,
+        shutdown_event=None,
+        request_id="default",
+        rag_context="",
+    ):
         """
         [FEAT-227] The Grounding Gate (V5).
-        Restores character balance by prompting Pinky to critique or conversationally 
+        Restores character balance by prompting Pinky to critique or conversationally
         summarize Deep Thought's technical output directly into the Chat pane.
         """
         if "pinky" not in self.residents or source.lower().startswith("pinky"):
             return
-        
+
         # Calculate dynamic scaling based on length
         importance = interest
         if len(text) > 800:
             importance = min(1.0, importance + 0.2)
-            
+
         if importance <= 0.5:
-            logging.info(f"[HUB] Grounding Gate skipped for {source} (Interest/Importance: {importance:.2f} <= 0.5).")
+            logging.info(
+                f"[HUB] Grounding Gate skipped for {source} (Interest/Importance: {importance:.2f} <= 0.5)."
+            )
             return
-            
-        logging.info(f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5).")
+
+        logging.info(
+            f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5)."
+        )
         try:
             # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Summary Blend
-            evidence_block = f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n" if rag_context else ""
+            evidence_block = (
+                f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n"
+                if rag_context
+                else ""
+            )
             critique_query = build_critic_prompt(
                 user_query=text,
                 technical_summary=evidence_block or text,
-                persona_name="Pinky"
+                persona_name="Pinky",
             )
 
             eval_schema = {
@@ -1635,15 +2171,19 @@ class CognitiveHub:
                             "score": {"type": "integer", "minimum": 1, "maximum": 5},
                             "reasoning": {"type": "string"},
                             "slop_found": {"type": "boolean"},
-                            "retort": {"type": "string"}
+                            "retort": {"type": "string"},
                         },
-                        "required": ["score", "reasoning", "slop_found", "retort"]
-                    }
-                }
+                        "required": ["score", "reasoning", "slop_found", "retort"],
+                    },
+                },
             }
 
             # Vibe-Aware Tone mapping
-            vibe = self.current_vibe.upper() if hasattr(self, 'current_vibe') and self.current_vibe else "CASUAL"
+            vibe = (
+                self.current_vibe.upper()
+                if hasattr(self, "current_vibe") and self.current_vibe
+                else "CASUAL"
+            )
             vibe_tone = "Tone guidance: Casual, friendly, peer-to-peer."
             if vibe == "TECHNICAL":
                 vibe_tone = "Tone guidance: Grounded, slightly critique-oriented, checking technical viability."
@@ -1652,7 +2192,9 @@ class CognitiveHub:
             elif vibe == "FORENSIC":
                 vibe_tone = "Tone guidance: Cynical, investigative, auditing telemetry patterns."
             elif vibe == "META":
-                vibe_tone = "Tone guidance: Self-aware, observing the lab's state machine."
+                vibe_tone = (
+                    "Tone guidance: Self-aware, observing the lab's state machine."
+                )
             elif vibe == "OPERATIONAL":
                 vibe_tone = "Tone guidance: Direct, diagnostic-focused, emphasizing active system state and logs."
             elif vibe == "ANALYTICAL":
@@ -1661,21 +2203,29 @@ class CognitiveHub:
             # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
             eval_text = ""
             async for token in self._process_node_stream(
-                "pinky", critique_query, f"Technical Output from Brain to evaluate:\n{text}", "Pinky (Coherence Critic)",
-                tools=[], temperature=0.2, response_format=eval_schema, request_id=request_id,
+                "pinky",
+                critique_query,
+                f"Technical Output from Brain to evaluate:\n{text}",
+                "Pinky (Coherence Critic)",
+                tools=[],
+                temperature=0.2,
+                response_format=eval_schema,
+                request_id=request_id,
                 behavioral_guidance=(
                     f"You are Pinky. Brain has just given the technical stance above. "
                     f"Respond directly to Brain in your authentic witty peer voice, reviewing the technical truth, "
                     f"scars, and giving consensus. Never speak about yourself in the third person. {vibe_tone}"
-                )
+                ),
             ):
                 eval_text += token
-            
+
             # [FEAT-470] Parse structured critic payload
             critic_res = parse_critic_payload(eval_text)
-            
+
             # Log evaluations to .round_table_evals.json
-            eval_file_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/.round_table_evals.json")
+            eval_file_path = os.path.expanduser(
+                "~/Dev_Lab/HomeLabAI/.round_table_evals.json"
+            )
             existing_evals = []
             if os.path.exists(eval_file_path):
                 try:
@@ -1683,17 +2233,17 @@ class CognitiveHub:
                         existing_evals = json.load(f)
                 except Exception:
                     pass
-            
+
             new_eval = {
                 "timestamp": time.time(),
                 "source": source,
                 "score": critic_res.score,
                 "reasoning": critic_res.reasoning,
                 "slop_found": critic_res.slop_found,
-                "retort": critic_res.retort
+                "retort": critic_res.retort,
             }
             existing_evals.append(new_eval)
-            
+
             # Atomic write (.tmp + replace)
             tmp_path = eval_file_path + ".tmp"
             try:
@@ -1701,29 +2251,36 @@ class CognitiveHub:
                     json.dump(existing_evals, f, indent=2)
                 os.replace(tmp_path, eval_file_path)
             except Exception as e:
-                logging.error(f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}")
+                logging.error(
+                    f"[HUB] Failed to save evaluations to .round_table_evals.json: {e}"
+                )
 
             # [FEAT-470] Broadcast internal diagnostic telemetry frame to CROSSTALK
             telemetry_frame = format_crosstalk_telemetry(
-                source="Pinky",
-                target=source,
-                payload=new_eval
+                source="Pinky", target=source, payload=new_eval
             )
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
-                "brain_source": "System (Critic Telemetry)",
-                "telemetry": telemetry_frame
-            })
+            await self.broadcast(
+                {
+                    "type": "crosstalk",
+                    "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
+                    "brain_source": "System (Critic Telemetry)",
+                    "telemetry": telemetry_frame,
+                }
+            )
 
             # [FEAT-470] Blend cartoon quip + agreed summary for out-loud delivery (banning robotic boilerplate)
             chat_delivery = format_chat_delivery(
                 cartoon_retort=critic_res.cartoon_retort,
-                technical_summary=critic_res.reasoning
+                technical_summary=critic_res.reasoning,
             )
             if chat_delivery:
                 self.turn_thought_trace["critique"] = chat_delivery
-                await self.execute_dispatch(chat_delivery, "Pinky (Coherence Critic)", shutdown_event=shutdown_event, final=True)
+                await self.execute_dispatch(
+                    chat_delivery,
+                    "Pinky (Coherence Critic)",
+                    shutdown_event=shutdown_event,
+                    final=True,
+                )
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
@@ -1737,7 +2294,9 @@ class CognitiveHub:
             raw_context, doc_id=self._extract_doc_id(raw_context)
         )
 
-        logging.info("[HUB] Context Precision: Distilling raw RAG into Strategic Brief...")
+        logging.info(
+            "[HUB] Context Precision: Distilling raw RAG into Strategic Brief..."
+        )
         try:
             prompt = (
                 "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Strategic Brief'. "
@@ -1745,19 +2304,22 @@ class CognitiveHub:
                 "Focus strictly on high-density technical facts and grounded validation evidence."
             )
             # Use 'think' to generate distillation
-            res = await self.residents["brain"].call_tool("think", {
-                "query": prompt, 
-                "context": raw_context,
-                "behavioral_guidance": "Distill for Strategic Thought.",
-                "request_id": request_id
-            })
-            
+            res = await self.residents["brain"].call_tool(
+                "think",
+                {
+                    "query": prompt,
+                    "context": raw_context,
+                    "behavioral_guidance": "Distill for Strategic Thought.",
+                    "request_id": request_id,
+                },
+            )
+
             brief = ""
-            if hasattr(res, 'content') and len(res.content) > 0:
+            if hasattr(res, "content") and len(res.content) > 0:
                 brief = res.content[0].text
             else:
                 brief = str(res)
-                
+
             logging.info(f"[HUB] Distillation complete ({len(brief)} chars).")
             return f"[STRATEGIC_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
         except Exception as e:
@@ -1767,7 +2329,7 @@ class CognitiveHub:
     async def _get_node_tools(self, node_id: str) -> list:
         """[SPR-41_1] Retrieve active tool names from a resident node's MCP server."""
         node = self.residents.get(node_id)
-        if not node or not hasattr(node, 'mcp'):
+        if not node or not hasattr(node, "mcp"):
             return []
         try:
             mcp_tools = await node.mcp.list_tools()
@@ -1832,7 +2394,9 @@ class CognitiveHub:
         if "thought" in self.residents and await self.is_deep_thought_reachable():
             try:
                 res = await asyncio.wait_for(
-                    self.residents["thought"].call_tool("think", {"query": query, "context": ""}),
+                    self.residents["thought"].call_tool(
+                        "think", {"query": query, "context": ""}
+                    ),
                     timeout=timeout,
                 )
                 if hasattr(res, "content") and len(res.content) > 0:
@@ -1840,7 +2404,9 @@ class CognitiveHub:
                     if text and len(text.strip()) > 0:
                         return text.strip()
             except asyncio.TimeoutError:
-                logging.warning(f"[FEAT-459] Deep Thought think timed out after {timeout}s")
+                logging.warning(
+                    f"[FEAT-459] Deep Thought think timed out after {timeout}s"
+                )
             except Exception as e:
                 logging.warning(f"[FEAT-459] Deep Thought think unavailable: {e}")
 
@@ -1851,28 +2417,37 @@ class CognitiveHub:
         """[FEAT-459 / Story 54.6] Alias for preamble quip synthesis."""
         return await self.synthesize_preamble_quip(query)
 
-    async def resolve_hyde_vector(self, query: str, triage_result: dict, timeout: float = 8.0) -> tuple:
+    async def resolve_hyde_vector(
+        self, query: str, triage_result: dict, timeout: float = 8.0
+    ) -> tuple:
         """[FEAT-437] 3-Tier HyDE Failover Cascade:
         Tier 1 (Pinky Local vLLM with cli_voice_v1 LoRA):
         Triage winner streams intent to Pinky, who synthesizes the 3-part HyDE Vector using fine-tuned archive weights.
         Tier 2 (Deep Thought on Kender 4090):
         Fallback synthesist if Pinky local vLLM is unavailable.
         Tier 3 (Direct Raw Query / Casual):
-        If non-matching domain or casual turn, returns empty vector to bypass ChromaDB."""
+        If non-matching domain or casual turn, returns empty vector to bypass ChromaDB.
+        """
         # Check if casual / non-matching domain
         domain = str(triage_result.get("domain", ""))
         vibe = str(triage_result.get("vibe", "")).upper()
         importance = float(triage_result.get("importance", 0.5))
 
         # [FEAT-534] The True RAG Rule: If domain is 'unknown', or non-matching feedback/internal, return empty vector
-        if domain in ["unknown", "feedback", "lab_internal"] or (importance < 0.3 and domain == "standard"):
-            logging.info("[FEAT-534] Unrecorded domain or casual turn; returning empty HyDE vector (Zero RAG Noise)")
+        if domain in ["unknown", "feedback", "lab_internal"] or (
+            importance < 0.3 and domain == "standard"
+        ):
+            logging.info(
+                "[FEAT-534] Unrecorded domain or casual turn; returning empty HyDE vector (Zero RAG Noise)"
+            )
             return "", DIRECT_RAW_QUERY
 
         # If triage result already contains a valid HyDE vector from Pinky cli_voice_v1:
         hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
         if len(hyde_text.strip()) > 5:
-            logging.info(f"[FEAT-437][TIER1] Pinky LoRA HyDE (Pre-Synthesized): {hyde_text.strip()[:80]!r}")
+            logging.info(
+                f"[FEAT-437][TIER1] Pinky LoRA HyDE (Pre-Synthesized): {hyde_text.strip()[:80]!r}"
+            )
             return hyde_text.strip(), PINKY_LOCAL_VLLM
 
         # Tier 1: Dispatch to Pinky with cli_voice_v1 LoRA in parallel
@@ -1881,16 +2456,25 @@ class CognitiveHub:
                 triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
-                    "pinky", HYDE_SYNTHESIS_PROMPT, triage_context, "Pinky (HyDE)",
-                    tools=[], temperature=0.2, max_tokens=150
+                    "pinky",
+                    HYDE_SYNTHESIS_PROMPT,
+                    triage_context,
+                    "Pinky (HyDE)",
+                    tools=[],
+                    temperature=0.2,
+                    max_tokens=150,
                 ):
                     pinky_hyde += token
                 clean_hyde = scrub_hyde_vector(pinky_hyde.strip())
                 if len(clean_hyde) > 5:
-                    logging.info(f"[FEAT-437][TIER1] Pinky LoRA (cli_voice_v1) HyDE: {clean_hyde[:80]!r}")
+                    logging.info(
+                        f"[FEAT-437][TIER1] Pinky LoRA (cli_voice_v1) HyDE: {clean_hyde[:80]!r}"
+                    )
                     return clean_hyde, PINKY_LOCAL_VLLM
             except Exception as e:
-                logging.warning(f"[FEAT-437][TIER1] Pinky local LoRA synthesis failed ({e}), falling back to Tier 2...")
+                logging.warning(
+                    f"[FEAT-437][TIER1] Pinky local LoRA synthesis failed ({e}), falling back to Tier 2..."
+                )
 
         # Tier 2: Deep Thought on Kender (RTX 4090) fallback
         if "thought" in self.residents:
@@ -1905,15 +2489,21 @@ class CognitiveHub:
                     text = res.content[0].text
                     if text and len(text.strip()) > 5:
                         clean_dt = scrub_hyde_vector(text.strip())
-                        logging.info(f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {clean_dt[:80]!r}")
+                        logging.info(
+                            f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {clean_dt[:80]!r}"
+                        )
                         return clean_dt, DEEP_THOUGHT_REMOTE
             except asyncio.TimeoutError:
-                logging.warning(f"[FEAT-437][TIER2] Deep Thought timed out after {timeout}s")
+                logging.warning(
+                    f"[FEAT-437][TIER2] Deep Thought timed out after {timeout}s"
+                )
             except Exception as e:
                 logging.warning(f"[FEAT-437][TIER2] Deep Thought unavailable ({e})")
 
         # Tier 3: Judge-driven non-match / zero-dependency floor (BKM-015)
-        logging.info("[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)")
+        logging.info(
+            "[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)"
+        )
         return "", DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
@@ -1922,7 +2512,11 @@ class CognitiveHub:
         ChromaDB collections to bypass redundant database lookups (0ms cache hits)."""
         if "archive" not in self.residents:
             return ""
-        domain_val = str(t_parsed.get("domain", "")).lower() if isinstance(t_parsed, dict) else ""
+        domain_val = (
+            str(t_parsed.get("domain", "")).lower()
+            if isinstance(t_parsed, dict)
+            else ""
+        )
         if domain_val in ("lab_internal", "unclear", "feedback", "unknown", "standard"):
             return ""
         hyde, hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
@@ -1930,30 +2524,37 @@ class CognitiveHub:
         if not hyde:
             return ""
         # [FEAT-441-Cache / FEAT-541] Key on the exact inputs that shape retrieval output
-        cache_key = hashlib.sha256((turn + hyde + str(n_results)).encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256(
+            (turn + hyde + str(n_results)).encode("utf-8")
+        ).hexdigest()
         result_text = ""
         if cache_key in self._rag_cache:
-            logging.info(f"[HUB] [FEAT-541] Two-Stage RAG Cache Hit (0ms): {cache_key[:8]}")
+            logging.info(
+                f"[HUB] [FEAT-541] Two-Stage RAG Cache Hit (0ms): {cache_key[:8]}"
+            )
             result_text = self._rag_cache[cache_key]
         elif hasattr(self, "_last_pre_triage_doc") and self._last_pre_triage_doc:
             # Stage 1 Pre-Triage Seed: If pre-triage extracted a high-relevance document chunk, use it directly
             result_text = self._last_pre_triage_doc
             self._rag_cache[cache_key] = result_text
-            logging.info(f"[HUB] [FEAT-541] Two-Stage RAG Cache Pre-Seeded from Vector Pre-Triage (0ms): {cache_key[:8]}")
+            logging.info(
+                f"[HUB] [FEAT-541] Two-Stage RAG Cache Pre-Seeded from Vector Pre-Triage (0ms): {cache_key[:8]}"
+            )
         else:
             try:
                 vibe_val = str(t_parsed.get("vibe", ""))
                 domain_val = str(t_parsed.get("domain", ""))
                 res = await self.residents["archive"].call_tool(
-                    "get_context", {
+                    "get_context",
+                    {
                         "query": turn,
                         "hyde_vector_text": hyde,
                         "n_results": n_results,
                         "vibe": vibe_val,
-                        "domain": domain_val
-                    }
+                        "domain": domain_val,
+                    },
                 )
-                if hasattr(res, 'content') and len(res.content) > 0:
+                if hasattr(res, "content") and len(res.content) > 0:
                     result_text = res.content[0].text
                     if result_text:
                         # [FEAT-475] Parse structured zero-context envelope from archive_node.
@@ -1963,7 +2564,9 @@ class CognitiveHub:
                             envelope = json.loads(result_text)
                             if isinstance(envelope, dict) and "context" in envelope:
                                 if not envelope.get("found", True):
-                                    logging.info(f"[HUB] Zero-Context envelope received: {envelope.get('reason', 'unknown')}")
+                                    logging.info(
+                                        f"[HUB] Zero-Context envelope received: {envelope.get('reason', 'unknown')}"
+                                    )
                                     result_text = ""  # Suppress unfound context
                                 else:
                                     result_text = envelope["context"]
@@ -1987,22 +2590,34 @@ class CognitiveHub:
                 broadcast_sig = f"{turn}_{doc_id}_{len(result_text)}"
                 if getattr(self, "_last_rag_eval_sig", None) != broadcast_sig:
                     self._last_rag_eval_sig = broadcast_sig
-                    await self.broadcast({
-                        "type": "rag_eval",
-                        "query": turn,
-                        "hyde": hyde,
-                        "tier": str(hyde_tier),
-                        "doc_id": doc_id,
-                        "snippet": result_text[:400] + ("..." if len(result_text) > 400 else ""),
-                        "full_context": result_text,
-                        "n_results": n_results
-                    })
+                    await self.broadcast(
+                        {
+                            "type": "rag_eval",
+                            "query": turn,
+                            "hyde": hyde,
+                            "tier": str(hyde_tier),
+                            "doc_id": doc_id,
+                            "snippet": result_text[:400]
+                            + ("..." if len(result_text) > 400 else ""),
+                            "full_context": result_text,
+                            "n_results": n_results,
+                        }
+                    )
             except Exception as ex:
                 logging.warning(f"[FEAT-454] RAG eval broadcast warning: {ex}")
 
         return result_text
 
-    async def _run_brain_leg(self, query, triage, shutdown_event=None, request_id="default", prefetch_task=None, rag_context=None, t_turn_start=None):
+    async def _run_brain_leg(
+        self,
+        query,
+        triage,
+        shutdown_event=None,
+        request_id="default",
+        prefetch_task=None,
+        rag_context=None,
+        t_turn_start=None,
+    ):
         """Handles Brain (4090) leg of the waterfall."""
         # [Task 2.2] Context Precision
         vibe = triage.get("vibe", "").upper()
@@ -2018,22 +2633,32 @@ class CognitiveHub:
             )
             if "brain" in self.residents:
                 async for token in self._process_node_stream(
-                    "brain", query, "", "Brain (Local Baseline)",
-                    tools=[], temperature=0.2, request_id=request_id,
-                    behavioral_guidance=guidance, max_tokens=35
+                    "brain",
+                    query,
+                    "",
+                    "Brain (Local Baseline)",
+                    tools=[],
+                    temperature=0.2,
+                    request_id=request_id,
+                    behavioral_guidance=guidance,
+                    max_tokens=35,
                 ):
                     brain_response += token
                     if shutdown_event and shutdown_event.is_set():
                         break
             if t_turn_start is not None:
-                self._last_t_brain_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
+                self._last_t_brain_elapsed = max(
+                    0.001, round(time.perf_counter() - t_turn_start, 3)
+                )
             self.turn_thought_trace["brain"] = brain_response
             return
 
         if vibe == "WYWO":
             # Construct WYWO context
             nightly_dialogue = "No recent nightly dialogue recorded."
-            dialogue_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json")
+            dialogue_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json"
+            )
             if os.path.exists(dialogue_path):
                 try:
                     with open(dialogue_path, "r") as f:
@@ -2042,12 +2667,15 @@ class CognitiveHub:
                             nightly_dialogue = f"Topic: {data.get('topic')}\nDialogue: {data.get('content')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
-            
+
             dreams = "No long-term subconscious dreams found."
             if "archive" in self.residents:
                 try:
-                    res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 2})
-                    if hasattr(res, 'content') and len(res.content) > 0:
+                    res = await self.residents["archive"].call_tool(
+                        "get_context",
+                        {"query": "Latest Diamond Wisdom synthesis", "n_results": 2},
+                    )
+                    if hasattr(res, "content") and len(res.content) > 0:
                         dreams = res.content[0].text
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
@@ -2062,7 +2690,9 @@ class CognitiveHub:
                     try:
                         rag_context = await prefetch_task
                     except Exception as ex:
-                        logging.warning(f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}")
+                        logging.warning(
+                            f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}"
+                        )
                         rag_context = await self._fetch_rag_context(query, triage)
                 else:
                     rag_context = await self._fetch_rag_context(query, triage)
@@ -2073,8 +2703,10 @@ class CognitiveHub:
             else:
                 # [FEAT-475] Zero-Context: Signal to Brain that no historical archive was retrieved.
                 raw_context += "\n\n[ZERO_CONTEXT]: No relevant historical notes found. Respond from live telemetry only."
-        
-        distilled_context = await self._distill_strategic_brief(raw_context, request_id=request_id)
+
+        distilled_context = await self._distill_strategic_brief(
+            raw_context, request_id=request_id
+        )
 
         # [FEAT-470] Step 3: Local Brain-LoRA Waterfall Handoff (shadow_brain_v2 on vLLM port 8088).
         # Stream The Brain's local technical baseline BEFORE remote escalation to Deep Thought.
@@ -2082,8 +2714,13 @@ class CognitiveHub:
         if "brain" in self.residents:
             brain_tools = await self._get_node_tools("brain")
             async for token in self._process_node_stream(
-                "brain", query, distilled_context, "Brain (Local Baseline)",
-                tools=brain_tools, temperature=0.2, request_id=request_id
+                "brain",
+                query,
+                distilled_context,
+                "Brain (Local Baseline)",
+                tools=brain_tools,
+                temperature=0.2,
+                request_id=request_id,
             ):
                 brain_response += token
                 if shutdown_event and shutdown_event.is_set():
@@ -2091,7 +2728,9 @@ class CognitiveHub:
 
         # Record elapsed checkpoint after Brain local baseline
         if t_turn_start is not None:
-            self._last_t_brain_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
+            self._last_t_brain_elapsed = max(
+                0.001, round(time.perf_counter() - t_turn_start, 3)
+            )
 
         # Step 4: Remote escalation to Deep Thought (Kender), passing the query, distilled
         # strategic brief, AND the local Brain synthesis as grounding context upstream.
@@ -2106,8 +2745,12 @@ class CognitiveHub:
         # [FEAT-486] Fast Socket Shadow Gate: Even if the reachability probe nominally
         # passed, run a 200ms TCP socket check on Kender to hard-bypass the remote call
         # when it is SHADOW, eliminating 60s timeout hangs in STAGE 4/5.
-        if thought_reachable and not _probe_tcp(KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S):
-            logging.info("[FEAT-486] Kender SHADOW (socket gate). Bypassing remote Strategic Synthesis.")
+        if thought_reachable and not _probe_tcp(
+            KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
+        ):
+            logging.info(
+                "[FEAT-486] Kender SHADOW (socket gate). Bypassing remote Strategic Synthesis."
+            )
             thought_reachable = False
         self._last_thought_duration = 0.0
         if thought_reachable:
@@ -2117,30 +2760,49 @@ class CognitiveHub:
                 thought_context += f"\n\n[LOCAL_BRAIN_BASELINE]:\n{brain_response}"
             active_tools = await self._get_node_tools("thought")
             async for token in self._process_node_stream(
-                "thought", query, thought_context, "Deep Thought", tools=active_tools, temperature=0.2, request_id=request_id
+                "thought",
+                query,
+                thought_context,
+                "Deep Thought",
+                tools=active_tools,
+                temperature=0.2,
+                request_id=request_id,
             ):
                 dt_response += token
                 if shutdown_event and shutdown_event.is_set():
                     break
-            self._last_thought_duration = max(0.001, round(time.perf_counter() - t_dt_start, 3))
+            self._last_thought_duration = max(
+                0.001, round(time.perf_counter() - t_dt_start, 3)
+            )
 
         # [SPR-41_2] Skip cascade if context starvation was detected
         if "thought" in self.context_starved_nodes:
             self.context_starved_nodes.discard("thought")
             logging.info("[HUB] Brain leg cascade bypassed due to CONTEXT_STARVED.")
             return
-        
+
         # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final strategic output.
         # [FEAT-470] Evaluate whichever strategic response the waterfall produced (Deep Thought if
         # reachable, otherwise the local Brain baseline) against the raw grounding context.
         strategic_response = dt_response or brain_response
         strategic_source = "Deep Thought" if dt_response else "Brain (Local Baseline)"
-        rag_payload = raw_context if 'raw_context' in locals() else ""
+        rag_payload = raw_context if "raw_context" in locals() else ""
         t_crit_start = time.perf_counter()
-        await self.evaluate_grounding(strategic_source, strategic_response, interest=self.current_interest, shutdown_event=shutdown_event, request_id=request_id, rag_context=rag_payload)
-        self._last_thought_duration += max(0.001, round(time.perf_counter() - t_crit_start, 3))
+        await self.evaluate_grounding(
+            strategic_source,
+            strategic_response,
+            interest=self.current_interest,
+            shutdown_event=shutdown_event,
+            request_id=request_id,
+            rag_context=rag_payload,
+        )
+        self._last_thought_duration += max(
+            0.001, round(time.perf_counter() - t_crit_start, 3)
+        )
         if t_turn_start is not None:
-            self._last_t_oracle_elapsed = max(0.001, round(time.perf_counter() - t_turn_start, 3))
+            self._last_t_oracle_elapsed = max(
+                0.001, round(time.perf_counter() - t_turn_start, 3)
+            )
 
     async def _run_two_mice_handover(
         self,
@@ -2170,82 +2832,133 @@ class CognitiveHub:
         Distillation Funnel gate) — the caller falls back to the legacy flow.
         """
         if ("brain" not in self.residents) or ("pinky" not in self.residents):
-            logging.info("[FEAT-489] Two-Mice handover unavailable (need brain + pinky residents). Falling back.")
+            logging.info(
+                "[FEAT-489] Two-Mice handover unavailable (need brain + pinky residents). Falling back."
+            )
             return False
 
         gate_interest = self.current_interest if interest is None else float(interest)
         if gate_interest < TWO_MICE_FUNNEL_INTEREST:
-            logging.info(f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant.")
+            logging.info(
+                f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant."
+            )
             return False
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
 
         # --- Stage 1: Brain extracts technical bullets (Right Console) --------
         t_tm_brain_start = time.perf_counter()
-        stage1_prompt = build_two_mice_stage_prompt(1, user_query=query, context=focus_context, interest=gate_interest)
+        stage1_prompt = build_two_mice_stage_prompt(
+            1, user_query=query, context=focus_context, interest=gate_interest
+        )
         brain_tools = await self._get_node_tools("brain")
         brain_bullets = ""
         async for token in self._process_node_stream(
-            "brain", stage1_prompt, "", "Brain (Archive)",
-            tools=brain_tools, temperature=0.2, request_id=request_id,
+            "brain",
+            stage1_prompt,
+            "",
+            "Brain (Archive)",
+            tools=brain_tools,
+            temperature=0.2,
+            request_id=request_id,
         ):
             brain_bullets += token
-            await self.broadcast(build_two_mice_stream_packet(
-                source=TWO_MICE_BRAIN_SOURCE, channel=TWO_MICE_BRAIN_CHANNEL,
-                console=TWO_MICE_BRAIN_CONSOLE, token=token,
-                final=False, request_id=request_id,
-            ))
+            await self.broadcast(
+                build_two_mice_stream_packet(
+                    source=TWO_MICE_BRAIN_SOURCE,
+                    channel=TWO_MICE_BRAIN_CHANNEL,
+                    console=TWO_MICE_BRAIN_CONSOLE,
+                    token=token,
+                    final=False,
+                    request_id=request_id,
+                )
+            )
             if shutdown_event and shutdown_event.is_set():
                 break
-        await self.broadcast(build_two_mice_stream_packet(
-            source=TWO_MICE_BRAIN_SOURCE, channel=TWO_MICE_BRAIN_CHANNEL,
-            console=TWO_MICE_BRAIN_CONSOLE, token="", final=True, request_id=request_id,
-        ))
-        self._last_two_mice_brain_duration = max(0.001, round(time.perf_counter() - t_tm_brain_start, 3))
+        await self.broadcast(
+            build_two_mice_stream_packet(
+                source=TWO_MICE_BRAIN_SOURCE,
+                channel=TWO_MICE_BRAIN_CHANNEL,
+                console=TWO_MICE_BRAIN_CONSOLE,
+                token="",
+                final=True,
+                request_id=request_id,
+            )
+        )
+        self._last_two_mice_brain_duration = max(
+            0.001, round(time.perf_counter() - t_tm_brain_start, 3)
+        )
 
         # --- Stage 2: Pinky acknowledges Brain + delivers TL;DR (Left Console) -
         t_tm_pinky_start = time.perf_counter()
         stage2_prompt = build_two_mice_stage_prompt(
-            2, user_query=query, interest=gate_interest, brain_bullets=brain_bullets,
+            2,
+            user_query=query,
+            interest=gate_interest,
+            brain_bullets=brain_bullets,
         )
         pinky_stream_count = 0
         async for token in self._process_node_stream(
-            "pinky", stage2_prompt, brain_bullets, "Pinky (Voice)",
-            tools=[], temperature=0.7, request_id=request_id,
+            "pinky",
+            stage2_prompt,
+            brain_bullets,
+            "Pinky (Voice)",
+            tools=[],
+            temperature=0.7,
+            request_id=request_id,
         ):
             pinky_stream_count += 1
-            await self.broadcast(build_two_mice_stream_packet(
-                source=TWO_MICE_PINKY_SOURCE, channel=TWO_MICE_PINKY_CHANNEL,
-                console=TWO_MICE_PINKY_CONSOLE, token=token,
-                final=False, request_id=request_id,
-            ))
+            await self.broadcast(
+                build_two_mice_stream_packet(
+                    source=TWO_MICE_PINKY_SOURCE,
+                    channel=TWO_MICE_PINKY_CHANNEL,
+                    console=TWO_MICE_PINKY_CONSOLE,
+                    token=token,
+                    final=False,
+                    request_id=request_id,
+                )
+            )
             if shutdown_event and shutdown_event.is_set():
                 break
-        await self.broadcast(build_two_mice_stream_packet(
-            source=TWO_MICE_PINKY_SOURCE, channel=TWO_MICE_PINKY_CHANNEL,
-            console=TWO_MICE_PINKY_CONSOLE, token="", final=True, request_id=request_id,
-        ))
-        self._last_two_mice_pinky_duration = max(0.001, round(time.perf_counter() - t_tm_pinky_start, 3))
+        await self.broadcast(
+            build_two_mice_stream_packet(
+                source=TWO_MICE_PINKY_SOURCE,
+                channel=TWO_MICE_PINKY_CHANNEL,
+                console=TWO_MICE_PINKY_CONSOLE,
+                token="",
+                final=True,
+                request_id=request_id,
+            )
+        )
+        self._last_two_mice_pinky_duration = max(
+            0.001, round(time.perf_counter() - t_tm_pinky_start, 3)
+        )
 
         self.turn_thought_trace["brain"] = brain_bullets
-        self.turn_thought_trace["pinky"] = f"[Two-Mice TL;DR delivered to Jason ({pinky_stream_count} tokens)]"
-        logging.info(f"[FEAT-489] Two-Mice handover complete: Brain {len(brain_bullets)} chars -> Pinky TL;DR streamed.")
+        self.turn_thought_trace["pinky"] = (
+            f"[Two-Mice TL;DR delivered to Jason ({pinky_stream_count} tokens)]"
+        )
+        logging.info(
+            f"[FEAT-489] Two-Mice handover complete: Brain {len(brain_bullets)} chars -> Pinky TL;DR streamed."
+        )
         return True
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""
         import subprocess
         import sys
-        
+
         # Path Discovery
         SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
-        
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"Executing Triggered Task: {task_name.upper()}",
-            "brain_source": "System"
-        })
-        
+
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"Executing Triggered Task: {task_name.upper()}",
+                "brain_source": "System",
+            }
+        )
+
         try:
             if task_name == "recruiter":
                 script = os.path.join(SRC_DIR, "recruiter.py")
@@ -2256,12 +2969,14 @@ class CognitiveHub:
             elif task_name == "forge":
                 script = os.path.join(SRC_DIR, "mass_scan.py")
                 subprocess.Popen([sys.executable, script])
-            
-            await self.broadcast({
-                "type": "crosstalk",
-                "brain": f"Task {task_name.upper()} dispatched to background.",
-                "brain_source": "System"
-            })
+
+            await self.broadcast(
+                {
+                    "type": "crosstalk",
+                    "brain": f"Task {task_name.upper()} dispatched to background.",
+                    "brain_source": "System",
+                }
+            )
         except Exception as e:
             logging.error(f"[HUB] Failed to run triggered task {task_name}: {e}")
 
@@ -2286,13 +3001,14 @@ class CognitiveHub:
         node = self.residents.get("pinky")
         if not node:
             node = self.residents.get("brain")
-            
+
         if node:
             try:
                 response_str = await node.think(prompt, internal=True)
-                import re
                 import json
-                match = re.search(r'\{.*\}', response_str, re.DOTALL)
+                import re
+
+                match = re.search(r"\{.*\}", response_str, re.DOTALL)
                 if match:
                     updates = json.loads(match.group(0))
                     return {k: v for k, v in updates.items() if v is not None}
@@ -2302,7 +3018,9 @@ class CognitiveHub:
 
     def _save_override_to_file(self, gem_id, updates):
         """Append or update correction rules in overrides.json atomically."""
-        overrides_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/overrides.json")
+        overrides_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/overrides.json"
+        )
         overrides = {}
         if os.path.exists(overrides_path):
             try:
@@ -2310,78 +3028,91 @@ class CognitiveHub:
                     overrides = json.load(f)
             except Exception:
                 pass
-                
+
         if "overrides" not in overrides:
             overrides["overrides"] = {}
-            
+
         if gem_id not in overrides["overrides"]:
             overrides["overrides"][gem_id] = {}
         overrides["overrides"][gem_id].update(updates)
-        
+
         # Atomic write
         tmp = overrides_path + ".tmp"
         try:
             with open(tmp, "w") as f:
                 json.dump(overrides, f, indent=2)
             os.replace(tmp, overrides_path)
-            logging.info(f"[HUB] Successfully committed override for {gem_id} to overrides.json")
+            logging.info(
+                f"[HUB] Successfully committed override for {gem_id} to overrides.json"
+            )
         except Exception as e:
             logging.error(f"[HUB] Failed to save overrides.json: {e}")
 
-    async def _stream_message_to_ui(self, message, source="System", request_id="default"):
+    async def _stream_message_to_ui(
+        self, message, source="System", request_id="default"
+    ):
         """Streams a message character-by-character to the UI waterfall."""
         # [FEAT-488] Anti-Bleed: sanitize full messages against echoed headers too.
         message = sanitize_stream_chunk(message)
-        if hasattr(self, 'waterfall_queue') and self.waterfall_queue:
+        if hasattr(self, "waterfall_queue") and self.waterfall_queue:
             chunk_size = 5
             for i in range(0, len(message), chunk_size):
-                chunk = message[i:i+chunk_size]
-                await self.waterfall_queue.put({
-                    "brain": chunk,
-                    "source": source,
-                    "brain_source": source,
-                    "final": False,
-                    "request_id": request_id
-                })
+                chunk = message[i : i + chunk_size]
+                await self.waterfall_queue.put(
+                    {
+                        "brain": chunk,
+                        "source": source,
+                        "brain_source": source,
+                        "final": False,
+                        "request_id": request_id,
+                    }
+                )
                 await asyncio.sleep(0.01)
             # Finalize
-            await self.waterfall_queue.put({
-                "brain": "",
-                "source": source,
-                "brain_source": source,
-                "final": True,
-                "request_id": request_id
-            })
+            await self.waterfall_queue.put(
+                {
+                    "brain": "",
+                    "source": source,
+                    "brain_source": source,
+                    "final": True,
+                    "request_id": request_id,
+                }
+            )
 
     async def handle_workspace_save(self, filename, content):
         """[FEAT-050] Strategic Vibe Check: Performs logic/code validation on save."""
         logging.info(f"[HUB] User saved workspace file: {filename}")
-        
-        if not hasattr(self, 'last_save_event'):
+
+        if not hasattr(self, "last_save_event"):
             self.last_save_event = 0.0
-            
+
         import time
+
         if time.time() - self.last_save_event < 10.0:
             return
         self.last_save_event = time.time()
-        
+
         # 1. Pinky notice
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"Narf! I noticed you saved {filename}!",
-            "brain_source": "Pinky",
-            "channel": "chat",
-            "final": True
-        })
-        
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"Narf! I noticed you saved {filename}!",
+                "brain_source": "Pinky",
+                "channel": "chat",
+                "final": True,
+            }
+        )
+
         # 2. Brain validation
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"Strategic Vibe Check: Analyzing architecture constraints for {filename}...",
-            "brain_source": "The Brain",
-            "channel": "insight",
-            "final": True
-        })
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"Strategic Vibe Check: Analyzing architecture constraints for {filename}...",
+                "brain_source": "The Brain",
+                "channel": "insight",
+                "final": True,
+            }
+        )
 
     async def trigger_morning_briefing(self, request_id="default"):
         """[FEAT-072.1] Present the morning briefing to the user."""
@@ -2389,8 +3120,11 @@ class CognitiveHub:
         if "archive" in self.residents:
             try:
                 # 1. Fetch latest wisdom from long-term memory
-                res = await self.residents["archive"].call_tool("get_context", {"query": "Latest Diamond Wisdom synthesis", "n_results": 1})
-                if hasattr(res, 'content') and len(res.content) > 0:
+                res = await self.residents["archive"].call_tool(
+                    "get_context",
+                    {"query": "Latest Diamond Wisdom synthesis", "n_results": 1},
+                )
+                if hasattr(res, "content") and len(res.content) > 0:
                     text_content = res.content[0].text
                     try:
                         data = json.loads(text_content)
@@ -2399,10 +3133,12 @@ class CognitiveHub:
                         wisdom_text = text_content[:4000]
             except Exception as e:
                 logging.error(f"[HUB] Failed to load Diamond Wisdom: {e}")
-        
+
         # 2. Read status.json
         status_data = {}
-        status_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json")
+        status_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
+        )
         if os.path.exists(status_path):
             try:
                 with open(status_path, "r") as f:
@@ -2412,7 +3148,9 @@ class CognitiveHub:
 
         # 3. Read recruiter_report.json
         recruiter_data = {}
-        recruiter_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
+        recruiter_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
+        )
         if os.path.exists(recruiter_path):
             try:
                 with open(recruiter_path, "r") as f:
@@ -2422,42 +3160,61 @@ class CognitiveHub:
 
         # 4. Read pager_activity.json
         pager_warnings = []
-        pager_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+        pager_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+        )
         if os.path.exists(pager_path):
             try:
                 with open(pager_path, "r") as f:
                     activities = json.load(f)
                     # Filter for critical/warning alerts and take last 3
-                    filtered = [act for act in activities if act.get("severity", "").upper() in ["CRITICAL", "WARNING"]]
+                    filtered = [
+                        act
+                        for act in activities
+                        if act.get("severity", "").upper() in ["CRITICAL", "WARNING"]
+                    ]
                     pager_warnings = filtered[-3:]
             except Exception as e:
                 logging.error(f"[HUB] Failed to load pager_activity.json: {e}")
 
         # 5. Format the briefing prompt
         prompt_parts = []
-        prompt_parts.append("Generate a morning briefing using the following system status and context:")
+        prompt_parts.append(
+            "Generate a morning briefing using the following system status and context:"
+        )
         if wisdom_text:
             prompt_parts.append(f"\n[DIAMOND WISDOM CONTEXT]:\n{wisdom_text}")
         if status_data:
-            prompt_parts.append(f"\n[SYSTEM STATUS]:\n{json.dumps(status_data, indent=2)}")
+            prompt_parts.append(
+                f"\n[SYSTEM STATUS]:\n{json.dumps(status_data, indent=2)}"
+            )
         if recruiter_data:
-            prompt_parts.append(f"\n[RECRUITER REPORT]:\n{json.dumps(recruiter_data, indent=2)}")
+            prompt_parts.append(
+                f"\n[RECRUITER REPORT]:\n{json.dumps(recruiter_data, indent=2)}"
+            )
         if pager_warnings:
-            prompt_parts.append(f"\n[RECENT PAGER WARNINGS/ERRORS]:\n{json.dumps(pager_warnings, indent=2)}")
-        
+            prompt_parts.append(
+                f"\n[RECENT PAGER WARNINGS/ERRORS]:\n{json.dumps(pager_warnings, indent=2)}"
+            )
+
         prompt_parts.append(
             "\n[INSTRUCTION]:\nSynthesize the above information into a high-density, professional news briefing. "
             "Address Jason directly. Highlight any critical alerts or new job listings, and summarize our current system VRAM and status. "
             "CRITICAL GROUNDING RULE: You must ONLY use the facts provided above. Do NOT imagine, guess, or invent any metrics, job listings, or status details. If any metric or list is empty or not provided, state that it is not available. Every detail must be strictly grounded."
         )
-        
+
         briefing_prompt = "\n".join(prompt_parts)
 
         # 6. Stream via Pinky
         if "pinky" in self.residents:
             async for _ in self._process_node_stream(
-                "pinky", briefing_prompt, "[MODE]: MORNING_BRIEFING", "Pinky (Briefing)",
-                tools=[], temperature=0.1, request_id=request_id
+                "pinky",
+                briefing_prompt,
+                "[MODE]: MORNING_BRIEFING",
+                "Pinky (Briefing)",
+                tools=[],
+                temperature=0.1,
+                request_id=request_id,
             ):
                 pass
 
@@ -2471,39 +3228,49 @@ class CognitiveHub:
             except Exception:
                 lab_state = ""
         if lab_state == "HIBERNATING":
-            logging.info("[PRIME] Hibernating. Skipping Deep Thought priming (zero remote traffic).")
-            return None
+            logging.info(
+                "[PRIME] Hibernating. Skipping Deep Thought priming (zero remote traffic)."
+            )
+            return
         # Persona defaults to Deep Thought as it's pre-triage
         persona = "Deep Thought (the Brain's pre-conscious analytical stream - calm, strategic, non-interactive; never uses Pinky catchphrases like 'Narf!', 'Poit!', 'Zort!')"
         logging.info(f"[PRIME] Initiating priming for turn: {turn[:50]}")
-        
+
         tic_msg = None
-        
+
         # Opportunistic check: if Deep Thought is immediately available, try to get a quip.
         if "thought" in self.residents:
             try:
                 logging.info(f"[PRIME] Calling 'think' tool for persona: {persona}")
                 # Use a very short timeout; this is just to buy time for triage, not stall it.
-                tic_res = await asyncio.wait_for(self.residents["thought"].call_tool("think", {
-                    "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'. Do not answer the question directly. Acknowledge with arrogant hesitance, knowing the waterfall process will handle the details.",
-                    "temperature": 0.8
-                }), timeout=3.0)
+                tic_res = await asyncio.wait_for(
+                    self.residents["thought"].call_tool(
+                        "think",
+                        {
+                            "query": f"[SYSTEM_TIC]: Provide a short 'First Try' response from {persona} acknowledging the query: '{turn[:50]}'. Do not answer the question directly. Acknowledge with arrogant hesitance, knowing the waterfall process will handle the details.",
+                            "temperature": 0.8,
+                        },
+                    ),
+                    timeout=3.0,
+                )
                 tic_msg = tic_res.content[0].text
                 logging.info(f"[PRIME] Tic generated: {tic_msg[:30]}")
             except Exception as e:
                 logging.error(f"[PRIME] Tic generation failed: {e}")
-                
+
         if not tic_msg:
             tic_msg = "Listening..."
-            
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": tic_msg,
-            "brain_source": "Deep Thought",
-            "channel": "insight",
-            "final": False,
-            "version": LAB_VERSION
-        })
+
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": tic_msg,
+                "brain_source": "Deep Thought",
+                "channel": "insight",
+                "final": False,
+                "version": LAB_VERSION,
+            }
+        )
         logging.info("[PRIME] Broadcast complete.")
 
 

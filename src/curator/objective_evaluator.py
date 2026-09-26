@@ -125,8 +125,15 @@ def iter_objective_targets(ast, slug):
 # ----------------------------------------------------------------------------
 # Core evaluation
 # ----------------------------------------------------------------------------
-def evaluate_ast_objective(ast, objective_text, slug=None, embed=None, top_k=DEFAULT_TOP_K,
-                           collections=GLOBAL_COLLECTIONS, per_collection_k=DEFAULT_PER_COLLECTION_K):
+def evaluate_ast_objective(
+    ast,
+    objective_text,
+    slug=None,
+    embed=None,
+    top_k=DEFAULT_TOP_K,
+    collections=GLOBAL_COLLECTIONS,
+    per_collection_k=DEFAULT_PER_COLLECTION_K,
+):
     """[SPR-82.3] Score every section/paragraph/bullet of a paper AST against an objective.
 
     Embeds the target objective and every AST target node in a single batch,
@@ -166,14 +173,16 @@ def evaluate_ast_objective(ast, objective_text, slug=None, embed=None, top_k=DEF
     bullets = []
     for i, node in enumerate(targets):
         score = round(cosine_similarity(objective_vec, vectors[i + 1]), 4)
-        bullets.append({
-            "node_id": node["node_id"],
-            "node_type": node["node_type"],
-            "heading": node["heading"],
-            "text": node["text"],
-            "score": score,
-            "action": tag_score(score),
-        })
+        bullets.append(
+            {
+                "node_id": node["node_id"],
+                "node_type": node["node_type"],
+                "heading": node["heading"],
+                "text": node["text"],
+                "score": score,
+                "action": tag_score(score),
+            }
+        )
 
     try:
         suggested_chips = query_hybrid_dna(
@@ -202,9 +211,16 @@ def evaluate_ast_objective(ast, objective_text, slug=None, embed=None, top_k=DEF
     }
 
 
-def evaluate_objective(objective_text, ast=None, slug=None, paper_path=None,
-                       top_k=DEFAULT_TOP_K, collections=GLOBAL_COLLECTIONS,
-                       per_collection_k=DEFAULT_PER_COLLECTION_K, embed=None):
+def evaluate_objective(
+    objective_text,
+    ast=None,
+    slug=None,
+    paper_path=None,
+    top_k=DEFAULT_TOP_K,
+    collections=GLOBAL_COLLECTIONS,
+    per_collection_k=DEFAULT_PER_COLLECTION_K,
+    embed=None,
+):
     """[SPR-82.3] Top-level target-objective / JD evaluation entry point.
 
     Resolves the paper AST from one of:
@@ -236,7 +252,9 @@ def evaluate_objective(objective_text, ast=None, slug=None, paper_path=None,
         resolved_ast, _ = load_paper_ast(path)
     elif paper_path:
         resolved_ast, path_slug = load_paper_ast(paper_path)
-        resolved_slug = slugify(slug or path_slug or resolved_ast.get("title") or "imported")
+        resolved_slug = slugify(
+            slug or path_slug or resolved_ast.get("title") or "imported"
+        )
     else:
         raise ValueError(
             "Provide a paper source: 'ast' (paper AST dict), 'slug' "
@@ -258,12 +276,20 @@ if __name__ == "__main__":
     import argparse
     import json
 
-    parser = argparse.ArgumentParser(description="[SPR-82.3] Target Objective / JD matching engine.")
+    parser = argparse.ArgumentParser(
+        description="[SPR-82.3] Target Objective / JD matching engine."
+    )
     parser.add_argument("objective", help="target objective / JD requirement text")
-    parser.add_argument("--slug", default=None, help="paper_dna_<slug> paper to evaluate (disk AST)")
-    parser.add_argument("--ast", default=None, help="path to a canonical paper AST JSON file")
+    parser.add_argument(
+        "--slug", default=None, help="paper_dna_<slug> paper to evaluate (disk AST)"
+    )
+    parser.add_argument(
+        "--ast", default=None, help="path to a canonical paper AST JSON file"
+    )
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     args = parser.parse_args()
 
-    result = evaluate_objective(args.objective, slug=args.slug, paper_path=args.ast, top_k=args.top_k)
+    result = evaluate_objective(
+        args.objective, slug=args.slug, paper_path=args.ast, top_k=args.top_k
+    )
     print(json.dumps(result, indent=2))

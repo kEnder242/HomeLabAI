@@ -16,7 +16,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Optional
 
 # [LAB-099] Thermal & Thread Safety: Limit C-extension worker threads to prevent 8-core CPU thermal overload
 os.environ["OMP_NUM_THREADS"] = "2"
@@ -35,7 +34,9 @@ _ACTIVE_SESSION_ID = None
 def _nuke_all_sessions():
     """[BKM-034] Unconditionally abort all in-flight and orphaned sessions on OpenCode REST port 4097."""
     try:
-        req_list = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session")
+        req_list = urllib.request.Request(
+            f"http://127.0.0.1:{OPENCODE_REST_PORT}/session"
+        )
         with urllib.request.urlopen(req_list, timeout=1.5) as resp:
             sessions = json.loads(resp.read().decode("utf-8"))
         if isinstance(sessions, list):
@@ -43,7 +44,10 @@ def _nuke_all_sessions():
                 sid = s.get("id")
                 if sid:
                     try:
-                        req_abort = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort", method="POST")
+                        req_abort = urllib.request.Request(
+                            f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort",
+                            method="POST",
+                        )
                         urllib.request.urlopen(req_abort, timeout=0.8)
                     except Exception:
                         pass
@@ -70,7 +74,9 @@ atexit.register(_cleanup_active_session)
 
 def _log_pager_event(message: str, severity: str = "WARNING"):
     """Log telemetry event to pager_activity.json for real-time status.html/pager.html visibility."""
-    pager_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+    pager_path = os.path.expanduser(
+        "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+    )
     if not os.path.exists(os.path.dirname(pager_path)):
         return
     try:
@@ -78,12 +84,15 @@ def _log_pager_event(message: str, severity: str = "WARNING"):
         if os.path.exists(pager_path):
             with open(pager_path, "r") as f:
                 events = json.load(f)
-        events.insert(0, {
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "message": message,
-            "severity": severity,
-            "source": "delegate.py"
-        })
+        events.insert(
+            0,
+            {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "message": message,
+                "severity": severity,
+                "source": "delegate.py",
+            },
+        )
         tmp_path = pager_path + ".tmp"
         with open(tmp_path, "w") as f:
             json.dump(events[:50], f, indent=2)
@@ -97,7 +106,7 @@ def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     formatted = f"[{ts}] [STORY {story_num}] [{step_name}] {message}"
     print(formatted, flush=True)
-    
+
     # Append to step log file
     try:
         log_file = f"/tmp/delegate_story_{story_num}.log"
@@ -105,12 +114,18 @@ def log_step(story_num: int, step_name: str, message: str, severity: str = "INFO
             f.write(formatted + "\n")
     except Exception:
         pass
-    
+
     if severity in ("WARNING", "CRITICAL"):
         _log_pager_event(f"[{step_name}] {message}", severity=severity)
 
 
-def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", status: str = "", error_reason: str = "", agent_role: str = "") -> dict:
+def _extract_telemetry_knobs(
+    target_scope: str = "",
+    model_name: str = "",
+    status: str = "",
+    error_reason: str = "",
+    agent_role: str = "",
+) -> dict:
     """[FEAT-552] Extract OpenCode, OpenAgent, Infrastructure, Headroom, and Task configuration knobs for matrix scorecard."""
     knobs = {
         "compaction_auto": False,
@@ -130,7 +145,7 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         "server_chunked_prefill": False,
         "task_archetype": "safe_patch",
         "language_target": "python",
-        "failure_bucket": "SUCCESS" if status.upper() == "SUCCESS" else "UNKNOWN"
+        "failure_bucket": "SUCCESS" if status.upper() == "SUCCESS" else "UNKNOWN",
     }
 
     # 1. Parse client configuration from opencode.json
@@ -139,33 +154,43 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         try:
             with open(opencode_cfg_path, "r") as cf:
                 content = cf.read()
-                clean_lines = [l for l in content.splitlines() if not l.strip().startswith("//")]
+                clean_lines = [
+                    l for l in content.splitlines() if not l.strip().startswith("//")
+                ]
                 cfg = json.loads("\n".join(clean_lines))
-                
+
                 comp = cfg.get("compaction", {})
                 knobs["compaction_auto"] = comp.get("auto", True)
                 knobs["compaction_prune"] = comp.get("prune", True)
                 knobs["active_plugins"] = cfg.get("plugin", [])
-                
+
                 mcp = cfg.get("mcp", {})
-                knobs["active_mcp_servers"] = [k for k, v in mcp.items() if isinstance(v, dict) and v.get("enabled", True)]
-                
+                knobs["active_mcp_servers"] = [
+                    k
+                    for k, v in mcp.items()
+                    if isinstance(v, dict) and v.get("enabled", True)
+                ]
+
                 providers = cfg.get("provider", {})
                 for p_name, p_info in providers.items():
                     base_url = p_info.get("options", {}).get("baseURL", "")
-                    if "8002" in base_url and ("m5" in model_name.lower() or "mlx" in model_name.lower()):
+                    if "8002" in base_url and (
+                        "m5" in model_name.lower() or "mlx" in model_name.lower()
+                    ):
                         knobs["routes_through_headroom"] = True
                     models = p_info.get("models", {})
                     for m_id, m_data in models.items():
                         if m_id in model_name or model_name in m_id:
-                            knobs["model_configured_context"] = m_data.get("limit", {}).get("context", 0)
+                            knobs["model_configured_context"] = m_data.get(
+                                "limit", {}
+                            ).get("context", 0)
         except Exception:
             pass
 
     # 2. Parse OpenAgent swarm configuration from oh-my-openagent.json
     omo_cfg_paths = [
         os.path.expanduser("~/.config/opencode/oh-my-openagent.json"),
-        os.path.expanduser("~/Dev_Lab/oh-my-openagent.json")
+        os.path.expanduser("~/Dev_Lab/oh-my-openagent.json"),
     ]
     for omo_path in omo_cfg_paths:
         if os.path.exists(omo_path):
@@ -175,7 +200,9 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
                     knobs["disabled_tools"] = omo_cfg.get("disabled_tools", [])
                     knobs["disabled_agents"] = omo_cfg.get("disabled_agents", [])
                     if agent_role and agent_role in omo_cfg.get("agents", {}):
-                        knobs["agent_role_model"] = omo_cfg["agents"][agent_role].get("model", "unknown")
+                        knobs["agent_role_model"] = omo_cfg["agents"][agent_role].get(
+                            "model", "unknown"
+                        )
                 break
             except Exception:
                 pass
@@ -186,8 +213,14 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
         try:
             with open(infra_path, "r") as inf_f:
                 inf_cfg = json.load(inf_f)
-                knobs["primary_thought_node"] = inf_cfg.get("nodes", {}).get("thought", {}).get("primary", "unknown")
-                knobs["active_thought_lora"] = inf_cfg.get("nodes", {}).get("thought", {}).get("lora_name")
+                knobs["primary_thought_node"] = (
+                    inf_cfg.get("nodes", {})
+                    .get("thought", {})
+                    .get("primary", "unknown")
+                )
+                knobs["active_thought_lora"] = (
+                    inf_cfg.get("nodes", {}).get("thought", {}).get("lora_name")
+                )
         except Exception:
             pass
 
@@ -211,7 +244,7 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
             knobs["task_archetype"] = "greenfield"
         else:
             knobs["task_archetype"] = "safe_patch"
-            
+
         if any(t.endswith(".js") for t in targets):
             knobs["language_target"] = "javascript"
         elif any(t.endswith(".html") or t.endswith(".css") for t in targets):
@@ -228,7 +261,11 @@ def _extract_telemetry_knobs(target_scope: str = "", model_name: str = "", statu
             knobs["failure_bucket"] = "SOCKET_TIMEOUT"
         elif "compaction" in err_lower:
             knobs["failure_bucket"] = "COMPACTION_LOOP"
-        elif "gateway" in err_lower or "502" in err_lower or "forwarding failed" in err_lower:
+        elif (
+            "gateway" in err_lower
+            or "502" in err_lower
+            or "forwarding failed" in err_lower
+        ):
             knobs["failure_bucket"] = "GATEWAY_DISCONNECT"
         elif "reject" in err_lower or "tool" in err_lower:
             knobs["failure_bucket"] = "TOOL_REJECTION"
@@ -254,11 +291,13 @@ def _log_delegation_ledger(
     verification_passed: bool = False,
     error_reason: str = "",
     model_name: str = "",
-    agent_role: str = ""
+    agent_role: str = "",
 ):
     """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl."""
-    knobs = _extract_telemetry_knobs(target_scope, model_name, status, error_reason, agent_role=agent_role)
-    
+    knobs = _extract_telemetry_knobs(
+        target_scope, model_name, status, error_reason, agent_role=agent_role
+    )
+
     ledger_entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "sprint": sprint_num,
@@ -276,12 +315,14 @@ def _log_delegation_ledger(
         "verification_passed": verification_passed,
         "error_reason": error_reason or "",
         "model": model_name or "unknown",
-        "knobs": knobs
+        "knobs": knobs,
     }
     line = json.dumps(ledger_entry) + "\n"
     paths = [
         os.path.expanduser("~/Dev_Lab/HomeLabAI/data/delegation_ledger.jsonl"),
-        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl")
+        os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl"
+        ),
     ]
     for p in paths:
         try:
@@ -296,7 +337,9 @@ def show_delegation_ledger(limit: int = 20):
     """Display the recent delegation history ledger from delegation_ledger.jsonl."""
     ledger_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/data/delegation_ledger.jsonl")
     if not os.path.exists(ledger_path):
-        ledger_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl")
+        ledger_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/delegation_ledger.jsonl"
+        )
     if not os.path.exists(ledger_path):
         print("ℹ️ No delegation ledger entries recorded yet.")
         return
@@ -318,9 +361,13 @@ def show_delegation_ledger(limit: int = 20):
 
     recent = entries[-limit:]
     print("=" * 110)
-    print(f"📜 DELEGATION EXECUTION LEDGER (Showing last {len(recent)} of {len(entries)} entries)")
+    print(
+        f"📜 DELEGATION EXECUTION LEDGER (Showing last {len(recent)} of {len(entries)} entries)"
+    )
     print("=" * 110)
-    print(f"{'TIMESTAMP':<20} | {'SPRINT':<6} | {'STORY':<8} | {'TIER':<14} | {'STATUS':<20} | {'DUR(s)':<7} | {'MODEL'}")
+    print(
+        f"{'TIMESTAMP':<20} | {'SPRINT':<6} | {'STORY':<8} | {'TIER':<14} | {'STATUS':<20} | {'DUR(s)':<7} | {'MODEL'}"
+    )
     print("-" * 110)
 
     local_total = 0
@@ -331,13 +378,15 @@ def show_delegation_ledger(limit: int = 20):
     for e in entries:
         tier = e.get("tier", "")
         status = e.get("status", "")
-        is_success = (status == "SUCCESS")
+        is_success = status == "SUCCESS"
         if "LOCAL" in tier:
             local_total += 1
-            if is_success: local_success += 1
+            if is_success:
+                local_success += 1
         elif "CLOUD" in tier:
             cloud_total += 1
-            if is_success: cloud_success += 1
+            if is_success:
+                cloud_success += 1
 
     for r in recent:
         ts = r.get("timestamp", "")[:19]
@@ -347,14 +396,20 @@ def show_delegation_ledger(limit: int = 20):
         status = r.get("status", "?")[:20]
         dur = f"{r.get('duration_s', 0):.1f}"
         model = str(r.get("model", "?"))[:30]
-        print(f"{ts:<20} | {spr:<6} | {sty:<8} | {tier:<14} | {status:<20} | {dur:<7} | {model}")
+        print(
+            f"{ts:<20} | {spr:<6} | {sty:<8} | {tier:<14} | {status:<20} | {dur:<7} | {model}"
+        )
 
     print("=" * 110)
     print("📊 HISTORICAL AGGREGATE SUMMARY:")
     l_rate = (local_success / local_total * 100) if local_total else 0.0
     c_rate = (cloud_success / cloud_total * 100) if cloud_total else 0.0
-    print(f"  [SWARM:LOCAL] Runs: {local_total:<4} | Successes: {local_success:<4} | Success Rate: {l_rate:.1f}%")
-    print(f"  [SWARM:CLOUD] Runs: {cloud_total:<4} | Successes: {cloud_success:<4} | Success Rate: {c_rate:.1f}%")
+    print(
+        f"  [SWARM:LOCAL] Runs: {local_total:<4} | Successes: {local_success:<4} | Success Rate: {l_rate:.1f}%"
+    )
+    print(
+        f"  [SWARM:CLOUD] Runs: {cloud_total:<4} | Successes: {cloud_success:<4} | Success Rate: {c_rate:.1f}%"
+    )
     print("=" * 110)
 
 
@@ -363,7 +418,9 @@ def check_cloud_quota(provider="opencode"):
     [FEAT-Q01] Quick cloud quota & rate limit sentinel check.
     Pings provider status and notifies orchestrator of rate-limit reset windows.
     """
-    print(f"[*] Pre-flight check: Probing {provider} cloud endpoint status...", flush=True)
+    print(
+        f"[*] Pre-flight check: Probing {provider} cloud endpoint status...", flush=True
+    )
     try:
         req = urllib.request.Request(
             f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -374,12 +431,15 @@ def check_cloud_quota(provider="opencode"):
             data = json.loads(resp.read().decode("utf-8"))
             session_id = data.get("id")
             if session_id:
-                print(f"[+] OpenCode core engine listening on port {OPENCODE_REST_PORT}. Temp session: {session_id}", flush=True)
+                print(
+                    f"[+] OpenCode core engine listening on port {OPENCODE_REST_PORT}. Temp session: {session_id}",
+                    flush=True,
+                )
                 # [CLEANUP] Purge temporary probe session so it does not leave an empty "New session" entry in OpenCode dashboard
                 try:
                     del_req = urllib.request.Request(
                         f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}",
-                        method="DELETE"
+                        method="DELETE",
                     )
                     with urllib.request.urlopen(del_req, timeout=3):
                         pass
@@ -388,7 +448,9 @@ def check_cloud_quota(provider="opencode"):
                 return True
     except Exception as e:
         print(f"[!] Warning: OpenCode core engine check failed: {e}", flush=True)
-        _log_pager_event(f"OpenCode core engine pre-flight probe failed: {e}", severity="WARNING")
+        _log_pager_event(
+            f"OpenCode core engine pre-flight probe failed: {e}", severity="WARNING"
+        )
         return False
     return True
 
@@ -400,6 +462,7 @@ OPENCODE_BIN = os.path.expanduser("~/.opencode/bin/opencode")
 def wake_m5_air():
     """[BKM-039] Send Wake-on-LAN Magic Packet to macOS M5-Air to prevent sleep timeouts."""
     import socket
+
     m5_mac = "00:e0:4c:0a:0b:ad".replace(":", "").replace("-", "")
     data = bytes.fromhex("FF" * 6 + m5_mac * 16)
     try:
@@ -407,7 +470,10 @@ def wake_m5_air():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             s.sendto(data, ("192.168.1.255", 9))
             s.sendto(data, ("192.168.1.46", 9))
-        print("[*] [WOL] Sent Wake-on-LAN Magic Packet to M5-Air (192.168.1.46).", flush=True)
+        print(
+            "[*] [WOL] Sent Wake-on-LAN Magic Packet to M5-Air (192.168.1.46).",
+            flush=True,
+        )
     except Exception as e:
         print(f"[!] [WOL] Magic Packet broadcast failed (non-fatal): {e}", flush=True)
 
@@ -421,12 +487,16 @@ def wake_web_ui():
     Without this touch, the web UI at http://192.168.1.238:4096/ is unreachable.
     """
     wake_m5_air()
-    print(f"[*] Waking web UI via socket touch on port {OPENCODE_WEB_PORT}...", flush=True)
+    print(
+        f"[*] Waking web UI via socket touch on port {OPENCODE_WEB_PORT}...", flush=True
+    )
     try:
         req = urllib.request.Request(OPENCODE_WEB_URL)
         with urllib.request.urlopen(req, timeout=10):
             pass
-        print(f"[+] Web UI live at http://192.168.1.238:{OPENCODE_WEB_PORT}/", flush=True)
+        print(
+            f"[+] Web UI live at http://192.168.1.238:{OPENCODE_WEB_PORT}/", flush=True
+        )
     except Exception as e:
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
 
@@ -438,14 +508,23 @@ def _extract_sprint_summary(sprint_doc_path: str) -> str:
     try:
         with open(sprint_doc_path, "r", encoding="utf-8") as f:
             content = f.read()
-        match = re.search(r"## 🧭 Executive Summary & Architectural Contract(.*?)(?=## 📋 Granular Story Breakdown|\Z)", content, re.DOTALL)
+        match = re.search(
+            r"## 🧭 Executive Summary & Architectural Contract(.*?)(?=## 📋 Granular Story Breakdown|\Z)",
+            content,
+            re.DOTALL,
+        )
         if match:
             summary = match.group(1).strip()
             if len(summary) > 2500:
-                summary = summary[:2500] + "\n...(truncated for prompt efficiency, see full doc on disk)"
+                summary = (
+                    summary[:2500]
+                    + "\n...(truncated for prompt efficiency, see full doc on disk)"
+                )
             return summary
     except Exception:
         pass
+
+
 def _format_error_context(exc) -> str:
     """Extracts deep diagnostic context from HTTP errors, systemd journal, and silicon ping."""
     details = []
@@ -456,9 +535,17 @@ def _format_error_context(exc) -> str:
             if raw_body:
                 try:
                     body_json = json.loads(raw_body)
-                    err_name = body_json.get("name") or body_json.get("error", {}).get("type", "Error")
-                    err_msg = body_json.get("data", {}).get("message") or body_json.get("error", {}).get("message") or str(body_json)
-                    err_ref = body_json.get("data", {}).get("ref") or body_json.get("ref", "")
+                    err_name = body_json.get("name") or body_json.get("error", {}).get(
+                        "type", "Error"
+                    )
+                    err_msg = (
+                        body_json.get("data", {}).get("message")
+                        or body_json.get("error", {}).get("message")
+                        or str(body_json)
+                    )
+                    err_ref = body_json.get("data", {}).get("ref") or body_json.get(
+                        "ref", ""
+                    )
                     details.append(f"  ├─ Error Name: {err_name}")
                     details.append(f"  ├─ Server Message: {err_msg}")
                     if err_ref:
@@ -471,13 +558,25 @@ def _format_error_context(exc) -> str:
         if exc.code == 500:
             try:
                 res = subprocess.run(
-                    ["journalctl", "--user", "-u", "opencode-core.service", "-n", "3", "--no-pager"],
+                    [
+                        "journalctl",
+                        "--user",
+                        "-u",
+                        "opencode-core.service",
+                        "-n",
+                        "3",
+                        "--no-pager",
+                    ],
                     capture_output=True,
                     text=True,
-                    timeout=2.0
+                    timeout=2.0,
                 )
                 if res.stdout:
-                    jlines = [line.strip() for line in res.stdout.strip().splitlines() if line.strip()]
+                    jlines = [
+                        line.strip()
+                        for line in res.stdout.strip().splitlines()
+                        if line.strip()
+                    ]
                     if jlines:
                         details.append("  ├─ Core Service Journal (tail):")
                         for jl in jlines[-2:]:
@@ -491,50 +590,77 @@ def _format_error_context(exc) -> str:
     w4090_status = "UNKNOWN"
     try:
         import socket
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
-        m5_status = "UP" if s.connect_ex(("192.168.1.46", 8000)) == 0 else "DOWN/REFUSED"
+        m5_status = (
+            "UP" if s.connect_ex(("192.168.1.46", 8000)) == 0 else "DOWN/REFUSED"
+        )
         s.close()
     except Exception:
         m5_status = "ERROR"
 
     try:
         import socket
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
-        w4090_status = "UP" if s.connect_ex(("192.168.1.26", 11434)) == 0 else "DOWN/REFUSED"
+        w4090_status = (
+            "UP" if s.connect_ex(("192.168.1.26", 11434)) == 0 else "DOWN/REFUSED"
+        )
         s.close()
     except Exception:
         w4090_status = "ERROR"
 
-    details.append(f"  └─ Silicon Reachability: M5(8000)={m5_status} | 4090(11434)={w4090_status}")
+    details.append(
+        f"  └─ Silicon Reachability: M5(8000)={m5_status} | 4090(11434)={w4090_status}"
+    )
     return "\n".join(details)
 
 
 def _ping_host(host: str, port: int, timeout: float = 0.5) -> bool:
     """Fast socket reachability probe for federated silicon endpoints."""
     import socket
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(timeout)
-        ok = (s.connect_ex((host, port)) == 0)
+        ok = s.connect_ex((host, port)) == 0
         s.close()
         return ok
     except Exception:
         return False
 
 
-def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model_obj: dict, duration: float, tokens: dict, text_len: int, raw_tp: float = None):
+def _log_live_usage_telemetry(
+    story_num: int,
+    sprint_num: int,
+    title: str,
+    model_obj: dict,
+    duration: float,
+    tokens: dict,
+    text_len: int,
+    raw_tp: float = None,
+):
     """[FEAT-498] Unified Swarm Telemetry Tap for live_usage_stream.jsonl & cumulative_tokens.json"""
     try:
         from infra.cumulative_telemetry import log_telemetry_event
+
         out_tokens = tokens.get("output", 0) if isinstance(tokens, dict) else 0
         if out_tokens == 0 and text_len > 0:
             out_tokens = max(1, int(text_len / 4.0))
-            
-        provider_id = model_obj.get("providerID", "unknown") if isinstance(model_obj, dict) else "unknown"
-        model_id = model_obj.get("modelID", "unknown") if isinstance(model_obj, dict) else str(model_obj)
-        
+
+        provider_id = (
+            model_obj.get("providerID", "unknown")
+            if isinstance(model_obj, dict)
+            else "unknown"
+        )
+        model_id = (
+            model_obj.get("modelID", "unknown")
+            if isinstance(model_obj, dict)
+            else str(model_obj)
+        )
+
         seat = "Cloud Swarm"
         if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
             seat = "Windows 4090RTX"
@@ -542,7 +668,7 @@ def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model
             seat = "Apple M5 Air"
         elif "z87" in provider_id or "vllm" in provider_id:
             seat = "Linux 2080ti"
-            
+
         log_telemetry_event(
             source=f"delegate.py (Story {story_num})",
             task_title=title,
@@ -551,7 +677,7 @@ def _log_live_usage_telemetry(story_num: int, sprint_num: int, title: str, model
             model=model_id,
             tokens_generated=out_tokens,
             duration_seconds=duration,
-            raw_throughput_tok_s=raw_tp
+            raw_throughput_tok_s=raw_tp,
         )
     except Exception:
         pass
@@ -566,7 +692,9 @@ def _is_provider_reachable(provider_id: str) -> bool:
     return True
 
 
-def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", session_id: Optional[str] = None) -> dict:
+def _run_bkm049_diagnostics(
+    story_num: int, attempt: int, reason: str = "", session_id: str | None = None
+) -> dict:
     """[BKM-049] Mandatory Three-Tier Diagnostic Probes between execution retries.
     1. Server & Silicon State (Port 4097, Port 8002/8000, GPU/sockets)
     2. Session Transcripts & Messages (OpenCode REST messages, compaction loops, tool rejections)
@@ -580,25 +708,33 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", sess
         "session_id": sid,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "opencode_rest": _ping_host("127.0.0.1", OPENCODE_REST_PORT),
-        "m5_silicon": _ping_host("192.168.1.46", 8002) or _ping_host("192.168.1.46", 8000),
+        "m5_silicon": _ping_host("192.168.1.46", 8002)
+        or _ping_host("192.168.1.46", 8000),
         "w4090_silicon": _ping_host("192.168.1.26", 11434),
         "session_turns": 0,
-        "session_errors": []
+        "session_errors": [],
     }
 
     # Deep Session Message Inspection via REST
     if sid and diag["opencode_rest"]:
         try:
-            m_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/message")
+            m_req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/message"
+            )
             with urllib.request.urlopen(m_req, timeout=3.0) as m_resp:
                 msgs = json.loads(m_resp.read().decode("utf-8"))
                 diag["session_turns"] = len(msgs)
-                
+
                 # Scan messages for compaction loops, provider errors, and tool failures
                 for m in msgs[-15:]:
                     for p in m.get("parts", []):
                         t = p.get("text", "")
-                        if "exceeded" in t.lower() or "limit" in t.lower() or "error" in t.lower() or "compaction" in t.lower():
+                        if (
+                            "exceeded" in t.lower()
+                            or "limit" in t.lower()
+                            or "error" in t.lower()
+                            or "compaction" in t.lower()
+                        ):
                             snip = t.strip()[:180]
                             if snip not in diag["session_errors"]:
                                 diag["session_errors"].append(snip)
@@ -607,14 +743,28 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", sess
 
     try:
         j_res = subprocess.run(
-            ["journalctl", "--user", "-u", "opencode-core.service", "-n", "3", "--no-pager"],
-            capture_output=True, text=True, timeout=2.0
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                "opencode-core.service",
+                "-n",
+                "3",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
-        diag["journal_tail"] = j_res.stdout.strip().splitlines()[-2:] if j_res.stdout else []
+        diag["journal_tail"] = (
+            j_res.stdout.strip().splitlines()[-2:] if j_res.stdout else []
+        )
     except Exception:
         diag["journal_tail"] = []
 
-    err_summary = f" | Errors: {diag['session_errors'][:2]}" if diag["session_errors"] else ""
+    err_summary = (
+        f" | Errors: {diag['session_errors'][:2]}" if diag["session_errors"] else ""
+    )
     summary_str = (
         f"[BKM-049 DIAGNOSTIC] Attempt {attempt} ({reason}): "
         f"REST:4097={'UP' if diag['opencode_rest'] else 'DOWN'} | "
@@ -625,21 +775,34 @@ def _run_bkm049_diagnostics(story_num: int, attempt: int, reason: str = "", sess
     log_step(story_num, "BKM049_DIAGNOSTICS", summary_str, severity="WARNING")
     print(f"\n🩺 {summary_str}", flush=True)
     if diag["session_errors"]:
-        print(f"   └─ Subagent Internal Errors Detected ({len(diag['session_errors'])}):", flush=True)
+        print(
+            f"   └─ Subagent Internal Errors Detected ({len(diag['session_errors'])}):",
+            flush=True,
+        )
         for se in diag["session_errors"]:
             print(f"      • {se}", flush=True)
-    print("   💡 [PLAYBOOK AUDIT]: Review OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls (MCP bloat, agent inversion, root indexing, concurrency deadlocks).", flush=True)
+    print(
+        "   💡 [PLAYBOOK AUDIT]: Review OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls (MCP bloat, agent inversion, root indexing, concurrency deadlocks).",
+        flush=True,
+    )
 
     try:
         subprocess.run(
             [
-                "icm", "store",
-                "-t", "errors-resolved",
-                "-c", f"BKM-049 Diagnostics for Story {story_num} (Attempt {attempt}, {reason}): {summary_str}",
-                "-i", "medium",
-                "-k", f"bkm049,diagnostics,retry,story-{story_num}"
+                "icm",
+                "store",
+                "-t",
+                "errors-resolved",
+                "-c",
+                f"BKM-049 Diagnostics for Story {story_num} (Attempt {attempt}, {reason}): {summary_str}",
+                "-i",
+                "medium",
+                "-k",
+                f"bkm049,diagnostics,retry,story-{story_num}",
             ],
-            capture_output=True, text=True, check=False
+            capture_output=True,
+            text=True,
+            check=False,
         )
     except Exception:
         pass
@@ -651,14 +814,25 @@ def _verify_and_sync_service_freshness(story_num):
     configs = [
         os.path.expanduser("~/Dev_Lab/opencode.json"),
         os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json"),
-        os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
+        os.path.expanduser("~/.config/opencode/oh-my-openagent.json"),
     ]
     existing_configs = [c for c in configs if os.path.exists(c)]
     if not existing_configs:
         return
 
     try:
-        res = subprocess.run(["systemctl", "--user", "show", "opencode-core.service", "--property=MainPID"], capture_output=True, text=True, check=False)
+        res = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                "opencode-core.service",
+                "--property=MainPID",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         pid_str = res.stdout.strip().split("=")[-1]
         if not pid_str or pid_str == "0":
             return
@@ -666,34 +840,68 @@ def _verify_and_sync_service_freshness(story_num):
         proc_stat = os.stat(f"/proc/{pid}")
         proc_start_time = proc_stat.st_mtime
 
-        stale_configs = [c for c in existing_configs if os.path.getmtime(c) > proc_start_time]
+        stale_configs = [
+            c for c in existing_configs if os.path.getmtime(c) > proc_start_time
+        ]
         if stale_configs:
-            log_step(story_num, "STALE_SERVICE_SYNC", f"Config modification detected after service start ({', '.join(os.path.basename(c) for c in stale_configs)}). Hot-restarting opencode-core.service...")
-            subprocess.run(["systemctl", "--user", "restart", "opencode-core.service"], check=False)
+            log_step(
+                story_num,
+                "STALE_SERVICE_SYNC",
+                f"Config modification detected after service start ({', '.join(os.path.basename(c) for c in stale_configs)}). Hot-restarting opencode-core.service...",
+            )
+            subprocess.run(
+                ["systemctl", "--user", "restart", "opencode-core.service"], check=False
+            )
             time.sleep(2.0)
     except Exception:
         pass
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
-def delegate(story_num, title, reference_file, details, verification, sprint_num=50, target_dir=None, agent=None, max_retries=3, mode="execute", target_files=None, session_id=None, sprint_doc=None, local_only=True, cloud_only=False):
+def delegate(
+    story_num,
+    title,
+    reference_file,
+    details,
+    verification,
+    sprint_num=50,
+    target_dir=None,
+    agent=None,
+    max_retries=3,
+    mode="execute",
+    target_files=None,
+    session_id=None,
+    sprint_doc=None,
+    local_only=True,
+    cloud_only=False,
+):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
     import threading
 
     # [Directory Protection Pre-Check]
     # Automatically infer target_dir if omitted, and verify .opencodeignore exists.
-    if not target_dir or target_dir == DEFAULT_TARGET_DIR or target_dir == os.path.expanduser("~"):
+    if (
+        not target_dir
+        or target_dir == DEFAULT_TARGET_DIR
+        or target_dir == os.path.expanduser("~")
+    ):
         probe = target_files or reference_file or ""
         candidate = None
         for part in probe.replace(",", " ").split():
             clean_part = part.strip()
             if clean_part and os.path.exists(clean_part):
-                p_dir = clean_part if os.path.isdir(clean_part) else os.path.dirname(clean_part)
+                p_dir = (
+                    clean_part
+                    if os.path.isdir(clean_part)
+                    else os.path.dirname(clean_part)
+                )
                 # Walk up until finding a directory with .opencodeignore that isn't the root monorepo
                 curr = os.path.abspath(p_dir)
                 while curr and curr != "/" and curr != os.path.expanduser("~"):
-                    if os.path.exists(os.path.join(curr, ".opencodeignore")) and not os.path.exists(os.path.join(curr, ".gitmodules")):
+                    if os.path.exists(
+                        os.path.join(curr, ".opencodeignore")
+                    ) and not os.path.exists(os.path.join(curr, ".gitmodules")):
                         candidate = curr
                         break
                     curr = os.path.dirname(curr)
@@ -703,15 +911,33 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
 
     # Pre-check protection: target_dir must contain .opencodeignore and must not be root monorepo
     if not os.path.exists(os.path.join(target_dir, ".opencodeignore")):
-        print(f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is unprotected (missing .opencodeignore).", file=sys.stderr)
-        print("   Scoping to an unprotected directory risks severe workspace token bloat.", file=sys.stderr)
-        print("   Specify a valid project directory via --dir or ensure .opencodeignore exists.", file=sys.stderr)
+        print(
+            f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is unprotected (missing .opencodeignore).",
+            file=sys.stderr,
+        )
+        print(
+            "   Scoping to an unprotected directory risks severe workspace token bloat.",
+            file=sys.stderr,
+        )
+        print(
+            "   Specify a valid project directory via --dir or ensure .opencodeignore exists.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if os.path.exists(os.path.join(target_dir, ".gitmodules")):
-        print(f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is the top-level monorepo root.", file=sys.stderr)
-        print("   Direct monorepo root indexing is forbidden by playbook (causes multi-repo context explosion).", file=sys.stderr)
-        print("   Scope delegation to a child submodule directory (e.g. --dir HomeLabAI).", file=sys.stderr)
+        print(
+            f"\n❌ [DELEGATION REJECTED]: Target directory '{target_dir}' is the top-level monorepo root.",
+            file=sys.stderr,
+        )
+        print(
+            "   Direct monorepo root indexing is forbidden by playbook (causes multi-repo context explosion).",
+            file=sys.stderr,
+        )
+        print(
+            "   Scope delegation to a child submodule directory (e.g. --dir HomeLabAI).",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # [BKM-049] Enforce mutual exclusivity between local_only and cloud_only
@@ -723,31 +949,65 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
         agent = "oracle"
     elif cloud_only:
         if agent and agent not in ("sisyphus", "prometheus", "oracle", "default"):
-            print(f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud-only mode.", file=sys.stderr)
-            print("   Cloud execution strictly routes to Sisyphus (Executor), Prometheus (Planner), or Oracle (Synthesizer).", file=sys.stderr)
-            print("   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.", file=sys.stderr)
+            print(
+                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud-only mode.",
+                file=sys.stderr,
+            )
+            print(
+                "   Cloud execution strictly routes to Sisyphus (Executor), Prometheus (Planner), or Oracle (Synthesizer).",
+                file=sys.stderr,
+            )
+            print(
+                "   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         agent = agent if agent else ("sisyphus" if mode == "execute" else "prometheus")
     elif local_only:
-        if agent and agent not in ("atlas", "sisyphus-junior", "junior", "momus", "librarian", "default"):
-            print(f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --local-only mode.", file=sys.stderr)
-            print("   Local execution strictly routes to Atlas (KENDER 4090 Conductor) or Junior (M5 Air Leaf Worker).", file=sys.stderr)
-            print("   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.", file=sys.stderr)
+        if agent and agent not in (
+            "atlas",
+            "sisyphus-junior",
+            "junior",
+            "momus",
+            "librarian",
+            "default",
+        ):
+            print(
+                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --local-only mode.",
+                file=sys.stderr,
+            )
+            print(
+                "   Local execution strictly routes to Atlas (KENDER 4090 Conductor) or Junior (M5 Air Leaf Worker).",
+                file=sys.stderr,
+            )
+            print(
+                "   See OPENAGENT_HANDOVER_PLAYBOOK.md for topology specifications.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         agent = agent if agent else "atlas"
     else:
         agent = agent if agent else "atlas"
 
     _target_display = target_files if target_files else reference_file
-    log_step(story_num, "START", f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (agent: {agent}, reference: {reference_file}, target: {_target_display})")
+    log_step(
+        story_num,
+        "START",
+        f"Initiating delegation ({mode.upper()}) for Sprint {sprint_num} '{title}' (agent: {agent}, reference: {reference_file}, target: {_target_display})",
+    )
 
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
     _verify_and_sync_service_freshness(story_num)
-    
+
     # Auto-start opencode-core.service if inactive (Scale-to-Zero resilience)
     try:
-        subprocess.run(["systemctl", "--user", "start", "opencode-core.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["systemctl", "--user", "start", "opencode-core.service"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         time.sleep(1.5)
     except Exception:
         pass
@@ -757,19 +1017,42 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     # If a live execution is in progress and we are not explicitly attaching via --session-id, REJECT to prevent parallel race conditions.
     if not session_id:
         try:
-            status_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/status")
+            status_req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/status"
+            )
             with urllib.request.urlopen(status_req, timeout=3) as st_resp:
                 st_data = json.loads(st_resp.read().decode("utf-8"))
                 active_sessions = []
                 if isinstance(st_data, dict):
-                    active_sessions = [s_id for s_id, s_info in st_data.items() if isinstance(s_info, dict) and s_info.get("status") in ("running", "busy")]
+                    active_sessions = [
+                        s_id
+                        for s_id, s_info in st_data.items()
+                        if isinstance(s_info, dict)
+                        and s_info.get("status") in ("running", "busy")
+                    ]
                 elif isinstance(st_data, list):
-                    active_sessions = [s.get("id") for s in st_data if isinstance(s, dict) and s.get("status") in ("running", "busy")]
-                
+                    active_sessions = [
+                        s.get("id")
+                        for s in st_data
+                        if isinstance(s, dict)
+                        and s.get("status") in ("running", "busy")
+                    ]
+
                 if active_sessions:
-                    log_step(story_num, "ACTIVE_SESSION_GATE_REJECTED", f"REJECTED: Session {active_sessions[0]} is still actively running. Parallel delegation is strictly forbidden per BKM-049.", severity="CRITICAL")
-                    print(f"\n[!!!] ANTI-PARALLEL GATE TRIGGERED: Session {active_sessions[0]} is still active.", file=sys.stderr)
-                    print(f"[!!!] Wait for it to complete or terminate it before launching Story {story_num}.", file=sys.stderr)
+                    log_step(
+                        story_num,
+                        "ACTIVE_SESSION_GATE_REJECTED",
+                        f"REJECTED: Session {active_sessions[0]} is still actively running. Parallel delegation is strictly forbidden per BKM-049.",
+                        severity="CRITICAL",
+                    )
+                    print(
+                        f"\n[!!!] ANTI-PARALLEL GATE TRIGGERED: Session {active_sessions[0]} is still active.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        f"[!!!] Wait for it to complete or terminate it before launching Story {story_num}.",
+                        file=sys.stderr,
+                    )
                     sys.exit(1)
         except Exception:
             pass
@@ -780,11 +1063,17 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
     active_session_valid = False
     if session_id:
         try:
-            check_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}")
+            check_req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}"
+            )
             with urllib.request.urlopen(check_req, timeout=3) as c_resp:
                 if c_resp.status == 200:
                     active_session_valid = True
-                    log_step(story_num, "SESSION_REUSED", f"Reusing verified REST session {session_id}")
+                    log_step(
+                        story_num,
+                        "SESSION_REUSED",
+                        f"Reusing verified REST session {session_id}",
+                    )
         except Exception:
             active_session_valid = False
 
@@ -795,7 +1084,7 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
             session_payload = {
                 "directory": target_dir,
                 "title": session_title,
-                "agent": agent
+                "agent": agent,
             }
             req = urllib.request.Request(
                 f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -805,7 +1094,9 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 session_id = data["id"]
-                log_step(story_num, "SESSION_CREATED", f"Created REST session {session_id}")
+                log_step(
+                    story_num, "SESSION_CREATED", f"Created REST session {session_id}"
+                )
                 # Also send explicit PATCH to ensure title overrides background auto-namer
                 try:
                     title_req = urllib.request.Request(
@@ -819,14 +1110,23 @@ def delegate(story_num, title, reference_file, details, verification, sprint_num
                 except Exception:
                     pass
         except Exception as e:
-            log_step(story_num, "SESSION_FAILED", f"Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}", severity="CRITICAL")
+            log_step(
+                story_num,
+                "SESSION_FAILED",
+                f"Failed to create session via REST on port {OPENCODE_REST_PORT}: {e}",
+                severity="CRITICAL",
+            )
             sys.exit(1)
 
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
     global _ACTIVE_SESSION_ID
     _ACTIVE_SESSION_ID = session_id
     wake_web_ui()
-    log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
+    log_step(
+        story_num,
+        "WEB_UI_LINK",
+        f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+    )
 
     # Build dynamic prompt blueprint based on mode
     if mode == "oracle":
@@ -873,7 +1173,10 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
                     if start_idx:
                         # Find next story or end of section
                         for idx in range(start_idx, len(r_lines)):
-                            if "### ⏱️ Story" in r_lines[idx] or "### 🏛️ Architecture" in r_lines[idx]:
+                            if (
+                                "### ⏱️ Story" in r_lines[idx]
+                                or "### 🏛️ Architecture" in r_lines[idx]
+                            ):
                                 end_idx = idx
                                 break
                         if not end_idx:
@@ -931,7 +1234,9 @@ You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modificat
         note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}. Silicon validation and testing will be performed post-dispatch by the orchestrator."
 
     # [BKM-034 Two-Tier Payload Construction]
-    effective_sprint_doc = sprint_doc or (reference_file if reference_file and "SPRINT_PLAN" in reference_file else None)
+    effective_sprint_doc = sprint_doc or (
+        reference_file if reference_file and "SPRINT_PLAN" in reference_file else None
+    )
     tier1_block = ""
     if not local_only and effective_sprint_doc:
         sprint_summary = _extract_sprint_summary(effective_sprint_doc)
@@ -949,13 +1254,25 @@ Sprint Reference: {effective_sprint_doc}
     ambient_grounding_block = ""
     if not local_only:
         try:
-            req_payload = json.dumps({"prompt": f"{title} {details[:300]}", "invocationNum": 1, "agent": agent}).encode("utf-8")
-            amb_req = urllib.request.Request("http://127.0.0.1:8765/ambient_recall", data=req_payload, headers={"Content-Type": "application/json"})
+            req_payload = json.dumps(
+                {
+                    "prompt": f"{title} {details[:300]}",
+                    "invocationNum": 1,
+                    "agent": agent,
+                }
+            ).encode("utf-8")
+            amb_req = urllib.request.Request(
+                "http://127.0.0.1:8765/ambient_recall",
+                data=req_payload,
+                headers={"Content-Type": "application/json"},
+            )
             with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
                 amb_data = json.loads(amb_resp.read().decode("utf-8"))
                 steps = amb_data.get("injectSteps", [])
                 if steps and "ephemeralMessage" in steps[0]:
-                    ambient_grounding_block = f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+                    ambient_grounding_block = (
+                        f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+                    )
         except Exception:
             pass
     elif local_only and effective_sprint_doc:
@@ -968,7 +1285,11 @@ Sprint Reference: {effective_sprint_doc}
 
     # Optional target file snippet injection (bypassed in local_only mode to preserve M5 Air prefill headroom)
     target_snippet_block = ""
-    if not local_only and target_files and os.path.exists(target_files.split(",")[0].strip()):
+    if (
+        not local_only
+        and target_files
+        and os.path.exists(target_files.split(",")[0].strip())
+    ):
         first_target = target_files.split(",")[0].strip()
         try:
             with open(first_target, "r") as tf:
@@ -984,7 +1305,11 @@ Sprint Reference: {effective_sprint_doc}
 As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 """
 
-    _target_files_line = f"- Edit Target(s): {target_files}" if target_files else f"- Edit Target(s): {reference_file} (same as reference)"
+    _target_files_line = (
+        f"- Edit Target(s): {target_files}"
+        if target_files
+        else f"- Edit Target(s): {reference_file} (same as reference)"
+    )
     if agent == "atlas":
         prompt = f"""[STORY DELEGATION TARGET: STORY {story_num}]
 - Title: {title}
@@ -1023,21 +1348,52 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 if local_only:
                     local_cfg = aliases.get("local_bicameral", {})
                     if agent in ("atlas", "librarian", "momus"):
-                        log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: qwen3:14b). Zero cloud fallbacks.")
+                        log_step(
+                            story_num,
+                            "LOCAL_ONLY_MODE",
+                            "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: qwen3:14b). Zero cloud fallbacks.",
+                        )
                         model_ladder = [
-                            local_cfg.get("reasoner") or local_cfg.get("architect", {"providerID": "my-windows-4090", "modelID": "qwen3:14b"})
+                            local_cfg.get("reasoner")
+                            or local_cfg.get(
+                                "architect",
+                                {
+                                    "providerID": "my-windows-4090",
+                                    "modelID": "qwen3:14b",
+                                },
+                            )
                         ]
                     else:
-                        log_step(story_num, "LOCAL_ONLY_MODE", "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: mlx-community--Qwen3.5-9B-4bit). Zero cloud fallbacks.")
+                        log_step(
+                            story_num,
+                            "LOCAL_ONLY_MODE",
+                            "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: mlx-community--Qwen3.5-9B-4bit). Zero cloud fallbacks.",
+                        )
                         model_ladder = [
-                            local_cfg.get("coder", {"providerID": "my-m5-mlx", "modelID": "mlx-community--Qwen3.5-9B-4bit"})
+                            local_cfg.get(
+                                "coder",
+                                {
+                                    "providerID": "my-m5-mlx",
+                                    "modelID": "mlx-community--Qwen3.5-9B-4bit",
+                                },
+                            )
                         ]
                 elif cloud_only:
-                    log_step(story_num, "CLOUD_ONLY_MODE", "Enforcing 100% Cloud Swarm Execution (OpenRouter/Cohere). Zero local silicon fallbacks.")
-                    model_ladder = aliases.get("fast_worker", [
-                        {"providerID": "openrouter", "modelID": "free"},
-                        {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
-                    ])
+                    log_step(
+                        story_num,
+                        "CLOUD_ONLY_MODE",
+                        "Enforcing 100% Cloud Swarm Execution (OpenRouter/Cohere). Zero local silicon fallbacks.",
+                    )
+                    model_ladder = aliases.get(
+                        "fast_worker",
+                        [
+                            {"providerID": "openrouter", "modelID": "free"},
+                            {
+                                "providerID": "cohere",
+                                "modelID": "command-a-plus-05-2026",
+                            },
+                        ],
+                    )
                 elif agent in ("prometheus", "atlas", "architect"):
                     model_ladder = aliases.get("champion_reasoner", [])
                 elif agent in ("sisyphus", "hephaestus", "developer"):
@@ -1045,18 +1401,28 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 else:
                     model_ladder = aliases.get("default_ladder", [])
         except Exception as e:
-            log_step(story_num, "CONFIG_LOAD_WARN", f"Could not load swarm_aliases from {cfg_path}: {e}")
+            log_step(
+                story_num,
+                "CONFIG_LOAD_WARN",
+                f"Could not load swarm_aliases from {cfg_path}: {e}",
+            )
 
     if not model_ladder:
-        log_step(story_num, "FALLBACK_LADDER", f"Using resilient default cloud fallback ladder for agent='{agent}'.")
+        log_step(
+            story_num,
+            "FALLBACK_LADDER",
+            f"Using resilient default cloud fallback ladder for agent='{agent}'.",
+        )
         model_ladder = [
             {"providerID": "openrouter", "modelID": "free"},
-            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
         ]
 
     # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
     if not local_only:
-        model_ladder = [m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))]
+        model_ladder = [
+            m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))
+        ]
         if not model_ladder:
             model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
 
@@ -1064,7 +1430,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     if local_only:
         est_tokens = len(prompt) // 4
         if est_tokens > 28000:
-            log_step(story_num, "LOCAL_CONTEXT_OVERFLOW", f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 28,000 tokens. Decompose prompt first.")
+            log_step(
+                story_num,
+                "LOCAL_CONTEXT_OVERFLOW",
+                f"ABORT: Prompt length ({est_tokens} est. tokens) exceeds sovereign local ceiling of 28,000 tokens. Decompose prompt first.",
+            )
             return
 
     attempt = 0
@@ -1076,7 +1446,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 session_payload = {
                     "directory": target_dir,
                     "title": f"{session_title} (Attempt {attempt})",
-                    "agent": agent
+                    "agent": agent,
                 }
                 s_req = urllib.request.Request(
                     f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
@@ -1086,20 +1456,25 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 with urllib.request.urlopen(s_req, timeout=10) as s_resp:
                     s_data = json.loads(s_resp.read().decode("utf-8"))
                     session_id = s_data["id"]
-                    log_step(story_num, "SESSION_FRESH", f"Using fresh session {session_id} for attempt {attempt}")
+                    log_step(
+                        story_num,
+                        "SESSION_FRESH",
+                        f"Using fresh session {session_id} for attempt {attempt}",
+                    )
             except Exception:
                 pass
 
         current_model = model_ladder[min(attempt - 1, len(model_ladder) - 1)]
-        log_step(story_num, "DISPATCH_ATTEMPT", f"Dispatching prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (Attempt {attempt}/{max_retries})")
+        log_step(
+            story_num,
+            "DISPATCH_ATTEMPT",
+            f"Dispatching prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (Attempt {attempt}/{max_retries})",
+        )
         start_time = time.time()
-        
-        msg_dict = {
-            "parts": [{"type": "text", "text": prompt}],
-            "model": current_model
-        }
+
+        msg_dict = {"parts": [{"type": "text", "text": prompt}], "model": current_model}
         msg_payload = json.dumps(msg_dict).encode("utf-8")
-        
+
         post_result = None
         post_exception = None
 
@@ -1131,7 +1506,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
                 # [FEAT-512 / BKM-047] Smart Heartbeat Polling & Live Telemetry Inspector
                 try:
-                    poll_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message")
+                    poll_req = urllib.request.Request(
+                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message"
+                    )
                     with urllib.request.urlopen(poll_req, timeout=2.0) as poll_resp:
                         msgs = json.loads(poll_resp.read().decode("utf-8"))
                         if msgs:
@@ -1156,18 +1533,35 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                         q_options = []
                                         if isinstance(q_input, dict):
                                             questions = q_input.get("questions", [])
-                                            if isinstance(questions, list) and questions:
-                                                q0 = questions[0] if isinstance(questions[0], dict) else {}
-                                                q_text = q0.get("question", str(questions))
+                                            if (
+                                                isinstance(questions, list)
+                                                and questions
+                                            ):
+                                                q0 = (
+                                                    questions[0]
+                                                    if isinstance(questions[0], dict)
+                                                    else {}
+                                                )
+                                                q_text = q0.get(
+                                                    "question", str(questions)
+                                                )
                                                 q_options = q0.get("options", [])
                                             else:
                                                 q_text = str(q_input)
                                         else:
                                             q_text = str(q_input)
 
-                                        log_step(story_num, "INTERACTIVE_POPUP_DETECTED", "OpenCode emitted interactive question. Session paused.", severity="CRITICAL")
+                                        log_step(
+                                            story_num,
+                                            "INTERACTIVE_POPUP_DETECTED",
+                                            "OpenCode emitted interactive question. Session paused.",
+                                            severity="CRITICAL",
+                                        )
                                         print("\n" + "=" * 80, flush=True)
-                                        print(f"[INTERACTIVE POPUP — SESSION {session_id}]", flush=True)
+                                        print(
+                                            f"[INTERACTIVE POPUP — SESSION {session_id}]",
+                                            flush=True,
+                                        )
                                         print("=" * 80, flush=True)
                                         print(f"QUESTION: {q_text}", flush=True)
                                         if q_options:
@@ -1175,15 +1569,25 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                             for i, opt in enumerate(q_options, 1):
                                                 print(f"  [{i}] {opt}", flush=True)
                                         print("\nTo resume, run:", flush=True)
-                                        print(f"  python3 delegate.py --resume {session_id} --answer '<your choice>'", flush=True)
+                                        print(
+                                            f"  python3 delegate.py --resume {session_id} --answer '<your choice>'",
+                                            flush=True,
+                                        )
                                         print("=" * 80 + "\n", flush=True)
 
                                         # Persist session ID breadcrumb for easy resume discovery
                                         try:
-                                            breadcrumb_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/logs/paused_session.txt")
-                                            os.makedirs(os.path.dirname(breadcrumb_path), exist_ok=True)
+                                            breadcrumb_path = os.path.expanduser(
+                                                "~/Dev_Lab/HomeLabAI/logs/paused_session.txt"
+                                            )
+                                            os.makedirs(
+                                                os.path.dirname(breadcrumb_path),
+                                                exist_ok=True,
+                                            )
                                             with open(breadcrumb_path, "w") as bf:
-                                                bf.write(f"session_id={session_id}\nstory={story_num}\ntitle={title}\nquestion={q_text}\n")
+                                                bf.write(
+                                                    f"session_id={session_id}\nstory={story_num}\ntitle={title}\nquestion={q_text}\n"
+                                                )
                                         except Exception:
                                             pass
 
@@ -1192,7 +1596,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
                                     if state_summary != last_inspected_state:
                                         last_inspected_state = state_summary
-                                        log_step(story_num, "LIVE_SWARM_STATE", f"State transition: [{state_summary}]")
+                                        log_step(
+                                            story_num,
+                                            "LIVE_SWARM_STATE",
+                                            f"State transition: [{state_summary}]",
+                                        )
                                     break
                 except Exception:
                     pass
@@ -1201,7 +1609,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     break
 
                 # Heartbeat stdout line keeps process output active and prevents silent watchdog timeouts
-                log_step(story_num, "HEARTBEAT", f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log")
+                log_step(
+                    story_num,
+                    "HEARTBEAT",
+                    f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log",
+                )
 
         duration = time.time() - start_time
 
@@ -1211,40 +1623,96 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             if isinstance(post_result, dict):
                 if "error" in post_result.get("info", {}):
                     api_err = post_result["info"]["error"]
-                elif post_result.get("name") in ("APIError", "UnknownError") or "error" in post_result:
+                elif (
+                    post_result.get("name") in ("APIError", "UnknownError")
+                    or "error" in post_result
+                ):
                     api_err = post_result.get("data") or post_result.get("error")
 
-            finish = post_result.get("info", {}).get("finish", "unknown") if isinstance(post_result, dict) else "unknown"
-            tokens = post_result.get("info", {}).get("tokens", {}) if isinstance(post_result, dict) else {}
-            log_step(story_num, "COMPLETE", f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}")
-            log_step(story_num, "WEB_UI_LINK", f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}")
+            finish = (
+                post_result.get("info", {}).get("finish", "unknown")
+                if isinstance(post_result, dict)
+                else "unknown"
+            )
+            tokens = (
+                post_result.get("info", {}).get("tokens", {})
+                if isinstance(post_result, dict)
+                else {}
+            )
+            log_step(
+                story_num,
+                "COMPLETE",
+                f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}",
+            )
+            log_step(
+                story_num,
+                "WEB_UI_LINK",
+                f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+            )
 
             # [BKM-033 / BKM-034] Extract and display execution response & Handover Reflection directly from in-flight chunk
-            parts = post_result.get("parts", []) if isinstance(post_result, dict) else []
-            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+            parts = (
+                post_result.get("parts", []) if isinstance(post_result, dict) else []
+            )
+            text_parts = [
+                p.get("text", "")
+                for p in parts
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
             full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
 
             # If provider returned an error and no text, trigger fallback to next model in ladder
             if api_err and not full_text:
-                err_msg = api_err.get("data", {}).get("message") if isinstance(api_err, dict) else str(api_err)
-                log_step(story_num, "API_ERROR_DETECTED", f"Provider API Error on attempt {attempt}/{max_retries}: {err_msg}", severity="WARNING")
+                err_msg = (
+                    api_err.get("data", {}).get("message")
+                    if isinstance(api_err, dict)
+                    else str(api_err)
+                )
+                log_step(
+                    story_num,
+                    "API_ERROR_DETECTED",
+                    f"Provider API Error on attempt {attempt}/{max_retries}: {err_msg}",
+                    severity="WARNING",
+                )
                 if attempt < max_retries:
-                    print(f"[!] [STORY {story_num}] Provider {current_model.get('providerID')}/{current_model.get('modelID')} error: {err_msg[:120]}... Falling back to next model in ladder...", flush=True)
+                    print(
+                        f"[!] [STORY {story_num}] Provider {current_model.get('providerID')}/{current_model.get('modelID')} error: {err_msg[:120]}... Falling back to next model in ladder...",
+                        flush=True,
+                    )
                     continue
 
             # [FEAT-496] Passive Swarm Telemetry Tap
-            _log_live_usage_telemetry(story_num, sprint_num, title, current_model, duration, tokens, len(full_text))
+            _log_live_usage_telemetry(
+                story_num,
+                sprint_num,
+                title,
+                current_model,
+                duration,
+                tokens,
+                len(full_text),
+            )
 
             blocker_match = None
             blocker_text = ""
             is_silent_failure = False
 
-            tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
-            model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}" if current_model else "unknown"
+            tier_str = (
+                "[SWARM:LOCAL]"
+                if local_only
+                else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
+            )
+            model_str = (
+                f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
+                if current_model
+                else "unknown"
+            )
 
             if full_text:
                 print("\n" + "═" * 80, flush=True)
-                print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
+                print(
+                    f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]",
+                    flush=True,
+                )
                 print("═" * 80, flush=True)
                 print(full_text, flush=True)
                 print("═" * 80 + "\n", flush=True)
@@ -1257,15 +1725,27 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         re.DOTALL | re.IGNORECASE,
                     )
                     if blocker_match:
-                        blocker_text = (blocker_match.group(1) or blocker_match.group(2) or "").strip()
-                        log_step(story_num, "BLOCKER_DETECTED", f"Subagent emitted blocker report: {blocker_text}", severity="CRITICAL")
+                        blocker_text = (
+                            blocker_match.group(1) or blocker_match.group(2) or ""
+                        ).strip()
+                        log_step(
+                            story_num,
+                            "BLOCKER_DETECTED",
+                            f"Subagent emitted blocker report: {blocker_text}",
+                            severity="CRITICAL",
+                        )
                         subprocess.run(
                             [
-                                "icm", "store",
-                                "-t", "errors-resolved",
-                                "-c", f"Story {story_num} ({title}) Blocker: {blocker_text}",
-                                "-i", "critical",
-                                "-k", f"blocker,delegation,openagent,story-{story_num},sprint-{sprint_num}"
+                                "icm",
+                                "store",
+                                "-t",
+                                "errors-resolved",
+                                "-c",
+                                f"Story {story_num} ({title}) Blocker: {blocker_text}",
+                                "-i",
+                                "critical",
+                                "-k",
+                                f"blocker,delegation,openagent,story-{story_num},sprint-{sprint_num}",
                             ],
                             capture_output=True,
                             text=True,
@@ -1281,15 +1761,24 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         full_text,
                         re.DOTALL | re.IGNORECASE,
                     )
-                    reflection_text = reflection_match.group(1).strip() if reflection_match else full_text[:400]
+                    reflection_text = (
+                        reflection_match.group(1).strip()
+                        if reflection_match
+                        else full_text[:400]
+                    )
                     icm_content = f"Story {story_num} ({title}) Delegation Reflection: {reflection_text}"
                     subprocess.run(
                         [
-                            "icm", "store",
-                            "-t", "errors-resolved",
-                            "-c", icm_content,
-                            "-i", "high",
-                            "-k", f"delegation,openagent,prompt-tuning,story-{story_num},sprint-{sprint_num}"
+                            "icm",
+                            "store",
+                            "-t",
+                            "errors-resolved",
+                            "-c",
+                            icm_content,
+                            "-i",
+                            "high",
+                            "-k",
+                            f"delegation,openagent,prompt-tuning,story-{story_num},sprint-{sprint_num}",
                         ],
                         capture_output=True,
                         text=True,
@@ -1300,28 +1789,53 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             else:
                 # [FEAT-515 / Task 69.6.2] Silent Failure Escalation Gate
                 # Core Law: "Fix the delegation infrastructure; do not manually finish the sprint."
-                is_silent_failure = (finish == "unknown")
+                is_silent_failure = finish == "unknown"
                 if is_silent_failure and attempt < max_retries:
-                    log_step(story_num, "SILENT_FAILURE_RETRY", f"Attempt {attempt}/{max_retries} returned zero text/tools. Falling back to next model in ladder...", severity="WARNING")
-                    print(f"[!] [STORY {story_num}] Model {current_model.get('providerID')}/{current_model.get('modelID')} returned no output. Retrying with next model in ladder...", flush=True)
+                    log_step(
+                        story_num,
+                        "SILENT_FAILURE_RETRY",
+                        f"Attempt {attempt}/{max_retries} returned zero text/tools. Falling back to next model in ladder...",
+                        severity="WARNING",
+                    )
+                    print(
+                        f"[!] [STORY {story_num}] Model {current_model.get('providerID')}/{current_model.get('modelID')} returned no output. Retrying with next model in ladder...",
+                        flush=True,
+                    )
                     continue
                 elif is_silent_failure:
-                    log_step(story_num, "SILENT_DELEGATION_FAILURE",
-                             f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
-                             f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
-                             severity="CRITICAL")
+                    log_step(
+                        story_num,
+                        "SILENT_DELEGATION_FAILURE",
+                        f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
+                        f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
+                        severity="CRITICAL",
+                    )
 
                     _log_delegation_ledger(
-                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                        session_id, duration, tokens, "SILENT_FAILURE", attempt, verification,
-                        False, "Silent failure across all ladder attempts", model_str
+                        sprint_num,
+                        story_num,
+                        title,
+                        mode,
+                        tier_str,
+                        target_files or reference_file,
+                        session_id,
+                        duration,
+                        tokens,
+                        "SILENT_FAILURE",
+                        attempt,
+                        verification,
+                        False,
+                        "Silent failure across all ladder attempts",
+                        model_str,
                     )
 
                     # Persist to delegation_failures.log for retrospective analysis
                     try:
                         fail_log_dir = os.path.expanduser("~/Dev_Lab/HomeLabAI/logs")
                         os.makedirs(fail_log_dir, exist_ok=True)
-                        fail_log_path = os.path.join(fail_log_dir, "delegation_failures.log")
+                        fail_log_path = os.path.join(
+                            fail_log_dir, "delegation_failures.log"
+                        )
                         ts = time.strftime("%Y-%m-%d %H:%M:%S")
                         fail_entry = (
                             f"[{ts}] SILENT_DELEGATION_FAILURE\n"
@@ -1345,11 +1859,16 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     try:
                         subprocess.run(
                             [
-                                "icm", "store",
-                                "-t", "errors-resolved",
-                                "-c", f"SILENT_DELEGATION_FAILURE: Story {story_num} ({title}) — finish={finish}, no text, model={current_model.get('modelID', 'unknown')}. Session {session_id}.",
-                                "-i", "critical",
-                                "-k", f"silent-failure,delegation,story-{story_num},sprint-{sprint_num}"
+                                "icm",
+                                "store",
+                                "-t",
+                                "errors-resolved",
+                                "-c",
+                                f"SILENT_DELEGATION_FAILURE: Story {story_num} ({title}) — finish={finish}, no text, model={current_model.get('modelID', 'unknown')}. Session {session_id}.",
+                                "-i",
+                                "critical",
+                                "-k",
+                                f"silent-failure,delegation,story-{story_num},sprint-{sprint_num}",
                             ],
                             capture_output=True,
                             text=True,
@@ -1358,46 +1877,104 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     except Exception:
                         pass
 
-                    print("\n[!!!] DELEGATION HALTED: Silent failure detected across all ladder attempts. The delegation infrastructure needs fixing.", flush=True)
-                    print(f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}", flush=True)
-                    print("[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log", flush=True)
+                    print(
+                        "\n[!!!] DELEGATION HALTED: Silent failure detected across all ladder attempts. The delegation infrastructure needs fixing.",
+                        flush=True,
+                    )
+                    print(
+                        f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+                        flush=True,
+                    )
+                    print(
+                        "[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log",
+                        flush=True,
+                    )
                     _cleanup_active_session()
                     sys.exit(3)  # EXIT CODE 3 = SILENT_DELEGATION_FAILURE
                 else:
                     # Non-unknown finish with empty text (e.g. tool-only response) — warn but don't halt
-                    print(f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk (finish={finish}). Check Web UI.", flush=True)
+                    print(
+                        f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk (finish={finish}). Check Web UI.",
+                        flush=True,
+                    )
 
             # [BKM-049] Automated Verification Execution & 3-Fix-Retry Loop
-            is_valid_cmd = verification and verification.strip() and verification.strip().lower() not in (
-                "post-dispatch agy validation", "none", "n/a", "manual", "post-dispatch validation"
+            is_valid_cmd = (
+                verification
+                and verification.strip()
+                and verification.strip().lower()
+                not in (
+                    "post-dispatch agy validation",
+                    "none",
+                    "n/a",
+                    "manual",
+                    "post-dispatch validation",
+                )
             )
             if is_valid_cmd and (full_text or not is_silent_failure):
-                log_step(story_num, "RUN_VERIFICATION", f"Executing verification command: {verification}")
+                log_step(
+                    story_num,
+                    "RUN_VERIFICATION",
+                    f"Executing verification command: {verification}",
+                )
                 try:
                     monorepo_root = os.path.expanduser("~/Dev_Lab")
                     v_res = subprocess.run(
                         verification,
                         shell=True,
-                        cwd=monorepo_root if os.path.exists(monorepo_root) else (target_dir or os.getcwd()),
+                        cwd=(
+                            monorepo_root
+                            if os.path.exists(monorepo_root)
+                            else (target_dir or os.getcwd())
+                        ),
                         capture_output=True,
                         text=True,
-                        timeout=120
+                        timeout=120,
                     )
                     if v_res.returncode == 0:
-                        log_step(story_num, "VERIFICATION_SUCCESS", f"Verification passed cleanly: {verification}")
-                        print(f"✅ [STORY {story_num}] Verification PASSED.", flush=True)
+                        log_step(
+                            story_num,
+                            "VERIFICATION_SUCCESS",
+                            f"Verification passed cleanly: {verification}",
+                        )
+                        print(
+                            f"✅ [STORY {story_num}] Verification PASSED.", flush=True
+                        )
                         _log_delegation_ledger(
-                            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                            session_id, duration, tokens, "SUCCESS", attempt, verification, True, "", model_str
+                            sprint_num,
+                            story_num,
+                            title,
+                            mode,
+                            tier_str,
+                            target_files or reference_file,
+                            session_id,
+                            duration,
+                            tokens,
+                            "SUCCESS",
+                            attempt,
+                            verification,
+                            True,
+                            "",
+                            model_str,
                         )
                         _ACTIVE_SESSION_ID = None
                         return
                     else:
                         v_output = (v_res.stdout + "\n" + v_res.stderr).strip()
-                        log_step(story_num, "VERIFICATION_FAILED", f"Verification failed (code {v_res.returncode}): {v_output[:300]}", severity="WARNING")
-                        print(f"❌ [STORY {story_num}] Verification FAILED (code {v_res.returncode}):\n{v_output[:500]}", flush=True)
+                        log_step(
+                            story_num,
+                            "VERIFICATION_FAILED",
+                            f"Verification failed (code {v_res.returncode}): {v_output[:300]}",
+                            severity="WARNING",
+                        )
+                        print(
+                            f"❌ [STORY {story_num}] Verification FAILED (code {v_res.returncode}):\n{v_output[:500]}",
+                            flush=True,
+                        )
                         if attempt < max_retries:
-                            _run_bkm049_diagnostics(story_num, attempt, reason="verification_failed")
+                            _run_bkm049_diagnostics(
+                                story_num, attempt, reason="verification_failed"
+                            )
                             prompt = (
                                 f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
                                 f"The previous implementation for Story {story_num}: '{title}' FAILED verification.\n\n"
@@ -1408,21 +1985,48 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                 f"Repair the code surgically using clara-dna_safe_patch to fix all errors and satisfy verification. "
                                 f"Ensure no syntax errors or breaking changes are introduced."
                             )
-                            print(f"[!] [STORY {story_num}] Retrying with Attempt {attempt + 1}/{max_retries}...", flush=True)
+                            print(
+                                f"[!] [STORY {story_num}] Retrying with Attempt {attempt + 1}/{max_retries}...",
+                                flush=True,
+                            )
                             continue
                         else:
-                            log_step(story_num, "VERIFICATION_EXHAUSTED", f"All {max_retries} attempts failed verification.", severity="CRITICAL")
+                            log_step(
+                                story_num,
+                                "VERIFICATION_EXHAUSTED",
+                                f"All {max_retries} attempts failed verification.",
+                                severity="CRITICAL",
+                            )
                             _log_delegation_ledger(
-                                sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                                session_id, duration, tokens, "VERIFICATION_FAILED", attempt, verification,
-                                False, v_output[:200], model_str
+                                sprint_num,
+                                story_num,
+                                title,
+                                mode,
+                                tier_str,
+                                target_files or reference_file,
+                                session_id,
+                                duration,
+                                tokens,
+                                "VERIFICATION_FAILED",
+                                attempt,
+                                verification,
+                                False,
+                                v_output[:200],
+                                model_str,
                             )
                             _cleanup_active_session()
                             sys.exit(1)
                 except subprocess.TimeoutExpired:
-                    log_step(story_num, "VERIFICATION_TIMEOUT", f"Verification timed out after 120s: {verification}", severity="WARNING")
+                    log_step(
+                        story_num,
+                        "VERIFICATION_TIMEOUT",
+                        f"Verification timed out after 120s: {verification}",
+                        severity="WARNING",
+                    )
                     if attempt < max_retries:
-                        _run_bkm049_diagnostics(story_num, attempt, reason="verification_timeout")
+                        _run_bkm049_diagnostics(
+                            story_num, attempt, reason="verification_timeout"
+                        )
                         prompt = (
                             f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
                             f"The previous implementation for Story {story_num} timed out during verification ({verification}).\n"
@@ -1431,38 +2035,84 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         continue
                     else:
                         _log_delegation_ledger(
-                            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                            session_id, duration, tokens, "VERIFICATION_TIMEOUT", attempt, verification,
-                            False, "Verification timed out after 120s", model_str
+                            sprint_num,
+                            story_num,
+                            title,
+                            mode,
+                            tier_str,
+                            target_files or reference_file,
+                            session_id,
+                            duration,
+                            tokens,
+                            "VERIFICATION_TIMEOUT",
+                            attempt,
+                            verification,
+                            False,
+                            "Verification timed out after 120s",
+                            model_str,
                         )
                         _cleanup_active_session()
                         sys.exit(1)
             else:
                 # If no verification command provided, check for blocker report
                 if blocker_match and attempt < max_retries:
-                    _run_bkm049_diagnostics(story_num, attempt, reason="blocker_detected")
+                    _run_bkm049_diagnostics(
+                        story_num, attempt, reason="blocker_detected"
+                    )
                     prompt = (
                         f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
                         f"A blocker was identified during Story {story_num} execution:\n"
                         f"{blocker_text}\n\n"
                         f"Resolve this blocker or provide a clean alternative implementation within assigned target scope."
                     )
-                    print(f"[!] [STORY {story_num}] Blocker detected. Retrying with Attempt {attempt + 1}/{max_retries}...", flush=True)
+                    print(
+                        f"[!] [STORY {story_num}] Blocker detected. Retrying with Attempt {attempt + 1}/{max_retries}...",
+                        flush=True,
+                    )
                     continue
                 elif blocker_match:
-                    log_step(story_num, "BLOCKER_HALT", f"Blocker could not be resolved after {max_retries} attempts: {blocker_text}", severity="CRITICAL")
+                    log_step(
+                        story_num,
+                        "BLOCKER_HALT",
+                        f"Blocker could not be resolved after {max_retries} attempts: {blocker_text}",
+                        severity="CRITICAL",
+                    )
                     _log_delegation_ledger(
-                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                        session_id, duration, tokens, "BLOCKER_HALT", attempt, verification,
-                        False, blocker_text[:200], model_str
+                        sprint_num,
+                        story_num,
+                        title,
+                        mode,
+                        tier_str,
+                        target_files or reference_file,
+                        session_id,
+                        duration,
+                        tokens,
+                        "BLOCKER_HALT",
+                        attempt,
+                        verification,
+                        False,
+                        blocker_text[:200],
+                        model_str,
                     )
                     _cleanup_active_session()
                     sys.exit(1)
 
             _log_delegation_ledger(
-                sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                session_id, duration, tokens, "COMPLETED_UNVERIFIED", attempt, verification,
-                None, "", model_str
+                sprint_num,
+                story_num,
+                title,
+                mode,
+                tier_str,
+                target_files or reference_file,
+                session_id,
+                duration,
+                tokens,
+                "COMPLETED_UNVERIFIED",
+                attempt,
+                verification,
+                None,
+                "",
+                model_str,
             )
             _ACTIVE_SESSION_ID = None
             return
@@ -1470,54 +2120,159 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
         if post_exception is not None:
             e = post_exception
             err_ctx = _format_error_context(e)
-            tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
-            model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}" if current_model else "unknown"
-            if isinstance(e, urllib.error.HTTPError) and e.code in (502, 503, 504, 429) and attempt < max_retries:
-                backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
+            tier_str = (
+                "[SWARM:LOCAL]"
+                if local_only
+                else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
+            )
+            model_str = (
+                f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
+                if current_model
+                else "unknown"
+            )
+            if (
+                isinstance(e, urllib.error.HTTPError)
+                and e.code in (502, 503, 504, 429)
+                and attempt < max_retries
+            ):
+                backoff = (2**attempt) + random.uniform(0.5, 1.5)
                 msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s...\n{err_ctx}"
                 log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
                 time.sleep(backoff)
             elif attempt < max_retries:
-                backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
+                backoff = (2**attempt) + random.uniform(0.5, 1.5)
                 msg = f"Dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s...\n{err_ctx}"
                 log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
                 time.sleep(backoff)
             else:
-                log_step(story_num, "FAILED", f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}", severity="CRITICAL")
+                log_step(
+                    story_num,
+                    "FAILED",
+                    f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}",
+                    severity="CRITICAL",
+                )
                 _log_delegation_ledger(
-                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                    session_id, duration, {}, "DISPATCH_FAILED", attempt, verification,
-                    False, str(e)[:200], model_str
+                    sprint_num,
+                    story_num,
+                    title,
+                    mode,
+                    tier_str,
+                    target_files or reference_file,
+                    session_id,
+                    duration,
+                    {},
+                    "DISPATCH_FAILED",
+                    attempt,
+                    verification,
+                    False,
+                    str(e)[:200],
+                    model_str,
                 )
                 sys.exit(1)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenAgent Swarm Story Delegator")
-    parser.add_argument("--retrospective", action="store_true", help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit")
-    parser.add_argument("--ledger", "--show-ledger", dest="show_ledger", action="store_true", help="Display the structured delegation execution ledger table, then exit")
+    parser.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="Synthesize DELEGATION_RETROSPECTIVE.md from /tmp/delegate_story_*.log + REST session metrics, then exit",
+    )
+    parser.add_argument(
+        "--ledger",
+        "--show-ledger",
+        dest="show_ledger",
+        action="store_true",
+        help="Display the structured delegation execution ledger table, then exit",
+    )
     _retro_mode = "--retrospective" in sys.argv
     _ledger_mode = any(arg in sys.argv for arg in ("--ledger", "--show-ledger"))
     _resume_mode = "--resume" in sys.argv
     _need_story_args = not (_retro_mode or _ledger_mode or _resume_mode)
-    parser.add_argument("--sprint", required=_need_story_args, type=int, help="Sprint number")
-    parser.add_argument("--story", required=_need_story_args, type=str, help="Story number (e.g. 709, 709B)")
+    parser.add_argument(
+        "--sprint", required=_need_story_args, type=int, help="Sprint number"
+    )
+    parser.add_argument(
+        "--story",
+        required=_need_story_args,
+        type=str,
+        help="Story number (e.g. 709, 709B)",
+    )
     parser.add_argument("--title", required=_need_story_args, help="Story title")
-    parser.add_argument("--reference", required=_need_story_args, help="Sprint plan / context reference document (read-only context for Atlas)")
-    parser.add_argument("--sprint-doc", default=None, help="Path to Master Sprint Plan (e.g. Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md) to automatically inject Tier-1 Executive Summary")
-    parser.add_argument("--target", default=None, help="Actual file(s) Atlas is permitted to edit (omit to default to --reference). Separate multiple paths with commas.")
-    parser.add_argument("--details", required=_need_story_args, help="Detailed requirements")
-    parser.add_argument("--mode", choices=["execute", "plan", "investigate", "oracle"], default="execute", help="Delegation mode: execute (code edit), plan (read-only plan), investigate (read-only diagnostic), or oracle (read-only long-context synthesis/review)")
-    parser.add_argument("--verification", default="Post-dispatch AGY Validation", help="Verification command line (optional)")
+    parser.add_argument(
+        "--reference",
+        required=_need_story_args,
+        help="Sprint plan / context reference document (read-only context for Atlas)",
+    )
+    parser.add_argument(
+        "--sprint-doc",
+        default=None,
+        help="Path to Master Sprint Plan (e.g. Portfolio_Dev/SPRINT_PLAN_SPR_65_0.md) to automatically inject Tier-1 Executive Summary",
+    )
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="Actual file(s) Atlas is permitted to edit (omit to default to --reference). Separate multiple paths with commas.",
+    )
+    parser.add_argument(
+        "--details", required=_need_story_args, help="Detailed requirements"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["execute", "plan", "investigate", "oracle"],
+        default="execute",
+        help="Delegation mode: execute (code edit), plan (read-only plan), investigate (read-only diagnostic), or oracle (read-only long-context synthesis/review)",
+    )
+    parser.add_argument(
+        "--verification",
+        default="Post-dispatch AGY Validation",
+        help="Verification command line (optional)",
+    )
     parser.add_argument("--dir", default=None, help="Target working directory")
-    parser.add_argument("--retries", default=3, type=int, help="Max self-healing retries for 503/429 errors (default: 3)")
-    parser.add_argument("--agent", default=None, help="[DEPRECATED / UNSUPPORTED] Do not specify --agent. Routing is strictly driven by --local-only (Atlas -> Junior) or --cloud-only (Prometheus).")
-    parser.add_argument("--session-id", default=None, help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)")
-    parser.add_argument("--local-only", action="store_true", default=True, help="Force 100 percent sovereign local execution (Atlas on KENDER 4090 decomposes to Junior on M5 Air, zero cloud fallbacks) [DEFAULT: True]")
-    parser.add_argument("--no-local-only", dest="local_only", action="store_false", help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)")
-    parser.add_argument("--cloud-only", action="store_true", help="Force 100 percent cloud swarm execution (Prometheus -> Cloud Swarm, zero local hardware fallbacks)")
-    parser.add_argument("--resume", default=None, metavar="SESSION_ID", help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question")
-    parser.add_argument("--answer", default=None, help="Answer choice for the pending interactive question (used with --resume)")
+    parser.add_argument(
+        "--retries",
+        default=3,
+        type=int,
+        help="Max self-healing retries for 503/429 errors (default: 3)",
+    )
+    parser.add_argument(
+        "--agent",
+        default=None,
+        help="[DEPRECATED / UNSUPPORTED] Do not specify --agent. Routing is strictly driven by --local-only (Atlas -> Junior) or --cloud-only (Prometheus).",
+    )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)",
+    )
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        default=True,
+        help="Force 100 percent sovereign local execution (Atlas on KENDER 4090 decomposes to Junior on M5 Air, zero cloud fallbacks) [DEFAULT: True]",
+    )
+    parser.add_argument(
+        "--no-local-only",
+        dest="local_only",
+        action="store_false",
+        help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)",
+    )
+    parser.add_argument(
+        "--cloud-only",
+        action="store_true",
+        help="Force 100 percent cloud swarm execution (Prometheus -> Cloud Swarm, zero local hardware fallbacks)",
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="SESSION_ID",
+        help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question",
+    )
+    parser.add_argument(
+        "--answer",
+        default=None,
+        help="Answer choice for the pending interactive question (used with --resume)",
+    )
     args = parser.parse_args()
     if args.cloud_only:
         args.local_only = False
@@ -1529,14 +2284,20 @@ if __name__ == "__main__":
     # [FEAT-515 / Task 69.6.1] Interactive Session Resume Handler
     if args.resume:
         if not args.answer:
-            print("[!] --resume requires --answer <choice> to send a response to the paused session.", flush=True)
+            print(
+                "[!] --resume requires --answer <choice> to send a response to the paused session.",
+                flush=True,
+            )
             sys.exit(1)
         resume_sid = args.resume
-        print(f"[*] Resuming paused session {resume_sid} with answer: {args.answer}", flush=True)
+        print(
+            f"[*] Resuming paused session {resume_sid} with answer: {args.answer}",
+            flush=True,
+        )
         try:
-            resume_payload = json.dumps({
-                "parts": [{"type": "text", "text": args.answer}]
-            }).encode("utf-8")
+            resume_payload = json.dumps(
+                {"parts": [{"type": "text", "text": args.answer}]}
+            ).encode("utf-8")
             resume_req = urllib.request.Request(
                 f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{resume_sid}/message",
                 data=resume_payload,
@@ -1546,7 +2307,11 @@ if __name__ == "__main__":
             with urllib.request.urlopen(resume_req, timeout=600) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 parts = result.get("parts", [])
-                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+                text_parts = [
+                    p.get("text", "")
+                    for p in parts
+                    if isinstance(p, dict) and p.get("type") == "text"
+                ]
                 full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
                 if full_text:
                     print("\n" + "=" * 80, flush=True)
@@ -1555,7 +2320,10 @@ if __name__ == "__main__":
                     print(full_text, flush=True)
                     print("=" * 80 + "\n", flush=True)
                 else:
-                    print(f"[!] Resume completed but no text returned. Check session at http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{resume_sid}", flush=True)
+                    print(
+                        f"[!] Resume completed but no text returned. Check session at http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{resume_sid}",
+                        flush=True,
+                    )
         except Exception as e:
             print(f"[!] Resume failed: {e}", flush=True)
             sys.exit(1)
@@ -1566,6 +2334,7 @@ if __name__ == "__main__":
         if _src_dir not in sys.path:
             sys.path.insert(0, _src_dir)
         from infra.delegate_retrospective import run_retrospective
+
         run_retrospective()
         sys.exit(0)
 

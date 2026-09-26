@@ -19,10 +19,10 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
-import re
 from dataclasses import asdict, dataclass, field
 
 import aiohttp
@@ -121,6 +121,7 @@ EVAL_PROMPTS = [
     },
 ]
 
+
 # ---------------------------------------------------------------------------
 # Data Model
 # ---------------------------------------------------------------------------
@@ -133,9 +134,9 @@ class BenchmarkRun:
     prompt: str = ""
     response: str = ""
     # Engine
-    engine: str = ""         # VLLM | OLLAMA
+    engine: str = ""  # VLLM | OLLAMA
     model: str = ""
-    quantization: str = ""   # AWQ | GGUF | FP16 | unknown
+    quantization: str = ""  # AWQ | GGUF | FP16 | unknown
     # Timing
     ttft_ms: float = 0.0
     tokens_per_sec: float = 0.0
@@ -146,9 +147,9 @@ class BenchmarkRun:
     gpu_temp_c: float = 0.0
     vram_used_mb: float = 0.0
     joules_per_token: float = 0.0
-    tco_usd: float = 0.0     # synthetic, $0.10/kWh
+    tco_usd: float = 0.0  # synthetic, $0.10/kWh
     # Evaluation
-    judge_score: int = 0     # 1-5
+    judge_score: int = 0  # 1-5
     judge_reasoning: str = ""
     judge_model: str = ""
     rubric: str = ""
@@ -185,7 +186,9 @@ async def _gpu_snapshot(session: aiohttp.ClientSession) -> dict:
 # ---------------------------------------------------------------------------
 # Inference Runners
 # ---------------------------------------------------------------------------
-async def _run_vllm(session: aiohttp.ClientSession, prompt: str) -> tuple[str, float, int, float]:
+async def _run_vllm(
+    session: aiohttp.ClientSession, prompt: str
+) -> tuple[str, float, int, float]:
     """Returns (response_text, ttft_ms, token_count, duration_s)."""
     payload = {
         "model": VLLM_MODEL,
@@ -200,7 +203,9 @@ async def _run_vllm(session: aiohttp.ClientSession, prompt: str) -> tuple[str, f
     token_count = 0
     first = True
     try:
-        async with session.post(VLLM_URL, json=payload, timeout=aiohttp.ClientTimeout(total=120)) as r:
+        async with session.post(
+            VLLM_URL, json=payload, timeout=aiohttp.ClientTimeout(total=120)
+        ) as r:
             if r.status != 200:
                 err = await r.text()
                 raise RuntimeError(f"vLLM {r.status}: {err[:200]}")
@@ -226,7 +231,9 @@ async def _run_vllm(session: aiohttp.ClientSession, prompt: str) -> tuple[str, f
     return full, ttft_ms, token_count, duration_s
 
 
-async def _run_ollama(session: aiohttp.ClientSession, prompt: str) -> tuple[str, float, int, float]:
+async def _run_ollama(
+    session: aiohttp.ClientSession, prompt: str
+) -> tuple[str, float, int, float]:
     """Returns (response_text, ttft_ms, token_count, duration_s)."""
     payload = {
         "model": OLLAMA_MODEL,
@@ -240,7 +247,9 @@ async def _run_ollama(session: aiohttp.ClientSession, prompt: str) -> tuple[str,
     token_count = 0
     first = True
     try:
-        async with session.post(OLLAMA_URL, json=payload, timeout=aiohttp.ClientTimeout(total=120)) as r:
+        async with session.post(
+            OLLAMA_URL, json=payload, timeout=aiohttp.ClientTimeout(total=120)
+        ) as r:
             if r.status != 200:
                 raise RuntimeError(f"Ollama {r.status}")
             async for line in r.content:
@@ -327,7 +336,9 @@ async def _judge_response(
 # ---------------------------------------------------------------------------
 # Economics
 # ---------------------------------------------------------------------------
-def _compute_economics(power_w: float, duration_s: float, tokens: int) -> tuple[float, float]:
+def _compute_economics(
+    power_w: float, duration_s: float, tokens: int
+) -> tuple[float, float]:
     """Returns (joules_per_token, tco_usd)."""
     if tokens <= 0 or duration_s <= 0:
         return 0.0, 0.0
@@ -383,6 +394,7 @@ def _watchdog_check(score: int, prompt_id: str) -> None:
             log.warning(msg)
             try:
                 from infra.pager_relay import trigger_pager
+
                 trigger_pager(msg, severity="WARNING", source="BenchWatchdog")
             except Exception:
                 pass
@@ -404,7 +416,7 @@ def _humanize_model_path(path: str) -> str:
     for p in parts:
         if p.upper() in ("AWQ", "GPTQ", "GGUF", "FP16", "BF16"):
             result.append(p.upper())
-        elif re.match(r'^\d', p):  # starts with digit (version/size)
+        elif re.match(r"^\d", p):  # starts with digit (version/size)
             result.append(p.upper() if len(p) <= 3 else p)
         else:
             result.append(p.capitalize())
@@ -417,13 +429,17 @@ async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str,
     Falls back to VLLM_MODEL env var if the endpoint is unavailable.
     """
     try:
-        async with session.get(VLLM_MODELS_URL, timeout=aiohttp.ClientTimeout(total=5)) as r:
+        async with session.get(
+            VLLM_MODELS_URL, timeout=aiohttp.ClientTimeout(total=5)
+        ) as r:
             if r.status == 200:
                 data = await r.json()
                 models = data.get("data", [])
                 if models:
                     # Find the base model (parent is null), skip LoRA adapters
-                    base = next((m for m in models if m.get("parent") is None), models[0])
+                    base = next(
+                        (m for m in models if m.get("parent") is None), models[0]
+                    )
                     # Use 'root' field for the actual model path, fall back to 'id'
                     model_path = base.get("root", base.get("id", VLLM_MODEL))
                     human = _humanize_model_path(model_path)
@@ -437,7 +453,9 @@ async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str,
                         quant = "GGUF"
                     else:
                         quant = "FP16"
-                    log.info(f"Resolved vLLM model: {human} ({quant}) from {model_path}")
+                    log.info(
+                        f"Resolved vLLM model: {human} ({quant}) from {model_path}"
+                    )
                     return human, quant
     except Exception as e:
         log.warning(f"Could not resolve vLLM model name: {e}. Using fallback.")
@@ -447,7 +465,9 @@ async def _resolve_vllm_model_name(session: aiohttp.ClientSession) -> tuple[str,
 # ---------------------------------------------------------------------------
 # Main Eval Loop
 # ---------------------------------------------------------------------------
-async def run_eval(prompts: list, engine: str = "vllm", dry_run: bool = False) -> list[BenchmarkRun]:
+async def run_eval(
+    prompts: list, engine: str = "vllm", dry_run: bool = False
+) -> list[BenchmarkRun]:
     runs = []
 
     # Resolve the actual model identity at runtime
@@ -471,9 +491,13 @@ async def run_eval(prompts: list, engine: str = "vllm", dry_run: bool = False) -
 
             # 2. Run inference
             if engine == "vllm":
-                response, ttft_ms, tokens, duration_s = await _run_vllm(session, p["prompt"])
+                response, ttft_ms, tokens, duration_s = await _run_vllm(
+                    session, p["prompt"]
+                )
             else:
-                response, ttft_ms, tokens, duration_s = await _run_ollama(session, p["prompt"])
+                response, ttft_ms, tokens, duration_s = await _run_ollama(
+                    session, p["prompt"]
+                )
 
             # 3. Snap GPU after (use avg of before/after)
             gpu_after = await _gpu_snapshot(session)
@@ -531,14 +555,26 @@ async def run_eval(prompts: list, engine: str = "vllm", dry_run: bool = False) -
 # CLI Entry Point
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="[BKM-032] Silicon Benchmarking Harness")
-    parser.add_argument("--tag", type=str, default=None, help="Filter prompts by tag")
-    parser.add_argument("--id", type=str, default=None, help="Run a single prompt by ID")
-    parser.add_argument(
-        "--engine", type=str, default="vllm", choices=["vllm", "ollama"], help="Inference engine target"
+    parser = argparse.ArgumentParser(
+        description="[BKM-032] Silicon Benchmarking Harness"
     )
-    parser.add_argument("--dry-run", action="store_true", help="Show prompts without executing")
-    parser.add_argument("--list-tags", action="store_true", help="Print available tags and exit")
+    parser.add_argument("--tag", type=str, default=None, help="Filter prompts by tag")
+    parser.add_argument(
+        "--id", type=str, default=None, help="Run a single prompt by ID"
+    )
+    parser.add_argument(
+        "--engine",
+        type=str,
+        default="vllm",
+        choices=["vllm", "ollama"],
+        help="Inference engine target",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show prompts without executing"
+    )
+    parser.add_argument(
+        "--list-tags", action="store_true", help="Print available tags and exit"
+    )
     args = parser.parse_args()
 
     if args.list_tags:
@@ -558,7 +594,9 @@ def main():
         log.error("No prompts matched. Use --list-tags to see available tags.")
         sys.exit(1)
 
-    log.info(f"Starting benchmark: {len(prompts)} prompts | engine={args.engine} | dry_run={args.dry_run}")
+    log.info(
+        f"Starting benchmark: {len(prompts)} prompts | engine={args.engine} | dry_run={args.dry_run}"
+    )
     runs = asyncio.run(run_eval(prompts, engine=args.engine, dry_run=args.dry_run))
 
     if not args.dry_run:

@@ -1,8 +1,10 @@
 import asyncio
 import json
+import time
+
 import pytest
 import websockets
-import time
+
 
 @pytest.mark.asyncio
 async def test_pi_to_21_digits_resonant_flow():
@@ -41,31 +43,40 @@ async def test_pi_to_21_digits_resonant_flow():
                     source = str(data.get("brain_source") or data.get("source", ""))
                     text = str(data.get("brain") or data.get("text", ""))
 
-                    if not text: continue
+                    if not text:
+                        continue
 
                     # Flexible Source Detection
-                    if "Pinky" in source and ("Intuition" in source or "Result" in source or "Triage" in source):
+                    if "Pinky" in source and (
+                        "Intuition" in source
+                        or "Result" in source
+                        or "Triage" in source
+                    ):
                         print(f"  [SYNERGY] Pinky Intuition received: {text[:30]}...")
                         found_intuition = True
-                    
+
                     # Catch the technical truth even if source metadata is missing
                     if "3.14159" in text:
                         brain_text = text
-                        print("  [SYNERGY] Brain Derivation received (Technical Truth Verified).")
-                        if found_intuition: break
+                        print(
+                            "  [SYNERGY] Brain Derivation received (Technical Truth Verified)."
+                        )
+                        if found_intuition:
+                            break
                 except asyncio.TimeoutError:
                     continue
 
             # 4. Final Judgment
             assert found_intuition, "Pinky failed to provide resonant intuition."
             assert brain_text, "Brain failed to provide technical derivation."
-            
+
             # Use '3.14159' as a loose anchor check
             assert "3.1415" in brain_text, "Response lacks the base Pi constant."
             print("✅ Resonant Flow verified. Hub sequences Pinky -> Brain correctly.")
 
     except ConnectionRefusedError:
         pytest.fail("Lab Hub is offline.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_pi_to_21_digits_resonant_flow())

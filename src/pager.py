@@ -1,6 +1,7 @@
-import streamlit as st
-import time
 import os
+import time
+
+import streamlit as st
 
 st.set_page_config(page_title="Acme Lab Pager", page_icon="📟", layout="wide")
 
@@ -39,6 +40,7 @@ with col2:
     st.subheader("📓 User Notes")
     notes_placeholder = st.empty()
 
+
 def read_tail(filename, n=50):
     if not os.path.exists(filename):
         return [f"File {filename} not found."]
@@ -47,7 +49,8 @@ def read_tail(filename, n=50):
             lines = f.readlines()
             return lines[-n:]
     except Exception as e:
-        return [f"Error reading {filename}: {str(e)}"]
+        return [f"Error reading {filename}: {e!s}"]
+
 
 # Main Loop
 if auto_refresh:

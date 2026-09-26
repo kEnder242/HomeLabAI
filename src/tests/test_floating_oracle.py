@@ -12,15 +12,15 @@ Tests:
 import json
 
 from src.logic.floating_oracle import (
-    harvest_validation_scar,
+    build_floating_candidate_pool,
     harvest_mass_scan_progress,
     harvest_subconscious_dream,
-    build_floating_candidate_pool,
+    harvest_validation_scar,
     is_shallow_turn,
 )
 
-
 # ─── Harvest Validation Scar Tests ───────────────────────────────────────────
+
 
 class TestHarvestValidationScar:
     """Test validation_ledger.jsonl FAIL entry harvesting."""
@@ -29,22 +29,28 @@ class TestHarvestValidationScar:
         """Verify the most recent FAIL record is returned."""
         ledger = tmp_path / "validation_ledger.jsonl"
         ledger.write_text(
-            json.dumps({
-                "timestamp": "2026-08-20T10:00:00+00:00",
-                "query": "What is the VRAM limit?",
-                "verdict": "FAIL",
-                "flawed_output": "12GB",
-                "ground_truth": "11GB for 2080 Ti",
-                "source": "CO_PILOT_FOURTH_WALL",
-            }) + "\n"
-            + json.dumps({
-                "timestamp": "2026-08-21T14:00:00+00:00",
-                "query": "What is the thermal limit?",
-                "verdict": "FAIL",
-                "flawed_output": "90C",
-                "ground_truth": "83C for Turing",
-                "source": "CO_PILOT_FOURTH_WALL",
-            }) + "\n",
+            json.dumps(
+                {
+                    "timestamp": "2026-08-20T10:00:00+00:00",
+                    "query": "What is the VRAM limit?",
+                    "verdict": "FAIL",
+                    "flawed_output": "12GB",
+                    "ground_truth": "11GB for 2080 Ti",
+                    "source": "CO_PILOT_FOURTH_WALL",
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "timestamp": "2026-08-21T14:00:00+00:00",
+                    "query": "What is the thermal limit?",
+                    "verdict": "FAIL",
+                    "flawed_output": "90C",
+                    "ground_truth": "83C for Turing",
+                    "source": "CO_PILOT_FOURTH_WALL",
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -58,14 +64,17 @@ class TestHarvestValidationScar:
         """Verify None is returned when no FAIL entries exist."""
         ledger = tmp_path / "validation_ledger.jsonl"
         ledger.write_text(
-            json.dumps({
-                "timestamp": "2026-08-20T10:00:00+00:00",
-                "query": "What is the VRAM limit?",
-                "verdict": "PASS",
-                "flawed_output": "",
-                "ground_truth": "",
-                "source": "AUTOMATED",
-            }) + "\n",
+            json.dumps(
+                {
+                    "timestamp": "2026-08-20T10:00:00+00:00",
+                    "query": "What is the VRAM limit?",
+                    "verdict": "PASS",
+                    "flawed_output": "",
+                    "ground_truth": "",
+                    "source": "AUTOMATED",
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -90,14 +99,17 @@ class TestHarvestValidationScar:
         ledger = tmp_path / "validation_ledger.jsonl"
         ledger.write_text(
             "not valid json\n"
-            + json.dumps({
-                "timestamp": "2026-08-21T14:00:00+00:00",
-                "query": "Test query",
-                "verdict": "FAIL",
-                "flawed_output": "flawed",
-                "ground_truth": "correction",
-                "source": "CO_PILOT_FOURTH_WALL",
-            }) + "\n",
+            + json.dumps(
+                {
+                    "timestamp": "2026-08-21T14:00:00+00:00",
+                    "query": "Test query",
+                    "verdict": "FAIL",
+                    "flawed_output": "flawed",
+                    "ground_truth": "correction",
+                    "source": "CO_PILOT_FOURTH_WALL",
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -109,14 +121,17 @@ class TestHarvestValidationScar:
         """Verify the digest contains timestamp, query, and ground truth."""
         ledger = tmp_path / "validation_ledger.jsonl"
         ledger.write_text(
-            json.dumps({
-                "timestamp": "2026-08-22T09:30:00+00:00",
-                "query": "What is the PCIe lane config?",
-                "verdict": "FAIL",
-                "flawed_output": "x16",
-                "ground_truth": "x8 for Turing",
-                "source": "CO_PILOT_FOURTH_WALL",
-            }) + "\n",
+            json.dumps(
+                {
+                    "timestamp": "2026-08-22T09:30:00+00:00",
+                    "query": "What is the PCIe lane config?",
+                    "verdict": "FAIL",
+                    "flawed_output": "x16",
+                    "ground_truth": "x8 for Turing",
+                    "source": "CO_PILOT_FOURTH_WALL",
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -129,18 +144,24 @@ class TestHarvestValidationScar:
 
 # ─── Harvest Mass Scan Progress Tests ────────────────────────────────────────
 
+
 class TestHarvestMassScanProgress:
     """Test scan_state.json / chunk_state.json harvesting."""
 
     def test_harvests_scan_state_milestone(self, tmp_path):
         """Verify milestone from scan_state.json is returned."""
         state = tmp_path / "scan_state.json"
-        state.write_text(json.dumps({
-            "milestone": "indexing archive batch 3/5",
-            "total_chunks": 5,
-            "completed": 3,
-            "timestamp": "2026-08-21T12:00:00",
-        }), encoding="utf-8")
+        state.write_text(
+            json.dumps(
+                {
+                    "milestone": "indexing archive batch 3/5",
+                    "total_chunks": 5,
+                    "completed": 3,
+                    "timestamp": "2026-08-21T12:00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = harvest_mass_scan_progress(state_path=str(state))
         assert result is not None
@@ -151,11 +172,16 @@ class TestHarvestMassScanProgress:
     def test_falls_back_to_chunk_state(self, tmp_path):
         """Verify fallback to chunk_state.json when scan_state.json missing."""
         chunk = tmp_path / "chunk_state.json"
-        chunk.write_text(json.dumps({
-            "progress": "consolidation phase 2",
-            "total": 100,
-            "processed": 67,
-        }), encoding="utf-8")
+        chunk.write_text(
+            json.dumps(
+                {
+                    "progress": "consolidation phase 2",
+                    "total": 100,
+                    "processed": 67,
+                }
+            ),
+            encoding="utf-8",
+        )
 
         # Point to non-existent scan_state, but chunk_state exists in same dir
         # We need to override the default chunk_state path for testing
@@ -171,9 +197,7 @@ class TestHarvestMassScanProgress:
 
     def test_returns_none_for_missing_files(self):
         """Verify None when both scan_state.json and chunk_state.json missing."""
-        result = harvest_mass_scan_progress(
-            state_path="/nonexistent/scan_state.json"
-        )
+        result = harvest_mass_scan_progress(state_path="/nonexistent/scan_state.json")
         assert result is None
 
     def test_returns_none_for_empty_dict(self, tmp_path):
@@ -195,9 +219,14 @@ class TestHarvestMassScanProgress:
     def test_handles_status_key_fallback(self, tmp_path):
         """Verify fallback to 'status' key when milestone absent."""
         state = tmp_path / "scan_state.json"
-        state.write_text(json.dumps({
-            "status": "idle — waiting for next scan trigger",
-        }), encoding="utf-8")
+        state.write_text(
+            json.dumps(
+                {
+                    "status": "idle — waiting for next scan trigger",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = harvest_mass_scan_progress(state_path=str(state))
         assert result is not None
@@ -206,10 +235,15 @@ class TestHarvestMassScanProgress:
     def test_handles_phase_key_fallback(self, tmp_path):
         """Verify fallback to 'phase' key when other keys absent."""
         state = tmp_path / "scan_state.json"
-        state.write_text(json.dumps({
-            "phase": "warmup",
-            "updated_at": "2026-08-21T12:00:00",
-        }), encoding="utf-8")
+        state.write_text(
+            json.dumps(
+                {
+                    "phase": "warmup",
+                    "updated_at": "2026-08-21T12:00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = harvest_mass_scan_progress(state_path=str(state))
         assert result is not None
@@ -218,26 +252,32 @@ class TestHarvestMassScanProgress:
 
 # ─── Harvest Subconscious Dream Tests ────────────────────────────────────────
 
+
 class TestHarvestSubconsciousDream:
     """Test nightly_dialogue.json harvesting."""
 
     def test_harvests_wywo_briefing(self, tmp_path):
         """Verify WYWO morning briefing is harvested correctly."""
         dialogue = tmp_path / "nightly_dialogue.json"
-        dialogue.write_text(json.dumps({
-            "timestamp": "2026-08-21 08:00:00",
-            "topic": "WYWO Morning Briefing — 2026-08-21",
-            "content": (
-                "PINKY: Good morning! While you were out, Pinky and The Brain "
-                "debated the day's journal. The lab is warm.\n\n"
-                "THE BRAIN: Strategic review. The overnight consolidation is complete."
+        dialogue.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-21 08:00:00",
+                    "topic": "WYWO Morning Briefing — 2026-08-21",
+                    "content": (
+                        "PINKY: Good morning! While you were out, Pinky and The Brain "
+                        "debated the day's journal. The lab is warm.\n\n"
+                        "THE BRAIN: Strategic review. The overnight consolidation is complete."
+                    ),
+                    "type": "WYWO_MORNING_BRIEFING",
+                    "creative_ideas": [
+                        "Follow-up experiment on archive batch",
+                        "Consolidate journal into wisdom gem",
+                    ],
+                }
             ),
-            "type": "WYWO_MORNING_BRIEFING",
-            "creative_ideas": [
-                "Follow-up experiment on archive batch",
-                "Consolidate journal into wisdom gem",
-            ],
-        }), encoding="utf-8")
+            encoding="utf-8",
+        )
 
         result = harvest_subconscious_dream(dialogue_path=str(dialogue))
         assert result is not None
@@ -250,12 +290,17 @@ class TestHarvestSubconsciousDream:
         """Verify long content is truncated to 300 chars."""
         dialogue = tmp_path / "nightly_dialogue.json"
         long_content = "X" * 500
-        dialogue.write_text(json.dumps({
-            "timestamp": "2026-08-21 08:00:00",
-            "topic": "Long Briefing",
-            "content": long_content,
-            "type": "WYWO_MORNING_BRIEFING",
-        }), encoding="utf-8")
+        dialogue.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-21 08:00:00",
+                    "topic": "Long Briefing",
+                    "content": long_content,
+                    "type": "WYWO_MORNING_BRIEFING",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = harvest_subconscious_dream(dialogue_path=str(dialogue))
         assert result is not None
@@ -269,12 +314,17 @@ class TestHarvestSubconsciousDream:
     def test_returns_none_for_empty_content(self, tmp_path):
         """Verify None when content field is empty."""
         dialogue = tmp_path / "nightly_dialogue.json"
-        dialogue.write_text(json.dumps({
-            "timestamp": "2026-08-21 08:00:00",
-            "topic": "Empty Briefing",
-            "content": "",
-            "type": "WYWO_MORNING_BRIEFING",
-        }), encoding="utf-8")
+        dialogue.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-21 08:00:00",
+                    "topic": "Empty Briefing",
+                    "content": "",
+                    "type": "WYWO_MORNING_BRIEFING",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = harvest_subconscious_dream(dialogue_path=str(dialogue))
         assert result is None
@@ -297,6 +347,7 @@ class TestHarvestSubconsciousDream:
 
 
 # ─── Build Floating Candidate Pool Tests ─────────────────────────────────────
+
 
 class TestBuildFloatingCandidatePool:
     """Test candidate assembly and prompt block formatting."""
@@ -375,6 +426,7 @@ class TestBuildFloatingCandidatePool:
 
 
 # ─── Is Shallow Turn Tests (BKM-015 Compliant) ─────────────────────────────
+
 
 class TestIsShallowTurn:
     """Test BKM-015 compliant shallow turn detection."""
@@ -506,7 +558,7 @@ class TestIsShallowTurn:
 
     def test_bkm015_no_domain_keywords(self):
         """Verify detection uses structural patterns, not domain keywords.
-        
+
         BKM-015: patterns must detect linguistic SHAPE, not domain terms.
         """
         # Shallow: structural greeting shape

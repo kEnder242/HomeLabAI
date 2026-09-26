@@ -15,22 +15,22 @@ def test_compute_mmr_ranking_penalizes_redundant_chunks():
             "document": "RAPL power telemetry measures CPU package energy consumption using MSR registers.",
             "metadata": {"title": "RAPL Overview"},
             "distance": 0.20,
-            "collection": "lab_journal"
+            "collection": "lab_journal",
         },
         {
             "id": "doc2",
             "document": "RAPL power telemetry measures CPU package energy consumption using MSR registers in Linux.",
             "metadata": {"title": "RAPL Duplicate"},
             "distance": 0.21,
-            "collection": "lab_journal"
+            "collection": "lab_journal",
         },
         {
             "id": "doc3",
             "document": "pecistressor.py achieves 5300 cmd/sec sideband command throughput across OpenBMC PECI bus.",
             "metadata": {"title": "PECI Tool"},
             "distance": 0.35,
-            "collection": "artifact_vault"
-        }
+            "collection": "artifact_vault",
+        },
     ]
 
     ranked = compute_mmr_ranking(candidates, n_results=2, lambda_param=0.5)

@@ -30,20 +30,20 @@ import json
 from collections import defaultdict
 
 from logic.cognitive_hub import (
-    CognitiveHub,
-    TWO_MICE_BRAIN_SOURCE,
     TWO_MICE_BRAIN_CHANNEL,
     TWO_MICE_BRAIN_CONSOLE,
-    TWO_MICE_PINKY_SOURCE,
+    TWO_MICE_BRAIN_SOURCE,
     TWO_MICE_PINKY_CHANNEL,
     TWO_MICE_PINKY_CONSOLE,
+    TWO_MICE_PINKY_SOURCE,
+    CognitiveHub,
     build_two_mice_stage_prompt,
     build_two_mice_stream_packet,
 )
 from nodes.pinky_critic_persona import CriticResult, parse_critic_payload
 
-
 # ---- Anchor 3a: Prompt pillar grounding --------------------------------------
+
 
 def test_stage1_prompt_grounds_three_pillars_and_historical_record():
     """Stage 1 (Brain) is bedrock-grounded, interest-aware, stage-numbered."""
@@ -94,7 +94,9 @@ def test_stage2_prompt_embeds_brain_bullets_and_tldr_instructions():
 
 def test_stage2_without_bullets_degrades_gracefully():
     """Empty extraction still produces a usable Stage 2 prompt."""
-    prompt = build_two_mice_stage_prompt(2, user_query="ESB2?", interest=0.9, brain_bullets="")
+    prompt = build_two_mice_stage_prompt(
+        2, user_query="ESB2?", interest=0.9, brain_bullets=""
+    )
     assert "STAGE_2_INSTRUCTIONS" in prompt
     assert "Brain returned no extraction" in prompt
 
@@ -120,15 +122,24 @@ def test_interest_band_quantization():
 
 # ---- Anchor 3b: Dual-console WebSocket routing contract ----------------------
 
+
 def test_stream_packet_routing_contract():
     """Packet tags satisfy the dual-console routing contract."""
     brain_packet = build_two_mice_stream_packet(
-        source=TWO_MICE_BRAIN_SOURCE, channel=TWO_MICE_BRAIN_CHANNEL,
-        console=TWO_MICE_BRAIN_CONSOLE, token="• ESB2", final=False, request_id="r1",
+        source=TWO_MICE_BRAIN_SOURCE,
+        channel=TWO_MICE_BRAIN_CHANNEL,
+        console=TWO_MICE_BRAIN_CONSOLE,
+        token="• ESB2",
+        final=False,
+        request_id="r1",
     )
     pinky_packet = build_two_mice_stream_packet(
-        source=TWO_MICE_PINKY_SOURCE, channel=TWO_MICE_PINKY_CHANNEL,
-        console=TWO_MICE_PINKY_CONSOLE, token="Narf!", final=True, request_id="r1",
+        source=TWO_MICE_PINKY_SOURCE,
+        channel=TWO_MICE_PINKY_CHANNEL,
+        console=TWO_MICE_PINKY_CONSOLE,
+        token="Narf!",
+        final=True,
+        request_id="r1",
     )
     assert brain_packet["type"] == "thought_stream"
     assert brain_packet["channel"] == "insight" and brain_packet["console"] == "Right"
@@ -140,14 +151,19 @@ def test_stream_packet_routing_contract():
 
 # ---- Anchor 3c: Critic retort key tolerance (zero missing-retort fallback) ---
 
+
 def test_critic_parses_retort_key_without_fallback():
     """LLM emits 'retort' -> CriticResult.retort populated faithfully."""
-    result = parse_critic_payload(json.dumps({
-        "retort": "Narf! The firmware logs were under the ESB2.",
-        "critique_suggestions": ["add the MSR test"],
-        "score": 4,
-        "reasoning": "mostly grounded",
-    }))
+    result = parse_critic_payload(
+        json.dumps(
+            {
+                "retort": "Narf! The firmware logs were under the ESB2.",
+                "critique_suggestions": ["add the MSR test"],
+                "score": 4,
+                "reasoning": "mostly grounded",
+            }
+        )
+    )
     assert isinstance(result, CriticResult)
     assert result.retort == "Narf! The firmware logs were under the ESB2."
     assert result.cartoon_retort == result.retort
@@ -157,10 +173,14 @@ def test_critic_parses_retort_key_without_fallback():
 
 def test_critic_parses_cartoon_retort_key():
     """'cartoon_retort' remains fully supported."""
-    result = parse_critic_payload(json.dumps({
-        "cartoon_retort": "Poit! Right console, right answer.",
-        "critique_suggestions": [],
-    }))
+    result = parse_critic_payload(
+        json.dumps(
+            {
+                "cartoon_retort": "Poit! Right console, right answer.",
+                "critique_suggestions": [],
+            }
+        )
+    )
     assert result.retort == "Poit! Right console, right answer."
     assert "missing" not in result.retort.lower()
 
@@ -214,7 +234,7 @@ class _FakeResident:
         buf_key = f"{arguments.get('request_id', 'default')}_{self.node_id}"
         chunk_size = max(1, len(self.text) // self.hops)
         for i in range(0, len(self.text), chunk_size):
-            self.hub.session_buffers[buf_key] += self.text[i:i + chunk_size]
+            self.hub.session_buffers[buf_key] += self.text[i : i + chunk_size]
             await asyncio.sleep(0.02)
         return _FakeResult(self.text)
 
@@ -284,7 +304,9 @@ def test_handover_runs_brain_then_pinky_sequentially():
     pinky_idx = next(i for i, (_, c, s) in enumerate(order) if s == "Pinky (Voice)")
     assert brain_idx < pinky_idx, "Stage 2 streamed before Stage 1 completed!"
     assert len(packets) >= 2  # per-stage finalizer packets
-    assert packets[-1]["source"] == TWO_MICE_PINKY_SOURCE and packets[-1]["final"] is True
+    assert (
+        packets[-1]["source"] == TWO_MICE_PINKY_SOURCE and packets[-1]["final"] is True
+    )
 
     # Handover trace recorded for the session ledger.
     assert "ESB2 server platform" in hub.turn_thought_trace["brain"]
@@ -300,7 +322,9 @@ def test_handover_refuses_missing_resident_and_low_interest():
     del hub.residents["pinky"]
     loop = asyncio.new_event_loop()
     try:
-        ran = loop.run_until_complete(hub._run_two_mice_handover("q?", focus_context="c", request_id="tm2"))
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover("q?", focus_context="c", request_id="tm2")
+        )
     finally:
         loop.close()
     assert ran is False
@@ -310,7 +334,9 @@ def test_handover_refuses_missing_resident_and_low_interest():
     hub.current_interest = 0.3
     loop = asyncio.new_event_loop()
     try:
-        ran = loop.run_until_complete(hub._run_two_mice_handover("q?", focus_context="c", request_id="tm3"))
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover("q?", focus_context="c", request_id="tm3")
+        )
     finally:
         loop.close()
     assert ran is False

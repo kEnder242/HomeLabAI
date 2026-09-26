@@ -1,9 +1,11 @@
-import requests
 import json
+
+import requests
+
 
 def find_by_aud():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"
-    with open(secrets_path, 'r') as f:
+    with open(secrets_path, "r") as f:
         secrets = json.load(f)
 
     cf_token = secrets.get("CF_API_TOKEN")
@@ -12,11 +14,14 @@ def find_by_aud():
 
     headers = {
         "Authorization": f"Bearer {cf_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # 1. Search Account Apps
-    res = requests.get(f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/access/apps", headers=headers)
+    res = requests.get(
+        f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/access/apps",
+        headers=headers,
+    )
     for app in res.json().get("result", []):
         if app.get("aud") == target_aud:
             print(f"MATCH FOUND: {app['name']} ({app['domain']}) ID: {app['id']}")
@@ -25,10 +30,16 @@ def find_by_aud():
     z_res = requests.get("https://api.cloudflare.com/client/v4/zones", headers=headers)
     for zone in z_res.json().get("result", []):
         z_id = zone["id"]
-        za_res = requests.get(f"https://api.cloudflare.com/client/v4/zones/{z_id}/access/apps", headers=headers)
+        za_res = requests.get(
+            f"https://api.cloudflare.com/client/v4/zones/{z_id}/access/apps",
+            headers=headers,
+        )
         for app in za_res.json().get("result", []):
             if app.get("aud") == target_aud:
-                print(f"MATCH FOUND in Zone {zone['name']}: {app['name']} ({app['domain']}) ID: {app['id']}")
+                print(
+                    f"MATCH FOUND in Zone {zone['name']}: {app['name']} ({app['domain']}) ID: {app['id']}"
+                )
+
 
 if __name__ == "__main__":
     find_by_aud()

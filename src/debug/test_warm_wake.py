@@ -1,7 +1,8 @@
 import asyncio
-import aiohttp
-import time
 import json
+import time
+
+import aiohttp
 import psutil
 
 # [FEAT-337] Warm Wake Validation Harness
@@ -11,10 +12,14 @@ ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "ws://localhost:8765"
 STYLE_KEY = "92e785ba"
 
+
 async def get_status():
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"{ATTENDANT_URL}/status", headers={'X-Lab-Key': STYLE_KEY}, timeout=2) as r:
+        async with session.get(
+            f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": STYLE_KEY}, timeout=2
+        ) as r:
             return await r.json()
+
 
 async def get_resident_count():
     """
@@ -24,18 +29,20 @@ async def get_resident_count():
     count = 0
     names = []
     # Known node roles
-    roles = ['PINKY', 'ARCHIVE', 'BRAIN', 'SHADOW', 'LAB', 'BROWSER', 'THINKING']
+    roles = ["PINKY", "ARCHIVE", "BRAIN", "SHADOW", "LAB", "BROWSER", "THINKING"]
 
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            cmd = " ".join(proc.info['cmdline'] or [])
-            name = proc.info['name'] or ""
+            cmd = " ".join(proc.info["cmdline"] or [])
+            name = proc.info["name"] or ""
 
             # Check for path-based match or title-based match
             is_node = False
-            if "nodes/" in cmd:
-                is_node = True
-            elif any(f"[{role}:" in cmd for role in roles) or any(f"[{role}:" in name for role in roles):
+            if (
+                "nodes/" in cmd
+                or any(f"[{role}:" in cmd for role in roles)
+                or any(f"[{role}:" in name for role in roles)
+            ):
                 is_node = True
 
             if is_node:
@@ -55,33 +62,35 @@ async def trigger_query(query):
     Triggers a wake-on-intent query via WebSocket and measures latency.
     """
     import websockets
+
     try:
         async with websockets.connect(HUB_URL) as ws:
             await ws.send(json.dumps({"type": "handshake", "client": "intercom"}))
             await ws.send(json.dumps({"type": "text_input", "content": query}))
-            
+
             start_t = time.time()
             while time.time() - start_t < 120:
                 msg = await ws.recv()
                 data = json.loads(msg)
                 # We stop the clock the moment the mind reports operational readiness
-                if "Mind is OPERATIONAL" in str(data.get('brain', '')):
+                if "Mind is OPERATIONAL" in str(data.get("brain", "")):
                     return time.time() - start_t
     except Exception as e:
         print(f"[!] WS Error: {e}")
     return -1
 
+
 async def main():
     print("=== 🔋 WARM WAKE VALIDATION [FEAT-337] ===")
-    
+
     # 1. Baseline Audit
     initial_nodes, node_names = await get_resident_count()
     print(f"[*] Current resident nodes: {initial_nodes} ({', '.join(node_names)})")
-    
+
     # 2. Performance Check (Cold or Warm depending on current state)
     print("[*] Triggering Wake-on-Intent Query...")
     wake_time = await trigger_query("[ME] Performance audit.")
-    
+
     if wake_time >= 0:
         print(f"[+] Wake Latency: {wake_time:.2f}s")
         if wake_time < 2.0:
@@ -101,13 +110,14 @@ async def main():
     # 4. Zero Layering Verification
     final_nodes, final_names = await get_resident_count()
     print(f"[*] Final resident nodes: {final_nodes} ({', '.join(final_names)})")
-    
+
     if final_nodes > 7:
         print(f"[!] WARNING: Node layering detected! ({final_nodes} processes)")
     elif final_nodes == 7:
         print("[+] SUCCESS: Standard 7-node residency confirmed.")
     else:
         print(f"[*] Note: {final_nodes} nodes active (below standard 7-node stack).")
+
 
 if __name__ == "__main__":
     try:

@@ -8,13 +8,17 @@ Tests the end-to-end integration of the three decoupled satellites:
 
 import json
 import time
-import numpy as np
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.logic.override_parser import is_override_query, parse_override_with_resident, save_override_to_file
-from src.v5.foyer.maintenance_sweeper import MaintenanceSweeper
+import numpy as np
+import pytest
 from src.equipment.sensory_manager import SensoryManager
+from src.logic.override_parser import (
+    is_override_query,
+    parse_override_with_resident,
+    save_override_to_file,
+)
+from src.v5.foyer.maintenance_sweeper import MaintenanceSweeper
 
 
 class TestOverrideSatelliteIntegration:
@@ -28,7 +32,9 @@ class TestOverrideSatelliteIntegration:
 
         # Mock resident returning JSON
         mock_resident = MagicMock()
-        mock_resident.think = AsyncMock(return_value='{"rank": 5, "synopsis": "Updated validation methodology"}')
+        mock_resident.think = AsyncMock(
+            return_value='{"rank": 5, "synopsis": "Updated validation methodology"}'
+        )
 
         updates = await parse_override_with_resident(gem_id, turn, mock_resident)
         assert updates["rank"] == 5
@@ -37,14 +43,19 @@ class TestOverrideSatelliteIntegration:
 
         # Atomic persistence
         overrides_file = tmp_path / "overrides.json"
-        success = save_override_to_file(gem_id, updates, overrides_path=str(overrides_file))
+        success = save_override_to_file(
+            gem_id, updates, overrides_path=str(overrides_file)
+        )
         assert success is True
 
         # Read back from disk
         with open(overrides_file, "r") as f:
             data = json.load(f)
         assert data["overrides"]["GEM-0142"]["rank"] == 5
-        assert data["overrides"]["GEM-0142"]["synopsis"] == "Updated validation methodology"
+        assert (
+            data["overrides"]["GEM-0142"]["synopsis"]
+            == "Updated validation methodology"
+        )
 
 
 class TestMaintenanceSweeperIntegration:
@@ -60,7 +71,9 @@ class TestMaintenanceSweeperIntegration:
         }
 
         # Run TTL pruning
-        purged = MaintenanceSweeper.prune_ttl_buffer(pending_chunks, chunk_timestamps, max_age_s=30.0)
+        purged = MaintenanceSweeper.prune_ttl_buffer(
+            pending_chunks, chunk_timestamps, max_age_s=30.0
+        )
         assert "stale_key" in purged
         assert "fresh_key" not in purged
         assert "stale_key" not in pending_chunks
@@ -77,8 +90,7 @@ class TestMaintenanceSweeperIntegration:
         zone_file.write_text("79500\n")  # 79.5°C
 
         throttled, temp_c = MaintenanceSweeper.check_cpu_thermal_throttle(
-            threshold_milli=78000,
-            thermal_zones=[str(zone_file)]
+            threshold_milli=78000, thermal_zones=[str(zone_file)]
         )
         assert throttled is True
         assert temp_c == pytest.approx(79.5, rel=1e-2)

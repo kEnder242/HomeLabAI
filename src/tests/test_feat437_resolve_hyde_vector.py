@@ -10,15 +10,15 @@ Plus integration: the resolved HyDE flows into archive get_context.
 
 import asyncio
 import logging
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from logic.cognitive_hub import (
-    CognitiveHub,
-    HYDE_SYNTHESIS_PROMPT,
     DEEP_THOUGHT_REMOTE,
-    PINKY_LOCAL_VLLM,
     DIRECT_RAW_QUERY,
+    HYDE_SYNTHESIS_PROMPT,
+    PINKY_LOCAL_VLLM,
+    CognitiveHub,
 )
 
 TIER1_TEXT = "[VALIDATION]: AEP | [STRATEGY]: goal | [SRE]: cmd"
@@ -60,7 +60,9 @@ async def test_tier1_timeout_falls_to_tier2():
     """Tier 2: Kender times out -> triage hyde_vector_text used."""
     hub = _make_hub()
     hub.residents["thought"] = _thought_mock(side_effect=asyncio.TimeoutError())
-    vec, tier = await hub.resolve_hyde_vector("query", {"hyde_vector_text": "Narf! local triage hyde"})
+    vec, tier = await hub.resolve_hyde_vector(
+        "query", {"hyde_vector_text": "Narf! local triage hyde"}
+    )
     assert tier == PINKY_LOCAL_VLLM
     assert vec == "Narf! local triage hyde"
 
@@ -70,7 +72,9 @@ async def test_tier1_exception_falls_to_tier2():
     """Tier 2: Kender call raises (offline) -> triage hyde_vector_text used."""
     hub = _make_hub()
     hub.residents["thought"] = _thought_mock(side_effect=ConnectionError("kender down"))
-    vec, tier = await hub.resolve_hyde_vector("query", {"hyde_vector_text": "Narf! local triage hyde"})
+    vec, tier = await hub.resolve_hyde_vector(
+        "query", {"hyde_vector_text": "Narf! local triage hyde"}
+    )
     assert tier == PINKY_LOCAL_VLLM
     assert vec == "Narf! local triage hyde"
 
@@ -113,13 +117,22 @@ async def test_fetch_rag_context_tier1_flows_to_get_context():
         return_value=MagicMock(content=[MagicMock(text=TIER1_TEXT)])
     )
     archive = MagicMock()
-    archive.call_tool = AsyncMock(return_value=MagicMock(content=[MagicMock(text="ctx")]))
+    archive.call_tool = AsyncMock(
+        return_value=MagicMock(content=[MagicMock(text="ctx")])
+    )
     hub.residents["archive"] = archive
 
     result = await hub._fetch_rag_context("query", {})
     assert result == "ctx"
     archive.call_tool.assert_awaited_once_with(
-        "get_context", {"query": "query", "hyde_vector_text": TIER1_TEXT, "n_results": 3, "vibe": "", "domain": ""}
+        "get_context",
+        {
+            "query": "query",
+            "hyde_vector_text": TIER1_TEXT,
+            "n_results": 3,
+            "vibe": "",
+            "domain": "",
+        },
     )
 
 

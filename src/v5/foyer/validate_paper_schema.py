@@ -31,7 +31,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 CITATION_PATTERN = re.compile(
     r"^(?:PHL|DISC|FEAT|BKM|PROTO|ARXIV|GEM|WIS|LAB)-[A-Za-z0-9_.\-]+$"
@@ -42,33 +42,41 @@ CITATION_PATTERN = re.compile(
 
 VALID_BULLET_TYPES = ("bullet", "paragraph")
 
-__all__ = ["CITATION_PATTERN", "validate_paper_dict", "validate_paper_path", "main"]
+__all__ = ["CITATION_PATTERN", "main", "validate_paper_dict", "validate_paper_path"]
 
 
-def _validate_pool(node: Dict[str, Any], prefix: str, errors: List[str]) -> None:
+def _validate_pool(node: dict[str, Any], prefix: str, errors: list[str]) -> None:
     """Validate the two-tier palette keys (bone_collection[] + _candidate_pool[]) on a node."""
     bone = node.get("bone_collection")
     if bone is None:
-        errors.append(f"{prefix}: missing required 'bone_collection' (two-tier invariant).")
+        errors.append(
+            f"{prefix}: missing required 'bone_collection' (two-tier invariant)."
+        )
     elif not isinstance(bone, list):
         errors.append(f"{prefix}: 'bone_collection' must be a list.")
     else:
         for entry in bone:
             if not isinstance(entry, str) or not CITATION_PATTERN.match(entry):
-                errors.append(f"{prefix}: 'bone_collection' entry '{entry}' is not a valid citation ID.")
+                errors.append(
+                    f"{prefix}: 'bone_collection' entry '{entry}' is not a valid citation ID."
+                )
 
     pool = node.get("_candidate_pool")
     if pool is None:
-        errors.append(f"{prefix}: missing required '_candidate_pool' (two-tier invariant).")
+        errors.append(
+            f"{prefix}: missing required '_candidate_pool' (two-tier invariant)."
+        )
     elif not isinstance(pool, list):
         errors.append(f"{prefix}: '_candidate_pool' must be a list.")
     else:
         for entry in pool:
             if not isinstance(entry, str) or not entry.strip():
-                errors.append(f"{prefix}: '_candidate_pool' entry '{entry!r}' must be a non-empty string.")
+                errors.append(
+                    f"{prefix}: '_candidate_pool' entry '{entry!r}' must be a non-empty string."
+                )
 
 
-def _validate_citations(node: Dict[str, Any], prefix: str, errors: List[str]) -> None:
+def _validate_citations(node: dict[str, Any], prefix: str, errors: list[str]) -> None:
     """Validate the paragraph-level explicit `citations[]` list."""
     citations = node.get("citations")
     if citations is None:
@@ -78,16 +86,20 @@ def _validate_citations(node: Dict[str, Any], prefix: str, errors: List[str]) ->
     else:
         for entry in citations:
             if not isinstance(entry, str) or not CITATION_PATTERN.match(entry):
-                errors.append(f"{prefix}: 'citations' entry '{entry}' is not a valid citation ID.")
+                errors.append(
+                    f"{prefix}: 'citations' entry '{entry}' is not a valid citation ID."
+                )
 
 
-def validate_paper_dict(data: Any, source_name: str = "paper") -> Tuple[bool, List[str]]:
+def validate_paper_dict(
+    data: Any, source_name: str = "paper"
+) -> tuple[bool, list[str]]:
     """Strictly validate an in-memory two-tier AST document against the schema invariants.
 
     Returns `(passed, errors)` where `errors` is a human-readable list of every
     invariant violation found (empty when `passed` is True).
     """
-    errors: List[str] = []
+    errors: list[str] = []
     prefix = source_name or "paper"
 
     if not isinstance(data, dict):
@@ -133,11 +145,15 @@ def validate_paper_dict(data: Any, source_name: str = "paper") -> Tuple[bool, Li
             continue
         for par_idx, par in enumerate(paragraphs):
             if not isinstance(par, dict):
-                errors.append(f"{prefix}: {sec_label} paragraph index {par_idx} must be an object.")
+                errors.append(
+                    f"{prefix}: {sec_label} paragraph index {par_idx} must be an object."
+                )
                 continue
             par_id = par.get("id")
             if not isinstance(par_id, str) or not par_id.strip():
-                errors.append(f"{prefix}: {sec_label} paragraph index {par_idx} missing non-empty 'id'.")
+                errors.append(
+                    f"{prefix}: {sec_label} paragraph index {par_idx} missing non-empty 'id'."
+                )
                 par_label = f"Paragraph (index {par_idx})"
             elif par_id in par_ids:
                 errors.append(f"{prefix}: duplicate paragraph id '{par_id}'.")
@@ -178,14 +194,18 @@ def validate_paper_path(paper_path: str) -> bool:
 
     passed, errors = validate_paper_dict(data, source_name=path.name)
     if not passed:
-        print(f"❌ Two-tier AST validation FAILED for {path.name} with {len(errors)} error(s):")
+        print(
+            f"❌ Two-tier AST validation FAILED for {path.name} with {len(errors)} error(s):"
+        )
         for err in errors:
             print(f"   - {err}")
         return False
 
     sections = data.get("sections", [])
     par_count = sum(len(s.get("paragraphs", [])) for s in sections)
-    print(f"✅ Two-tier AST validation PASSED for {path.name} ({len(sections)} sections, {par_count} paragraphs).")
+    print(
+        f"✅ Two-tier AST validation PASSED for {path.name} ({len(sections)} sections, {par_count} paragraphs)."
+    )
     return True
 
 

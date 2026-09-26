@@ -1,12 +1,14 @@
+import os
+import time
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import time
-import os
 from liger_kernel.transformers import apply_liger_kernel_to_qwen2
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 def get_memory():
     return torch.cuda.memory_allocated() / 1024**2
+
 
 model_path = "models/hf_downloads/Qwen2.5-3B-Instruct"
 
@@ -21,9 +23,7 @@ print("--- Baseline (Without Liger) ---")
 torch.cuda.empty_cache()
 start_mem = get_memory()
 model = AutoModelForCausalLM.from_pretrained(
-    model_path, 
-    dtype=torch.float16, 
-    device_map="cuda"
+    model_path, dtype=torch.float16, device_map="cuda"
 )
 end_mem = get_memory()
 print(f"VRAM used by model: {end_mem - start_mem:.2f} MB")
@@ -43,9 +43,7 @@ apply_liger_kernel_to_qwen2()
 
 start_mem = get_memory()
 model_liger = AutoModelForCausalLM.from_pretrained(
-    model_path, 
-    dtype=torch.float16, 
-    device_map="cuda"
+    model_path, dtype=torch.float16, device_map="cuda"
 )
 end_mem = get_memory()
 print(f"VRAM used by model (Liger): {end_mem - start_mem:.2f} MB")

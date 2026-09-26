@@ -1,8 +1,11 @@
-import pytest
 import asyncio
 
+import pytest
 
-def resolve_hyde_vector(deep_thought_text: str = None, pinky_text: str = None, raw_query: str = ""):
+
+def resolve_hyde_vector(
+    deep_thought_text: str = None, pinky_text: str = None, raw_query: str = ""
+):
     """3-Tier HyDE Failover Cascade Protocol [FEAT-437]."""
     if deep_thought_text and len(deep_thought_text.strip()) > 10:
         return deep_thought_text.strip(), "DEEP_THOUGHT_REMOTE"
@@ -38,6 +41,7 @@ def test_hyde_failover_cascade():
 async def test_archive_node_hyde_parameter():
     """Verify get_context accepts hyde_vector_text parameter."""
     from nodes.archive_node import get_context
+
     assert "hyde_vector_text" in get_context.__code__.co_varnames
 
 

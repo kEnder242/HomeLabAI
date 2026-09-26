@@ -19,7 +19,6 @@ import json
 import re
 from typing import Any
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. SpeakerRegistry – Dynamic Runtime Persona Sanitizer
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +54,9 @@ class SpeakerRegistry:
     ]
 
     def __init__(self, names: list[str] | None = None) -> None:
-        self.names: list[str] = names if names is not None else list(self._DEFAULT_NAMES)
+        self.names: list[str] = (
+            names if names is not None else list(self._DEFAULT_NAMES)
+        )
         escaped = "|".join(re.escape(n) for n in self.names)
         self._pattern: re.Pattern[str] = re.compile(
             rf"^(?:\[(?:{escaped})(?::[^\]]*)?\]|\b(?:{escaped})\b:)\s*",
@@ -224,12 +225,12 @@ def is_meta_lexicon(query: str) -> bool:
 
 
 try:
-    from logic.triage_policy_loader import TriagePolicyLoader
     from logic.route_incubator import RouteIncubator
+    from logic.triage_policy_loader import TriagePolicyLoader
 except ImportError:
     try:
-        from triage_policy_loader import TriagePolicyLoader
         from route_incubator import RouteIncubator
+        from triage_policy_loader import TriagePolicyLoader
     except ImportError:
         TriagePolicyLoader = None  # type: ignore
         RouteIncubator = None  # type: ignore
@@ -274,7 +275,14 @@ def is_control_plane_feedback(t_parsed: dict[str, Any]) -> bool:
     if vibe in ("CASUAL", "HISTORICAL", "TECHNICAL", "ANALYTICAL", "FORENSIC"):
         return False
 
-    if domain in ("lab_internal", "exp_tlm", "exp_bkm", "exp_for", "lab_history", "dream_stream"):
+    if domain in (
+        "lab_internal",
+        "exp_tlm",
+        "exp_bkm",
+        "exp_for",
+        "lab_history",
+        "dream_stream",
+    ):
         return False
 
     if vibe == "META" and (domain in _FEEDBACK_DOMAINS or addressed_to == "SYSTEM"):
@@ -313,7 +321,10 @@ def classify_vibe_and_domain(
             pass
 
     # 2. Check explicit feedback prefix or feedback domain
-    if query.strip().lower().startswith("feedback:") or parsed_json.get("domain") == "feedback":
+    if (
+        query.strip().lower().startswith("feedback:")
+        or parsed_json.get("domain") == "feedback"
+    ):
         return "META", "feedback"
 
     # 3. Check meta lexicon
@@ -364,7 +375,17 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 },
                 "domain": {
                     "type": "string",
-                    "enum": ["exp_tlm", "exp_bkm", "exp_for", "standard", "lab_history", "lab_internal", "dream_stream", "feedback", "unclear"],
+                    "enum": [
+                        "exp_tlm",
+                        "exp_bkm",
+                        "exp_for",
+                        "standard",
+                        "lab_history",
+                        "lab_internal",
+                        "dream_stream",
+                        "feedback",
+                        "unclear",
+                    ],
                 },
                 "casual": {"type": "number"},
                 "intrigue": {"type": "number"},
@@ -381,7 +402,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 "casual",
                 "intrigue",
                 "importance",
-                            ],
+            ],
         },
     },
 }
@@ -469,7 +490,7 @@ class TriageEngine:
             "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
             "  * Immediate Horizon / Peer Reference ('what did Pinky mean?', 'you just said...', 'today') -> domain: \"lab_internal\", vibe: \"CASUAL\" (Sliding multi-turn memory, Zero Archive RAG).\n"
             "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"exp_tlm\" or \"lab_history\" (ChromaDB RAG).\n"
-            "  * Ambiguous / Underspecified -> domain: \"unclear\", hyde_vector_text: \"\" (Pinky Speculative Foil).\n"
+            '  * Ambiguous / Underspecified -> domain: "unclear", hyde_vector_text: "" (Pinky Speculative Foil).\n'
             "HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n"
             "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
             "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs.\n"
@@ -477,7 +498,7 @@ class TriageEngine:
             "  4. lab_history (18-Year Archive): historical project notes (2005-2025).\n"
             "If the intent maps to an archival domain (exp_*, lab_history), synthesize a 3-part Composite HyDE Vector:\n"
             "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\n"
-            "If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: \"\" and vibe: CASUAL."
+            'If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: "" and vibe: CASUAL.'
         )
 
     @staticmethod
@@ -542,6 +563,7 @@ class TriageEngine:
             return str(res) if res is not None else None
         elif callable(resident_caller):
             import inspect
+
             if inspect.iscoroutinefunction(resident_caller):
                 res = await resident_caller(prompt)
             else:
@@ -612,7 +634,9 @@ class TriageEngine:
         resident_caller: Any = None,
     ) -> dict[str, Any]:
         """Compatibility alias for evaluate_turn with explicit history support."""
-        return await self.evaluate_turn(turn_text, resident_caller=resident_caller, history=history)
+        return await self.evaluate_turn(
+            turn_text, resident_caller=resident_caller, history=history
+        )
 
 
 def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
@@ -632,7 +656,7 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
         "casual": 0.5,
         "intrigue": 0.5,
         "inferred_intent": "general_interaction",
-        "hyde_vector_text": ""
+        "hyde_vector_text": "",
     }
 
     validated: dict[str, Any] = {}
@@ -648,4 +672,3 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
             validated[k] = v
 
     return validated
-

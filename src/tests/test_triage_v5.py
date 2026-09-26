@@ -1,18 +1,22 @@
 import asyncio
-import websockets
 import json
-import requests
 import time
+
+import requests
+import websockets
 
 WS_URL = "ws://localhost:8765"
 STATUS_URL = "http://localhost:8765/status"
 
+
 async def test_triage_casual_with_priming():
-    print("Testing CASUAL vibe triage with Early Priming via WebSocket (Attendant-Aware)...")
-    
+    print(
+        "Testing CASUAL vibe triage with Early Priming via WebSocket (Attendant-Aware)..."
+    )
+
     # 0. Wake the lab and poll for readiness
     requests.post("http://localhost:8765/wake")
-    
+
     print("Waiting for Attendant/Foyer to report READY state...")
     ready = False
     for i in range(20):
@@ -26,17 +30,21 @@ async def test_triage_casual_with_priming():
         except Exception as e:
             print(f"Polling failed: {e}")
         time.sleep(10)
-        
+
     assert ready, "Lab failed to reach READY state in time."
-    
+
     # 1. Listen on WebSocket first
     async with websockets.connect(WS_URL) as ws:
         # Handshake
         await ws.send(json.dumps({"type": "handshake", "version": "5.0.0-foyer"}))
-        
+
         # 2. Trigger the query
         req_id = f"TEST_PRIMING_{int(time.time())}"
-        payload = {"content": "Hi! How do you calculate pi?", "type": "text_input", "request_id": req_id}
+        payload = {
+            "content": "Hi! How do you calculate pi?",
+            "type": "text_input",
+            "request_id": req_id,
+        }
         await ws.send(json.dumps(payload))
 
         priming_received = False
@@ -58,8 +66,9 @@ async def test_triage_casual_with_priming():
                         break
             except asyncio.TimeoutError:
                 continue
-        
+
         assert priming_received, "Priming broadcast not received!"
+
 
 if __name__ == "__main__":
     asyncio.run(test_triage_casual_with_priming())

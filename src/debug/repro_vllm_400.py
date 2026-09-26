@@ -1,8 +1,10 @@
 import asyncio
+
 import aiohttp
 
 VLLM_URL = "http://127.0.0.1:8088/v1/chat/completions"
 MODEL = "unified-base"
+
 
 async def repro():
     print("--- 🧪 vLLM Fix Verify: Unified User Pattern ---")
@@ -19,7 +21,7 @@ async def repro():
         "model": MODEL,
         "messages": [{"role": "user", "content": unified_content}],
         "max_tokens": 100,
-        "temperature": 0.2
+        "temperature": 0.2,
     }
 
     async with aiohttp.ClientSession() as session:
@@ -29,11 +31,14 @@ async def repro():
                 print(f"Status: {resp.status}")
                 if resp.status == 200:
                     print("SUCCESS! vLLM accepted the unified user message.")
-                    print(f"Response: {data['choices'][0]['message']['content'][:50]}...")
+                    print(
+                        f"Response: {data['choices'][0]['message']['content'][:50]}..."
+                    )
                 else:
                     print(f"DATA: {data}")
         except Exception as e:
             print(f"Connection Failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(repro())

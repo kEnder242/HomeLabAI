@@ -2,6 +2,7 @@
 Test suite for Reverse DNA (RDNA) Question Matching and Bidirectional Linking.
 Sprint: SPR-83.0 / Story 83.3
 """
+
 from logic.vector_pre_triage import probe_clara_dna_sync
 
 
@@ -28,7 +29,9 @@ def test_rdna_agentic_workflow_question_resolution():
 
 def test_rdna_decoupling_question_resolution():
     """Verify that asking about architectural decoupling matches RDNA-005 / PHL-031."""
-    res = probe_clara_dna_sync("Why is architectural decoupling important in complex software?")
+    res = probe_clara_dna_sync(
+        "Why is architectural decoupling important in complex software?"
+    )
     assert res is not None
     assert "rdna" in res["results_by_collection"]
     rdna_res = res["results_by_collection"]["rdna"]

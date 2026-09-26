@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Deep-Connect Epoch v2 (Stage 2: Surgical Refinement)
@@ -74,7 +73,7 @@ def bridge_signal_clean(text):
 def main():
     """Main function to refine raw blocks into high-density BKM pairs."""
     logging.info("Starting Deep-Connect Stage 2 (Refinement)...")
-    
+
     if not RAW_STAGE_1_FILE.exists():
         logging.error(f"Stage 1 buffer not found: {RAW_STAGE_1_FILE}")
         return
@@ -90,43 +89,49 @@ def main():
         for line in raw_f:
             if not line.strip():
                 continue
-            
+
             try:
                 entry = json.loads(line)
                 # [FIX] Handle both legacy and v2 harvest field names
                 raw_text = entry.get("raw_text") or entry.get("raw_llm_output", "")
                 summary = entry.get("summary", "")
-                
+
                 # Apply Bridge Signal Clean
                 clean_json = bridge_signal_clean(raw_text)
-                
-                # [FIX] If clean_json fails but raw_text exists, 
+
+                # [FIX] If clean_json fails but raw_text exists,
                 # salvage the raw technical block for extraction integrity.
                 if not clean_json and len(raw_text) > 100:
-                    clean_json = json.dumps({
-                        "bkm_content": raw_text,
-                        "logic": "Direct extraction salvage",
-                        "status": "RAW"
-                    })
-                
+                    clean_json = json.dumps(
+                        {
+                            "bkm_content": raw_text,
+                            "logic": "Direct extraction salvage",
+                            "status": "RAW",
+                        }
+                    )
+
                 if clean_json:
                     try:
                         context = clean_json
                         if clean_json.startswith("{"):
                             data = json.loads(clean_json)
-                            context = data.get("context") or data.get("situation") or clean_json
-                        
+                            context = (
+                                data.get("context")
+                                or data.get("situation")
+                                or clean_json
+                            )
+
                         bkm_pair = {
                             "summary": summary,
                             "context": context,
                             "source_file": entry.get("source_file"),
                             "log_file": entry.get("log_file"),
-                            "refined_at": entry.get("timestamp")
+                            "refined_at": entry.get("timestamp"),
                         }
-                        
+
                         with open(BKM_MANIFEST_FILE, "a") as out_f:
                             out_f.write(json.dumps(bkm_pair) + "\n")
-                        
+
                         count_success += 1
                     except json.JSONDecodeError:
                         # If it's not JSON, it might just be the raw paragraphs as requested
@@ -135,7 +140,7 @@ def main():
                             "context": raw_text.strip(),
                             "source_file": entry.get("source_file"),
                             "log_file": entry.get("log_file"),
-                            "refined_at": entry.get("timestamp")
+                            "refined_at": entry.get("timestamp"),
                         }
                         with open(BKM_MANIFEST_FILE, "a") as out_f:
                             out_f.write(json.dumps(bkm_pair) + "\n")

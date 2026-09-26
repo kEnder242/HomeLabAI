@@ -1,7 +1,8 @@
-import os
-import json
 import datetime
+import json
 import logging
+import os
+
 from infra.atomic_io import atomic_write_json
 
 # Paths
@@ -10,11 +11,13 @@ STATUS_JSON = os.path.join(PORTFOLIO_DIR, "field_notes/data/status.json")
 
 logger = logging.getLogger("status_model")
 
+
 class StatusModel:
     """
     [FEAT-045] Split Status Model: Physical vs Logical Bifurcation.
     Source of truth for the dashboard.
     """
+
     def __init__(self):
         """Initialize status model with default operational state."""
         self.state = {
@@ -26,15 +29,15 @@ class StatusModel:
                 "lab_active": False,
                 "last_heartbeat": None,
                 "state_changed_at": None,
-                "state_duration_s": 0.0
+                "state_duration_s": 0.0,
             },
             "logical": {
                 "persona": "The Shadow",
                 "mode": "IDLE",
                 "task": "None",
-                "readiness": "OFFLINE"
+                "readiness": "OFFLINE",
             },
-            "timestamp": None
+            "timestamp": None,
         }
         self.load()
 
@@ -45,9 +48,14 @@ class StatusModel:
                     disk_data = json.load(f)
                     # Support legacy structure mapping if needed
                     if "vitals" in disk_data:
-                        self.state["physical"]["lab_active"] = disk_data["vitals"].get("lab_server_running", False)
-                        self.state["physical"]["engine_active"] = disk_data["vitals"].get("engine_running", False)
-            except Exception: pass
+                        self.state["physical"]["lab_active"] = disk_data["vitals"].get(
+                            "lab_server_running", False
+                        )
+                        self.state["physical"]["engine_active"] = disk_data[
+                            "vitals"
+                        ].get("engine_running", False)
+            except Exception:
+                pass
 
     def update_physical(self, **kwargs):
         self.state["physical"].update(kwargs)
@@ -70,5 +78,5 @@ class StatusModel:
             "status": "ONLINE" if self.state["physical"]["lab_active"] else "OFFLINE",
             "message": f"{self.state['logical']['persona']} is {self.state['logical']['mode']}",
             "timestamp": self.state["timestamp"],
-            "vitals": self.state["physical"]
+            "vitals": self.state["physical"],
         }

@@ -1,19 +1,21 @@
-import os
 import json
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Dict, Optional
+import os
 import time
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+
 
 class SensoryMode(Enum):
     ACTIVE = "ACTIVE"
     PAUSED = "PAUSED"
     DISABLED = "DISABLED"
 
+
 # [Task 17.3] Single Source of Versioning
 LAB_VERSION = "5.0.0-foyer"
 
 # [Task 4.1] V5 Common: Unified types for the Modular Suite
+
 
 @dataclass
 class IntentEvent:
@@ -22,7 +24,7 @@ class IntentEvent:
     timestamp: float = field(default_factory=time.time)
     status: str = "PENDING"
     id: str = field(default_factory=lambda: os.urandom(4).hex())
-    metadata: Dict = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
 
     def to_json(self):
         return json.dumps(asdict(self))
@@ -32,13 +34,15 @@ class IntentEvent:
         data = json.loads(data_str)
         return cls(**data)
 
+
 @dataclass
 class NodeStatus:
     name: str
     online: bool = False
-    pid: Optional[int] = None
+    pid: int | None = None
     vram_mib: int = 0
     role: str = ""
+
 
 @dataclass
 class LabStatus:
@@ -53,30 +57,37 @@ class LabStatus:
     engine_up: bool = False
     vocal: bool = False
     sensory_mode: SensoryMode = SensoryMode.ACTIVE
-    nodes: Dict[str, NodeStatus] = field(default_factory=dict)
-    active_intent_id: Optional[str] = None
+    nodes: dict[str, NodeStatus] = field(default_factory=dict)
+    active_intent_id: str | None = None
     recovery_level: int = 0
     recovery_in_progress: bool = False
-    active_domain: Optional[str] = None
+    active_domain: str | None = None
 
     def __setattr__(self, name, value):
-        if name == "state" and hasattr(self, "state") and getattr(self, "state") != value:
+        if name == "state" and hasattr(self, "state") and self.state != value:
             super().__setattr__("state_changed_at", time.time())
         super().__setattr__(name, value)
 
     def to_dict(self):
         # [Task 9.7] UI Compatibility Layer (V3 -> V5 Bridge)
-        vram_pct = (self.vram_used / self.vram_total * 100) if self.vram_total > 0 else 0
+        vram_pct = (
+            (self.vram_used / self.vram_total * 100) if self.vram_total > 0 else 0
+        )
         now = time.time()
-        state_duration = max(0.0, now - self.state_changed_at) if getattr(self, "state_changed_at", 0) > 0 else 0.0
-        
+        state_duration = (
+            max(0.0, now - self.state_changed_at)
+            if getattr(self, "state_changed_at", 0) > 0
+            else 0.0
+        )
+
         # Discover style key
-        style_key = "38637b40" # Fallback
+        style_key = "38637b40"  # Fallback
         try:
             workspace = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
             style_path = os.path.join(workspace, "field_notes/style.css")
             if os.path.exists(style_path):
                 import hashlib
+
                 with open(style_path, "rb") as f:
                     style_key = hashlib.md5(f.read()).hexdigest()[:8]
         except Exception:
@@ -85,12 +96,23 @@ class LabStatus:
         return {
             "state": self.state,
             "state_changed_at": getattr(self, "state_changed_at", self.timestamp),
-            "state_changed_iso": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(getattr(self, "state_changed_at", self.timestamp))),
-            "state_duration_s": round(state_duration, 1),
-            "status": "ONLINE" if self.state == "OPERATIONAL" else (
-                "HIBERNATING (VRAM Free)" if self.state == "HIBERNATING" else self.state
+            "state_changed_iso": time.strftime(
+                "%Y-%m-%d %H:%M:%S",
+                time.localtime(getattr(self, "state_changed_at", self.timestamp)),
             ),
-            "message": "Systems Nominal" if self.state == "OPERATIONAL" else "Lab Hibernating",
+            "state_duration_s": round(state_duration, 1),
+            "status": (
+                "ONLINE"
+                if self.state == "OPERATIONAL"
+                else (
+                    "HIBERNATING (VRAM Free)"
+                    if self.state == "HIBERNATING"
+                    else self.state
+                )
+            ),
+            "message": (
+                "Systems Nominal" if self.state == "OPERATIONAL" else "Lab Hibernating"
+            ),
             "timestamp": time.strftime("%H:%M:%S", time.localtime(self.timestamp)),
             "version": self.version,
             "vram_used": self.vram_used,
@@ -114,6 +136,6 @@ class LabStatus:
                 "session": self.active_intent_id or "standby",
                 "style_key": style_key,
                 "recovery_level": self.recovery_level,
-                "recovery_in_progress": self.recovery_in_progress
-            }
+                "recovery_in_progress": self.recovery_in_progress,
+            },
         }

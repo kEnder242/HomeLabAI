@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Integration Shakedown Test: Full Nightly Forge & Synthesis Orchestration Flow.
@@ -7,11 +6,12 @@ Guarantees zero syntax errors, zero missing imports, valid REST payload contract
 and end-to-end dataset compatibility for train_expert.py.
 """
 
+import json
 import os
 import sys
-import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 # Path configuration
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
@@ -19,10 +19,10 @@ FIELD_NOTES_DIR = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes"
 sys.path.insert(0, LAB_DIR)
 sys.path.insert(0, FIELD_NOTES_DIR)
 
-from src.infra import nightly_forge
-from src.forge import train_expert
 import mass_scan
 import refine_gem
+from src.forge import train_expert
+from src.infra import nightly_forge
 
 
 def test_import_integrity_all_nightly_modules():
@@ -39,8 +39,9 @@ def test_import_integrity_all_nightly_modules():
 
 def test_rest_quiesce_and_reignite_contracts():
     """Verify that REST quiesce and re-ignite functions target the correct Foyer endpoints."""
-    with patch.object(nightly_forge.requests, "post") as mock_post, \
-         patch.object(nightly_forge.time, "sleep"):
+    with patch.object(nightly_forge.requests, "post") as mock_post, patch.object(
+        nightly_forge.time, "sleep"
+    ):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": "ok"}
@@ -99,12 +100,16 @@ def test_train_expert_dataset_mapper_with_live_ledger():
 def test_re_ignite_vllm_connection_timeout_graceful():
     """[FEAT-453] Assert re_ignite_vllm() handles connection timeouts gracefully (returns False, no raise)."""
     with patch.object(nightly_forge.requests, "post") as mock_post:
-        mock_post.side_effect = nightly_forge.requests.exceptions.ConnectionError("Connection refused")
+        mock_post.side_effect = nightly_forge.requests.exceptions.ConnectionError(
+            "Connection refused"
+        )
         result = nightly_forge.re_ignite_vllm()
         assert result is False
 
     with patch.object(nightly_forge.requests, "post") as mock_post:
-        mock_post.side_effect = nightly_forge.requests.exceptions.Timeout("Read timed out")
+        mock_post.side_effect = nightly_forge.requests.exceptions.Timeout(
+            "Read timed out"
+        )
         result = nightly_forge.re_ignite_vllm()
         assert result is False
 
@@ -112,7 +117,9 @@ def test_re_ignite_vllm_connection_timeout_graceful():
 def test_dream_cycle_subprocess_handling():
     """Verify that run_dream_cycle handles errors and status logs gracefully."""
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Dream completed", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="Dream completed", stderr=""
+        )
         nightly_forge.run_dream_cycle()
         mock_run.assert_called_once()
 

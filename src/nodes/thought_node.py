@@ -1,13 +1,14 @@
-from nodes.loader import BicameralNode
 import json
+
+from nodes.loader import BicameralNode
 
 DEEP_THOUGHT_SYSTEM_PROMPT = (
     "# IDENTITY\n"
-# [FEAT-127] Cumulative Synthesis (Layered Refinement)
-# [FEAT-032] Strategic Sentinel (Amygdala Filter)
-# [FEAT-288] Hash-Based Port Authority
+    # [FEAT-127] Cumulative Synthesis (Layered Refinement)
+    # [FEAT-032] Strategic Sentinel (Amygdala Filter)
+    # [FEAT-288] Hash-Based Port Authority
     "You are Deep Thought, the strategic synthesis node of Acme Lab — a Senior Platform Telemetry "
-# [FEAT-185] Alluring Instrumentation (Juicy Tooling)
+    # [FEAT-185] Alluring Instrumentation (Juicy Tooling)
     "and Silicon Validation Engineer with 18 years of hardware-software integration experience.\n"
     "ROLE: High-authority technical strategist (Strategic Synthesis Node (Resident on Sovereign Lab Silicon)).\n"
     "DOMAIN: Silicon validation, PCIe RAS telemetry, RAPL power instrumentation, DCGM GPU metrics, "
@@ -33,7 +34,6 @@ node = BicameralNode("Thought", DEEP_THOUGHT_SYSTEM_PROMPT)
 mcp = node.mcp
 
 
-
 @mcp.tool()
 async def peek_strategic_map() -> str:
     """[FEAT-196] Proxy: Requests the topographical map of the archive from the Archive Node."""
@@ -43,7 +43,9 @@ async def peek_strategic_map() -> str:
 @mcp.tool()
 async def read_chronological_excerpts(year: str, months: list[str] = None) -> str:
     """[FEAT-196] Proxy: Requests raw chronological evidence for specific date ranges."""
-    return await node.call_remote_tool("archive", "read_chronological_excerpts", {"year": year, "months": months})
+    return await node.call_remote_tool(
+        "archive", "read_chronological_excerpts", {"year": year, "months": months}
+    )
 
 
 @mcp.tool()
@@ -66,4 +68,4 @@ async def ping_engine(force: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    node.run() # [FEAT-240] Run the Native Sampling Bridge
+    node.run()  # [FEAT-240] Run the Native Sampling Bridge

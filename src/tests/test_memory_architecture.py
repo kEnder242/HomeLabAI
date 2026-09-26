@@ -13,12 +13,12 @@ Verifies:
 """
 
 import hashlib
-import numpy as np
 from collections import deque
 
-from logic.cognitive_hub import CognitiveHub
+import numpy as np
 from equipment.sensory_manager import SensoryManager
 from infra.dream_node import run_test_dream
+from logic.cognitive_hub import CognitiveHub
 
 
 def _make_hub():
@@ -57,8 +57,8 @@ def test_rag_cache_hashing_and_lru():
             hub._rag_cache.pop(next(iter(hub._rag_cache)))
 
     assert len(hub._rag_cache) == 128
-    first_key = hashlib.sha256("turn_0".encode()).hexdigest()
-    last_key = hashlib.sha256("turn_134".encode()).hexdigest()
+    first_key = hashlib.sha256(b"turn_0").hexdigest()
+    last_key = hashlib.sha256(b"turn_134").hexdigest()
     assert first_key not in hub._rag_cache
     assert last_key in hub._rag_cache
 
@@ -71,7 +71,9 @@ def test_truncate_to_tokens_sentinel():
     assert hub._truncate_to_tokens(short_text, max_tokens=2500) == short_text
 
     long_text = "A" * 20000
-    truncated = hub._truncate_to_tokens(long_text, max_tokens=2500, doc_id="test_doc.md")
+    truncated = hub._truncate_to_tokens(
+        long_text, max_tokens=2500, doc_id="test_doc.md"
+    )
 
     assert len(truncated) <= 10000
     assert "[MORE: test_doc.md...]" in truncated

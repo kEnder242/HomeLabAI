@@ -18,11 +18,11 @@ Implements Story 76.3 of SPR-76.0:
   PersistentClient fallback).
 """
 
+import hashlib
+import json
+import logging
 import os
 import re
-import json
-import hashlib
-import logging
 import time
 
 import chromadb
@@ -32,12 +32,8 @@ from chromadb.utils import embedding_functions
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_SPRINT = "sprint_dna"
 
-SPRINT_ARCHIVE_PATH = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/docs/sprints/archive"
-)
-ACTIVE_SPRINT_DIR = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/docs/sprints/active"
-)
+SPRINT_ARCHIVE_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/docs/sprints/archive")
+ACTIVE_SPRINT_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/docs/sprints/active")
 SPRINT_DATA_OUTPUT = os.path.expanduser(
     "~/Dev_Lab/Portfolio_Dev/field_notes/data/sprint_data.json"
 )
@@ -50,7 +46,9 @@ SKIP_FILENAMES = {
     "SPRINT_RESONANT_VIBE_v12.0.md",  # vibe spec, not a numbered sprint plan
 }
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 
 # ----------------------------------------------------------------------------
@@ -102,12 +100,22 @@ _STORY_HEADER = re.compile(
 )
 
 _LEVEL2_HEADERS = (
-    "O V E R V I E W", "OVERVIEW", "MISSION", "GOAL", "THEME", "CONTEXT",
-    "SUMMARY", "ARCHITECTURE", "BACKGROUND",
+    "O V E R V I E W",
+    "OVERVIEW",
+    "MISSION",
+    "GOAL",
+    "THEME",
+    "CONTEXT",
+    "SUMMARY",
+    "ARCHITECTURE",
+    "BACKGROUND",
 )
 
 _TRIMMED_HEADERS = (
-    "VALIDATION GAUNTLET", "VERIFICATION LEDGER", "APPENDIX", "REFERENCES",
+    "VALIDATION GAUNTLET",
+    "VERIFICATION LEDGER",
+    "APPENDIX",
+    "REFERENCES",
 )
 
 
@@ -149,7 +157,7 @@ def _trim_body(body):
     """Drop trailing, verbose validation/appendix sections from chunk bodies."""
     for trim in _TRIMMED_HEADERS:
         idx = body.upper().find(trim)
-        if idx != -1 and body[idx - 1: idx].strip() in ("", "\n", "#"):
+        if idx != -1 and body[idx - 1 : idx].strip() in ("", "\n", "#"):
             body = body[:idx]
     return body.strip()
 
@@ -183,17 +191,19 @@ def parse_sprint_file(filepath, sprint_num):
     overview_doc = f"SPRINT OVERVIEW: {stem}\n\n" + "\n\n".join(overview_parts)
     overview_doc = _trim_body(overview_doc)
     if overview_doc:
-        chunks.append({
-            "id": _chunk_id("SPR", f"{stem}_overview"),
-            "document": overview_doc,
-            "metadata": {
-                "sprint_id": stem,
-                "sprint_num": sprint_num,
-                "level": 2,
-                "kind": "overview",
-                "source": os.path.basename(filepath),
-            },
-        })
+        chunks.append(
+            {
+                "id": _chunk_id("SPR", f"{stem}_overview"),
+                "document": overview_doc,
+                "metadata": {
+                    "sprint_id": stem,
+                    "sprint_num": sprint_num,
+                    "level": 2,
+                    "kind": "overview",
+                    "source": os.path.basename(filepath),
+                },
+            }
+        )
 
     # ---- Level 1: Story Cards ---------------------------------------------
     for idx, (header, body) in enumerate(_line_blocks(content)):
@@ -204,18 +214,20 @@ def parse_sprint_file(filepath, sprint_num):
             continue
         story_title = header.strip("# ").strip()
         story_doc = f"STORY CARD: {story_title}\n\n{body}"
-        chunks.append({
-            "id": _chunk_id("SPR", f"{stem}|{idx}|{story_title}"),
-            "document": story_doc,
-            "metadata": {
-                "sprint_id": stem,
-                "sprint_num": sprint_num,
-                "level": 1,
-                "kind": "story",
-                "story_title": story_title,
-                "source": os.path.basename(filepath),
-            },
-        })
+        chunks.append(
+            {
+                "id": _chunk_id("SPR", f"{stem}|{idx}|{story_title}"),
+                "document": story_doc,
+                "metadata": {
+                    "sprint_id": stem,
+                    "sprint_num": sprint_num,
+                    "level": 1,
+                    "kind": "story",
+                    "story_title": story_title,
+                    "source": os.path.basename(filepath),
+                },
+            }
+        )
 
     return chunks
 
@@ -232,7 +244,9 @@ def get_chroma_client():
         logging.info("HttpClient heartbeat successful.")
         return client
     except Exception as e:
-        logging.warning(f"HttpClient connection failed: {e}. Falling back to PersistentClient.")
+        logging.warning(
+            f"HttpClient connection failed: {e}. Falling back to PersistentClient."
+        )
         return chromadb.PersistentClient(path=DB_PATH)
 
 
@@ -283,7 +297,8 @@ def enqueue_single_sprint_distillation(filepath, elapsed_seconds=None):
     logging.info(
         "[sprint_dna] SMART-ARCHIVE enqueued single-sprint distillation for %s "
         "(elapsed=%.3fs)",
-        os.path.basename(filepath), dur,
+        os.path.basename(filepath),
+        dur,
     )
     return True
 
@@ -294,8 +309,15 @@ def enqueue_single_sprint_distillation(filepath, elapsed_seconds=None):
 def clean_sprint_title(line, sprint_id):
     line = re.sub(r"^#+\s*", "", line).strip()
     line = re.sub(r"^[🚀🎯🕵️🛠️\s]+", "", line).strip()
-    line = re.sub(r"^(?:SPRINT\s+(?:PLAN|LOG)|Sprint\s+(?:Plan|Log))[:\s]*", "", line, flags=re.IGNORECASE).strip()
-    line = re.sub(r"^\[?SPR[-_]\d+(?:[-_]\d+)?\]?[:\s]*", "", line, flags=re.IGNORECASE).strip()
+    line = re.sub(
+        r"^(?:SPRINT\s+(?:PLAN|LOG)|Sprint\s+(?:Plan|Log))[:\s]*",
+        "",
+        line,
+        flags=re.IGNORECASE,
+    ).strip()
+    line = re.sub(
+        r"^\[?SPR[-_]\d+(?:[-_]\d+)?\]?[:\s]*", "", line, flags=re.IGNORECASE
+    ).strip()
     line = re.sub(r"^\d+\.\d+[:\s]*", "", line).strip()
     return line or f"Sprint {sprint_id}"
 
@@ -327,7 +349,12 @@ def parse_single_sprint_card(filepath):
         if "**Theme:**" in l or "**THEME:**" in l:
             theme = re.split(r"\*\*Theme:\*\*", l, flags=re.IGNORECASE)[-1].strip()
             j = i + 1
-            while j < len(lines) and lines[j].strip() and not lines[j].strip().startswith("**") and not lines[j].strip().startswith("#"):
+            while (
+                j < len(lines)
+                and lines[j].strip()
+                and not lines[j].strip().startswith("**")
+                and not lines[j].strip().startswith("#")
+            ):
                 theme += " " + lines[j].strip()
                 j += 1
             break
@@ -349,7 +376,11 @@ def parse_single_sprint_card(filepath):
             for p in content.split("\n\n")
             if p.strip() and not p.strip().startswith("#")
         ]
-        narrative = paragraphs[0] if paragraphs else f"Sprint {sprint_id} execution plan and tasks."
+        narrative = (
+            paragraphs[0]
+            if paragraphs
+            else f"Sprint {sprint_id} execution plan and tasks."
+        )
 
     narrative = re.sub(r"\s+", " ", narrative)[:400].strip()
     origin_text = theme or narrative
@@ -368,7 +399,11 @@ def parse_single_sprint_card(filepath):
         "synthesis": {
             "narrative_context": narrative,
             "lab_anchors": [rel_path],
-            "review_notes": "Active sprint in execution." if is_active else "Archived sprint record.",
+            "review_notes": (
+                "Active sprint in execution."
+                if is_active
+                else "Archived sprint record."
+            ),
         },
         "metadata": {
             "tags": [f"sprint-{major}", "sprint-plan"],
@@ -395,9 +430,12 @@ def compile_sprint_manifest(files):
         if sid not in by_id:
             by_id[sid] = c
         else:
-            if c["metadata"]["status"] == "ACTIVE" and by_id[sid]["metadata"]["status"] != "ACTIVE":
-                by_id[sid] = c
-            elif "PLAN" in c["origin"]["source"] and "PLAN" not in by_id[sid]["origin"]["source"]:
+            if (
+                c["metadata"]["status"] == "ACTIVE"
+                and by_id[sid]["metadata"]["status"] != "ACTIVE"
+                or "PLAN" in c["origin"]["source"]
+                and "PLAN" not in by_id[sid]["origin"]["source"]
+            ):
                 by_id[sid] = c
 
     sorted_cards = sorted(by_id.values(), key=lambda x: x["_sort_key"], reverse=True)
@@ -411,9 +449,7 @@ def compile_sprint_manifest(files):
 # ----------------------------------------------------------------------------
 def sync(dry_run=False):
     t_start = time.monotonic()
-    logging.info(
-        "[sprint_dna] Scanning archive at %s", SPRINT_ARCHIVE_PATH
-    )
+    logging.info("[sprint_dna] Scanning archive at %s", SPRINT_ARCHIVE_PATH)
     current_active, files = discover_sprint_files(
         ACTIVE_SPRINT_DIR, SPRINT_ARCHIVE_PATH
     )
@@ -436,16 +472,18 @@ def sync(dry_run=False):
         for chunk in parse_sprint_file(path, sprint_num):
             chunk["metadata"]["recency"] = weight
             chunk["metadata"]["tier"] = tier
-            chunk["document"] = (
-                f"[recency:{weight}] {chunk['document']}"
-            )
+            chunk["document"] = f"[recency:{weight}] {chunk['document']}"
             all_chunks.append(chunk)
 
     logging.info(
         "[sprint_dna] Discovered %d sprint docs (current_active=%d; "
         "tiers active=%d recent5=%d archived=%d). Produced %d chunks.",
-        len(files), current_active, stats["active"], stats["recent5"],
-        stats["archived"], len(all_chunks),
+        len(files),
+        current_active,
+        stats["active"],
+        stats["recent5"],
+        stats["archived"],
+        len(all_chunks),
     )
 
     # Emit sprint_data.json and update dna_manifest.json
@@ -454,7 +492,11 @@ def sync(dry_run=False):
             os.makedirs(os.path.dirname(SPRINT_DATA_OUTPUT), exist_ok=True)
             with open(SPRINT_DATA_OUTPUT, "w", encoding="utf-8") as f:
                 json.dump(sprint_cards, f, indent=2)
-            logging.info("[sprint_dna] Emitted %d cards to %s", len(sprint_cards), SPRINT_DATA_OUTPUT)
+            logging.info(
+                "[sprint_dna] Emitted %d cards to %s",
+                len(sprint_cards),
+                SPRINT_DATA_OUTPUT,
+            )
         except Exception as e:
             logging.error("[sprint_dna] Failed to emit sprint_data.json: %s", e)
 
@@ -465,7 +507,11 @@ def sync(dry_run=False):
                 manifest_data["sprint"] = sprint_cards
                 with open(DNA_MANIFEST_PATH, "w", encoding="utf-8") as f:
                     json.dump(manifest_data, f, indent=2)
-                logging.info("[sprint_dna] Updated %d sprint cards in %s", len(sprint_cards), DNA_MANIFEST_PATH)
+                logging.info(
+                    "[sprint_dna] Updated %d sprint cards in %s",
+                    len(sprint_cards),
+                    DNA_MANIFEST_PATH,
+                )
         except Exception as e:
             logging.error("[sprint_dna] Failed to update dna_manifest.json: %s", e)
 
@@ -486,7 +532,9 @@ def sync(dry_run=False):
     collection = get_safe_collection(client, COLLECTION_SPRINT, ef)
 
     try:
-        collection.delete(where={"source": {"$in": [os.path.basename(p) for _, p in files]}})
+        collection.delete(
+            where={"source": {"$in": [os.path.basename(p) for _, p in files]}}
+        )
     except Exception as e:
         logging.warning("[sprint_dna] Could not clear prior sprint_dna entries: %s", e)
 
@@ -521,9 +569,13 @@ def sync(dry_run=False):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="[FEAT-557] sprint_dna ChromaDB sync.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Parse & chunk without writing to ChromaDB.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Parse & chunk without writing to ChromaDB.",
+    )
     args = parser.parse_args()
     result = sync(dry_run=args.dry_run)
     logging.info("[sprint_dna] Result: %s", result)

@@ -1,13 +1,13 @@
-import os
-import json
-import logging
+import asyncio
 import datetime
 import glob
+import json
+import logging
+import os
 import subprocess
-import asyncio
-import chromadb
-import aiohttp
 
+import aiohttp
+import chromadb
 from infra.montana import reclaim_logger
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
@@ -21,15 +21,15 @@ except ImportError:
 
 try:
     from nodes.lab_dna_router import (
-        get_collection_priorities,
         filter_candidate_context,
-        format_lab_dna_tag
+        format_lab_dna_tag,
+        get_collection_priorities,
     )
 except ImportError:
     from lab_dna_router import (
-        get_collection_priorities,
         filter_candidate_context,
-        format_lab_dna_tag
+        format_lab_dna_tag,
+        get_collection_priorities,
     )
 
 try:
@@ -61,15 +61,19 @@ SEMANTIC_MAP_FILE = os.path.join(DATA_DIR, "semantic_map.json")
 
 # [Task 3.1] The Clipboard: Session-scoped context cache
 SESSION_CLIPBOARD = []
-CLIPBOARD_CHAR_LIMIT = 8000 # [Task 2.3] Memory-OS: Context ceiling
+CLIPBOARD_CHAR_LIMIT = 8000  # [Task 2.3] Memory-OS: Context ceiling
+
 
 def get_style_key():
     """[FEAT-267] Dynamic Key Discovery for Lab REST calls."""
     import hashlib
+
     if not os.path.exists(STYLE_CSS):
         return "missing"
     with open(STYLE_CSS, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()[:8]
+
+
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 COLLECTION_STREAM = "short_term_stream"
 COLLECTION_WISDOM = "long_term_wisdom"
@@ -78,17 +82,22 @@ COLLECTION_DNA = "behavioral_dna"
 # Chroma Setup (FastEmbed CPU-only ONNX embeddings: 0 MB GPU VRAM, ~20ms latency)
 _fastembed_model = None
 
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """[FEAT-ONNX] Compute embeddings strictly on CPU via FastEmbed (0 MB GPU VRAM)."""
     global _fastembed_model
     if _fastembed_model is None:
         try:
             from fastembed import TextEmbedding
-            _fastembed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+            _fastembed_model = TextEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
         except Exception as e:
             logger.error(f"[ARCHIVE] FastEmbed initialization error: {e}")
             raise
     return [vec.tolist() for vec in _fastembed_model.embed(texts)]
+
 
 try:
     chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
@@ -134,19 +143,23 @@ async def create_followup_file(topic_filename: str, context: str) -> str:
     """
     if not topic_filename.endswith(".md"):
         topic_filename += ".md"
-    
+
     path = os.path.join(WHITEBOARD_DIR, topic_filename)
-    
+
     # [Task 3.5] Append-only by default: If file exists, we append context
     mode = "a" if os.path.exists(path) else "w"
     try:
         with open(path, mode) as f:
             if mode == "w":
-                f.write(f"# {topic_filename.replace('.md', '').upper()} RESEARCH LEDGER\n")
-                f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+                f.write(
+                    f"# {topic_filename.replace('.md', '').upper()} RESEARCH LEDGER\n"
+                )
+                f.write(
+                    f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+                )
             f.write(f"## Context Entry ({datetime.datetime.now().strftime('%H:%M')})\n")
             f.write(f"{context}\n\n---\n")
-        
+
         return f"✅ Follow-up ledger created/updated: whiteboard/{topic_filename}"
     except Exception as e:
         return f"❌ Failed to create ledger: {e}"
@@ -161,11 +174,11 @@ async def scribble_to_clipboard(content: str) -> str:
     global SESSION_CLIPBOARD
     if content not in SESSION_CLIPBOARD:
         SESSION_CLIPBOARD.append(content)
-        
+
         # [Task 2.3] Memory-OS: Evict until under char limit
         while sum(len(c) for c in SESSION_CLIPBOARD) > CLIPBOARD_CHAR_LIMIT:
-            SESSION_CLIPBOARD.pop(0) # FIFO Eviction of oldest context
-            
+            SESSION_CLIPBOARD.pop(0)  # FIFO Eviction of oldest context
+
         total_len = sum(len(c) for c in SESSION_CLIPBOARD)
         return f"✅ Scribbled to clipboard. ({len(SESSION_CLIPBOARD)} segments, {total_len} chars active)"
     return "Segment already resident in clipboard."
@@ -178,7 +191,7 @@ async def read_clipboard() -> str:
     """
     if not SESSION_CLIPBOARD:
         return "Clipboard is empty."
-    
+
     combined = "\n---\n".join(SESSION_CLIPBOARD)
     return f"[SESSION_CLIPBOARD]:\n{combined}"
 
@@ -225,9 +238,7 @@ async def read_document(filename: str) -> str:
         # Check if the prefix is valid
         parts = filename.split("/", 1)
         prefix, actual_name = parts[0], parts[1]
-        if prefix == "drafts":
-            filename = actual_name
-        elif prefix == "whiteboard":
+        if prefix == "drafts" or prefix == "whiteboard":
             filename = actual_name
 
     search_paths = [
@@ -333,7 +344,7 @@ async def peek_related_notes(keyword: str) -> str:
     try:
         # Use the established keyword_search for high-fidelity matching
         results = keyword_search(keyword, limit=10)
-        
+
         if not results:
             # Fallback to search_index.json for broad categorization
             index_path = os.path.join(FIELD_NOTES_DIR, "search_index.json")
@@ -347,14 +358,14 @@ async def peek_related_notes(keyword: str) -> str:
                         matches.extend(index[key])
                 if matches:
                     return f"Related technical breadcrumbs (Index): {', '.join(list(set(matches))[:10])}"
-            
+
             return f"No notes found relating to '{keyword}'."
-        
+
         breadcrumbs = []
         for doc_id, meta in results:
             src = meta.get("source", "Unknown")
             breadcrumbs.append(f"{doc_id} (in {src})")
-            
+
         return f"Related technical breadcrumbs (Hybrid): {', '.join(breadcrumbs)}"
     except Exception as e:
         return f"Error: {e}"
@@ -496,6 +507,7 @@ async def dream(summary: str, sources: list[str]) -> str:
 
 MEMO_CACHE = os.path.join(DATA_DIR, "memo_cache.json")
 
+
 @mcp.tool()
 async def get_observational_memo(topic: str = None, year: str = None) -> str:
     """
@@ -504,23 +516,24 @@ async def get_observational_memo(topic: str = None, year: str = None) -> str:
     """
     if not os.path.exists(MEMO_CACHE):
         return "No observational memos found."
-        
+
     try:
         with open(MEMO_CACHE, "r") as f:
             data = json.load(f)
-            
+
         if year and year in data.get("years", {}):
             return f"[MEMO: {year}]: {data['years'][year]}"
-            
+
         if topic:
             # Simple keyword match for topics
             for t, content in data.get("topics", {}).items():
                 if topic.lower() in t.lower():
                     return f"[MEMO: {t}]: {content}"
-                    
+
         return "No matching memo for this context."
     except Exception as e:
         return f"Memo retrieval error: {e}"
+
 
 @mcp.tool()
 async def scribble_note(query: str, response: str) -> str:
@@ -552,7 +565,7 @@ def rrf_fuse(results_list, k=60):
             scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
             if doc_id not in metadata_map:
                 metadata_map[doc_id] = dict(meta) if meta else {}
-    
+
     # Sort by fused score
     sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     for doc_id, score in sorted_ids:
@@ -567,19 +580,21 @@ def keyword_search(query, limit=10):
     """
     # Extract candidate acronyms (all caps, 3+ chars)
     import re
+
     acronyms = re.findall(r"\b[A-Z]{3,}\b", query)
     # Also extract non-stop words
     terms = [t for t in query.split() if len(t) > 4 and t.upper() not in acronyms]
-    
+
     candidates = acronyms + terms
     if not candidates:
         return []
 
     import re
+
     kw_list = [t for t in query.split() if len(t) > 3]
     results = []
     seen_ids = set()
-    
+
     # Search in DATA_DIR
     json_files = glob.glob(os.path.join(DATA_DIR, "*.json"))
     for f_path in json_files:
@@ -588,11 +603,13 @@ def keyword_search(query, limit=10):
                 data = json.load(f)
                 if not isinstance(data, list):
                     continue
-                
+
                 for entry in data:
                     anchor = entry.get("doc_anchor", entry.get("summary", ""))
                     if any(kw.lower() in str(anchor).lower() for kw in kw_list):
-                        e_id = str(entry.get("filename") or entry.get("summary", "")[:50])
+                        e_id = str(
+                            entry.get("filename") or entry.get("summary", "")[:50]
+                        )
                         if e_id not in seen_ids:
                             meta_dict = {
                                 "source": os.path.basename(f_path),
@@ -600,7 +617,7 @@ def keyword_search(query, limit=10):
                                 "type": entry.get("type", "artifact"),
                                 "text_anchor": anchor,
                                 "summary": entry.get("summary", ""),
-                                "evidence": entry.get("evidence", "")
+                                "evidence": entry.get("evidence", ""),
                             }
                             results.append((e_id, meta_dict))
                             seen_ids.add(e_id)
@@ -611,7 +628,7 @@ def keyword_search(query, limit=10):
             continue
         if len(results) >= limit:
             break
-        
+
     return results
 
 
@@ -643,7 +660,7 @@ def parse_multi_voice_hyde(hyde_vector_text: str) -> str:
             continue
         for tag in _MULTI_VOICE_TAGS:
             if segment.startswith(tag):
-                segment = segment[len(tag):].lstrip(":").strip()
+                segment = segment[len(tag) :].lstrip(":").strip()
                 break
         if segment:
             parts.append(segment)
@@ -661,7 +678,9 @@ def select_vector_query(query: str, hyde_vector_text: str) -> str:
     return query
 
 
-def compute_mmr_ranking(candidates: list, n_results: int = 3, lambda_param: float = 0.7) -> list:
+def compute_mmr_ranking(
+    candidates: list, n_results: int = 3, lambda_param: float = 0.7
+) -> list:
     """[FEAT-450 / Story 58.1] Maximal Marginal Relevance (MMR) Utility Re-Ranking.
     ArXiv: 2601.11888 (Agentic-R).
     Balances semantic relevance against marginal information novelty to eliminate
@@ -672,6 +691,7 @@ def compute_mmr_ranking(candidates: list, n_results: int = 3, lambda_param: floa
         return candidates
 
     import re
+
     def _tokenize(text: str) -> set:
         return set(re.findall(r"\w+", text.lower()))
 
@@ -693,10 +713,11 @@ def compute_mmr_ranking(candidates: list, n_results: int = 3, lambda_param: floa
                 intersection = len(cand["tokens"] & sel["tokens"])
                 union = len(cand["tokens"] | sel["tokens"])
                 overlap = intersection / union if union > 0 else 0.0
-                if overlap > max_sim_to_selected:
-                    max_sim_to_selected = overlap
+                max_sim_to_selected = max(max_sim_to_selected, overlap)
 
-            mmr_score = lambda_param * cand["sim"] - (1.0 - lambda_param) * max_sim_to_selected
+            mmr_score = (
+                lambda_param * cand["sim"] - (1.0 - lambda_param) * max_sim_to_selected
+            )
             if mmr_score > best_score:
                 best_score = mmr_score
                 best_idx = i
@@ -712,18 +733,40 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
     Fires when ChromaDB vector distance is weak (>0.50) or returns 0 matches.
     Hunts for exact hardware anchors across field_notes/data/ and raw notes."""
     import re
-    tokens = re.findall(r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query)
-    stop_words = {"THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY", "DID", "JASON", "ARE", "YOU"}
+
+    tokens = re.findall(
+        r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query
+    )
+    stop_words = {
+        "THE",
+        "AND",
+        "FOR",
+        "WITH",
+        "THAT",
+        "WHAT",
+        "HOW",
+        "WHEN",
+        "WHERE",
+        "WHY",
+        "DID",
+        "JASON",
+        "ARE",
+        "YOU",
+    }
     anchors = [t for t in tokens if t.upper() not in stop_words and len(t) > 2]
     if not anchors:
-        anchors = [w for w in query.split() if len(w) > 4 and w.lower() not in {"about", "there", "where", "which"}]
+        anchors = [
+            w
+            for w in query.split()
+            if len(w) > 4 and w.lower() not in {"about", "there", "where", "which"}
+        ]
 
     if not anchors:
         return ""
 
     data_dirs = [
         os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
-        os.path.expanduser("~/knowledge_base")
+        os.path.expanduser("~/knowledge_base"),
     ]
 
     hits = []
@@ -733,12 +776,25 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
             if not os.path.exists(d):
                 continue
             try:
-                cmd = ["rg", "-i", "-m", str(max_matches), "--no-heading", "-N", anchor, d]
+                cmd = [
+                    "rg",
+                    "-i",
+                    "-m",
+                    str(max_matches),
+                    "--no-heading",
+                    "-N",
+                    anchor,
+                    d,
+                ]
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
                 if res.returncode == 0 and res.stdout.strip():
                     for line in res.stdout.strip().split("\n"):
                         clean_line = line.strip()
-                        if clean_line and clean_line not in seen_lines and len(clean_line) < 300:
+                        if (
+                            clean_line
+                            and clean_line not in seen_lines
+                            and len(clean_line) < 300
+                        ):
                             seen_lines.add(clean_line)
                             hits.append(f"- [{anchor}] {clean_line}")
                             if len(hits) >= max_matches:
@@ -754,7 +810,13 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
 
 
 @mcp.tool()
-async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_vector_text: str = None, vibe: str = None) -> str:
+async def get_context(
+    query: str,
+    n_results: int = 3,
+    domain: str = None,
+    hyde_vector_text: str = None,
+    vibe: str = None,
+) -> str:
     """
     [FEAT-116/117/437/442/447/469] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
     Supports HyDE (Hypothetical Document Embeddings) vector text overrides for vector queries.
@@ -781,7 +843,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                 relations = json.load(f)
         except Exception:
             return ""
-            
+
         matched_relations = []
         seen_triplets = set()
         summary_low = summary.lower()
@@ -796,16 +858,20 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                 if triplet not in seen_triplets:
                     seen_triplets.add(triplet)
                     matched_relations.append(f"- {src} --[{rtype}]--> {tgt}")
-                    
+
         if matched_relations:
-            return "[RELATIONAL_NEIGHBOR_EXPANSION]:\n" + "\n".join(matched_relations[:5])
+            return "[RELATIONAL_NEIGHBOR_EXPANSION]:\n" + "\n".join(
+                matched_relations[:5]
+            )
         return ""
 
     try:
         # [Task 3.1] Integrate session clipboard early
         combined_context = []
         if SESSION_CLIPBOARD:
-            combined_context.append("[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD))
+            combined_context.append(
+                "[SESSION_CLIPBOARD]:\n" + "\n---\n".join(SESSION_CLIPBOARD)
+            )
 
         # [Story-3 / FEAT-469 / FEAT-467] Multi-Collection & Traversal Dispatcher
         if resolve_collection_scope:
@@ -818,7 +884,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             payload = {
                 "query_texts": [query_text],
                 "n_results": limit,
-                "include": ["metadatas", "distances", "documents"]
+                "include": ["metadatas", "distances", "documents"],
             }
             try:
                 async with session.post(url, json=payload) as resp:
@@ -836,19 +902,27 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                 if isinstance(res, Exception) or res[0] is None:
                     continue
                 data, coll_name = res
-                docs_list = data.get("documents", [[]])[0] if data.get("documents") else []
-                metas_list = data.get("metadatas", [[]])[0] if data.get("metadatas") else []
-                dists_list = data.get("distances", [[]])[0] if data.get("distances") else []
+                docs_list = (
+                    data.get("documents", [[]])[0] if data.get("documents") else []
+                )
+                metas_list = (
+                    data.get("metadatas", [[]])[0] if data.get("metadatas") else []
+                )
+                dists_list = (
+                    data.get("distances", [[]])[0] if data.get("distances") else []
+                )
                 ids_list = data.get("ids", [[]])[0] if data.get("ids") else []
 
                 for i in range(len(docs_list)):
-                    collected.append({
-                        "collection": coll_name,
-                        "document": docs_list[i] if i < len(docs_list) else "",
-                        "metadata": metas_list[i] if i < len(metas_list) else {},
-                        "distance": dists_list[i] if i < len(dists_list) else 99.0,
-                        "id": ids_list[i] if i < len(ids_list) else ""
-                    })
+                    collected.append(
+                        {
+                            "collection": coll_name,
+                            "document": docs_list[i] if i < len(docs_list) else "",
+                            "metadata": metas_list[i] if i < len(metas_list) else {},
+                            "distance": dists_list[i] if i < len(dists_list) else 99.0,
+                            "id": ids_list[i] if i < len(ids_list) else "",
+                        }
+                    )
             return collected
 
         async def _query_multi_collections(session, q_text, limit):
@@ -863,7 +937,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         multi_candidates = []
         try:
             async with aiohttp.ClientSession() as session:
-                multi_candidates = await _query_multi_collections(session, _search_query, fetch_limit)
+                multi_candidates = await _query_multi_collections(
+                    session, _search_query, fetch_limit
+                )
         except Exception:
             pass
 
@@ -871,7 +947,11 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         # [FEAT-442/447] HyDE Fallback: if top distance > DISTANCE_THRESHOLD (0.55), re-query with the raw user query
         _qpr_fell_back = False
-        if multi_candidates and multi_candidates[0]["distance"] > DISTANCE_THRESHOLD and vector_query != query:
+        if (
+            multi_candidates
+            and multi_candidates[0]["distance"] > DISTANCE_THRESHOLD
+            and vector_query != query
+        ):
             logging.info(
                 f"[HYDE] Top distance {multi_candidates[0]['distance']:.3f} > {DISTANCE_THRESHOLD} threshold. "
                 f"Falling back to raw user query."
@@ -879,7 +959,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             multi_candidates = []
             try:
                 async with aiohttp.ClientSession() as session:
-                    multi_candidates = await _query_multi_collections(session, query, fetch_limit)
+                    multi_candidates = await _query_multi_collections(
+                        session, query, fetch_limit
+                    )
             except Exception:
                 pass
             multi_candidates.sort(key=lambda x: x["distance"])
@@ -887,22 +969,25 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
 
         # [FEAT-467/469] Zero Context Gate & Candidate Filtering
         multi_candidates = filter_candidate_context(
-            multi_candidates,
-            vibe=vibe,
-            domain=domain,
-            max_distance=DISTANCE_THRESHOLD
+            multi_candidates, vibe=vibe, domain=domain, max_distance=DISTANCE_THRESHOLD
         )
 
         if _qpr_fell_back:
-            logging.info(f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < {DISTANCE_THRESHOLD}).")
+            logging.info(
+                f"[HYDE] Fallback to raw query produced {len(multi_candidates)} candidates (distance < {DISTANCE_THRESHOLD})."
+            )
         elif vector_query != query:
-            logging.info(f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates.")
+            logging.info(
+                f"[HYDE] HyDE vector query produced {len(multi_candidates)} candidates."
+            )
 
         # [FEAT-450 / Story 58.1] Maximal Marginal Relevance (MMR) Diversity Re-Ranking
         multi_candidates = compute_mmr_ranking(multi_candidates, n_results=n_results)
 
         # [FEAT-451 / Story 58.2] Autonomous Grep Search Pivot Loop (Agentic-R)
-        if not multi_candidates or (multi_candidates and multi_candidates[0]["distance"] > 0.50):
+        if not multi_candidates or (
+            multi_candidates and multi_candidates[0]["distance"] > 0.50
+        ):
             pivot_evidence = execute_grep_search_pivot(query)
             if pivot_evidence:
                 combined_context.append(pivot_evidence)
@@ -927,21 +1012,28 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             multi_formatted.append(tag_entry)
 
         if multi_formatted:
-            combined_context.append("[MULTI_COLLECTION_RERANKER]\n" + "\n".join(multi_formatted))
+            combined_context.append(
+                "[MULTI_COLLECTION_RERANKER]\n" + "\n".join(multi_formatted)
+            )
 
         # [FEAT-117] Fuzzy Temporal Compass: Parse temporal target and qualifiers from query
-        import re
         import math
+        import re
+
         target_date = None
 
         # [NEW] Temporal Compass Helper: Expand search window for thin data
         def get_temporal_filter(target_date):
             return [
                 target_date - datetime.timedelta(days=365),
-                target_date + datetime.timedelta(days=365)
+                target_date + datetime.timedelta(days=365),
             ]
 
-        qualifier_match = re.search(r"\b(early|late|mid|middle)\s+(199[0-9]|20[0-2][0-9])\b", query, re.IGNORECASE)
+        qualifier_match = re.search(
+            r"\b(early|late|mid|middle)\s+(199[0-9]|20[0-2][0-9])\b",
+            query,
+            re.IGNORECASE,
+        )
         if qualifier_match:
             qualifier = qualifier_match.group(1).lower()
             year = int(qualifier_match.group(2))
@@ -960,17 +1052,23 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         target_year = str(target_date.year) if target_date else None
 
         # [Task 2.1] Memo Integration: Check for high-level observations first
-        memo = await get_observational_memo(topic=query if not target_year else None, year=target_year)
+        memo = await get_observational_memo(
+            topic=query if not target_year else None, year=target_year
+        )
         if "[MEMO:" in memo:
             combined_context.append(memo)
-        
+
         # [FEAT-088] Semantic Fallback
         if not target_year:
-            logging.info("[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search.")
-        
+            logging.info(
+                "[ARCHIVE] No temporal anchor in query. Performing agnostic semantic search."
+            )
+
         fetch_limit = n_results * 5 if target_year else n_results
         if target_year:
-            logging.info(f"[ARCHIVE] Applying Fuzzy Year Post-Filter: {target_year} (Target: {target_date})")
+            logging.info(
+                f"[ARCHIVE] Applying Fuzzy Year Post-Filter: {target_year} (Target: {target_date})"
+            )
 
         # Stage 1: Hybrid Discovery (RRF)
         vector_results = []
@@ -984,33 +1082,53 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         for i, doc in enumerate(res_s.get("documents", [[]])[0]):
             meta = res_s.get("metadatas", [[]])[0][i]
             vector_results.append((doc[:100], {**meta, "text_anchor": doc}))
-            
+
         k_results = keyword_search(query, limit=fetch_limit)
-        
+
         # Reciprocal Rank Fusion
         fused_results = rrf_fuse([vector_results, k_results])
 
         # [NEW] Temporal Compass Integration: If matches < 2, widen the filter
         if len(fused_results) < 2 and target_date:
-            logging.info(f"[ARCHIVE] Thin data detected ({len(fused_results)} matches). Broadening temporal filter.")
+            logging.info(
+                f"[ARCHIVE] Thin data detected ({len(fused_results)} matches). Broadening temporal filter."
+            )
             start_date, end_date = get_temporal_filter(target_date)
-            
+
             # Re-perform discovery with broadened window logic
             # This simulates the RAG logic refactor for broader temporal range
             k_results_broad = keyword_search(query, limit=fetch_limit * 2)
             if k_results_broad:
-                fused_results = rrf_fuse([vector_results, k_results_broad, fused_results])
-            logging.info(f"[ARCHIVE] Re-searched with broad window. New match count: {len(fused_results)}")
+                fused_results = rrf_fuse(
+                    [vector_results, k_results_broad, fused_results]
+                )
+            logging.info(
+                f"[ARCHIVE] Re-searched with broad window. New match count: {len(fused_results)}"
+            )
 
         if not fused_results and not SESSION_CLIPBOARD:
-            return json.dumps({"found": False, "context": "", "reason": "No relevant historical notes found.", "sources": []})
+            return json.dumps(
+                {
+                    "found": False,
+                    "context": "",
+                    "reason": "No relevant historical notes found.",
+                    "sources": [],
+                }
+            )
         elif not fused_results:
-             return json.dumps({"found": False, "context": "\n\n".join(combined_context), "reason": "Clipboard context only; no archive matches.", "sources": []})
+            return json.dumps(
+                {
+                    "found": False,
+                    "context": "\n\n".join(combined_context),
+                    "reason": "Clipboard context only; no archive matches.",
+                    "sources": [],
+                }
+            )
 
         # Stage 2: Raw Acquisition (Multi-Stage Discovery)
         full_truths = []
         source_files = []
-        
+
         # [FEAT-126/127] Yearly Summary Injection
         if target_year:
             years_to_peek = [str(int(target_year) - 1), target_year]
@@ -1021,23 +1139,70 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     if summary_file not in source_files:
                         source_files.append(summary_file)
                     try:
-                        with open(summary_path, 'r') as f:
+                        with open(summary_path, "r") as f:
                             summary_data = json.load(f)
                             # Extract high-rank anchors
-                            high_rank = sorted([e for e in summary_data if e.get('rank', 0) >= 3], 
-                                             key=lambda x: x.get('rank', 0), reverse=True)[:2]
+                            high_rank = sorted(
+                                [e for e in summary_data if e.get("rank", 0) >= 3],
+                                key=lambda x: x.get("rank", 0),
+                                reverse=True,
+                            )[:2]
                             for entry in high_rank:
                                 full_truths.append(
                                     f"[STRATEGIC SUMMARY {y}]: {entry.get('summary')} "
                                     f"(Gem: {entry.get('technical_gem', 'N/A')})"
                                 )
                     except Exception:
-                         pass
+                        pass
 
         domain_keywords = {
-            "exp_tlm": ["telemetry", "monitor", "prometheus", "grafana", "rapl", "msr", "power", "thermal", "load", "sensory", "logging", "metric", "dcgm", "gpu", "nvml"],
-            "exp_bkm": ["bkm", "validation", "test", "verification", "verify", "spec", "method", "guide", "setup", "procedure", "config", "manual", "checklist"],
-            "exp_for": ["forensic", "post-mortem", "post_mortem", "crash", "triage", "hang", "error", "abort", "fail", "debug", "logs", "analysis", "incident"]
+            "exp_tlm": [
+                "telemetry",
+                "monitor",
+                "prometheus",
+                "grafana",
+                "rapl",
+                "msr",
+                "power",
+                "thermal",
+                "load",
+                "sensory",
+                "logging",
+                "metric",
+                "dcgm",
+                "gpu",
+                "nvml",
+            ],
+            "exp_bkm": [
+                "bkm",
+                "validation",
+                "test",
+                "verification",
+                "verify",
+                "spec",
+                "method",
+                "guide",
+                "setup",
+                "procedure",
+                "config",
+                "manual",
+                "checklist",
+            ],
+            "exp_for": [
+                "forensic",
+                "post-mortem",
+                "post_mortem",
+                "crash",
+                "triage",
+                "hang",
+                "error",
+                "abort",
+                "fail",
+                "debug",
+                "logs",
+                "analysis",
+                "incident",
+            ],
         }
 
         # Helper to parse candidate dates from timestamp fields
@@ -1048,14 +1213,20 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             match_ymd = re.search(r"(\d{4})[-_/](\d{1,2})[-_/](\d{1,2})", ts_str)
             if match_ymd:
                 try:
-                    return datetime.date(int(match_ymd.group(1)), int(match_ymd.group(2)), int(match_ymd.group(3)))
+                    return datetime.date(
+                        int(match_ymd.group(1)),
+                        int(match_ymd.group(2)),
+                        int(match_ymd.group(3)),
+                    )
                 except ValueError:
                     pass
             # Try YYYY-MM
             match_ym = re.search(r"(\d{4})[-_/](\d{1,2})", ts_str)
             if match_ym:
                 try:
-                    return datetime.date(int(match_ym.group(1)), int(match_ym.group(2)), 15)
+                    return datetime.date(
+                        int(match_ym.group(1)), int(match_ym.group(2)), 15
+                    )
                 except ValueError:
                     pass
             # Try YYYY
@@ -1074,25 +1245,39 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
             ts = str(meta.get("timestamp") or meta.get("date") or "")
             source_str = str(meta.get("source", ""))
             doc_anchor = meta.get("text_anchor", meta.get("text", ""))
-            
+
             rrf_score = meta.get("_rrf_score", 0.0)
             if target_year:
                 # [FEAT-410] Adaptive Temporal RAG Compass: Extract 4-digit years from timestamp, date AND source filename
                 combined_temporal_str = f"{ts} {source_str}"
-                entry_years = [int(y) for y in re.findall(r"(?:^|[^0-9])(199[0-9]|20[0-2][0-9])(?=[^0-9]|$)", combined_temporal_str)]
+                entry_years = [
+                    int(y)
+                    for y in re.findall(
+                        r"(?:^|[^0-9])(199[0-9]|20[0-2][0-9])(?=[^0-9]|$)",
+                        combined_temporal_str,
+                    )
+                ]
                 t_year_int = int(target_year)
-                
+
                 is_match = False
-                if t_year_int in entry_years:
+                if (
+                    t_year_int in entry_years
+                    or len(entry_years) >= 2
+                    and min(entry_years) <= t_year_int <= max(entry_years)
+                ):
                     is_match = True
-                elif len(entry_years) >= 2 and min(entry_years) <= t_year_int <= max(entry_years):
-                    is_match = True
-                
+
                 if not is_match:
                     if entry_years:
-                        out_of_era_matches.append((entry_years, meta.get("summary") or doc_anchor[:120], source_str))
+                        out_of_era_matches.append(
+                            (
+                                entry_years,
+                                meta.get("summary") or doc_anchor[:120],
+                                source_str,
+                            )
+                        )
                     continue  # Skip if year doesn't match and isn't in range
-                
+
                 # Two-Tier RAG Compass Temporal Scoring
                 if meta.get("date"):
                     c_date = parse_candidate_date(meta.get("date"))
@@ -1102,7 +1287,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     else:
                         temporal_weight = 1.0
                 else:
-                    range_match = re.search(r"(\d{4})_(\d{4})\.json", meta.get("source", ""))
+                    range_match = re.search(
+                        r"(\d{4})_(\d{4})\.json", meta.get("source", "")
+                    )
                     temporal_weight = 0.5 if range_match else 0.1
             elif target_date:
                 # Two-Tier RAG Compass Temporal Scoring
@@ -1114,14 +1301,16 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     else:
                         temporal_weight = 1.0
                 else:
-                    range_match = re.search(r"(\d{4})_(\d{4})\.json", meta.get("source", ""))
+                    range_match = re.search(
+                        r"(\d{4})_(\d{4})\.json", meta.get("source", "")
+                    )
                     temporal_weight = 0.5 if range_match else 0.1
             else:
                 temporal_weight = 1.0
-                
+
             combined_score = rrf_score * temporal_weight
             scored_candidates.append((combined_score, doc_id, meta, ts, doc_anchor))
-            
+
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
         candidates = [(x[1], x[2], x[3], x[4]) for x in scored_candidates]
 
@@ -1134,9 +1323,13 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                         status_data = json.load(f)
                         domain = status_data.get("active_domain")
                         if domain:
-                            logging.info(f"[MCompassRAG] Read active domain fallback from status.json: {domain}")
+                            logging.info(
+                                f"[MCompassRAG] Read active domain fallback from status.json: {domain}"
+                            )
                 except Exception as e:
-                    logging.warning(f"[MCompassRAG] Failed to read active domain fallback: {e}")
+                    logging.warning(
+                        f"[MCompassRAG] Failed to read active domain fallback: {e}"
+                    )
 
         if domain and domain in domain_keywords:
             keywords = domain_keywords[domain]
@@ -1145,12 +1338,16 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                 doc_anchor_low = str(doc_anchor).lower()
                 if any(kw in doc_anchor_low for kw in keywords):
                     filtered.append((doc_id, meta, ts, doc_anchor))
-            
+
             if filtered:
-                logging.info(f"[MCompassRAG] Restricting search space to {len(filtered)}/{len(candidates)} paragraphs for domain {domain}.")
+                logging.info(
+                    f"[MCompassRAG] Restricting search space to {len(filtered)}/{len(candidates)} paragraphs for domain {domain}."
+                )
                 candidates = filtered
             else:
-                logging.info(f"[MCompassRAG] Domain {domain} filter yielded 0 matches. Falling back to unfiltered space.")
+                logging.info(
+                    f"[MCompassRAG] Domain {domain} filter yielded 0 matches. Falling back to unfiltered space."
+                )
 
         matched_count = 0
         expansion_triggered = False
@@ -1158,9 +1355,9 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         for doc_id, meta, ts, doc_anchor in candidates:
             if matched_count >= n_results:
                 break
-                
+
             matched_count += 1
-            
+
             # Fetch relational adjacency (Goal 8)
             rel_ctx = get_relational_context(doc_anchor)
             if rel_ctx:
@@ -1178,12 +1375,14 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     file_path = os.path.join(DATA_DIR, target_file)
                     with open(file_path, "r") as f:
                         file_data = json.load(f)
-                    
+
                     # Search for the specific matching entry to fetch raw ground truth
                     def match_entry(e, anchor):
                         s_low = str(e).lower()
                         a_low = str(anchor).lower()
-                        summary = str(e.get('summary') or e.get('synopsis') or '').lower()
+                        summary = str(
+                            e.get("summary") or e.get("synopsis") or ""
+                        ).lower()
                         if summary and len(summary) > 10 and summary[:30] in a_low:
                             return True
                         clean_a = re.sub(r"^\[.*?\]\s*", "", a_low).strip()
@@ -1196,17 +1395,19 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                             if match_entry(entry, doc_anchor):
                                 neighbors = []
                                 if idx > 0:
-                                    neighbors.append(file_data[idx-1])
-                                neighbors.append(file_data[idx])  # Self
+                                    neighbors.append(file_data[idx - 1])
+                                neighbors.append(entry)  # Self
                                 if idx < len(file_data) - 1:
-                                    neighbors.append(file_data[idx+1])
-                                
+                                    neighbors.append(file_data[idx + 1])
+
                                 for n in neighbors:
                                     n_text = f"[NEIGHBORHOOD_EXPANSION Source: {target_file}]: {json.dumps(n)}"
                                     if n_text not in SESSION_CLIPBOARD:
                                         SESSION_CLIPBOARD.append(n_text)
-                                
-                                logging.info(f"[ARCHIVE] Neighborhood expansion triggered for {target_file}")
+
+                                logging.info(
+                                    f"[ARCHIVE] Neighborhood expansion triggered for {target_file}"
+                                )
                                 expansion_triggered = True
                                 break
 
@@ -1216,7 +1417,7 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                         if match_entry(entry, doc_anchor):
                             matched_entry = entry
                             break
-                    
+
                     if matched_entry:
                         if "synopsis" in matched_entry:
                             # It is an artifact entry
@@ -1251,20 +1452,45 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
         # Log RAG event to pager activity
         try:
             from infra.pager_relay import trigger_pager
-            trigger_pager(f"RAG Query: '{query}' -> Retrieved {len(full_truths)} anchors from {len(source_files)} sources.", source="RAG", severity="INFO")
+
+            trigger_pager(
+                f"RAG Query: '{query}' -> Retrieved {len(full_truths)} anchors from {len(source_files)} sources.",
+                source="RAG",
+                severity="INFO",
+            )
         except Exception as pe:
             logging.error(f"[ARCHIVE] Failed to log RAG event to pager: {pe}")
 
         # Combine Clipboard + New Truths
-        base_parts = [c for c in (combined_context + (["\n---\n".join(full_truths)] if full_truths else [])) if c]
+        base_parts = [
+            c
+            for c in (
+                combined_context
+                + (["\n---\n".join(full_truths)] if full_truths else [])
+            )
+            if c
+        ]
         final_text = "\n\n".join(base_parts)
-        
+
         # [FEAT-123 / FEAT-485] Temporal Scarcity Diagnostic & Epistemological Envelope
         if target_year and not candidates:
             if out_of_era_matches:
-                matched_years = sorted(list(set(y for match in out_of_era_matches for y in match[0])))
-                sample_snips = [f"[{', '.join(str(y) for y in m[0])}]: {m[1][:100]}" for m in out_of_era_matches[:2]]
-                clean_entity = re.sub(r"\b(was|is|really|in|the|during|\d{4})\b", "", query, flags=re.I).strip(" ?.,'\"") or query
+                matched_years = sorted(
+                    list(set(y for match in out_of_era_matches for y in match[0]))
+                )
+                sample_snips = [
+                    f"[{', '.join(str(y) for y in m[0])}]: {m[1][:100]}"
+                    for m in out_of_era_matches[:2]
+                ]
+                clean_entity = (
+                    re.sub(
+                        r"\b(was|is|really|in|the|during|\d{4})\b",
+                        "",
+                        query,
+                        flags=re.IGNORECASE,
+                    ).strip(" ?.,'\"")
+                    or query
+                )
                 final_text += (
                     f"\n\n[ARCHIVAL_EVIDENCE]:\n"
                     f"- Query Entity: '{clean_entity}'\n"
@@ -1273,7 +1499,12 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     f"- Temporal Scarcity Diagnostic: Target entity was active in {matched_years}, but confirmed ABSENT in target year {target_year}."
                 )
                 return json.dumps(
-                    {"found": True, "context": final_text, "reason": f"Temporal scarcity diagnosed: Entity active in {matched_years}, absent in {target_year}.", "sources": source_files}
+                    {
+                        "found": True,
+                        "context": final_text,
+                        "reason": f"Temporal scarcity diagnosed: Entity active in {matched_years}, absent in {target_year}.",
+                        "sources": source_files,
+                    }
                 )
             else:
                 final_text += (
@@ -1282,10 +1513,25 @@ async def get_context(query: str, n_results: int = 3, domain: str = None, hyde_v
                     f"and you are forbidden from inventing accomplishments."
                 )
         return json.dumps(
-            {"found": True if full_truths or "[ARCHIVAL_EVIDENCE]" in final_text else (bool(combined_context)), "context": final_text, "sources": source_files}
+            {
+                "found": (
+                    True
+                    if full_truths or "[ARCHIVAL_EVIDENCE]" in final_text
+                    else (bool(combined_context))
+                ),
+                "context": final_text,
+                "sources": source_files,
+            }
         )
     except Exception as e:
-        return json.dumps({"found": False, "context": "", "reason": f"Search Error: {e}", "sources": []})
+        return json.dumps(
+            {
+                "found": False,
+                "context": "",
+                "reason": f"Search Error: {e}",
+                "sources": [],
+            }
+        )
 
 
 @mcp.tool()
@@ -1323,7 +1569,9 @@ async def get_lab_health() -> str:
     try:
         headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:8765/heartbeat", headers=headers, timeout=2.0) as r:
+            async with session.get(
+                "http://localhost:8765/heartbeat", headers=headers, timeout=2.0
+            ) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
@@ -1339,7 +1587,12 @@ async def lab_train_adapter(adapter_name: str, steps: int = 60) -> str:
         headers = {"X-Lab-Key": get_style_key()}
         async with aiohttp.ClientSession() as session:
             payload = {"adapter": adapter_name, "steps": steps}
-            async with session.post("http://localhost:8765/train", json=payload, headers=headers, timeout=3600) as r:
+            async with session.post(
+                "http://localhost:8765/train",
+                json=payload,
+                headers=headers,
+                timeout=3600,
+            ) as r:
                 if r.status == 200:
                     data = await r.json()
                     return json.dumps(data)
@@ -1373,15 +1626,18 @@ async def access_personal_history(topic_query: str = None) -> str:
     l_path = os.path.join(DATA_DIR, "learning_ledger.jsonl")
     if not os.path.exists(l_path):
         return "No personal history found."
-    
+
     try:
         history = []
         with open(l_path, "r") as f:
             for line in f:
                 event = json.loads(line)
-                if not topic_query or topic_query.lower() in event.get("topic", "").lower():
+                if (
+                    not topic_query
+                    or topic_query.lower() in event.get("topic", "").lower()
+                ):
                     history.append(event)
-        
+
         # Return last 5 events
         recent = history[-5:]
         return json.dumps(recent)
@@ -1401,28 +1657,28 @@ async def build_cv_summary() -> str:
                     "focal_points": [
                         "15+ years of experience in system-level post-silicon validation, firmware, and SoC debugging across server generations at Intel.",
                         "Owned development of the VISA signal-trace debug application within Intel's Platform Debug Toolkit, optimizing signal tracing and validation flows.",
-                        "Expertise in hardware protocols and system bring-up: PCIe, x86, ARM, memory controllers, and power management telemetry."
+                        "Expertise in hardware protocols and system bring-up: PCIe, x86, ARM, memory controllers, and power management telemetry.",
                     ]
                 },
                 "Platform Telemetry & Observability": {
                     "focal_points": [
                         "Led manageability validation and telemetry content, achieving 100% end-to-end automation using Python for IPMI, Redfish, PECI, and MCTP protocols.",
                         "Designed and maintained scalable Python-based automated testing frameworks supporting over 100+ telemetry and firmware tests.",
-                        "Developed automated pipelines to analyze system power and performance transient telemetry, surfacing critical validation metrics."
+                        "Developed automated pipelines to analyze system power and performance transient telemetry, surfacing critical validation metrics.",
                     ]
                 },
                 "Systems Software & Distributed AI Infrastructure": {
                     "focal_points": [
                         "Architected distributed AI environments integrating vLLM with PagedAttention and Liger fused CUDA kernels to maximize VRAM efficiency on Turing platforms.",
                         "Designed multi-tenant LLM residency pipelines utilizing Multi-LoRA adapters, NVIDIA MPS, and NeMo speech-to-text models on resource-constrained hardware.",
-                        "Engineered decoupled RAG pipelines with ChromaDB and reciprocal rank fusion (RRF) to enable high-fidelity context-aware co-pilot reasoning."
+                        "Engineered decoupled RAG pipelines with ChromaDB and reciprocal rank fusion (RRF) to enable high-fidelity context-aware co-pilot reasoning.",
                     ]
-                }
+                },
             },
-            "status": "FALLBACK_NOMINAL"
+            "status": "FALLBACK_NOMINAL",
         }
         return json.dumps(fallback_data)
-    
+
     try:
         with open(cvt_path, "r") as f:
             data = json.load(f)
@@ -1448,20 +1704,29 @@ async def query_vibe(query_text: str) -> str:
         q_vec = embed_texts([query_text])
         results = dna.query(query_embeddings=q_vec, n_results=1)
         if not results["ids"][0]:
-            return json.dumps({"adapter": "standard", "guidance": "Follow standard operating protocols."})
-        
+            return json.dumps(
+                {
+                    "adapter": "standard",
+                    "guidance": "Follow standard operating protocols.",
+                }
+            )
+
         metadata = results["metadatas"][0][0]
-        return json.dumps({
-            "adapter": metadata.get("adapter", "standard"),
-            "guidance": metadata.get("guidance", ""),
-            "vibe": metadata.get("vibe", "CLINICAL")
-        })
+        return json.dumps(
+            {
+                "adapter": metadata.get("adapter", "standard"),
+                "guidance": metadata.get("guidance", ""),
+                "vibe": metadata.get("vibe", "CLINICAL"),
+            }
+        )
     except Exception as e:
         return json.dumps({"error": str(e), "adapter": "standard"})
 
 
 @mcp.tool()
-async def retrospective_audit(interaction_log: str, domain: str, adapter: str, vibe: str) -> str:
+async def retrospective_audit(
+    interaction_log: str, domain: str, adapter: str, vibe: str
+) -> str:
     """
     [FEAT-183] CLaRa Retrospective: Strengthens the 'Tendons' by generating new Vibe anchors.
     interaction_log: The recent conversation turns.
@@ -1473,19 +1738,21 @@ async def retrospective_audit(interaction_log: str, domain: str, adapter: str, v
         # Use simple date-based ID
         anchor_id = f"retro_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
         doc_str = interaction_log[:500]
-        
+
         # We store the interaction summary as the anchor document
         # The Hub will use semantic similarity to find this retro-fit later
         dna.add(
             ids=[anchor_id],
             documents=[doc_str],
             embeddings=embed_texts([doc_str]),
-            metadatas=[{
-                "domain": domain,
-                "adapter": adapter,
-                "vibe": vibe,
-                "guidance": f"Observed success in {domain}. Replicate this {vibe} tone."
-            }]
+            metadatas=[
+                {
+                    "domain": domain,
+                    "adapter": adapter,
+                    "vibe": vibe,
+                    "guidance": f"Observed success in {domain}. Replicate this {vibe} tone.",
+                }
+            ],
         )
         return f"Retrospective anchor {anchor_id} committed to Behavioral DNA."
     except Exception as e:
@@ -1525,11 +1792,11 @@ async def read_chronological_excerpts(year: str, months: list[str] = None) -> st
                 if os.path.exists(m_path):
                     with open(m_path, "r") as f:
                         combined_logs.append(f.read())
-        
+
         if not combined_logs:
             return f"No chronological evidence found for {year} in months {months}."
-            
-        return "\n---\n".join(combined_logs)[:15000] # Cap to prevent context blow-out
+
+        return "\n---\n".join(combined_logs)[:15000]  # Cap to prevent context blow-out
     except Exception as e:
         return f"Excerpts retrieval failed: {e}"
 

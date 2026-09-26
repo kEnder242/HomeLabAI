@@ -1,8 +1,11 @@
 import asyncio
 import os
+
 import pytest
+
 # [FEAT-038] Nightly Recruiter
 import recruiter
+
 
 @pytest.mark.asyncio
 async def test_recruiter_brief_generation():
@@ -30,6 +33,7 @@ async def test_recruiter_brief_generation():
     # Cleanup
     os.remove(path)
     print("[PASS] Recruiter Brief Generation Verified.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_recruiter_brief_generation())

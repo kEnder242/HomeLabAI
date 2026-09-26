@@ -1,8 +1,9 @@
-import time
 import os
 import sys
+import time
 
 LOG_FILE = os.path.expanduser("~/VoiceGateway/logs/pinky.log")
+
 
 def monitor():
     print(f"Watching {LOG_FILE} for activity... (Ctrl+C to stop)")
@@ -32,6 +33,6 @@ def monitor():
     except KeyboardInterrupt:
         print("Stopped.")
 
+
 if __name__ == "__main__":
     monitor()
-

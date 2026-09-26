@@ -1,23 +1,29 @@
-import time
-import requests
-import subprocess
 import os
+import subprocess
 import sys
+import time
+
+import requests
 
 LOG_FILE = "/home/jallred/Dev_Lab/HomeLabAI/logs/native_canary_550.log"
 API_URL = "http://localhost:8088/v1/models"
 
+
 def get_vram():
     try:
-        out = subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'])
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"]
+        )
         return int(out.decode().strip())
     except Exception:
         return 0
+
 
 def get_log_size():
     if os.path.exists(LOG_FILE):
         return os.path.getsize(LOG_FILE)
     return 0
+
 
 print("--- 🕵️ LONG-BURN HANDSHAKE MONITOR ---")
 print(f"Targeting: {API_URL}")
@@ -32,7 +38,7 @@ for i in range(1, 21):
     current_vram = get_vram()
     vram_delta = current_vram - start_vram
     log_size = get_log_size()
-    
+
     # Try API
     status = "OFFLINE"
     try:
@@ -43,8 +49,10 @@ for i in range(1, 21):
             sys.exit(0)
     except Exception:
         pass
-    
-    print(f"[CYCLE {i}] Time: {int(time.time() - start_time)}s | VRAM: {current_vram}MiB (Delta: {vram_delta}MiB) | Log: {log_size} bytes | API: {status}")
+
+    print(
+        f"[CYCLE {i}] Time: {int(time.time() - start_time)}s | VRAM: {current_vram}MiB (Delta: {vram_delta}MiB) | Log: {log_size} bytes | API: {status}"
+    )
 
 print("\n‼️  LONG-BURN TIMEOUT: No response from API after 10 minutes.")
 if vram_delta == 0:

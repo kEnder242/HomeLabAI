@@ -1,8 +1,8 @@
-import os
 import json
-import time
-import sys
 import logging
+import os
+import sys
+import time
 
 # Setup paths for internal imports
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +14,7 @@ from infra.atomic_io import atomic_write_json
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 PAGER_FILE = os.path.join(WORKSPACE_DIR, "field_notes/data/pager_activity.json")
 
+
 def trigger_pager(message, severity="INFO", source="System"):
     """
     [BKM-014] Neural Pager Bridge.
@@ -24,38 +25,54 @@ def trigger_pager(message, severity="INFO", source="System"):
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "severity": severity.upper(),
             "source": source,
-            "message": message
+            "message": message,
         }
-        
+
         data = []
         if os.path.exists(PAGER_FILE):
             try:
-                with open(PAGER_FILE, 'r') as f:
+                with open(PAGER_FILE, "r") as f:
                     data = json.load(f)
-            except: 
+            except:
                 # Handle corrupted JSON
                 data = []
-            
+
         # De-duplicate: Don't log the exact same message from the same source twice in a row
-        if data and data[0].get("message") == message and data[0].get("source") == source:
+        if (
+            data
+            and data[0].get("message") == message
+            and data[0].get("source") == source
+        ):
             return
 
         data.insert(0, entry)
         # Keep last 2000 for the interleaved dashboard
         data = data[:2000]
-        
+
         atomic_write_json(PAGER_FILE, data)
-        
+
         # Optional: Trigger external PagerDuty if critical
         if severity.upper() == "CRITICAL":
             try:
                 GATEKEEPER = os.path.join(WORKSPACE_DIR, "monitor/notify_gatekeeper.py")
                 import subprocess
-                subprocess.Popen([sys.executable, GATEKEEPER, message, "--severity", "critical", "--emergency"])
-            except: pass
-            
+
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        GATEKEEPER,
+                        message,
+                        "--severity",
+                        "critical",
+                        "--emergency",
+                    ]
+                )
+            except:
+                pass
+
     except Exception as e:
         logging.error(f"[PAGER] Relay failed: {e}")
+
 
 if __name__ == "__main__":
     # CLI mode for testing

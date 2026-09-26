@@ -48,14 +48,13 @@ NODES = {
 
 TCP_TIMEOUT = 3.0
 CHAT_TIMEOUT = 120
-SAMPLE_PROMPT = (
-    "Evaluate RAPL telemetry for Optane AEP under 100W PL1 power limit."
-)
+SAMPLE_PROMPT = "Evaluate RAPL telemetry for Optane AEP under 100W PL1 power limit."
 
 LOG_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "logs",
 )
+
 
 # ---------------------------------------------------------------------------
 # Module-level probe functions
@@ -65,7 +64,7 @@ def _probe_tcp(host: str, port: int, timeout: float = TCP_TIMEOUT) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -89,6 +88,7 @@ BRAIN_UP = _probe_brain()
 KENDER_UP = _probe_kender()
 M5_AIR_UP = _probe_m5_air()
 ANY_NODE_UP = BRAIN_UP or KENDER_UP or M5_AIR_UP
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -167,14 +167,10 @@ def _evaluate_on_node(node_name: str) -> str | None:
     node = NODES[node_name]
     try:
         if node["protocol"] == "openai":
-            body = _openai_chat_completion(
-                node["base"], node["model"], SAMPLE_PROMPT
-            )
+            body = _openai_chat_completion(node["base"], node["model"], SAMPLE_PROMPT)
             return body["choices"][0]["message"]["content"]
         elif node["protocol"] == "ollama":
-            body = _ollama_chat_completion(
-                node["base"], node["model"], SAMPLE_PROMPT
-            )
+            body = _ollama_chat_completion(node["base"], node["model"], SAMPLE_PROMPT)
             return body["message"]["content"]
     except (urllib.error.URLError, OSError, Exception):
         return None
@@ -192,10 +188,12 @@ def test_tri_node_inventory():
     print(f"\n  Tri-Node Inventory ({len(ledger)} nodes):")
     for entry in ledger:
         status_mark = "✓" if entry["status"] == "ONLINE" else "✗"
-        print(f"    [{status_mark}] {entry['node']:8s}  {entry['host']:15s}:{entry['port']:<5d}  {entry['status']}")
-    assert ANY_NODE_UP, (
-        f"No compute nodes reachable. Ledger: {json.dumps(ledger, indent=2)}"
-    )
+        print(
+            f"    [{status_mark}] {entry['node']:8s}  {entry['host']:15s}:{entry['port']:<5d}  {entry['status']}"
+        )
+    assert (
+        ANY_NODE_UP
+    ), f"No compute nodes reachable. Ledger: {json.dumps(ledger, indent=2)}"
 
 
 def test_tri_node_evaluation_fallback():
@@ -205,9 +203,15 @@ def test_tri_node_evaluation_fallback():
     without crashing or returning stub errors ('OFFLINE_STUB', 'VERIFIED_PASS').
     """
     stub_phrases = ["OFFLINE_STUB", "VERIFIED_PASS", "Fallback evaluation"]
-    online_nodes = [n for n, flag in
-                    [("brain", BRAIN_UP), ("kender", KENDER_UP), ("m5_air", M5_AIR_UP)]
-                    if flag]
+    online_nodes = [
+        n
+        for n, flag in [
+            ("brain", BRAIN_UP),
+            ("kender", KENDER_UP),
+            ("m5_air", M5_AIR_UP),
+        ]
+        if flag
+    ]
 
     if not online_nodes:
         pytest.fail("No nodes are online — cannot run evaluation test.")
@@ -218,20 +222,24 @@ def test_tri_node_evaluation_fallback():
         if content is None:
             print(f"\n  [{node_name}] Node unreachable or request failed — skipping")
             continue
-        assert len(content) > 20, (
-            f"{node_name}: response too short ({len(content)} chars): {content[:80]}"
-        )
+        assert (
+            len(content) > 20
+        ), f"{node_name}: response too short ({len(content)} chars): {content[:80]}"
         for phrase in stub_phrases:
-            assert phrase not in content, (
-                f"{node_name}: response contains known stub phrase: '{phrase}'"
-            )
+            assert (
+                phrase not in content
+            ), f"{node_name}: response contains known stub phrase: '{phrase}'"
         print(f"\n  [{node_name}] Response length: {len(content)} chars")
         print(f"  [{node_name}] Preview: {content[:120]}...")
-        results.append({"node": node_name, "response_length": len(content), "preview": content[:120]})
+        results.append(
+            {
+                "node": node_name,
+                "response_length": len(content),
+                "preview": content[:120],
+            }
+        )
 
-    assert len(results) > 0, (
-        "No online node produced a valid non-stub evaluation."
-    )
+    assert len(results) > 0, "No online node produced a valid non-stub evaluation."
 
     # Write evaluation event log entry
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -279,9 +287,7 @@ def test_tri_node_logging():
                 found = True
                 break
 
-    assert found, (
-        f"No log entry referencing any compute node found in {newest}"
-    )
+    assert found, f"No log entry referencing any compute node found in {newest}"
     print(f"\n  Log evidence: {newest}")
 
 

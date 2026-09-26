@@ -1,24 +1,29 @@
 import asyncio
-import requests
-import time
 import hashlib
+import time
+
+import requests
 
 ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://localhost:8765"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
 
+
 def get_key():
     with open(STYLE_CSS, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
+
 async def test_persistence():
     print("💎 INITIATING LOBBY PERSISTENCE CERTIFICATION")
     key = get_key()
-    
+
     # 1. Trigger H2 Recovery Scythe (The New Fix)
     print("[*] Triggering H2 Silicon Scythe with RECOVER=TRUE...")
     try:
-        url = f"{ATTENDANT_URL}/hibernate?level=2&recover=true&key={key}&reason=TEST_CERT"
+        url = (
+            f"{ATTENDANT_URL}/hibernate?level=2&recover=true&key={key}&reason=TEST_CERT"
+        )
         r = requests.post(url, timeout=10)
         print(f"    [+] Attendant accepted: {r.json()}")
     except Exception as e:
@@ -45,16 +50,19 @@ async def test_persistence():
         try:
             r = requests.get(f"{HUB_URL}/heartbeat", timeout=2)
             data = r.json()
-            if data.get('state') == 'operational' or data.get('operational'):
-                print(f"    [🏆] CERTIFIED: Lab re-ignited in {int(time.time() - start_t)}s.")
+            if data.get("state") == "operational" or data.get("operational"):
+                print(
+                    f"    [🏆] CERTIFIED: Lab re-ignited in {int(time.time() - start_t)}s."
+                )
                 return True
             print(f"    ... State: {data.get('state')} (Waiting)")
         except Exception:
             pass
         time.sleep(10)
-    
+
     print("    [!] TIMEOUT: Hub stayed in lobby mode.")
     return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(test_persistence())

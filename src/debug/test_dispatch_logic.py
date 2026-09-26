@@ -1,17 +1,19 @@
 import json
 import re
 
+
 # Mock broadcast for testing
 async def mock_broadcast(msg):
     # print(f"[MOCK_BROADCAST] {msg}")
     pass
+
 
 class DispatchTester:
     def __init__(self):
         # Minimized mock logic for the test
         pass
 
-# [FEAT-371] Robust Token Extraction (Multi-Source)
+    # [FEAT-371] Robust Token Extraction (Multi-Source)
     def execute_dispatch_actual(self, raw_text, source):
         """Production Logic (Extracted from cognitive_hub.py)."""
         if "Brain" in source:
@@ -37,7 +39,7 @@ class DispatchTester:
 
             if tool:
                 return {"type": "tool", "tool": tool, "params": params}
-            
+
             # Special case for reply_to_user
             if isinstance(data, dict) and "reply_to_user" in data:
                 return {"type": "text", "content": data["reply_to_user"]}
@@ -46,20 +48,22 @@ class DispatchTester:
         except Exception:
             return {"type": "text", "content": raw_text}
 
+
 # --- TEST SUITE ---
 def test():
     tester = DispatchTester()
     cases = [
         ("Brain", "Narf! The root cause is a race condition.", "text"),
-        ("Brain", "*Narf!* { \"tool\": \"ask_brain\", \"parameters\": \"pi\" }", "tool"),
+        ("Brain", '*Narf!* { "tool": "ask_brain", "parameters": "pi" }', "tool"),
         ("Pinky", "Poit! I'm checking sensors.", "text"),
-        ("Brain", "{ \"reply_to_user\": \"Direct answer.\" }", "text"),
+        ("Brain", '{ "reply_to_user": "Direct answer." }', "text"),
     ]
 
     for source, input_txt, expected in cases:
         res = tester.execute_dispatch_actual(input_txt, source)
         print(f"[{source}] Input: {input_txt[:25]}... -> Result: {res['type']}")
-        assert res['type'] == expected
+        assert res["type"] == expected
+
 
 if __name__ == "__main__":
     test()

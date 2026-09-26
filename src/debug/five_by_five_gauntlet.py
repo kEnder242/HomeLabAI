@@ -1,8 +1,9 @@
 import asyncio
 import os
-import time
-import requests
 import sys
+import time
+
+import requests
 from playwright.async_api import async_playwright
 
 # [FEAT-318] Hardened 5x5 Infrastructure
@@ -14,23 +15,30 @@ STYLE_CSS = f"{PORTFOLIO_DIR}/field_notes/style.css"
 
 FAST_MODE = "--fast" in sys.argv or os.environ.get("FAST") == "1"
 
+
 def get_key():
     import hashlib
+
     if os.path.exists(STYLE_CSS):
         with open(STYLE_CSS, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()[:8]
     return "92e785ba"
 
+
 LAB_KEY = get_key()
+
 
 async def get_lab_status():
     try:
-        r = requests.get(f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": LAB_KEY}, timeout=2)
+        r = requests.get(
+            f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": LAB_KEY}, timeout=2
+        )
         if r.status_code == 200:
             return r.json()
     except Exception:
         pass
     return None
+
 
 async def wait_for_quiescence():
     print("[*] Stability Gate: Waiting for silicon quiescence...")
@@ -46,8 +54,11 @@ async def wait_for_quiescence():
             print("[!] Warning: Attendant unreachable. Retrying...")
         await asyncio.sleep(5)
 
+
 async def wait_for_engine_ready():
-    print("[*] Pre-Flight: Waiting for vLLM engine to become physically vocal (Max 600s)...")
+    print(
+        "[*] Pre-Flight: Waiting for vLLM engine to become physically vocal (Max 600s)..."
+    )
     start_t = time.time()
     while time.time() - start_t < 600:
         try:
@@ -61,9 +72,10 @@ async def wait_for_engine_ready():
         await asyncio.sleep(5)
     return False
 
+
 async def run_single_check(iteration=1):
     print(f"\n[================ FIVE-BY-FIVE: CHECK {iteration} ================]")
-    
+
     # 0. Pre-Flight Check
     if not await wait_for_engine_ready():
         print("[!] FATAL: Engine never reached vocal state.")
@@ -72,7 +84,11 @@ async def run_single_check(iteration=1):
     # 1. Force Hibernate
     print("[*] Forcing Lab into HIBERNATION...")
     try:
-        r = requests.post(f"{ATTENDANT_URL}/hibernate", headers={"X-Lab-Key": LAB_KEY}, json={"reason": "5x5_STRESS_TEST"})
+        r = requests.post(
+            f"{ATTENDANT_URL}/hibernate",
+            headers={"X-Lab-Key": LAB_KEY},
+            json={"reason": "5x5_STRESS_TEST"},
+        )
         print(f"[*] Hibernate Request: {r.json().get('message')}")
         # Wait for VRAM to clear
         await asyncio.sleep(10)
@@ -89,13 +105,13 @@ async def run_single_check(iteration=1):
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
-        
+
         # Task 20.2: Log Queue Implementation
         log_queue = asyncio.Queue()
         page.on("console", lambda msg: log_queue.put_nowait(msg.text))
-        
+
         await page.goto(STATUS_URL)
-        await asyncio.sleep(5) # Let JS connect
+        await asyncio.sleep(5)  # Let JS connect
 
         # 4. Trigger Wake from UI
         print("[*] Triggering WAKE intent via UI...")
@@ -105,72 +121,83 @@ async def run_single_check(iteration=1):
         # 5. Task 20.3: Progress-Aware Monitoring
         print("[*] Monitoring Intercom for Activity (Dynamic Timeout)...")
         start_t = time.time()
-        timeout_limit = 120 # Base 2 minute window
+        timeout_limit = 120  # Base 2 minute window
         success = False
         vllm_seen = False
         disconnects = 0
-        
+
         while time.time() - start_t < timeout_limit:
             try:
                 # Non-blocking pull from queue
                 log = await asyncio.wait_for(log_queue.get(), timeout=1.0)
-                
+
                 if "Disconnected" in log or "failed" in log.lower():
                     disconnects += 1
-                
+
                 if "[vLLM]" in log or "Application startup complete" in log:
                     if not vllm_seen:
-                        print("    [PROGRESS] vLLM Log Stream Detected. Extending timeout...")
+                        print(
+                            "    [PROGRESS] vLLM Log Stream Detected. Extending timeout..."
+                        )
                         vllm_seen = True
-                        timeout_limit += 30 # Extension for slow silicon
+                        timeout_limit += 30  # Extension for slow silicon
                     print(f"    [UI LOG] {log}")
-                
-                if "Strategic Architect: PRIMARY" in log or "Mind is OPERATIONAL" in log:
+
+                if (
+                    "Strategic Architect: PRIMARY" in log
+                    or "Mind is OPERATIONAL" in log
+                ):
                     print(f"    [UI LOG] {log}")
                     if vllm_seen:
                         success = True
                         break
             except asyncio.TimeoutError:
-                continue # No log line this second
-            
+                continue  # No log line this second
+
         await browser.close()
-        
-        if disconnects > 3: # Relaxed slightly for mobile/proxy latency
+
+        if disconnects > 3:  # Relaxed slightly for mobile/proxy latency
             print(f"[!] FAILURE: Flapping detected ({disconnects} disconnects).")
             return False
-            
+
         if not vllm_seen:
             print("[!] FAILURE: Hub survived, but vLLM logs never reached the UI.")
             return False
-            
+
         if not success:
             print("[!] FAILURE: Lab never reached OPERATIONAL state.")
             return False
-            
-        print(f"[+] WIN {iteration}: Lobby persistent, Logs visible, State OPERATIONAL.")
+
+        print(
+            f"[+] WIN {iteration}: Lobby persistent, Logs visible, State OPERATIONAL."
+        )
         return True
+
 
 async def main():
     print("--- 🏁 Five-By-Five Stability Gauntlet Starting ---")
     wins = 0
-    intervals = [300, 600, 900, 1200, 1500] # 5, 10, 15, 20, 25 mins
-    
+    intervals = [300, 600, 900, 1200, 1500]  # 5, 10, 15, 20, 25 mins
+
     for i in range(5):
         it = i + 1
         passed = await run_single_check(it)
-        
+
         if passed:
             wins += 1
             if wins == 5:
                 print("\n[🏆] GAUNTLET COMPLETE: 5/5 SUCCESS.")
                 sys.exit(0)
-            
+
             wait_time = intervals[i]
-            print(f"\n[WAIT] Pass {it} successful. Waiting {wait_time}s before next cycle...")
+            print(
+                f"\n[WAIT] Pass {it} successful. Waiting {wait_time}s before next cycle..."
+            )
             await asyncio.sleep(wait_time)
         else:
             print(f"\n[!] GAUNTLET FAILED at cycle {it}. Terminating.")
             sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

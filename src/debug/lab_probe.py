@@ -1,7 +1,9 @@
-import requests
 import time
 
+import requests
+
 URL = "http://localhost:8765"
+
 
 def check_lab():
     print("--- 🔬 Python Lab Probe ---")
@@ -24,12 +26,13 @@ def check_lab():
                 print("✅ Lab is READY.")
                 return True
             time.sleep(5)
-        
+
         print("❌ Lab timed out.")
         return False
     except Exception as e:
         print(f"❌ Probe Failed: {e}")
         return False
+
 
 if __name__ == "__main__":
     check_lab()

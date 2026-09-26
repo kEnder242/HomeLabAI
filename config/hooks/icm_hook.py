@@ -1,18 +1,20 @@
 #!/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3
-import sys
 import json
 import os
 import re
-import subprocess
 import socket
+import subprocess
+import sys
+
 
 def probe_socket(host: str, port: int, timeout: float = 0.15) -> bool:
     """[FEAT-486] 150ms non-blocking TCP socket check."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
+
 
 def get_chroma_client():
     """[LAB-021] Resolves local or Tailscale ChromaDB HttpClient with fast-bypass."""
@@ -36,22 +38,45 @@ def get_chroma_client():
                 continue
     return None
 
+
 SHALLOW_PROMPTS = {
-    "hi", "hello", "hey", "yes", "no", "y", "n", "ok", "okay", "sure", "thanks", "thank you",
-    "proceed", "continue", "go ahead", "run it", "do it", "looks good", "status"
+    "hi",
+    "hello",
+    "hey",
+    "yes",
+    "no",
+    "y",
+    "n",
+    "ok",
+    "okay",
+    "sure",
+    "thanks",
+    "thank you",
+    "proceed",
+    "continue",
+    "go ahead",
+    "run it",
+    "do it",
+    "looks good",
+    "status",
 }
 
 _fastembed_model = None
+
 
 def get_fastembed():
     global _fastembed_model
     if _fastembed_model is None:
         try:
             from fastembed import TextEmbedding
-            _fastembed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+            _fastembed_model = TextEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
         except Exception:
             _fastembed_model = False
     return _fastembed_model if _fastembed_model is not False else None
+
 
 def clean_prompt(text: str) -> str:
     cleaned = re.sub(r"<SYSTEM_MESSAGE>.*?</SYSTEM_MESSAGE>", "", text, flags=re.DOTALL)
@@ -59,16 +84,18 @@ def clean_prompt(text: str) -> str:
     cleaned = re.sub(r"^\[Message\].*?content=", "", cleaned)
     return cleaned.strip()
 
+
 # Universal pattern for flexible list segmentation (1), 1., [1], (1), a), bullets)
 LIST_PATTERN = re.compile(
-    r'(?:^|\n|\s+)'
-    r'(?:'
-        r'(\d+)[\)\.]|'
-        r'\[(\d+)\]|'
-        r'\((\d+)\)|'
-        r'(?<![a-zA-Z0-9])([a-zA-Z])[\)\.]'
-    r')\s+'
+    r"(?:^|\n|\s+)"
+    r"(?:"
+    r"(\d+)[\)\.]|"
+    r"\[(\d+)\]|"
+    r"\((\d+)\)|"
+    r"(?<![a-zA-Z0-9])([a-zA-Z])[\)\.]"
+    r")\s+"
 )
+
 
 def extract_prompt_segments(cleaned: str) -> list[dict]:
     """Segment compound prompts (e.g. 1) 2) 3), bullets, or lettered items)."""
@@ -77,22 +104,32 @@ def extract_prompt_segments(cleaned: str) -> list[dict]:
 
     matches = list(LIST_PATTERN.finditer(cleaned))
     if len(matches) < 2:
-        bullet_matches = list(re.finditer(r'(?:^|\n)\s*[-*]\s+', cleaned))
+        bullet_matches = list(re.finditer(r"(?:^|\n)\s*[-*]\s+", cleaned))
         if len(bullet_matches) >= 2:
             segments = []
             for i, bm in enumerate(bullet_matches):
                 start = bm.end()
-                end = bullet_matches[i + 1].start() if i + 1 < len(bullet_matches) else len(cleaned)
+                end = (
+                    bullet_matches[i + 1].start()
+                    if i + 1 < len(bullet_matches)
+                    else len(cleaned)
+                )
                 seg_text = cleaned[start:end].strip()
                 if seg_text:
-                    segments.append({'id': f'bullet_{i+1}', 'label': f'Bullet {i+1}', 'text': seg_text})
+                    segments.append(
+                        {
+                            "id": f"bullet_{i+1}",
+                            "label": f"Bullet {i+1}",
+                            "text": seg_text,
+                        }
+                    )
             return segments
-        return [{'id': '1', 'label': 'Query', 'text': cleaned}]
+        return [{"id": "1", "label": "Query", "text": cleaned}]
 
     segments = []
-    preamble = cleaned[:matches[0].start()].strip()
+    preamble = cleaned[: matches[0].start()].strip()
     if preamble and len(preamble.split()) >= 3:
-        segments.append({'id': '0', 'label': 'Context', 'text': preamble})
+        segments.append({"id": "0", "label": "Context", "text": preamble})
 
     for i, m in enumerate(matches):
         marker_id = m.group(1) or m.group(2) or m.group(3) or m.group(4) or str(i + 1)
@@ -100,9 +137,12 @@ def extract_prompt_segments(cleaned: str) -> list[dict]:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(cleaned)
         seg_text = cleaned[start:end].strip()
         if seg_text:
-            segments.append({'id': marker_id, 'label': f'Item {marker_id}', 'text': seg_text})
+            segments.append(
+                {"id": marker_id, "label": f"Item {marker_id}", "text": seg_text}
+            )
 
-    return segments if segments else [{'id': '1', 'label': 'Query', 'text': cleaned}]
+    return segments if segments else [{"id": "1", "label": "Query", "text": cleaned}]
+
 
 def extract_literal_ids(text: str) -> list[str]:
     """Fail-safe: Extract exact IDs via pure regex without database or network dependency."""
@@ -125,6 +165,7 @@ def extract_literal_ids(text: str) -> list[str]:
         results.append(f"- [{s.upper()}] (Literal Sprint Anchor)")
     return results
 
+
 def get_recent_memories(limit=4):
     """Retrieve the newest N memories sorted chronologically by creation date."""
     try:
@@ -132,11 +173,11 @@ def get_recent_memories(limit=4):
             ["icm", "list", "-a", "-s", "created"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if res.returncode != 0 or not res.stdout.strip():
             return []
-            
+
         blocks = res.stdout.split("--- ")
         recent = []
         for b in blocks:
@@ -162,7 +203,16 @@ def get_recent_memories(limit=4):
     except Exception:
         return []
 
-def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit: int = 4, seen_ids: set = None, hook_errors: list = None):
+
+def probe_claradb(
+    text: str,
+    client=None,
+    model=None,
+    is_qq: bool = False,
+    limit: int = 4,
+    seen_ids: set = None,
+    hook_errors: list = None,
+):
     """Extract exact IDs and perform Dynamic Distance Banding against ClaraDB Chroma."""
     results = []
     if seen_ids is None:
@@ -177,8 +227,12 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
         if client is None:
             client = get_chroma_client()
         if not client:
-            if hook_errors is not None and not any("ChromaDB unreachable" in e for e in hook_errors):
-                hook_errors.append("ChromaDB unreachable on port 8001 (using literal regex fallback)")
+            if hook_errors is not None and not any(
+                "ChromaDB unreachable" in e for e in hook_errors
+            ):
+                hook_errors.append(
+                    "ChromaDB unreachable on port 8001 (using literal regex fallback)"
+                )
             # Fall back to pure literal extraction
             for b in bkms:
                 b_up = b.upper()
@@ -216,7 +270,9 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
                     seen_ids.add(f_up)
                     meta = r["metadatas"][0]
                     status = meta.get("status", "ACTIVE")
-                    results.append(f"- [{f_up}] {meta.get('name', 'Feature')} ({status})")
+                    results.append(
+                        f"- [{f_up}] {meta.get('name', 'Feature')} ({status})"
+                    )
 
         if labs:
             col_bkm = client.get_collection("behavioral_dna")
@@ -237,7 +293,9 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
         if model is None:
             model = get_fastembed()
         words = set(re.findall(r"\w+", text.lower()))
-        significant_words = {w for w in words if len(w) > 2 and w not in SHALLOW_PROMPTS}
+        significant_words = {
+            w for w in words if len(w) > 2 and w not in SHALLOW_PROMPTS
+        }
 
         if model and len(significant_words) >= 1 and len(results) < limit:
             emb = list(model.embed([text[:200]]))[0].tolist()
@@ -258,7 +316,11 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
                     if fid in seen_ids:
                         continue
                     has_kw = any(w in name.lower() for w in significant_words)
-                    is_in_band = (dist <= 0.55) or (dist <= min_feat_dist + 0.10 and dist < 0.62) or (has_kw and dist <= 0.60)
+                    is_in_band = (
+                        (dist <= 0.55)
+                        or (dist <= min_feat_dist + 0.10 and dist < 0.62)
+                        or (has_kw and dist <= 0.60)
+                    )
                     if is_qq:
                         is_in_band = is_in_band or (dist <= 0.60)
                     if is_in_band:
@@ -268,7 +330,9 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
             # Query candidate pool from behavioral_dna
             if len(results) < limit:
                 col_bkm = client.get_collection("behavioral_dna")
-                r_bkm = col_bkm.query(query_embeddings=[emb], n_results=min(limit + 1, 4))
+                r_bkm = col_bkm.query(
+                    query_embeddings=[emb], n_results=min(limit + 1, 4)
+                )
                 bkm_dists = r_bkm.get("distances", [[]])[0]
                 if bkm_dists:
                     min_bkm_dist = min(bkm_dists)
@@ -281,7 +345,11 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
                         if bkm_id and bkm_id in seen_ids:
                             continue
                         has_kw = any(w in name.lower() for w in significant_words)
-                        is_in_band = (dist <= 0.55) or (dist <= min_bkm_dist + 0.10 and dist < 0.62) or (has_kw and dist <= 0.60)
+                        is_in_band = (
+                            (dist <= 0.55)
+                            or (dist <= min_bkm_dist + 0.10 and dist < 0.62)
+                            or (has_kw and dist <= 0.60)
+                        )
                         if is_qq:
                             is_in_band = is_in_band or (dist <= 0.60)
                         if is_in_band:
@@ -292,8 +360,19 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
                                 results.append(f"- {name}")
 
             # Query candidate pool from philosophy_dna if prompt targets wisdom/philosophy
-            phl_triggers = {"philosophy", "wisdom", "origin", "synthesis", "gem", "pearl", "vector"}
-            if (any(t in words for t in phl_triggers) or bool(re.search(r"\b(WIS-\d+|PHL-\d+)\b", text, re.IGNORECASE))) and len(results) < limit:
+            phl_triggers = {
+                "philosophy",
+                "wisdom",
+                "origin",
+                "synthesis",
+                "gem",
+                "pearl",
+                "vector",
+            }
+            if (
+                any(t in words for t in phl_triggers)
+                or bool(re.search(r"\b(WIS-\d+|PHL-\d+)\b", text, re.IGNORECASE))
+            ) and len(results) < limit:
                 try:
                     col_phl = client.get_collection("philosophy_dna")
                     r_phl = col_phl.query(query_embeddings=[emb], n_results=2)
@@ -325,18 +404,27 @@ def probe_claradb(text: str, client=None, model=None, is_qq: bool = False, limit
 
     return results
 
+
 # [FEAT-557] Targeted sprint_dna ambient gate
 _SPRINT_KEYWORD_RE = re.compile(
     r"\b(?:SPR(?:INT)?[-_ ]?\d+|Story\s+\d+\.\d+|sprint_dna)\b|\bsprint\b|\bplan\b|\bretro\b",
     re.IGNORECASE,
 )
 
+
 def is_sprint_query(text: str) -> bool:
     if not text:
         return False
     return bool(_SPRINT_KEYWORD_RE.search(text))
 
-def probe_sprint_dna(text: str, client=None, limit: int = 2, seen_ids: set = None, hook_errors: list = None):
+
+def probe_sprint_dna(
+    text: str,
+    client=None,
+    limit: int = 2,
+    seen_ids: set = None,
+    hook_errors: list = None,
+):
     """Query sprint_dna collection with fail-open safety."""
     if not is_sprint_query(text):
         return []
@@ -369,9 +457,14 @@ def probe_sprint_dna(text: str, client=None, limit: int = 2, seen_ids: set = Non
         snippet = ""
         if i < len(docs) and docs[i]:
             snippet = next(
-                (ln.strip() for ln in docs[i].splitlines()
-                 if ln.strip() and not ln.startswith("STORY") and not ln.startswith("SPRINT")),
-                ""
+                (
+                    ln.strip()
+                    for ln in docs[i].splitlines()
+                    if ln.strip()
+                    and not ln.startswith("STORY")
+                    and not ln.startswith("SPRINT")
+                ),
+                "",
             )
             snippet = snippet[:60]
         line = f"- [sprint_dna:{sprint_id}] L{level} {kind} (w={weight:.2f})"
@@ -383,7 +476,14 @@ def probe_sprint_dna(text: str, client=None, limit: int = 2, seen_ids: set = Non
             break
     return results
 
-def probe_icm(text: str, project: str, is_qq: bool = False, limit: int = 2, hook_errors: list = None):
+
+def probe_icm(
+    text: str,
+    project: str,
+    is_qq: bool = False,
+    limit: int = 2,
+    hook_errors: list = None,
+):
     """Recall from ICM with error catching."""
     words = text.lower().split()
     if len(words) < 2 or text.lower() in SHALLOW_PROMPTS:
@@ -392,10 +492,20 @@ def probe_icm(text: str, project: str, is_qq: bool = False, limit: int = 2, hook
     score_threshold = 0.40 if is_qq else 0.45
     try:
         res = subprocess.run(
-            ["icm", "recall", text[:200], "-f", "json", "-l", str(limit), "-p", project],
+            [
+                "icm",
+                "recall",
+                text[:200],
+                "-f",
+                "json",
+                "-l",
+                str(limit),
+                "-p",
+                project,
+            ],
             capture_output=True,
             text=True,
-            timeout=4
+            timeout=4,
         )
         if res.returncode == 0 and res.stdout.strip():
             memories = json.loads(res.stdout)
@@ -408,12 +518,15 @@ def probe_icm(text: str, project: str, is_qq: bool = False, limit: int = 2, hook
             hook_errors.append(f"icm recall failed: {e}")
     return []
 
+
 def main():
     hook_errors = []
     try:
         payload = json.load(sys.stdin)
     except Exception as e:
-        sys.stderr.write(f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Invalid hook payload on stdin: {e} (hook needs fix)\n")
+        sys.stderr.write(
+            f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Invalid hook payload on stdin: {e} (hook needs fix)\n"
+        )
         print(json.dumps({"injectSteps": []}))
         return
 
@@ -422,9 +535,28 @@ def main():
     # MUST NOT receive ambient wake-up packs, recent memories, or ClaraDB/ICM injections.
     agent_name = (payload.get("agent") or payload.get("agentName") or "").lower()
     session_title = (payload.get("sessionTitle") or payload.get("title") or "").lower()
-    user_input_raw = (payload.get("userMessage") or payload.get("prompt") or payload.get("last_user_message") or "")
-    if ("junior" in agent_name or "junior" in session_title or "air" in agent_name or
-            any(marker in user_input_raw for marker in ["[STORY DELEGATION TARGET", "[TASK:", "[ORCHESTRATION INSTRUCTIONS", "[SPOON-FED TASK", "[MOMUS:", "[LIBRARIAN:"])):
+    user_input_raw = (
+        payload.get("userMessage")
+        or payload.get("prompt")
+        or payload.get("last_user_message")
+        or ""
+    )
+    if (
+        "junior" in agent_name
+        or "junior" in session_title
+        or "air" in agent_name
+        or any(
+            marker in user_input_raw
+            for marker in [
+                "[STORY DELEGATION TARGET",
+                "[TASK:",
+                "[ORCHESTRATION INSTRUCTIONS",
+                "[SPOON-FED TASK",
+                "[MOMUS:",
+                "[LIBRARIAN:",
+            ]
+        )
+    ):
         print(json.dumps({"injectSteps": []}))
         return
 
@@ -440,10 +572,12 @@ def main():
                 ["icm", "wake-up", "-t", "200", "-p", project],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             if res.returncode == 0 and res.stdout.strip():
-                clean_lines = [l for l in res.stdout.strip().split("\n") if "[REMOVED]" not in l]
+                clean_lines = [
+                    l for l in res.stdout.strip().split("\n") if "[REMOVED]" not in l
+                ]
                 session_start_lines.append("\n".join(clean_lines))
             elif res.returncode != 0:
                 hook_errors.append(f"icm wake-up returned code {res.returncode}")
@@ -453,21 +587,34 @@ def main():
         # Recency Flush: Top 4 recent memories
         recent_mems = get_recent_memories(limit=4)
         if recent_mems:
-            session_start_lines.append("\n## Recently Learned & Latest Sprint Decisions (Last Session)")
+            session_start_lines.append(
+                "\n## Recently Learned & Latest Sprint Decisions (Last Session)"
+            )
             for m in recent_mems:
-                session_start_lines.append(f"- [{m['created']}] ({m['topic']}) {m['summary']}")
+                session_start_lines.append(
+                    f"- [{m['created']}] ({m['topic']}) {m['summary']}"
+                )
 
         if hook_errors:
             err_msg = "; ".join(hook_errors[:3])
-            sys.stderr.write(f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Session wake-up degraded: {err_msg} (hook needs fix)\n")
-            session_start_lines.insert(0, f"[⚠️ AMBIENT HOOK WARNING: Session wake-up degraded — {err_msg} — hook needs to be fixed!]")
+            sys.stderr.write(
+                f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Session wake-up degraded: {err_msg} (hook needs fix)\n"
+            )
+            session_start_lines.insert(
+                0,
+                f"[⚠️ AMBIENT HOOK WARNING: Session wake-up degraded — {err_msg} — hook needs to be fixed!]",
+            )
 
         if session_start_lines:
-            print(json.dumps({
-                "injectSteps": [{
-                    "ephemeralMessage": "\n".join(session_start_lines)
-                }]
-            }))
+            print(
+                json.dumps(
+                    {
+                        "injectSteps": [
+                            {"ephemeralMessage": "\n".join(session_start_lines)}
+                        ]
+                    }
+                )
+            )
             return
         print(json.dumps({"injectSteps": []}))
         return
@@ -494,7 +641,9 @@ def main():
     if not last_user_prompt:
         if hook_errors:
             err_msg = "; ".join(hook_errors[:3])
-            sys.stderr.write(f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m {err_msg} (hook needs fix)\n")
+            sys.stderr.write(
+                f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m {err_msg} (hook needs fix)\n"
+            )
         print(json.dumps({"injectSteps": []}))
         return
 
@@ -527,7 +676,7 @@ def main():
         segments = extract_prompt_segments(search_query)
     except Exception as seg_e:
         hook_errors.append(f"Segmentation regex failed: {seg_e}")
-        segments = [{'id': '1', 'label': 'Query', 'text': search_query}]
+        segments = [{"id": "1", "label": "Query", "text": search_query}]
 
     num_segs = len(segments)
     multi_item_mode = num_segs > 1
@@ -547,17 +696,24 @@ def main():
         max_icm_per_seg = 1
 
     if multi_item_mode:
-        ambient_lines.append(f"[Ambient Grounding: Multi-Item Intent Resolution ({num_segs} Segments)]")
+        ambient_lines.append(
+            f"[Ambient Grounding: Multi-Item Intent Resolution ({num_segs} Segments)]"
+        )
 
     for seg in segments:
-        seg_text = seg['text']
+        seg_text = seg["text"]
         seg_lines = []
 
         # 1. ClaraDB probe for segment
         try:
             clara_hits = probe_claradb(
-                seg_text, client=chroma_client, model=fastembed_model,
-                is_qq=is_qq, limit=max_clara_per_seg, seen_ids=seen_ids, hook_errors=hook_errors
+                seg_text,
+                client=chroma_client,
+                model=fastembed_model,
+                is_qq=is_qq,
+                limit=max_clara_per_seg,
+                seen_ids=seen_ids,
+                hook_errors=hook_errors,
             )
             for h in clara_hits:
                 match = re.search(r"\[(.*?)\]", h)
@@ -576,8 +732,11 @@ def main():
         # 2. Sprint DNA probe for segment
         try:
             sprint_hits = probe_sprint_dna(
-                seg_text, client=chroma_client, limit=max_sprint_per_seg,
-                seen_ids=seen_ids, hook_errors=hook_errors
+                seg_text,
+                client=chroma_client,
+                limit=max_sprint_per_seg,
+                seen_ids=seen_ids,
+                hook_errors=hook_errors,
             )
             for sh in sprint_hits:
                 if multi_item_mode:
@@ -590,8 +749,11 @@ def main():
         # 3. ICM probe for segment
         try:
             icm_hits = probe_icm(
-                seg_text, project=project, is_qq=is_qq,
-                limit=max_icm_per_seg, hook_errors=hook_errors
+                seg_text,
+                project=project,
+                is_qq=is_qq,
+                limit=max_icm_per_seg,
+                hook_errors=hook_errors,
             )
             for ih in icm_hits:
                 m_top = re.search(r"\((.*?)\)", ih)
@@ -615,9 +777,22 @@ def main():
 
     # 3.5 Handover Playbook Reminder Injection (BKM-049 / Delegation Awareness)
     query_lower = search_query.lower()
-    if any(k in query_lower for k in ("delegate", "delegation", "bkm-049", "bkm049", "swarm", "handover", "retry")):
+    if any(
+        k in query_lower
+        for k in (
+            "delegate",
+            "delegation",
+            "bkm-049",
+            "bkm049",
+            "swarm",
+            "handover",
+            "retry",
+        )
+    ):
         ambient_lines.append("[💡 PLAYBOOK AUDIT REMINDER]")
-        ambient_lines.append("  - Read OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls: MCP bloat, agent inversion, root indexing, concurrency deadlocks.")
+        ambient_lines.append(
+            "  - Read OPENAGENT_HANDOVER_PLAYBOOK.md to avoid common pitfalls: MCP bloat, agent inversion, root indexing, concurrency deadlocks."
+        )
 
     # 4. Global Fallback if no lines generated
     if not ambient_lines:
@@ -631,7 +806,9 @@ def main():
         err_summary = "; ".join(hook_errors[:3])
         # Prominent stderr alert for the operator
         try:
-            sys.stderr.write(f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m {err_summary} (hook needs fix, partial context preserved)\n")
+            sys.stderr.write(
+                f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m {err_summary} (hook needs fix, partial context preserved)\n"
+            )
             sys.stderr.flush()
         except Exception:
             pass
@@ -653,18 +830,21 @@ def main():
         detail = " | ".join(summary_parts) if summary_parts else "Context Active"
         try:
             status_color = "\033[33m" if hook_errors else "\033[36m"
-            sys.stderr.write(f"\n{status_color}🧬 [Ambient Memory & Knowledge]\033[0m {detail}\n")
+            sys.stderr.write(
+                f"\n{status_color}🧬 [Ambient Memory & Knowledge]\033[0m {detail}\n"
+            )
             sys.stderr.flush()
         except Exception:
             pass
 
-        print(json.dumps({
-            "injectSteps": [{
-                "ephemeralMessage": "\n".join(ambient_lines)
-            }]
-        }))
+        print(
+            json.dumps(
+                {"injectSteps": [{"ephemeralMessage": "\n".join(ambient_lines)}]}
+            )
+        )
     else:
         print(json.dumps({"injectSteps": []}))
+
 
 if __name__ == "__main__":
     try:
@@ -673,12 +853,20 @@ if __name__ == "__main__":
         # Ultimate fallback: NEVER crash the hook runner with exit status 1
         err_text = f"Fatal unhandled exception in icm_hook: {fatal_e}"
         try:
-            sys.stderr.write(f"\n\033[31m⚠️ [Hook Fatal Crash]\033[0m {err_text} (hook needs to be fixed!)\n")
+            sys.stderr.write(
+                f"\n\033[31m⚠️ [Hook Fatal Crash]\033[0m {err_text} (hook needs to be fixed!)\n"
+            )
             sys.stderr.flush()
         except Exception:
             pass
-        print(json.dumps({
-            "injectSteps": [{
-                "ephemeralMessage": f"[⚠️ AMBIENT HOOK WARNING: Fatal hook error occurred and needs to be fixed: {err_text}]"
-            }]
-        }))
+        print(
+            json.dumps(
+                {
+                    "injectSteps": [
+                        {
+                            "ephemeralMessage": f"[⚠️ AMBIENT HOOK WARNING: Fatal hook error occurred and needs to be fixed: {err_text}]"
+                        }
+                    ]
+                }
+            )
+        )

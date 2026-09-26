@@ -20,12 +20,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from src.logic.triage_policy_loader import (
     TriagePolicyError,
     TriagePolicyLoader,
 )
-
 
 # ===========================================================================
 # Fixtures
@@ -92,7 +90,11 @@ VALID_POLICY: dict[str, Any] = {
             "rag": {
                 "target_domain": "exp_tlm",
                 "traversal": "TOPIC_FIRST",
-                "allowed_collections": ["behavioral_dna", "artifact_vault", "career_ledger"],
+                "allowed_collections": [
+                    "behavioral_dna",
+                    "artifact_vault",
+                    "career_ledger",
+                ],
                 "max_distance": 0.70,
             },
         },
@@ -159,7 +161,20 @@ class TestLoadPolicy:
     def test_load_override_path(self, tmp_policy_file: Path, tmp_path: Path) -> None:
         """Passing a path argument overrides the instance default."""
         other = tmp_path / "other.json"
-        other.write_text(json.dumps({"vibes": {"X": {"description": "x", "enabled": False, "default_domain": "std"}}}), encoding="utf-8")
+        other.write_text(
+            json.dumps(
+                {
+                    "vibes": {
+                        "X": {
+                            "description": "x",
+                            "enabled": False,
+                            "default_domain": "std",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         ld = TriagePolicyLoader(policy_path=tmp_policy_file)
         policy = ld.load_policy(path=other)
         assert "X" in policy["vibes"]
@@ -195,7 +210,9 @@ class TestLoadPolicy:
         original = ld._policy
 
         bad = tmp_path / "bad.json"
-        bad.write_text(json.dumps({"vibes": {"BROKEN": "not a dict"}}), encoding="utf-8")
+        bad.write_text(
+            json.dumps({"vibes": {"BROKEN": "not a dict"}}), encoding="utf-8"
+        )
         with pytest.raises(TriagePolicyError):
             ld.load_policy(path=bad)
 
@@ -327,7 +344,11 @@ class TestValidatePolicySchema:
     def test_enabled_not_bool(self) -> None:
         """Non-boolean 'enabled' is rejected."""
         ld = TriagePolicyLoader(policy_path="/tmp/fake.json")
-        policy = {"vibes": {"X": {"description": "x", "enabled": "yes", "default_domain": "std"}}}
+        policy = {
+            "vibes": {
+                "X": {"description": "x", "enabled": "yes", "default_domain": "std"}
+            }
+        }
         errors = ld.validate_policy_schema(policy)
         assert any("boolean" in e for e in errors)
 
@@ -488,7 +509,10 @@ class TestHotReload:
         time.sleep(0.05)
         policy_copy = dict(VALID_POLICY)
         policy_copy["vibes"] = dict(policy_copy["vibes"])
-        policy_copy["vibes"]["CASUAL"] = {**policy_copy["vibes"]["CASUAL"], "enabled": False}
+        policy_copy["vibes"]["CASUAL"] = {
+            **policy_copy["vibes"]["CASUAL"],
+            "enabled": False,
+        }
         tmp_policy_file.write_text(json.dumps(policy_copy), encoding="utf-8")
 
         ld.hot_reload_if_modified()
@@ -506,7 +530,9 @@ class TestHotReload:
         ld = TriagePolicyLoader(policy_path="/tmp/fake.json")
         assert ld.hot_reload_if_modified() is False
 
-    def test_hot_reload_on_invalid_update_keeps_old(self, tmp_policy_file: Path) -> None:
+    def test_hot_reload_on_invalid_update_keeps_old(
+        self, tmp_policy_file: Path
+    ) -> None:
         """Writing invalid JSON keeps the old cached policy."""
         ld = TriagePolicyLoader(policy_path=tmp_policy_file)
         ld.load_policy()
@@ -592,7 +618,17 @@ class TestProductionConfig:
     def test_production_has_all_nine_vibes(self) -> None:
         """Production config defines all 9 standard vibes."""
         active = self._prod_loader.get_active_vibes()
-        expected = {"CASUAL", "SUPERVISORY", "WYWO", "META", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL", "ANALYTICAL"}
+        expected = {
+            "CASUAL",
+            "SUPERVISORY",
+            "WYWO",
+            "META",
+            "OPERATIONAL",
+            "FORENSIC",
+            "TECHNICAL",
+            "HISTORICAL",
+            "ANALYTICAL",
+        }
         assert set(active) == expected
 
     def test_production_conversational_no_rag(self) -> None:
@@ -611,7 +647,11 @@ class TestProductionConfig:
         for vibe in self._prod_loader.get_active_vibes():
             rag = self._prod_loader.get_rag_config(vibe)
             if rag and "traversal" in rag:
-                assert rag["traversal"] in {"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"}
+                assert rag["traversal"] in {
+                    "TOPIC_FIRST",
+                    "TIME_FIRST",
+                    "STREAM_REPLAY",
+                }
 
     def test_production_wywo_is_standup_briefing(self) -> None:
         """WYWO description is grounded as 'While You Were Out' Standup Briefing."""
@@ -637,7 +677,9 @@ class TestProductionConfig:
         assert len(examples) >= 3
         # Verify at least one genuine greeting example
         examples_lower = [e.lower() for e in examples]
-        assert any("how are" in e for e in examples_lower), "CASUAL examples should include greeting patterns"
+        assert any(
+            "how are" in e for e in examples_lower
+        ), "CASUAL examples should include greeting patterns"
 
     def test_production_technical_silicon_grounding(self) -> None:
         """TECHNICAL description mentions silicon telemetry domain."""
@@ -658,7 +700,9 @@ class TestProductionConfig:
         rule = self._prod_loader.get_vibe_rule("OPERATIONAL")
         assert rule is not None
         desc = rule["description"].lower()
-        assert "sre" in desc or "bkm" in desc or "diagnostic" in desc or "playbook" in desc
+        assert (
+            "sre" in desc or "bkm" in desc or "diagnostic" in desc or "playbook" in desc
+        )
 
 
 # ===========================================================================

@@ -15,8 +15,8 @@ from __future__ import annotations
 import json
 
 from nodes.pinky_critic_persona import (
-    CriticResult,
     _BANNED_PHRASES,
+    CriticResult,
     _build_fallback_stripper,
     _strip_speaker_prefix,
     build_critic_prompt,
@@ -24,7 +24,6 @@ from nodes.pinky_critic_persona import (
     format_crosstalk_telemetry,
     parse_critic_payload,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. build_critic_prompt
@@ -122,10 +121,12 @@ class TestParseCriticPayload:
 
     def test_clean_json(self) -> None:
         """Well-formed JSON is parsed directly."""
-        payload = json.dumps({
-            "cartoon_retort": "Zort!",
-            "critique_suggestions": ["Add more detail"],
-        })
+        payload = json.dumps(
+            {
+                "cartoon_retort": "Zort!",
+                "critique_suggestions": ["Add more detail"],
+            }
+        )
         result = parse_critic_payload(payload)
         assert result.cartoon_retort == "Zort!"
         assert result.critique_suggestions == ["Add more detail"]
@@ -169,10 +170,12 @@ class TestParseCriticPayload:
 
     def test_suggestions_not_a_list(self) -> None:
         """Non-list suggestions are coerced to a single-item list."""
-        payload = json.dumps({
-            "cartoon_retort": "Yo",
-            "critique_suggestions": "single string suggestion",
-        })
+        payload = json.dumps(
+            {
+                "cartoon_retort": "Yo",
+                "critique_suggestions": "single string suggestion",
+            }
+        )
         result = parse_critic_payload(payload)
         assert result.critique_suggestions == ["single string suggestion"]
 
@@ -186,17 +189,22 @@ class TestParseCriticPayload:
     def test_non_dict_json_fallback(self) -> None:
         """A valid JSON array (not dict) triggers the fallback path."""
         result = parse_critic_payload('["not", "a", "dict"]')
-        assert "not a dict" in result.cartoon_retort.lower() or len(result.cartoon_retort) > 0
+        assert (
+            "not a dict" in result.cartoon_retort.lower()
+            or len(result.cartoon_retort) > 0
+        )
 
     def test_coerce_result_with_telemetry_fields(self) -> None:
         """_coerce_result extracts score, reasoning, slop_found from JSON payload."""
-        payload = json.dumps({
-            "cartoon_retort": "Narf!",
-            "critique_suggestions": ["Check thermals"],
-            "score": 2,
-            "reasoning": "Thermal throttling detected",
-            "slop_found": True,
-        })
+        payload = json.dumps(
+            {
+                "cartoon_retort": "Narf!",
+                "critique_suggestions": ["Check thermals"],
+                "score": 2,
+                "reasoning": "Thermal throttling detected",
+                "slop_found": True,
+            }
+        )
         result = parse_critic_payload(payload)
         assert result.score == 2
         assert result.reasoning == "Thermal throttling detected"
@@ -398,10 +406,12 @@ class TestEdgeCases:
 
     def test_roundtrip_parse_format(self) -> None:
         """parse_critic_payload output feeds into format_chat_delivery."""
-        payload = json.dumps({
-            "cartoon_retort": "[Pinky] Zort! Everything checks out.",
-            "critique_suggestions": ["Maybe add a chart"],
-        })
+        payload = json.dumps(
+            {
+                "cartoon_retort": "[Pinky] Zort! Everything checks out.",
+                "critique_suggestions": ["Maybe add a chart"],
+            }
+        )
         parsed = parse_critic_payload(payload)
         delivery = format_chat_delivery(parsed.cartoon_retort, "PCIe stable.")
         assert "Zort!" in delivery
@@ -410,7 +420,11 @@ class TestEdgeCases:
 
     def test_prompt_output_is_valid_json(self) -> None:
         """Every build_critic_prompt call produces parseable JSON."""
-        for q, s in [("q1", "s1"), ("test query", "test summary"), ("a" * 100, "b" * 100)]:
+        for q, s in [
+            ("q1", "s1"),
+            ("test query", "test summary"),
+            ("a" * 100, "b" * 100),
+        ]:
             raw = build_critic_prompt(q, s)
             data = json.loads(raw)
             assert isinstance(data, dict)
@@ -425,10 +439,12 @@ class TestEdgeCases:
 
     def test_parse_suggestions_with_none_values(self) -> None:
         """None values in suggestions list are filtered out."""
-        payload = json.dumps({
-            "cartoon_retort": "Hi",
-            "critique_suggestions": ["valid", None, "", "also valid"],
-        })
+        payload = json.dumps(
+            {
+                "cartoon_retort": "Hi",
+                "critique_suggestions": ["valid", None, "", "also valid"],
+            }
+        )
         result = parse_critic_payload(payload)
         assert "valid" in result.critique_suggestions
         assert "also valid" in result.critique_suggestions

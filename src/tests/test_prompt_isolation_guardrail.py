@@ -19,7 +19,6 @@ without requiring a live engine connection.
 from logic.cognitive_hub import sanitize_stream_chunk
 from nodes.loader import BicameralNode
 
-
 # --- [FEAT-488] Production-mirror formatting helpers -------------------------
 
 BASE_SYSTEM_PROMPT = "Base system prompt"
@@ -78,7 +77,10 @@ ROGUE_MARKER_CASES = [
 
 PRESERVED_PROSE_CASES = [
     # (streamed chunk, expected unchanged output)
-    ("In 2016 we upgraded the ESB2 server firmware.", "In 2016 we upgraded the ESB2 server firmware."),
+    (
+        "In 2016 we upgraded the ESB2 server firmware.",
+        "In 2016 we upgraded the ESB2 server firmware.",
+    ),
     (
         "GROUNDING_PROTOCOL: Formulate\nIn 2016 we upgraded the ESB2 server firmware.",
         "In 2016 we upgraded the ESB2 server firmware.",
@@ -89,17 +91,17 @@ PRESERVED_PROSE_CASES = [
 def test_sanitize_stream_chunk_removes_rogue_markers():
     """Every echoed system-slot header is stripped; true prose survives."""
     for chunk, expected in ROGUE_MARKER_CASES:
-        assert sanitize_stream_chunk(chunk) == "", (
-            f"Rogue marker not fully stripped: {chunk!r} -> {sanitize_stream_chunk(chunk)!r}"
-        )
+        assert (
+            sanitize_stream_chunk(chunk) == ""
+        ), f"Rogue marker not fully stripped: {chunk!r} -> {sanitize_stream_chunk(chunk)!r}"
 
 
 def test_sanitize_stream_chunk_preserves_genuine_prose():
     """Real assistant response prose is unaffected by the sanitizer."""
     for chunk, expected in PRESERVED_PROSE_CASES:
-        assert sanitize_stream_chunk(chunk) == expected, (
-            f"Genuine prose was mangled: {chunk!r} -> {sanitize_stream_chunk(chunk)!r}"
-        )
+        assert (
+            sanitize_stream_chunk(chunk) == expected
+        ), f"Genuine prose was mangled: {chunk!r} -> {sanitize_stream_chunk(chunk)!r}"
 
 
 def test_sanitize_stream_chunk_handles_empty_and_none():
@@ -109,6 +111,7 @@ def test_sanitize_stream_chunk_handles_empty_and_none():
 
 
 # --- Test 2: Role-slot guidance isolation -----------------------------------
+
 
 def test_role_slot_guidance_isolation():
     """Guidance stays in the system slot; the legacy user-slot frame is gone."""
@@ -124,19 +127,19 @@ def test_role_slot_guidance_isolation():
     )
 
     # 2a. [BEHAVIORAL_GUIDANCE] remains inside the system_prompt string.
-    assert "[BEHAVIORAL_GUIDANCE]" in system_prompt, (
-        "FEAT-488 violation: behavioral guidance was displaced from the system slot!"
-    )
-    assert guidance_tail in system_prompt, (
-        f"Expected guidance block {guidance_tail!r} in system_prompt, got:\n{system_prompt}"
-    )
+    assert (
+        "[BEHAVIORAL_GUIDANCE]" in system_prompt
+    ), "FEAT-488 violation: behavioral guidance was displaced from the system slot!"
+    assert (
+        guidance_tail in system_prompt
+    ), f"Expected guidance block {guidance_tail!r} in system_prompt, got:\n{system_prompt}"
     assert system_prompt.startswith(BASE_SYSTEM_PROMPT)
 
     # 2b. The user_context/query does NOT contain the legacy [GUIDANCE_FRAME]:
     # payload — the instruction set must never be displaced into the user slot.
-    assert LEGACY_USER_SLOT_GUIDANCE_MARKER not in user_query, (
-        "FEAT-488 violation: instruction set leaked into the user role slot!"
-    )
+    assert (
+        LEGACY_USER_SLOT_GUIDANCE_MARKER not in user_query
+    ), "FEAT-488 violation: instruction set leaked into the user role slot!"
 
     # 2c. The guidance tail is present verbatim for the 3B model in the system role.
     assert "[STANCE]: ACADEMIC" in system_prompt

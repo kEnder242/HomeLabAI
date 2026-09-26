@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 
 def check_prep_status():
     print("--- ✈️ Acme Lab: Pre-Flight Check (Prep for Tomorrow) ---")
@@ -12,9 +13,11 @@ def check_prep_status():
         print("[WAIT] vLLM Alpha Weights: Downloading/Missing.")
 
     # 2. Observational Memory
-    om_file = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/compressed_history.json")
+    om_file = os.path.expanduser(
+        "~/Dev_Lab/Portfolio_Dev/field_notes/data/compressed_history.json"
+    )
     if os.path.exists(om_file):
-        with open(om_file, 'r') as f:
+        with open(om_file, "r") as f:
             data = json.load(f)
             print(f"[PASS] OM Engine: Active. Last run: {data.get('last_synthesis')}")
     else:
@@ -24,6 +27,7 @@ def check_prep_status():
     rec_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/recruiter.py")
     if os.path.exists(rec_path):
         print("[PASS] Recruiter Engine: Patched & Ready.")
+
 
 if __name__ == "__main__":
     check_prep_status()

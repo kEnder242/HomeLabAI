@@ -3,9 +3,11 @@
 Tests that DreamManager emits structured non-zero telemetry, handles cabinet fallback,
 and adheres to BKM-062 Zero-Work Exit Invariant.
 """
-import pytest
+
 import json
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from dream_cycle import DreamManager
 
 
@@ -20,20 +22,29 @@ async def test_dream_cycle_stream_synthesis(mock_archive):
     """Verify standard dream cycle with chaotic memories produces PASS telemetry."""
     # Mock stream dump with 3 memories
     stream_resp = MagicMock()
-    stream_resp.content = [MagicMock(text=json.dumps({
-        "documents": ["Memory 1", "Memory 2", "Memory 3"],
-        "ids": ["mem_1", "mem_2", "mem_3"]
-    }))]
+    stream_resp.content = [
+        MagicMock(
+            text=json.dumps(
+                {
+                    "documents": ["Memory 1", "Memory 2", "Memory 3"],
+                    "ids": ["mem_1", "mem_2", "mem_3"],
+                }
+            )
+        )
+    ]
     mock_archive.call_tool.side_effect = [
-        stream_resp, # get_stream_dump
-        MagicMock()   # dream
+        stream_resp,  # get_stream_dump
+        MagicMock(),  # dream
     ]
 
     manager = DreamManager(mock_archive)
     # Monkey-patch remote_brain_think to return fast summary
     import dream_cycle
+
     orig_think = dream_cycle.remote_brain_think
-    dream_cycle.remote_brain_think = AsyncMock(return_value="Synthesized Diamond Wisdom")
+    dream_cycle.remote_brain_think = AsyncMock(
+        return_value="Synthesized Diamond Wisdom"
+    )
 
     try:
         telemetry = await manager.run_cycle()
@@ -57,8 +68,8 @@ async def test_dream_cycle_zero_work_fails(mock_archive):
     cab_resp.content = [MagicMock(text=json.dumps([]))]
 
     mock_archive.call_tool.side_effect = [
-        stream_resp, # get_stream_dump
-        cab_resp     # list_cabinet
+        stream_resp,  # get_stream_dump
+        cab_resp,  # list_cabinet
     ]
 
     manager = DreamManager(mock_archive)

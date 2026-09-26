@@ -4,7 +4,6 @@ Mutation Certification, Array Cleanup, and Revision Promotion.
 """
 
 
-
 def test_mutation_cleanup_logic():
     """Verify that certified mutations are purged from candidate arrays while revisions increment."""
     # Synthetic card with pending mutations
@@ -16,11 +15,19 @@ def test_mutation_cleanup_logic():
             "title": "Test Memory Invariant",
             "narrative_context": "Base ground truth.",
             "mutations": [
-                {"id": "mut_active", "lens": "Active Voice", "text": "Active voice variation."},
-                {"id": "mut_exec", "lens": "Executive", "text": "Executive impact statement."}
+                {
+                    "id": "mut_active",
+                    "lens": "Active Voice",
+                    "text": "Active voice variation.",
+                },
+                {
+                    "id": "mut_exec",
+                    "lens": "Executive",
+                    "text": "Executive impact statement.",
+                },
             ],
-            "revisions": []
-        }
+            "revisions": [],
+        },
     }
 
     # Simulate certification of 'mut_active'
@@ -28,7 +35,9 @@ def test_mutation_cleanup_logic():
     synth = card["synthesis"]
 
     # 1. Capture mutation text and append to revisions
-    mut_entry = next((m for m in synth.get("mutations", []) if m.get("id") == target_mut_id), None)
+    mut_entry = next(
+        (m for m in synth.get("mutations", []) if m.get("id") == target_mut_id), None
+    )
     assert mut_entry is not None
 
     new_rev = {
@@ -36,13 +45,14 @@ def test_mutation_cleanup_logic():
         "lens": mut_entry.get("lens", "Active Voice"),
         "text": mut_entry.get("text", ""),
         "timestamp": "2026-09-21T19:50:00Z",
-        "status": "APPROVED"
+        "status": "APPROVED",
     }
     synth["revisions"].append(new_rev)
 
     # 2. Cleanup certified mutation from mutations[]
     synth["mutations"] = [
-        m for m in synth.get("mutations", [])
+        m
+        for m in synth.get("mutations", [])
         if m.get("id") != target_mut_id and m.get("mutation_id") != target_mut_id
     ]
 

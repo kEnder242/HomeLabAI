@@ -1,16 +1,20 @@
-import os
-import json
 import glob
+import json
 import logging
+import os
 import sys
 
 # Montana Protocol: Logger Reclamation
 from infra.montana import reclaim_logger
+
 reclaim_logger("DistillForge")
 
-from infra.engine_client import query_sovereign_engine, resolve_active_deep_thought_target
+from infra.engine_client import (
+    query_sovereign_engine,
+    resolve_active_deep_thought_target,
+)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [FORGE] %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [FORGE] %(message)s")
 
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
@@ -32,6 +36,7 @@ RULES:
 4. Format the output as a JSON object: {{"instruction": "...", "response": "..."}}
 """
 
+
 def distill_gem(gem):
     prompt = DISTILL_PROMPT.format(gem_json=json.dumps(gem))
     try:
@@ -39,14 +44,18 @@ def distill_gem(gem):
             prompt=prompt,
             system_prompt="You are the High-Fidelity Distillation Engine of Acme Lab.",
             json_mode=True,
-            timeout=60.0
+            timeout=60.0,
         )
         if isinstance(res, dict) and "instruction" in res and "response" in res:
             return res
         elif isinstance(res, str):
             try:
                 parsed = json.loads(res)
-                if isinstance(parsed, dict) and "instruction" in parsed and "response" in parsed:
+                if (
+                    isinstance(parsed, dict)
+                    and "instruction" in parsed
+                    and "response" in parsed
+                ):
                     return parsed
             except Exception:
                 pass
@@ -54,25 +63,41 @@ def distill_gem(gem):
         logging.error(f"Distillation failed: {e}")
     return None
 
+
 def main(limit=None):
     active_seat = resolve_active_deep_thought_target()
-    logging.info(f"Starting Distillation Pipeline. Target Engine Seat: {active_seat.get('name')} ({active_seat.get('host')}:{active_seat.get('port')})")
-    
+    logging.info(
+        f"Starting Distillation Pipeline. Target Engine Seat: {active_seat.get('name')} ({active_seat.get('host')}:{active_seat.get('port')})"
+    )
+
     gems = []
     json_files = glob.glob(os.path.join(DATA_DIR, "*.json"))
     for jf in json_files:
-        if any(x in jf for x in ["themes", "status", "queue", "state", "search_index", "pager_activity", "file_manifest"]): continue
+        if any(
+            x in jf
+            for x in [
+                "themes",
+                "status",
+                "queue",
+                "state",
+                "search_index",
+                "pager_activity",
+                "file_manifest",
+            ]
+        ):
+            continue
         try:
-            with open(jf, 'r') as f:
+            with open(jf, "r") as f:
                 data = json.load(f)
                 if isinstance(data, list):
                     for event in data:
-                        if event.get('rank', 0) >= 4:
+                        if event.get("rank", 0) >= 4:
                             gems.append(event)
-        except Exception: pass
+        except Exception:
+            pass
 
     logging.info(f"Identified {len(gems)} Rank 4 gems.")
-    
+
     if limit:
         gems = gems[:limit]
         logging.info(f"Limiting to first {limit} gems for test batch.")
@@ -86,8 +111,9 @@ def main(limit=None):
                 f.write(json.dumps(pair) + "\n")
                 count += 1
                 logging.info(f"Successfully forged pair {count}/{len(gems)}")
-            
+
     logging.info(f"Distillation complete. {count} pairs saved to {TRAINING_DATA_PATH}")
+
 
 if __name__ == "__main__":
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else None

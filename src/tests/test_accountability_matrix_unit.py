@@ -2,6 +2,7 @@
 [FEAT-607 / LAB-110] Unit Test: Nightly Accountability Evaluator & Green Lie Sentry
 Tests evaluate_nightly_accountability against mock pass/degraded/fail telemetries.
 """
+
 from infra.nightly_forge import evaluate_nightly_accountability
 
 
@@ -11,15 +12,24 @@ def test_evaluate_nightly_accountability_pass():
         "gpu_power_clamped": True,
         "vram_quiesced": True,
         "lora_status": "COMPLETED",
-        "adapters_trained": ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"],
+        "adapters_trained": [
+            "cli_voice_v1",
+            "lab_history_v1",
+            "triage_v1",
+            "reviewer_v1",
+        ],
         "re_ignited": True,
-        "dream_telemetry": {"status": "PASS", "turns_synthesized": 3, "items_refined": 1},
+        "dream_telemetry": {
+            "status": "PASS",
+            "turns_synthesized": 3,
+            "items_refined": 1,
+        },
         "round_table_probe": {
             "status": "PASS",
             "greeting_latency_ms": 45.0,
             "circuit_latency_ms": 350.0,
-            "critic_score": 0.95
-        }
+            "critic_score": 0.95,
+        },
     }
 
     digest = evaluate_nightly_accountability(telemetry)
@@ -34,13 +44,19 @@ def test_evaluate_nightly_accountability_zero_work_green_lie():
         "gpu_power_clamped": True,
         "vram_quiesced": True,
         "lora_status": "COMPLETED",
-        "adapters_trained": ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"],
+        "adapters_trained": [
+            "cli_voice_v1",
+            "lab_history_v1",
+            "triage_v1",
+            "reviewer_v1",
+        ],
         "re_ignited": True,
-        "dream_telemetry": {"status": "PASS", "turns_synthesized": 0, "items_refined": 0},  # Green Lie!
-        "round_table_probe": {
-            "status": "FAIL",
-            "error": "Triage timeout"
-        }
+        "dream_telemetry": {
+            "status": "PASS",
+            "turns_synthesized": 0,
+            "items_refined": 0,
+        },  # Green Lie!
+        "round_table_probe": {"status": "FAIL", "error": "Triage timeout"},
     }
 
     digest = evaluate_nightly_accountability(telemetry)

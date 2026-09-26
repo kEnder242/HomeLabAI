@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+
 from recruiter import run_recruiter_task
 
 # Paths

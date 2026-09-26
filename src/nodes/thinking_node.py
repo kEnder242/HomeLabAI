@@ -1,8 +1,8 @@
 import json
 import logging
-from typing import Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+
 from infra.montana import reclaim_logger
+from mcp.server.fastmcp import FastMCP
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
 reclaim_logger(role="THINKING")
@@ -10,7 +10,7 @@ reclaim_logger(role="THINKING")
 mcp = FastMCP("Sequential Thinking")
 
 # In-memory state for active thinking sessions
-thought_history: List[Dict] = []
+thought_history: list[dict] = []
 
 
 @mcp.tool()
@@ -20,8 +20,8 @@ def sequential_thinking(
     thought_number: int,
     total_thoughts: int,
     next_thought_needed: bool,
-    is_revision: Optional[bool] = False,
-    revises_thought_number: Optional[int] = None
+    is_revision: bool | None = False,
+    revises_thought_number: int | None = None,
 ) -> str:
     """
     A tool for structured, multi-step reasoning.
@@ -36,7 +36,7 @@ def sequential_thinking(
         "step": thought_number,
         "content": thought,
         "is_revision": is_revision,
-        "revises": revises_thought_number
+        "revises": revises_thought_number,
     }
 
     thought_history.append(entry)
@@ -50,7 +50,7 @@ def sequential_thinking(
     response = {
         "status": status,
         "next_needed": next_thought_needed,
-        "history_count": len(thought_history)
+        "history_count": len(thought_history),
     }
 
     return json.dumps(response)

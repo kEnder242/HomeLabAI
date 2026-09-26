@@ -21,6 +21,7 @@ Hermetic: ChromaDB is never contacted — every test patches
 the query/sync functions directly); the handler tests use a mocked aiohttp
 request and patched disk writes. Requires no live daemon and no ChromaDB server.
 """
+
 import json
 import os
 import sys
@@ -28,12 +29,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-HOME_LAB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ~/Dev_Lab/HomeLabAI
-SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(HOME_LAB)), "Portfolio_Dev", "scripts")
+HOME_LAB = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)  # ~/Dev_Lab/HomeLabAI
+SCRIPTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(HOME_LAB)), "Portfolio_Dev", "scripts"
+)
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from curator.sync_paper_dna import (  # noqa: E402
+from curator.sync_paper_dna import (
     COLLECTION_PREFIX,
     build_chunks,
     collection_name,
@@ -45,7 +50,7 @@ from curator.sync_paper_dna import (  # noqa: E402
     slugify,
     sync_paper_dna,
 )
-from src.v5.foyer.router import FoyerRouter  # noqa: E402
+from src.v5.foyer.router import FoyerRouter
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +221,15 @@ def test_iter_paper_nodes_envelope_and_types():
     assert node_types == ["doc", "section", "bullet", "paragraph", "section", "bullet"]
     assert len(nodes) == EXPECTED_CHUNK_COUNT
     for node in nodes:
-        for key in ("node_id", "node_type", "heading", "slug", "bone_collection",
-                    "citations", "candidate_pool"):
+        for key in (
+            "node_id",
+            "node_type",
+            "heading",
+            "slug",
+            "bone_collection",
+            "citations",
+            "candidate_pool",
+        ):
             assert key in node
         assert node["slug"] == SAMPLE_SLUG
         assert node["node_id"].startswith(f"{SAMPLE_SLUG}:")
@@ -238,8 +250,15 @@ def test_build_chunks_metadata_envelope():
     for chunk in chunks:
         meta = chunk["metadata"]
         assert meta["slug"] == SAMPLE_SLUG
-        for key in ("node_id", "node_type", "heading", "slug",
-                    "bone_collection", "citations", "candidate_pool"):
+        for key in (
+            "node_id",
+            "node_type",
+            "heading",
+            "slug",
+            "bone_collection",
+            "citations",
+            "candidate_pool",
+        ):
             assert key in meta
     bullet = chunks[2]
     assert bullet["metadata"]["node_type"] == "bullet"
@@ -249,14 +268,19 @@ def test_build_chunks_metadata_envelope():
     assert bullet["metadata"]["candidate_pool"] == ["BKM-044"]
     assert bullet["metadata"]["bone_collection"] == []
     # paragraph text embeds the parent heading for retrieval context
-    assert bullet["document"] == "Distributed AI Infrastructure: Built the BKM-010 fallback mesh end-to-end."
+    assert (
+        bullet["document"]
+        == "Distributed AI Infrastructure: Built the BKM-010 fallback mesh end-to-end."
+    )
 
 
 def test_build_chunks_deterministic_ids():
     first = build_chunks(_ast(), SAMPLE_SLUG)
     second = build_chunks(_ast(), SAMPLE_SLUG)
     assert [c["id"] for c in first] == [c["id"] for c in second]
-    assert all(cid.startswith(f"paper_{SAMPLE_SLUG}_") for cid in [c["id"] for c in first])
+    assert all(
+        cid.startswith(f"paper_{SAMPLE_SLUG}_") for cid in [c["id"] for c in first]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +312,11 @@ def test_sync_paper_dna_reindex_removes_stale_entries():
         # Mutate the collection directly with a stale entry sharing the slug,
         # then resync — the stale record must be purged by the reindex delete.
         coll = fake.get_collection("paper_dna_resume")
-        coll.add(ids=["stale-doc"], documents=["gone"], metadatas=[{"slug": SAMPLE_SLUG, "node_id": "stale"}])
+        coll.add(
+            ids=["stale-doc"],
+            documents=["gone"],
+            metadatas=[{"slug": SAMPLE_SLUG, "node_id": "stale"}],
+        )
         assert coll.count() == EXPECTED_CHUNK_COUNT + 1
         stats = sync_paper_dna(_ast(), slug=SAMPLE_SLUG)
     assert stats["uploaded"] == EXPECTED_CHUNK_COUNT
@@ -305,7 +333,9 @@ def test_sync_paper_dna_from_path(tmp_path):
     # leading "paper_" prefix is stripped from the file stem
     assert stats["slug"] == "jitc-intuition"
     assert stats["collection"] == "paper_dna_jitc-intuition"
-    assert fake.get_collection("paper_dna_jitc-intuition").count() == EXPECTED_CHUNK_COUNT
+    assert (
+        fake.get_collection("paper_dna_jitc-intuition").count() == EXPECTED_CHUNK_COUNT
+    )
 
 
 def test_sync_paper_dna_slug_priority():
@@ -349,12 +379,14 @@ def test_sync_paper_dna_invalid_inputs():
 # Collection lifecycle: list / delete
 # ---------------------------------------------------------------------------
 def test_list_paper_dna_collections_filters_paper_only():
-    fake = FakeChromaClient({
-        "paper_dna_beta": _seeded("paper_dna_beta", 1),
-        "paper_dna_alpha": _seeded("paper_dna_alpha", 2),
-        "feature_dna": _seeded("feature_dna", 99),
-        "behavioral_dna": _seeded("behavioral_dna", 99),
-    })
+    fake = FakeChromaClient(
+        {
+            "paper_dna_beta": _seeded("paper_dna_beta", 1),
+            "paper_dna_alpha": _seeded("paper_dna_alpha", 2),
+            "feature_dna": _seeded("feature_dna", 99),
+            "behavioral_dna": _seeded("behavioral_dna", 99),
+        }
+    )
     with _patch_chroma(fake):
         result = list_paper_dna_collections()
     assert result == [
@@ -372,7 +404,11 @@ def test_delete_paper_dna_collection():
     fake = FakeChromaClient({"paper_dna_resume": _seeded("paper_dna_resume", 3)})
     with _patch_chroma(fake):
         result = delete_paper_dna_collection("resume")
-        assert result == {"status": "deleted", "collection": "paper_dna_resume", "slug": "resume"}
+        assert result == {
+            "status": "deleted",
+            "collection": "paper_dna_resume",
+            "slug": "resume",
+        }
         assert "paper_dna_resume" not in fake._collections
         # second delete of the same slug -> not_found (idempotent teardown)
         result2 = delete_paper_dna_collection("resume")
@@ -394,19 +430,26 @@ def _seeded(name, count):
 # Hybrid cross-collection queries (Phase 1 DISCOVER semantics)
 # ---------------------------------------------------------------------------
 def test_query_hybrid_dna_merges_paper_and_global_collections():
-    fake = FakeChromaClient({
-        "paper_dna_resume": _seeded("paper_dna_resume", 3),
-        "feature_dna": _seeded("feature_dna", 3),
-        "behavioral_dna": _seeded("behavioral_dna", 3),
-        "long_term_wisdom": _seeded("long_term_wisdom", 3),
-    })
+    fake = FakeChromaClient(
+        {
+            "paper_dna_resume": _seeded("paper_dna_resume", 3),
+            "feature_dna": _seeded("feature_dna", 3),
+            "behavioral_dna": _seeded("behavioral_dna", 3),
+            "long_term_wisdom": _seeded("long_term_wisdom", 3),
+        }
+    )
     with _patch_chroma(fake):
         results = query_hybrid_dna("vllm fallback mesh", slug="resume", top_k=10)
     # paper-scoped collection ranks first (3 hits), all globals represented
     assert len(results) == 10
     assert results[0]["collection"] == "paper_dna_resume"
     covered = {r["collection"] for r in results}
-    assert covered == {"paper_dna_resume", "feature_dna", "behavioral_dna", "long_term_wisdom"}
+    assert covered == {
+        "paper_dna_resume",
+        "feature_dna",
+        "behavioral_dna",
+        "long_term_wisdom",
+    }
     # ranked by similarity score (1 - distance), non-increasing
     scores = [r["score"] for r in results]
     assert scores == sorted(scores, reverse=True)
@@ -414,11 +457,13 @@ def test_query_hybrid_dna_merges_paper_and_global_collections():
 
 
 def test_query_hybrid_dna_without_slug_skips_paper():
-    fake = FakeChromaClient({
-        "feature_dna": _seeded("feature_dna", 2),
-        "behavioral_dna": _seeded("behavioral_dna", 2),
-        "long_term_wisdom": _seeded("long_term_wisdom", 2),
-    })
+    fake = FakeChromaClient(
+        {
+            "feature_dna": _seeded("feature_dna", 2),
+            "behavioral_dna": _seeded("behavioral_dna", 2),
+            "long_term_wisdom": _seeded("long_term_wisdom", 2),
+        }
+    )
     with _patch_chroma(fake):
         results = query_hybrid_dna("anything", slug=None, top_k=10)
     covered = {r["collection"] for r in results}
@@ -431,10 +476,14 @@ def test_query_hybrid_dna_dedupes_per_collection():
     # identical hit ids across collections are kept (distinct (collection, id)); a
     # duplicate within one collection is impossible from Chroma so this guards the
     # (collection, id) de-dup key shape only.
-    fake = FakeChromaClient({
-        "feature_dna": _seeded("feature_dna", 2),
-        "behavioral_dna": _seeded("feature_dna", 2),  # same ids, different collection
-    })
+    fake = FakeChromaClient(
+        {
+            "feature_dna": _seeded("feature_dna", 2),
+            "behavioral_dna": _seeded(
+                "feature_dna", 2
+            ),  # same ids, different collection
+        }
+    )
     with _patch_chroma(fake):
         results = query_hybrid_dna("x", slug=None, top_k=10)
     assert len(results) == 4  # 2 per collection, no cross-collection collapse
@@ -464,14 +513,35 @@ def test_route_registered():
 @pytest.mark.asyncio
 async def test_handle_paper_query_scoped_dna_success():
     fake_results = [
-        {"id": "paper_resume_abc", "collection": "paper_dna_resume", "node_id": "resume:sec-01",
-         "node_type": "section", "heading": "Distributed AI Infrastructure", "slug": "resume",
-         "document": "Distributed AI Infrastructure", "distance": 0.1, "score": 0.9},
-        {"id": "FEAT-181", "collection": "feature_dna", "node_id": "FEAT-181", "node_type": "",
-         "heading": "", "slug": "", "document": "FEAT-181", "distance": 0.2, "score": 0.8},
+        {
+            "id": "paper_resume_abc",
+            "collection": "paper_dna_resume",
+            "node_id": "resume:sec-01",
+            "node_type": "section",
+            "heading": "Distributed AI Infrastructure",
+            "slug": "resume",
+            "document": "Distributed AI Infrastructure",
+            "distance": 0.1,
+            "score": 0.9,
+        },
+        {
+            "id": "FEAT-181",
+            "collection": "feature_dna",
+            "node_id": "FEAT-181",
+            "node_type": "",
+            "heading": "",
+            "slug": "",
+            "document": "FEAT-181",
+            "distance": 0.2,
+            "score": 0.8,
+        },
     ]
-    with patch("curator.sync_paper_dna.query_hybrid_dna", return_value=fake_results) as mock_query:
-        response = await _call_query_handler({"query": "vllm fallback mesh", "slug": "resume", "top_k": 7})
+    with patch(
+        "curator.sync_paper_dna.query_hybrid_dna", return_value=fake_results
+    ) as mock_query:
+        response = await _call_query_handler(
+            {"query": "vllm fallback mesh", "slug": "resume", "top_k": 7}
+        )
     assert response.status == 200
     body = _resp_body(response)
     assert body["status"] == "success"
@@ -486,10 +556,14 @@ async def test_handle_paper_query_scoped_dna_success():
 
 @pytest.mark.asyncio
 async def test_handle_paper_query_scoped_dna_accepts_text_alias():
-    with patch("curator.sync_paper_dna.query_hybrid_dna", return_value=[]) as mock_query:
+    with patch(
+        "curator.sync_paper_dna.query_hybrid_dna", return_value=[]
+    ) as mock_query:
         response = await _call_query_handler({"text": "mesh", "slug": "resume"})
     assert response.status == 200
-    mock_query.assert_called_once_with("mesh", slug="resume", collections=None, top_k=10)
+    mock_query.assert_called_once_with(
+        "mesh", slug="resume", collections=None, top_k=10
+    )
 
 
 @pytest.mark.asyncio
@@ -505,13 +579,20 @@ async def test_handle_paper_query_scoped_dna_missing_query_400():
 @pytest.mark.asyncio
 async def test_handle_paper_import_integrates_dna_sync():
     request = MagicMock()
-    request.json = AsyncMock(return_value={
-        "title": "Ops Resume",
-        "content": "# Ops Resume\n\n## Platform\n\nRan BKM-010 tests and shipped FEAT-181.\n",
-    })
-    fake_sync = {"uploaded": 3, "slug": "ops-resume", "collection": "paper_dna_ops-resume"}
-    with patch("src.v5.foyer.router.atomic_write_json") as mock_write, \
-         patch("curator.sync_paper_dna.sync_paper_dna", return_value=fake_sync) as mock_sync:
+    request.json = AsyncMock(
+        return_value={
+            "title": "Ops Resume",
+            "content": "# Ops Resume\n\n## Platform\n\nRan BKM-010 tests and shipped FEAT-181.\n",
+        }
+    )
+    fake_sync = {
+        "uploaded": 3,
+        "slug": "ops-resume",
+        "collection": "paper_dna_ops-resume",
+    }
+    with patch("src.v5.foyer.router.atomic_write_json") as mock_write, patch(
+        "curator.sync_paper_dna.sync_paper_dna", return_value=fake_sync
+    ) as mock_sync:
         response = await FoyerRouter.handle_paper_import(object(), request)  # type: ignore[arg-type]
     assert response.status == 200
     body = _resp_body(response)
@@ -528,12 +609,15 @@ async def test_handle_paper_import_integrates_dna_sync():
 @pytest.mark.asyncio
 async def test_handle_paper_import_dna_sync_failure_is_non_fatal():
     request = MagicMock()
-    request.json = AsyncMock(return_value={
-        "title": "Offline Paper",
-        "content": "# Offline Paper\n\n## Body\n\nContent that cannot reach ChromaDB.\n",
-    })
-    with patch("src.v5.foyer.router.atomic_write_json"), \
-         patch("curator.sync_paper_dna.sync_paper_dna", side_effect=RuntimeError("chroma down")):
+    request.json = AsyncMock(
+        return_value={
+            "title": "Offline Paper",
+            "content": "# Offline Paper\n\n## Body\n\nContent that cannot reach ChromaDB.\n",
+        }
+    )
+    with patch("src.v5.foyer.router.atomic_write_json"), patch(
+        "curator.sync_paper_dna.sync_paper_dna", side_effect=RuntimeError("chroma down")
+    ):
         response = await FoyerRouter.handle_paper_import(object(), request)  # type: ignore[arg-type]
     assert response.status == 200
     body = _resp_body(response)

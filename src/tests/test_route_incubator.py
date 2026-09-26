@@ -20,12 +20,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from src.logic.route_incubator import (
     RouteIncubator,
     RouteIncubatorError,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -123,7 +121,9 @@ class TestLoadSupplement:
         """Passing a path argument overrides the instance default."""
         other = tmp_path / "other.json"
         other.write_text(
-            json.dumps({"_schema_version": "1.0.0", "candidates": {"X": _make_candidate()}}),
+            json.dumps(
+                {"_schema_version": "1.0.0", "candidates": {"X": _make_candidate()}}
+            ),
             encoding="utf-8",
         )
         inc = RouteIncubator(supplement_path=supplement_file)
@@ -170,7 +170,9 @@ class TestRegisterCandidateRoute:
         )
         assert name == "MOUSE_DEF:MY_ROUTE"
 
-    def test_register_preserves_existing_prefix(self, incubator: RouteIncubator) -> None:
+    def test_register_preserves_existing_prefix(
+        self, incubator: RouteIncubator
+    ) -> None:
         """Route name with MOUSE_DEF: prefix is not double-prefixed."""
         name = incubator.register_candidate_route(
             vibe_name="MOUSE_DEF:ALREADY_PREFIXED",
@@ -192,7 +194,12 @@ class TestRegisterCandidateRoute:
 
     def test_register_with_rag_config(self, incubator: RouteIncubator) -> None:
         """Route with rag_config stores it correctly."""
-        rag = {"target_domain": "test", "traversal": "TOPIC_FIRST", "allowed_collections": ["test"], "max_distance": 0.75}
+        rag = {
+            "target_domain": "test",
+            "traversal": "TOPIC_FIRST",
+            "allowed_collections": ["test"],
+            "max_distance": 0.75,
+        }
         name = incubator.register_candidate_route(
             vibe_name="RAG_ROUTE",
             intent="RAG test",
@@ -202,7 +209,9 @@ class TestRegisterCandidateRoute:
         routes = incubator.get_candidate_routes()
         assert routes[name]["rag_config"] == rag
 
-    def test_register_duplicate_raises(self, populated_incubator: RouteIncubator) -> None:
+    def test_register_duplicate_raises(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Registering a duplicate route name raises error."""
         with pytest.raises(RouteIncubatorError, match="already exists"):
             populated_incubator.register_candidate_route(
@@ -272,7 +281,9 @@ class TestRecordRouteHit:
         routes = populated_incubator.get_candidate_routes()
         assert routes["MOUSE_DEF:TEST_ROUTE"]["hit_count"] == 1
 
-    def test_multiple_hits_accumulate(self, populated_incubator: RouteIncubator) -> None:
+    def test_multiple_hits_accumulate(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Multiple hits accumulate correctly."""
         populated_incubator.record_route_hit("TEST_ROUTE", success=True)
         populated_incubator.record_route_hit("TEST_ROUTE", success=False)
@@ -281,7 +292,9 @@ class TestRecordRouteHit:
         assert routes["MOUSE_DEF:TEST_ROUTE"]["hit_count"] == 3
         assert routes["MOUSE_DEF:TEST_ROUTE"]["success_count"] == 2
 
-    def test_success_only_increments_success_count(self, populated_incubator: RouteIncubator) -> None:
+    def test_success_only_increments_success_count(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Failed hits do not increment success_count."""
         populated_incubator.record_route_hit("TEST_ROUTE", success=False)
         routes = populated_incubator.get_candidate_routes()
@@ -298,7 +311,9 @@ class TestRecordRouteHit:
         assert log[0]["feedback"] == "Great route!"
         assert log[0]["success"] is True
 
-    def test_empty_feedback_not_logged(self, populated_incubator: RouteIncubator) -> None:
+    def test_empty_feedback_not_logged(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Empty feedback string does not add to feedback_log."""
         populated_incubator.record_route_hit("TEST_ROUTE", success=True, feedback="")
         routes = populated_incubator.get_candidate_routes()
@@ -309,7 +324,9 @@ class TestRecordRouteHit:
         with pytest.raises(RouteIncubatorError, match="not found"):
             incubator.record_route_hit("NONEXISTENT", success=True)
 
-    def test_hit_on_retired_route_raises(self, populated_incubator: RouteIncubator) -> None:
+    def test_hit_on_retired_route_raises(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Hitting a retired route raises error."""
         populated_incubator.retire_candidate_route("TEST_ROUTE")
         with pytest.raises(RouteIncubatorError, match="retired"):
@@ -339,7 +356,9 @@ class TestGetCandidateRoutes:
         routes = populated_incubator.get_candidate_routes(active_only=True)
         assert "MOUSE_DEF:TEST_ROUTE" not in routes
 
-    def test_get_all_includes_retired(self, populated_incubator: RouteIncubator) -> None:
+    def test_get_all_includes_retired(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """active_only=False includes retired routes."""
         populated_incubator.retire_candidate_route("TEST_ROUTE")
         routes = populated_incubator.get_candidate_routes(active_only=False)
@@ -381,7 +400,9 @@ class TestExportForSolidification:
         assert export["enabled"] is True
         assert export["default_domain"] == "exp_bkm"
 
-    def test_export_includes_rag_from_traversal(self, incubator: RouteIncubator) -> None:
+    def test_export_includes_rag_from_traversal(
+        self, incubator: RouteIncubator
+    ) -> None:
         """Export synthesizes RAG config from traversal_mode."""
         incubator.register_candidate_route(
             vibe_name="RAG_EXPORT",
@@ -396,7 +417,12 @@ class TestExportForSolidification:
 
     def test_export_uses_explicit_rag_config(self, incubator: RouteIncubator) -> None:
         """Export uses explicit rag_config over synthesized."""
-        custom_rag = {"target_domain": "custom", "traversal": "STREAM_REPLAY", "allowed_collections": ["a"], "max_distance": 0.9}
+        custom_rag = {
+            "target_domain": "custom",
+            "traversal": "STREAM_REPLAY",
+            "allowed_collections": ["a"],
+            "max_distance": 0.9,
+        }
         incubator.register_candidate_route(
             vibe_name="CUSTOM_RAG",
             intent="Custom RAG",
@@ -406,7 +432,9 @@ class TestExportForSolidification:
         export = incubator.export_for_solidification("CUSTOM_RAG")
         assert export["rag"] == custom_rag
 
-    def test_export_conversational_route_no_rag(self, incubator: RouteIncubator) -> None:
+    def test_export_conversational_route_no_rag(
+        self, incubator: RouteIncubator
+    ) -> None:
         """Route with no traversal or rag_config exports rag=null."""
         incubator.register_candidate_route(
             vibe_name="CONVO",
@@ -416,7 +444,9 @@ class TestExportForSolidification:
         export = incubator.export_for_solidification("CONVO")
         assert export["rag"] is None
 
-    def test_export_includes_incubation_metadata(self, incubator: RouteIncubator) -> None:
+    def test_export_includes_incubation_metadata(
+        self, incubator: RouteIncubator
+    ) -> None:
         """Export includes _incubation metadata."""
         incubator.register_candidate_route(
             vibe_name="META_EXPORT",
@@ -434,7 +464,9 @@ class TestExportForSolidification:
         with pytest.raises(RouteIncubatorError, match="not found"):
             incubator.export_for_solidification("NONEXISTENT")
 
-    def test_export_retired_route_raises(self, populated_incubator: RouteIncubator) -> None:
+    def test_export_retired_route_raises(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Exporting a retired route raises error."""
         populated_incubator.retire_candidate_route("TEST_ROUTE")
         with pytest.raises(RouteIncubatorError, match="retired"):
@@ -455,7 +487,9 @@ class TestRetireCandidateRoute:
         routes = populated_incubator.get_candidate_routes(active_only=False)
         assert routes["MOUSE_DEF:TEST_ROUTE"]["enabled"] is False
 
-    def test_retire_excluded_from_active(self, populated_incubator: RouteIncubator) -> None:
+    def test_retire_excluded_from_active(
+        self, populated_incubator: RouteIncubator
+    ) -> None:
         """Retired routes excluded from active_only=True."""
         populated_incubator.retire_candidate_route("TEST_ROUTE")
         routes = populated_incubator.get_candidate_routes(active_only=True)
@@ -494,7 +528,10 @@ class TestValidateSupplementSchema:
     def test_valid_candidate_passes(self) -> None:
         """Full valid candidate returns no errors."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
-        supplement = {"_schema_version": "1.0.0", "candidates": {"MOUSE_DEF:X": _make_candidate()}}
+        supplement = {
+            "_schema_version": "1.0.0",
+            "candidates": {"MOUSE_DEF:X": _make_candidate()},
+        }
         errors = inc.validate_supplement_schema(supplement)
         assert errors == []
 
@@ -514,7 +551,9 @@ class TestValidateSupplementSchema:
     def test_candidate_not_dict(self) -> None:
         """A candidate value that isn't a dict is rejected."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
-        errors = inc.validate_supplement_schema({"_schema_version": "1.0.0", "candidates": {"BAD": "not a dict"}})
+        errors = inc.validate_supplement_schema(
+            {"_schema_version": "1.0.0", "candidates": {"BAD": "not a dict"}}
+        )
         assert any("must be a JSON object" in e for e in errors)
 
     def test_missing_required_field(self) -> None:
@@ -522,40 +561,60 @@ class TestValidateSupplementSchema:
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
         candidate = _make_candidate()
         del candidate["intent"]
-        errors = inc.validate_supplement_schema({"_schema_version": "1.0.0", "candidates": {"X": candidate}})
+        errors = inc.validate_supplement_schema(
+            {"_schema_version": "1.0.0", "candidates": {"X": candidate}}
+        )
         assert any("intent" in e for e in errors)
 
     def test_enabled_not_bool(self) -> None:
         """Non-boolean 'enabled' is rejected."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
         candidate = _make_candidate(enabled="yes")  # type: ignore[arg-type]
-        errors = inc.validate_supplement_schema({"_schema_version": "1.0.0", "candidates": {"X": candidate}})
+        errors = inc.validate_supplement_schema(
+            {"_schema_version": "1.0.0", "candidates": {"X": candidate}}
+        )
         assert any("boolean" in e for e in errors)
 
     def test_hit_count_not_int(self) -> None:
         """Non-integer 'hit_count' is rejected."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
         candidate = _make_candidate(hit_count="five")  # type: ignore[arg-type]
-        errors = inc.validate_supplement_schema({"_schema_version": "1.0.0", "candidates": {"X": candidate}})
+        errors = inc.validate_supplement_schema(
+            {"_schema_version": "1.0.0", "candidates": {"X": candidate}}
+        )
         assert any("hit_count" in e and "integer" in e for e in errors)
 
     def test_invalid_traversal_mode(self) -> None:
         """Invalid traversal_mode is rejected."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
         candidate = _make_candidate(traversal_mode="INVALID")
-        errors = inc.validate_supplement_schema({"_schema_version": "1.0.0", "candidates": {"X": candidate}})
+        errors = inc.validate_supplement_schema(
+            {"_schema_version": "1.0.0", "candidates": {"X": candidate}}
+        )
         assert any("traversal_mode" in e for e in errors)
 
     def test_multiple_errors_collected(self) -> None:
         """Multiple schema violations produce multiple error strings."""
         inc = RouteIncubator(supplement_path="/tmp/fake.json")
-        errors = inc.validate_supplement_schema({
-            "_schema_version": "1.0.0",
-            "candidates": {
-                "A": {"enabled": True},  # missing intent, target_domain, etc.
-                "B": {"intent": "b", "target_domain": "d", "enabled": "no", "creator": "c", "created_at": 0, "hit_count": -1, "success_count": 0, "last_used": 0, "feedback_log": []},
-            },
-        })
+        errors = inc.validate_supplement_schema(
+            {
+                "_schema_version": "1.0.0",
+                "candidates": {
+                    "A": {"enabled": True},  # missing intent, target_domain, etc.
+                    "B": {
+                        "intent": "b",
+                        "target_domain": "d",
+                        "enabled": "no",
+                        "creator": "c",
+                        "created_at": 0,
+                        "hit_count": -1,
+                        "success_count": 0,
+                        "last_used": 0,
+                        "feedback_log": [],
+                    },
+                },
+            }
+        )
         assert len(errors) >= 3
 
 
@@ -586,7 +645,9 @@ class TestEdgeCases:
         routes = incubator.get_candidate_routes()
         assert len(routes) == 3
 
-    def test_export_without_traversal_has_null_rag(self, incubator: RouteIncubator) -> None:
+    def test_export_without_traversal_has_null_rag(
+        self, incubator: RouteIncubator
+    ) -> None:
         """Route with no traversal and no rag_config exports rag=null."""
         incubator.register_candidate_route("NO_TRAV", "test", "standard")
         export = incubator.export_for_solidification("NO_TRAV")

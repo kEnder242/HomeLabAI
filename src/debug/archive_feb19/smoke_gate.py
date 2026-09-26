@@ -1,12 +1,14 @@
+import os
 import subprocess
 import sys
-import os
-import requests
 import time
+
+import requests
+
 
 def run_gate():
     print("--- 🚪 Full-Stack Smoke Gate (Simple) ---")
-    
+
     # 1. Check vLLM dependency
     try:
         r = requests.get("http://localhost:8088/v1/models", timeout=5)
@@ -29,19 +31,22 @@ def run_gate():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.dirname(script_dir)
     env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{src_dir}"
-    
+
     try:
         # Use the absolute path to the venv python
         python_bin = os.path.join(os.path.dirname(src_dir), ".venv/bin/python3")
         lab_script = os.path.join(src_dir, "acme_lab.py")
-        
+
         # This will block until self-termination (triggered by DEBUG_SMOKE logic)
-        res = subprocess.run([
-            python_bin, lab_script, 
-            "--mode", "DEBUG_SMOKE", 
-            "--disable-ear"
-        ], env=env, capture_output=True, text=True, timeout=60, cwd=os.path.dirname(src_dir))
-        
+        res = subprocess.run(
+            [python_bin, lab_script, "--mode", "DEBUG_SMOKE", "--disable-ear"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.path.dirname(src_dir),
+        )
+
         if res.returncode == 0:
             print("✅ Server reached READY and exited cleanly.")
             # Print the last few lines of log to confirm
@@ -55,13 +60,14 @@ def run_gate():
             print("\n--- ERROR OUTPUT ---")
             print(res.stderr)
             return False
-            
+
     except subprocess.TimeoutExpired:
         print("❌ Server hung (timed out after 60s).")
         return False
     except Exception as e:
         print(f"❌ Execution error: {e}")
         return False
+
 
 if __name__ == "__main__":
     if run_gate():

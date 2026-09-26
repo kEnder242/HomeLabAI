@@ -1,14 +1,16 @@
 import asyncio
 import json
-import websockets
 import os
 import time
 
+import websockets
+
 SERVER_LOG = "HomeLabAI/server.log"
+
 
 async def test_forensics():
     print("--- 🔍 Testing Forensic Logging & 'Bye' Feature ---")
-    
+
     url = "ws://127.0.0.1:8765"
     try:
         async with websockets.connect(url) as ws:
@@ -16,10 +18,10 @@ async def test_forensics():
             test_id = f"TEST_QUERY_{int(time.time())}"
             print(f"📤 Sending unique query: {test_id}")
             await ws.send(json.dumps({"type": "text_input", "content": test_id}))
-            
+
             # Wait for processing
             await asyncio.sleep(5)
-            
+
             # 2. Verify string exists in log (append check)
             if os.path.exists(SERVER_LOG):
                 with open(SERVER_LOG, "r") as f:
@@ -36,7 +38,7 @@ async def test_forensics():
             # 3. Test 'Bye' Feature (Shutdown)
             print("📤 Sending 'bye' to trigger feature reboot...")
             await ws.send(json.dumps({"type": "text_input", "content": "bye"}))
-            
+
             # Wait for shutdown signal
             try:
                 async with asyncio.timeout(10):
@@ -49,22 +51,25 @@ async def test_forensics():
             except asyncio.TimeoutError:
                 print("❌ 'Bye' Feature: Timeout waiting for shutdown signal.")
                 return False
-            
+
             # 4. Final Append Check: Did the log survive the reboot request?
             if os.path.exists(SERVER_LOG):
                 with open(SERVER_LOG, "r") as f:
                     content = f.read()
                     if test_id in content:
-                        print("✅ Forensic Stability: Log persisted through shutdown trigger.")
+                        print(
+                            "✅ Forensic Stability: Log persisted through shutdown trigger."
+                        )
                     else:
                         print("❌ Forensic Stability: Log WIPED during shutdown.")
                         return False
-            
+
             return True
-            
+
     except Exception as e:
         print(f"❌ Error: {e}")
         return False
+
 
 if __name__ == "__main__":
     if asyncio.run(test_forensics()):

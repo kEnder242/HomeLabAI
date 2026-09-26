@@ -2,6 +2,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PORT = 9402
 
+
 class GPUExporter(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/metrics":
@@ -17,16 +18,17 @@ class GPUExporter(BaseHTTPRequestHandler):
     def get_nvidia_metrics(self):
         try:
             import pynvml
+
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             util_info = pynvml.nvmlDeviceGetUtilizationRates(handle)
-            
+
             used = info.used // 1024 // 1024
             total = info.total // 1024 // 1024
             util = util_info.gpu
             pynvml.nvmlShutdown()
-            
+
             res = [
                 "# HELP gpu_memory_used_bytes GPU memory used in MiB",
                 "# TYPE gpu_memory_used_bytes gauge",
@@ -36,7 +38,7 @@ class GPUExporter(BaseHTTPRequestHandler):
                 f"gpu_memory_total_bytes {total}",
                 "# HELP gpu_utilization GPU utilization percentage",
                 "# TYPE gpu_utilization gauge",
-                f"gpu_utilization {util}"
+                f"gpu_utilization {util}",
             ]
             return "\n".join(res) + "\n"
         except Exception as e:
@@ -44,6 +46,7 @@ class GPUExporter(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
+
 
 if __name__ == "__main__":
     print(f"Silicon-Sentry online on {PORT}")

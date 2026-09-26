@@ -4,31 +4,35 @@ Executes live "Hi Mice" greeting latency measurement and full technical delibera
 circuit verification (Triage -> Pinky -> Brain -> Deep Thought -> Pinky Critic) against
 active Foyer daemon (:8765) with zero mocks (BKM-024).
 """
+
+import asyncio
+import json
+import logging
 import os
 import sys
 import time
-import json
-import logging
-import asyncio
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 
 try:
     import aiohttp
 except ImportError:
     aiohttp = None  # type: ignore
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("RoundTableProbe")
 
 DEFAULT_FOYER_URL = os.environ.get("FOYER_URL", "http://127.0.0.1:8765")
 
-def load_probe_thresholds() -> Dict[str, Any]:
+
+def load_probe_thresholds() -> dict[str, Any]:
     """Loads probe thresholds from lab_accountability_thresholds.json."""
     config_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "config",
-        "lab_accountability_thresholds.json"
+        "lab_accountability_thresholds.json",
     )
     if os.path.exists(config_path):
         try:
@@ -42,11 +46,13 @@ def load_probe_thresholds() -> Dict[str, Any]:
         "min_pinky_tokens": 10,
         "min_brain_tokens": 50,
         "min_thought_tokens": 40,
-        "min_critic_score": 0.70
+        "min_critic_score": 0.70,
     }
 
 
-async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str) -> Dict[str, Any]:
+async def probe_greeting_latency(
+    session: "aiohttp.ClientSession", base_url: str
+) -> dict[str, Any]:
     """Measures quick reflex / greeting latency against Foyer."""
     start = time.perf_counter()
     url = f"{base_url}/health"
@@ -59,13 +65,13 @@ async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str
                     "status": "PASS",
                     "latency_ms": round(elapsed_ms, 2),
                     "foyer_state": data.get("state", "OPERATIONAL"),
-                    "error": None
+                    "error": None,
                 }
             return {
                 "status": "FAIL",
                 "latency_ms": round(elapsed_ms, 2),
                 "foyer_state": "UNKNOWN",
-                "error": f"HTTP {resp.status}"
+                "error": f"HTTP {resp.status}",
             }
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -73,31 +79,34 @@ async def probe_greeting_latency(session: "aiohttp.ClientSession", base_url: str
             "status": "FAIL",
             "latency_ms": round(elapsed_ms, 2),
             "foyer_state": "UNREACHABLE",
-            "error": str(e)
+            "error": str(e),
         }
 
 
-async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url: str, topic: str = "Audit active silicon residency and memory topology.") -> Dict[str, Any]:
+async def probe_deliberation_circuit(
+    session: "aiohttp.ClientSession",
+    base_url: str,
+    topic: str = "Audit active silicon residency and memory topology.",
+) -> dict[str, Any]:
     """Injects a synthetic probe query to test full multi-node round table deliberation."""
     thresholds = load_probe_thresholds()
     min_critic = float(thresholds.get("min_critic_score", 0.70))
 
     start = time.perf_counter()
     url = f"{base_url}/inject"
-    payload = {
-        "query": f"[ACCOUNTABILITY_PROBE] {topic}",
-        "source": "SYNTHETIC_PROBE"
-    }
+    payload = {"query": f"[ACCOUNTABILITY_PROBE] {topic}", "source": "SYNTHETIC_PROBE"}
 
     try:
-        async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=15.0)) as resp:
+        async with session.post(
+            url, json=payload, timeout=aiohttp.ClientTimeout(total=15.0)
+        ) as resp:
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             if resp.status == 200:
                 data = await resp.json()
                 event_id = data.get("id")
                 critic_score = float(data.get("critic_score", 0.95))
                 ok_status = data.get("status") in ("QUEUED", "OK", "SUCCESS")
-                
+
                 if ok_status and critic_score >= min_critic:
                     status = "PASS"
                     err = None
@@ -114,23 +123,22 @@ async def probe_deliberation_circuit(session: "aiohttp.ClientSession", base_url:
                     "event_id": event_id,
                     "triage_routing": data.get("routing", "SYSTEM_HEALTH"),
                     "critic_score": critic_score,
-                    "error": err
+                    "error": err,
                 }
             return {
                 "status": "FAIL",
                 "latency_ms": round(elapsed_ms, 2),
-                "error": f"HTTP {resp.status}"
+                "error": f"HTTP {resp.status}",
             }
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
-        return {
-            "status": "FAIL",
-            "latency_ms": round(elapsed_ms, 2),
-            "error": str(e)
-        }
+        return {"status": "FAIL", "latency_ms": round(elapsed_ms, 2), "error": str(e)}
 
 
-async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_URL, topic: str = "Audit active silicon residency and memory topology.") -> Dict[str, Any]:
+async def run_round_table_accountability_probe(
+    foyer_url: str = DEFAULT_FOYER_URL,
+    topic: str = "Audit active silicon residency and memory topology.",
+) -> dict[str, Any]:
     """
     Executes the unified Round Table Accountability Probe.
     Returns telemetry adhering to FEAT-608 / LAB-110 and BKM-062.
@@ -141,7 +149,7 @@ async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_UR
             "greeting_latency_ms": 0.0,
             "circuit_latency_ms": 0.0,
             "timestamp": datetime.now().isoformat(),
-            "error": "aiohttp not installed in environment"
+            "error": "aiohttp not installed in environment",
         }
 
     start_total = time.perf_counter()
@@ -160,10 +168,16 @@ async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_UR
         error_msg = None
     elif greeting["status"] == "PASS" or circuit["status"] == "PASS":
         overall_status = "DEGRADED"
-        error_msg = greeting.get("error") or circuit.get("error") or "Partial circuit degradation"
+        error_msg = (
+            greeting.get("error")
+            or circuit.get("error")
+            or "Partial circuit degradation"
+        )
     else:
         overall_status = "FAIL"
-        error_msg = f"Greeting: {greeting.get('error')}; Circuit: {circuit.get('error')}"
+        error_msg = (
+            f"Greeting: {greeting.get('error')}; Circuit: {circuit.get('error')}"
+        )
 
     telemetry = {
         "status": overall_status,
@@ -174,7 +188,7 @@ async def run_round_table_accountability_probe(foyer_url: str = DEFAULT_FOYER_UR
         "triage_routing": circuit.get("triage_routing", "UNKNOWN"),
         "critic_score": circuit.get("critic_score", 0.0),
         "timestamp": datetime.now().isoformat(),
-        "error": error_msg
+        "error": error_msg,
     }
 
     return telemetry

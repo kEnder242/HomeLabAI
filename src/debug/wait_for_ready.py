@@ -1,19 +1,21 @@
 import asyncio
-import aiohttp
 import os
-import time
 import sys
+import time
+
+import aiohttp
 
 # Paths
 LAB_DIR = "/home/jallred/Dev_Lab/HomeLabAI"
 SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 HEARTBEAT_URL = "http://localhost:8765/heartbeat"
 
+
 async def wait_for_ready(timeout=180):
     """Standalone Forensic Wait: Polls heartbeat and tails log for crashes."""
     print(f"--- [WAIT] Forensic Liveness Audit (Timeout: {timeout}s) ---")
     start_t = time.time()
-    
+
     async with aiohttp.ClientSession() as session:
         while time.time() - start_t < timeout:
             # 1. Check for PHYSICAL READY
@@ -22,7 +24,9 @@ async def wait_for_ready(timeout=180):
                     if r.status == 200:
                         data = await r.json()
                         if data.get("full_lab_ready"):
-                            print(f"\n✅ SUCCESS: Lab reported READY after {int(time.time() - start_t)}s")
+                            print(
+                                f"\n✅ SUCCESS: Lab reported READY after {int(time.time() - start_t)}s"
+                            )
                             return True
             except Exception:
                 pass
@@ -43,9 +47,10 @@ async def wait_for_ready(timeout=180):
             elapsed = int(time.time() - start_t)
             print(f"  [WAIT] Lab not ready yet... ({elapsed}s)", end="\r")
             await asyncio.sleep(3)
-            
+
     print(f"\n❌ FAILED: Timed out waiting for READY after {timeout}s")
     return False
+
 
 if __name__ == "__main__":
     success = asyncio.run(wait_for_ready())

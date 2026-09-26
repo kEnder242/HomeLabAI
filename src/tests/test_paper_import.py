@@ -12,6 +12,7 @@ Verifies:
 Hermetic: parser + validator are exercised directly; the handler is invoked with a
 mocked aiohttp request and a patched atomic_write_json so no files are written.
 """
+
 import json
 import os
 import sys
@@ -19,12 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-HOME_LAB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ~/Dev_Lab/HomeLabAI
-SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(HOME_LAB)), "Portfolio_Dev", "scripts")
+HOME_LAB = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)  # ~/Dev_Lab/HomeLabAI
+SCRIPTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(HOME_LAB)), "Portfolio_Dev", "scripts"
+)
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from parse_document_to_ast import (  # noqa: E402  (scripts dir added above)
+from parse_document_to_ast import (
     DEFAULT_TITLE,
     detect_citations,
     parse_document,
@@ -32,8 +37,8 @@ from parse_document_to_ast import (  # noqa: E402  (scripts dir added above)
     parse_markdown,
     parse_plain_text,
 )
-from v5.foyer.validate_paper_schema import validate_paper_dict  # noqa: E402
-from src.v5.foyer.router import FoyerRouter  # noqa: E402
+from src.v5.foyer.router import FoyerRouter
+from v5.foyer.validate_paper_schema import validate_paper_dict
 
 
 # ---------------------------------------------------------------------------
@@ -90,10 +95,18 @@ def _assert_nested(ast, section_idx, paragraph_idx, key):
 # Citation discovery (Phase 1 DISCOVER)
 # ---------------------------------------------------------------------------
 def test_detect_citations_all_formats_deduped():
-    text = ("Shipped FEAT-181 alongside BKM-010; revisited FEAT-181 again. "
-            "Published ARXIV:2401.12345 and doi:10.1000/xyz123. Also WIS-042.")
+    text = (
+        "Shipped FEAT-181 alongside BKM-010; revisited FEAT-181 again. "
+        "Published ARXIV:2401.12345 and doi:10.1000/xyz123. Also WIS-042."
+    )
     found = detect_citations(text)
-    assert found == ["FEAT-181", "BKM-010", "ARXIV:2401.12345", "doi:10.1000/xyz123", "WIS-042"]
+    assert found == [
+        "FEAT-181",
+        "BKM-010",
+        "ARXIV:2401.12345",
+        "doi:10.1000/xyz123",
+        "WIS-042",
+    ]
     # deduplicated: FEAT-181 appears once
 
 
@@ -125,7 +138,9 @@ def test_markdown_hierarchical_section_parsing():
     ast = parse_markdown(md)
     assert ast["title"] == "Title"
     assert [s["heading"] for s in ast["sections"]] == [
-        "Distributed AI", "Model Mesh", "LaTeX Compilation"
+        "Distributed AI",
+        "Model Mesh",
+        "LaTeX Compilation",
     ]
     # heading hierarchy is flattened but preserved via 'level' metadata
     assert [s["level"] for s in ast["sections"]] == [2, 3, 2]
@@ -156,7 +171,10 @@ def test_markdown_preamble_section_before_first_heading():
     ast = parse_markdown(md)
     assert ast["title"] == "Real Title"
     assert ast["sections"][0]["heading"] == "Preamble"
-    assert ast["sections"][0]["paragraphs"][0]["text"] == "Lead-in sentence before any heading."
+    assert (
+        ast["sections"][0]["paragraphs"][0]["text"]
+        == "Lead-in sentence before any heading."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +188,10 @@ def test_plain_text_single_overview_section():
     section = ast["sections"][0]
     assert section["heading"] == "Overview"
     assert section["id"] == "sec-01"
-    assert [p["text"] for p in section["paragraphs"]] == ["Paragraph one here.", "Paragraph two here."]
+    assert [p["text"] for p in section["paragraphs"]] == [
+        "Paragraph one here.",
+        "Paragraph two here.",
+    ]
     assert all(p["bullet_type"] == "paragraph" for p in section["paragraphs"])
 
 
@@ -360,7 +381,9 @@ def test_validate_empty_candidate_pool_entry():
 
 def test_validate_duplicate_ids():
     bad = _valid_ast()
-    bad["sections"].append(json.loads(json.dumps(bad["sections"][0])))  # duplicate sec-01 + p-01
+    bad["sections"].append(
+        json.loads(json.dumps(bad["sections"][0]))
+    )  # duplicate sec-01 + p-01
     passed, errors = validate_paper_dict(bad)
     assert passed is False
     assert any("duplicate section id" in e for e in errors)
@@ -421,10 +444,12 @@ def test_route_registered():
 
 @pytest.mark.asyncio
 async def test_handle_paper_import_markdown_success():
-    response, mock_write = await _call_import_handler({
-        "title": "Ops Resume",
-        "content": "# Ops Resume\n\n## Platform\n\nRan BKM-010 tests and shipped FEAT-181.\n",
-    })
+    response, mock_write = await _call_import_handler(
+        {
+            "title": "Ops Resume",
+            "content": "# Ops Resume\n\n## Platform\n\nRan BKM-010 tests and shipped FEAT-181.\n",
+        }
+    )
     assert response.status == 200
     body = _resp_body(response)
     assert body["status"] == "success"
@@ -432,7 +457,10 @@ async def test_handle_paper_import_markdown_success():
     ast = body["ast"]
     assert ast["bone_collection"] == []
     assert ast["sections"][0]["heading"] == "Platform"
-    assert ast["sections"][0]["paragraphs"][0]["_candidate_pool"] == ["BKM-010", "FEAT-181"]
+    assert ast["sections"][0]["paragraphs"][0]["_candidate_pool"] == [
+        "BKM-010",
+        "FEAT-181",
+    ]
     assert body["stats"]["sections"] == 1
     assert body["stats"]["candidate_pool"] == 2
     assert body["file"].endswith(".json")
@@ -442,7 +470,10 @@ async def test_handle_paper_import_markdown_success():
 
 @pytest.mark.asyncio
 async def test_handle_paper_import_json_success():
-    payload = {"content": json.dumps({"title": "JSON Doc", "scope": "Ran WIS-042 pipelines."}), "format": "json"}
+    payload = {
+        "content": json.dumps({"title": "JSON Doc", "scope": "Ran WIS-042 pipelines."}),
+        "format": "json",
+    }
     response, _ = await _call_import_handler(payload)
     assert response.status == 200
     body = _resp_body(response)
@@ -469,7 +500,9 @@ async def test_handle_paper_import_missing_content_400():
 
 @pytest.mark.asyncio
 async def test_handle_paper_import_malformed_json_400():
-    response, _ = await _call_import_handler({"content": "{broken json", "format": "json"})
+    response, _ = await _call_import_handler(
+        {"content": "{broken json", "format": "json"}
+    )
     assert response.status == 400
     body = _resp_body(response)
     assert "could not be parsed" in body["message"]

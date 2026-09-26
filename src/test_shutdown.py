@@ -1,7 +1,9 @@
 import asyncio
-import websockets
 import json
 import sys
+
+import websockets
+
 
 async def test_shutdown():
     uri = "ws://localhost:8765"
@@ -18,7 +20,7 @@ async def test_shutdown():
             while True:
                 response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                 data = json.loads(response)
-                state = data.get('state')
+                state = data.get("state")
                 if state:
                     print(f"Received status: {state}")
                 if data.get("type") == "status" and state in ["ready", "operational"]:
@@ -37,7 +39,9 @@ async def test_shutdown():
                     print(f"Received: {data}")
 
                     if "brain" in data:
-                        print(f"✅ Farewell Received: '{data['brain']}' (Source: {data.get('brain_source')})")
+                        print(
+                            f"✅ Farewell Received: '{data['brain']}' (Source: {data.get('brain_source')})"
+                        )
                         # The server might close the connection immediately after sending this
                         break
 
@@ -46,8 +50,9 @@ async def test_shutdown():
                 return
 
     except Exception as e:
-        print(f"Test Failed: {repr(e)}")
+        print(f"Test Failed: {e!r}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(test_shutdown())

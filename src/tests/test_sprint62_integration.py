@@ -10,20 +10,20 @@ Verifies the complete end-to-end cascade for:
 
 from pathlib import Path
 
-from logic.triage_policy_loader import TriagePolicyLoader
 from logic.route_incubator import RouteIncubator
 from logic.traversal_dispatcher import (
     TraversalMode,
+    extract_temporal_anchors,
     format_traversal_query,
     resolve_collection_scope,
-    extract_temporal_anchors,
 )
 from logic.triage_engine import classify_vibe_and_domain
-
+from logic.triage_policy_loader import TriagePolicyLoader
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. Declarative Triage Policy Engine Integration (FEAT-467)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestDeclarativeTriagePolicyIntegration:
     """Verifies production triage policy loads, hot-reloads, and scopes RAG."""
@@ -31,7 +31,16 @@ class TestDeclarativeTriagePolicyIntegration:
     def test_production_policy_has_eight_standard_vibes(self):
         loader = TriagePolicyLoader()
         active = loader.get_active_vibes()
-        expected = ["CASUAL", "SUPERVISORY", "WYWO", "META", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL"]
+        expected = [
+            "CASUAL",
+            "SUPERVISORY",
+            "WYWO",
+            "META",
+            "OPERATIONAL",
+            "FORENSIC",
+            "TECHNICAL",
+            "HISTORICAL",
+        ]
         for v in expected:
             assert v in active, f"Missing expected standard vibe: {v}"
 
@@ -60,6 +69,7 @@ class TestDeclarativeTriagePolicyIntegration:
 # 2. Dynamic Route Incubation Sandbox Integration (FEAT-472)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRouteIncubationSandboxIntegration:
     """Verifies mouse candidate route creation, routing, and solidification export."""
 
@@ -73,7 +83,7 @@ class TestRouteIncubationSandboxIntegration:
             intent="Rapid PCIe AER link status check",
             target_domain="exp_tlm",
             traversal_mode="TOPIC_FIRST",
-            creator="Brain"
+            creator="Brain",
         )
         assert registered.startswith("MOUSE_DEF:")
         assert registered == "MOUSE_DEF:quick_pcie_health"
@@ -82,13 +92,15 @@ class TestRouteIncubationSandboxIntegration:
         vibe, domain = classify_vibe_and_domain(
             query="Check the quick_pcie_health status",
             parsed_json={"vibe": "CASUAL", "domain": "standard"},
-            incubator=incubator
+            incubator=incubator,
         )
         assert vibe == "MOUSE_DEF:quick_pcie_health"
         assert domain == "exp_tlm"
 
         # 3. Record hits and success
-        incubator.record_route_hit("quick_pcie_health", success=True, feedback="Accurate quick check")
+        incubator.record_route_hit(
+            "quick_pcie_health", success=True, feedback="Accurate quick check"
+        )
         candidates = incubator.get_candidate_routes(active_only=True)
         assert candidates["MOUSE_DEF:quick_pcie_health"]["hit_count"] == 1
         assert candidates["MOUSE_DEF:quick_pcie_health"]["success_count"] == 1
@@ -104,6 +116,7 @@ class TestRouteIncubationSandboxIntegration:
 # 3. Bidirectional Traversal Dispatcher Integration (FEAT-117/467)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestBidirectionalTraversalIntegration:
     """Verifies Topic-First, Time-First, and Stream-Replay traversals."""
 
@@ -114,7 +127,9 @@ class TestBidirectionalTraversalIntegration:
         assert formatted["temporal_bounds"] is None
         assert any("pcie" in term.lower() for term in formatted["enriched_terms"])
 
-        collections = resolve_collection_scope("TECHNICAL", "exp_tlm", TraversalMode.TOPIC_FIRST)
+        collections = resolve_collection_scope(
+            "TECHNICAL", "exp_tlm", TraversalMode.TOPIC_FIRST
+        )
         assert "artifact_vault" in collections
         assert "behavioral_dna" in collections
         assert "career_ledger" not in collections
@@ -127,7 +142,9 @@ class TestBidirectionalTraversalIntegration:
         assert formatted["temporal_bounds"]["start_year"] == 2018
         assert formatted["temporal_bounds"]["end_year"] == 2018
 
-        collections = resolve_collection_scope("HISTORICAL", "lab_history", TraversalMode.TIME_FIRST)
+        collections = resolve_collection_scope(
+            "HISTORICAL", "lab_history", TraversalMode.TIME_FIRST
+        )
         assert "career_ledger" in collections
         assert "artifact_vault" in collections
 
@@ -136,7 +153,9 @@ class TestBidirectionalTraversalIntegration:
         formatted = format_traversal_query(query, TraversalMode.STREAM_REPLAY)
         assert formatted["mode"] == TraversalMode.STREAM_REPLAY.value
 
-        collections = resolve_collection_scope("WYWO", "short_term_stream", TraversalMode.STREAM_REPLAY)
+        collections = resolve_collection_scope(
+            "WYWO", "short_term_stream", TraversalMode.STREAM_REPLAY
+        )
         assert collections == ["short_term_stream"]
         assert "career_ledger" not in collections
 
@@ -145,6 +164,7 @@ class TestBidirectionalTraversalIntegration:
 # 4. Full End-to-End Orchestrator Cascade
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestFullOrchestratorCascade:
     """Verifies end-to-end routing decisions across supervisory, technical, and historical turns."""
 
@@ -152,7 +172,7 @@ class TestFullOrchestratorCascade:
         query = "The critic phase needs tuning; Pinky should use cartoon quips rather than praise."
         vibe, domain = classify_vibe_and_domain(
             query=query,
-            parsed_json={"vibe": "SUPERVISORY", "domain": "session_feedback"}
+            parsed_json={"vibe": "SUPERVISORY", "domain": "session_feedback"},
         )
         assert vibe == "SUPERVISORY"
         loader = TriagePolicyLoader()
@@ -160,6 +180,8 @@ class TestFullOrchestratorCascade:
         assert rag is None  # Zero RAG context injected
 
     def test_temporal_anchor_extraction_multi_era(self):
-        anchors = extract_temporal_anchors("In Sprint 35 and back in 2024, what was our LoRA strategy?")
+        anchors = extract_temporal_anchors(
+            "In Sprint 35 and back in 2024, what was our LoRA strategy?"
+        )
         assert 35 in anchors["sprints"]
         assert 2024 in anchors["years"]

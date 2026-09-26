@@ -14,11 +14,11 @@ Verifies:
 
 import asyncio
 import json
-import pytest
-import aiohttp
-import websockets
 
-from logic.cognitive_hub import CognitiveHub, BRAIN_PERSONA_SPEC
+import aiohttp
+import pytest
+import websockets
+from logic.cognitive_hub import BRAIN_PERSONA_SPEC, CognitiveHub
 from nodes.archive_node import select_vector_query
 
 
@@ -62,7 +62,7 @@ async def test_casual_flow_bypasses_hyde_and_rag():
         "addressed_to": "PINKY",
         "vibe": "CASUAL",
         "casual": 0.95,
-        "hyde_vector_text": ""
+        "hyde_vector_text": "",
     }
 
     # Verify RAG context fetch returns empty string for casual turn
@@ -98,6 +98,7 @@ FOYER_WS = "ws://localhost:8765/"
 
 def _foyer_live():
     import socket
+
     try:
         with socket.create_connection(("localhost", 8765), timeout=2.0):
             return True
@@ -105,7 +106,9 @@ def _foyer_live():
         return False
 
 
-@pytest.mark.skipif(not _foyer_live(), reason="Lab Attendant server not running on port 8765")
+@pytest.mark.skipif(
+    not _foyer_live(), reason="Lab Attendant server not running on port 8765"
+)
 @pytest.mark.asyncio
 async def test_hibernation_cold_start_crosstalk_preamble():
     """Verify on-demand hibernation transition and instant zero-latency crosstalk emission."""
@@ -114,12 +117,14 @@ async def test_hibernation_cold_start_crosstalk_preamble():
         async with session.post(
             f"{FOYER_BASE}/status_update",
             json={"state": "HIBERNATING"},
-            timeout=aiohttp.ClientTimeout(total=10)
+            timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
             assert resp.status in (200, 204)
 
         # 2. Get session token
-        async with session.get(f"{FOYER_BASE}/status", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        async with session.get(
+            f"{FOYER_BASE}/status", timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
             body = await resp.json()
             token = body.get("session_token", "")
 

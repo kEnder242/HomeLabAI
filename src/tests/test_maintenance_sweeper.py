@@ -7,9 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from src.v5.foyer.maintenance_sweeper import MaintenanceSweeper
-
 
 # ========================================================================
 # 1. check_cpu_thermal_throttle
@@ -219,9 +217,7 @@ class TestPruneTtlBuffer:
         """When current_time is None, uses time.time() internally."""
         buffer = {"a": b"data"}
         timestamps = {"a": 0.0}  # epoch — very old
-        purged = MaintenanceSweeper.prune_ttl_buffer(
-            buffer, timestamps, max_age_s=30.0
-        )
+        purged = MaintenanceSweeper.prune_ttl_buffer(buffer, timestamps, max_age_s=30.0)
         assert purged == ["a"]
         assert "a" not in buffer
 

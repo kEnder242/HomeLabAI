@@ -2,6 +2,7 @@
 [FEAT-528] Verification Suite for Story 70.12 Public Showcase Surface on Airlock
 Validates that public_benchmarks.html renders offline without external dependencies.
 """
+
 from pathlib import Path
 
 

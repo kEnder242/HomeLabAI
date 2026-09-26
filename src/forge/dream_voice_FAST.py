@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Dream Voice (Stage 3: Persona Synthesis)
@@ -13,13 +12,18 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+
 import websockets
 
 # --- Configuration ---
 LOG_LEVEL = logging.INFO
 EXPERTISE_DIR = Path.home() / "Dev_Lab/HomeLabAI/src/forge/expertise"
-REFINED_PROMPTS = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise/refined_prompts_FAST.jsonl")
-VOICE_DATASET = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise/cli_voice_dataset_FAST.jsonl")
+REFINED_PROMPTS = Path(
+    "/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise/refined_prompts_FAST.jsonl"
+)
+VOICE_DATASET = Path(
+    "/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise/cli_voice_dataset_FAST.jsonl"
+)
 SENTINEL_DATASET = EXPERTISE_DIR / "lab_sentinel_training.jsonl"
 BRAIN_NODE_URI = "ws://localhost:8765"
 
@@ -78,16 +82,16 @@ async def main(limit=10, mode="voice"):
         return
 
     EXPERTISE_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     target_file = SENTINEL_DATASET if mode == "sentinel" else VOICE_DATASET
-    
+
     # [FEAT-204] Resume Logic: Load already dreamed prompts
     seen_prompts = set()
     if target_file.exists():
-        with open(target_file, 'r') as f_check:
+        with open(target_file, "r") as f_check:
             for line in f_check:
                 try:
-                    instruction = json.loads(line).get('instruction')
+                    instruction = json.loads(line).get("instruction")
                     if instruction:
                         seen_prompts.add(instruction)
                 except Exception:
@@ -104,12 +108,14 @@ async def main(limit=10, mode="voice"):
 
                 entry = json.loads(line)
                 prompt = entry.get("prompt")
-                
+
                 if prompt in seen_prompts:
                     continue
 
                 logging.info(f"Dreaming [{mode}] for: {prompt[:50]}...")
-                ideal_response = await generate_dream_response(websocket, prompt, mode=mode)
+                ideal_response = await generate_dream_response(
+                    websocket, prompt, mode=mode
+                )
 
                 if ideal_response:
                     dataset_entry = {

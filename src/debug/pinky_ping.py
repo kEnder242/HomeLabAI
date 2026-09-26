@@ -1,7 +1,9 @@
 import asyncio
 import json
-import websockets
 import sys
+
+import websockets
+
 
 async def ping():
     url = "ws://127.0.0.1:8765"
@@ -9,21 +11,23 @@ async def ping():
     try:
         async with websockets.connect(url, open_timeout=5) as ws:
             print("✅ Socket Connected.")
-            
+
             # 1. Send Handshake
             await ws.send(json.dumps({"type": "handshake", "version": "3.8.0"}))
-            
+
             # 2. Wait for Status & Cabinet responses
             async with asyncio.timeout(5):
                 msg1 = await ws.recv()
                 print(f"[RECV 1] {msg1[:100]}...")
                 msg2 = await ws.recv()
                 print(f"[RECV 2] {msg2[:100]}...")
-                
+
             # 3. Test Query
             print("📤 Sending Vibe Check...")
-            await ws.send(json.dumps({"type": "text_input", "content": "Pinky, are you there?"}))
-            
+            await ws.send(
+                json.dumps({"type": "text_input", "content": "Pinky, are you there?"})
+            )
+
             async with asyncio.timeout(10):
                 while True:
                     msg = await ws.recv()
@@ -38,6 +42,7 @@ async def ping():
     except Exception as e:
         print(f"❌ ERROR: {e}")
     return False
+
 
 if __name__ == "__main__":
     success = asyncio.run(ping())

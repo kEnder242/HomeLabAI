@@ -1,30 +1,34 @@
 import json
 from pathlib import Path
-from nodes.pinky_critic_persona import (
-    CriticResult,
-    parse_critic_payload
-)
 
-PORTFOLIO_DIR = Path(__file__).resolve().parent.parent.parent.parent / "Portfolio_Dev" / "field_notes"
+from nodes.pinky_critic_persona import CriticResult, parse_critic_payload
+
+PORTFOLIO_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "Portfolio_Dev"
+    / "field_notes"
+)
 BONES_PATH = PORTFOLIO_DIR / "data" / "bone_collections.json"
 MANIFEST_PATH = PORTFOLIO_DIR / "data" / "dna_manifest.json"
 
 
 def test_dna_proposal_dataclass_and_parsing():
-    raw_json = json.dumps({
-        "cartoon_retort": "Egads! What a marvelous insight!",
-        "critique_suggestions": ["Ensure anchor links are preserved."],
-        "score": 5,
-        "dna_proposal": {
-            "id": "BKM-099",
-            "domain": "BKM",
-            "title": "Always Validate REST Before Re-bucketing",
-            "summary": "Mandatory REST pre-flight probe.",
-            "rationale": "Prevents data corruption across distributed nodes.",
-            "tags": ["validation", "rest", "bkm"]
+    raw_json = json.dumps(
+        {
+            "cartoon_retort": "Egads! What a marvelous insight!",
+            "critique_suggestions": ["Ensure anchor links are preserved."],
+            "score": 5,
+            "dna_proposal": {
+                "id": "BKM-099",
+                "domain": "BKM",
+                "title": "Always Validate REST Before Re-bucketing",
+                "summary": "Mandatory REST pre-flight probe.",
+                "rationale": "Prevents data corruption across distributed nodes.",
+                "tags": ["validation", "rest", "bkm"],
+            },
         }
-    })
-    
+    )
+
     result = parse_critic_payload(raw_json)
     assert isinstance(result, CriticResult)
     assert result.score == 5
@@ -63,10 +67,10 @@ def test_bone_collections_schema_and_manifest():
     assert BONES_PATH.exists(), f"Missing bone_collections.json at {BONES_PATH}"
     with open(BONES_PATH, "r", encoding="utf-8") as f:
         collections = json.load(f)
-    
+
     assert isinstance(collections, list)
     assert len(collections) >= 2
-    
+
     # Verify core scaffold structure
     core = next((c for c in collections if c.get("id") == "bone_core_scaffold"), None)
     assert core is not None
@@ -81,8 +85,16 @@ def test_dna_manifest_polymorphic_domains():
     assert MANIFEST_PATH.exists(), f"Missing dna_manifest.json at {MANIFEST_PATH}"
     with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
         manifest = json.load(f)
-    
-    expected_domains = ["philosophy", "wisdom", "rdna", "discovery", "feature", "behavioral", "sprint"]
+
+    expected_domains = [
+        "philosophy",
+        "wisdom",
+        "rdna",
+        "discovery",
+        "feature",
+        "behavioral",
+        "sprint",
+    ]
     for d in expected_domains:
         assert d in manifest, f"Expected domain {d} in manifest"
         assert len(manifest[d]) > 0, f"Domain {d} should have cards loaded"

@@ -1,5 +1,7 @@
 import asyncio
+
 import websockets
+
 
 async def test():
     uri = "ws://localhost:8765"
@@ -8,10 +10,11 @@ async def test():
         print("Connected! Waiting 5 seconds...")
         await asyncio.sleep(5)
         print("Disconnecting...")
-    
+
     print("Disconnected. Waiting for auto-shutdown (5s delay + margin)...")
     await asyncio.sleep(10)
     print("Done.")
+
 
 if __name__ == "__main__":
     asyncio.run(test())

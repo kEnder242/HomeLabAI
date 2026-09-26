@@ -1,9 +1,10 @@
-from nodes.loader import BicameralNode
 import json
+
+from nodes.loader import BicameralNode
 
 BRAIN_SYSTEM_PROMPT = (
     "# IDENTITY\n"
-# [FEAT-067] Diamond Dreaming (Subconscious Consolidation)
+    # [FEAT-067] Diamond Dreaming (Subconscious Consolidation)
     "You are The Brain, the subconscious Intuition and technical Refinement node of Acme Lab.\n"
     "ROLE: Subconscious reasoning and intuition (Resident on 2080 Ti).\n"
     "STYLE: Precise, analytical, supportive of Deep Thought.\n\n"
@@ -20,6 +21,7 @@ BRAIN_SYSTEM_PROMPT = (
 node = BicameralNode("Brain", BRAIN_SYSTEM_PROMPT)
 mcp = node.mcp
 
+
 @mcp.tool()
 async def deep_think(task: str, context: str = "", metadata: dict = None) -> str:
     """The Reasoning Engine: Execute complex architectural or coding tasks."""
@@ -27,12 +29,19 @@ async def deep_think(task: str, context: str = "", metadata: dict = None) -> str
     if metadata and metadata.get("behavioral_guidance"):
         # [FEAT-190] Vibe-Aware Prompting
         system_override = f"{BRAIN_SYSTEM_PROMPT}\n\n[VIBE_GUIDANCE]: {metadata['behavioral_guidance']}"
-    
+
     # Return full string block
     full_response = ""
-    async for token in node.generate_response(task, context, metadata=metadata, system_override=system_override, max_tokens=1500):
+    async for token in node.generate_response(
+        task,
+        context,
+        metadata=metadata,
+        system_override=system_override,
+        max_tokens=1500,
+    ):
         full_response += token
     return full_response
+
 
 @mcp.tool()
 async def think(task: str, context: str = "") -> str:
@@ -45,9 +54,12 @@ async def think(task: str, context: str = "") -> str:
     )
     # Return full string block
     full_response = ""
-    async for token in node.generate_response(task, context, system_override=shallow_prompt, max_tokens=100):
+    async for token in node.generate_response(
+        task, context, system_override=shallow_prompt, max_tokens=100
+    ):
         full_response += token
     return full_response
+
 
 @mcp.tool()
 async def peek_strategic_map() -> str:
@@ -58,7 +70,9 @@ async def peek_strategic_map() -> str:
 @mcp.tool()
 async def read_chronological_excerpts(year: str, months: list[str] = None) -> str:
     """[FEAT-196] Proxy: Requests raw chronological evidence for specific date ranges."""
-    return await node.call_remote_tool("archive", "read_chronological_excerpts", {"year": year, "months": months})
+    return await node.call_remote_tool(
+        "archive", "read_chronological_excerpts", {"year": year, "months": months}
+    )
 
 
 @mcp.tool()
@@ -73,10 +87,11 @@ async def get_host_vitals() -> str:
     """[FEAT-557] Query live host hardware telemetry (GPU VRAM, host RAM, CPU load average, active model residency)."""
     try:
         from infra.live_telemetry import get_host_vitals as _ghv
+
         return json.dumps(_ghv(), indent=2)
     except Exception as e:
         return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
 
 
 if __name__ == "__main__":
-    node.run() # [FEAT-240] Run the Native Sampling Bridge
+    node.run()  # [FEAT-240] Run the Native Sampling Bridge

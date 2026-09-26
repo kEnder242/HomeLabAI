@@ -1,6 +1,7 @@
 import os
 import subprocess
 
+
 def test_patch_tool():
     print("--- Testing patch_file Tool ---")
     ws_dir = os.path.expanduser("~/AcmeLab/workspace")
@@ -26,7 +27,9 @@ def test_patch_tool():
         f.write(diff)
 
     # 3. Apply
-    res = subprocess.run(["patch", test_file, patch_file_path], capture_output=True, text=True)
+    res = subprocess.run(
+        ["patch", test_file, patch_file_path], capture_output=True, text=True
+    )
     if res.returncode == 0:
         with open(test_file, "r") as f:
             content = f.read()
@@ -37,7 +40,9 @@ def test_patch_tool():
     else:
         print(f"[FAIL] Patch command failed: {res.stderr}")
 
-    if os.path.exists(patch_file_path): os.remove(patch_file_path)
+    if os.path.exists(patch_file_path):
+        os.remove(patch_file_path)
+
 
 def test_progress_logic():
     print("\n--- Testing Progress Reporting Logic ---")
@@ -49,6 +54,7 @@ def test_progress_logic():
         print("[PASS] Progress calculation accurate.")
     else:
         print("[FAIL] Progress calculation error.")
+
 
 if __name__ == "__main__":
     test_patch_tool()

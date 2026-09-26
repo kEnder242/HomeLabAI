@@ -1,7 +1,9 @@
 import asyncio
 import json
-import websockets
 import sys
+
+import websockets
+
 
 async def audit():
     url = "ws://127.0.0.1:8765"
@@ -14,25 +16,30 @@ async def audit():
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
-                    if data.get('brain') and 'Strategic Architect' in data.get('brain'):
+                    if data.get("brain") and "Strategic Architect" in data.get("brain"):
                         print(f"   [RECV] {data.get('brain')}")
                         break
-            
+
             # 2. Trigger Engagement Feedback
             print("📤 Sending strategic query to trigger engagement feedback...")
-            await ws.send(json.dumps({"type": "text_input", "content": "root cause of regression"}))
-            
+            await ws.send(
+                json.dumps(
+                    {"type": "text_input", "content": "root cause of regression"}
+                )
+            )
+
             async with asyncio.timeout(15):
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
-                    if data.get('brain') and 'Engaging' in data.get('brain'):
+                    if data.get("brain") and "Engaging" in data.get("brain"):
                         print(f"   [RECV] {data.get('brain')}")
                         print("✅ PASS: Engagement feedback received.")
                         return True
     except Exception as e:
         print(f"❌ ERROR: {e}")
     return False
+
 
 if __name__ == "__main__":
     if asyncio.run(audit()):

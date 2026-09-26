@@ -14,7 +14,6 @@ import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 import requests
 
@@ -36,23 +35,23 @@ log = logging.getLogger(__name__)
 class TelemetrySample:
     timestamp: float = field(default_factory=time.time)
     # GPU Silicon
-    gpu_power_w: float = 0.0          # DCGM_FI_DEV_POWER_USAGE
-    gpu_temp_c: float = 0.0           # DCGM_FI_DEV_GPU_TEMP
-    vram_used_mb: float = 0.0         # DCGM_FI_DEV_FB_USED
-    vram_total_mb: float = 0.0        # DCGM_FI_DEV_FB_TOTAL
-    sm_clock_mhz: float = 0.0         # DCGM_FI_DEV_SM_CLOCK
+    gpu_power_w: float = 0.0  # DCGM_FI_DEV_POWER_USAGE
+    gpu_temp_c: float = 0.0  # DCGM_FI_DEV_GPU_TEMP
+    vram_used_mb: float = 0.0  # DCGM_FI_DEV_FB_USED
+    vram_total_mb: float = 0.0  # DCGM_FI_DEV_FB_TOTAL
+    sm_clock_mhz: float = 0.0  # DCGM_FI_DEV_SM_CLOCK
     # Token Generation (filled by cognitive_hub)
-    ttft_ms: float = 0.0              # time-to-first-token
+    ttft_ms: float = 0.0  # time-to-first-token
     total_tokens: int = 0
     duration_s: float = 0.0
     tokens_per_sec: float = 0.0
     # Derived Economics
     joules_per_token: float = 0.0
-    tco_usd: float = 0.0              # synthetic cost at $0.10/kWh
+    tco_usd: float = 0.0  # synthetic cost at $0.10/kWh
     # Context
     node: str = ""
     request_id: str = "default"
-    engine_type: str = ""             # VLLM | OLLAMA
+    engine_type: str = ""  # VLLM | OLLAMA
     model: str = ""
 
     def enrich_economics(self) -> None:
@@ -74,7 +73,7 @@ class TelemetrySample:
 # ---------------------------------------------------------------------------
 # Prometheus Text Parser (no prometheus_client dependency)
 # ---------------------------------------------------------------------------
-def _parse_prometheus(text: str, metric_name: str) -> Optional[float]:
+def _parse_prometheus(text: str, metric_name: str) -> float | None:
     """
     Minimal single-metric extractor from Prometheus text exposition format.
     Returns the first numeric value found for the given metric_name.
@@ -163,6 +162,7 @@ class TelemetryCollector:
         Uses line-append (atomic enough for single-writer scenarios).
         """
         import json
+
         try:
             with open(self.ledger_path, "a") as f:
                 f.write(json.dumps(asdict(sample)) + "\n")
@@ -173,7 +173,7 @@ class TelemetryCollector:
 # ---------------------------------------------------------------------------
 # Singleton — shared across nodes in the same process
 # ---------------------------------------------------------------------------
-_collector: Optional[TelemetryCollector] = None
+_collector: TelemetryCollector | None = None
 
 
 def get_collector() -> TelemetryCollector:

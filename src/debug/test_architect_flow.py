@@ -1,10 +1,14 @@
 import asyncio
 import json
-import pytest
 import os
 
+import pytest
+
 ATTENDANT_URL = "http://localhost:8765"
-SEMANTIC_MAP_FILE = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json")
+SEMANTIC_MAP_FILE = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/semantic_map.json"
+)
+
 
 @pytest.mark.asyncio
 async def test_architect_hierarchy_build():
@@ -45,19 +49,23 @@ async def test_architect_hierarchy_build():
 
     # Run the architect logic standalone for verification of its tool
     from nodes.lab_node import build_semantic_map
+
     # We need to mock the environment for the standalone run
     result = await build_semantic_map()
     print(f"Architect Result: {result}")
 
     # 3. Verify Map
     assert os.path.exists(SEMANTIC_MAP_FILE), "Semantic Map JSON was not created."
-    with open(SEMANTIC_MAP_FILE, 'r') as f:
+    with open(SEMANTIC_MAP_FILE, "r") as f:
         m = json.load(f)
         assert "strategic_layer" in m
         assert "analytical_layer" in m
         assert "tactical_layer" in m
         assert m["tactical_layer"]["total_events"] > 0
-        print(f"[PASS] Semantic Map verified with {len(m['strategic_layer'])} strategic anchors.")
+        print(
+            f"[PASS] Semantic Map verified with {len(m['strategic_layer'])} strategic anchors."
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(test_architect_hierarchy_build())

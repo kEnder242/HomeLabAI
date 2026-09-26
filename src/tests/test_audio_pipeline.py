@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from src.equipment.audio_pipeline import AudioPipeline
-
 
 # ========================================================================
 # 1. pcm_to_numpy

@@ -11,8 +11,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # 1. Query Detection
@@ -25,7 +24,7 @@ _CORRECTION_KEYWORDS = frozenset(
 )
 
 
-def is_override_query(turn: str) -> tuple[bool, Optional[str]]:
+def is_override_query(turn: str) -> tuple[bool, str | None]:
     """Detect whether *turn* carries an override intent.
 
     Steps:
@@ -72,7 +71,7 @@ async def parse_override_with_resident(
     gem_id: str,
     turn: str,
     resident_caller: Any,
-) -> Optional[dict]:
+) -> dict | None:
     """Ask the *resident* LLM to extract structured updates from *turn*.
 
     Parameters
@@ -96,8 +95,12 @@ async def parse_override_with_resident(
     try:
         if hasattr(resident_caller, "think") and callable(resident_caller.think):
             raw = await resident_caller.think(prompt, internal=True)
-        elif hasattr(resident_caller, "call_tool") and callable(resident_caller.call_tool):
-            res = await resident_caller.call_tool("think", {"prompt": prompt, "query": prompt})
+        elif hasattr(resident_caller, "call_tool") and callable(
+            resident_caller.call_tool
+        ):
+            res = await resident_caller.call_tool(
+                "think", {"prompt": prompt, "query": prompt}
+            )
             if hasattr(res, "content") and res.content:
                 raw = res.content[0].text
             else:
@@ -138,7 +141,7 @@ _DEFAULT_OVERRIDES_PATH = Path(
 def save_override_to_file(
     gem_id: str,
     updates: dict,
-    overrides_path: Optional[str | Path] = None,
+    overrides_path: str | Path | None = None,
 ) -> bool:
     """Atomically merge *updates* into the overrides JSON file.
 

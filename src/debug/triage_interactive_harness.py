@@ -1,10 +1,12 @@
-import requests
 import json
 import time
+
+import requests
 
 ATTENDANT_URL = "http://localhost:8765"
 HUB_URL = "http://localhost:8765"
 STYLE_KEY = "92e785ba"
+
 
 def clear_cache():
     print("🧹 Clearing GPU and Engine caches...")
@@ -14,27 +16,35 @@ def clear_cache():
     except Exception as e:
         print(f"[ERROR]: {e}")
 
+
 def update_prompt(node, prompt):
     print(f"📝 Updating prompt for {node}...")
     try:
         payload = {"node": node, "prompt": prompt}
-        r = requests.post(f"{ATTENDANT_URL}/update_prompt?key={STYLE_KEY}", json=payload, timeout=10)
+        r = requests.post(
+            f"{ATTENDANT_URL}/update_prompt?key={STYLE_KEY}", json=payload, timeout=10
+        )
         print(f"[RESULT]: {r.json().get('status')}")
     except Exception as e:
         print(f"[ERROR]: {e}")
+
 
 def toggle_streaming(node, mode):
     print(f"🌊 Setting {node} to {mode}...")
     try:
         payload = {"node": node, "mode": mode}
-        r = requests.post(f"{HUB_URL}/hub/config/streaming?key={STYLE_KEY}", json=payload, timeout=10)
+        r = requests.post(
+            f"{HUB_URL}/hub/config/streaming?key={STYLE_KEY}", json=payload, timeout=10
+        )
         print(f"[RESULT]: {r.json().get('status')}")
     except Exception as e:
         print(f"[ERROR]: {e}")
 
+
 def run_triage(query):
     print(f"🧠 Triggering Triage for: {query}")
     import asyncio
+
     import websockets
 
     async def _call():
@@ -42,12 +52,14 @@ def run_triage(query):
         try:
             async with websockets.connect(uri) as ws:
                 # Handshake
-                await ws.send(json.dumps({"type": "handshake", "client": "triage_harness"}))
-                
+                await ws.send(
+                    json.dumps({"type": "handshake", "client": "triage_harness"})
+                )
+
                 # Send Query
                 payload = {"type": "text_input", "content": query}
                 await ws.send(json.dumps(payload))
-                
+
                 print("\n--- [LIVE OUTPUT] ---")
                 full_raw = ""
                 start_t = time.time()
@@ -55,17 +67,19 @@ def run_triage(query):
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
                         data = json.loads(msg)
-                        
+
                         # Show EVERYTHING for transparency
                         source = data.get("brain_source", data.get("source", "System"))
                         content = data.get("brain", data.get("text", ""))
-                        
+
                         if content:
                             print(f"[{source}]: {content}")
                             if "Triage" in source:
                                 full_raw += content
-                        
-                        if data.get("final") == True or "[HUB] Triage successful" in str(data):
+
+                        if data.get(
+                            "final"
+                        ) == True or "[HUB] Triage successful" in str(data):
                             break
                     except asyncio.TimeoutError:
                         continue
@@ -77,49 +91,58 @@ def run_triage(query):
 
     return asyncio.run(_call())
 
+
 def main():
     print("=== 🩺 PHYSICIAN'S TRIAGE HARNESS ===")
-    print("Commands: 'clear', 'prompt <text>', 'stream <WATERFALL|POOLING>', 'test <query>', 'quit'")
-    
-    current_prompt = "You are The Lab Node sentinel. Respond ONLY with a raw JSON block."
-    
+    print(
+        "Commands: 'clear', 'prompt <text>', 'stream <WATERFALL|POOLING>', 'test <query>', 'quit'"
+    )
+
+    current_prompt = (
+        "You are The Lab Node sentinel. Respond ONLY with a raw JSON block."
+    )
+
     while True:
         try:
             cmd_line = input("\n🩺 > ").strip()
-            if not cmd_line: continue
-            
-            parts = cmd_line.split(' ', 1)
+            if not cmd_line:
+                continue
+
+            parts = cmd_line.split(" ", 1)
             cmd = parts[0].lower()
-            
-            if cmd == 'quit': break
-            elif cmd == 'clear': clear_cache()
-            elif cmd == 'prompt':
+
+            if cmd == "quit":
+                break
+            elif cmd == "clear":
+                clear_cache()
+            elif cmd == "prompt":
                 if len(parts) > 1:
                     current_prompt = parts[1]
                     update_prompt("lab", current_prompt)
                 else:
                     print(f"Current Lab Prompt: {current_prompt}")
-            elif cmd == 'stream':
+            elif cmd == "stream":
                 if len(parts) > 1:
                     toggle_streaming("lab", parts[1].upper())
                 else:
                     print("Usage: stream WATERFALL|POOLING")
-            elif cmd == 'test':
+            elif cmd == "test":
                 query = parts[1] if len(parts) > 1 else "[ME] hello"
                 run_triage(query)
-            elif cmd == 'burst':
+            elif cmd == "burst":
                 query = parts[1] if len(parts) > 1 else "[ME] hello"
                 print("🔥 Initiating BURST MODE (5 concurrent queries)...")
                 import threading
+
                 def _burst():
                     run_triage(query)
-                
+
                 threads = []
                 for _ in range(5):
                     t = threading.Thread(target=_burst)
                     t.start()
                     threads.append(t)
-                
+
                 for t in threads:
                     t.join()
                 print("✅ BURST MODE COMPLETE.")
@@ -127,6 +150,7 @@ def main():
                 print("Unknown command.")
         except KeyboardInterrupt:
             break
+
 
 if __name__ == "__main__":
     main()

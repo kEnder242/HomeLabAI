@@ -1,7 +1,9 @@
 import asyncio
 import json
-import websockets
 import sys
+
+import websockets
+
 
 async def audit():
     url = "ws://127.0.0.1:8765"
@@ -9,36 +11,38 @@ async def audit():
     try:
         async with websockets.connect(url) as ws:
             await ws.send(json.dumps({"type": "handshake", "version": "3.8.0"}))
-            await ws.recv(); await ws.recv() # Consume init
-            
+            await ws.recv()
+            await ws.recv()  # Consume init
+
             # Test 1: Enable Mic
             print("📤 Sending: mic_state active=True")
             await ws.send(json.dumps({"type": "mic_state", "active": True}))
             while True:
                 msg = await ws.recv()
                 data = json.loads(msg)
-                if data.get('type') == 'status' and 'Mic' in data.get('message', ''):
+                if data.get("type") == "status" and "Mic" in data.get("message", ""):
                     print(f"   [RECV] {data.get('message')}")
-                    if data.get('mic_active') == True:
+                    if data.get("mic_active") == True:
                         print("✅ PASS: Mic state enabled.")
                         break
-                
+
             # Test 2: Disable Mic
             print("📤 Sending: mic_state active=False")
             await ws.send(json.dumps({"type": "mic_state", "active": False}))
             while True:
                 msg = await ws.recv()
                 data = json.loads(msg)
-                if data.get('type') == 'status' and 'Mic' in data.get('message', ''):
+                if data.get("type") == "status" and "Mic" in data.get("message", ""):
                     print(f"   [RECV] {data.get('message')}")
-                    if data.get('mic_active') == False:
+                    if data.get("mic_active") == False:
                         print("✅ PASS: Mic state disabled.")
                         break
-                
+
             return True
     except Exception as e:
         print(f"❌ ERROR: {e}")
     return False
+
 
 if __name__ == "__main__":
     if asyncio.run(audit()):

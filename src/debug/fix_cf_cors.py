@@ -1,9 +1,11 @@
-import requests
 import json
+
+import requests
+
 
 def final_attempt():
     secrets_path = "Portfolio_Dev/monitor/secrets.json"
-    with open(secrets_path, 'r') as f:
+    with open(secrets_path, "r") as f:
         secrets = json.load(f)
 
     cf_token = secrets.get("CF_API_TOKEN")
@@ -12,13 +14,13 @@ def final_attempt():
 
     headers = {
         "Authorization": f"Bearer {cf_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Use PUT with FULL payload to avoid Method Not Allowed
     # Some Cloudflare endpoints only support PUT for full updates
     url = f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/access/apps/{app_id}"
-    
+
     data = {
         "name": "Jason Lab",
         "domain": "notes.jason-lab.dev",
@@ -33,23 +35,24 @@ def final_attempt():
             "allowed_headers": ["Content-Type", "X-Lab-Key", "Authorization"],
             "allowed_methods": ["GET", "POST", "OPTIONS"],
             "allowed_origins": [
-                "https://notes.jason-lab.dev", 
-                "https://www.jason-lab.dev", 
+                "https://notes.jason-lab.dev",
+                "https://www.jason-lab.dev",
                 "https://code.jason-lab.dev",
                 "https://pager.jason-lab.dev",
-                "http://localhost:9001"
+                "http://localhost:9001",
             ],
-            "max_age": 3600
-        }
+            "max_age": 3600,
+        },
     }
 
     print(f"PUTing {url}...")
     res = requests.put(url, headers=headers, json=data)
-    
+
     if res.status_code == 200:
         print("✅ SUCCESS: Cloudflare Access configured.")
     else:
         print(f"❌ FAILED: {res.status_code} - {res.text}")
+
 
 if __name__ == "__main__":
     final_attempt()

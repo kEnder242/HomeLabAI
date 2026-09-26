@@ -1,7 +1,9 @@
-import torch
-import time
 import os
 import sys
+import time
+
+import torch
+
 
 def mps_test(duration=30):
     if not torch.cuda.is_available():
@@ -21,12 +23,13 @@ def mps_test(duration=30):
     count = 0
     while time.time() - start_time < duration:
         c = torch.matmul(a, b)
-        torch.cuda.synchronize() # Force wait for GPU
+        torch.cuda.synchronize()  # Force wait for GPU
         count += 1
         if count % 100 == 0:
             print(f"Iter {count}...")
 
     print(f"✅ Finished {count} iterations in {duration}s.")
+
 
 if __name__ == "__main__":
     duration = int(sys.argv[1]) if len(sys.argv) > 1 else 30

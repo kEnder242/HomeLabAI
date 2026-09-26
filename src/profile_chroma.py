@@ -1,6 +1,6 @@
-import time
-import sys
 import os
+import sys
+import time
 
 print(f"⏱️  [1/4] Starting Profiler (PID: {os.getpid()})...")
 t0 = time.time()
@@ -8,6 +8,7 @@ t0 = time.time()
 print("⏱️  [2/4] Importing modules...")
 import chromadb
 from chromadb.utils import embedding_functions
+
 t1 = time.time()
 print(f"   ✅ Imports took: {t1 - t0:.2f}s")
 

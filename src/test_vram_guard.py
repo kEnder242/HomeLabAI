@@ -1,11 +1,13 @@
 import asyncio
 import json
-import pytest
+
 import aiohttp
+import pytest
 import websockets
 
 ATTENDANT_URL = "http://localhost:8765"
 LAB_WS_URL = "ws://localhost:8765"
+
 
 @pytest.mark.asyncio
 async def test_vram_guard_stub_fallback():
@@ -18,11 +20,7 @@ async def test_vram_guard_stub_fallback():
         await session.post(f"{ATTENDANT_URL}/cleanup")
 
         # 2. Start lab with forced STUB engine
-        payload = {
-            "mode": "DEBUG_PINKY",
-            "engine": "STUB",
-            "disable_ear": True
-        }
+        payload = {"mode": "DEBUG_PINKY", "engine": "STUB", "disable_ear": True}
         async with session.post(f"{ATTENDANT_URL}/start", json=payload) as resp:
             assert resp.status == 200
             data = await resp.json()
@@ -39,7 +37,8 @@ async def test_vram_guard_stub_fallback():
                     if data.get("full_lab_ready"):
                         print("Lab is READY.")
                         break
-            except: pass
+            except:
+                pass
             await asyncio.sleep(2)
         else:
             pytest.fail("Lab failed to reach READY state.")
@@ -47,7 +46,14 @@ async def test_vram_guard_stub_fallback():
     # 4. Connect and send 'ask_brain' query
     async with websockets.connect(LAB_WS_URL) as ws:
         await ws.send(json.dumps({"type": "handshake", "version": "3.5.0"}))
-        await ws.send(json.dumps({"type": "text_input", "content": "FORCE_STUB_TEST: Ask the brain about quantum physics."}))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "text_input",
+                    "content": "FORCE_STUB_TEST: Ask the brain about quantum physics.",
+                }
+            )
+        )
 
         # 5. Verify Stub Response
         found_stub = False
@@ -70,6 +76,7 @@ async def test_vram_guard_stub_fallback():
 
     assert found_stub, "Stub fallback message not found."
     print("[PASS] VRAM Guard Stub fallback verified.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_vram_guard_stub_fallback())

@@ -36,7 +36,9 @@ def test_delegate_payload_structure():
         assert field in params, f"delegate() missing required payload field: {field}"
 
     # The CLI entrypoint must expose the same fields as flags.
-    assert hasattr(module, "OPENCODE_REST_PORT"), "delegate.py missing REST port constant"
+    assert hasattr(
+        module, "OPENCODE_REST_PORT"
+    ), "delegate.py missing REST port constant"
     assert module.OPENCODE_REST_PORT == 4097, "delegate.py REST port drifted from 4097"
 
 

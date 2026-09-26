@@ -20,6 +20,7 @@ def format_node_badge(node_name: str, tier: str = "local") -> str:
     prefix = "[LOCAL]" if tier == "local" else "[CLOUD]"
     return f"{prefix} {node_name.upper()}"
 
+
 def calculate_energy_efficiency(tokens: int, duration_s: float, watts: float) -> float:
     """Calculate energy efficiency as tokens/(duration*watts)."""
     if duration_s > 0 and watts > 0:

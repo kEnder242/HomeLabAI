@@ -18,10 +18,13 @@ import asyncio
 import json
 import os
 import sys
+
 import requests
 import websockets
 
-LEDGER_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/validation_ledger.jsonl")
+LEDGER_PATH = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/validation_ledger.jsonl"
+)
 
 
 async def run_live_fire_suite():
@@ -51,21 +54,31 @@ async def run_live_fire_suite():
     ) as ws:
         # ── 1. Handshake ──────────────────────────────────────────────────────
         print("\n📡 Step 1: Performing Authenticated WebSocket Handshake...")
-        await ws.send(json.dumps({
-            "type": "handshake",
-            "version": "5.0.0",
-            "client": "live_fire_integration_runner",
-            "lab_key": lab_key,
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "handshake",
+                    "version": "5.0.0",
+                    "client": "live_fire_integration_runner",
+                    "lab_key": lab_key,
+                }
+            )
+        )
         await asyncio.sleep(1)
 
         # ── 2. Test Live Fourth Wall Feedback Interception ───────────────────
-        critique_query = "[ME] Wait, that's wrong, RAPL MSR 0x610 is PKG limit, not DRAM."
+        critique_query = (
+            "[ME] Wait, that's wrong, RAPL MSR 0x610 is PKG limit, not DRAM."
+        )
         print(f"\n🎯 Step 2: Sending Live Critique: '{critique_query}'")
-        await ws.send(json.dumps({
-            "type": "text_input",
-            "content": critique_query,
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "text_input",
+                    "content": critique_query,
+                }
+            )
+        )
 
         received_feedback = False
         received_tokens = []
@@ -78,16 +91,24 @@ async def run_live_fire_suite():
                 data = json.loads(msg)
                 msg_type = data.get("type")
 
-                if msg_type == "thought_stream" and "Feedback" in data.get("source", ""):
+                if msg_type == "thought_stream" and "Feedback" in data.get(
+                    "source", ""
+                ):
                     received_feedback = True
                     received_tokens.append(data.get("token", ""))
-                    print(f"  [STREAM from {data.get('source')}]: {data.get('token', '')}")
+                    print(
+                        f"  [STREAM from {data.get('source')}]: {data.get('token', '')}"
+                    )
                 elif msg_type == "chat":
-                    print(f"  [{data.get('brain_source', 'Chat')}]: {data.get('brain', '')}")
+                    print(
+                        f"  [{data.get('brain_source', 'Chat')}]: {data.get('brain', '')}"
+                    )
                 elif msg_type == "final":
                     print(f"  [FINAL TRANSCRIPTION]: {data.get('text', '')}")
                 elif msg_type == "status":
-                    print(f"  [STATUS]: {data.get('state')} - {data.get('message', '')}")
+                    print(
+                        f"  [STATUS]: {data.get('state')} - {data.get('message', '')}"
+                    )
             except asyncio.TimeoutError:
                 break
 
@@ -100,16 +121,22 @@ async def run_live_fire_suite():
             assert new_count >= initial_ledger_count, "Ledger records must not decrease"
             if new_count > initial_ledger_count:
                 latest_record = new_records[-1]
-                print(f"  Latest Live Record: Verdict={latest_record.get('verdict')} | GroundTruth='{latest_record.get('ground_truth')[:40]}...'")
+                print(
+                    f"  Latest Live Record: Verdict={latest_record.get('verdict')} | GroundTruth='{latest_record.get('ground_truth')[:40]}...'"
+                )
                 assert latest_record.get("verdict") == "FAIL"
 
         # ── 3. Test Live Casual Greeting Turn with Floating Oracle ───────────
         greeting_query = "[ME] hey pinky, how are things?"
         print(f"\n🎯 Step 4: Sending Live Casual Greeting: '{greeting_query}'")
-        await ws.send(json.dumps({
-            "type": "text_input",
-            "content": greeting_query,
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "text_input",
+                    "content": greeting_query,
+                }
+            )
+        )
 
         received_greeting_response = False
         start_time = asyncio.get_event_loop().time()
@@ -120,14 +147,20 @@ async def run_live_fire_suite():
                 data = json.loads(msg)
                 if data.get("type") == "chat" or "brain" in data:
                     received_greeting_response = True
-                    print(f"  [{data.get('brain_source', 'Chat')}]: {data.get('brain', '')}")
+                    print(
+                        f"  [{data.get('brain_source', 'Chat')}]: {data.get('brain', '')}"
+                    )
                 elif data.get("type") == "status":
-                    print(f"  [STATUS]: {data.get('state')} - {data.get('message', '')}")
+                    print(
+                        f"  [STATUS]: {data.get('state')} - {data.get('message', '')}"
+                    )
             except asyncio.TimeoutError:
                 break
 
     print("\n========================================================")
-    print("✅ [LIVE FIRE COMPLETE] Active daemon successfully verified on ws://127.0.0.1:8765!")
+    print(
+        "✅ [LIVE FIRE COMPLETE] Active daemon successfully verified on ws://127.0.0.1:8765!"
+    )
     print("========================================================\n")
 
 

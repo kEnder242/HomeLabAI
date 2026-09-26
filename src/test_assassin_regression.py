@@ -1,13 +1,15 @@
-import socket
-import aiohttp
 import asyncio
+import socket
 import sys
+
+import aiohttp
 
 ATTENDANT_URL = "http://localhost:8765"
 
+
 async def test_assassin_regression():
     print("--- [TEST] FEAT-119: Socket-Aware Assassin ---")
-    
+
     async with aiohttp.ClientSession() as session:
         # 0. Stop current Lab
         print("🛑 Stopping Lab...")
@@ -30,11 +32,16 @@ async def test_assassin_regression():
         # 2. Trigger Lab Start via Attendant
         print("🚀 Triggering Lab Start (Assassin should kill me)...")
         try:
-            async with session.post(f"{ATTENDANT_URL}/start", json={"mode": "SERVICE_UNATTENDED", "disable_ear": True}) as resp:
+            async with session.post(
+                f"{ATTENDANT_URL}/start",
+                json={"mode": "SERVICE_UNATTENDED", "disable_ear": True},
+            ) as resp:
                 data = await resp.json()
                 print(f"  Response: {data.get('status')}")
         except Exception as e:
-            print(f"  Attendant request failed (expected if it kills the test process? No, should kill group): {e}")
+            print(
+                f"  Attendant request failed (expected if it kills the test process? No, should kill group): {e}"
+            )
 
         # 3. Wait for Readiness
         print("⏳ Waiting for Lab to reclaim port and reach READY...")
@@ -43,7 +50,9 @@ async def test_assassin_regression():
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                     status = await resp.json()
-                    if status.get("lab_server_running") and status.get("full_lab_ready"):
+                    if status.get("lab_server_running") and status.get(
+                        "full_lab_ready"
+                    ):
                         ready = True
                         print("✅ Lab reclaimed port 8765 successfully!")
                         break
@@ -53,12 +62,13 @@ async def test_assassin_regression():
 
         # Cleanup
         hijacker.close()
-        
+
         if not ready:
             print("❌ FAILED: Lab could not reclaim port 8765.")
             sys.exit(1)
         else:
             print("🏁 [PASS] Socket-Aware Assassin regression test successful.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_assassin_regression())

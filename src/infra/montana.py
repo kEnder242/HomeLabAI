@@ -1,8 +1,8 @@
 import logging
 import os
+import subprocess
 import sys
 import uuid
-import subprocess
 
 # Global Paths
 LAB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -11,17 +11,22 @@ SERVER_LOG = os.path.join(LAB_DIR, "server.log")
 _logger_initialized = False
 _BOOT_HASH = uuid.uuid4().hex[:4].upper()
 
+
 def get_git_commit():
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], 
-                                        cwd=LAB_DIR, text=True).strip()
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=LAB_DIR, text=True
+        ).strip()
     except Exception:
         return "unknown"
 
+
 _SOURCE_COMMIT = get_git_commit()
+
 
 def get_fingerprint(role="NODE"):
     return f"[{_BOOT_HASH}:{_SOURCE_COMMIT}:{role}]"
+
 
 def reclaim_logger(role="NODE"):
     """
@@ -30,7 +35,7 @@ def reclaim_logger(role="NODE"):
     """
     global _logger_initialized
     if _logger_initialized:
-        # If already initialized, we don't clear handlers again, 
+        # If already initialized, we don't clear handlers again,
         # but we might update the role if it was generic.
         return
 
@@ -55,7 +60,7 @@ def reclaim_logger(role="NODE"):
 
     # Set Levels
     root.setLevel(logging.INFO)
-    
+
     # Mute noisy internal loggers
     logging.getLogger("nemo").setLevel(logging.ERROR)
     logging.getLogger("chromadb").setLevel(logging.ERROR)

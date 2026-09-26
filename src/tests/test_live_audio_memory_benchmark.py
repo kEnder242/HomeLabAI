@@ -35,6 +35,7 @@ Report: a compact JSON line with rss_baseline_mb / rss_peak_mb /
 rss_after_mb / swap_mb / ram_pct / vrma_delta_mb and a boolean `pass` =
 rss_peak_mb <= RSS_CEILING_MB (env RSS_CEILING_MB, default 2000 MiB).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,7 +47,7 @@ import socket
 import sys
 import time
 import urllib.request
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 import numpy as np
 import psutil
@@ -92,17 +93,24 @@ DURATION_S = float(os.environ.get("BENCH_DURATION_S", "60.0"))
 if not (math.isfinite(DURATION_S) and DURATION_S > 0.0):
     DURATION_S = 60.0
 SAMPLE_INTERVAL_S = float(os.environ.get("BENCH_SAMPLE_INTERVAL_S", "2.0"))
-SAMPLE_INTERVAL_S = SAMPLE_INTERVAL_S if math.isfinite(SAMPLE_INTERVAL_S) and SAMPLE_INTERVAL_S > 0.0 else 2.0
+SAMPLE_INTERVAL_S = (
+    SAMPLE_INTERVAL_S
+    if math.isfinite(SAMPLE_INTERVAL_S) and SAMPLE_INTERVAL_S > 0.0
+    else 2.0
+)
 
 RSS_CEILING_MB = float(os.environ.get("RSS_CEILING_MB", "2000"))  # sane leak ceiling
-TOTAL_FRAMES = int(DURATION_S * SAMPLE_RATE / CHUNK_SIZE)  # frames to reach 60 s of audio
+TOTAL_FRAMES = int(
+    DURATION_S * SAMPLE_RATE / CHUNK_SIZE
+)  # frames to reach 60 s of audio
 
 MB = 1024 * 1024
+
 
 # ---------------------------------------------------------------------------
 # Optional GPU/VRAM sampling (pynvml may be absent -> non-fatal)
 # ---------------------------------------------------------------------------
-def _sample_vram_mb() -> Optional[float]:
+def _sample_vram_mb() -> float | None:
     """VRAM used (MiB) on GPU 0, or None when pynvml is unavailable/failed."""
     try:
         import pynvml  # guarded: pynvml may not be installed
@@ -116,7 +124,7 @@ def _sample_vram_mb() -> Optional[float]:
         return None
 
 
-def _probe_vllm_kv_tokens() -> Optional[int]:
+def _probe_vllm_kv_tokens() -> int | None:
     """Best-effort vLLM `num_cached_tokens` scrape; non-fatal on any failure."""
     try:
         with urllib.request.urlopen(VLLM_METRICS_URL, timeout=2) as resp:
@@ -127,7 +135,7 @@ def _probe_vllm_kv_tokens() -> Optional[int]:
         return None
 
 
-def _fetch_status_token() -> Optional[str]:
+def _fetch_status_token() -> str | None:
     """GET /status on the REST port and return the session_token field."""
     try:
         with urllib.request.urlopen(f"{BASE_URL}/status", timeout=5) as resp:
@@ -144,7 +152,7 @@ def _foyer_reachable(timeout: float = 3.0) -> bool:
     try:
         with socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -162,9 +170,9 @@ class _InlineProfiler:
     """Minimal BEFORE/DURING/AFTER RSS profiler mirroring WsMemoryProfiler's API."""
 
     def __init__(self) -> None:
-        self.baseline: Optional[_RssSample] = None
-        self.peak: Optional[_RssSample] = None
-        self.final: Optional[_RssSample] = None
+        self.baseline: _RssSample | None = None
+        self.peak: _RssSample | None = None
+        self.final: _RssSample | None = None
 
     def sample_baseline(self) -> _RssSample:
         self.baseline = self.peak = self._now()
@@ -211,14 +219,14 @@ async def _drain(ws: Any) -> None:
 async def run_benchmark(
     duration_s: float = DURATION_S,
     sample_interval_s: float = SAMPLE_INTERVAL_S,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Stream simulated real-time PCM for `duration_s` and profile memory.
 
     Returns a JSON-serializable report; `pass` is True when the peak RSS
     stays under RSS_CEILING_MB. Never raises for network teardown; real
     stream errors are collected into the report's `error` field.
     """
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "total_s": duration_s,
         "pass": False,
         "handshake_ack": False,
@@ -236,9 +244,11 @@ async def run_benchmark(
     kv_before = await asyncio.to_thread(_probe_vllm_kv_tokens)
     session_token = await asyncio.to_thread(_fetch_status_token)
     if not session_token:
-        print("[bench] WARN: no session_token from /status; handshake may be refused (close 1008)")
+        print(
+            "[bench] WARN: no session_token from /status; handshake may be refused (close 1008)"
+        )
 
-    samples: List[Dict[str, Any]] = []
+    samples: list[dict[str, Any]] = []
     ws: Any = None
     t0 = time.monotonic()
     total_samples = 0
@@ -251,7 +261,9 @@ async def run_benchmark(
         try:
             await asyncio.wait_for(ws.recv(), timeout=5)
         except (asyncio.TimeoutError, websockets.ConnectionClosed) as exc:
-            print(f"[bench] note: initial status message not received ({type(exc).__name__})")
+            print(
+                f"[bench] note: initial status message not received ({type(exc).__name__})"
+            )
 
         # 2. Handshake with lab_key == session_token (required, else close 1008).
         await ws.send(json.dumps({"type": "handshake", "lab_key": session_token}))
@@ -259,7 +271,11 @@ async def run_benchmark(
             ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
             report["handshake_ack"] = bool(ack.get("type") == "status")
             print(f"[bench] handshake ack: {json.dumps(ack)[:120]}")
-        except (asyncio.TimeoutError, websockets.ConnectionClosed, json.JSONDecodeError) as exc:
+        except (
+            asyncio.TimeoutError,
+            websockets.ConnectionClosed,
+            json.JSONDecodeError,
+        ) as exc:
             print(f"[bench] WARN: handshake ack not received ({type(exc).__name__})")
 
         # 3. Optional mic_state marker (server logs it; harmless).
@@ -269,9 +285,18 @@ async def run_benchmark(
         total_frames = int(duration_s * SAMPLE_RATE / CHUNK_SIZE)
         while frame < total_frames:
             samples_float32 = (
-                np.sin(2 * np.pi * TONE_HZ * (np.arange(CHUNK_SIZE) + total_samples) / SAMPLE_RATE) * 0.9
+                np.sin(
+                    2
+                    * np.pi
+                    * TONE_HZ
+                    * (np.arange(CHUNK_SIZE) + total_samples)
+                    / SAMPLE_RATE
+                )
+                * 0.9
             )
-            binary = (samples_float32 * 32767).astype(np.int16).tobytes()  # Float32 -> Signed Int16
+            binary = (
+                (samples_float32 * 32767).astype(np.int16).tobytes()
+            )  # Float32 -> Signed Int16
             await ws.send(binary)
             total_samples += CHUNK_SIZE
             frame += 1
@@ -296,10 +321,14 @@ async def run_benchmark(
                 next_sample_at = now + sample_interval_s
                 await _drain(ws)  # keep the receive buffer steady-state
 
-            await asyncio.sleep(CHUNK_SIZE / SAMPLE_RATE)  # real-time pacing (~3.9 Hz frames)
+            await asyncio.sleep(
+                CHUNK_SIZE / SAMPLE_RATE
+            )  # real-time pacing (~3.9 Hz frames)
 
         report["stream_complete"] = True
-        print(f"[bench] stream finished: {frame} frames / {total_samples} samples in {time.monotonic() - t0:.1f}s")
+        print(
+            f"[bench] stream finished: {frame} frames / {total_samples} samples in {time.monotonic() - t0:.1f}s"
+        )
     except (websockets.ConnectionClosed, OSError, asyncio.TimeoutError) as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         print(f"[bench] WARN: stream aborted: {report['error']}")
@@ -359,6 +388,8 @@ if __name__ == "__main__":
         sys.exit(0)
     bench_report = asyncio.run(run_benchmark())
     verdict = "PASS" if bench_report["pass"] else "FAIL"
-    print(f"{verdict}: peak RSS {bench_report['rss_peak_mb']} MiB "
-          f"(ceiling {RSS_CEILING_MB} MiB), leak {bench_report['rss_leak_mb']} MiB")
+    print(
+        f"{verdict}: peak RSS {bench_report['rss_peak_mb']} MiB "
+        f"(ceiling {RSS_CEILING_MB} MiB), leak {bench_report['rss_leak_mb']} MiB"
+    )
     sys.exit(0 if bench_report["pass"] else 1)

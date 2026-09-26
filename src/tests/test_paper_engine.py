@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_paper_engine.py
 [Sprint 84 / Sprint 85 Validation Suite - BKM-024]
@@ -17,7 +16,7 @@ WORKSPACE_DIR = SRC_DIR.parent.parent / "Portfolio_Dev"
 def test_craft_lens():
     """Test compiling rubric from unstructured text/advice."""
     from curator.lens_service import craft_lens
-    
+
     advice = """
     - Make every bullet quantifiable.
     - Cut all fluff and ensure each point begins with a powerful active verb.
@@ -30,8 +29,8 @@ def test_craft_lens():
         persona={
             "name": "Senior Talent Partner",
             "role": "Principal Recruiter",
-            "lens_perspective": "Pragmatic hiring manager"
-        }
+            "lens_perspective": "Pragmatic hiring manager",
+        },
     )
     assert res.get("status") == "success"
     rubric = res.get("rubric")
@@ -44,18 +43,18 @@ def test_craft_lens():
 def test_grade_paper_ast():
     """Test AST grading engine against sample paper AST."""
     from curator.lens_service import grade_paper
-    
+
     # Run grading on PAPER-RESUME
     res = grade_paper(
         paper_id="PAPER-RESUME",
         revision_id="v1_baseline",
-        lens_id="farah_sharghi_recruiter_v1"
+        lens_id="farah_sharghi_recruiter_v1",
     )
     assert res.get("status") == "success"
     assert res.get("total_flags_generated", 0) > 0
     graded_ast = res.get("graded_ast")
     assert graded_ast is not None
-    
+
     # Check that flags were attached to nodes
     all_flags = []
     for sec in graded_ast.get("sections", []):
@@ -69,10 +68,9 @@ def test_grade_paper_ast():
 def test_expand_citations():
     """Test research and citation discovery expansion."""
     from curator.lens_service import expand_citations
-    
+
     res = expand_citations(
-        topic="Pre-silicon shift-left validation and hardware emulation",
-        top_k=3
+        topic="Pre-silicon shift-left validation and hardware emulation", top_k=3
     )
     assert res.get("status") == "success"
     suggestions = res.get("suggestions", [])
@@ -86,15 +84,16 @@ def test_expand_citations():
 def test_dna_connections_graph():
     """Test DNA Synapse Graph compilation across all polymorphic domains."""
     import sys
+
     sys.path.insert(0, str(WORKSPACE_DIR / "scripts"))
     from generate_connections_graph import compile_connections_graph
-    
+
     graph = compile_connections_graph()
     assert graph.get("status") == "ok"
     assert graph.get("total_nodes", 0) > 100
     assert graph.get("total_links", 0) > 50
     assert "census" in graph
-    
+
     # Check domain coverage
     census = graph["census"]
     for d in ["PHL", "WIS", "BKM", "FEAT"]:
@@ -104,7 +103,7 @@ def test_dna_connections_graph():
 def test_draft_decomposition():
     """Test [FEAT-597] Draft Ingestion & Semantic Decomposition."""
     from curator.draft_decomposer import decompose_draft
-    
+
     note = """
     # Architectural Invariant: Sovereign Vector Projections
     We discovered that discrete DNA tokens convey large compressed semantic meanings.
@@ -120,4 +119,3 @@ def test_draft_decomposition():
     bone_scaffold = res.get("suggested_bone_collection")
     assert bone_scaffold is not None
     assert len(bone_scaffold.get("bones", [])) == 2
-

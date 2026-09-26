@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import sys
 from unittest.mock import MagicMock
+
 for mod in ["chromadb", "aiohttp", "fastmcp", "fastembed", "nodes.loader", "loader"]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
@@ -8,11 +10,10 @@ for mod in ["chromadb", "aiohttp", "fastmcp", "fastembed", "nodes.loader", "load
 import json
 from unittest.mock import MagicMock
 
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. Empty / Short HyDE Vector Handling
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestHyDEVectorFallback:
     """select_vector_query should fall back to raw query when HyDE is empty/short."""
@@ -20,24 +21,28 @@ class TestHyDEVectorFallback:
     def test_empty_hyde_falls_back_to_raw_query(self) -> None:
         """Empty string HyDE → raw query used."""
         from src.nodes.archive_node import select_vector_query
+
         result = select_vector_query("what is PCIe RAS", "")
         assert result == "what is PCIe RAS"
 
     def test_none_hyde_falls_back_to_raw_query(self) -> None:
         """None HyDE → raw query used."""
         from src.nodes.archive_node import select_vector_query
+
         result = select_vector_query("query text", None)
         assert result == "query text"
 
     def test_short_hyde_falls_back_to_raw_query(self) -> None:
         """HyDE < 10 chars → raw query used."""
         from src.nodes.archive_node import select_vector_query
+
         result = select_vector_query("full query here", "short")
         assert result == "full query here"
 
     def test_substantial_hyde_used_as_vector(self) -> None:
         """HyDE > 10 chars → parsed HyDE used as vector query."""
         from src.nodes.archive_node import select_vector_query
+
         hyde = "[VALIDATION]: PCIe RAS | [STRATEGY]: Validate error counters | [SRE]: check lspci"
         result = select_vector_query("raw query", hyde)
         # Should contain the parsed multi-voice content (no tag markers)
@@ -47,17 +52,22 @@ class TestHyDEVectorFallback:
     def test_parse_multi_voice_hyde_empty_string(self) -> None:
         """Empty string passes through unchanged."""
         from src.nodes.archive_node import parse_multi_voice_hyde
+
         assert parse_multi_voice_hyde("") == ""
 
     def test_parse_multi_voice_hyde_no_tags(self) -> None:
         """Non-multi-voice string passes through unchanged."""
         from src.nodes.archive_node import parse_multi_voice_hyde
+
         assert parse_multi_voice_hyde("plain text here") == "plain text here"
 
     def test_parse_multi_voice_hyde_with_tags(self) -> None:
         """Multi-voice tags are stripped, content preserved."""
         from src.nodes.archive_node import parse_multi_voice_hyde
-        input_text = "[VALIDATION]: silicon check | [STRATEGY]: fix thermal | [SRE]: bkm repair"
+
+        input_text = (
+            "[VALIDATION]: silicon check | [STRATEGY]: fix thermal | [SRE]: bkm repair"
+        )
         result = parse_multi_voice_hyde(input_text)
         assert "[VALIDATION]" not in result
         assert "silicon check" in result
@@ -69,12 +79,14 @@ class TestHyDEVectorFallback:
 # 2. Zero-Context Distance Gating (Archive Envelope)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestZeroContextDistanceGating:
     """get_context returns found:false when distance thresholds fail or collection is empty."""
 
     def test_no_candidates_returns_found_false(self) -> None:
         """filter_candidate_context returns empty → envelope found: False."""
         from src.nodes.lab_dna_router import filter_candidate_context
+
         result = filter_candidate_context([], "TECHNICAL", "standard")
         assert result == []
         # When empty candidates → downstream envelope should be found: False
@@ -82,27 +94,44 @@ class TestZeroContextDistanceGating:
     def test_all_candidates_above_distance_returns_found_false(self) -> None:
         """All candidates above max_distance → filter returns empty → found: False."""
         from src.nodes.lab_dna_router import filter_candidate_context
+
         candidates = [
             {"collection": "feature_dna", "distance": 0.80, "document": "doc1"},
             {"collection": "feature_dna", "distance": 0.90, "document": "doc2"},
         ]
-        result = filter_candidate_context(candidates, "TECHNICAL", "standard", max_distance=0.55)
+        result = filter_candidate_context(
+            candidates, "TECHNICAL", "standard", max_distance=0.55
+        )
         assert result == []
 
     def test_good_candidate_returns_non_empty(self) -> None:
         """Candidates below threshold → filter returns results → found: True path."""
         from src.nodes.lab_dna_router import filter_candidate_context
+
         candidates = [
             {"collection": "feature_dna", "distance": 0.20, "document": "good match"},
-            {"collection": "lab_infrastructure", "distance": 0.40, "document": "ok match"},
+            {
+                "collection": "lab_infrastructure",
+                "distance": 0.40,
+                "document": "ok match",
+            },
         ]
-        result = filter_candidate_context(candidates, "TECHNICAL", "standard", max_distance=0.55)
+        result = filter_candidate_context(
+            candidates, "TECHNICAL", "standard", max_distance=0.55
+        )
         assert len(result) == 2
 
     def test_envelope_format_no_results(self) -> None:
         """Verify the JSON envelope shape returned when no results are found."""
         envelope = json.loads(
-            json.dumps({"found": False, "context": "", "reason": "No relevant historical notes found.", "sources": []})
+            json.dumps(
+                {
+                    "found": False,
+                    "context": "",
+                    "reason": "No relevant historical notes found.",
+                    "sources": [],
+                }
+            )
         )
         assert envelope["found"] is False
         assert envelope["context"] == ""
@@ -111,7 +140,13 @@ class TestZeroContextDistanceGating:
     def test_envelope_format_with_results(self) -> None:
         """Verify the JSON envelope shape returned when results are found."""
         envelope = json.loads(
-            json.dumps({"found": True, "context": "historical text here", "sources": ["file.json"]})
+            json.dumps(
+                {
+                    "found": True,
+                    "context": "historical text here",
+                    "sources": ["file.json"],
+                }
+            )
         )
         assert envelope["found"] is True
         assert envelope["context"] == "historical text here"
@@ -121,6 +156,7 @@ class TestZeroContextDistanceGating:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. Empty Collection Returning found: False
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestEmptyCollectionBehavior:
     """When ChromaDB collection is empty, get_context returns found: False."""
@@ -140,7 +176,7 @@ class TestEmptyCollectionBehavior:
             "found": False,
             "context": "",
             "reason": "No relevant historical notes found.",
-            "sources": []
+            "sources": [],
         }
         assert envelope["found"] is False
         assert envelope["context"] == ""
@@ -151,6 +187,7 @@ class TestEmptyCollectionBehavior:
 # 4. Good Match Returns found: True with Context
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestGoodMatchReturnsContext:
     """When good matches exist, get_context returns found: True with context."""
 
@@ -159,7 +196,7 @@ class TestGoodMatchReturnsContext:
         envelope = {
             "found": True,
             "context": "[MULTI_COLLECTION_RERANKER]\n[FEATURE_DNA: FEAT-469] Validated telemetry pipeline",
-            "sources": ["2024_01.json"]
+            "sources": ["2024_01.json"],
         }
         assert envelope["found"] is True
         assert len(envelope["context"]) > 0
@@ -170,7 +207,7 @@ class TestGoodMatchReturnsContext:
         envelope = {
             "found": True,
             "context": "[SESSION_CLIPBOARD]:\ncached context",
-            "sources": []
+            "sources": [],
         }
         assert envelope["found"] is True
 
@@ -178,6 +215,7 @@ class TestGoodMatchReturnsContext:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. Downstream Zero-Context Generation Behavior
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestDownstreamZeroContext:
     """When archive context returns found:false, downstream should not hallucinate."""
@@ -207,8 +245,13 @@ class TestDownstreamZeroContext:
         """Triage schema required list no longer includes hyde_vector_text."""
         # The functional requirement: hyde_vector_text must not be required
         required_fields = [
-            "inferred_intent", "addressed_to", "vibe", "domain",
-            "casual", "intrigue", "importance"
+            "inferred_intent",
+            "addressed_to",
+            "vibe",
+            "domain",
+            "casual",
+            "intrigue",
+            "importance",
         ]
         assert "hyde_vector_text" not in required_fields
         assert len(required_fields) == 7
@@ -223,7 +266,7 @@ class TestDownstreamZeroContext:
             "casual": 0.9,
             "intrigue": 0.1,
             "importance": 0.1,
-            "hyde_vector_text": ""  # Empty, not forced
+            "hyde_vector_text": "",  # Empty, not forced
         }
         # Should not fail schema validation
         assert triage_result["hyde_vector_text"] == ""
@@ -232,12 +275,14 @@ class TestDownstreamZeroContext:
     def test_envelope_json_parse_handles_zero_context(self) -> None:
         """_fetch_rag_context correctly parses found:false envelope."""
         # Simulate the parsing logic from _fetch_rag_context
-        raw_response = json.dumps({
-            "found": False,
-            "context": "",
-            "reason": "No relevant historical notes found.",
-            "sources": []
-        })
+        raw_response = json.dumps(
+            {
+                "found": False,
+                "context": "",
+                "reason": "No relevant historical notes found.",
+                "sources": [],
+            }
+        )
         envelope = json.loads(raw_response)
         assert isinstance(envelope, dict) and "context" in envelope
         assert not envelope.get("found", True)
@@ -260,7 +305,9 @@ class TestDownstreamZeroContext:
 
     def test_envelope_json_parse_handles_legacy_text_field(self) -> None:
         """_fetch_rag_context handles legacy {"text": ..., "sources": ...} format."""
-        legacy_response = json.dumps({"text": "archive text here", "sources": ["file.json"]})
+        legacy_response = json.dumps(
+            {"text": "archive text here", "sources": ["file.json"]}
+        )
         envelope = json.loads(legacy_response)
         # Legacy format has "text" not "context" — should pass through as-is
         is_structured_new = isinstance(envelope, dict) and "context" in envelope

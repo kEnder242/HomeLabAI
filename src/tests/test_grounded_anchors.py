@@ -32,10 +32,10 @@ from src.logic.triage_engine import (
 )
 from src.logic.triage_policy_loader import TriagePolicyLoader
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def anchors() -> list[dict[str, Any]]:
@@ -100,6 +100,7 @@ def _keyword_present(keyword: str, corpus_lower: str) -> bool:
         return True
     # Split on spaces and underscores, check every constituent word
     import re as _re
+
     words = _re.split(r"[\s_]+", keyword)
     return all(w.lower() in corpus_lower for w in words if w)
 
@@ -113,7 +114,9 @@ class TestFastPathBypass:
     """Every grounded anchor must bypass the CASUAL and WYWO fast-paths."""
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
-    def test_bypasses_greeting_regex(self, anchor_id: str, anchors: list[dict[str, Any]]) -> None:
+    def test_bypasses_greeting_regex(
+        self, anchor_id: str, anchors: list[dict[str, Any]]
+    ) -> None:
         """Anchor query must NOT match _GREETING_RE."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
         query = anchor["query"]
@@ -123,7 +126,9 @@ class TestFastPathBypass:
         )
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
-    def test_bypasses_wywo_regex(self, anchor_id: str, anchors: list[dict[str, Any]]) -> None:
+    def test_bypasses_wywo_regex(
+        self, anchor_id: str, anchors: list[dict[str, Any]]
+    ) -> None:
         """Anchor query must NOT match _WYWO_RE."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
         query = anchor["query"]
@@ -143,7 +148,10 @@ class TestVibeDomainResolution:
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
     def test_resolves_to_genuine_vibe(
-        self, anchor_id: str, anchors: list[dict[str, Any]], policy_loader: TriagePolicyLoader
+        self,
+        anchor_id: str,
+        anchors: list[dict[str, Any]],
+        policy_loader: TriagePolicyLoader,
     ) -> None:
         """classify_vibe_and_domain returns a vibe that exists in the policy."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
@@ -159,9 +167,9 @@ class TestVibeDomainResolution:
 
         # The vibe must be a known, enabled policy vibe
         rule = policy_loader.get_vibe_rule(vibe)
-        assert rule is not None, (
-            f"{anchor_id}: vibe '{vibe}' not found in triage policy"
-        )
+        assert (
+            rule is not None
+        ), f"{anchor_id}: vibe '{vibe}' not found in triage policy"
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
     def test_policy_domain_mapping(
@@ -170,9 +178,9 @@ class TestVibeDomainResolution:
         """TriagePolicyLoader maps each expected vibe to the correct default_domain."""
         expected_vibe, expected_domain = _EXPECTED_VIBE_MAP[anchor_id]
         rule = policy_loader.get_vibe_rule(expected_vibe)
-        assert rule is not None, (
-            f"Vibe '{expected_vibe}' (for {anchor_id}) absent from policy"
-        )
+        assert (
+            rule is not None
+        ), f"Vibe '{expected_vibe}' (for {anchor_id}) absent from policy"
         actual_domain = rule.get("default_domain")
         assert actual_domain == expected_domain, (
             f"{anchor_id}: vibe '{expected_vibe}' default_domain "
@@ -186,12 +194,12 @@ class TestVibeDomainResolution:
         """The expected vibe is present and enabled in the policy."""
         expected_vibe, _ = _EXPECTED_VIBE_MAP[anchor_id]
         rule = policy_loader.get_vibe_rule(expected_vibe)
-        assert rule is not None, (
-            f"Vibe '{expected_vibe}' (for {anchor_id}) absent from policy"
-        )
-        assert rule.get("enabled") is True, (
-            f"Vibe '{expected_vibe}' (for {anchor_id}) is disabled"
-        )
+        assert (
+            rule is not None
+        ), f"Vibe '{expected_vibe}' (for {anchor_id}) absent from policy"
+        assert (
+            rule.get("enabled") is True
+        ), f"Vibe '{expected_vibe}' (for {anchor_id}) is disabled"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -203,12 +211,15 @@ class TestVibeDomainResolution:
 class TestRagConfiguration:
     """VAL-01–VAL-07 define active RAG rules; VAL-08–VAL-10 omit RAG."""
 
-    _RETRIEVAL_IDS = [f"VAL-{i:02d}" for i in range(1, 8)]   # VAL-01 … VAL-07
+    _RETRIEVAL_IDS = [f"VAL-{i:02d}" for i in range(1, 8)]  # VAL-01 … VAL-07
     _ZERO_CONTEXT_IDS = [f"VAL-{i:02d}" for i in range(8, 11)]  # VAL-08 … VAL-10
 
     @pytest.mark.parametrize("anchor_id", _RETRIEVAL_IDS)
     def test_retrieval_anchor_has_rag(
-        self, anchor_id: str, anchors: list[dict[str, Any]], policy_loader: TriagePolicyLoader
+        self,
+        anchor_id: str,
+        anchors: list[dict[str, Any]],
+        policy_loader: TriagePolicyLoader,
     ) -> None:
         """VAL-01–07: target vibe must carry an active RAG config with collections."""
         expected_vibe, _ = _EXPECTED_VIBE_MAP[anchor_id]
@@ -217,13 +228,16 @@ class TestRagConfiguration:
             f"{anchor_id}: vibe '{expected_vibe}' has no RAG config – "
             "retrieval anchors must define active RAG"
         )
-        assert isinstance(rag, dict), (
-            f"{anchor_id}: RAG config must be a dict, got {type(rag).__name__}"
-        )
+        assert isinstance(
+            rag, dict
+        ), f"{anchor_id}: RAG config must be a dict, got {type(rag).__name__}"
 
     @pytest.mark.parametrize("anchor_id", _RETRIEVAL_IDS)
     def test_retrieval_anchor_has_target_collections(
-        self, anchor_id: str, anchors: list[dict[str, Any]], policy_loader: TriagePolicyLoader
+        self,
+        anchor_id: str,
+        anchors: list[dict[str, Any]],
+        policy_loader: TriagePolicyLoader,
     ) -> None:
         """VAL-01–07: RAG config must list at least one allowed collection."""
         expected_vibe, _ = _EXPECTED_VIBE_MAP[anchor_id]
@@ -237,7 +251,10 @@ class TestRagConfiguration:
 
     @pytest.mark.parametrize("anchor_id", _ZERO_CONTEXT_IDS)
     def test_zero_context_anchor_omits_rag(
-        self, anchor_id: str, anchors: list[dict[str, Any]], policy_loader: TriagePolicyLoader
+        self,
+        anchor_id: str,
+        anchors: list[dict[str, Any]],
+        policy_loader: TriagePolicyLoader,
     ) -> None:
         """VAL-08–10: conversational/supervisory vibes must omit RAG entirely."""
         expected_vibe, _ = _EXPECTED_VIBE_MAP[anchor_id]
@@ -259,15 +276,17 @@ class TestKeywordCoverage:
     """Every expected_keyword must appear in the query or ground_truth_summary."""
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
-    def test_keywords_present(self, anchor_id: str, anchors: list[dict[str, Any]]) -> None:
+    def test_keywords_present(
+        self, anchor_id: str, anchors: list[dict[str, Any]]
+    ) -> None:
         """All expected_keywords are present in anchor text (word-level matching)."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
         corpus = f"{anchor['query']} {anchor['ground_truth_summary']}".lower()
-        missing = [kw for kw in anchor["expected_keywords"]
-                   if not _keyword_present(kw, corpus)]
+        missing = [
+            kw for kw in anchor["expected_keywords"] if not _keyword_present(kw, corpus)
+        ]
         assert not missing, (
-            f"{anchor_id}: missing keywords {missing} "
-            f"in query/ground_truth corpus"
+            f"{anchor_id}: missing keywords {missing} " f"in query/ground_truth corpus"
         )
 
 
@@ -290,18 +309,28 @@ class TestAnchorIntegrity:
         assert ids == expected
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
-    def test_required_fields(self, anchor_id: str, anchors: list[dict[str, Any]]) -> None:
+    def test_required_fields(
+        self, anchor_id: str, anchors: list[dict[str, Any]]
+    ) -> None:
         """Each anchor must define id, query, domain, target_collection, expected_keywords."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
-        for field in ("id", "query", "domain", "target_collection", "expected_keywords"):
+        for field in (
+            "id",
+            "query",
+            "domain",
+            "target_collection",
+            "expected_keywords",
+        ):
             assert field in anchor, f"{anchor_id}: missing required field '{field}'"
             assert anchor[field], f"{anchor_id}: field '{field}' is empty"
 
     @pytest.mark.parametrize("anchor_id", _anchor_ids())
-    def test_keywords_nonempty(self, anchor_id: str, anchors: list[dict[str, Any]]) -> None:
+    def test_keywords_nonempty(
+        self, anchor_id: str, anchors: list[dict[str, Any]]
+    ) -> None:
         """expected_keywords must be a non-empty list."""
         anchor = next(a for a in anchors if a["id"] == anchor_id)
         kw = anchor["expected_keywords"]
-        assert isinstance(kw, list) and len(kw) > 0, (
-            f"{anchor_id}: expected_keywords must be a non-empty list"
-        )
+        assert (
+            isinstance(kw, list) and len(kw) > 0
+        ), f"{anchor_id}: expected_keywords must be a non-empty list"

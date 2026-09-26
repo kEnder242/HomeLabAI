@@ -1,11 +1,12 @@
-import pytest
-import httpx
-import socket
-import os
 import glob
 import json
-import time
+import os
+import socket
 import sys
+import time
+
+import httpx
+import pytest
 
 # ---------------------------------------------------------------------------
 # [STORY 7] Validation Gate: cognitive_hub.py + archive_node.py syntax/import
@@ -14,7 +15,9 @@ import sys
 # These are pure unit tests and run regardless of Round Table endpoint state,
 # so they are declared BEFORE the module-level skipif marker below.
 # ---------------------------------------------------------------------------
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 _SRC_DIR = os.path.join(_REPO_ROOT, "src")
 for _p in (_REPO_ROOT, _SRC_DIR):
     if _p not in sys.path:
@@ -40,9 +43,10 @@ def test_story7_parse_multi_voice_hyde_joins_voices():
 
 def test_story7_roundtable_validation_gate():
     """[STORY 7] Exact roundtable validation behavior verified by the gate."""
-    assert parse_multi_voice_hyde(
-        "[VALIDATION]: ras | [STRATEGY]: goal | [SRE]: scar"
-    ) == "ras goal scar"
+    assert (
+        parse_multi_voice_hyde("[VALIDATION]: ras | [STRATEGY]: goal | [SRE]: scar")
+        == "ras goal scar"
+    )
 
 
 def test_story7_parse_multi_voice_hyde_fallback_raw():
@@ -57,7 +61,7 @@ def _tcp_probe(host, port, timeout=2.0):
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -66,21 +70,22 @@ _ROUNDTABLE_8088_UP = _tcp_probe("127.0.0.1", 8088)
 _ROUNDTABLE_8000_UP = _tcp_probe("127.0.0.1", 8000)
 pytestmark = pytest.mark.skipif(
     not (_FOYER_UP or _ROUNDTABLE_8088_UP or _ROUNDTABLE_8000_UP),
-    reason="No Round Table endpoint reachable (need localhost:8765, or 127.0.0.1:8088/8000)"
+    reason="No Round Table endpoint reachable (need localhost:8765, or 127.0.0.1:8088/8000)",
 )
+
 
 @pytest.mark.asyncio
 async def test_rest_inject_produces_response():
     async with httpx.AsyncClient() as client:
         payload = {"query": "What did I work on in 2018?"}
         response = await client.post("http://localhost:8765/inject", json=payload)
-        
+
         assert response.status_code == 200
-        
+
         response_json = response.json()
         assert isinstance(response_json, dict)
-        assert response_json.get('status') == 'QUEUED' and 'id' in response_json
-        
+        assert response_json.get("status") == "QUEUED" and "id" in response_json
+
         # Check if 'content' or 'data' key is not empty
         if "content" in response_json:
             assert response_json["content"] != ""
@@ -97,7 +102,9 @@ async def test_roundtable_transcript_logged():
     log_files = glob.glob(os.path.join(logs_dir, "evaluation_batch_*.log"))
 
     if not log_files:
-        pytest.fail("No evaluation_batch_*.log files found — logs may not have been generated yet")
+        pytest.fail(
+            "No evaluation_batch_*.log files found — logs may not have been generated yet"
+        )
 
     # Sort files by modification time (newest first)
     log_files.sort(key=os.path.getmtime, reverse=True)
@@ -106,7 +113,9 @@ async def test_roundtable_transcript_logged():
     file_mod_time = os.path.getmtime(newest_log_file)
     current_time = time.time()
 
-    assert (current_time - file_mod_time) < 180, f"Log file {newest_log_file} not modified within the last 180 seconds"
+    assert (
+        current_time - file_mod_time
+    ) < 180, f"Log file {newest_log_file} not modified within the last 180 seconds"
 
     with open(newest_log_file, "r") as f:
         content = f.read()
@@ -115,13 +124,19 @@ async def test_roundtable_transcript_logged():
         for line in content.splitlines():
             try:
                 log_entry = json.loads(line)
-                if isinstance(log_entry, dict) and log_entry.get("role") == "CHAT" and "node" in log_entry:
+                if (
+                    isinstance(log_entry, dict)
+                    and log_entry.get("role") == "CHAT"
+                    and "node" in log_entry
+                ):
                     found_entry = True
                     break
             except json.JSONDecodeError:
                 continue
 
-        assert found_entry, "No JSON entry with 'role': 'CHAT' and 'node' found in the log file"
+        assert (
+            found_entry
+        ), "No JSON entry with 'role': 'CHAT' and 'node' found in the log file"
 
 
 if __name__ == "__main__":

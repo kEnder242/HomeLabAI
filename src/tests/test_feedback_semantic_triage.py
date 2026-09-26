@@ -17,12 +17,11 @@ META/feedback), this battery verifies the deterministic contract that gates it:
 
 import json
 
-
+from src.logic.feedback_interceptor import record_feedback
 from src.logic.triage_engine import (
     classify_vibe_and_domain,
     is_control_plane_feedback,
 )
-from src.logic.feedback_interceptor import record_feedback
 from src.logic.triage_policy_loader import TriagePolicyLoader
 
 # [FEAT-487] Grounded 11-phrase test battery (natural supervisory feedback).
@@ -60,7 +59,10 @@ def test_battery_classifies_to_meta_feedback_and_fires_intercept():
         t_parsed = _meta_parsed(phrase)
         vibe, domain = classify_vibe_and_domain(phrase, t_parsed)
         assert (vibe, domain) == ("META", "feedback"), (phrase, vibe, domain)
-        assert is_control_plane_feedback({**t_parsed, "vibe": vibe, "domain": domain}) is True, phrase
+        assert (
+            is_control_plane_feedback({**t_parsed, "vibe": vibe, "domain": domain})
+            is True
+        ), phrase
 
 
 def test_all_battery_phrases_routed_to_system_not_swallowed():
@@ -73,7 +75,9 @@ def test_all_battery_phrases_routed_to_system_not_swallowed():
 
 def test_lab_internal_meta_status_not_swallowed_as_feedback():
     """Safety property: META/lab_internal meta-status queries must NOT trigger the feedback intercept."""
-    assert is_control_plane_feedback({"vibe": "META", "domain": "lab_internal"}) is False
+    assert (
+        is_control_plane_feedback({"vibe": "META", "domain": "lab_internal"}) is False
+    )
     assert is_control_plane_feedback({"vibe": "META", "domain": "exp_tlm"}) is False
     assert is_control_plane_feedback({"vibe": "META", "domain": "lab_history"}) is False
 
@@ -93,7 +97,7 @@ def test_battery_appends_to_validation_ledger(tmp_path):
         assert record["source"] == "CO_PILOT_FOURTH_WALL"
 
     with open(ledger_path, "r", encoding="utf-8") as f:
-        lines = [l for l in f.readlines() if l.strip()]
+        lines = [l for l in f if l.strip()]
 
     assert len(lines) == len(FEEDBACK_TEST_BATTERY)
     for line, phrase in zip(lines, FEEDBACK_TEST_BATTERY):
@@ -115,6 +119,7 @@ def test_triage_taxonomy_registers_meta_feedback():
 # ═══════════════════════════════════════════════════════════════════════════════
 # SPRINT 75 TESTS: Tense-Aware Triage, Host Vitals & Dialogue Sanitizer
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def test_present_tense_live_vitals_routes_to_lab_internal():
     """[Story 75.2] Present tense live vitals queries route to lab_internal."""
@@ -180,4 +185,3 @@ def test_get_host_vitals_telemetry():
     assert "model_residency" in vitals
     assert vitals["host_ram"]["total_gb"] > 0
     assert vitals["cpu"]["core_count"] > 0
-

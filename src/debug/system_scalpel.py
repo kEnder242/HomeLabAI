@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 System Scalpel: Unified Surgical Patching Tool
@@ -10,11 +9,12 @@ Usage:
 2. CLI Mode: ./system_scalpel.py <file> <desc> <old_string> <new_string>
 """
 
+import asyncio
 import os
-import sys
 import re
 import subprocess
-import asyncio
+import sys
+
 from mcp.server.fastmcp import FastMCP
 
 # --- Configuration ---
@@ -24,14 +24,24 @@ RUFF_PATH = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/ruff"
 # --- FastMCP Server ---
 mcp = FastMCP("System Scalpel")
 
+
 def lint_file(file_path):
     """Detects type and runs appropriate linter. Returns (passed, output)."""
     if file_path.endswith(".py"):
         try:
             # Ignore E501 (Line length) to focus on logic and imports
             res = subprocess.run(
-                [RUFF_PATH, "check", file_path, "--select", "E,F,W", "--ignore", "E501"],
-                capture_output=True, text=True
+                [
+                    RUFF_PATH,
+                    "check",
+                    file_path,
+                    "--select",
+                    "E,F,W",
+                    "--ignore",
+                    "E501",
+                ],
+                capture_output=True,
+                text=True,
             )
             return res.returncode == 0, res.stdout + res.stderr
         except Exception as e:
@@ -39,13 +49,16 @@ def lint_file(file_path):
     elif file_path.endswith(".js"):
         try:
             # Check if eslint is available in path
-            res = subprocess.run(["eslint", file_path, "--quiet"], capture_output=True, text=True)
+            res = subprocess.run(
+                ["eslint", file_path, "--quiet"], capture_output=True, text=True
+            )
             return res.returncode == 0, res.stdout + res.stderr
         except Exception:
             return True, "JS Linter (eslint) not found. Skipping."
     elif file_path.endswith(".html"):
         return lint_html_inline_js(file_path)
     return True, "No linter defined for this file type."
+
 
 def lint_html_inline_js(file_path):
     """Extract inline <script> blocks (no src attr, non-empty) and node --check each.
@@ -60,7 +73,11 @@ def lint_html_inline_js(file_path):
         return False, f"HTML read failed: {e}"
 
     # Match <script> WITHOUT a src= attribute; non-lazy body up to </script>.
-    blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', content, re.S | re.I)
+    blocks = re.findall(
+        r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>",
+        content,
+        re.DOTALL | re.IGNORECASE,
+    )
     errors = []
     checked = 0
     for i, block in enumerate(blocks):
@@ -71,7 +88,9 @@ def lint_html_inline_js(file_path):
         try:
             with open(tmp, "w") as f:
                 f.write(block)
-            res = subprocess.run(["node", "--check", tmp], capture_output=True, text=True)
+            res = subprocess.run(
+                ["node", "--check", tmp], capture_output=True, text=True
+            )
             if res.returncode != 0:
                 errors.append(f"<script> block #{i}: {res.stderr.strip()}")
         except Exception as e:
@@ -81,11 +100,20 @@ def lint_html_inline_js(file_path):
                 os.remove(tmp)
 
     if errors:
-        return False, f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors)
-    return True, f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked via node --check)."
+        return (
+            False,
+            f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors),
+        )
+    return (
+        True,
+        f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked via node --check).",
+    )
+
 
 @mcp.tool()
-async def safe_scalpel(target_file: str, old_string: str, new_string: str, description: str) -> str:
+async def safe_scalpel(
+    target_file: str, old_string: str, new_string: str, description: str
+) -> str:
     """
     [FEAT-198] The Safe-Scalpel: A lint-gated surgical replacement tool.
     replaces exactly ONE occurrence of old_string with new_string.
@@ -96,7 +124,7 @@ async def safe_scalpel(target_file: str, old_string: str, new_string: str, descr
         # Assume relative to Dev_Lab root
         root = os.path.expanduser("~/Dev_Lab")
         target_file = os.path.join(root, target_file)
-    
+
     if not os.path.exists(target_file):
         return f"❌ Error: File not found at {target_file}"
 
@@ -142,19 +170,21 @@ async def safe_scalpel(target_file: str, old_string: str, new_string: str, descr
         return f"✅ [{description}] applied to {os.path.basename(target_file)} (lint REPORT-ONLY).\n\n⚠️ LINT FAILURES INTRODUCED (was clean before):\n{new_output}"
     return f"✅ [{description}] applied to {os.path.basename(target_file)} (lint REPORT-ONLY).\n\n⚠️ LINT FAILURES (pre-existing baseline):\n{orig_output}\n\nAdditional/new issues:\n{new_output}"
 
+
 async def run_cli():
     """Standalone CLI implementation."""
     if len(sys.argv) < 5:
         print("Usage: ./system_scalpel.py <file> <desc> <old_string> <new_string>")
         sys.exit(1)
-    
+
     target_file = sys.argv[1]
     description = sys.argv[2]
     old_string = sys.argv[3]
     new_string = sys.argv[4]
-    
+
     result = await safe_scalpel(target_file, old_string, new_string, description)
     print(result)
+
 
 if __name__ == "__main__":
     # If arguments provided, run as CLI. Otherwise, run as MCP server.

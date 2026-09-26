@@ -1,15 +1,16 @@
-import os
-import sys
 import json
 import logging
+import os
+import sys
+from typing import Any
+
 import aiohttp
-from typing import Dict, Any, Optional
 
 # Add parent directory to path to allow direct imports when executed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from nodes.loader import BicameralNode
 
-logging.basicConfig(level=logging.INFO, format='[MLX_JUDGE] %(message)s')
+logging.basicConfig(level=logging.INFO, format="[MLX_JUDGE] %(message)s")
 
 MLX_DEFAULT_HOST = os.getenv("MLX_HOST", "http://192.168.1.46:8000")
 MLX_MODEL = os.getenv("MLX_MODEL", "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit")
@@ -49,11 +50,13 @@ class MLXAsyncJudge:
         "refusal payload",
     ]
 
-    def __init__(self, endpoint_url: str = MLX_DEFAULT_HOST, model_name: str = MLX_MODEL):
+    def __init__(
+        self, endpoint_url: str = MLX_DEFAULT_HOST, model_name: str = MLX_MODEL
+    ):
         self.endpoint_url = endpoint_url.rstrip("/")
         self.model_name = model_name
 
-    async def ping_node(self) -> Dict[str, Any]:
+    async def ping_node(self) -> dict[str, Any]:
         """Check liveness of the M5 Air MLX OpenAI API server on port 8000."""
         target_url = f"{self.endpoint_url}/v1/models"
         try:
@@ -65,35 +68,42 @@ class MLXAsyncJudge:
                             "status": "ONLINE",
                             "endpoint": self.endpoint_url,
                             "active_model": self.model_name,
-                            "models": data
+                            "models": data,
                         }
         except Exception as e:
-            logging.warning(f"M5 Air MLX Node offline ({e}). Using local failover stub.")
-        
+            logging.warning(
+                f"M5 Air MLX Node offline ({e}). Using local failover stub."
+            )
+
         return {
             "status": "OFFLINE_STUB",
             "endpoint": self.endpoint_url,
             "active_model": self.model_name,
-            "message": "Node 3 M5 Air MLX offline. Falling back to local verification stub."
+            "message": "Node 3 M5 Air MLX offline. Falling back to local verification stub.",
         }
 
-    async def evaluate_256k_context(self, turn_trace: str, context_window: str = "", metadata: Optional[Dict] = None) -> Dict[str, Any]:
+    async def evaluate_256k_context(
+        self, turn_trace: str, context_window: str = "", metadata: dict | None = None
+    ) -> dict[str, Any]:
         """Asynchronously evaluates turn trace against 256K context via OpenAI-compatible REST API on port 8000."""
         # [FEAT-443] PAR-Eval refusal interception: detect premise mismatch triggers
         turn_lower = turn_trace.lower()
         if any(trigger in turn_lower for trigger in self.REFUSAL_TRIGGERS):
-            return {
-                "refusal": True,
-                "reason": "PREMISE_MISMATCH"
-            }
+            return {"refusal": True, "reason": "PREMISE_MISMATCH"}
         payload = {
             "model": self.model_name,
             "messages": [
-                {"role": "system", "content": "You are Node 3 M5 Air MLX Sanity Judge. Evaluate the turn trace for factual accuracy and persona consistency."},
-                {"role": "user", "content": f"TURN_TRACE:\n{turn_trace}\n\nCONTEXT:\n{context_window}"}
+                {
+                    "role": "system",
+                    "content": "You are Node 3 M5 Air MLX Sanity Judge. Evaluate the turn trace for factual accuracy and persona consistency.",
+                },
+                {
+                    "role": "user",
+                    "content": f"TURN_TRACE:\n{turn_trace}\n\nCONTEXT:\n{context_window}",
+                },
             ],
             "max_tokens": 256,
-            "temperature": 0.1
+            "temperature": 0.1,
         }
 
         eval_length = len(turn_trace) + len(context_window)
@@ -104,11 +114,15 @@ class MLXAsyncJudge:
                 async with session.post(
                     target_url,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=MLX_TIMEOUT_SEC)
+                    timeout=aiohttp.ClientTimeout(total=MLX_TIMEOUT_SEC),
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        content = (
+                            data.get("choices", [{}])[0]
+                            .get("message", {})
+                            .get("content", "")
+                        )
                         return {
                             "node_id": "NODE_3_M5_AIR_MLX",
                             "status": "ONLINE_EVALUATED",
@@ -117,11 +131,13 @@ class MLXAsyncJudge:
                             "critique": content,
                             "route_feedback": {
                                 "factual_target": "CHROMADB_PORT_8001",
-                                "persona_target": "CLI_VOICE_V1_LORA"
-                            }
+                                "persona_target": "CLI_VOICE_V1_LORA",
+                            },
                         }
         except Exception as e:
-            logging.info(f"[MLX_JUDGE] Remote endpoint offline ({e}). Executing local async evaluation stub.")
+            logging.info(
+                f"[MLX_JUDGE] Remote endpoint offline ({e}). Executing local async evaluation stub."
+            )
 
         # Local Stand-in / Failover evaluation
         return {
@@ -134,8 +150,8 @@ class MLXAsyncJudge:
             "style_critique": "Coherent technical alignment with 18-year career bedrock.",
             "route_feedback": {
                 "factual_target": "CHROMADB_PORT_8001",
-                "persona_target": "CLI_VOICE_V1_LORA"
-            }
+                "persona_target": "CLI_VOICE_V1_LORA",
+            },
         }
 
 

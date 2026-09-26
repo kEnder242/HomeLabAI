@@ -1,7 +1,8 @@
+import logging
 import os
+
 import chromadb
 from chromadb.utils import embedding_functions
-import logging
 
 # Config
 KB_PATH = os.path.expanduser("~/knowledge_base")
@@ -9,6 +10,7 @@ DB_PATH = os.path.expanduser("~/VoiceGateway/chroma_db")
 COLLECTION_NAME = "personal_knowledge"
 
 logging.basicConfig(level=logging.INFO)
+
 
 def index_files():
     logging.info(f"Connecting to ChromaDB at {DB_PATH}...")
@@ -20,8 +22,7 @@ def index_files():
     )
 
     collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=ef
+        name=COLLECTION_NAME, embedding_function=ef
     )
 
     # Scan files
@@ -53,6 +54,7 @@ def index_files():
         logging.info("Indexing complete.")
     else:
         logging.info("No documents to index.")
+
 
 if __name__ == "__main__":
     index_files()

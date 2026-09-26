@@ -23,24 +23,30 @@ logger = logging.getLogger(__name__)
 
 _MOUSE_DEF_PREFIX: str = "MOUSE_DEF:"
 
-_TRAVERSAL_MODES: frozenset[str] = frozenset({"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"})
+_TRAVERSAL_MODES: frozenset[str] = frozenset(
+    {"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"}
+)
 
-_REQUIRED_CANDIDATE_FIELDS: frozenset[str] = frozenset({
-    "intent",
-    "target_domain",
-    "enabled",
-    "creator",
-    "created_at",
-    "hit_count",
-    "success_count",
-    "last_used",
-    "feedback_log",
-})
+_REQUIRED_CANDIDATE_FIELDS: frozenset[str] = frozenset(
+    {
+        "intent",
+        "target_domain",
+        "enabled",
+        "creator",
+        "created_at",
+        "hit_count",
+        "success_count",
+        "last_used",
+        "feedback_log",
+    }
+)
 
-_OPTIONAL_CANDIDATE_FIELDS: frozenset[str] = frozenset({
-    "traversal_mode",
-    "rag_config",
-})
+_OPTIONAL_CANDIDATE_FIELDS: frozenset[str] = frozenset(
+    {
+        "traversal_mode",
+        "rag_config",
+    }
+)
 
 
 class RouteIncubatorError(Exception):
@@ -96,9 +102,7 @@ class RouteIncubator:
         target = Path(path) if path is not None else self._supplement_path
 
         if not target.exists():
-            raise RouteIncubatorError(
-                f"Supplement file not found: {target}"
-            )
+            raise RouteIncubatorError(f"Supplement file not found: {target}")
 
         try:
             raw = target.read_text(encoding="utf-8")
@@ -171,7 +175,11 @@ class RouteIncubator:
             )
 
         # Auto-prefix with MOUSE_DEF: if not present
-        full_name = vibe_name if vibe_name.startswith(_MOUSE_DEF_PREFIX) else f"{_MOUSE_DEF_PREFIX}{vibe_name}"
+        full_name = (
+            vibe_name
+            if vibe_name.startswith(_MOUSE_DEF_PREFIX)
+            else f"{_MOUSE_DEF_PREFIX}{vibe_name}"
+        )
 
         if full_name in self._candidates:
             raise RouteIncubatorError(
@@ -229,9 +237,7 @@ class RouteIncubator:
         full_name = self._resolve_name(vibe_name)
 
         if full_name not in self._candidates:
-            raise RouteIncubatorError(
-                f"Candidate route '{full_name}' not found."
-            )
+            raise RouteIncubatorError(f"Candidate route '{full_name}' not found.")
 
         candidate = self._candidates[full_name]
 
@@ -246,11 +252,13 @@ class RouteIncubator:
         candidate["last_used"] = time.time()
 
         if feedback:
-            candidate.setdefault("feedback_log", []).append({
-                "timestamp": time.time(),
-                "success": success,
-                "feedback": feedback,
-            })
+            candidate.setdefault("feedback_log", []).append(
+                {
+                    "timestamp": time.time(),
+                    "success": success,
+                    "feedback": feedback,
+                }
+            )
 
         self._persist()
         logger.info(
@@ -300,9 +308,7 @@ class RouteIncubator:
         full_name = self._resolve_name(vibe_name)
 
         if full_name not in self._candidates:
-            raise RouteIncubatorError(
-                f"Candidate route '{full_name}' not found."
-            )
+            raise RouteIncubatorError(f"Candidate route '{full_name}' not found.")
 
         candidate = self._candidates[full_name]
 
@@ -360,9 +366,7 @@ class RouteIncubator:
         full_name = self._resolve_name(vibe_name)
 
         if full_name not in self._candidates:
-            raise RouteIncubatorError(
-                f"Candidate route '{full_name}' not found."
-            )
+            raise RouteIncubatorError(f"Candidate route '{full_name}' not found.")
 
         self._candidates[full_name]["enabled"] = False
         self._persist()
@@ -399,7 +403,9 @@ class RouteIncubator:
             # Required fields
             for field in _REQUIRED_CANDIDATE_FIELDS:
                 if field not in cfg:
-                    errors.append(f"Candidate '{name}' missing required field '{field}'")
+                    errors.append(
+                        f"Candidate '{name}' missing required field '{field}'"
+                    )
 
             # enabled must be bool
             if "enabled" in cfg and not isinstance(cfg["enabled"], bool):
@@ -409,13 +415,17 @@ class RouteIncubator:
             hit_count = cfg.get("hit_count")
             if hit_count is not None:
                 if not isinstance(hit_count, int) or hit_count < 0:
-                    errors.append(f"Candidate '{name}' 'hit_count' must be a non-negative integer")
+                    errors.append(
+                        f"Candidate '{name}' 'hit_count' must be a non-negative integer"
+                    )
 
             # success_count must be non-negative int
             success_count = cfg.get("success_count")
             if success_count is not None:
                 if not isinstance(success_count, int) or success_count < 0:
-                    errors.append(f"Candidate '{name}' 'success_count' must be a non-negative integer")
+                    errors.append(
+                        f"Candidate '{name}' 'success_count' must be a non-negative integer"
+                    )
 
             # traversal_mode validation (optional)
             traversal = cfg.get("traversal_mode")
@@ -428,7 +438,9 @@ class RouteIncubator:
             # rag_config validation (optional)
             rag = cfg.get("rag_config")
             if rag is not None and not isinstance(rag, dict):
-                errors.append(f"Candidate '{name}' 'rag_config' must be a JSON object or null")
+                errors.append(
+                    f"Candidate '{name}' 'rag_config' must be a JSON object or null"
+                )
 
         return errors
 

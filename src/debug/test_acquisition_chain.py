@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+
 import websockets
 
 
@@ -35,7 +36,10 @@ async def test_acquisition_chain():
                 with open(trace_path, "r") as f:
                     # Check the last 'send' entry
                     content = f.read()
-                    if "[ACQUISITION Source: 2019.json]" in content or "[ACQUISITION Source: 2019_" in content:
+                    if (
+                        "[ACQUISITION Source: 2019.json]" in content
+                        or "[ACQUISITION Source: 2019_" in content
+                    ):
                         print(
                             "✅ PASSED: Discovery -> Acquisition chain verified for 2019."
                         )

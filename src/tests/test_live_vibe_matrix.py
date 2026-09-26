@@ -9,11 +9,13 @@ Validates pure semantic triage across:
 6. META ("feedback: your last response was too verbose") -> vibe: META, domain: feedback
 """
 
-import pytest
 import asyncio
 import json
+
+import pytest
 import requests
 import websockets
+
 
 def _get_live_credentials():
     try:
@@ -22,8 +24,10 @@ def _get_live_credentials():
     except Exception:
         return "", ""
 
+
 async def _probe_live_query(query: str, timeout: float = 25.0) -> dict:
     import uuid
+
     lab_key, commit = _get_live_credentials()
     if not lab_key:
         return {}
@@ -31,20 +35,30 @@ async def _probe_live_query(query: str, timeout: float = 25.0) -> dict:
     uri = "ws://127.0.0.1:8765"
     triage_payload = {}
     request_id = str(uuid.uuid4())[:8]
-    
+
     try:
-        async with websockets.connect(uri, additional_headers={"X-Lab-Key": lab_key, "X-Client-Commit": commit}) as ws:
-            await ws.send(json.dumps({
-                "type": "handshake",
-                "client": "vibe_matrix_test",
-                "client_commit": commit,
-                "lab_key": lab_key
-            }))
-            await ws.recv() # init
-            await ws.recv() # status
-            
-            await ws.send(json.dumps({"type": "text_input", "content": query, "request_id": request_id}))
-            
+        async with websockets.connect(
+            uri, additional_headers={"X-Lab-Key": lab_key, "X-Client-Commit": commit}
+        ) as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "handshake",
+                        "client": "vibe_matrix_test",
+                        "client_commit": commit,
+                        "lab_key": lab_key,
+                    }
+                )
+            )
+            await ws.recv()  # init
+            await ws.recv()  # status
+
+            await ws.send(
+                json.dumps(
+                    {"type": "text_input", "content": query, "request_id": request_id}
+                )
+            )
+
             t0 = asyncio.get_event_loop().time()
             while asyncio.get_event_loop().time() - t0 < timeout:
                 try:
@@ -52,11 +66,20 @@ async def _probe_live_query(query: str, timeout: float = 25.0) -> dict:
                 except asyncio.TimeoutError:
                     break
                 msg = json.loads(raw)
-                text = msg.get("brain", "") or msg.get("message", "") or msg.get("text", "") or msg.get("token", "")
+                text = (
+                    msg.get("brain", "")
+                    or msg.get("message", "")
+                    or msg.get("text", "")
+                    or msg.get("token", "")
+                )
                 source = msg.get("brain_source", msg.get("source", ""))
                 msg_rid = msg.get("request_id", "")
-                
-                if "{" in str(text) and "vibe" in str(text) and ("triage" in source.lower() or msg_rid == request_id):
+
+                if (
+                    "{" in str(text)
+                    and "vibe" in str(text)
+                    and ("triage" in source.lower() or msg_rid == request_id)
+                ):
                     try:
                         parsed = json.loads(text)
                         if "vibe" in parsed:
@@ -65,21 +88,28 @@ async def _probe_live_query(query: str, timeout: float = 25.0) -> dict:
                                 break
                     except Exception:
                         pass
-                
-                if msg.get("final") and ("response" in source.lower() or "pinky" in source.lower() or "brain" in source.lower() or "feedback" in source.lower()):
+
+                if msg.get("final") and (
+                    "response" in source.lower()
+                    or "pinky" in source.lower()
+                    or "brain" in source.lower()
+                    or "feedback" in source.lower()
+                ):
                     if not msg_rid or msg_rid == request_id:
                         if triage_payload:
                             break
         await asyncio.sleep(2.0)
     except Exception:
         pass
-        
+
     return triage_payload
+
 
 @pytest.fixture(autouse=True)
 async def _settle_gpu():
     yield
     await asyncio.sleep(2.5)
+
 
 @pytest.mark.asyncio
 async def test_live_vibe_casual():
@@ -89,6 +119,7 @@ async def test_live_vibe_casual():
     assert payload.get("vibe") == "CASUAL"
     assert payload.get("addressed_to") in ["NONE", "MICE"]
 
+
 @pytest.mark.asyncio
 async def test_live_addressed_to_pinky():
     payload = await _probe_live_query("Pinky, how are you today?")
@@ -96,6 +127,7 @@ async def test_live_addressed_to_pinky():
         pytest.skip("Lab attendant daemon not running on port 8765")
     assert payload.get("vibe") == "CASUAL"
     assert payload.get("addressed_to") == "PINKY"
+
 
 @pytest.mark.asyncio
 async def test_live_addressed_to_mice():
@@ -105,12 +137,14 @@ async def test_live_addressed_to_mice():
     assert payload.get("vibe") == "CASUAL"
     assert payload.get("addressed_to") == "MICE"
 
+
 @pytest.mark.asyncio
 async def test_live_vibe_wywo():
     payload = await _probe_live_query("what did you do while I was out?")
     if not payload:
         pytest.skip("Lab attendant daemon not running on port 8765")
     assert payload.get("vibe") in ["WYWO", "TECHNICAL"]
+
 
 @pytest.mark.asyncio
 async def test_live_vibe_historical():
@@ -120,6 +154,7 @@ async def test_live_vibe_historical():
     assert payload.get("vibe") in ["HISTORICAL", "TECHNICAL"]
     assert payload.get("domain") in ["work_history", "exp_tlm", "standard"]
 
+
 @pytest.mark.asyncio
 async def test_live_vibe_operational():
     payload = await _probe_live_query("check GPU VRAM status and thermal levels")
@@ -128,13 +163,17 @@ async def test_live_vibe_operational():
     assert payload.get("vibe") in ["TECHNICAL", "OPERATIONAL"]
     assert payload.get("domain") in ["exp_tlm", "standard"]
 
+
 @pytest.mark.asyncio
 async def test_live_vibe_forensic():
-    payload = await _probe_live_query("show me the kernel panic traceback from last night")
+    payload = await _probe_live_query(
+        "show me the kernel panic traceback from last night"
+    )
     if not payload:
         pytest.skip("Lab attendant daemon not running on port 8765")
     assert payload.get("vibe") in ["FORENSIC", "TECHNICAL"]
     assert payload.get("domain") in ["exp_for", "forensics", "standard"]
+
 
 @pytest.mark.asyncio
 async def test_live_vibe_meta():
@@ -143,4 +182,3 @@ async def test_live_vibe_meta():
         pytest.skip("Lab attendant daemon not running on port 8765")
     assert payload.get("vibe") == "META"
     assert payload.get("domain") == "feedback"
-

@@ -9,11 +9,11 @@ Executes on post-commit:
 4. If only passive docs/HTML modified -> Leaves existing pending action untouched (or NONE).
 """
 
-import os
-import sys
 import json
-import time
+import os
 import subprocess
+import sys
+import time
 
 BASE_DIR = "/home/jallred/Dev_Lab"
 PORTFOLIO_DIR = os.path.join(BASE_DIR, "Portfolio_Dev")
@@ -26,19 +26,16 @@ LEVEL_NONE = 0
 LEVEL_SOFT = 1
 LEVEL_DEEP = 2
 
-ACTION_NAMES = {
-    LEVEL_NONE: "NONE",
-    LEVEL_SOFT: "SOFT_RELOAD",
-    LEVEL_DEEP: "DEEP_RESET"
-}
+ACTION_NAMES = {LEVEL_NONE: "NONE", LEVEL_SOFT: "SOFT_RELOAD", LEVEL_DEEP: "DEEP_RESET"}
 
 ACTION_LEVELS = {
     "NONE": LEVEL_NONE,
     "SOFT_RELOAD": LEVEL_SOFT,
-    "DEEP_RESET": LEVEL_DEEP
+    "DEEP_RESET": LEVEL_DEEP,
 }
 
-ROLLING_TIMER_SECONDS = 1800 # 30 minutes
+ROLLING_TIMER_SECONDS = 1800  # 30 minutes
+
 
 def get_committed_files(repo_path: str) -> list:
     """Gets list of files modified in the latest commit."""
@@ -48,7 +45,7 @@ def get_committed_files(repo_path: str) -> list:
             cwd=repo_path,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
         return files
@@ -60,11 +57,12 @@ def get_committed_files(repo_path: str) -> list:
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
             return [f.strip() for f in res.stdout.splitlines() if f.strip()]
         except Exception:
             return []
+
 
 def get_commit_hash(repo_path: str) -> str:
     """Gets 7-character short commit hash."""
@@ -73,11 +71,12 @@ def get_commit_hash(repo_path: str) -> str:
             ["git", "rev-parse", "--short=7", "HEAD"],
             cwd=repo_path,
             capture_output=True,
-            text=True
+            text=True,
         )
         return res.stdout.strip() or "unknown"
     except Exception:
         return "unknown"
+
 
 def evaluate_files(repo_name: str, files: list) -> tuple:
     """
@@ -90,12 +89,32 @@ def evaluate_files(repo_name: str, files: list) -> tuple:
     attendant_changed = False
 
     # Passive extensions and paths that NEVER trigger a reset
-    PASSIVE_EXTS = (".md", ".txt", ".log", ".html", ".css", ".svg", ".png", ".jpg", ".jpeg", ".lock")
-    PASSIVE_PATTERNS = ("docs/", "field_notes/data/", "field_notes/cache/", ".locks/", ".gitignore", "pytest.ini")
+    PASSIVE_EXTS = (
+        ".md",
+        ".txt",
+        ".log",
+        ".html",
+        ".css",
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".lock",
+    )
+    PASSIVE_PATTERNS = (
+        "docs/",
+        "field_notes/data/",
+        "field_notes/cache/",
+        ".locks/",
+        ".gitignore",
+        "pytest.ini",
+    )
 
     for f in files:
         # Check if file is purely passive documentation, media, or data log
-        if any(f.endswith(ext) for ext in PASSIVE_EXTS) or any(pat in f for pat in PASSIVE_PATTERNS):
+        if any(f.endswith(ext) for ext in PASSIVE_EXTS) or any(
+            pat in f for pat in PASSIVE_PATTERNS
+        ):
             continue
 
         if repo_name == "HomeLabAI":
@@ -104,10 +123,12 @@ def evaluate_files(repo_name: str, files: list) -> tuple:
                 reasons.append(f"{f} (Attendant Core)")
 
             # Deep Reset: Core architecture, networking, infra, and system config
-            if (f.startswith("src/v5/foyer/") or 
-                f == "src/acme_lab.py" or 
-                f.startswith("src/infra/") or 
-                f.startswith("config/")):
+            if (
+                f.startswith("src/v5/foyer/")
+                or f == "src/acme_lab.py"
+                or f.startswith("src/infra/")
+                or f.startswith("config/")
+            ):
                 required_level = max(required_level, LEVEL_DEEP)
                 reasons.append(f"{f} (Deep Core/Infra Architecture)")
             else:
@@ -123,6 +144,7 @@ def evaluate_files(repo_name: str, files: list) -> tuple:
 
     return required_level, reasons, attendant_changed
 
+
 def load_pending_reset() -> dict:
     """Loads existing pending_reset.json or returns default empty state."""
     if os.path.exists(PENDING_RESET_PATH):
@@ -137,8 +159,9 @@ def load_pending_reset() -> dict:
         "timer_expiry_ts": 0,
         "triggered_at_ts": 0,
         "last_commit": "none",
-        "reasons": []
+        "reasons": [],
     }
+
 
 def save_pending_reset(data: dict):
     """Atomically writes pending_reset.json."""
@@ -147,6 +170,7 @@ def save_pending_reset(data: dict):
     with open(temp_path, "w") as f:
         json.dump(data, f, indent=2)
     os.replace(temp_path, PENDING_RESET_PATH)
+
 
 def main():
     repo_path = os.getcwd()
@@ -161,11 +185,16 @@ def main():
 
     # Load existing state for monotonic escalation
     existing = load_pending_reset()
-    existing_level = existing.get("action_level", ACTION_LEVELS.get(existing.get("pending_action", "NONE"), LEVEL_NONE))
-    
+    existing_level = existing.get(
+        "action_level",
+        ACTION_LEVELS.get(existing.get("pending_action", "NONE"), LEVEL_NONE),
+    )
+
     # Check if existing timer is still active
     now = time.time()
-    existing_active = existing.get("timer_expiry_ts", 0) > now and existing_level > LEVEL_NONE
+    existing_active = (
+        existing.get("timer_expiry_ts", 0) > now and existing_level > LEVEL_NONE
+    )
 
     if not existing_active:
         existing_level = LEVEL_NONE
@@ -185,15 +214,21 @@ def main():
             "triggered_at_ts": int(now),
             "last_commit": commit_hash,
             "repo": repo_name,
-            "reasons": all_reasons
+            "reasons": all_reasons,
         }
         save_pending_reset(state_data)
 
         minutes_left = (expiry_ts - now) / 60.0
-        escalation_note = " (ESCALATED)" if new_level > existing_level and existing_active else ""
+        escalation_note = (
+            " (ESCALATED)" if new_level > existing_level and existing_active else ""
+        )
         print(f"🔒 [Git Hook] Lab marked DIRTY: Pending {new_action}{escalation_note}")
-        print(f"⏱️ [Git Hook] 30-Minute Rolling Timer reset: Auto-executes at {time.strftime('%H:%M:%S', time.localtime(expiry_ts))} ({minutes_left:.1f}m quiet window)")
-        print(f"📋 [Git Hook] Reasons: {', '.join(reasons[:3]) if reasons else 'Commit updates'}")
+        print(
+            f"⏱️ [Git Hook] 30-Minute Rolling Timer reset: Auto-executes at {time.strftime('%H:%M:%S', time.localtime(expiry_ts))} ({minutes_left:.1f}m quiet window)"
+        )
+        print(
+            f"📋 [Git Hook] Reasons: {', '.join(reasons[:3]) if reasons else 'Commit updates'}"
+        )
     else:
         # Passive commit: If no active timer, maintain NONE
         if not existing_active:
@@ -204,16 +239,21 @@ def main():
                 "triggered_at_ts": int(now),
                 "last_commit": commit_hash,
                 "repo": repo_name,
-                "reasons": []
+                "reasons": [],
             }
             save_pending_reset(state_data)
-            print(f"⚡ [Git Hook] Passive commit ({commit_hash}) - No lab reset required.")
+            print(
+                f"⚡ [Git Hook] Passive commit ({commit_hash}) - No lab reset required."
+            )
         else:
             # Top-up existing timer even on passive commit
             existing["timer_expiry_ts"] = int(now + ROLLING_TIMER_SECONDS)
             existing["last_commit"] = commit_hash
             save_pending_reset(existing)
-            print(f"⏱️ [Git Hook] Timer topped up to 30m for active {existing['pending_action']} (Commit {commit_hash}).")
+            print(
+                f"⏱️ [Git Hook] Timer topped up to 30m for active {existing['pending_action']} (Commit {commit_hash})."
+            )
+
 
 if __name__ == "__main__":
     main()

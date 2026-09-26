@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_dna_roundtrip_consistency.py
 [FEAT-604 / BKM-024 / ADR-008]
@@ -20,10 +19,10 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(HOME_DIR / "src"))
 
 from dna_macro_compiler import (
+    compile_paper_to_markdown,
     parse_macro_string,
     parse_markdown_with_dna_macros,
     reconstruct_source_from_bones,
-    compile_paper_to_markdown
 )
 
 
@@ -91,7 +90,6 @@ It was a crisp morning with cold fog rolling over the grass. [WIS-102] R1
     assert chunks[2]["macro"]["revision"] == "R1"
 
 
-
 def test_bone_collection_roundtrip_exact_identity():
     """
     [FEAT-604 Invariant]
@@ -107,27 +105,43 @@ def test_bone_collection_roundtrip_exact_identity():
                 "id": "WIS-001",
                 "origin_verbatim": "Paragraph 1 verbatim source text.",
                 "revisions": [
-                    {"version": 1, "lens": "Original Verbatim", "text": "Paragraph 1 verbatim source text."},
-                    {"version": 2, "lens": "Author Polished", "text": "Paragraph 1 polished text."}
-                ]
+                    {
+                        "version": 1,
+                        "lens": "Original Verbatim",
+                        "text": "Paragraph 1 verbatim source text.",
+                    },
+                    {
+                        "version": 2,
+                        "lens": "Author Polished",
+                        "text": "Paragraph 1 polished text.",
+                    },
+                ],
             },
             {
                 "sequence": 2,
                 "id": "PHL-001",
                 "origin_verbatim": "Paragraph 2 verbatim source text with numbers 123.",
                 "revisions": [
-                    {"version": 1, "lens": "Original Verbatim", "text": "Paragraph 2 verbatim source text with numbers 123."}
-                ]
+                    {
+                        "version": 1,
+                        "lens": "Original Verbatim",
+                        "text": "Paragraph 2 verbatim source text with numbers 123.",
+                    }
+                ],
             },
             {
                 "sequence": 3,
                 "id": "FEAT-001",
                 "origin_verbatim": "Paragraph 3 final conclusion.",
                 "revisions": [
-                    {"version": 1, "lens": "Original Verbatim", "text": "Paragraph 3 final conclusion."}
-                ]
-            }
-        ]
+                    {
+                        "version": 1,
+                        "lens": "Original Verbatim",
+                        "text": "Paragraph 3 final conclusion.",
+                    }
+                ],
+            },
+        ],
     }
 
     expected_original = (
@@ -136,8 +150,12 @@ def test_bone_collection_roundtrip_exact_identity():
         "Paragraph 3 final conclusion."
     )
 
-    reconstructed = reconstruct_source_from_bones(bone_scratchpad, revision_lens="Original Verbatim")
-    assert reconstructed == expected_original, "Invariant broken: Reconstructed R1 does not match original source!"
+    reconstructed = reconstruct_source_from_bones(
+        bone_scratchpad, revision_lens="Original Verbatim"
+    )
+    assert (
+        reconstructed == expected_original
+    ), "Invariant broken: Reconstructed R1 does not match original source!"
 
 
 def test_multi_collection_paper_compilation_and_reprojection():
@@ -153,13 +171,21 @@ def test_multi_collection_paper_compilation_and_reprojection():
                 "id": "WIS-482",
                 "origin_verbatim": "Raw text A.",
                 "revisions": [
-                    {"version": 1, "lens": "Academic", "text": "Academic citation text A."}
+                    {
+                        "version": 1,
+                        "lens": "Academic",
+                        "text": "Academic citation text A.",
+                    }
                 ],
                 "mutations": [
-                    {"id": "mut_exec", "lens": "Executive", "text": "Executive impact bullet A."}
-                ]
+                    {
+                        "id": "mut_exec",
+                        "lens": "Executive",
+                        "text": "Executive impact bullet A.",
+                    }
+                ],
             }
-        ]
+        ],
     }
 
     col_b = {
@@ -170,13 +196,21 @@ def test_multi_collection_paper_compilation_and_reprojection():
                 "id": "FEAT-600",
                 "origin_verbatim": "Raw text B.",
                 "revisions": [
-                    {"version": 1, "lens": "Academic", "text": "Academic citation text B."}
+                    {
+                        "version": 1,
+                        "lens": "Academic",
+                        "text": "Academic citation text B.",
+                    }
                 ],
                 "mutations": [
-                    {"id": "mut_exec", "lens": "Executive", "text": "Executive impact bullet B."}
-                ]
+                    {
+                        "id": "mut_exec",
+                        "lens": "Executive",
+                        "text": "Executive impact bullet B.",
+                    }
+                ],
             }
-        ]
+        ],
     }
 
     # 1. Project under Academic lens

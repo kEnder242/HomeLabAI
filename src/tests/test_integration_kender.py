@@ -3,8 +3,10 @@
 Probes the remote Ollama instance on 192.168.1.26:11434 and validates
 model availability and basic chat completion functionality.
 """
+
 import socket
 import sys
+
 import pytest
 import requests
 
@@ -17,6 +19,7 @@ KENDER_BASE = f"http://{KENDER_HOST}:{KENDER_PORT}"
 TCP_TIMEOUT = 3.0
 CHAT_TIMEOUT = 120
 
+
 # ---------------------------------------------------------------------------
 # Module-level skip: TCP probe KENDER
 # ---------------------------------------------------------------------------
@@ -24,12 +27,14 @@ def _kender_reachable(host=KENDER_HOST, port=KENDER_PORT, timeout=TCP_TIMEOUT):
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
+
 
 KENDER_UP = _kender_reachable()
 pytestmark = pytest.mark.skipif(
-    not KENDER_UP, reason=f"KENDER (Ollama) not reachable at {KENDER_HOST}:{KENDER_PORT}"
+    not KENDER_UP,
+    reason=f"KENDER (Ollama) not reachable at {KENDER_HOST}:{KENDER_PORT}",
 )
 
 # Module-level cache for chat response used by stub check
@@ -72,9 +77,9 @@ def test_kender_chat_completion():
     assert "message" in body, "Response must contain 'message' key"
     assert "content" in body["message"], "Response message must contain 'content'"
     content = body["message"]["content"]
-    assert len(content) > 20, (
-        f"Response content too short ({len(content)} chars): {content[:80]}"
-    )
+    assert (
+        len(content) > 20
+    ), f"Response content too short ({len(content)} chars): {content[:80]}"
     _CHAT_RESPONSE = body
     print(f"  Response length: {len(content)} chars")
     print(f"  Response preview: {content[:120]}...")
@@ -83,15 +88,13 @@ def test_kender_chat_completion():
 def test_kender_response_not_stub():
     """Verify chat response is not a known fallback/stub phrase."""
     global _CHAT_RESPONSE
-    assert _CHAT_RESPONSE is not None, (
-        "test_kender_chat_completion must run before this test"
-    )
+    assert (
+        _CHAT_RESPONSE is not None
+    ), "test_kender_chat_completion must run before this test"
     content = _CHAT_RESPONSE["message"]["content"]
     stub_phrases = ["OFFLINE_STUB", "VERIFIED_PASS", "Coherent technical alignment"]
     for phrase in stub_phrases:
-        assert phrase not in content, (
-            f"Response contains known stub phrase: '{phrase}'"
-        )
+        assert phrase not in content, f"Response contains known stub phrase: '{phrase}'"
 
 
 # ---------------------------------------------------------------------------

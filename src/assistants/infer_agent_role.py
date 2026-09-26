@@ -14,41 +14,49 @@
 **DEFAULT**: When no match, assign to IMPLERriminator or VERIFIER
 """
 
-from typing import Optional
-
-
 # Role priority for conflict resolution (higher index = more specific)
 ROLE_PREFERENCES = [
-    "VERIFIER",      # Highest priority - validation-related
-    "TESTER",        # Test-related  
-    "EXAMINER",      # Analysis/inspection requests
-    "DELEGATE",      # Multi-step/subagent requests
-    "DOCUMENTATION", # Docs/specs/*anything*-related
-    "SIMPLIFIER",    # Simplicity/summary requests
-    "IMPLEMENTER",   # Implementation requests
+    "VERIFIER",  # Highest priority - validation-related
+    "TESTER",  # Test-related
+    "EXAMINER",  # Analysis/inspection requests
+    "DELEGATE",  # Multi-step/subagent requests
+    "DOCUMENTATION",  # Docs/specs/*anything*-related
+    "SIMPLIFIER",  # Simplicity/summary requests
+    "IMPLEMENTER",  # Implementation requests
     "QUEUE_FILLER",  # Lowest priority - plain task execution
 ]
 
 
-def check_role_task_relation(task: str, task_id: Optional[str] = None) -> str:
+def check_role_task_relation(task: str, task_id: str | None = None) -> str:
     """
     Assign ROLE based on prompt task content.
-    
+
     Uses keyword-based matching against the task to determine the role.
-    
+
     Args:
         task: The task string to analyze for role assignment
         task_id: Optional task ID for context
-    
+
     Returns:
         Role name string
     """
     lower = task.lower()
-    
+
     # Check each role against keywords
     keywords_by_role = {
-        "VERIFIER": ["verify", "validate", "check", "assert", "fail", "error", "bug", 
-                    "test", "diagnostic", "audit", "critique"],
+        "VERIFIER": [
+            "verify",
+            "validate",
+            "check",
+            "assert",
+            "fail",
+            "error",
+            "bug",
+            "test",
+            "diagnostic",
+            "audit",
+            "critique",
+        ],
         "TESTER": ["test", "fixture", "mock", "py.test", "pytest"],
         "EXAMINER": ["analyze", "inspect", "review", "audit", "comprehensive"],
         "DELEGATE": ["delegate", "spawn", "subagent", "parallel", "task()"],
@@ -57,28 +65,28 @@ def check_role_task_relation(task: str, task_id: Optional[str] = None) -> str:
         "IMPLEMENTER": ["implement", "write", "create", "build", "code", "code()"],
         "QUEUE_FILLER": [],  # No keywords, just the task itself
     }
-    
+
     for role in ROLE_PREFERENCES:
         keywords = keywords_by_role[role]
         if any(kw in lower for kw in keywords):
             return role
-            
+
     # Default fallback
     if task_id and "verify" in task_id.lower():
         return "VERIFIER"
-    
+
     return "QUEUE_FILLER"
 
 
 def infer_role(task: str) -> str:
     """
     Top-level role inference function.
-    
+
     Convenient wrapper around check_role_task_relation.
-    
+
     Args:
         task: Task string
-    
+
     Returns:
         Role name
     """

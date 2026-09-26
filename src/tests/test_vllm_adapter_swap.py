@@ -1,17 +1,20 @@
-import pytest
-import sys
 import os
+import sys
 import time
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from nodes.loader import BicameralNode
 
 
 class _MockContent:
     """Empty async iterable for streaming response content (avoids AttributeError in _stream_vllm)."""
+
     def __aiter__(self):
         return self
+
     async def __anext__(self):
         raise StopAsyncIteration
 
@@ -27,7 +30,7 @@ async def test_vllm_lora_request_construction(monkeypatch):
         "url": "http://localhost:8088/v1/chat/completions",
         "model": "test-model",
         "type": "VLLM",
-        "available": ["test-model", "default_lora", "exp_for"]
+        "available": ["test-model", "default_lora", "exp_for"],
     }
     node._last_probe = time.time()
 
@@ -38,14 +41,19 @@ async def test_vllm_lora_request_construction(monkeypatch):
             self._data = data
             self.status = 200
             self._content = _MockContent()
+
         async def json(self):
             return self._data
+
         async def text(self):
             return str(self._data)
+
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, exc_type, exc, tb):
             pass
+
         @property
         def content(self):
             return self._content
@@ -53,8 +61,10 @@ async def test_vllm_lora_request_construction(monkeypatch):
     class MockSession:
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, exc_type, exc, tb):
             pass
+
         def post(self, url, json, timeout):
             nonlocal captured_payload
             captured_payload = json
@@ -67,7 +77,9 @@ async def test_vllm_lora_request_construction(monkeypatch):
     assert captured_payload["model"] == "default_lora"
 
     # metadata does not affect LoRA selection — only role_tokens/lora_name controls the model field
-    async for token in node.generate_response("test query", metadata={"expert_adapter": "exp_for"}):
+    async for token in node.generate_response(
+        "test query", metadata={"expert_adapter": "exp_for"}
+    ):
         pass
     assert captured_payload["model"] == "default_lora"
 
@@ -89,7 +101,7 @@ async def test_role_token_dynamic_swap(monkeypatch):
         "url": "http://localhost:8088/v1/chat/completions",
         "model": "test-model",
         "type": "VLLM",
-        "available": ["test-model", "default_lora", "cli_voice_v1", "lab_history_v1"]
+        "available": ["test-model", "default_lora", "cli_voice_v1", "lab_history_v1"],
     }
     node._last_probe = time.time()
 
@@ -100,14 +112,19 @@ async def test_role_token_dynamic_swap(monkeypatch):
             self._data = data
             self.status = 200
             self._content = _MockContent()
+
         async def json(self):
             return self._data
+
         async def text(self):
             return str(self._data)
+
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, exc_type, exc, tb):
             pass
+
         @property
         def content(self):
             return self._content
@@ -115,8 +132,10 @@ async def test_role_token_dynamic_swap(monkeypatch):
     class MockSession:
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, exc_type, exc, tb):
             pass
+
         def post(self, url, json, timeout):
             nonlocal captured_payload
             captured_payload = json

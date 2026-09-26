@@ -1,11 +1,12 @@
 import asyncio
-import logging
-import sys
-import os
 import json
-import requests
-import aiohttp
+import logging
+import os
 import random
+import sys
+
+import aiohttp
+import requests
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -18,8 +19,10 @@ ATTENDANT_URL = "http://127.0.0.1:8765"
 # [FEAT-219] Lab Authentication
 STYLE_CSS = os.path.join(BASE_DIR, "../Portfolio_Dev/field_notes/style.css")
 
+
 def get_lab_key():
     import hashlib
+
     try:
         if os.path.exists(STYLE_CSS):
             with open(STYLE_CSS, "rb") as f:
@@ -28,8 +31,10 @@ def get_lab_key():
         pass
     return "UNKNOWN"
 
+
 LAB_KEY = get_lab_key()
 HEADERS = {"X-Lab-Key": LAB_KEY}
+
 
 async def ensure_engine_ready():
     """[FEAT-067.2] Attendant-Aware Ignition for Dreaming."""
@@ -37,8 +42,8 @@ async def ensure_engine_ready():
         # 1. Check Status
         r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=5)
         status = r.json()
-        
-# [FEAT-235] Operational Shortcut (Direct Execution)
+
+        # [FEAT-235] Operational Shortcut (Direct Execution)
         if status.get("state") == "OPERATIONAL" or status.get("vocal"):
             logging.info("[DREAM] Lab is already operational.")
             # Retrieve model from vitals
@@ -48,13 +53,13 @@ async def ensure_engine_ready():
         # 2. Request Ignition
         logging.warning(f"[DREAM] Lab is {status.get('state')}. Triggering ignition...")
         r = requests.post(f"{ATTENDANT_URL}/wake", headers=HEADERS, timeout=60)
-        
+
         if r.status_code != 200:
             logging.error(f"[DREAM] Ignition request failed: {r.text}")
             return False, None
-            
+
         # 3. Wait for Readiness
-        for i in range(30): 
+        for i in range(30):
             r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=2)
             if r.status_code == 200:
                 data = r.json()
@@ -63,22 +68,21 @@ async def ensure_engine_ready():
                     model_name = data.get("vitals", {}).get("model", "unified-base")
                     return True, model_name
             await asyncio.sleep(2)
-            
+
         return False, None
     except Exception as e:
         logging.error(f"[DREAM] Engine readiness check failed: {e}")
         return False, None
 
+
 async def remote_brain_think(prompt, context):
     """Refactored to use standard Lab Hub (8765) rather than raw ports."""
     # Note: Hub endpoint changed from /query to /inject in V5 for intent injection
     HUB_URL = "http://localhost:8765/inject"
-    
+
     try:
         async with aiohttp.ClientSession() as session:
-            payload = {
-                "query": f"[DREAM_PASS]: {prompt}\n\n[CONTEXT]: {context}"
-            }
+            payload = {"query": f"[DREAM_PASS]: {prompt}\n\n[CONTEXT]: {context}"}
             async with session.post(HUB_URL, json=payload, timeout=300) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -89,6 +93,7 @@ async def remote_brain_think(prompt, context):
                     return f"Intent {data.get('id')} queued for synthesis."
     except Exception as e:
         return f"Synthesis Error: {e}"
+
 
 class DreamManager:
     def __init__(self, archive):
@@ -122,8 +127,12 @@ class DreamManager:
 
             try:
                 summary = await remote_brain_think(prompt, narrative_input)
-                logging.info(f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns...")
-                await self.archive.call_tool("dream", arguments={"summary": summary, "sources": ids})
+                logging.info(
+                    f"💾 Storing high-fidelity wisdom and purging {len(ids)} turns..."
+                )
+                await self.archive.call_tool(
+                    "dream", arguments={"summary": summary, "sources": ids}
+                )
                 logging.info("✅ Stream Dream Cycle Finished. The Lab has evolved.")
             except Exception as e:
                 error_message = f"Synthesis Error: {e}"
@@ -134,10 +143,12 @@ class DreamManager:
                     "items_refined": items_refined,
                     "duration_seconds": time.time() - start_time,
                     "timestamp": datetime.now().isoformat(),
-                    "error": error_message
+                    "error": error_message,
                 }
         else:
-            logging.info("💤 No chaotic memories found. Transitioning to Refinement Dreaming...")
+            logging.info(
+                "💤 No chaotic memories found. Transitioning to Refinement Dreaming..."
+            )
             try:
                 refined = await self.run_refinement_dream()
                 if refined:
@@ -162,7 +173,7 @@ class DreamManager:
             "items_refined": items_refined,
             "duration_seconds": duration_seconds,
             "timestamp": timestamp,
-            "error": error_message
+            "error": error_message,
         }
 
     async def run_refinement_dream(self):
@@ -170,7 +181,11 @@ class DreamManager:
         logging.info("💎 Initiating Deep Refinement of the 18-year archive...")
         try:
             cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
-            raw_files = cabinet_res.content[0].text if (cabinet_res and cabinet_res.content) else "[]"
+            raw_files = (
+                cabinet_res.content[0].text
+                if (cabinet_res and cabinet_res.content)
+                else "[]"
+            )
             files = json.loads(raw_files) if raw_files else []
         except Exception as e:
             logging.warning(f"[DREAM] Could not list archive cabinet: {e}")
@@ -178,15 +193,17 @@ class DreamManager:
 
         if not files:
             return False
-        
+
         target_files = [f for f in files if f.endswith(".json")]
         if not target_files:
             return False
         target_file = random.choice(target_files)
         logging.info(f"📂 Selected target for refinement: {target_file}")
-        
+
         try:
-            doc_res = await self.archive.call_tool("read_document", arguments={"filename": target_file})
+            doc_res = await self.archive.call_tool(
+                "read_document", arguments={"filename": target_file}
+            )
             raw_doc = doc_res.content[0].text if (doc_res and doc_res.content) else "[]"
             content = json.loads(raw_doc) if raw_doc else []
         except Exception as e:
@@ -195,32 +212,40 @@ class DreamManager:
 
         if not isinstance(content, list) or not content:
             return False
-        
-        candidates = [i for i in content if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")]
+
+        candidates = [
+            i
+            for i in content
+            if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
+        ]
         if not candidates:
             logging.info("✨ This sector is already optimized. Returning to sleep.")
             return False
-            
+
         target_item = random.choice(candidates)
         logging.info(f"🎯 Refining artifact: {target_item.get('summary')[:50]}...")
-        
+
         prompt = (
             f"Refine the following technical artifact from {target_file} into a high-density 'Diamond' gem. "
             "Inject modern technical context, clarify the validation impact, and ensure professional brevity. "
             "STRICT: NO ROLEPLAY. Return a refined version."
         )
-        
+
         # Trigger the refinement
         await remote_brain_think(prompt, json.dumps(target_item))
-        
+
         # Storage (Mark the intent in the Behavioral DNA)
-        await self.archive.call_tool("retrospective_audit", arguments={
-            "interaction_log": f"Recursive Refinement: {target_item.get('summary')[:100]}",
-            "domain": "refinement",
-            "adapter": "exp_for",
-            "vibe": "TECHNICAL"
-        })
+        await self.archive.call_tool(
+            "retrospective_audit",
+            arguments={
+                "interaction_log": f"Recursive Refinement: {target_item.get('summary')[:100]}",
+                "domain": "refinement",
+                "adapter": "exp_for",
+                "vibe": "TECHNICAL",
+            },
+        )
         logging.info("✅ Refinement request dispatched.")
+
 
 async def main():
     logging.basicConfig(level=logging.INFO, format="[DREAM] %(message)s")
@@ -230,19 +255,25 @@ async def main():
     ready, model_name = await ensure_engine_ready()
     if not ready:
         logging.error("❌ Lab could not be ignited for Dreaming. Aborting.")
-        print(json.dumps({
-            "status": "FAIL",
-            "turns_synthesized": 0,
-            "items_refined": 0,
-            "duration_seconds": 0.0,
-            "timestamp": "",
-            "error": "Lab could not be ignited for Dreaming"
-        }))
+        print(
+            json.dumps(
+                {
+                    "status": "FAIL",
+                    "turns_synthesized": 0,
+                    "items_refined": 0,
+                    "duration_seconds": 0.0,
+                    "timestamp": "",
+                    "error": "Lab could not be ignited for Dreaming",
+                }
+            )
+        )
         return
 
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{BASE_DIR}/src:{env.get('PYTHONPATH', '')}"
-    archive_params = StdioServerParameters(command=PYTHON_PATH, args=[ARCHIVE_NODE], env=env)
+    archive_params = StdioServerParameters(
+        command=PYTHON_PATH, args=[ARCHIVE_NODE], env=env
+    )
 
     try:
         async with stdio_client(archive_params) as (ar, aw):
@@ -254,14 +285,19 @@ async def main():
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
-        print(json.dumps({
-            "status": "FAIL",
-            "turns_synthesized": 0,
-            "items_refined": 0,
-            "duration_seconds": 0.0,
-            "timestamp": "",
-            "error": str(e)
-        }))
+        print(
+            json.dumps(
+                {
+                    "status": "FAIL",
+                    "turns_synthesized": 0,
+                    "items_refined": 0,
+                    "duration_seconds": 0.0,
+                    "timestamp": "",
+                    "error": str(e),
+                }
+            )
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

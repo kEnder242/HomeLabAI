@@ -1,5 +1,7 @@
 import asyncio
+
 import websockets
+
 
 async def test_echo():
     uri = "ws://localhost:8765"
@@ -7,7 +9,7 @@ async def test_echo():
     try:
         async with websockets.connect(uri) as websocket:
             print("Connected.")
-            await websocket.recv() # Status
+            await websocket.recv()  # Status
 
             # Simulate streaming audio text (bypassing raw audio, using debug_text won't test dedupe)
             # To test dedupe, we need to unit test the EarNode logic directly (which we did in test_dedup.py).
@@ -25,11 +27,13 @@ async def test_echo():
             print("Running src/test_dedup.py unit tests instead...")
 
             import subprocess
+
             subprocess.run(["python3", "src/test_dedup.py"], check=True)
             print("✅ Deduplication Logic Verified.")
 
     except Exception as e:
         print(f"Test Failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_echo())

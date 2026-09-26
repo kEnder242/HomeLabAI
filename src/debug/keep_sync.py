@@ -1,13 +1,15 @@
-import gkeepapi
 import json
 import os
 import re
 
+import gkeepapi
+
 # Credentials from user
-EMAILS = ['kEnder242@gmail.com', 'kender242@gmail.com']
-PASSWORD = 'azdrrjkntjyakvkv'
-PASSWORD_SPACES = 'azdr rjkn tjya kvkv'
-AUTH_FILE = os.path.expanduser('~/.config/gkeep/auth.json')
+EMAILS = ["kEnder242@gmail.com", "kender242@gmail.com"]
+PASSWORD = "azdrrjkntjyakvkv"
+PASSWORD_SPACES = "azdr rjkn tjya kvkv"
+AUTH_FILE = os.path.expanduser("~/.config/gkeep/auth.json")
+
 
 def login():
     keep = gkeepapi.Keep()
@@ -15,10 +17,12 @@ def login():
     # Try to load existing token
     if os.path.exists(AUTH_FILE):
         try:
-            with open(AUTH_FILE, 'r') as f:
+            with open(AUTH_FILE, "r") as f:
                 auth_data = json.load(f)
-                if 'token' in auth_data:
-                    keep.resume(auth_data.get('username', EMAILS[0]), auth_data['token'])
+                if "token" in auth_data:
+                    keep.resume(
+                        auth_data.get("username", EMAILS[0]), auth_data["token"]
+                    )
                     print("Logged in using cached token.")
                     return keep
         except Exception as e:
@@ -32,11 +36,8 @@ def login():
                 keep.login(email, pwd)
                 # Save token for next time
                 os.makedirs(os.path.dirname(AUTH_FILE), exist_ok=True)
-                with open(AUTH_FILE, 'w') as f:
-                    json.dump({
-                        'token': keep.getMasterToken(),
-                        'username': email
-                    }, f)
+                with open(AUTH_FILE, "w") as f:
+                    json.dump({"token": keep.getMasterToken(), "username": email}, f)
                 print(f"Login successful for {email}. Token cached.")
                 return keep
             except Exception as e:
@@ -44,8 +45,10 @@ def login():
 
     return None
 
+
 def extract_urls(text):
     return re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
+
 
 def main():
     keep = login()
@@ -58,7 +61,7 @@ def main():
         return
 
     keep.sync()
-    label_ai = keep.findLabel('AI')
+    label_ai = keep.findLabel("AI")
     if not label_ai:
         print("Label 'AI' not found.")
         # List all labels to help debug
@@ -74,19 +77,19 @@ def main():
         urls = extract_urls(n.text)
         if urls:
             print(f"Found {len(urls)} URLs in: {n.title or 'Untitled Note'}")
-            extracted_data.append({
-                'title': n.title,
-                'text': n.text,
-                'urls': urls,
-                'id': n.id
-            })
+            extracted_data.append(
+                {"title": n.title, "text": n.text, "urls": urls, "id": n.id}
+            )
         else:
             print(f"Skipping note (no URLs): {n.title or 'Untitled Note'}")
 
-    with open('HomeLabAI/docs/KEEP_SYNC_STATE.json', 'w') as f:
+    with open("HomeLabAI/docs/KEEP_SYNC_STATE.json", "w") as f:
         json.dump(extracted_data, f, indent=2)
 
-    print(f"\nExtracted {len(extracted_data)} notes with URLs to HomeLabAI/docs/KEEP_SYNC_STATE.json")
+    print(
+        f"\nExtracted {len(extracted_data)} notes with URLs to HomeLabAI/docs/KEEP_SYNC_STATE.json"
+    )
+
 
 if __name__ == "__main__":
     main()

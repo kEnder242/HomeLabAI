@@ -39,8 +39,8 @@ import shutil
 import sys
 import time
 
-from infra.montana import reclaim_logger
 from infra.atomic_io import atomic_write_json, atomic_write_text
+from infra.montana import reclaim_logger
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
 reclaim_logger(role="DREAM")
@@ -100,9 +100,26 @@ BRAIN_NODE = os.path.join(_SRC_DIR, "nodes", "brain_node.py")
 
 # Deterministic topic lexicon for keyword-frequency topic derivation
 _TOPIC_KEYWORDS = [
-    "gpu", "vram", "model", "memory", "archive", "database", "telemetry",
-    "network", "docker", "python", "build", "error", "retrieval", "llm",
-    "dream", "inference", "hardware", "deploy", "test", "sweep",
+    "gpu",
+    "vram",
+    "model",
+    "memory",
+    "archive",
+    "database",
+    "telemetry",
+    "network",
+    "docker",
+    "python",
+    "build",
+    "error",
+    "retrieval",
+    "llm",
+    "dream",
+    "inference",
+    "hardware",
+    "deploy",
+    "test",
+    "sweep",
 ]
 
 
@@ -121,7 +138,9 @@ if chromadb is not None:
         chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
         chroma_client.heartbeat()
     except Exception as e:
-        logger.warning(f"[DREAM] Chroma HTTP server unreachable, falling back to PersistentClient: {e}")
+        logger.warning(
+            f"[DREAM] Chroma HTTP server unreachable, falling back to PersistentClient: {e}"
+        )
         try:
             chroma_client = chromadb.PersistentClient(path=DB_PATH)
         except Exception as e2:
@@ -131,7 +150,9 @@ if chromadb is not None:
         try:
             lab_journal = get_safe_collection(COLLECTION_JOURNAL)
         except Exception as e:
-            logger.error(f"[DREAM] Failed to acquire '{COLLECTION_JOURNAL}' collection: {e}")
+            logger.error(
+                f"[DREAM] Failed to acquire '{COLLECTION_JOURNAL}' collection: {e}"
+            )
             lab_journal = None
 
 
@@ -199,7 +220,9 @@ async def _hub_inject(prompt, context):
                         return f"Intent {data.get('id')} queued for synthesis."
                     logger.warning(f"[DREAM] Hub /inject returned status {resp.status}")
         elif requests is not None:
-            r = await asyncio.to_thread(requests.post, HUB_URL, json=payload, timeout=30)
+            r = await asyncio.to_thread(
+                requests.post, HUB_URL, json=payload, timeout=30
+            )
             if r.status_code == 200:
                 data = r.json()
                 return f"Intent {data.get('id')} queued for synthesis."
@@ -260,7 +283,9 @@ def memory_consolidation(allow_hub=True, note_id=None):
         return None
 
     if entry_count == 0:
-        logger.info("[DREAM] No journal entries within the 24h window. Dreaming skipped.")
+        logger.info(
+            "[DREAM] No journal entries within the 24h window. Dreaming skipped."
+        )
         return None
 
     joined_dialogue = "\n".join(dialogues)
@@ -299,17 +324,21 @@ def memory_consolidation(allow_hub=True, note_id=None):
     try:
         lab_journal.add(
             documents=[summary],
-            metadatas=[{
-                "type": "journal_kb",
-                "date": date_str,
-                "note_id": resolved_note_id,
-                "entry_count": entry_count,
-                "timestamp": timestamp,
-                "topics": topics,
-            }],
+            metadatas=[
+                {
+                    "type": "journal_kb",
+                    "date": date_str,
+                    "note_id": resolved_note_id,
+                    "entry_count": entry_count,
+                    "timestamp": timestamp,
+                    "topics": topics,
+                }
+            ],
             ids=[resolved_note_id],
         )
-        logger.info(f"[DREAM] journal_kb indexed into '{COLLECTION_JOURNAL}': {resolved_note_id}")
+        logger.info(
+            f"[DREAM] journal_kb indexed into '{COLLECTION_JOURNAL}': {resolved_note_id}"
+        )
     except Exception as e:
         logger.error(f"[DREAM] Chroma add failed; ledger preserved: {e}")
         return None
@@ -317,7 +346,9 @@ def memory_consolidation(allow_hub=True, note_id=None):
     # Atomic reset AFTER a successful chroma add (tmp + os.replace discipline).
     try:
         atomic_write_text(JOURNAL_LEDGER, "")
-        logger.info(f"[DREAM] Journal ledger atomically reset ({entry_count} entries consolidated).")
+        logger.info(
+            f"[DREAM] Journal ledger atomically reset ({entry_count} entries consolidated)."
+        )
     except Exception as e:
         logger.error(f"[DREAM] Ledger reset failed: {e}")
 
@@ -339,8 +370,12 @@ async def _run_debate(topic):
 
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{BASE_DIR}/src:{env.get('PYTHONPATH', '')}"
-    pinky_params = StdioServerParameters(command=PYTHON_PATH, args=[PINKY_NODE], env=env)
-    brain_params = StdioServerParameters(command=PYTHON_PATH, args=[BRAIN_NODE], env=env)
+    pinky_params = StdioServerParameters(
+        command=PYTHON_PATH, args=[PINKY_NODE], env=env
+    )
+    brain_params = StdioServerParameters(
+        command=PYTHON_PATH, args=[BRAIN_NODE], env=env
+    )
 
     async with stdio_client(pinky_params) as (pr, pw):
         async with ClientSession(pr, pw) as pinky:
@@ -410,7 +445,9 @@ async def natural_dreaming(journal_kb_summary, allow_debate=True, allow_hub=True
             debate_output = await _run_debate(topic)
             logger.info("[DREAM] Pinky & Brain debate completed.")
         except Exception as e:
-            logger.warning(f"[DREAM] Debate unavailable, degrading to deterministic briefing: {e}")
+            logger.warning(
+                f"[DREAM] Debate unavailable, degrading to deterministic briefing: {e}"
+            )
 
     if debate_output is None and allow_hub:
         prompt = (
@@ -491,13 +528,23 @@ def run_test_dream():
         os.makedirs(DATA_DIR, exist_ok=True)
         now = int(time.time())
         fixture = [
-            {"ts": now - 3600, "dialogue": "User: How is the GPU doing?\nPinky: Nominal, 42C, 6GiB VRAM free."},
-            {"ts": now - 7200, "dialogue": "User: Run the archive sweep.\nBrain: Sweep queued; 3 stale artifacts flagged."},
-            {"ts": now - 10800, "dialogue": "User: Summarize today's telemetry.\nPinky: 12 events, no anomalies, memory stable."},
+            {
+                "ts": now - 3600,
+                "dialogue": "User: How is the GPU doing?\nPinky: Nominal, 42C, 6GiB VRAM free.",
+            },
+            {
+                "ts": now - 7200,
+                "dialogue": "User: Run the archive sweep.\nBrain: Sweep queued; 3 stale artifacts flagged.",
+            },
+            {
+                "ts": now - 10800,
+                "dialogue": "User: Summarize today's telemetry.\nPinky: 12 events, no anomalies, memory stable.",
+            },
         ]
         with open(JOURNAL_LEDGER, "w") as f:
-            for entry in fixture:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.writelines(
+                json.dumps(entry, ensure_ascii=False) + "\n" for entry in fixture
+            )
         logger.info("[DREAM-TEST] Synthetic fixture written to journal_ledger.jsonl.")
 
         # 2. Stage 1 for real (no hub). Unique note_id avoids clashing with a real
@@ -518,10 +565,14 @@ def run_test_dream():
                     got = lab_journal.get(ids=[note_id])
                     if got and got.get("ids"):
                         lab_journal.delete(ids=[note_id])
-                        logger.info(f"[DREAM-TEST] Synthetic note {note_id} verified and deleted from chroma.")
+                        logger.info(
+                            f"[DREAM-TEST] Synthetic note {note_id} verified and deleted from chroma."
+                        )
                         result["stage1"] = "PASS"
                     else:
-                        result["detail"] = f"note_id {note_id} not findable in lab_journal"
+                        result["detail"] = (
+                            f"note_id {note_id} not findable in lab_journal"
+                        )
                         logger.error(f"[DREAM-TEST] {result['detail']}")
                 except Exception as e:
                     result["detail"] = f"chroma get/delete failed: {e}"
@@ -537,7 +588,9 @@ def run_test_dream():
 
         # 5. Stage 2 in deterministic + no-hub path (no network).
         try:
-            briefing = asyncio.run(natural_dreaming(summary, allow_debate=False, allow_hub=False))
+            briefing = asyncio.run(
+                natural_dreaming(summary, allow_debate=False, allow_hub=False)
+            )
             if os.path.exists(NIGHTLY_DIALOGUE):
                 with open(NIGHTLY_DIALOGUE, "r") as f:
                     data = json.load(f)
@@ -548,7 +601,9 @@ def run_test_dream():
                     and data.get("content")
                 ):
                     result["stage2"] = "PASS"
-                    logger.info("[DREAM-TEST] WYWO briefing persisted, parseable, and marked.")
+                    logger.info(
+                        "[DREAM-TEST] WYWO briefing persisted, parseable, and marked."
+                    )
                 else:
                     result["detail"] = "WYWO briefing missing required keys"
                     logger.error(f"[DREAM-TEST] {result['detail']}")
@@ -587,7 +642,11 @@ def main():
     if args.test_dream:
         result = run_test_dream()
         print(json.dumps(result))
-        sys.exit(0 if result.get("stage1") == "PASS" and result.get("stage2") == "PASS" else 1)
+        sys.exit(
+            0
+            if result.get("stage1") == "PASS" and result.get("stage2") == "PASS"
+            else 1
+        )
     else:
         asyncio.run(run_pipeline())
 

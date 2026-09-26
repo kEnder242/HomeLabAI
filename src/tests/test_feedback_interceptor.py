@@ -11,13 +11,13 @@ import json
 import os
 
 from src.logic.feedback_interceptor import (
+    generate_refinement_prompt,
     is_critique,
     record_feedback,
-    generate_refinement_prompt,
 )
 
-
 # ─── Critique Detection Tests (BKM-015 Compliant) ──────────────────────────
+
 
 class TestIsCritique:
     """Test structural critique detection patterns."""
@@ -36,7 +36,9 @@ class TestIsCritique:
 
     def test_fourth_wall_pinky_address(self):
         """Detect 'Pinky, note that' fourth-wall address pattern."""
-        assert is_critique("Pinky, note that your triage missed the AER register") is True
+        assert (
+            is_critique("Pinky, note that your triage missed the AER register") is True
+        )
 
     def test_fourth_wall_brain_address(self):
         """Detect 'Brain, you're wrong' fourth-wall address pattern."""
@@ -44,7 +46,10 @@ class TestIsCritique:
 
     def test_negation_correction(self):
         """Detect 'X is not Y, it's Z' correction pattern."""
-        assert is_critique("That is not the right approach, it should be recursive") is True
+        assert (
+            is_critique("That is not the right approach, it should be recursive")
+            is True
+        )
 
     def test_disagreement_marker(self):
         """Detect 'I disagree' marker."""
@@ -102,6 +107,7 @@ class TestIsCritique:
 
 # ─── Atomic JSONL Ledger Tests (BKM-022 Compliant) ─────────────────────────
 
+
 class TestRecordFeedback:
     """Test atomic JSONL ledger append operations."""
 
@@ -132,8 +138,14 @@ class TestRecordFeedback:
         )
 
         required_fields = [
-            "timestamp", "query", "verdict", "flawed_output",
-            "ground_truth", "source", "previous_user_input", "previous_full_turn"
+            "timestamp",
+            "query",
+            "verdict",
+            "flawed_output",
+            "ground_truth",
+            "source",
+            "previous_user_input",
+            "previous_full_turn",
         ]
         for field in required_fields:
             assert field in record, f"Missing required field: {field}"
@@ -151,7 +163,11 @@ class TestRecordFeedback:
             ledger_path=ledger_path,
             previous_user_input="hi there",
             previous_full_turn="User: hi there\nPinky: Narf! Hello human! I am Pinky...",
-            previous_triage={"vibe": "CASUAL", "addressed_to": "NONE", "inferred_intent": "greeting"}
+            previous_triage={
+                "vibe": "CASUAL",
+                "addressed_to": "NONE",
+                "inferred_intent": "greeting",
+            },
         )
 
         assert record["previous_user_input"] == "hi there"
@@ -240,6 +256,7 @@ class TestRecordFeedback:
 
 
 # ─── Refinement Prompt Generation Tests (BKM-035 Flow) ─────────────────────
+
 
 class TestGenerateRefinementPrompt:
     """Test Pinky's in-character acknowledgment generation."""
