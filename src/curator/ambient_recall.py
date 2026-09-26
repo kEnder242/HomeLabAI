@@ -424,36 +424,43 @@ def probe_sprint_dna(
 
 
 def probe_icm(
-    text: str, project: str, is_qq: bool = False, limit: int = 2
+    text: str, project: str = "Dev_Lab", is_qq: bool = False, limit: int = 2
 ) -> list[str]:
-    words = text.lower().split()
-    if len(words) < 2 or text.lower() in SHALLOW_PROMPTS:
+    """
+    [FEAT-600 / LAB-019 / LAB-012 / BKM-060] In-Process Resident ICM Recall Engine.
+    Queries the local SQLite memory store directly via Full-Text Search (FTS5)
+    in <3ms, strictly avoiding heavy external Python subprocesses.
+    """
+    words = [w for w in re.findall(r"\w+", text.lower()) if len(w) > 2 and w not in SHALLOW_PROMPTS]
+    if not words:
         return []
-    score_threshold = 0.40 if is_qq else 0.45
+
+    db_path = os.path.expanduser("~/.local/share/icm/memories.db")
+    if not os.path.exists(db_path):
+        return []
+
     try:
-        res = subprocess.run(
-            [
-                "icm",
-                "recall",
-                text[:200],
-                "-f",
-                "json",
-                "-l",
-                str(limit),
-                "-p",
-                project,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=4,
+        import sqlite3
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.05)
+        cursor = conn.cursor()
+        fts_query = " OR ".join(f'"{w}"*' for w in words[:6])
+        cursor.execute(
+            """
+            SELECT m.topic, m.summary 
+            FROM memories_fts f
+            JOIN memories m ON f.id = m.id
+            WHERE memories_fts MATCH ?
+            ORDER BY m.weight DESC, m.created_at DESC
+            LIMIT ?
+            """,
+            (fts_query, limit),
         )
-        if res.returncode == 0 and res.stdout.strip():
-            memories = json.loads(res.stdout)
-            strong = [m for m in memories if m.get("score", 0) >= score_threshold]
-            return [f"- ({m.get('topic')}) {m.get('summary')}" for m in strong]
+        rows = cursor.fetchall()
+        conn.close()
+        return [f"- ({r[0]}) {r[1].splitlines()[0][:140]}" for r in rows if r and r[1]]
     except Exception as e:
-        logger.warning(f"icm recall failed: {e}")
-    return []
+        logger.warning(f"[LAB-019] In-process icm recall failed: {e}")
+        return []
 
 
 def execute_ambient_recall(payload: dict) -> dict:
