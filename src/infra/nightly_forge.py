@@ -940,7 +940,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
         "raw_telemetry": telemetry_dict,
     }
 
-    # Write digest JSON
+    # Write digest JSON & Broadcast
     if write_to_disk:
         output_dir = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data")
         os.makedirs(output_dir, exist_ok=True)
@@ -949,6 +949,8 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
             tmp_path = digest_path + ".tmp"
             with open(tmp_path, "w") as f:
                 json.dump(digest, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp_path, digest_path)
             logger.info(
                 f"[ACCOUNTABILITY] Wrote authoritative digest to {digest_path} (Status: {overall_status})"
@@ -962,20 +964,20 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
             f"Status={overall_status} ({digest['passed_checks']}/{digest['total_checks']} checks passed)",
             severity="INFO" if overall_status == "PASS" else "WARNING",
         )
-    try:
-        requests.post(
-            f"{FOYER_URL}/broadcast",
-            json={
-                "type": "accountability_digest",
-                "status": overall_status,
-                "passed": digest["passed_checks"],
-                "total": digest["total_checks"],
-                "timestamp": digest["timestamp"],
-            },
-            timeout=2,
-        )
-    except Exception:
-        pass
+        try:
+            requests.post(
+                f"{FOYER_URL}/broadcast",
+                json={
+                    "type": "accountability_digest",
+                    "status": overall_status,
+                    "passed": digest["passed_checks"],
+                    "total": digest["total_checks"],
+                    "timestamp": digest["timestamp"],
+                },
+                timeout=2,
+            )
+        except Exception:
+            pass
 
     return digest
 
