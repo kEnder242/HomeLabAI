@@ -139,7 +139,7 @@ async def probe_deliberation_circuit(
     session: "aiohttp.ClientSession",
     base_url: str,
     topic: str = "Audit active silicon residency and memory topology.",
-    max_wait_seconds: float = 40.0,
+    max_wait_seconds: float = 75.0,
 ) -> dict[str, Any]:
     """
     Injects a synthetic probe query and monitors physical ledgers for ground-truth
