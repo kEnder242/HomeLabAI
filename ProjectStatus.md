@@ -1,35 +1,32 @@
-# Home Lab AI: Project Status (Mar 17, 2026)
+# Home Lab AI: Project Status (Sep 25, 2026)
 
-## Current Core Architecture: v6.0 "Eternal Forge"
-*   **Orchestration**: Managed via **`lab-attendant-v3.py` (systemd)**.
-    *   **Autonomous Forge [FEAT-213]**: Silicon Valet logic for nightly weight induction.
-    *   **Bilingual Attendant (V3) [FEAT-156]**: Dual REST/MCP support with SSE hot-linking.
-    *   **VRAM Guard [FEAT-213]**: Real-time silicon contention monitoring for training.
-    *   **The Assassin [FEAT-119]**: Atomic port-reaping and PGID process termination.
-*   **The Communication Hub (Bicameral Resonance)**:
-    *   **Unified Base Model [FEAT-030]**: Standardized on **Llama-3.2-3B-AWQ** for residency.
-    *   **Induction Step 6 [FEAT-160]**: Nightly LoRA "Burn" integration active.
-    *   **Round-Robin Scheduler**: Alternating nightly training targets (History/Voice/Sentinel).
+## Current Core Architecture: v6.5 "Decoupled Accountability & Unified Forge"
+*   **Orchestration**: Managed via **`lab-attendant-v3.py` (systemd)** & **`accountability-watchdog.timer` (06:00 daily)**.
+    *   **Autonomous Forge [FEAT-213]**: Silicon Valet logic for nightly multi-adapter LoRA induction (4 adapters).
+    *   **Bilingual Attendant (V3) [FEAT-156]**: Dual REST/MCP support with SSE hot-linking and Foyer `:8765` state machine.
+    *   **VRAM Guard & Quiesce [FEAT-213]**: Hardware-enforced VRAM eviction (<250MB) and 165W GPU power clamp before nightly training.
+    *   **Decoupled Accountability Sentry [FEAT-619 / BKM-066]**: Out-of-band 06:00 AM independent grading watchdog with stale lock, dead PID scythe, and live endpoint verification.
+    *   **Telemetry Breadcrumb Indexer [FEAT-607 / BKM-067]**: Stage-to-trace mapping in `foyer_stage_ledger.jsonl` and high-speed `read_roundtable_turn.py` CLI extractor.
+*   **The Communication Hub (Bicameral Resonance & Multi-Node Round Table)**:
+    *   **Unified Base Model [FEAT-030]**: Standardized on **Llama-3.2-3B-Instruct** for resident nodes.
+    *   **Induction Step 6 [FEAT-160]**: Nightly multi-adapter LoRA burn (`cli_voice_v1`, `lab_history_v1`, `triage_v1`, `reviewer_v1`).
+    *   **5-Stage Round Table Deliberation**: Triage $\to$ Pinky HyDE $\to$ Brain Archive $\to$ Deep Thought Strategic Synthesis $\to$ Pinky Coherence Review.
 *   **Synthesis Pipeline**:
-    *   **Dream Synthesis [FEAT-214]**: Multi-mode persona distillation (Voice/Sentinel).
+    *   **Dream Synthesis [FEAT-214]**: Multi-mode persona distillation & gem refinement.
     *   **Safe-Scalpel [FEAT-198]**: Atomic, lint-gated code patching via MCP.
 
 ## Key Components & Status
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| **NVIDIA Driver** | ✅ ONLINE | Version 550.120 (CUDA 12.4) |
-| **Lab Attendant** | ✅ STABLE | [FEAT-213] Autonomous Forge and [FEAT-156] V3 logic active. |
-| **Bicameral Hub** | ✅ READY | [FEAT-160] Induction Step 6 integration active. |
-| **EarNode (STT)** | ✅ STABLE | NeMo resident; Load-first VRAM prioritization [FEAT-145]. |
+| **NVIDIA Driver** | ✅ ONLINE | CUDA 12.4 / 13.0, 165W GPU power clamp enforced |
+| **Lab Attendant & Foyer** | ✅ OPERATIONAL | Port :8765 operational; scale-to-zero quiescence active |
+| **ChromaDB DNA Daemon** | ✅ ONLINE | Port :8001 serving feature_dna, behavioral_dna, vibe_dna |
+| **Decoupled Watchdog** | ✅ ACTIVE | `accountability-watchdog.timer` scheduled daily at 06:00 AM |
+| **OpenCode Core** | ✅ ONLINE | REST port 4097 gated with 2.5G/3.0G systemd cgroup limits |
 
-## Active Sprint: SPR-58.0 "Relational Mesh & HyDE-Jeopardy" (Aug 21, 2026)
-**Objective: Autonomous LoRA induction, Tri-Field Gem schema, and hybrid dense-sparse retrieval.**
-**Current Sprint:** **[Sprint Plan: SPR-58.0](../Portfolio_Dev/SPRINT_PLAN_SPR_58_0.md)**
+## Recent Completed Sprints
+*   **SPR-91.0 "Decoupled Accountability Watchdog & Dead PID Sentry"** (`FEAT-619`, `BKM-066`): Decoupled morning accountability grading from batch execution into an independent out-of-band systemd timer.
+*   **SPR-90.0 "Applied Writer Studio & AST Backflow"** (`FEAT-614`–`FEAT-618`, `BKM-064`, `BKM-065`, `INS-036`): Unified projection toolbar, review panel dialogue, and polymorphic `PHL` $\to$ `INS` mutations.
+*   **SPR-88.0 "Nightly Accountability Digest & Dashboard Integration"** (`FEAT-607`, `FEAT-608`): Multi-stage health evaluation matrix, expandable digest cards in `status.html`, and synthetic morning round table probes.
 
-**Status Summary:**
-*   **Phase 1 (Autonomous Nightly Forge)**: [COMPLETE] REST VRAM quiesce (`POST /release_nodes`), Unsloth LoRA on RTX 2080 Ti with `libnvJitLink.so.13` preloading, and REST re-ignition (`POST /wake`) 100% verified.
-*   **Phase 2 (Tri-Field Gem Schema)**: [COMPLETE] `refine_gem.py` updated to extract `trigger_context`, `technical_gem`, and `anchors` grounded in Query2Doc and Self-RAG.
-*   **Phase 3 (Curriculum Distillation)**: [COMPLETE] `distill_journal_ledger()` expanded from 13 $\rightarrow$ 593 bidirectional dialogue pairs covering 18 years of notes and standalone code artifacts.
-*   **Phase 4 (Shakedown Certification)**: [COMPLETE] 7/7 unit and integration tests passing (`test_forge_distillation_unit.py` and `test_nightly_forge_shakedown.py`).
-
-*Refer to the Feature Tracker for permanent technical DNA.*
+*Refer to `Portfolio_Dev/FeatureTracker.md` and `HomeLabAI/docs/Protocols.md` for permanent technical DNA.*

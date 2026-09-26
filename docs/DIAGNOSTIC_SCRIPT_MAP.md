@@ -7,16 +7,19 @@
 
 ---
 
-## 🏗️ 1. Phase 15 Core (Neural Relay)
-These tools are the "Gold Master" baseline for the current Sprint 31 Refactor Readiness.
+## 🏗️ 1. Phase 19 Modern Core & Decoupled Accountability (BKM-066 / BKM-067)
+These tools provide modern out-of-band accountability grading, synthetic round table verification, and instant dialogue extraction.
 
 | Tool | Path | V4 Status | Goal |
 | :--- | :--- | :--- | :--- |
-| **Attendant Liveliness**| `src/attendant_liveliness.py`| **ACTIVE** | [NEW] Verifies Lab Attendant REST API and absolute MD5 Lab Key security. |
-| **Liveliness** | `src/test_liveliness.py` | **ACTIVE** | Heartbeat check. Verifies the WebSocket port is open and `READY` state is achievable. |
-| **Intent Recall** | `src/tests/test_intent_recall.py`| **ACTIVE** | [NEW] Verifies BKM-015.1 semantic intent identification for historical queries. |
+| **Decoupled Watchdog** | `src/infra/standalone_accountability_watchdog.py` | **ACTIVE** | [FEAT-619 / BKM-066] Independent 06:00 AM sentry grading 7 vectors, lockfiles, and dead PIDs. |
+| **Round Table Turn Reader** | `src/infra/read_roundtable_turn.py` | **ACTIVE** | [FEAT-607 / BKM-067] High-speed CLI extractor for multi-turn dialogue from JSONL stream traces. |
+| **Synthetic RT Probe** | `src/infra/probe_round_table_accountability.py` | **ACTIVE** | [FEAT-608] Automated multi-resident verification suite (Greeting + Deliberation + Critic). |
+| **Watchdog Unit Tests** | `src/tests/test_standalone_accountability_watchdog.py` | **ACTIVE** | Unit test suite for out-of-band state age, dead PIDs, and digest double-write buffering. |
+| **Attendant Liveliness**| `src/attendant_liveliness.py`| **ACTIVE** | Verifies Lab Attendant REST API and absolute MD5 Lab Key security. |
+| **Intent Recall** | `src/tests/test_intent_recall.py`| **ACTIVE** | Verifies BKM-015.1 semantic intent identification for historical queries. |
 | **RAG Multi-Stage** | `src/test_rag_logic.py` | **ACTIVE** | Verifies Discovery (ChromaDB) -> Acquisition (Filesystem) path. |
-| **Visibility Truth** | `src/tests/test_visibility_truth.py`| **ACTIVE** | [NEW] Playwright auditor verifying 100% transparency of `<thought>` tags in DOM. |
+| **Visibility Truth** | `src/tests/test_visibility_truth.py`| **ACTIVE** | Playwright auditor verifying 100% transparency of `<thought>` tags in DOM. |
 | **Uber 5x5 Hand-Crank**| `src/debug/uber_5x5_hand_crank.py`| **STRESS** | **ULTIMATE.** 75-min gauntlet testing H2->Operational natural drift. |
 
 ---
