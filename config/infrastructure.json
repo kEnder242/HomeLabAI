@@ -130,6 +130,7 @@
             {"providerID": "my-windows-4090", "modelID": "qwen3:14b"}
         ],
         "oracle": [
+            {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "openrouter", "modelID": "free"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],

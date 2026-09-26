@@ -1104,3 +1104,24 @@ Treat all Markdown files (`Protocols.md`, `FeatureTracker.md`) as executable sou
 1. **Source-First Mutation:** Updates originating in web tools (e.g., editing a BKM description or feature mechanism) must mutate the Markdown source file directly on disk before refreshing vector indices.
 2. **Deterministic Regex Anchoring:** Use anchored regex matching on unique entity headers (e.g., `## BKM-xxx` or `## [FEAT-xxx]`) to prevent syntax drift.
 3. **Automated Git Checkpoint:** Every successful source file mutation must immediately create a local Git commit to preserve history and prevent data loss.
+
+---
+
+## BKM-066: Decoupled Watchdog & Independent Audit Invariant
+**Feature Anchor:** `[FEAT-619]` / `[BKM-066]`  
+**Colloquial Alias:** "Defensive Decoupled Accountability"  
+**Domain:** Observability, Fault-Tolerant Automation, Reliability Engineering  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle (Positive Framing)
+Every mission-critical automated pipeline MUST have its accountability, completion verification, and health audit evaluated by an **out-of-band, decoupled process** rather than solely by the executing pipeline itself. Never let the executing process be solely responsible for grading its own completion or surfacing its own failure.
+
+**The Decoupled Sentry Design Pattern Applied:** If a long-running batch job crashes, deadlocks, suffers an unhandled exception, runs out of memory (OOM), or exits prematurely from a `try/finally` block, its internal audit steps will never execute. An independent watchdog running at the boundary of the operational window (e.g., 06:00 AM) evaluates physical state files, lock files, hardware limits, and live daemon endpoints to emit an authoritative pass/fail digest and trigger alerts.
+
+### 2. The Invariant Rules
+1. **Separation of Execution and Grading:** The batch execution pipeline (`nightly_forge.py`) produces state and telemetry files. The decoupled watchdog (`standalone_accountability_watchdog.py`) grades them independently.
+2. **Crash & Deadlock Detection (Stale Lock Sentry):** The watchdog must inspect all active lockfiles (`maintenance.lock`, `nightly_forge.lock`, `nightly_lora_training.lock`). Any lockfile older than its maximum permissible execution budget with no active process represents a hard failure.
+3. **Mandatory State Age Verification:** A passing state file timestamp older than the current window (e.g., >24 hours old) must be classified as `STALE_FAILURE`, preventing historical passing runs from masking silent current-day failures.
+4. **Authoritative Double-Write Digest:** The standalone watchdog writes `daily_accountability_digest.json` using atomic temporary file swaps (`.tmp` -> rename) to both `Portfolio_Dev/field_notes/data/` and `www_deploy/data/`.
+5. **Multi-Channel Alert Escalation:** Any critical failure (OOM, missing run, stale lock, probe failure) triggers an immediate Neural Pager alert to ensure rapid human awareness.
+

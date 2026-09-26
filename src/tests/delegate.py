@@ -940,14 +940,13 @@ def delegate(
         )
         sys.exit(1)
 
-    # [BKM-049] Enforce mutual exclusivity between local_only and cloud_only
-    if cloud_only:
-        local_only = False
-
-    # [Canonical Topology Gate: Local = Atlas/Junior | Cloud = Sisyphus/Prometheus/Oracle]
+    # [BKM-049 / BKM-061] Canonical Topology Gate: Oracle is STRICTLY cloud-only.
     if mode == "oracle":
+        cloud_only = True
+        local_only = False
         agent = "oracle"
     elif cloud_only:
+        local_only = False
         if agent and agent not in ("sisyphus", "prometheus", "oracle", "default"):
             print(
                 f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud-only mode.",
@@ -1378,6 +1377,22 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                 },
                             )
                         ]
+                elif agent == "oracle" or mode == "oracle":
+                    log_step(
+                        story_num,
+                        "CLOUD_ORACLE_MODE",
+                        "Enforcing 100% Cloud Oracle Execution (OpenRouter/Cohere/Nemotron). Zero local silicon fallbacks.",
+                    )
+                    model_ladder = aliases.get(
+                        "oracle",
+                        [
+                            {"providerID": "openrouter", "modelID": "free"},
+                            {
+                                "providerID": "cohere",
+                                "modelID": "command-a-plus-05-2026",
+                            },
+                        ],
+                    )
                 elif cloud_only:
                     log_step(
                         story_num,
