@@ -1,8 +1,9 @@
 import asyncio
-import requests
-import time
 import hashlib
 import subprocess
+import time
+
+import requests
 
 # [TEST-54] Lobby Robustness Reproduction
 # Proves that a Silicon Scythe (H3) kills the Lobby/Foyer and fails to recover it.
@@ -11,14 +12,16 @@ ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://localhost:8765"
 STYLE_CSS = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/style.css"
 
+
 def get_key():
     with open(STYLE_CSS, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
+
 async def reproduce():
     print("🔥 INITIATING LOBBY ROBUSTNESS TEST")
     key = get_key()
-    
+
     # 1. Ensure Hub is UP
     print("[*] Checking Hub status...")
     try:
@@ -35,7 +38,9 @@ async def reproduce():
     # 2. Trigger Mock Silicon Scythe (H3)
     print("[*] Triggering Mock Silicon Scythe (H3)...")
     try:
-        r = requests.post(f"{ATTENDANT_URL}/hibernate?level=3&key={key}&reason=MOCK_SCYTHE", timeout=5)
+        r = requests.post(
+            f"{ATTENDANT_URL}/hibernate?level=3&key={key}&reason=MOCK_SCYTHE", timeout=5
+        )
         print(f"    [+] Attendant response: {r.json()}")
     except Exception as e:
         print(f"    [-] Trigger failed: {e}")
@@ -43,8 +48,8 @@ async def reproduce():
 
     # 3. Monitor Lobby (Port 8765)
     print("[*] Monitoring Lobby for death...")
-    time.sleep(10) # Wait for shutdown to process
-    
+    time.sleep(10)  # Wait for shutdown to process
+
     dead = False
     try:
         requests.get(f"{HUB_URL}/heartbeat", timeout=2)
@@ -64,7 +69,9 @@ async def reproduce():
         try:
             r = requests.get(f"{HUB_URL}/heartbeat", timeout=2)
             if r.status_code == 200:
-                print(f"    [🏆] RECOVERED: Lobby is back online after {int(time.time() - start_t)}s.")
+                print(
+                    f"    [🏆] RECOVERED: Lobby is back online after {int(time.time() - start_t)}s."
+                )
                 recovered = True
                 break
         except Exception:
@@ -74,9 +81,12 @@ async def reproduce():
     if not recovered:
         print("    [❌] FAILURE: Lobby stayed dead. System is in a 'Zombie State'.")
         # Final physical check
-        res = subprocess.run(["sudo", "netstat", "-tulpn"], capture_output=True, text=True)
+        res = subprocess.run(
+            ["sudo", "netstat", "-tulpn"], capture_output=True, text=True
+        )
         if "8765" not in res.stdout:
             print("    [!] Physical Confirmation: Port 8765 is NOT listening.")
-        
+
+
 if __name__ == "__main__":
     asyncio.run(reproduce())

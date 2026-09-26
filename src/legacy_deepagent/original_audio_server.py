@@ -1,15 +1,16 @@
 import asyncio
-import websockets
+import datetime
 import json
 import logging
+import os
+import time
+
+import aiohttp
+import chromadb
+import nemo.collections.asr as nemo_asr
 import numpy as np
 import torch
-import nemo.collections.asr as nemo_asr
-import time
-import datetime
-import aiohttp
-import os
-import chromadb
+import websockets
 from chromadb.utils import embedding_functions
 
 # Configuration
@@ -23,7 +24,7 @@ PINKY_URL = "http://localhost:11434/api/generate"
 # [FEAT-081] Hemispheric Decoupling
 PINKY_MODEL = "llama3.1:8b"  # Local 2080 Ti
 BRAIN_URL = "http://192.168.1.26:11434/api/generate"
-BRAIN_MODEL = "llama3:latest" # Windows 4090 Ti
+BRAIN_MODEL = "llama3:latest"  # Windows 4090 Ti
 SILENCE_TIMEOUT = 1.2
 
 # System Prompts
@@ -63,12 +64,10 @@ OVERLAP_SAMPLES = int(SAMPLE_RATE * OVERLAP_DURATION)
 os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("logs/conversation.log"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("logs/conversation.log"), logging.StreamHandler()],
 )
+
 
 def get_new_text(old_text, new_window_text):
     if not old_text:
@@ -82,6 +81,7 @@ def get_new_text(old_text, new_window_text):
         if old_words[-i:] == new_words[:i]:
             return " ".join(new_words[i:])
     return new_window_text
+
 
 class Transcriber:
     def __init__(self):
@@ -110,13 +110,15 @@ class Transcriber:
     @torch.no_grad()
     def transcribe(self, audio_data):
         # 1. Silence Check
-        rms = np.sqrt(np.mean(audio_data.astype(np.float32)**2))
+        rms = np.sqrt(np.mean(audio_data.astype(np.float32) ** 2))
         if rms < SILENCE_THRESHOLD:
             return None
 
         # 2. Wake Signal (Fire Once)
         if not self.wake_signal_sent:
-            asyncio.create_task(self.prime_ollama(BRAIN_URL, BRAIN_MODEL)) # Prime the big gun
+            asyncio.create_task(
+                self.prime_ollama(BRAIN_URL, BRAIN_MODEL)
+            )  # Prime the big gun
             self.wake_signal_sent = True
 
         # 3. Prepare Tensor
@@ -127,7 +129,7 @@ class Transcriber:
             # 4. Inference
             encoded, encoded_len = self.model.forward(
                 input_signal=audio_signal,
-                input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
+                input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda"),
             )
 
             current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(
@@ -162,31 +164,48 @@ class Transcriber:
                     if resp.status == 200:
                         logging.info(f"✅ {model} is WAKING UP.")
                     else:
-                        logging.warning(f"⚠️ Wake signal failed for {model}: {resp.status}")
+                        logging.warning(
+                            f"⚠️ Wake signal failed for {model}: {resp.status}"
+                        )
         except Exception as e:
             logging.error(f"⚠️ Wake signal error: {e}")
 
     async def search_knowledge_base(self, query):
         """Queries ChromaDB for context."""
         # Heuristic Check: Skip RAG for common greetings or very short queries
-        casual_greetings = ["hello", "hi", "hey", "pinky", "how are you", "narf", "poit"]
+        casual_greetings = [
+            "hello",
+            "hi",
+            "hey",
+            "pinky",
+            "how are you",
+            "narf",
+            "poit",
+        ]
         if query.lower().strip() in casual_greetings or len(query.split()) < 3:
             return ""
 
         try:
             results = self.collection.query(query_texts=[query], n_results=2)
-            if results and results['documents']:
+            if results and results["documents"]:
                 # Flatten list of list
-                docs = results['documents'][0]
-                sources = results['metadatas'][0]
-                context = "\n".join([f"--- Source: {m.get('source', '?')} ---\n{d}" for d, m in zip(docs, sources)])
+                docs = results["documents"][0]
+                sources = results["metadatas"][0]
+                context = "\n".join(
+                    [
+                        f"--- Source: {m.get('source', '?')} ---\n{d}"
+                        for d, m in zip(docs, sources)
+                    ]
+                )
                 return context
         except Exception as e:
             logging.error(f"RAG Error: {e}")
         return ""
 
     async def check_turn_end(self, websocket):
-        if self.turn_pending and (time.time() - self.last_speech_time > SILENCE_TIMEOUT):
+        if self.turn_pending and (
+            time.time() - self.last_speech_time > SILENCE_TIMEOUT
+        ):
             # Turn End
             self.turn_pending = False
             self.wake_signal_sent = False
@@ -205,15 +224,19 @@ class Transcriber:
                     rag_snippet = f"\n\nContext from User Notes:\n{context}\n"
 
                 # Step 1: Consult Pinky (Local)
-                pinky_prompt = f"{PINKY_SYSTEM_PROMPT}\n{rag_snippet}\nUser: {user_query}"
+                pinky_prompt = (
+                    f"{PINKY_SYSTEM_PROMPT}\n{rag_snippet}\nUser: {user_query}"
+                )
                 pinky_options = {
                     "num_predict": 200,
-                    "stop": ["User:", "The Brain:", "[USER]", "[BRAIN]"]
+                    "stop": ["User:", "The Brain:", "[USER]", "[BRAIN]"],
                 }
-                pinky_response, _ = await self.generate_response(PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky", pinky_options)
+                pinky_response, _ = await self.generate_response(
+                    PINKY_URL, PINKY_MODEL, pinky_prompt, "Pinky", pinky_options
+                )
 
                 if pinky_response:
-                     logging.info(f"[PINKY] {pinky_response}")
+                    logging.info(f"[PINKY] {pinky_response}")
 
                 final_response = pinky_response
                 source_identity = "Pinky (2080 Ti)"
@@ -224,16 +247,22 @@ class Transcriber:
                     handoff_query = pinky_response.split("ASK_BRAIN:", 1)[1].strip()
 
                     # Notify Client of Handoff (Optional, sends a quick 'Hold on' message)
-                    await websocket.send(json.dumps({
-                        "brain": "Narf! I'm asking the Brain! *Poit!*",
-                        "brain_source": "Pinky (Handoff)"
-                    }))
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "brain": "Narf! I'm asking the Brain! *Poit!*",
+                                "brain_source": "Pinky (Handoff)",
+                            }
+                        )
+                    )
 
                     brain_prompt = f"{BRAIN_SYSTEM_PROMPT}\n{rag_snippet}\nPinky says: The user needs help with '{handoff_query}'.\nOriginal User Query: {user_query}"
 
                     # Brain gets more room to breathe
                     brain_options = {"num_predict": 2048}
-                    brain_response, _ = await self.generate_response(BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain", brain_options)
+                    brain_response, _ = await self.generate_response(
+                        BRAIN_URL, BRAIN_MODEL, brain_prompt, "The Brain", brain_options
+                    )
                     if brain_response:
                         logging.info(f"[BRAIN] {brain_response}")
                         final_response = brain_response
@@ -242,10 +271,11 @@ class Transcriber:
                         final_response = "The Brain is ignoring me! Narf!"
 
                 if final_response:
-                    await websocket.send(json.dumps({
-                        "brain": final_response,
-                        "brain_source": source_identity
-                    }))
+                    await websocket.send(
+                        json.dumps(
+                            {"brain": final_response, "brain_source": source_identity}
+                        )
+                    )
 
         return False
 
@@ -257,7 +287,7 @@ class Transcriber:
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": options or {}
+                    "options": options or {},
                 }
                 timeout = aiohttp.ClientTimeout(total=60, connect=2)
 
@@ -273,9 +303,11 @@ class Transcriber:
             logging.warning(f"⚠️ {name} Failed: {e}")
         return None, name
 
+
 # Global state
 transcriber = None
 shutdown_event = asyncio.Event()
+
 
 async def audio_handler(websocket):
     logging.info("Client connected!")
@@ -320,6 +352,7 @@ async def audio_handler(websocket):
         logging.info("Client disconnected. Shutting down server...")
         shutdown_event.set()
 
+
 async def main():
     global transcriber
     transcriber = Transcriber()
@@ -330,6 +363,7 @@ async def main():
     except Exception as e:
         logging.error(f"Server error: {e}")
     logging.info("Server stopped.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

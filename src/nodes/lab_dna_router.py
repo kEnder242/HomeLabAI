@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Collection Priority Routing
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -68,6 +67,7 @@ def get_collection_priorities(vibe: str, domain: str) -> list[str]:
 # Zero Context > Default Context
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def filter_candidate_context(
     candidates: list[dict[str, Any]],
     vibe: str,
@@ -111,9 +111,8 @@ def filter_candidate_context(
 # DNA Tag Formatting
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def format_lab_dna_tag(
-    coll: str, metadata: dict[str, Any], doc: str
-) -> str:
+
+def format_lab_dna_tag(coll: str, metadata: dict[str, Any], doc: str) -> str:
     """Format a candidate document with structured DNA tags.
 
     Produces tags like ``[FEATURE_DNA: FEAT-469]`` and ``[INFRA: LAB-055]``

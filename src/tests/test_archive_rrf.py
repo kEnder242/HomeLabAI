@@ -1,28 +1,29 @@
 import asyncio
 import json
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
-from nodes.archive_node import (
-    rrf_fuse,
-    keyword_search,
-    get_context
-)
+from nodes.archive_node import get_context, keyword_search, rrf_fuse
+
 
 async def test_archive_rrf_logic():
     """
     [Task 3.2] Verification for Hybrid Retrieval (RRF).
     """
     print("\n--- [TASK 3.2] VERIFICATION: HYBRID RETRIEVAL (RRF) ---")
-    
+
     # 1. Test Keyword Search
     test_json = [
         {"id": "GEM-999", "summary": "Silicon validation of PECISTRESSOR tool."},
-        {"id": "GEM-888", "summary": "Other random note."}
+        {"id": "GEM-888", "summary": "Other random note."},
     ]
-    
-    with patch("glob.glob", return_value=["mock_data.json"]), \
-         patch("builtins.open", side_effect=[MagicMock(__enter__=lambda s: MagicMock(read=lambda: json.dumps(test_json)))]):
-        
+
+    with patch("glob.glob", return_value=["mock_data.json"]), patch(
+        "builtins.open",
+        side_effect=[
+            MagicMock(__enter__=lambda s: MagicMock(read=lambda: json.dumps(test_json)))
+        ],
+    ):
+
         results = keyword_search("PECISTRESSOR")
         print(f"[STEP 1] Keyword search for PECISTRESSOR: {len(results)} matches.")
         assert len(results) > 0
@@ -31,10 +32,10 @@ async def test_archive_rrf_logic():
     # 2. Test RRF Fusion
     vector_list = [("doc1", {"v": 1}), ("doc2", {"v": 2})]
     keyword_list = [("doc3", {"k": 3}), ("doc1", {"k": 1})]
-    
+
     fused = rrf_fuse([vector_list, keyword_list])
     print(f"[STEP 2] RRF Fused results: {[r[0] for r in fused]}")
-    
+
     # doc1 should be top because it appeared in both lists
     assert fused[0][0] == "doc1"
     assert len(fused) == 3
@@ -49,22 +50,38 @@ async def test_fuzzy_temporal_routing():
     """
     print("\n--- [GOAL 3] VERIFICATION: FUZZY TEMPORAL COMPASS ROUTING ---")
 
-    with patch("nodes.archive_node.wisdom") as mock_wisdom, \
-         patch("nodes.archive_node.stream") as mock_stream, \
-         patch("nodes.archive_node.keyword_search") as mock_keyword:
+    with patch("nodes.archive_node.wisdom") as mock_wisdom, patch(
+        "nodes.archive_node.stream"
+    ) as mock_stream, patch("nodes.archive_node.keyword_search") as mock_keyword:
 
         # Scenario: RRF returns 3 candidates with different timestamps
         mock_wisdom.query.return_value = {
             "documents": [
-                ["MCTP driver setup (old)", "MCTP stress tests on Purley", "Resolved MCTP bus conflicts (new)"]
+                [
+                    "MCTP driver setup (old)",
+                    "MCTP stress tests on Purley",
+                    "Resolved MCTP bus conflicts (new)",
+                ]
             ],
             "metadatas": [
                 [
-                    {"timestamp": "2017-06-20", "source": "2017_2017.json", "_rrf_score": 0.3},  # Low RRF (temporally distant)
-                    {"timestamp": "2018-10-15", "source": "2018_2018.json", "_rrf_score": 0.5},  # Medium RRF
-                    {"timestamp": "2019-01-05", "source": "2016_2019.json", "_rrf_score": 0.7}   # High RRF (temporally close)
+                    {
+                        "timestamp": "2017-06-20",
+                        "source": "2017_2017.json",
+                        "_rrf_score": 0.3,
+                    },  # Low RRF (temporally distant)
+                    {
+                        "timestamp": "2018-10-15",
+                        "source": "2018_2018.json",
+                        "_rrf_score": 0.5,
+                    },  # Medium RRF
+                    {
+                        "timestamp": "2019-01-05",
+                        "source": "2016_2019.json",
+                        "_rrf_score": 0.7,
+                    },  # High RRF (temporally close)
                 ]
-            ]
+            ],
         }
         mock_stream.query.return_value = {"documents": [[]], "metadatas": [[]]}
         mock_keyword.return_value = []
@@ -93,33 +110,29 @@ async def test_relational_neighborhood_expansion():
 
     mock_relations = [
         {"source": "MCTP", "target": "PECI", "type": "RESOLVES"},
-        {"source": "Montana", "target": "MCTP", "type": "UTILIZES"}
+        {"source": "Montana", "target": "MCTP", "type": "UTILIZES"},
     ]
 
-    with patch("nodes.archive_node.wisdom") as mock_wisdom, \
-         patch("nodes.archive_node.stream") as mock_stream, \
-         patch("nodes.archive_node.keyword_search") as mock_keyword, \
-         patch("os.path.exists", return_value=True), \
-         patch("builtins.open", mock_open(read_data=json.dumps(mock_relations))):
-        
+    with patch("nodes.archive_node.wisdom") as mock_wisdom, patch(
+        "nodes.archive_node.stream"
+    ) as mock_stream, patch("nodes.archive_node.keyword_search") as mock_keyword, patch(
+        "os.path.exists", return_value=True
+    ), patch(
+        "builtins.open", mock_open(read_data=json.dumps(mock_relations))
+    ):
+
         mock_wisdom.query.return_value = {
-            "documents": [
-                ["MCTP driver setup on Montana board"]
-            ],
-            "metadatas": [
-                [
-                    {"timestamp": "2018-10-15"}
-                ]
-            ]
+            "documents": [["MCTP driver setup on Montana board"]],
+            "metadatas": [[{"timestamp": "2018-10-15"}]],
         }
         mock_stream.query.return_value = {"documents": [[]], "metadatas": [[]]}
         mock_keyword.return_value = []
-        
+
         ctx_res_raw = await get_context("MCTP setup", n_results=1)
         ctx_res = json.loads(ctx_res_raw)
-        
+
         print(f"[STEP 1] Relational neighborhood context:\n{ctx_res['text']}\n")
-        
+
         # Verify that relational expansion contains the mock relations
         assert "[RELATIONAL_NEIGHBOR_EXPANSION]" in ctx_res["text"]
         assert "MCTP --[RESOLVES]--> PECI" in ctx_res["text"]

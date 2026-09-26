@@ -1,9 +1,11 @@
 import asyncio
+import json
 import os
 import sys
-import json
+
 sys.path.append(os.path.expanduser("~/Dev_Lab/HomeLabAI/src"))
 from nodes.archive_node import get_context
+
 
 async def run_test():
     res = await get_context("Validation events from 2019")
@@ -14,5 +16,6 @@ async def run_test():
         print("TEXT PREVIEW:", data.get("text")[:200])
     except Exception:
         print("Raw output:", res)
+
 
 asyncio.run(run_test())

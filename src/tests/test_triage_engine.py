@@ -19,14 +19,13 @@ from unittest.mock import MagicMock
 
 from src.logic.triage_engine import (
     SpeakerRegistry,
+    TriageEngine,
     classify_vibe_and_domain,
     extract_latest_user_query,
     format_speaker_history,
     is_meta_lexicon,
     scrub_hyde_vector,
-    TriageEngine,
 )
-
 
 # ===========================================================================
 # 1. SpeakerRegistry
@@ -61,7 +60,10 @@ class TestSpeakerRegistry:
     def test_strip_colon_delimited_prefix(self) -> None:
         """Strip 'Brain:' style colon-delimited prefix."""
         reg = SpeakerRegistry()
-        assert reg.sanitize("Brain: The root cause is clear.") == "The root cause is clear."
+        assert (
+            reg.sanitize("Brain: The root cause is clear.")
+            == "The root cause is clear."
+        )
 
     def test_strip_case_insensitive(self) -> None:
         """Prefix matching is case-insensitive."""
@@ -77,7 +79,10 @@ class TestSpeakerRegistry:
     def test_no_prefix_returns_clean(self) -> None:
         """Text without any prefix is returned unchanged."""
         reg = SpeakerRegistry()
-        assert reg.sanitize("What is the PCIe error count?") == "What is the PCIe error count?"
+        assert (
+            reg.sanitize("What is the PCIe error count?")
+            == "What is the PCIe error count?"
+        )
 
     def test_empty_string(self) -> None:
         """Empty input returns empty string."""
@@ -120,11 +125,16 @@ class TestExtractLatestUserQuery:
 
     def test_single_line_no_prefix(self) -> None:
         """Simple query without prefix is returned as-is."""
-        assert extract_latest_user_query("What is the lab status?") == "What is the lab status?"
+        assert (
+            extract_latest_user_query("What is the lab status?")
+            == "What is the lab status?"
+        )
 
     def test_single_line_with_me_prefix(self) -> None:
         """[ME] prefix is stripped."""
-        assert extract_latest_user_query("[ME] Check the sweeper") == "Check the sweeper"
+        assert (
+            extract_latest_user_query("[ME] Check the sweeper") == "Check the sweeper"
+        )
 
     def test_multi_line_returns_last(self) -> None:
         """Multi-line input returns the last non-empty line, cleaned."""
@@ -141,11 +151,17 @@ class TestExtractLatestUserQuery:
 
     def test_user_bracket_prefix(self) -> None:
         """[USER] prefix is stripped."""
-        assert extract_latest_user_query("[USER] Show maintenance logs") == "Show maintenance logs"
+        assert (
+            extract_latest_user_query("[USER] Show maintenance logs")
+            == "Show maintenance logs"
+        )
 
     def test_user_colon_prefix(self) -> None:
         """User: prefix is stripped."""
-        assert extract_latest_user_query("User: Show maintenance logs") == "Show maintenance logs"
+        assert (
+            extract_latest_user_query("User: Show maintenance logs")
+            == "Show maintenance logs"
+        )
 
 
 # ===========================================================================
@@ -212,7 +228,9 @@ class TestScrubHydeVector:
 
     def test_strip_multiple_placeholders(self) -> None:
         """All angle-bracket placeholders are removed."""
-        result = scrub_hyde_vector("[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>")
+        result = scrub_hyde_vector(
+            "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>"
+        )
         assert "<term>" not in result
         assert "<goal>" not in result
         assert "<bkm>" not in result
@@ -503,7 +521,9 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.run(
-            engine.evaluate_triage("Check PCIe AER error count", resident_caller=resident)
+            engine.evaluate_triage(
+                "Check PCIe AER error count", resident_caller=resident
+            )
         )
 
         assert result["vibe"] == "TECHNICAL"
@@ -541,7 +561,9 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.run(
-            engine.evaluate_triage("Analyze PCIe errors on node 1", resident_caller=resident)
+            engine.evaluate_triage(
+                "Analyze PCIe errors on node 1", resident_caller=resident
+            )
         )
 
         assert "<silicon_term_or_pcie_ras>" not in result["hyde_vector_text"]
@@ -571,7 +593,9 @@ class TestTriageEngine:
         ]
 
         result = asyncio.run(
-            engine.evaluate_triage("Follow-up question", history=history, resident_caller=resident)
+            engine.evaluate_triage(
+                "Follow-up question", history=history, resident_caller=resident
+            )
         )
 
         assert result["vibe"] == "CASUAL"
@@ -587,7 +611,9 @@ class TestTriageEngine:
         engine = TriageEngine()
 
         result = asyncio.run(
-            engine.evaluate_triage("[ME] Check the lab status", resident_caller=resident)
+            engine.evaluate_triage(
+                "[ME] Check the lab status", resident_caller=resident
+            )
         )
 
         assert result is not None
@@ -669,9 +695,7 @@ class TestGreetingSemanticEvaluation:
         )
         resident = _MockResident(triage_json)
         engine = TriageEngine()
-        result = asyncio.run(
-            engine.evaluate_triage("hello", resident_caller=resident)
-        )
+        result = asyncio.run(engine.evaluate_triage("hello", resident_caller=resident))
         assert result["vibe"] == "CASUAL"
         assert result["addressed_to"] == "PINKY"
 

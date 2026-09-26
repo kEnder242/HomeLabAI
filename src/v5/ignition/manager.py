@@ -1,12 +1,13 @@
 import asyncio
+import fcntl
 import json
 import logging
 import os
-import time
-import fcntl
-import psutil
 import subprocess
 import sys
+import time
+
+import psutil
 
 # Add src to path for common imports
 V5_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,8 +16,9 @@ LAB_DIR = os.path.dirname(SRC_DIR)
 if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
-from v5.common.types import LabStatus, IntentEvent
 from infra.pager_relay import trigger_pager
+
+from v5.common.types import IntentEvent, LabStatus
 
 # [Task 4.4] V5 Ignition: The physical Hardware Guardian
 # Objective: Manage silicon state and certify ALARM tasks.
@@ -31,6 +33,7 @@ GEM_REFINER = os.path.join(WORKSPACE_DIR, "field_notes/refine_gem.py")
 
 INFRA_CONFIG = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
 
+
 def get_unified_base_model():
     """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.local-unified-base pointer."""
     try:
@@ -38,17 +41,22 @@ def get_unified_base_model():
             with open(INFRA_CONFIG, "r") as f:
                 data = json.load(f)
                 manifest = data.get("model_manifest", {})
-                unified_key = manifest.get("local-unified-base", manifest.get("unified-base", "llama-3.2-3b-awq"))
+                unified_key = manifest.get(
+                    "local-unified-base",
+                    manifest.get("unified-base", "llama-3.2-3b-awq"),
+                )
                 return manifest.get(unified_key, unified_key)
     except Exception:
         pass
     return "llama-3.2-3b-awq"
+
 
 # [FEAT-122] Kernel-Level Visibility
 try:
     import setproctitle
 except ImportError:
     setproctitle = None
+
 
 class IgnitionManager:
     def __init__(self):
@@ -59,15 +67,19 @@ class IgnitionManager:
         self.status = LabStatus()
         self._vram_lock_fd = None
         from collections import deque
-        self.processed_ids = deque(maxlen=1000) # [Task 6.3] Hygiene: Prevent memory leaks
+
+        self.processed_ids = deque(
+            maxlen=1000
+        )  # [Task 6.3] Hygiene: Prevent memory leaks
         self.last_induction = None
-        self.last_induction_date = None # [FEAT-289] Atomic Induction
-        self.last_activity_time = time.time() # [Task 4.1] Idle tracking
+        self.last_induction_date = None  # [FEAT-289] Atomic Induction
+        self.last_activity_time = time.time()  # [Task 4.1] Idle tracking
         # [FEAT-302] & [FEAT-323] Recovery backoff attributes
         self.recovery_attempts = 0
         self.cooldown_until = 0.0
         self.operational_start_time = 0.0
         self.recovery_in_progress = False
+
     def record_pager(self, message, severity="INFO", source="LabAttendant"):
         """[Task 9.9] Centralized Pager Logging."""
         trigger_pager(message, severity=severity, source=source)
@@ -77,33 +89,44 @@ class IgnitionManager:
         logging.info("[IGNITION] Journal monitor started.")
         # Filter for interesting non-lab services
         cmd = ["journalctl", "-f", "-n", "0", "--no-pager"]
-        
+
         try:
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            
+
             while True:
                 line = await process.stdout.readline()
                 if not line:
                     break
                 text = line.decode().strip()
-                
+
                 # Pattern Matching for "Interleaved" logs
                 # [USER DIRECTIVE] Show what the lab is doing - do NOT filter out
                 # internal lab chatter (python3/acme_foyer/acme_ignition).
-                if any(x in text for x in ["Started", "Stopped", "error", "failed", "offline", "online"]):
+                if any(
+                    x in text
+                    for x in [
+                        "Started",
+                        "Stopped",
+                        "error",
+                        "failed",
+                        "offline",
+                        "online",
+                    ]
+                ):
                     # Extract source (crude heuristic)
                     try:
                         parts = text.split("z87-Linux ")
                         if len(parts) > 1:
                             content = parts[1]
                             source = content.split("[")[0].split(":")[0].strip()
-                            msg = content.split(": ", 1)[1] if ":" in content else content
+                            msg = (
+                                content.split(": ", 1)[1] if ":" in content else content
+                            )
                             self.record_pager(msg[:200], source=source)
-                    except Exception: pass
+                    except Exception:
+                        pass
         except Exception as e:
             logging.error(f"[IGNITION] Journal monitor failed: {e}")
 
@@ -111,11 +134,11 @@ class IgnitionManager:
         """[FEAT-287] Mutual Exclusion (Ignition Mutex)."""
         try:
             if self._vram_lock_fd is None:
-                self._vram_lock_fd = open(VRAM_LOCK_FILE, 'w')
+                self._vram_lock_fd = open(VRAM_LOCK_FILE, "w")
             fcntl.flock(self._vram_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             logging.info("[IGNITION] VRAM Mutex acquired.")
             return True
-        except (IOError, OSError):
+        except OSError:
             logging.warning("[IGNITION] VRAM Mutex busy (locked by another process).")
             return False
 
@@ -124,7 +147,8 @@ class IgnitionManager:
             try:
                 fcntl.flock(self._vram_lock_fd, fcntl.LOCK_UN)
                 logging.info("[IGNITION] VRAM Mutex released.")
-            except Exception: pass
+            except Exception:
+                pass
 
     async def start_lab(self, reason="INTENT"):
         """[FEAT-265.8] Ignition sequence."""
@@ -135,7 +159,9 @@ class IgnitionManager:
         now = time.time()
         if now < self.cooldown_until:
             remaining = int(self.cooldown_until - now)
-            logging.warning(f"[IGNITION] Ignition request rejected. Cooldown active. Try again in {remaining}s.")
+            logging.warning(
+                f"[IGNITION] Ignition request rejected. Cooldown active. Try again in {remaining}s."
+            )
             return False
 
         if not self._acquire_vram_lock():
@@ -146,87 +172,126 @@ class IgnitionManager:
         self.update_status_file()
         logging.info(f"[IGNITION] Waking physical silicon for: {reason}")
         self.record_pager(f"IGNITION_START ({reason})", severity="INFO")
-        
+
         # [Task 12.1] KENDER Parallel Warmup
         async def _bg_prime_kender():
             try:
-                import aiohttp
                 import json
+
+                import aiohttp
+
                 kender_ip = "192.168.1.26"
                 try:
                     infra_path = os.path.join(LAB_DIR, "config/infrastructure.json")
                     if os.path.exists(infra_path):
                         with open(infra_path, "r") as f:
                             infra = json.load(f)
-                            kender_ip = infra.get("hosts", {}).get("KENDER", {}).get("ip_hint", kender_ip)
-                except Exception: pass
-                
+                            kender_ip = (
+                                infra.get("hosts", {})
+                                .get("KENDER", {})
+                                .get("ip_hint", kender_ip)
+                            )
+                except Exception:
+                    pass
+
                 # Ping KENDER with qwen3:14b to force VRAM load
-                payload = {"model": "qwen3:14b", "prompt": "ping", "stream": False, "options": {"num_predict": 1}}
+                payload = {
+                    "model": "qwen3:14b",
+                    "prompt": "ping",
+                    "stream": False,
+                    "options": {"num_predict": 1},
+                }
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(f"http://{kender_ip}:11434/api/generate", json=payload, timeout=30) as r:
+                    async with session.post(
+                        f"http://{kender_ip}:11434/api/generate",
+                        json=payload,
+                        timeout=30,
+                    ) as r:
                         if r.status == 200:
                             logging.info("[IGNITION] KENDER Parallel Warmup SUCCESS.")
                         else:
-                            logging.info(f"[IGNITION] KENDER offline/unreachable (status {r.status}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()}).")
+                            logging.info(
+                                f"[IGNITION] KENDER offline/unreachable (status {r.status}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()})."
+                            )
             except Exception as e:
-                logging.info(f"[IGNITION] KENDER offline/unreachable ({e}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()}).")
+                logging.info(
+                    f"[IGNITION] KENDER offline/unreachable ({e}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()})."
+                )
+
         asyncio.create_task(_bg_prime_kender())
-        
+
         try:
             # Physical hardware ignition
             vllm_script = os.path.join(LAB_DIR, "src/start_vllm.sh")
             env = os.environ.copy()
             env["LAB_ATTENDANT_SPAWN"] = "1"
-            logging.info(f"[IGNITION] Spawning vLLM engine via {vllm_script} (Attendant Authorized)...")
-            
+            logging.info(
+                f"[IGNITION] Spawning vLLM engine via {vllm_script} (Attendant Authorized)..."
+            )
+
             # We run it detached so it survives the manager script block
             subprocess.Popen(["bash", vllm_script], cwd=LAB_DIR, env=env)
-            
+
             # Poll for API readiness and perform cognitive vocality check
             api_ready = False
-            for _ in range(60): # Up to 5 minutes
+            for _ in range(60):  # Up to 5 minutes
                 try:
-                    import urllib.request
                     import json
+                    import urllib.request
+
                     # 1. Basic model list check (port binding check)
-                    req_models = urllib.request.Request("http://localhost:8088/v1/models")
+                    req_models = urllib.request.Request(
+                        "http://localhost:8088/v1/models"
+                    )
                     with urllib.request.urlopen(req_models, timeout=2) as resp_models:
                         if resp_models.status != 200:
-                            raise Exception(f"Model list returned status {resp_models.status}")
-                    
+                            raise Exception(
+                                f"Model list returned status {resp_models.status}"
+                            )
+
                     # 2. Cognitive probe: Force-check real text generation
                     payload = {
-                        "model": "unified-base", 
-                        "messages": [{"role": "user", "content": "Respond with the word SUCCESS."}],
+                        "model": "unified-base",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Respond with the word SUCCESS.",
+                            }
+                        ],
                         "max_tokens": 10,
-                        "temperature": 0.0
+                        "temperature": 0.0,
                     }
-                    data_bytes = json.dumps(payload).encode('utf-8')
+                    data_bytes = json.dumps(payload).encode("utf-8")
                     req_chat = urllib.request.Request(
                         "http://localhost:8088/v1/chat/completions",
                         data=data_bytes,
-                        headers={"Content-Type": "application/json"}
+                        headers={"Content-Type": "application/json"},
                     )
                     with urllib.request.urlopen(req_chat, timeout=5) as response:
                         if response.status == 200:
                             api_ready = True
-                            logging.info("[IGNITION] Cognitive probe SUCCESS. Engine is vocal.")
+                            logging.info(
+                                "[IGNITION] Cognitive probe SUCCESS. Engine is vocal."
+                            )
                             break
                         else:
-                            raise Exception(f"Cognitive probe returned status {response.status}")
+                            raise Exception(
+                                f"Cognitive probe returned status {response.status}"
+                            )
                 except Exception as e:
                     logging.debug(f"[IGNITION] API probe failed (retrying): {e}")
                     await asyncio.sleep(5)
-            
+
             if not api_ready:
-                logging.error("[IGNITION] vLLM failed to bind port 8088 within 5 minutes.")
+                logging.error(
+                    "[IGNITION] vLLM failed to bind port 8088 within 5 minutes."
+                )
                 self.recovery_attempts += 1
                 cooldown = 5 + (self.recovery_attempts * 120)
                 self.cooldown_until = time.time() + cooldown
                 self.status.state = "ERROR"
                 self.recovery_in_progress = False
-                self._release_vram_lock() # Release on failure
+                self._release_vram_lock()  # Release on failure
                 self.update_status_file()
                 return False
 
@@ -245,28 +310,31 @@ class IgnitionManager:
             self.cooldown_until = time.time() + cooldown
             self.recovery_in_progress = False
             self.status.state = "ERROR"
-            self._release_vram_lock() # Release on crash
+            self._release_vram_lock()  # Release on crash
             self.update_status_file()
             raise
 
     def update_status_file(self):
         """[FEAT-265] Multi-host status synchronization."""
         self.status.timestamp = time.time()
-        
+
         # [Task 9.7] Live Telemetry Polling
         try:
             vm = psutil.virtual_memory()
             self.status.ram_pct = vm.percent
             self.status.available_ram = round(vm.available / (1024**3), 2)
             import pynvml
+
             try:
                 pynvml.nvmlInit()
                 handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                 info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 self.status.vram_used = int(info.used // 1024**2)
                 self.status.vram_total = int(info.total // 1024**2)
-            except Exception: pass
-        except Exception: pass
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         # [FEAT-323] Expose recovery info to status
         self.status.recovery_level = self.recovery_attempts
@@ -276,37 +344,48 @@ class IgnitionManager:
             payload = self.status.to_dict()
             try:
                 from infra.live_telemetry import merge_live_benchmarks
+
                 merge_live_benchmarks(payload)
             except Exception:
                 pass
             with open(STATUS_JSON, "w") as f:
                 json.dump(payload, f, indent=2)
-            
+
             # [Task 6.2] Latency: Async status push
             def _push_update():
                 try:
                     import requests
-                    requests.post("http://localhost:8765/status_update", json=self.status.to_dict(), timeout=0.5)
-                except Exception: pass
-            
+
+                    requests.post(
+                        "http://localhost:8765/status_update",
+                        json=self.status.to_dict(),
+                        timeout=0.5,
+                    )
+                except Exception:
+                    pass
+
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 loop.run_in_executor(None, _push_update)
             else:
                 _push_update()
-        except Exception: pass
+        except Exception:
+            pass
 
     async def stop_lab(self, reason="AFK", target_state="HIBERNATING"):
         """[Task 4.1] Stable Hibernation: Strict subprocess termination."""
         logging.info(f"[IGNITION] Initiating Deep Sleep: {reason}")
         self.record_pager(f"HIBERNATION_START ({reason})", severity="INFO")
-        
+
         # 1. Clean shutdown of logical nodes & engine
         try:
-            if hasattr(self, 'residents') and self.residents:
+            if hasattr(self, "residents") and self.residents:
                 # Direct non-blocking teardown if resident manager reference exists
                 import asyncio
-                if asyncio.iscoroutinefunction(getattr(self.residents, 'shutdown', None)):
+
+                if asyncio.iscoroutinefunction(
+                    getattr(self.residents, "shutdown", None)
+                ):
                     asyncio.create_task(self.residents.shutdown())
         except Exception as e:
             logging.debug(f"[IGNITION] Resident shutdown error: {e}")
@@ -328,15 +407,21 @@ class IgnitionManager:
             # [FEAT-036] Release port 8088 and kill survivors
             # [FIX] Avoid fuser -k as it kills clients holding sockets (e.g. Gemini CLI)
             # Adhere to 'The Blacklist Law': Only kill what we own.
-            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
-            subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
-        except Exception: pass
-        
+            subprocess.run(
+                ["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"],
+                check=False,
+            )
+            subprocess.run(
+                ["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False
+            )
+        except Exception:
+            pass
+
         # 4. Reset Status
         self.status.state = target_state
         self.status.engine_up = False
         self.status.vocal = False
-        self._release_vram_lock() # [Task 6.6] Release silicon lock on deep sleep
+        self._release_vram_lock()  # [Task 6.6] Release silicon lock on deep sleep
         self.update_status_file()
         logging.info("[IGNITION] Deep Sleep confirmed. VRAM released.")
         return True
@@ -354,60 +439,114 @@ class IgnitionManager:
                         with open(QUEUE_FILE, "r") as f:
                             f.seek(last_pos)
                             for line in f:
-                                if not line.strip(): continue
+                                if not line.strip():
+                                    continue
                                 try:
                                     event = IntentEvent.from_json(line)
-                                    if event.status == "PENDING" and event.id not in self.processed_ids:
-                                        logging.info(f"[IGNITION] New Intent Detected: {event.id} (State: {self.status.state})")
+                                    if (
+                                        event.status == "PENDING"
+                                        and event.id not in self.processed_ids
+                                    ):
+                                        logging.info(
+                                            f"[IGNITION] New Intent Detected: {event.id} (State: {self.status.state})"
+                                        )
                                         self.processed_ids.append(event.id)
-                                        self.last_activity_time = time.time() # Reset idle timer
-                                        
+                                        self.last_activity_time = (
+                                            time.time()
+                                        )  # Reset idle timer
+
                                         # Handle remote control operational intents
                                         if event.query.startswith("[OPERATIONAL]"):
                                             op = event.query.split(" ")[1]
                                             if op == "SLEEP":
-                                                asyncio.create_task(self.stop_lab(reason="REMOTE_SLEEP", target_state="HIBERNATING"))
+                                                asyncio.create_task(
+                                                    self.stop_lab(
+                                                        reason="REMOTE_SLEEP",
+                                                        target_state="HIBERNATING",
+                                                    )
+                                                )
                                             elif op == "SHUTDOWN":
-                                                asyncio.create_task(self.stop_lab(reason="REMOTE_SHUTDOWN", target_state="OFFLINE"))
+                                                asyncio.create_task(
+                                                    self.stop_lab(
+                                                        reason="REMOTE_SHUTDOWN",
+                                                        target_state="OFFLINE",
+                                                    )
+                                                )
                                             elif op == "LOCK":
                                                 # Create maintenance lock file
-                                                try: open(MAINTENANCE_LOCK, 'w').close()
-                                                except Exception: pass
+                                                try:
+                                                    open(MAINTENANCE_LOCK, "w").close()
+                                                except Exception:
+                                                    pass
                                                 self.status.state = "MAINTENANCE"
                                                 self.update_status_file()
                                             elif op == "WAKE":
-                                                self.last_activity_time = time.time() # [Task 15.3] Reset timer for ALL wake attempts
+                                                self.last_activity_time = (
+                                                    time.time()
+                                                )  # [Task 15.3] Reset timer for ALL wake attempts
                                                 if os.path.exists(MAINTENANCE_LOCK):
-                                                    try: os.remove(MAINTENANCE_LOCK)
-                                                    except Exception: pass
-                                                if self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR", "MAINTENANCE", "OFFLINE"]:
-                                                    logging.info(f"[IGNITION] Triggering wake task for {event.id}...")
-                                                    asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
+                                                    try:
+                                                        os.remove(MAINTENANCE_LOCK)
+                                                    except Exception:
+                                                        pass
+                                                if self.status.state in [
+                                                    "HIBERNATING",
+                                                    "UNKNOWN",
+                                                    "ERROR",
+                                                    "MAINTENANCE",
+                                                    "OFFLINE",
+                                                ]:
+                                                    logging.info(
+                                                        f"[IGNITION] Triggering wake task for {event.id}..."
+                                                    )
+                                                    asyncio.create_task(
+                                                        self.start_lab(
+                                                            reason=f"INTENT_{event.id}"
+                                                        )
+                                                    )
                                                 else:
-                                                    logging.info(f"[IGNITION] Lab already {self.status.state}. Skipping ignition.")
+                                                    logging.info(
+                                                        f"[IGNITION] Lab already {self.status.state}. Skipping ignition."
+                                                    )
                                         # Normal intents
-                                        elif self.status.state in ["HIBERNATING", "UNKNOWN", "ERROR"]:
-                                            logging.info(f"[IGNITION] Triggering ignition task for {event.id}...")
-                                            asyncio.create_task(self.start_lab(reason=f"INTENT_{event.id}"))
+                                        elif self.status.state in [
+                                            "HIBERNATING",
+                                            "UNKNOWN",
+                                            "ERROR",
+                                        ]:
+                                            logging.info(
+                                                f"[IGNITION] Triggering ignition task for {event.id}..."
+                                            )
+                                            asyncio.create_task(
+                                                self.start_lab(
+                                                    reason=f"INTENT_{event.id}"
+                                                )
+                                            )
                                         else:
-                                            logging.info(f"[IGNITION] Lab already {self.status.state}. Skipping ignition.")
+                                            logging.info(
+                                                f"[IGNITION] Lab already {self.status.state}. Skipping ignition."
+                                            )
                                 except Exception as e:
-                                    logging.error(f"[IGNITION] Intent processing error: {e}")
+                                    logging.error(
+                                        f"[IGNITION] Intent processing error: {e}"
+                                    )
 
                             last_pos = f.tell()
-            except Exception: pass
+            except Exception:
+                pass
             await asyncio.sleep(1)
 
     def get_foyer_clients_sync(self) -> int:
         """Query Foyer status to get active client count (Synchronous)."""
-        import urllib.request
         import json
+        import urllib.request
+
         try:
             url = "http://127.0.0.1:8765/status"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=1.0) as response:
                 if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
+                    data = json.loads(response.read().decode("utf-8"))
                     return data.get("connected_clients", 0)
         except Exception:
             pass
@@ -437,76 +576,97 @@ class IgnitionManager:
         try:
             with open(pid_file, "r") as f:
                 vllm_pid = int(f.read().strip())
-            
+
             if not psutil.pid_exists(vllm_pid):
                 return False
-                
+
             vllm_proc = psutil.Process(vllm_pid)
-            conns = vllm_proc.connections(kind='tcp')
-            
+            conns = vllm_proc.connections(kind="tcp")
+
             # Look for established connections on local port 8088
             active_conns = [
-                c for c in conns 
-                if c.status == "ESTABLISHED" and c.laddr.port == 8088
+                c for c in conns if c.status == "ESTABLISHED" and c.laddr.port == 8088
             ]
-            
+
             if not active_conns:
-                logging.info("[IGNITION] Tier 1: Zero connections on port 8088. Engine is idle.")
+                logging.info(
+                    "[IGNITION] Tier 1: Zero connections on port 8088. Engine is idle."
+                )
                 return False
-                
-            logging.info(f"[IGNITION] Tier 1: {len(active_conns)} connections detected on port 8088. Escalating to Tier 2...")
-            
+
+            logging.info(
+                f"[IGNITION] Tier 1: {len(active_conns)} connections detected on port 8088. Escalating to Tier 2..."
+            )
+
         except Exception as e:
-            logging.warning(f"[IGNITION] Tier 1 check failed: {e}. Escalating to Tier 2.")
+            logging.warning(
+                f"[IGNITION] Tier 1 check failed: {e}. Escalating to Tier 2."
+            )
 
         # Tier 2: Check vLLM metrics
         import urllib.request
+
         try:
             url = "http://localhost:8088/metrics"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=3) as response:
-                content = response.read().decode('utf-8')
-                
+                content = response.read().decode("utf-8")
+
             num_running = 0.0
             num_waiting = 0.0
-            
+
             for line in content.splitlines():
-                if line.startswith("vllm:num_requests_running") or line.startswith("vllm_num_requests_running"):
+                if line.startswith("vllm:num_requests_running") or line.startswith(
+                    "vllm_num_requests_running"
+                ):
                     parts = line.rsplit(" ", 1)
                     if len(parts) == 2:
                         num_running = float(parts[1])
-                elif line.startswith("vllm:num_requests_waiting") or line.startswith("vllm_num_requests_waiting"):
+                elif line.startswith("vllm:num_requests_waiting") or line.startswith(
+                    "vllm_num_requests_waiting"
+                ):
                     parts = line.rsplit(" ", 1)
                     if len(parts) == 2:
                         num_waiting = float(parts[1])
-            
+
             if num_running > 0 or num_waiting > 0:
-                logging.info(f"[IGNITION] Tier 2: Active requests detected (running={num_running}, waiting={num_waiting}). Keeping awake.")
+                logging.info(
+                    f"[IGNITION] Tier 2: Active requests detected (running={num_running}, waiting={num_waiting}). Keeping awake."
+                )
                 return True
-                
-            logging.info("[IGNITION] Tier 2: No running or waiting requests in vLLM. Engine is idle.")
+
+            logging.info(
+                "[IGNITION] Tier 2: No running or waiting requests in vLLM. Engine is idle."
+            )
             return False
-            
+
         except Exception as e:
-            logging.warning(f"[IGNITION] Tier 2 metrics check failed: {e}. Assuming active to be safe.")
+            logging.warning(
+                f"[IGNITION] Tier 2 metrics check failed: {e}. Assuming active to be safe."
+            )
             return True
 
     async def continuous_burn_loop(self):
         """[FEAT-266] Periodic Maintenance (ALARM tasks)."""
         import datetime
+
         logging.info("[IGNITION] Continuous Burn loop active.")
         while True:
             try:
                 now = datetime.datetime.now()
                 today = now.date()
-                
+
                 # 1. AFK Hibernation (Task 4.1)
                 # [FEAT-517] Master Hibernation Gate: bypass AFK shutdown if disabled
                 _hib_enabled = True
                 if os.path.exists(INFRA_CONFIG):
                     try:
-                        with open(INFRA_CONFIG, 'r') as _icf:
-                            _hib_enabled = json.load(_icf).get('hibernation', {}).get('enabled', True)
+                        with open(INFRA_CONFIG, "r") as _icf:
+                            _hib_enabled = (
+                                json.load(_icf)
+                                .get("hibernation", {})
+                                .get("enabled", True)
+                            )
                     except Exception:
                         pass
 
@@ -516,86 +676,172 @@ class IgnitionManager:
                 else:
                     idle_time = time.time() - self.last_activity_time
                     foyer_clients = await self.get_foyer_clients()
-                    
+
                     # [FEAT-455] Extended Idle Window: 600s (10 min) base timeout
                     # Extra 5 minutes (300s) if there is an active client connection (total 900s / 15 min)
                     effective_timeout = 600
                     if foyer_clients > 0:
                         effective_timeout += 300
 
-                    if idle_time > effective_timeout and self.status.state == "OPERATIONAL":
+                    if (
+                        idle_time > effective_timeout
+                        and self.status.state == "OPERATIONAL"
+                    ):
                         if await self.is_engine_active():
                             # Reset idle timer because engine is active
                             self.last_activity_time = time.time()
-                            logging.info(f"[IGNITION] Resetting idle timer (foyer_clients={foyer_clients}) due to active engine.")
+                            logging.info(
+                                f"[IGNITION] Resetting idle timer (foyer_clients={foyer_clients}) due to active engine."
+                            )
                         else:
-                            logging.info(f"[IGNITION] Idle timeout reached ({idle_time:.1f}s > {effective_timeout}s, foyer_clients={foyer_clients}). Hibernating...")
+                            logging.info(
+                                f"[IGNITION] Idle timeout reached ({idle_time:.1f}s > {effective_timeout}s, foyer_clients={foyer_clients}). Hibernating..."
+                            )
                             await self.stop_lab(reason="AFK_TIMEOUT")
 
                 # 2. Daily Induction Window (02:00 - 04:00)
                 disable_lock_path = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/disable_induction.lock"
-                is_window = (2 <= now.hour < 4) and not os.path.exists(disable_lock_path)
+                is_window = (2 <= now.hour < 4) and not os.path.exists(
+                    disable_lock_path
+                )
                 if is_window and self.last_induction_date != today:
                     # [FEAT-289] Atomic Induction: Mark today as started
                     self.last_induction_date = today
                     logging.info("[ALARM] Entering Daily Induction Window...")
-                    self.record_pager("Daily Induction Window [OPEN]", source="Induction")
-                    
+                    self.record_pager(
+                        "Daily Induction Window [OPEN]", source="Induction"
+                    )
+
                     # Try to acquire silicon mutex
                     if self._acquire_vram_lock():
                         try:
                             # [Task 1.2] Pre-Forge Dataset Refresh
                             logging.info("[ALARM] Step 0: Pre-Forge Dataset Refresh...")
-                            self.record_pager("Step 0: Pre-Forge Dataset Refresh [START]", source="Induction")
-                            
+                            self.record_pager(
+                                "Step 0: Pre-Forge Dataset Refresh [START]",
+                                source="Induction",
+                            )
+
                             # Sequential dataset prep runs
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/extract_gemini_prompts.py")], env=os.environ.copy())
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/refine_prompts.py")], env=os.environ.copy())
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/dream_voice.py")], env=os.environ.copy())
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/forge/build_lora_datasets.py")], env=os.environ.copy())
-                            
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(
+                                        LAB_DIR, "src/forge/extract_gemini_prompts.py"
+                                    ),
+                                ],
+                                env=os.environ.copy(),
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(
+                                        LAB_DIR, "src/forge/refine_prompts.py"
+                                    ),
+                                ],
+                                env=os.environ.copy(),
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(LAB_DIR, "src/forge/dream_voice.py"),
+                                ],
+                                env=os.environ.copy(),
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(
+                                        LAB_DIR, "src/forge/build_lora_datasets.py"
+                                    ),
+                                ],
+                                env=os.environ.copy(),
+                            )
+
                             # Step 1: Nightly Recruiter
                             logging.info("[ALARM] Step 1: Nightly Recruiter...")
-                            self.record_pager("Step 1: Nightly Recruiter [START]", source="Induction")
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "recruiter"], env=os.environ.copy())
-                            
+                            self.record_pager(
+                                "Step 1: Nightly Recruiter [START]", source="Induction"
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(LAB_DIR, "src/acme_lab.py"),
+                                    "--trigger-task",
+                                    "recruiter",
+                                ],
+                                env=os.environ.copy(),
+                            )
+
                             # Step 2: Hierarchy Refactor
                             logging.info("[ALARM] Step 2: Hierarchy Refactor...")
-                            self.record_pager("Step 2: Hierarchy Refactor [START]", source="Induction")
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "lab"], env=os.environ.copy())
-                            
+                            self.record_pager(
+                                "Step 2: Hierarchy Refactor [START]", source="Induction"
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(LAB_DIR, "src/acme_lab.py"),
+                                    "--trigger-task",
+                                    "lab",
+                                ],
+                                env=os.environ.copy(),
+                            )
+
                             # Step 3: Sequenced Batch Forge
                             logging.info("[ALARM] Step 3: Sequenced Batch Forge...")
-                            self.record_pager("Step 3: Sequenced Batch Forge [START]", source="Induction")
-                            subprocess.run([sys.executable, os.path.join(LAB_DIR, "src/acme_lab.py"), "--trigger-task", "forge"], env=os.environ.copy())
-                            
-                            self.record_pager("Full Induction Cycle [COMPLETE]", source="Induction")
+                            self.record_pager(
+                                "Step 3: Sequenced Batch Forge [START]",
+                                source="Induction",
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    os.path.join(LAB_DIR, "src/acme_lab.py"),
+                                    "--trigger-task",
+                                    "forge",
+                                ],
+                                env=os.environ.copy(),
+                            )
+
+                            self.record_pager(
+                                "Full Induction Cycle [COMPLETE]", source="Induction"
+                            )
                         finally:
                             self._release_vram_lock()
                             self.status.timestamp = time.time()
                     else:
-                        logging.warning("[ALARM] Silicon busy (Mutex Locked). Deferring induction.")
+                        logging.warning(
+                            "[ALARM] Silicon busy (Mutex Locked). Deferring induction."
+                        )
                         self.last_induction_date = None
 
                 # 3. Slow Burn: Idle GEM Refinement
                 idle_time = time.time() - self.status.timestamp
                 if idle_time > 3600 and self.status.state == "HIBERNATING":
-                    logging.info("[IGNITION] System Idle > 1hr. Triggering Quiet Refinement...")
+                    logging.info(
+                        "[IGNITION] System Idle > 1hr. Triggering Quiet Refinement..."
+                    )
                     if self._acquire_vram_lock():
                         try:
                             refiner = GEM_REFINER
                             if os.path.exists(refiner):
                                 logging.info(f"[IGNITION] Running {refiner}...")
-                                subprocess.run([sys.executable, refiner, "--one-turn"], env=os.environ.copy())
+                                subprocess.run(
+                                    [sys.executable, refiner, "--one-turn"],
+                                    env=os.environ.copy(),
+                                )
                             else:
-                                logging.warning(f"[IGNITION] Refiner script not found at {refiner}")
+                                logging.warning(
+                                    f"[IGNITION] Refiner script not found at {refiner}"
+                                )
                         finally:
                             self._release_vram_lock()
                             self.status.timestamp = time.time()
-                
+
             except Exception as e:
                 logging.error(f"[ALARM] Continuous Burn failure: {e}")
-            
+
             await asyncio.sleep(300)
 
     async def main_loop(self):
@@ -606,12 +852,21 @@ class IgnitionManager:
                 with open(INFRA_CONFIG, "r") as f:
                     _cfg = json.load(f)
                 _hib_enabled = _cfg.get("hibernation", {}).get("enabled", True)
-                _residency = _cfg.get("daytime_node_residency", _cfg.get("hibernation", {}).get("daytime_node_residency", ""))
+                _residency = _cfg.get(
+                    "daytime_node_residency",
+                    _cfg.get("hibernation", {}).get("daytime_node_residency", ""),
+                )
                 if not _hib_enabled or _residency == "PERMANENT_RESIDENT":
-                    logging.info(f"[IGNITION] Permanent residency detected (hibernation={_hib_enabled}, residency='{_residency}'). Scheduling direct-to-online start_lab.")
-                    asyncio.create_task(self.start_lab(reason="BOOT_PERMANENT_RESIDENT"))
+                    logging.info(
+                        f"[IGNITION] Permanent residency detected (hibernation={_hib_enabled}, residency='{_residency}'). Scheduling direct-to-online start_lab."
+                    )
+                    asyncio.create_task(
+                        self.start_lab(reason="BOOT_PERMANENT_RESIDENT")
+                    )
         except Exception as e:
-            logging.error(f"[IGNITION] Failed to evaluate direct-to-online boot condition: {e}")
+            logging.error(
+                f"[IGNITION] Failed to evaluate direct-to-online boot condition: {e}"
+            )
 
         asyncio.create_task(self.queue_watcher())
         asyncio.create_task(self.continuous_burn_loop())
@@ -621,10 +876,13 @@ class IgnitionManager:
             if self.status.state == "OPERATIONAL" and self.operational_start_time > 0:
                 stable_dur = time.time() - self.operational_start_time
                 if stable_dur > 300 and self.recovery_attempts > 0:
-                    logging.info(f"[IGNITION] Silicon Stability Verified ({int(stable_dur)}s). Resetting recovery backoff.")
+                    logging.info(
+                        f"[IGNITION] Silicon Stability Verified ({int(stable_dur)}s). Resetting recovery backoff."
+                    )
                     self.recovery_attempts = 0
             self.update_status_file()
             await asyncio.sleep(30)
+
 
 if __name__ == "__main__":
     manager = IgnitionManager()

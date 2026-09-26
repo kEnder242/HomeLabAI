@@ -1,12 +1,15 @@
+import asyncio
 import logging
 import os
-import sys
-import asyncio
-import numpy as np
 import random
+import sys
 import time
+
+import numpy as np
 from infra.montana import reclaim_logger
+
 from equipment.audio_pipeline import AudioPipeline
+
 
 class SensoryManager:
     """
@@ -14,39 +17,48 @@ class SensoryManager:
     Encapsulates binary PCM processing and NeMo residency.
     Ready for [FEAT-147] Adaptive Residency (Dynamic load/unload).
     """
+
     def __init__(self, broadcast_callback):
         self.ear = None
         self.broadcast = broadcast_callback
         self.audio_buffer = np.zeros(0, dtype=np.int16)
         self.last_activity = time.time()
         reclaim_logger("SENSORY")
-        
+
     async def load(self):
         """Lazy load real EarNode logic with CUDA Graph hardening."""
         if self.ear:
             return
-            
-        if os.environ.get("DISABLE_EAR_NODE", "1") == "1" or os.environ.get("EAR_NODE_STUB_MODEL", "1") == "1":
-            logging.info("[SENSORY] EarNode is DISABLED (Text-Only Mode active, 0 MB GPU VRAM consumed).")
+
+        if (
+            os.environ.get("DISABLE_EAR_NODE", "1") == "1"
+            or os.environ.get("EAR_NODE_STUB_MODEL", "1") == "1"
+        ):
+            logging.info(
+                "[SENSORY] EarNode is DISABLED (Text-Only Mode active, 0 MB GPU VRAM consumed)."
+            )
             return
-            
+
         try:
             s_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if s_dir not in sys.path:
                 sys.path.append(s_dir)
-            
+
             # equipment is in the same directory as this file
             e_dir = os.path.dirname(os.path.abspath(__file__))
             if e_dir not in sys.path:
                 sys.path.append(e_dir)
-                
+
             from ear_node import EarNode
+
             self.ear = await asyncio.to_thread(EarNode)
             logging.info("[SENSORY] EarNode initialized (NeMo).")
         except Exception as e:
             logging.error(f"[SENSORY] Failed to load EarNode: {e}")
 
-    async def unload_sensory_ear(self, available_ram: float = 0.0, swarm_mode: bool = False):
+    async def unload_sensory_ear(
+        self, available_ram: float = 0.0, swarm_mode: bool = False
+    ):
         """
         EarNode taking a break to free up VRAM when system is low on RAM or in Swarm/Heads-Down mode.
         Preserves CUDA context for quick rearming. [LAB-088]
@@ -54,23 +66,27 @@ class SensoryManager:
         if not self.ear:
             logging.debug("[SENSORY] EarNode already unloaded.")
             return False
-            
+
         # Check triggers: RAM < 3.0GB or Swarm/Heads-Down mode
         if available_ram >= 3.0 and not swarm_mode:
-            logging.debug(f"[SENSORY] EarNode standby: RAM={available_ram:.1f}GB, Swarm={swarm_mode}")
+            logging.debug(
+                f"[SENSORY] EarNode standby: RAM={available_ram:.1f}GB, Swarm={swarm_mode}"
+            )
             return False
-            
+
         logging.info("[SENSORY] EarNode taking a break to free up VRAM and RAM...")
         try:
             # Release NeMo model buffers while preserving CUDA context
             self.ear = None
             import torch  # type: ignore[import]
+
             torch.cuda.empty_cache()
-            import gc
             import ctypes
+            import gc
+
             gc.collect()
             try:
-                ctypes.CDLL('libc.so.6').malloc_trim(0)
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
             except Exception:
                 pass
             logging.info("[SENSORY] VRAM & OS heap memory reclaimed. EarNode paused.")
@@ -87,7 +103,7 @@ class SensoryManager:
         if self.ear:
             logging.debug("[SENSORY] EarNode already active.")
             return True
-            
+
         logging.info("[SENSORY] EarNode rearming...")
         try:
             await self.load()  # Restore NeMo model buffers
@@ -107,10 +123,15 @@ class SensoryManager:
         self.audio_buffer = np.concatenate((self.audio_buffer, chunk))
 
         # Periodic signal detection log (5% chance if signal is high)
-        if AudioPipeline.is_signal_detected(chunk, threshold=500) and random.random() < 0.05:
+        if (
+            AudioPipeline.is_signal_detected(chunk, threshold=500)
+            and random.random() < 0.05
+        ):
             logging.info("[AUDIO] Signal detected.")
 
-        window, remaining = AudioPipeline.slice_sliding_window(self.audio_buffer, 24000, 16000)
+        window, remaining = AudioPipeline.slice_sliding_window(
+            self.audio_buffer, 24000, 16000
+        )
         if window is not None:
             self.audio_buffer = remaining
             if self.ear:

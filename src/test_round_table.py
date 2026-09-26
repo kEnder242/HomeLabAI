@@ -1,8 +1,10 @@
 import asyncio
 import json
-import websockets
 import time
+
 import pytest
+import websockets
+
 
 @pytest.mark.asyncio
 async def test_collaborative_handshake():
@@ -14,7 +16,7 @@ async def test_collaborative_handshake():
     """
     uri = "ws://localhost:8765"
     print(f"[TEST] Connecting to {uri}...")
-    
+
     async with websockets.connect(uri) as ws:
         # 1. Handshake & Wait for READY
         print("[TEST] Connecting and waiting for READY signal...")
@@ -34,21 +36,23 @@ async def test_collaborative_handshake():
         # 3. Monitor for Collaboration
         start_t = time.time()
         nodes_responded = set()
-        
-        while time.time() - start_t < 60.0: # 60s for deep thermal analysis
+
+        while time.time() - start_t < 60.0:  # 60s for deep thermal analysis
             try:
                 msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
                 data = json.loads(msg)
-                
+
                 source = data.get("brain_source") or data.get("source")
                 text = data.get("brain") or data.get("text")
-                
+
                 if text and source:
                     print(f"  [{source}] {text[:60]}...")
                     if source in ["Pinky", "Brain", "The Brain"]:
                         nodes_responded.add(source)
-                
-                if "Pinky" in nodes_responded and ("Brain" in nodes_responded or "The Brain" in nodes_responded):
+
+                if "Pinky" in nodes_responded and (
+                    "Brain" in nodes_responded or "The Brain" in nodes_responded
+                ):
                     print("✅ COLLABORATION VERIFIED: Both hemispheres coordinated.")
                     break
             except asyncio.TimeoutError:
@@ -56,6 +60,7 @@ async def test_collaborative_handshake():
 
         assert "Pinky" in nodes_responded, "Pinky failed to quip in collaborative turn."
         assert len(nodes_responded) >= 2, "Failed to achieve hemispheric coordination."
+
 
 if __name__ == "__main__":
     asyncio.run(test_collaborative_handshake())

@@ -1,13 +1,15 @@
 import json
 import os
+
 import pynvml
+
 # [FEAT-031] Logger Isolation (The Montana Fix)
 from infra.montana import reclaim_logger
 
 # [FEAT-304] Protocol Hardening: Ensure logs do not corrupt the MCP JSON-RPC pipe
 reclaim_logger(role="PINKY")
 
-from nodes.loader import FIELD_NOTES_DATA, BicameralNode  # noqa: E402
+from nodes.loader import FIELD_NOTES_DATA, BicameralNode
 
 PINKY_SYSTEM_PROMPT = (
     "You are Pinky, an intuitive assistant in the Acme Laboratory.\n"
@@ -21,8 +23,9 @@ PINKY_SYSTEM_PROMPT = (
 node = BicameralNode("Pinky", PINKY_SYSTEM_PROMPT)
 mcp = node.mcp
 
-# NOTE: facilitate and shallow_think wrappers removed. 
+# NOTE: facilitate and shallow_think wrappers removed.
 # Node now speaks natively via BicameralNode.run() sampling bridge.
+
 
 @mcp.tool()
 async def ask_brain(task: str) -> str:
@@ -69,28 +72,34 @@ async def close_lab() -> str:
 @mcp.tool()
 async def start_draft(topic: str, category: str = "validation") -> str:
     """The Blueprint Initiation: Begins a high-fidelity synthesis."""
-    return json.dumps({
-        "tool": "generate_bkm",
-        "parameters": {"topic": topic, "category": category},
-    })
+    return json.dumps(
+        {
+            "tool": "generate_bkm",
+            "parameters": {"topic": topic, "category": category},
+        }
+    )
 
 
 @mcp.tool()
 async def access_personal_history(keyword: str) -> str:
     """Deep Grounding: Access the definitive technical history of the laboratory."""
-    return json.dumps({
-        "tool": "access_personal_history",
-        "parameters": {"keyword": keyword},
-    })
+    return json.dumps(
+        {
+            "tool": "access_personal_history",
+            "parameters": {"keyword": keyword},
+        }
+    )
 
 
 @mcp.tool()
 async def build_cv_summary(year: str) -> str:
     """The High-Fidelity Distiller: Trigger strategic synthesis."""
-    return json.dumps({
-        "tool": "build_cv_summary",
-        "parameters": {"year": year},
-    })
+    return json.dumps(
+        {
+            "tool": "build_cv_summary",
+            "parameters": {"year": year},
+        }
+    )
 
 
 @mcp.tool()
@@ -123,4 +132,4 @@ async def ping_engine(force: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    node.run() # [FEAT-240] Run the Native Sampling Bridge
+    node.run()  # [FEAT-240] Run the Native Sampling Bridge

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # [FEAT-160] / [FEAT-213] / [Story 83.7] Discrete Multi-LoRA Nightly Training Pipeline
 """
 [Story 83.7] Discrete Multi-LoRA Nightly Training Pipeline.
@@ -59,10 +58,10 @@ logging.basicConfig(
 logger = logging.getLogger("nightly_lora_training")
 
 # --- [Story 83.7 Anchor 2] Path discovery anchored on __file__ -----------------
-BASE_DIR = Path(__file__).resolve().parent          # HomeLabAI/src/infra
-SRC_DIR = BASE_DIR.parent                            # HomeLabAI/src
-HOMELAB_DIR = SRC_DIR.parent                         # HomeLabAI
-LAB_ROOT = HOMELAB_DIR.parent                        # Dev_Lab
+BASE_DIR = Path(__file__).resolve().parent  # HomeLabAI/src/infra
+SRC_DIR = BASE_DIR.parent  # HomeLabAI/src
+HOMELAB_DIR = SRC_DIR.parent  # HomeLabAI
+LAB_ROOT = HOMELAB_DIR.parent  # Dev_Lab
 CONFIG_PATH = HOMELAB_DIR / "config" / "infrastructure.json"
 EXPERTISE_DIR = SRC_DIR / "forge" / "expertise"
 TRAIN_EXPERT_SCRIPT = SRC_DIR / "forge" / "train_expert.py"
@@ -71,7 +70,7 @@ VENV_PYTHON = HOMELAB_DIR / ".venv" / "bin" / "python3"
 STEP_LOG_PATH = Path("/tmp/nightly_lora_training_step.log")
 
 # --- [Story 83.7 Anchor 3] Exact adapter signature -----------------------------
-ADAPTER_TARGETS = ['cli_voice_v1', 'lab_history_v1', 'triage_v1', 'reviewer_v1']
+ADAPTER_TARGETS = ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"]
 
 # Default curriculum per adapter (override via infrastructure.json -> forge.adapter_datasets).
 ADAPTER_DATASET_MAP = {
@@ -99,6 +98,7 @@ except ImportError:
     try:
         from src.infra.pager_relay import trigger_pager
     except ImportError:
+
         def trigger_pager(message, severity="INFO", source="System"):
             pass
 
@@ -120,9 +120,13 @@ def load_config() -> dict:
 CFG = load_config()
 FORGE_CFG = CFG.get("forge", {})
 ADAPTER_BASE_DIR = str(FORGE_CFG.get("adapter_base_dir", DEFAULT_ADAPTER_BASE_DIR))
-VRAM_THRESHOLD_MB = int(FORGE_CFG.get("vram_eviction_threshold_mb", DEFAULT_VRAM_THRESHOLD_MB))
+VRAM_THRESHOLD_MB = int(
+    FORGE_CFG.get("vram_eviction_threshold_mb", DEFAULT_VRAM_THRESHOLD_MB)
+)
 DEFAULT_STEPS = int(FORGE_CFG.get("default_steps", DEFAULT_STEPS))
-DEFAULT_PACING_DELAY_S = float(FORGE_CFG.get("pacing_delay_sec", DEFAULT_PACING_DELAY_S))
+DEFAULT_PACING_DELAY_S = float(
+    FORGE_CFG.get("pacing_delay_sec", DEFAULT_PACING_DELAY_S)
+)
 FOYER_URL = str(CFG.get("foyer_url", DEFAULT_FOYER_URL)).rstrip("/")
 ADAPTER_STEPS = FORGE_CFG.get("adapter_steps", {}) or {}
 
@@ -178,7 +182,9 @@ def get_vram_usage() -> int | None:
     try:
         res = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if res.returncode == 0:
             lines = [ln.strip() for ln in res.stdout.strip().splitlines() if ln.strip()]
@@ -205,7 +211,9 @@ def wait_for_vram_drain(
     while time.time() - t0 < timeout_s:
         used = get_vram_usage()
         if used is None:
-            logger.warning("[VRAM] nvidia-smi unavailable; skipping drain verification (non-GPU host).")
+            logger.warning(
+                "[VRAM] nvidia-smi unavailable; skipping drain verification (non-GPU host)."
+            )
             return True
         if used < threshold_mb:
             drained_delta = (baseline_mb - used) if baseline_mb is not None else None
@@ -213,14 +221,18 @@ def wait_for_vram_drain(
             if drained_delta is not None:
                 detail += f" drained_delta={drained_delta}MB"
                 if drained_delta <= 0:
-                    logger.warning(f"[VRAM] No observed drain vs baseline ({baseline_mb}MB -> {used}MB); already evicted.")
+                    logger.warning(
+                        f"[VRAM] No observed drain vs baseline ({baseline_mb}MB -> {used}MB); already evicted."
+                    )
             logger.info(f"[VRAM] Drain verified: {detail}")
             write_step_log("VRAM_DRAIN_VERIFIED", detail)
             return True
         time.sleep(2)
 
     used = get_vram_usage()
-    logger.critical(f"[VRAM] Drain TIMEOUT: {used}MB still allocated (>= {threshold_mb}MB).")
+    logger.critical(
+        f"[VRAM] Drain TIMEOUT: {used}MB still allocated (>= {threshold_mb}MB)."
+    )
     write_step_log("VRAM_DRAIN_FAILED", f"used={used}MB threshold={threshold_mb}MB")
     return False
 
@@ -230,27 +242,45 @@ def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
     try:
         res = subprocess.run(
             ["nvidia-smi", "--query-gpu=power.limit", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if res.returncode != 0:
-            logger.warning("[LAB-109] nvidia-smi power query failed; skipping power limit check.")
+            logger.warning(
+                "[LAB-109] nvidia-smi power query failed; skipping power limit check."
+            )
             return True
         lines = [ln.strip() for ln in res.stdout.strip().splitlines() if ln.strip()]
         if not lines:
             logger.warning("[LAB-109] No GPU detected; skipping power limit check.")
             return True
         current_limit = float(lines[0])
-        logger.info(f"[LAB-109] GPU power limit: {current_limit}W (max {max_limit_watts}W)")
+        logger.info(
+            f"[LAB-109] GPU power limit: {current_limit}W (max {max_limit_watts}W)"
+        )
         if current_limit <= max_limit_watts:
             return True
-        logger.warning(f"[LAB-109] Power limit {current_limit}W exceeds {max_limit_watts}W; clamping to 165W...")
-        write_step_log("GPU_POWER_CAP_WARNING", f"current={current_limit}W exceeds {max_limit_watts}W")
-        clamp = subprocess.run(["sudo", "nvidia-smi", "-pl", "165"], capture_output=True, text=True, timeout=10)
+        logger.warning(
+            f"[LAB-109] Power limit {current_limit}W exceeds {max_limit_watts}W; clamping to 165W..."
+        )
+        write_step_log(
+            "GPU_POWER_CAP_WARNING",
+            f"current={current_limit}W exceeds {max_limit_watts}W",
+        )
+        clamp = subprocess.run(
+            ["sudo", "nvidia-smi", "-pl", "165"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         if clamp.returncode == 0:
             logger.info("[LAB-109] GPU power limit clamped to 165W.")
             write_step_log("GPU_POWER_CAP_APPLIED", "clamped to 165W")
             return True
-        logger.warning(f"[LAB-109] Failed to clamp power limit: {clamp.stderr.strip()[:200]}")
+        logger.warning(
+            f"[LAB-109] Failed to clamp power limit: {clamp.stderr.strip()[:200]}"
+        )
         write_step_log("GPU_POWER_CAP_FAILED", clamp.stderr.strip()[:200])
         return False
     except Exception as exc:
@@ -264,13 +294,17 @@ def verify_gpu_power_limit(max_limit_watts: int = 170) -> bool:
 def quiesce_vllm() -> bool:
     """Evict resident models and drain VRAM for exclusive training use."""
     baseline_mb = get_vram_usage()
-    logger.info(f"[FEAT-213] Quiescing Foyer / vLLM for VRAM handover (baseline={baseline_mb}MB)...")
+    logger.info(
+        f"[FEAT-213] Quiescing Foyer / vLLM for VRAM handover (baseline={baseline_mb}MB)..."
+    )
     write_step_log("QUIESCE_START", f"baseline={baseline_mb}MB")
 
     try:
         MAINTENANCE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(MAINTENANCE_LOCK_PATH, "w") as fh:
-            fh.write(f"pid={os.getpid()}\ntimestamp={time.time()}\nservice=nightly_lora_training\n")
+            fh.write(
+                f"pid={os.getpid()}\ntimestamp={time.time()}\nservice=nightly_lora_training\n"
+            )
     except Exception as exc:
         logger.warning(f"[MAINTENANCE] Failed to write lockfile: {exc}")
 
@@ -283,12 +317,16 @@ def quiesce_vllm() -> bool:
     while time.time() - t0 < 30:
         used = get_vram_usage()
         if used is None or used < VRAM_THRESHOLD_MB:
-            logger.info(f"[FEAT-213] VRAM eviction confirmed ({used}MB < {VRAM_THRESHOLD_MB}MB).")
+            logger.info(
+                f"[FEAT-213] VRAM eviction confirmed ({used}MB < {VRAM_THRESHOLD_MB}MB)."
+            )
             write_step_log("QUIESCE_OK", f"used={used}MB")
             return True
 
         if time.time() - t0 > 5:  # Targeted eviction if the daemon is unresponsive.
-            logger.info(f"[FEAT-213] VRAM still held ({used}MB); enforcing vLLM process eviction...")
+            logger.info(
+                f"[FEAT-213] VRAM still held ({used}MB); enforcing vLLM process eviction..."
+            )
             _evict_vllm_processes()
         time.sleep(2)
 
@@ -309,7 +347,9 @@ def _evict_vllm_processes() -> None:
                 pid_file.unlink(missing_ok=True)
             except Exception:
                 pass
-        subprocess.run(["pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+        subprocess.run(
+            ["pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False
+        )
         subprocess.run(["pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
     except Exception as exc:
         logger.warning(f"[FEAT-213] Process eviction warning: {exc}")
@@ -354,7 +394,9 @@ def purge_cuda_memory() -> None:
                 freed = True
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"[CUDA] empty_cache warning: {exc}")
-    logger.info(f"[CUDA] purge_cuda_memory: gc_collected={collected} cache_cleared={freed}")
+    logger.info(
+        f"[CUDA] purge_cuda_memory: gc_collected={collected} cache_cleared={freed}"
+    )
 
 
 # ----------------------------------------------------------------------------- #
@@ -372,7 +414,9 @@ def dataset_for_adapter(adapter: str) -> Path:
     if candidate.exists() and candidate.stat().st_size > 0:
         return candidate
     fallback = EXPERTISE_DIR / FALLBACK_DATASET
-    logger.warning(f"[DATASET] '{adapter}' dataset {candidate} unavailable; using {fallback}.")
+    logger.warning(
+        f"[DATASET] '{adapter}' dataset {candidate} unavailable; using {fallback}."
+    )
     return fallback
 
 
@@ -390,10 +434,14 @@ def ensure_datasets(force: bool = False) -> None:
     logger.info(f"[DATASET] {reason}; auto-building via build_lora_datasets.py...")
     py_bin = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
     if not BUILD_DATASETS_SCRIPT.exists():
-        logger.warning(f"[DATASET] {BUILD_DATASETS_SCRIPT} not found; cannot auto-build.")
+        logger.warning(
+            f"[DATASET] {BUILD_DATASETS_SCRIPT} not found; cannot auto-build."
+        )
         return
     try:
-        subprocess.run([str(py_bin), str(BUILD_DATASETS_SCRIPT)], check=True, timeout=120)
+        subprocess.run(
+            [str(py_bin), str(BUILD_DATASETS_SCRIPT)], check=True, timeout=120
+        )
     except Exception as exc:
         logger.warning(f"[DATASET] Auto-build warning: {exc}")
 
@@ -404,13 +452,24 @@ def ensure_datasets(force: bool = False) -> None:
 def _trainer_env() -> dict:
     """Environment for train_expert.py, preloading the venv CUDA 13 runtime libs."""
     env = os.environ.copy()
-    cu13_dir = HOMELAB_DIR / ".venv" / "lib" / "python3.12" / "site-packages" / "nvidia" / "cu13" / "lib"
+    cu13_dir = (
+        HOMELAB_DIR
+        / ".venv"
+        / "lib"
+        / "python3.12"
+        / "site-packages"
+        / "nvidia"
+        / "cu13"
+        / "lib"
+    )
     if cu13_dir.exists():
         env["LD_LIBRARY_PATH"] = f"{cu13_dir}:{env.get('LD_LIBRARY_PATH', '')}"
     return env
 
 
-def run_adapter_training(adapter: str, dataset: Path, steps: int, pacing_delay: float) -> bool:
+def run_adapter_training(
+    adapter: str, dataset: Path, steps: int, pacing_delay: float
+) -> bool:
     """
     Train a single adapter in an ISOLATED subprocess (primary CUDA leak guard).
 
@@ -420,13 +479,20 @@ def run_adapter_training(adapter: str, dataset: Path, steps: int, pacing_delay: 
     output_dir = Path(ADAPTER_BASE_DIR) / adapter
     py_bin = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
     cmd = [
-        str(py_bin), str(TRAIN_EXPERT_SCRIPT),
-        "--dataset", str(dataset),
-        "--output", str(output_dir),
-        "--steps", str(steps),
-        "--pacing-delay", str(pacing_delay),
+        str(py_bin),
+        str(TRAIN_EXPERT_SCRIPT),
+        "--dataset",
+        str(dataset),
+        "--output",
+        str(output_dir),
+        "--steps",
+        str(steps),
+        "--pacing-delay",
+        str(pacing_delay),
     ]
-    write_step_log("ADAPTER_TRAIN_START", f"adapter={adapter} dataset={dataset.name} steps={steps}")
+    write_step_log(
+        "ADAPTER_TRAIN_START", f"adapter={adapter} dataset={dataset.name} steps={steps}"
+    )
     logger.info(f"[TRAIN] Adapter '{adapter}' -> {output_dir} :: {' '.join(cmd)}")
 
     try:
@@ -441,8 +507,12 @@ def run_adapter_training(adapter: str, dataset: Path, steps: int, pacing_delay: 
         write_step_log("ADAPTER_TRAIN_COMPLETE", f"adapter={adapter}")
         return True
 
-    logger.error(f"[TRAIN] Adapter '{adapter}' failed (code {res.returncode}): {res.stderr[-300:]}")
-    write_step_log("ADAPTER_TRAIN_FAILED", f"adapter={adapter} returncode={res.returncode}")
+    logger.error(
+        f"[TRAIN] Adapter '{adapter}' failed (code {res.returncode}): {res.stderr[-300:]}"
+    )
+    write_step_log(
+        "ADAPTER_TRAIN_FAILED", f"adapter={adapter} returncode={res.returncode}"
+    )
     return False
 
 
@@ -458,13 +528,17 @@ def train_adapters(adapters: list[str], steps: int, pacing_delay: float) -> list
 
         # [Anchor 3] Hard gate: non-zero VRAM drain verification before training.
         if not wait_for_vram_drain(baseline_mb=baseline_mb):
-            logger.critical(f"[TRAIN] VRAM not drained before adapter '{adapter}'; halting pipeline.")
+            logger.critical(
+                f"[TRAIN] VRAM not drained before adapter '{adapter}'; halting pipeline."
+            )
             write_step_log("PIPELINE_HALTED", f"vram not drained before {adapter}")
             break
 
         adapter_steps = int(ADAPTER_STEPS.get(adapter, steps))
         dataset = dataset_for_adapter(adapter)
-        logger.info(f"[TRAIN] Pass {idx + 1}/{len(adapters)} :: {adapter} ({adapter_steps} steps)")
+        logger.info(
+            f"[TRAIN] Pass {idx + 1}/{len(adapters)} :: {adapter} ({adapter_steps} steps)"
+        )
         if run_adapter_training(adapter, dataset, adapter_steps, pacing_delay):
             trained.append(adapter)
 
@@ -483,7 +557,7 @@ def check_and_acquire_lock(force: bool = False):
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         logger.info(f"[MUTEX] Acquired nightly_lora_training lock (PID {os.getpid()}).")
-    except (BlockingIOError, IOError):
+    except (OSError, BlockingIOError):
         logger.info("[MUTEX] Another instance holds the lock; waiting for winner...")
         write_step_log("MUTEX_WAITING")
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
@@ -495,8 +569,12 @@ def check_and_acquire_lock(force: bool = False):
             last = state.get("last_completed_timestamp", 0)
             elapsed_h = (time.time() - last) / 3600.0
             if state.get("status") == "COMPLETED" and elapsed_h < 12.0:
-                logger.info(f"[DEFER] Sweep completed {elapsed_h:.1f}h ago by PID {state.get('winner_pid')}; exiting cleanly.")
-                write_step_log("DEFERRED_TO_WINNER", f"completed_by={state.get('winner_pid')}")
+                logger.info(
+                    f"[DEFER] Sweep completed {elapsed_h:.1f}h ago by PID {state.get('winner_pid')}; exiting cleanly."
+                )
+                write_step_log(
+                    "DEFERRED_TO_WINNER", f"completed_by={state.get('winner_pid')}"
+                )
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 lock_fd.close()
                 return None
@@ -504,12 +582,19 @@ def check_and_acquire_lock(force: bool = False):
             logger.warning(f"[MUTEX] Could not inspect state ledger: {exc}")
 
     try:
-        STATE_PATH.write_text(json.dumps({
-            "status": "RUNNING",
-            "winner_pid": os.getpid(),
-            "started_at": time.time(),
-            "started_iso": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }, indent=2))
+        STATE_PATH.write_text(
+            json.dumps(
+                {
+                    "status": "RUNNING",
+                    "winner_pid": os.getpid(),
+                    "started_at": time.time(),
+                    "started_iso": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
+                },
+                indent=2,
+            )
+        )
     except Exception as exc:
         logger.warning(f"[MUTEX] Could not write running state: {exc}")
     return lock_fd
@@ -518,12 +603,21 @@ def check_and_acquire_lock(force: bool = False):
 def record_completion(lock_fd, status: str = "COMPLETED") -> None:
     """Record terminal status in the state ledger and release the mutex."""
     try:
-        STATE_PATH.write_text(json.dumps({
-            "status": status,
-            "winner_pid": os.getpid(),
-            "last_completed_timestamp": time.time() if status == "COMPLETED" else 0,
-            "completed_iso": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }, indent=2))
+        STATE_PATH.write_text(
+            json.dumps(
+                {
+                    "status": status,
+                    "winner_pid": os.getpid(),
+                    "last_completed_timestamp": (
+                        time.time() if status == "COMPLETED" else 0
+                    ),
+                    "completed_iso": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
+                },
+                indent=2,
+            )
+        )
     except Exception as exc:
         logger.warning(f"[MUTEX] Could not record completion state: {exc}")
     finally:
@@ -546,20 +640,42 @@ def _emit(payload: dict) -> None:
 def build_plan(adapters: list[str]) -> dict:
     """Resolve the adapter -> dataset plan (used by --list for dry validation)."""
     return {
-        a: {"dataset": str(dataset_for_adapter(a)), "output": str(Path(ADAPTER_BASE_DIR) / a)}
+        a: {
+            "dataset": str(dataset_for_adapter(a)),
+            "output": str(Path(ADAPTER_BASE_DIR) / a),
+        }
         for a in adapters
     }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Discrete Multi-LoRA Nightly Training Pipeline")
-    parser.add_argument("--adapters", nargs="*", default=ADAPTER_TARGETS,
-                        help="Subset of adapters to train (default: all ADAPTER_TARGETS)")
-    parser.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="Default training steps per adapter")
-    parser.add_argument("--pacing-delay", type=float, default=DEFAULT_PACING_DELAY_S,
-                        help="Hardware settling delay (seconds) per optimization step")
-    parser.add_argument("--force", action="store_true", help="Bypass the 12-hour debounce check")
-    parser.add_argument("--list", action="store_true", help="Print the resolved adapter plan and exit")
+    parser = argparse.ArgumentParser(
+        description="Discrete Multi-LoRA Nightly Training Pipeline"
+    )
+    parser.add_argument(
+        "--adapters",
+        nargs="*",
+        default=ADAPTER_TARGETS,
+        help="Subset of adapters to train (default: all ADAPTER_TARGETS)",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=DEFAULT_STEPS,
+        help="Default training steps per adapter",
+    )
+    parser.add_argument(
+        "--pacing-delay",
+        type=float,
+        default=DEFAULT_PACING_DELAY_S,
+        help="Hardware settling delay (seconds) per optimization step",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Bypass the 12-hour debounce check"
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="Print the resolved adapter plan and exit"
+    )
     args = parser.parse_args(argv)
 
     adapters = [a for a in (args.adapters or ADAPTER_TARGETS) if a]
@@ -582,14 +698,20 @@ def main(argv: list[str] | None = None) -> int:
     trained: list[str] = []
     status = "FAILED"
     try:
-        logger.info("=== [Story 83.7] DISCRETE MULTI-LORA NIGHTLY TRAINING INITIATED ===")
+        logger.info(
+            "=== [Story 83.7] DISCRETE MULTI-LORA NIGHTLY TRAINING INITIATED ==="
+        )
         write_step_log("ORCHESTRATION_INIT", f"adapters={adapters}")
 
         verify_gpu_power_limit(max_limit_watts=170)
-        ensure_datasets(force=args.force)  # [Story 864] --force reruns the dataset builder.
+        ensure_datasets(
+            force=args.force
+        )  # [Story 864] --force reruns the dataset builder.
 
         if not quiesce_vllm():
-            logger.critical("[FATAL] VRAM not evicted; aborting to protect host stability.")
+            logger.critical(
+                "[FATAL] VRAM not evicted; aborting to protect host stability."
+            )
             write_step_log("PIPELINE_ABORTED", "quiesce failed")
             return 1
 
@@ -609,7 +731,9 @@ def main(argv: list[str] | None = None) -> int:
         write_step_log("PIPELINE_ERROR", str(exc))
         status = "FAILED"
     finally:
-        record_completion(lock_fd, status="COMPLETED" if status == "SUCCESS" else status)
+        record_completion(
+            lock_fd, status="COMPLETED" if status == "SUCCESS" else status
+        )
 
     duration_s = round(time.monotonic() - started, 2)
     _emit({"adapters_trained": trained, "status": status, "duration_s": duration_s})

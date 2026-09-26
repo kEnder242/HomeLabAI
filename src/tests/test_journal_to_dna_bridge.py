@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 [FEAT-592 / BKM-024] Unit and Integration Test Suite for Historical Journal to DNA Bridge.
 Tests:
@@ -10,8 +9,8 @@ Tests:
 5. Dry-run and live bridge execution.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 # Paths
@@ -20,11 +19,11 @@ FIELD_NOTES_DIR = DEV_LAB_ROOT / "Portfolio_Dev" / "field_notes"
 sys.path.insert(0, str(FIELD_NOTES_DIR))
 
 from journal_to_dna_bridge import (
+    WISDOM_DATA_PATH,
+    extract_title_and_narrative,
     get_gem_fingerprint,
     map_theme_and_bucket,
-    extract_title_and_narrative,
     run_bridge,
-    WISDOM_DATA_PATH
 )
 
 
@@ -37,19 +36,27 @@ def test_gem_fingerprint_idempotency():
 
 def test_theme_and_bucket_classification():
     """Verify keyword classification into standard lab themes and buckets."""
-    theme_sec, bucket_sec = map_theme_and_bucket("RAKP auth session vulnerability and CVE-2013-4786")
+    theme_sec, bucket_sec = map_theme_and_bucket(
+        "RAKP auth session vulnerability and CVE-2013-4786"
+    )
     assert theme_sec == "Security & Manageability"
     assert bucket_sec == "bucket_security_manageability"
 
-    theme_val, bucket_val = map_theme_and_bucket("PECI sideband telemetry throughput and I2C commands")
+    theme_val, bucket_val = map_theme_and_bucket(
+        "PECI sideband telemetry throughput and I2C commands"
+    )
     assert theme_val == "Silicon Validation Methodology"
     assert bucket_val == "bucket_silicon_validation"
 
-    theme_auto, bucket_auto = map_theme_and_bucket("PyTest automation framework and FTF library")
+    theme_auto, bucket_auto = map_theme_and_bucket(
+        "PyTest automation framework and FTF library"
+    )
     assert theme_auto == "Systems Architecture & Automation"
     assert bucket_auto == "bucket_systems_architecture"
 
-    theme_lead, bucket_lead = map_theme_and_bucket("Engineering leadership and team mentorship")
+    theme_lead, bucket_lead = map_theme_and_bucket(
+        "Engineering leadership and team mentorship"
+    )
     assert theme_lead == "Engineering Leadership"
     assert bucket_lead == "bucket_engineering_leadership"
 

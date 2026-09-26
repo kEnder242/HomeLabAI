@@ -1074,5 +1074,33 @@ This BKM should be retrieved during coding moments involving:
 4. **Authoritative Nightly Digest:** The 11-stage nightly sweep must emit a consolidated `daily_accountability_digest.json` and a formatted `[+] ACCOUNTABILITY DIGEST` entry in the interleaved system log, recording exact per-stage metrics, overall status, and fallback justifications.
 5. **Zero-Mock Policy for Live Validation (BKM-024):** Synthetic morning probes and health checks must run live end-to-end HTTP/REST requests against running silicon engines (Foyer :8765, vLLM :8088, M5 Air :8000). Mocks are strictly forbidden for live certification.
 
+---
 
+## BKM-064: Tracked Conversational Ledger Protocol
+**Feature Anchor:** `[FEAT-618]` / `[BKM-064]`  
+**Colloquial Alias:** "Numbered List Tracking"  
+**Domain:** Human-Agent Collaboration, Conversational Provenance  
+**Status:** ACTIVE / MANDATORY  
 
+### 1. The Principle
+Collaborative problem-solving generates complex multi-threaded discussions across dozens of numbered items and hypotheses. Dropping threads or failing to track numbered user inquiries creates conversational confusion. Agents must maintain a structured numbered ledger across turns, explicitly addressing each numbered vector before transitioning system state.
+
+### 2. The Invariant Rules
+1. **Thread Preservation:** When the human operator provides numbered thoughts or questions (e.g. Items 1 through 12), the agent must address and track each item with corresponding structured keys.
+2. **Cross-Linkage to Epistemology:** Connect discussion items directly to their corresponding DNA cards (`INS`, `WIS`, `FEAT`, `BKM`, `VIBE`) to ensure that insights from conversations become durable knowledge assets.
+
+---
+
+## BKM-065: Direct Markdown AST/Regex Source Backflow Protocol
+**Feature Anchor:** `[FEAT-582]` / `[BKM-065]`  
+**Colloquial Alias:** "No Human Docs Backflow"  
+**Domain:** Data Persistence, Source-of-Record Integrity  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+Treat all Markdown files (`Protocols.md`, `FeatureTracker.md`) as executable source code (`Invariant #1: NO HUMAN DOCS`). Interactive tools such as DNA Forge and the Applied Writer must write edits directly to original Markdown sources via deterministic AST/regex parsers, immediately committing changes locally via Git. Static databases or intermediate JSON caches must never become stale islands of truth.
+
+### 2. The Invariant Rules
+1. **Source-First Mutation:** Updates originating in web tools (e.g., editing a BKM description or feature mechanism) must mutate the Markdown source file directly on disk before refreshing vector indices.
+2. **Deterministic Regex Anchoring:** Use anchored regex matching on unique entity headers (e.g., `## BKM-xxx` or `## [FEAT-xxx]`) to prevent syntax drift.
+3. **Automated Git Checkpoint:** Every successful source file mutation must immediately create a local Git commit to preserve history and prevent data loss.

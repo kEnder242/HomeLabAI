@@ -1,12 +1,13 @@
-import os
+import asyncio
 import json
 import logging
+import os
 import socket
-import urllib.request
 import urllib.error
+import urllib.request
+from typing import Any
+
 import requests
-import asyncio
-from typing import Dict, Any, List, Optional, Union
 
 # [FEAT-531 / FEAT-500] Multi-Seat Sovereign Engine Infrastructure Client
 SOCKET_TIMEOUT_S = 0.2
@@ -15,7 +16,8 @@ INFRA_CONFIG_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructur
 
 logger = logging.getLogger("engine_client")
 
-def load_engine_seats() -> List[Dict[str, Any]]:
+
+def load_engine_seats() -> list[dict[str, Any]]:
     """[FEAT-531] Load declarative engine seats from config/infrastructure.json."""
     try:
         if os.path.exists(INFRA_CONFIG_PATH):
@@ -24,8 +26,10 @@ def load_engine_seats() -> List[Dict[str, Any]]:
                 if "seats" in data and isinstance(data["seats"], list):
                     return data["seats"]
     except Exception as e:
-        logger.warning(f"[ENGINE_CLIENT] Failed to load seats from infrastructure.json: {e}")
-    
+        logger.warning(
+            f"[ENGINE_CLIENT] Failed to load seats from infrastructure.json: {e}"
+        )
+
     # Declarative fallback ladder
     return [
         {
@@ -39,7 +43,7 @@ def load_engine_seats() -> List[Dict[str, Any]]:
             "probe_payload": None,
             "default_model": "mlx-community--Qwen3.5-9B-4bit",
             "t_warmed": 0.09,
-            "t_cold": 0.85
+            "t_cold": 0.85,
         },
         {
             "id": "KENDER",
@@ -51,7 +55,7 @@ def load_engine_seats() -> List[Dict[str, Any]]:
             "probe_payload": None,
             "default_model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL",
             "t_warmed": 0.12,
-            "t_cold": 1.2
+            "t_cold": 1.2,
         },
         {
             "id": "LOCAL",
@@ -63,19 +67,23 @@ def load_engine_seats() -> List[Dict[str, Any]]:
             "probe_payload": None,
             "default_model": "shadow_brain_v2",
             "t_warmed": 0.045,
-            "t_cold": 0.05
-        }
+            "t_cold": 0.05,
+        },
     ]
+
 
 def probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
     """[FEAT-486] 200ms non-blocking TCP socket check."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
-def probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
+
+def probe_http(
+    url: str, payload: dict | None = None, timeout: float = API_PROBE_TIMEOUT_S
+) -> bool:
     """Return True if HTTP endpoint returns 200 within *timeout* seconds."""
     try:
         if payload:
@@ -83,8 +91,11 @@ def probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PR
             req = urllib.request.Request(
                 url,
                 data=data_bytes,
-                headers={"User-Agent": "AcmeLab/5.0", "Content-Type": "application/json"},
-                method="POST"
+                headers={
+                    "User-Agent": "AcmeLab/5.0",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
             )
         else:
             req = urllib.request.Request(url, headers={"User-Agent": "AcmeLab/5.0"})
@@ -93,7 +104,8 @@ def probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PR
     except Exception:
         return False
 
-def probe_seat(seat: Dict[str, Any]) -> bool:
+
+def probe_seat(seat: dict[str, Any]) -> bool:
     """[FEAT-531] Generic declarative seat health probe with Tailscale/multi-host fallback."""
     candidate_hosts = []
     primary_host = seat.get("host")
@@ -120,7 +132,10 @@ def probe_seat(seat: Dict[str, Any]) -> bool:
                 return True
     return False
 
-def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+
+def resolve_active_deep_thought_target(
+    seats: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """
     [FEAT-531] Declarative Multi-Seat Engine Resolver:
     Iterates through configured engine seats and selects the first active remote engine.
@@ -128,25 +143,29 @@ def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = N
     """
     if seats is None:
         seats = load_engine_seats()
-    
+
     for seat in seats:
         if seat.get("id") == "LOCAL":
             continue
         if probe_seat(seat):
             return seat
-            
+
     # Default fallback to LOCAL seat
-    local_seat = next((s for s in seats if s.get("id") == "LOCAL"), {
-        "id": "LOCAL",
-        "name": "LOCAL",
-        "host": "127.0.0.1",
-        "port": 8088,
-        "protocol": "OPENAI",
-        "default_model": "shadow_brain_v2",
-        "t_warmed": 0.045,
-        "t_cold": 0.05
-    })
+    local_seat = next(
+        (s for s in seats if s.get("id") == "LOCAL"),
+        {
+            "id": "LOCAL",
+            "name": "LOCAL",
+            "host": "127.0.0.1",
+            "port": 8088,
+            "protocol": "OPENAI",
+            "default_model": "shadow_brain_v2",
+            "t_warmed": 0.045,
+            "t_cold": 0.05,
+        },
+    )
     return local_seat
+
 
 def query_sovereign_engine(
     prompt: str,
@@ -154,8 +173,8 @@ def query_sovereign_engine(
     json_mode: bool = False,
     temperature: float = 0.2,
     timeout: float = 60.0,
-    seats: Optional[List[Dict[str, Any]]] = None
-) -> Optional[Union[dict, str]]:
+    seats: list[dict[str, Any]] | None = None,
+) -> dict | str | None:
     """
     [FEAT-500/531] Synchronous Multi-Seat Sovereign Engine Query with Automatic Cascading Fallback.
     """
@@ -185,7 +204,11 @@ def query_sovereign_engine(
         host = seat.get("active_host") or seat.get("host", "127.0.0.1")
         port = seat.get("port", 80)
         protocol = seat.get("protocol", "OPENAI").upper()
-        model = seat.get("default_model") or (seat.get("probe_payload", {}) or {}).get("model") or "default"
+        model = (
+            seat.get("default_model")
+            or (seat.get("probe_payload", {}) or {}).get("model")
+            or "default"
+        )
 
         try:
             if protocol in ["OPENAI", "VLLM"]:
@@ -193,7 +216,7 @@ def query_sovereign_engine(
                 payload = {
                     "model": model,
                     "messages": messages,
-                    "temperature": temperature
+                    "temperature": temperature,
                 }
                 if json_mode:
                     payload["response_format"] = {"type": "json_object"}
@@ -201,19 +224,26 @@ def query_sovereign_engine(
                 resp = requests.post(url, json=payload, timeout=timeout)
                 if resp.status_code == 200:
                     data = resp.json()
-                    raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    raw_content = (
+                        data.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                    )
                     if json_mode:
                         try:
                             return json.loads(raw_content)
                         except Exception:
                             # Try finding JSON substring if wrapped in markdown
                             import re
+
                             m = re.search(r"(\{.*\}|\[.*\])", raw_content, re.DOTALL)
                             if m:
                                 return json.loads(m.group(1))
                     return raw_content
                 else:
-                    logger.warning(f"[ENGINE_CLIENT] Seat {seat_id} returned HTTP {resp.status_code}")
+                    logger.warning(
+                        f"[ENGINE_CLIENT] Seat {seat_id} returned HTTP {resp.status_code}"
+                    )
 
             elif protocol == "OLLAMA":
                 url = f"http://{host}:{port}/api/chat"
@@ -221,7 +251,7 @@ def query_sovereign_engine(
                     "model": model,
                     "messages": messages,
                     "stream": False,
-                    "options": {"temperature": temperature}
+                    "options": {"temperature": temperature},
                 }
                 if json_mode:
                     payload["format"] = "json"
@@ -235,18 +265,26 @@ def query_sovereign_engine(
                             return json.loads(raw_content)
                         except Exception:
                             import re
+
                             m = re.search(r"(\{.*\}|\[.*\])", raw_content, re.DOTALL)
                             if m:
                                 return json.loads(m.group(1))
                     return raw_content
                 else:
-                    logger.warning(f"[ENGINE_CLIENT] Seat {seat_id} returned HTTP {resp.status_code}")
+                    logger.warning(
+                        f"[ENGINE_CLIENT] Seat {seat_id} returned HTTP {resp.status_code}"
+                    )
 
         except Exception as e:
-            logger.warning(f"[ENGINE_CLIENT] Query to seat {seat_id} ({host}:{port}) failed: {e}. Cascading to next candidate...")
+            logger.warning(
+                f"[ENGINE_CLIENT] Query to seat {seat_id} ({host}:{port}) failed: {e}. Cascading to next candidate..."
+            )
 
-    logger.error("[ENGINE_CLIENT] All candidate seats exhausted without a successful generation.")
+    logger.error(
+        "[ENGINE_CLIENT] All candidate seats exhausted without a successful generation."
+    )
     return None
+
 
 async def async_query_sovereign_engine(
     prompt: str,
@@ -254,8 +292,8 @@ async def async_query_sovereign_engine(
     json_mode: bool = False,
     temperature: float = 0.2,
     timeout: float = 60.0,
-    seats: Optional[List[Dict[str, Any]]] = None
-) -> Optional[Union[dict, str]]:
+    seats: list[dict[str, Any]] | None = None,
+) -> dict | str | None:
     """
     [FEAT-500/531] Asynchronous Multi-Seat Sovereign Engine Query with Automatic Cascading Fallback.
     """
@@ -268,6 +306,6 @@ async def async_query_sovereign_engine(
             json_mode=json_mode,
             temperature=temperature,
             timeout=timeout,
-            seats=seats
-        )
+            seats=seats,
+        ),
     )

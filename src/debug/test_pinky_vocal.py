@@ -1,14 +1,16 @@
 import asyncio
-import aiohttp
 import json
+
+import aiohttp
 
 ATTENDANT_URL = "http://127.0.0.1:8765"
 HUB_URL = "http://127.0.0.1:8765"
 LAB_KEY = "92e785ba"
 
+
 async def test_pinky_vocal():
     print("--- [TEST] Focused Pinky Vocal Verification ---")
-    
+
     async with aiohttp.ClientSession() as session:
         # 1. Start Lab in PINKY_MODE_VOCAL
         print("[STEP 1] Starting Lab in PINKY_MODE_VOCAL...")
@@ -16,24 +18,30 @@ async def test_pinky_vocal():
             "engine": "VLLM",
             "model": "MEDIUM",
             "op_mode": "PINKY_MODE_VOCAL",
-            "reason": "VOCAL_TEST"
+            "reason": "VOCAL_TEST",
         }
-        async with session.post(f"{ATTENDANT_URL}/start", json=start_payload, headers={"X-Lab-Key": LAB_KEY}) as r:
+        async with session.post(
+            f"{ATTENDANT_URL}/start", json=start_payload, headers={"X-Lab-Key": LAB_KEY}
+        ) as r:
             if r.status != 200:
                 print(f"  ❌ FAILED: Start rejected ({r.status})")
                 return
-        
+
         # 2. Wait for OPERATIONAL
         print("[STEP 2] Waiting for OPERATIONAL (Max 180s)...")
         for i in range(36):
-            async with session.get(f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": LAB_KEY}) as r:
+            async with session.get(
+                f"{ATTENDANT_URL}/status", headers={"X-Lab-Key": LAB_KEY}
+            ) as r:
                 data = await r.json()
                 if data.get("operational"):
                     print(f"  ✅ Lab is OPERATIONAL (VRAM: {data.get('vram')})")
                     break
                 else:
                     v_reason = data.get("engine_vocal")
-                    print(f"  [*] Waiting... (VRAM: {data.get('vram')}, Vocal:{v_reason})")
+                    print(
+                        f"  [*] Waiting... (VRAM: {data.get('vram')}, Vocal:{v_reason})"
+                    )
             await asyncio.sleep(5)
         else:
             print("  ❌ TIMEOUT: Lab never reached OPERATIONAL.")
@@ -52,16 +60,18 @@ async def test_pinky_vocal():
                     break
 
             print("    [*] Dispatching query: hello?")
-            await ws.send_str(json.dumps({"type": "text_input", "content": "[ME] hello?"}))
-            
+            await ws.send_str(
+                json.dumps({"type": "text_input", "content": "[ME] hello?"})
+            )
+
             try:
                 # Wait for response
                 while True:
                     msg = await ws.receive_json(timeout=30)
-                    m_type = msg.get('type')
-                    m_src = msg.get('brain_source', 'None')
-                    m_text = msg.get('brain', '')
-                    
+                    m_type = msg.get("type")
+                    m_src = msg.get("brain_source", "None")
+                    m_text = msg.get("brain", "")
+
                     if m_type in ["chat", "crosstalk"] and "Pinky" in m_src:
                         print(f"  ✅ Pinky Replied: {m_text[:50]}...")
                         break
@@ -70,6 +80,7 @@ async def test_pinky_vocal():
                 return
 
     print("--- SUCCESS: Pinky is VOCAL through the Hub foyer. ---")
+
 
 if __name__ == "__main__":
     asyncio.run(test_pinky_vocal())

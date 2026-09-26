@@ -3,6 +3,7 @@
 Validates that the M5 Air MLX endpoint at 192.168.1.46:8000 responds
 to model listing and chat completion requests with valid responses.
 """
+
 import json
 import socket
 import sys
@@ -11,6 +12,7 @@ import urllib.request
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Module-level skip: TCP probe 192.168.1.46:8000
 # ---------------------------------------------------------------------------
@@ -18,7 +20,7 @@ def _m5_air_reachable(host="192.168.1.46", port=8000, timeout=3.0):
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
 

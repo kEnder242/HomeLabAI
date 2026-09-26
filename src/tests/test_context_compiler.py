@@ -9,9 +9,7 @@ Verifies:
 import textwrap
 
 import pytest
-
 from src.compiler.context_compiler import ContextCompiler
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -21,7 +19,8 @@ def compiler():
     return ContextCompiler()
 
 
-SAMPLE_MULTI_CLASS = textwrap.dedent("""\
+SAMPLE_MULTI_CLASS = textwrap.dedent(
+    """\
     \"\"\"Sample module with multiple classes and functions.\"\"\"
 
     import os
@@ -248,9 +247,11 @@ SAMPLE_MULTI_CLASS = textwrap.dedent("""\
             raise ValueError(f"Unknown processor type: '{processor_type}'. Available: {available}")
 
         return cls(name=name, **kwargs)
-""")
+"""
+)
 
-SAMPLE_MODULE_B = textwrap.dedent("""\
+SAMPLE_MODULE_B = textwrap.dedent(
+    """\
     \"\"\"Module B: depends on sample_a.\"\"\"
 
     import os
@@ -280,7 +281,8 @@ SAMPLE_MODULE_B = textwrap.dedent("""\
         \"\"\"Run the full aggregation pipeline.\"\"\"
         agg = Aggregator("pipeline")
         return agg.process([{"filename": f} for f in files])
-""")
+"""
+)
 
 
 # ── Tests: token reduction ────────────────────────────────────────────
@@ -311,7 +313,8 @@ class TestTokenReduction:
 
     def test_heavy_body_file_compaction(self, compiler, tmp_path):
         """File with large method bodies should compact significantly."""
-        heavy = textwrap.dedent("""\
+        heavy = textwrap.dedent(
+            """\
             \"\"\"Heavy module.\"\"\"
 
             import os
@@ -350,7 +353,8 @@ class TestTokenReduction:
                     for i in range(1, x + 1):
                         result *= i
                     return result
-        """)
+        """
+        )
         src = tmp_path / "heavy.py"
         src.write_text(heavy)
 
@@ -453,7 +457,7 @@ class TestSymbolFidelity:
         src.write_text(SAMPLE_MULTI_CLASS)
         compiled = compiler.compile_file(str(src))
 
-        assert 'config: Optional[dict] = None' in compiled
+        assert "config: Optional[dict] = None" in compiled
 
     def test_body_stripped_replaced_with_dots(self, compiler, tmp_path):
         src = tmp_path / "sample.py"
@@ -463,7 +467,7 @@ class TestSymbolFidelity:
         # Body-specific code should NOT appear
         assert "value.lower().strip()" not in compiled
         assert "raise ValueError" not in compiled
-        assert 'logging.getLogger' not in compiled
+        assert "logging.getLogger" not in compiled
         assert "result *= i" not in compiled
         # Methods with docstrings show the docstring, not ...
         # Methods without docstrings show ...
@@ -516,13 +520,15 @@ class TestDependencyGraph:
 
     def test_self_import_excluded_from_graph(self, compiler, tmp_path):
         """A file importing itself should not appear as its own dependency."""
-        self_import = textwrap.dedent("""\
+        self_import = textwrap.dedent(
+            """\
             \"\"\"Self-referencing module.\"\"\"
             from myself import something
 
             def foo() -> None:
                 pass
-        """)
+        """
+        )
         (tmp_path / "myself.py").write_text(self_import)
 
         compiled = compiler.compile_workspace(str(tmp_path))
@@ -533,18 +539,14 @@ class TestDependencyGraph:
                 parts = line.split("|")
                 if len(parts) >= 3:
                     depends_col = parts[2]
-                    assert "myself.py" not in depends_col, (
-                        f"File lists itself as dependency: {line}"
-                    )
+                    assert (
+                        "myself.py" not in depends_col
+                    ), f"File lists itself as dependency: {line}"
 
     def test_workspace_syntax_error_graceful(self, compiler, tmp_path):
         """Files with syntax errors should be skipped, not crash."""
-        (tmp_path / "good.py").write_text(
-            "def hello() -> str:\n    return 'world'\n"
-        )
-        (tmp_path / "bad.py").write_text(
-            "def broken(:\n    this is not valid python\n"
-        )
+        (tmp_path / "good.py").write_text("def hello() -> str:\n    return 'world'\n")
+        (tmp_path / "bad.py").write_text("def broken(:\n    this is not valid python\n")
 
         compiled = compiler.compile_workspace(str(tmp_path))
         assert "good.py" in compiled

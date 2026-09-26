@@ -2,12 +2,17 @@
 [FEAT-527] Verification Suite for Story 70.11 Sanitized Public Benchmark Exporter
 Validates that export_public_benchmarks.py strips LAN IPs, session tokens, and local paths.
 """
+
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add Portfolio_Dev/field_notes to sys.path
-portfolio_fn = Path(__file__).resolve().parent.parent.parent.parent / "Portfolio_Dev" / "field_notes"
+portfolio_fn = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "Portfolio_Dev"
+    / "field_notes"
+)
 sys.path.insert(0, str(portfolio_fn))
 
 import export_public_benchmarks as exp
@@ -38,7 +43,7 @@ def test_export_structure():
             "ttft_ms": 320,
             "ip": "192.168.1.46",
             "session_id": "ses_abc12345",
-            "path": "/home/jallred/Dev_Lab/benchmarks.js"
+            "path": "/home/jallred/Dev_Lab/benchmarks.js",
         }
     ]
     out_path = exp.export(test_records)

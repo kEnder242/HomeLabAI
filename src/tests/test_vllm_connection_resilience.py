@@ -1,8 +1,9 @@
 import asyncio
-import sys
 import os
+import sys
 import unittest
 from unittest.mock import patch
+
 import aiohttp
 from yarl import URL
 
@@ -11,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.nodes.loader import BicameralNode
+
 
 class TestVLLMConnectionResilience(unittest.TestCase):
     """
@@ -28,12 +30,12 @@ class TestVLLMConnectionResilience(unittest.TestCase):
             req = aiohttp.ClientRequest("GET", target_url)
             conn_err = aiohttp.ClientConnectorError(
                 connection_key=req.connection_key,
-                os_error=OSError(111, "Connect call failed ('127.0.0.1', 8088)")
+                os_error=OSError(111, "Connect call failed ('127.0.0.1', 8088)"),
             )
 
             tokens = []
             # Mock aiohttp GET to throw ClientConnectorError when ping_engine probes port 8088
-            with patch('aiohttp.ClientSession.get', side_effect=conn_err):
+            with patch("aiohttp.ClientSession.get", side_effect=conn_err):
                 async for token in self.node.generate_response(query="hi"):
                     tokens.append(token)
 
@@ -42,11 +44,22 @@ class TestVLLMConnectionResilience(unittest.TestCase):
 
             # ASSERTIONS:
             # 1. Output must NOT contain raw Python tracebacks or "Connect call failed"
-            self.assertNotIn("Connect call failed", full_output, "Raw traceback leaked into output during ping_engine!")
-            self.assertNotIn("127.0.0.1:8088", full_output, "Raw IP/Port leaked into output during ping_engine!")
-            
+            self.assertNotIn(
+                "Connect call failed",
+                full_output,
+                "Raw traceback leaked into output during ping_engine!",
+            )
+            self.assertNotIn(
+                "127.0.0.1:8088",
+                full_output,
+                "Raw IP/Port leaked into output during ping_engine!",
+            )
+
             # 2. Output MUST contain friendly character warming quip
-            self.assertTrue(any(k in full_output for k in ["Narf!", "warming"]), f"Friendly warming quip expected! Got: {full_output}")
+            self.assertTrue(
+                any(k in full_output for k in ["Narf!", "warming"]),
+                f"Friendly warming quip expected! Got: {full_output}",
+            )
 
         asyncio.run(run_test())
 
@@ -58,7 +71,7 @@ class TestVLLMConnectionResilience(unittest.TestCase):
                 "model": "llama-3.2-3b-instruct-awq",
                 "type": "VLLM",
                 "available": ["llama-3.2-3b-instruct-awq"],
-                "max_model_len": 16384
+                "max_model_len": 16384,
             }
             self.node._last_probe = 9999999999.0  # Fresh probe cache
 
@@ -66,11 +79,11 @@ class TestVLLMConnectionResilience(unittest.TestCase):
             req = aiohttp.ClientRequest("POST", target_url)
             conn_err = aiohttp.ClientConnectorError(
                 connection_key=req.connection_key,
-                os_error=OSError(111, "Connect call failed ('127.0.0.1', 8088)")
+                os_error=OSError(111, "Connect call failed ('127.0.0.1', 8088)"),
             )
 
             tokens = []
-            with patch('aiohttp.ClientSession.post', side_effect=conn_err):
+            with patch("aiohttp.ClientSession.post", side_effect=conn_err):
                 async for token in self.node.generate_response(query="hi"):
                     tokens.append(token)
 
@@ -78,10 +91,18 @@ class TestVLLMConnectionResilience(unittest.TestCase):
             print(f"[stream failure] Captured output: {full_output}")
 
             # ASSERTIONS:
-            self.assertNotIn("Connect call failed", full_output, "Raw traceback leaked into output during streaming!")
-            self.assertTrue(any(k in full_output for k in ["Narf!", "warming"]), f"Friendly warming quip expected! Got: {full_output}")
+            self.assertNotIn(
+                "Connect call failed",
+                full_output,
+                "Raw traceback leaked into output during streaming!",
+            )
+            self.assertTrue(
+                any(k in full_output for k in ["Narf!", "warming"]),
+                f"Friendly warming quip expected! Got: {full_output}",
+            )
 
         asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

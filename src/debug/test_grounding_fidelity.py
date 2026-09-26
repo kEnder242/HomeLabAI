@@ -1,13 +1,14 @@
 import asyncio
 import json
 import os
-import websockets
 import sys
+
+import websockets
 
 # Setup Path
 LAB_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.join(LAB_ROOT, "src"))
-from test_utils import ensure_smart_lab # noqa: E402
+from test_utils import ensure_smart_lab
 
 # Paths
 TRACE_FILE = os.path.join(LAB_ROOT, "logs/trace_brain.json")
@@ -45,7 +46,7 @@ async def test_grounding_fidelity():
             # Verification 1: Check the Trace for Mandate Injection
             print("\nStep 1: Verifying Neural Trace for Grounding Mandate...")
             PINKY_TRACE = os.path.join(LAB_ROOT, "logs/trace_pinky.json")
-            
+
             trace_content = ""
             if os.path.exists(TRACE_FILE):
                 with open(TRACE_FILE, "r") as f:
@@ -54,7 +55,10 @@ async def test_grounding_fidelity():
                 with open(PINKY_TRACE, "r") as f:
                     trace_content += f.read()
 
-            if any(m in trace_content for m in ["STRICT GROUNDING MANDATE", "SYSTEM MANDATE: ARCHIVE SILENCE"]):
+            if any(
+                m in trace_content
+                for m in ["STRICT GROUNDING MANDATE", "SYSTEM MANDATE: ARCHIVE SILENCE"]
+            ):
                 print("✅ Mandate Injection Verified in Trace.")
             else:
                 print("❌ FAILED: Mandate missing from Trace.")
@@ -89,9 +93,7 @@ async def test_grounding_fidelity():
             )
 
             if found_admission:
-                print(
-                    "✅ PASSED: Brain honestly reported archive silence."
-                )
+                print("✅ PASSED: Brain honestly reported archive silence.")
             else:
                 print("❌ FAILED: Brain failed to admit the gap in verified truth.")
                 print(f"Response was: {response_text}")

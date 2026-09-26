@@ -1,11 +1,15 @@
-import requests
-import time
 import sys
+import time
+
+import requests
 
 FOYER_URL = "http://localhost:8765"
 
+
 def wait_for_state(target_state, timeout=120):
-    print(f"[*] Waiting for Lab state to become: {target_state} (Timeout: {timeout}s)...")
+    print(
+        f"[*] Waiting for Lab state to become: {target_state} (Timeout: {timeout}s)..."
+    )
     start_t = time.time()
     while time.time() - start_t < timeout:
         try:
@@ -19,9 +23,10 @@ def wait_for_state(target_state, timeout=120):
             pass
         time.sleep(2)
         print(".", end="", flush=True)
-    
+
     print(f"\n  ❌ FAILED: Timed out waiting for {target_state}")
     return False
+
 
 def trigger_action(action):
     print(f"\n[➡] Triggering Action: /{action.upper()}")
@@ -37,40 +42,52 @@ def trigger_action(action):
         print(f"  ❌ Request failed: {e}")
         return False
 
+
 def run_taxonomy_test():
     print("=== 🧪 REMOTE CONTROL TAXONOMY TEST ===")
-    
+
     # 1. Test WAKE
-    if not trigger_action("wake"): sys.exit(1)
-    if not wait_for_state("OPERATIONAL"): sys.exit(1)
-    
+    if not trigger_action("wake"):
+        sys.exit(1)
+    if not wait_for_state("OPERATIONAL"):
+        sys.exit(1)
+
     # Wait for things to settle so we don't trip over fast state transitions
     time.sleep(5)
-    
+
     # 2. Test SLEEP
-    if not trigger_action("sleep"): sys.exit(1)
-    if not wait_for_state("HIBERNATING", timeout=60): sys.exit(1)
-    
+    if not trigger_action("sleep"):
+        sys.exit(1)
+    if not wait_for_state("HIBERNATING", timeout=60):
+        sys.exit(1)
+
     time.sleep(5)
-    
+
     # 3. Test LOCK
-    if not trigger_action("lock"): sys.exit(1)
-    if not wait_for_state("MAINTENANCE", timeout=30): sys.exit(1)
-    
+    if not trigger_action("lock"):
+        sys.exit(1)
+    if not wait_for_state("MAINTENANCE", timeout=30):
+        sys.exit(1)
+
     time.sleep(5)
-    
+
     # 4. Test WAKE from LOCK
     print("\n[➡] Testing WAKE from MAINTENANCE lock...")
-    if not trigger_action("wake"): sys.exit(1)
-    if not wait_for_state("OPERATIONAL"): sys.exit(1)
-    
+    if not trigger_action("wake"):
+        sys.exit(1)
+    if not wait_for_state("OPERATIONAL"):
+        sys.exit(1)
+
     time.sleep(5)
-    
+
     # 5. Test SHUTDOWN
-    if not trigger_action("shutdown"): sys.exit(1)
-    if not wait_for_state("OFFLINE", timeout=60): sys.exit(1)
-    
+    if not trigger_action("shutdown"):
+        sys.exit(1)
+    if not wait_for_state("OFFLINE", timeout=60):
+        sys.exit(1)
+
     print("\n🏆 ALL TAXONOMY ENDPOINTS VERIFIED.")
+
 
 if __name__ == "__main__":
     run_taxonomy_test()

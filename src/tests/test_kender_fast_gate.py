@@ -31,12 +31,15 @@ def _get_closed_port() -> int:
 
 from unittest.mock import patch
 
+
 async def _run_relay(port: int) -> tuple:
     """Drive a SpeculativeTriageRelay whose Kender/M5 ports are unreachable."""
 
     async def _kender_fn(query, context, schema, rid):
         # The fast gate must prevent Kender from ever being dispatched.
-        raise AssertionError("Kender should not be dispatched when its port is unreachable")
+        raise AssertionError(
+            "Kender should not be dispatched when its port is unreachable"
+        )
 
     async def _vllm_fn(query, context, schema, rid):
         return dict(VALID_TRIAGE)
@@ -48,7 +51,15 @@ async def _run_relay(port: int) -> tuple:
         t_warmed=1.25,
         socket_timeout=0.2,
     )
-    with patch("src.logic.speculative_triage.resolve_active_deep_thought_target", return_value={"id": "LOCAL", "name": "LOCAL", "host": "127.0.0.1", "port": 8088}):
+    with patch(
+        "src.logic.speculative_triage.resolve_active_deep_thought_target",
+        return_value={
+            "id": "LOCAL",
+            "name": "LOCAL",
+            "host": "127.0.0.1",
+            "port": 8088,
+        },
+    ):
         return await relay.relay("query", "context", {}, "test_request")
 
 
@@ -76,7 +87,9 @@ def test_relay_completes_under_50ms_when_kender_down() -> None:
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     assert winner == "vllm"
     assert result == VALID_TRIAGE
-    assert elapsed_ms < 50.0, f"relay took {elapsed_ms:.1f}ms; expected < 50ms (fast socket gate)"
+    assert (
+        elapsed_ms < 50.0
+    ), f"relay took {elapsed_ms:.1f}ms; expected < 50ms (fast socket gate)"
 
 
 def test_no_60s_timeout_hang_when_kender_shadow() -> None:

@@ -22,23 +22,31 @@ logger = logging.getLogger(__name__)
 
 # ── Schema Constants ──────────────────────────────────────────────────────
 
-_TRAVERSAL_MODES: frozenset[str] = frozenset({"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"})
+_TRAVERSAL_MODES: frozenset[str] = frozenset(
+    {"TOPIC_FIRST", "TIME_FIRST", "STREAM_REPLAY"}
+)
 
-_REQUIRED_VIBE_FIELDS: frozenset[str] = frozenset({"description", "enabled", "default_domain"})
+_REQUIRED_VIBE_FIELDS: frozenset[str] = frozenset(
+    {"description", "enabled", "default_domain"}
+)
 
-_OPTIONAL_RAG_FIELDS: frozenset[str] = frozenset({
-    "target_domain",
-    "traversal",
-    "allowed_collections",
-    "max_distance",
-})
+_OPTIONAL_RAG_FIELDS: frozenset[str] = frozenset(
+    {
+        "target_domain",
+        "traversal",
+        "allowed_collections",
+        "max_distance",
+    }
+)
 
-_OPTIONAL_VIBE_FIELDS: frozenset[str] = frozenset({
-    "importance",
-    "importance_floor",
-    "interest_boost",
-    "examples",
-})
+_OPTIONAL_VIBE_FIELDS: frozenset[str] = frozenset(
+    {
+        "importance",
+        "importance_floor",
+        "interest_boost",
+        "examples",
+    }
+)
 
 
 class TriagePolicyError(Exception):
@@ -68,7 +76,10 @@ class TriagePolicyLoader:
         else:
             rel = Path(self._DEFAULT_RELATIVE_PATH)
             if not rel.exists():
-                fallback = Path(__file__).resolve().parent.parent.parent / self._DEFAULT_RELATIVE_PATH
+                fallback = (
+                    Path(__file__).resolve().parent.parent.parent
+                    / self._DEFAULT_RELATIVE_PATH
+                )
                 if fallback.exists():
                     rel = fallback
             self._policy_path = rel
@@ -117,7 +128,8 @@ class TriagePolicyLoader:
         errors = self.validate_policy_schema(raw)
         if errors:
             raise TriagePolicyError(
-                f"Schema validation failed for {target}:\n" + "\n".join(f"  - {e}" for e in errors)
+                f"Schema validation failed for {target}:\n"
+                + "\n".join(f"  - {e}" for e in errors)
             )
 
         policy = raw
@@ -156,7 +168,8 @@ class TriagePolicyLoader:
 
         vibes = self._policy.get("vibes", {})
         return sorted(
-            name for name, rule in vibes.items()
+            name
+            for name, rule in vibes.items()
             if isinstance(rule, dict) and rule.get("enabled", False)
         )
 
@@ -233,7 +246,9 @@ class TriagePolicyLoader:
                     if not isinstance(val, (int, float)):
                         errors.append(f"Vibe '{name}' '{s_field}' must be numeric")
                     elif not (0.0 <= float(val) <= 1.0):
-                        errors.append(f"Vibe '{name}' '{s_field}' must be in [0.0, 1.0]")
+                        errors.append(
+                            f"Vibe '{name}' '{s_field}' must be in [0.0, 1.0]"
+                        )
 
             # RAG validation (optional)
             rag = rule.get("rag")
@@ -251,7 +266,9 @@ class TriagePolicyLoader:
 
                 allowed = rag.get("allowed_collections")
                 if allowed is not None and not isinstance(allowed, list):
-                    errors.append(f"Vibe '{name}' 'rag.allowed_collections' must be a list")
+                    errors.append(
+                        f"Vibe '{name}' 'rag.allowed_collections' must be a list"
+                    )
 
                 max_dist = rag.get("max_distance")
                 if max_dist is not None:

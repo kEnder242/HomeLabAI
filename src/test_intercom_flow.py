@@ -1,6 +1,8 @@
 import asyncio
-import websockets
 import json
+
+import websockets
+
 
 async def test():
     uri = "ws://localhost:8765"
@@ -8,7 +10,11 @@ async def test():
     try:
         async with websockets.connect(uri) as ws:
             # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "3.4.0", "client": "test_agent"}))
+            await ws.send(
+                json.dumps(
+                    {"type": "handshake", "version": "3.4.0", "client": "test_agent"}
+                )
+            )
             await asyncio.sleep(2)
 
             # 2. Send query
@@ -32,13 +38,16 @@ async def test():
                     elif data.get("type") == "debug":
                         print(f"DEBUG: {data.get('event')} - {data.get('data')}")
                     elif data.get("type") == "status":
-                        print(f"STATUS: {data.get('state')} - {data.get('message', '')}")
+                        print(
+                            f"STATUS: {data.get('state')} - {data.get('message', '')}"
+                        )
 
                 except asyncio.TimeoutError:
                     print("\n❌ Timeout waiting for Brain response.")
                     break
     except Exception as e:
         print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test())

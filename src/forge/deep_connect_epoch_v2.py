@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Deep-Connect Epoch v2 (Stage 1: Raw Capture)
@@ -14,11 +13,12 @@ This script performs the "Capture" phase:
 """
 
 import asyncio
+import glob
 import json
 import logging
-import glob
 import re
 from pathlib import Path
+
 import websockets
 
 # --- Configuration ---
@@ -73,20 +73,17 @@ async def call_lab_node_raw(prompt):
             await websocket.recv()
 
             # 2. Send Extraction Query (Directed to Lab Node)
-            message = {
-                "type": "text_input",
-                "content": f"[ARCHIVE_EXTRACT]: {prompt}"
-            }
+            message = {"type": "text_input", "content": f"[ARCHIVE_EXTRACT]: {prompt}"}
             await websocket.send(json.dumps(message))
-            
+
             # 3. Collect Response
-            for _ in range(10): # Increased loop to catch later Brain results
+            for _ in range(10):  # Increased loop to catch later Brain results
                 try:
                     resp = await asyncio.wait_for(websocket.recv(), timeout=60)
                     data = json.loads(resp)
                     source = data.get("brain_source", "")
                     text = data.get("brain", "")
-                    
+
                     # Accept result from either Hemisphere (Brain or Lab)
                     if ("Lab" in source or "Brain" in source) and "Result" in source:
                         return text
@@ -103,7 +100,7 @@ async def main(limit=None):
     logging.info("Starting Deep-Connect Stage 1 (Capture)...")
     processed_count = 0
     RAW_STAGE_1_FILE.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Ensure buffer exists
     if not RAW_STAGE_1_FILE.exists():
         RAW_STAGE_1_FILE.touch()
@@ -125,15 +122,17 @@ async def main(limit=None):
 
         for gem in gems:
             summary = gem.get("summary")
-            
+
             # Robust Year Extraction
             filename = Path(file_path).name
-            year_match = re.search(r'(20\d\d)', filename)
-            log_key = gem.get("log_file") or (year_match.group(1) if year_match else None)
-            
+            year_match = re.search(r"(20\d\d)", filename)
+            log_key = gem.get("log_file") or (
+                year_match.group(1) if year_match else None
+            )
+
             if not summary or not log_key:
                 continue
-            
+
             log_file_path = LOG_MAP.get(str(log_key))
             if not log_file_path:
                 continue
@@ -147,7 +146,7 @@ async def main(limit=None):
             # --- THE CAPTURE ---
             logging.info(f"Querying Lab Node for: {summary[:50]}...")
             raw_response = await call_lab_node_raw(prompt)
-            await asyncio.sleep(30) # Wait for VRAM/Hub to settle
+            await asyncio.sleep(30)  # Wait for VRAM/Hub to settle
 
             if raw_response:
                 processed_count += 1
@@ -156,13 +155,13 @@ async def main(limit=None):
                     "raw_llm_output": raw_response,
                     "source_file": file_path,
                     "log_file": log_file_path,
-                    "timestamp": Path(file_path).stat().st_mtime
+                    "timestamp": Path(file_path).stat().st_mtime,
                 }
                 with open(RAW_STAGE_1_FILE, "a") as f:
                     f.write(json.dumps(entry) + "\n")
-                
+
                 logging.info(f"Captured [{processed_count}] raw blocks.")
-                
+
                 if limit and processed_count >= limit:
                     logging.info(f"Limit reached ({limit}). Stopping Stage 1.")
                     return
@@ -172,8 +171,9 @@ async def main(limit=None):
 
 if __name__ == "__main__":
     import sys
+
     limit_val = None
     for arg in sys.argv:
         if arg.startswith("--limit="):
-            limit_val = int(arg.split('=')[1])
+            limit_val = int(arg.split("=")[1])
     asyncio.run(main(limit=limit_val))

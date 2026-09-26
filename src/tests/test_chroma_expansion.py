@@ -60,8 +60,7 @@ def main() -> None:
     # Check era metadata on career_ledger
     career_sample = career_ledger.get(limit=10)
     has_era = any(
-        md.get("era") not in (None, "")
-        for md in (career_sample.get("metadatas") or [])
+        md.get("era") not in (None, "") for md in (career_sample.get("metadatas") or [])
     )
     _check(has_era, "at least one career entry has 'era' metadata", critical=True)
 

@@ -1,19 +1,20 @@
 import asyncio
-import websockets
+import datetime
 import json
 import logging
+import os
+import time
+
+import aiohttp
+import chromadb
+import nemo.collections.asr as nemo_asr
 import numpy as np
 import torch
-import nemo.collections.asr as nemo_asr
-import time
-import datetime
-import aiohttp
-import os
-import chromadb
+import websockets
 from chromadb.utils import embedding_functions
+from dedup_utils import get_new_text
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from dedup_utils import get_new_text
 
 # Configuration
 SAMPLE_RATE = 16000
@@ -32,7 +33,6 @@ PINKY_SYSTEM_PROMPT = (
     "You are the Chairman of the Board. You manage the 'Floor' and the 'Vibe'. "
     "Characteristics: Intuitive, Emotional, Creative, Aware. "
     "Interjections: 'Narf!', 'Poit!', 'Egad!', 'Zort!'. "
-
     "YOUR ROLE: "
     "1. Facilitate the conversation. "
     "2. If a request needs deep logic, coding, or math, acknowledge it cheerfully and say you'll ask the Brain. "
@@ -55,12 +55,10 @@ OVERLAP_SAMPLES = int(SAMPLE_RATE * OVERLAP_DURATION)
 os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("logs/conversation.log"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("logs/conversation.log"), logging.StreamHandler()],
 )
+
 
 class Transcriber:
     def __init__(self, on_speech_start=None):
@@ -86,8 +84,9 @@ class Transcriber:
 
     @torch.no_grad()
     def transcribe(self, audio_data):
-        rms = np.sqrt(np.mean(audio_data.astype(np.float32)**2))
-        if rms < SILENCE_THRESHOLD: return None
+        rms = np.sqrt(np.mean(audio_data.astype(np.float32) ** 2))
+        if rms < SILENCE_THRESHOLD:
+            return None
 
         # Wake Signal
         if not self.wake_signal_sent:
@@ -101,12 +100,15 @@ class Transcriber:
         try:
             encoded, encoded_len = self.model.forward(
                 input_signal=audio_signal,
-                input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda")
+                input_signal_length=torch.tensor([len(audio_signal[0])]).to("cuda"),
             )
-            current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(encoded, encoded_len)
+            current_hypotheses = self.model.decoding.rnnt_decoder_predictions_tensor(
+                encoded, encoded_len
+            )
             if current_hypotheses and len(current_hypotheses) > 0:
                 raw_text = current_hypotheses[0].text
-                if not raw_text: return None
+                if not raw_text:
+                    return None
                 incremental_text = get_new_text(self.full_transcript, raw_text)
                 if incremental_text:
                     self.full_transcript += " " + incremental_text
@@ -116,6 +118,7 @@ class Transcriber:
         except Exception as e:
             logging.error(f"Inference error: {e}")
         return None
+
 
 class PinkyMCPHost:
     def __init__(self):
@@ -156,67 +159,100 @@ class PinkyMCPHost:
         # RAG Search
         context = ""
         try:
-            results = self.transcriber.collection.query(query_texts=[query], n_results=2)
-            if results and results['documents']:
-                docs = results['documents'][0]
+            results = self.transcriber.collection.query(
+                query_texts=[query], n_results=2
+            )
+            if results and results["documents"]:
+                docs = results["documents"][0]
                 context = "\n".join(docs)
         except Exception as e:
             logging.error(f"RAG Error: {e}")
 
         # Decide: Pinky vs Brain
-        needs_brain = any(word in query.lower() for word in ["code", "script", "plan", "complex", "math", "why"])
+        needs_brain = any(
+            word in query.lower()
+            for word in ["code", "script", "plan", "complex", "math", "why"]
+        )
 
         if needs_brain:
             logging.info("🧠 Escalating to THE BRAIN via MCP Tool Call.")
-            await websocket.send(json.dumps({
-                "brain": "Narf! That's a brain-teaser! Let me ask the Brain! *Poit!*",
-                "brain_source": "Pinky (Escalation)"
-            }))
+            await websocket.send(
+                json.dumps(
+                    {
+                        "brain": "Narf! That's a brain-teaser! Let me ask the Brain! *Poit!*",
+                        "brain_source": "Pinky (Escalation)",
+                    }
+                )
+            )
 
             # Call Brain MCP Tool
             if self.brain_session:
-                await asyncio.sleep(2.0) # Safety buffer for session readiness
+                await asyncio.sleep(2.0)  # Safety buffer for session readiness
                 try:
                     result = await asyncio.wait_for(
-                        self.brain_session.call_tool("deep_think", arguments={"query": query, "context": context}),
-                        timeout=300.0
+                        self.brain_session.call_tool(
+                            "deep_think", arguments={"query": query, "context": context}
+                        ),
+                        timeout=300.0,
                     )
                     response_text = result.content[0].text
                     logging.info(f"[BRAIN] {response_text}")
-                    await websocket.send(json.dumps({
-                        "brain": response_text,
-                        "brain_source": "The Brain (MCP)"
-                    }))
+                    await websocket.send(
+                        json.dumps(
+                            {"brain": response_text, "brain_source": "The Brain (MCP)"}
+                        )
+                    )
                 except Exception as e:
                     logging.error(f"Brain Tool Call Failed: {e}")
-                    await websocket.send(json.dumps({"brain": f"The Brain is being difficult: {e}", "brain_source": "Pinky"}))
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "brain": f"The Brain is being difficult: {e}",
+                                "brain_source": "Pinky",
+                            }
+                        )
+                    )
             else:
-                await websocket.send(json.dumps({"brain": "The Brain is missing! Zort!", "brain_source": "Pinky"}))
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "brain": "The Brain is missing! Zort!",
+                            "brain_source": "Pinky",
+                        }
+                    )
+                )
         else:
             # Pinky handles it
             logging.info("🐹 Pinky is handling this locally.")
             prompt = f"{PINKY_SYSTEM_PROMPT}\nContext: {context}\nUser: {query}"
             response = await self.generate_pinky(prompt)
             logging.info(f"[PINKY] {response}")
-            await websocket.send(json.dumps({
-                "brain": response,
-                "brain_source": "Pinky (Local)"
-            }))
+            await websocket.send(
+                json.dumps({"brain": response, "brain_source": "Pinky (Local)"})
+            )
 
     async def generate_pinky(self, prompt):
         try:
             async with aiohttp.ClientSession() as session:
-                payload = {"model": PINKY_MODEL, "prompt": prompt, "stream": False, "options": {"num_predict": 200}}
+                payload = {
+                    "model": PINKY_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"num_predict": 200},
+                }
                 async with session.post(PINKY_URL, json=payload, timeout=30) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         return data.get("response", "Narf!")
                     else:
-                        logging.error(f"Pinky API Error: {resp.status} - {await resp.text()}")
+                        logging.error(
+                            f"Pinky API Error: {resp.status} - {await resp.text()}"
+                        )
         except Exception as e:
             logging.error(f"Pinky Connection Failed: {e}")
             return f"Egad! Pinky failed: {e}"
         return "Narf! (Error)"
+
 
 async def audio_handler(websocket, host):
     logging.info("Client connected!")
@@ -245,10 +281,12 @@ async def audio_handler(websocket, host):
                 if text:
                     logging.info(f"Tx: '{text}'")
                     await websocket.send(json.dumps({"text": text}))
-                audio_buffer = audio_buffer[BUFFER_SAMPLES - OVERLAP_SAMPLES:]
+                audio_buffer = audio_buffer[BUFFER_SAMPLES - OVERLAP_SAMPLES :]
 
             # Check turn end
-            if host.transcriber.turn_pending and (time.time() - host.transcriber.last_speech_time > SILENCE_TIMEOUT):
+            if host.transcriber.turn_pending and (
+                time.time() - host.transcriber.last_speech_time > SILENCE_TIMEOUT
+            ):
                 host.transcriber.turn_pending = False
                 query = host.transcriber.full_transcript.strip()
                 host.transcriber.full_transcript = ""
@@ -257,6 +295,7 @@ async def audio_handler(websocket, host):
 
     except Exception as e:
         logging.info(f"Handler exiting: {e}")
+
 
 async def main():
     host = PinkyMCPHost()
@@ -276,8 +315,11 @@ async def main():
             host.brain_session = session
             logging.info("✅ Brain MCP Session Initialized.")
 
-            async with websockets.serve(lambda ws: audio_handler(ws, host), "0.0.0.0", PORT):
-                await asyncio.Future() # run forever
+            async with websockets.serve(
+                lambda ws: audio_handler(ws, host), "0.0.0.0", PORT
+            ):
+                await asyncio.Future()  # run forever
+
 
 if __name__ == "__main__":
     asyncio.run(main())

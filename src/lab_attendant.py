@@ -1,19 +1,22 @@
 # [FEAT-035] Zombie Port Recovery
-import os
-import logging
 import asyncio
+import logging
+import os
 import subprocess
 import time
+
 from aiohttp import web
 
 # Resolve repo root for git operations
 _REPO_ROOT = None
+
+
 def get_repo_root():
     """Return absolute path to repository root, caching result."""
     global _REPO_ROOT
     if _REPO_ROOT is None:
         current = os.path.abspath(__file__)
-        while not os.path.exists(os.path.join(current, '.git')):
+        while not os.path.exists(os.path.join(current, ".git")):
             parent = os.path.dirname(current)
             if parent == current:
                 _REPO_ROOT = os.path.dirname(current)
@@ -23,21 +26,28 @@ def get_repo_root():
             _REPO_ROOT = current
     return _REPO_ROOT
 
+
 def get_boot_commit() -> str:
     """Get short git commit hash (7 chars), fallback to 'unknown'."""
     try:
         root = get_repo_root()
-        result = subprocess.run(['git', 'rev-parse', '--short=7', 'HEAD'],
-                               capture_output=True, text=True, cwd=root)
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=root,
+        )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except Exception:
         pass
     return "unknown"
 
+
 def get_boot_timestamp() -> int:
     """Get boot timestamp as epoch integer."""
     return int(time.time())
+
 
 async def version_handler(request):
     """GET /version endpoint returning boot metadata."""
@@ -46,21 +56,27 @@ async def version_handler(request):
     payload = {
         "boot_commit": commit,
         "boot_timestamp": timestamp,
-        "service": "lab-attendant"
+        "service": "lab-attendant",
     }
     return web.json_response(payload)
 
+
 app = web.Application()
-app.add_routes([
-    web.get('/version', version_handler),
-])
+app.add_routes(
+    [
+        web.get("/version", version_handler),
+    ]
+)
+
 
 # [FEAT-460] Build Trailer Render Process Cleanup Trap
 async def cleanup(app):
     """Cleanup on shutdown."""
     logging.info("Lab Attendant shutting down")
 
+
 app.on_cleanup.append(cleanup)
+
 
 async def start_server(host: str = "0.0.0.0", port: int = 8765) -> web.AppRunner:
     """Start aiohttp server with graceful shutdown support."""
@@ -70,6 +86,7 @@ async def start_server(host: str = "0.0.0.0", port: int = 8765) -> web.AppRunner
     await site.start()
     logging.info(f"Lab Attendant started on {host}:{port}")
     return runner
+
 
 async def main():
     """Main entry point."""
@@ -82,6 +99,7 @@ async def main():
         logging.info("Shutdown requested")
     finally:
         await runner.cleanup()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

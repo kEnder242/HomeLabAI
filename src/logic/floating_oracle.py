@@ -20,8 +20,6 @@ Class 1 Design: zero third-party dependencies beyond the Python standard library
 import json
 import os
 import re
-from typing import Optional
-
 
 # ─── Default Paths ────────────────────────────────────────────────────────────
 
@@ -89,7 +87,9 @@ def is_shallow_turn(query: str) -> bool:
 
     normalized = query.strip()
     # Strip client-side transcript tags like [ME] or [USER]
-    normalized = re.sub(r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE).strip()
+    normalized = re.sub(
+        r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE
+    ).strip()
 
     # Questions ending with "?" are generally NOT shallow turns unless they
     # match a status-check pattern (handled below).
@@ -103,7 +103,7 @@ def is_shallow_turn(query: str) -> bool:
 # ─── Harvesting Methods ──────────────────────────────────────────────────────
 
 
-def harvest_validation_scar(ledger_path: Optional[str] = None) -> Optional[str]:
+def harvest_validation_scar(ledger_path: str | None = None) -> str | None:
     """
     [FEAT-458] Harvest the most recent FAIL entry from validation_ledger.jsonl.
 
@@ -147,14 +147,14 @@ def harvest_validation_scar(ledger_path: Optional[str] = None) -> Optional[str]:
 
         return (
             f"[VALIDATION_SCAR]: Recent FAIL at {timestamp} — "
-            f"query: \"{query}\" | ground truth: \"{ground_truth}\""
+            f'query: "{query}" | ground truth: "{ground_truth}"'
         )
 
     except Exception:
         return None
 
 
-def harvest_mass_scan_progress(state_path: Optional[str] = None) -> Optional[str]:
+def harvest_mass_scan_progress(state_path: str | None = None) -> str | None:
     """
     [FEAT-458] Harvest a recent milestone from scan_state.json or chunk_state.json.
 
@@ -200,7 +200,9 @@ def harvest_mass_scan_progress(state_path: Optional[str] = None) -> Optional[str
         )
         if milestone:
             total = data.get("total_chunks") or data.get("total") or data.get("count")
-            completed = data.get("completed") or data.get("processed") or data.get("done")
+            completed = (
+                data.get("completed") or data.get("processed") or data.get("done")
+            )
 
             parts = [f"[SCAN_PROGRESS]: {milestone}"]
             if total is not None and completed is not None:
@@ -213,7 +215,9 @@ def harvest_mass_scan_progress(state_path: Optional[str] = None) -> Optional[str
         # If no milestone key, but file has meaningful content, report it
         if data:
             # Pick the first non-timestamp key as a summary
-            keys = [k for k in data if k not in ("timestamp", "updated_at", "last_updated")]
+            keys = [
+                k for k in data if k not in ("timestamp", "updated_at", "last_updated")
+            ]
             if keys:
                 first_val = data[keys[0]]
                 if isinstance(first_val, str):
@@ -222,7 +226,7 @@ def harvest_mass_scan_progress(state_path: Optional[str] = None) -> Optional[str
     return None
 
 
-def harvest_subconscious_dream(dialogue_path: Optional[str] = None) -> Optional[str]:
+def harvest_subconscious_dream(dialogue_path: str | None = None) -> str | None:
     """
     [FEAT-458] Harvest the latest synthesis from nightly_dialogue.json.
 
@@ -270,18 +274,16 @@ def harvest_subconscious_dream(dialogue_path: Optional[str] = None) -> Optional[
     if len(content) > 300:
         snippet += "..."
 
-    return (
-        f"[SUBCONSCIOUS_DREAM]: {topic} ({timestamp}) — {snippet}"
-    )
+    return f"[SUBCONSCIOUS_DREAM]: {topic} ({timestamp}) — {snippet}"
 
 
 # ─── Floating Candidate Pool ────────────────────────────────────────────────
 
 
 def build_floating_candidate_pool(
-    validation_scar: Optional[str] = None,
-    scan_progress: Optional[str] = None,
-    dream_synthesis: Optional[str] = None,
+    validation_scar: str | None = None,
+    scan_progress: str | None = None,
+    dream_synthesis: str | None = None,
     auto_harvest: bool = False,
 ) -> str:
     """
@@ -304,9 +306,21 @@ def build_floating_candidate_pool(
     """
     candidates = []
 
-    scar = validation_scar if validation_scar is not None else (harvest_validation_scar() if auto_harvest else None)
-    prog = scan_progress if scan_progress is not None else (harvest_mass_scan_progress() if auto_harvest else None)
-    dream = dream_synthesis if dream_synthesis is not None else (harvest_subconscious_dream() if auto_harvest else None)
+    scar = (
+        validation_scar
+        if validation_scar is not None
+        else (harvest_validation_scar() if auto_harvest else None)
+    )
+    prog = (
+        scan_progress
+        if scan_progress is not None
+        else (harvest_mass_scan_progress() if auto_harvest else None)
+    )
+    dream = (
+        dream_synthesis
+        if dream_synthesis is not None
+        else (harvest_subconscious_dream() if auto_harvest else None)
+    )
 
     if scar:
         candidates.append(scar)
@@ -323,16 +337,8 @@ def build_floating_candidate_pool(
     )
 
     if not candidates:
-        return (
-            f"{header}\n"
-            f"No ambient candidates available.\n"
-            f"{instruction}"
-        )
+        return f"{header}\n" f"No ambient candidates available.\n" f"{instruction}"
 
     pool_lines = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(candidates))
 
-    return (
-        f"{header}\n"
-        f"{pool_lines}\n"
-        f"{instruction}"
-    )
+    return f"{header}\n" f"{pool_lines}\n" f"{instruction}"

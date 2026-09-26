@@ -18,11 +18,12 @@ import re
 from enum import Enum
 from typing import Any
 
-
 # ─── Traversal Mode Enum ────────────────────────────────────────────────────
+
 
 class TraversalMode(str, Enum):
     """Supported traversal modes for bidirectional RAG routing."""
+
     TOPIC_FIRST = "TOPIC_FIRST"
     TIME_FIRST = "TIME_FIRST"
     STREAM_REPLAY = "STREAM_REPLAY"
@@ -39,7 +40,13 @@ _MODE_COLLECTIONS: dict[TraversalMode, list[str]] = {
 
 # Keyword families for TOPIC_FIRST synthesis
 _TOPIC_KEYWORD_FAMILIES: dict[str, list[str]] = {
-    "silicon": ["silicon", "validation", "silicon_spec", "silicon_telemetry", "exp_tlm"],
+    "silicon": [
+        "silicon",
+        "validation",
+        "silicon_spec",
+        "silicon_telemetry",
+        "exp_tlm",
+    ],
     "protocol": ["protocol", "bkm", "best_known_method", "sre", "playbook"],
     "code": ["code", "implementation", "module", "node", "engine", "adapter"],
     "architecture": ["architecture", "system", "design", "topology", "wiring"],
@@ -50,10 +57,13 @@ _TOPIC_KEYWORD_FAMILIES: dict[str, list[str]] = {
 # Temporal anchor patterns
 _YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
 _SPRINT_PATTERN = re.compile(r"(?i)\bsprint\s+(\d+)\b")
-_ERA_PATTERN = re.compile(r"(?i)\b(early|mid|late|recent|current)\s*(career|phase|era|period)\b")
+_ERA_PATTERN = re.compile(
+    r"(?i)\b(early|mid|late|recent|current)\s*(career|phase|era|period)\b"
+)
 
 
 # ─── Temporal Extraction ────────────────────────────────────────────────────
+
 
 def extract_temporal_anchors(query: str) -> dict[str, Any]:
     """
@@ -88,8 +98,8 @@ def extract_temporal_anchors(query: str) -> dict[str, Any]:
     }
 
 
-
 # ─── Query Formatting ───────────────────────────────────────────────────────
+
 
 def _prioritize_topic_keywords(query: str) -> list[str]:
     """
@@ -106,14 +116,22 @@ def _prioritize_topic_keywords(query: str) -> list[str]:
                 prioritized.append((family, kw))
 
     # Silicon and protocol get highest priority
-    priority_order = {"silicon": 0, "protocol": 1, "code": 2, "forensic": 3,
-                      "architecture": 4, "career": 5}
+    priority_order = {
+        "silicon": 0,
+        "protocol": 1,
+        "code": 2,
+        "forensic": 3,
+        "architecture": 4,
+        "career": 5,
+    }
     prioritized.sort(key=lambda x: priority_order.get(x[0], 99))
 
     return [kw for _, kw in prioritized]
 
 
-def _build_topic_first_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def _build_topic_first_query(
+    query: str, metadata: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Build a TOPIC_FIRST traversal query focusing on protocol/silicon/code keywords.
 
@@ -141,7 +159,9 @@ def _build_topic_first_query(query: str, metadata: dict[str, Any] | None = None)
     }
 
 
-def _build_time_first_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def _build_time_first_query(
+    query: str, metadata: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Build a TIME_FIRST traversal query extracting temporal year anchors.
 
@@ -188,7 +208,9 @@ def _build_time_first_query(query: str, metadata: dict[str, Any] | None = None) 
     }
 
 
-def _build_stream_replay_query(query: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def _build_stream_replay_query(
+    query: str, metadata: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Build a STREAM_REPLAY traversal query targeting recent session/dream history.
 
@@ -208,7 +230,6 @@ def _build_stream_replay_query(query: str, metadata: dict[str, Any] | None = Non
     }
 
 
-
 # ─── Mode Dispatch Table ────────────────────────────────────────────────────
 
 _MODE_BUILDERS: dict[TraversalMode, Any] = {
@@ -219,6 +240,7 @@ _MODE_BUILDERS: dict[TraversalMode, Any] = {
 
 
 # ─── Public API ─────────────────────────────────────────────────────────────
+
 
 def format_traversal_query(
     query: str,
@@ -254,7 +276,11 @@ def format_traversal_query(
         return {
             "query_text": query or "",
             "enriched_terms": [],
-            "mode": traversal_mode.value if isinstance(traversal_mode, TraversalMode) else str(traversal_mode),
+            "mode": (
+                traversal_mode.value
+                if isinstance(traversal_mode, TraversalMode)
+                else str(traversal_mode)
+            ),
             "collections": [],
             "temporal_bounds": None,
         }
@@ -352,6 +378,7 @@ def resolve_collection_scope(
 
 
 # ─── Convenience Aliases ────────────────────────────────────────────────────
+
 
 def get_temporal_bounds(query: str) -> dict[str, Any] | None:
     """

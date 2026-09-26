@@ -10,35 +10,35 @@ Verifies the full end-to-end cascade across all Sprint 61 components:
   6. Foyer Router Deep Thought Handshake routing to crosstalk
 """
 
-import pytest
 import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
 from logic.triage_engine import (
     SpeakerRegistry,
+    classify_vibe_and_domain,
     extract_latest_user_query,
     format_speaker_history,
-    scrub_hyde_vector,
     is_meta_lexicon,
-    classify_vibe_and_domain,
+    scrub_hyde_vector,
 )
 from nodes.lab_dna_router import (
-    get_collection_priorities,
     filter_candidate_context,
+    get_collection_priorities,
 )
 from nodes.pinky_critic_persona import (
+    CriticResult,
     build_critic_prompt,
-    parse_critic_payload,
     format_chat_delivery,
     format_crosstalk_telemetry,
-    CriticResult,
+    parse_critic_payload,
 )
 from src.v5.foyer.router import FoyerRouter
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. SpeakerRegistry & Demarcation Integration Tests (FEAT-468, FEAT-471)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestSpeakerDemarcationIntegration:
     """Verifies SpeakerRegistry strips nested / redundant speaker prefixes dynamically."""
@@ -59,7 +59,11 @@ class TestSpeakerDemarcationIntegration:
         history = [
             {"role": "user", "name": "Jason", "content": "How is the lab running?"},
             {"role": "assistant", "name": "Brain", "content": "All nodes nominal."},
-            {"role": "user", "name": "Jason", "content": "Check the audio pipeline status."}
+            {
+                "role": "user",
+                "name": "Jason",
+                "content": "Check the audio pipeline status.",
+            },
         ]
         formatted = format_speaker_history(history)
         assert "[USER: Jason] How is the lab running?" in formatted
@@ -73,6 +77,7 @@ class TestSpeakerDemarcationIntegration:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. Meta-Grounding & Negative RAG Gateway Integration (FEAT-467, FEAT-469)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestMetaGroundingAndNegativeRAG:
     """Verifies meta queries trigger DNA routing and Zero Context gate."""
@@ -88,7 +93,7 @@ class TestMetaGroundingAndNegativeRAG:
         initial_triage = {
             "vibe": "TECHNICAL",
             "domain": "standard",
-            "inferred_intent": "inspecting pipeline"
+            "inferred_intent": "inspecting pipeline",
         }
         vibe, domain = classify_vibe_and_domain(query, initial_triage)
         assert vibe == "META"
@@ -104,19 +109,48 @@ class TestMetaGroundingAndNegativeRAG:
     def test_zero_context_gate_rejection(self):
         # Best candidate distance > 0.50 -> empty context returned
         candidates = [
-            {"collection": "feature_dna", "distance": 0.65, "metadata": {"feat_id": "FEAT-469"}, "document": "DNA"},
-            {"collection": "lab_infrastructure", "distance": 0.70, "metadata": {}, "document": "Infra"}
+            {
+                "collection": "feature_dna",
+                "distance": 0.65,
+                "metadata": {"feat_id": "FEAT-469"},
+                "document": "DNA",
+            },
+            {
+                "collection": "lab_infrastructure",
+                "distance": 0.70,
+                "metadata": {},
+                "document": "Infra",
+            },
         ]
-        filtered = filter_candidate_context(candidates, vibe="META", domain="lab_internal", max_distance=0.50)
+        filtered = filter_candidate_context(
+            candidates, vibe="META", domain="lab_internal", max_distance=0.50
+        )
         assert filtered == []
 
     def test_zero_context_gate_acceptance_and_suppression(self):
         candidates = [
-            {"collection": "feature_dna", "distance": 0.32, "metadata": {"feat_id": "FEAT-469"}, "document": "DNA routing"},
-            {"collection": "career_ledger", "distance": 0.28, "metadata": {"era": "2015"}, "document": "Past resume"},
-            {"collection": "lab_infrastructure", "distance": 0.40, "metadata": {"component": "vllm"}, "document": "vLLM engine"}
+            {
+                "collection": "feature_dna",
+                "distance": 0.32,
+                "metadata": {"feat_id": "FEAT-469"},
+                "document": "DNA routing",
+            },
+            {
+                "collection": "career_ledger",
+                "distance": 0.28,
+                "metadata": {"era": "2015"},
+                "document": "Past resume",
+            },
+            {
+                "collection": "lab_infrastructure",
+                "distance": 0.40,
+                "metadata": {"component": "vllm"},
+                "document": "vLLM engine",
+            },
         ]
-        filtered = filter_candidate_context(candidates, vibe="META", domain="lab_internal", max_distance=0.50)
+        filtered = filter_candidate_context(
+            candidates, vibe="META", domain="lab_internal", max_distance=0.50
+        )
         # career_ledger is suppressed in META vibe, feature_dna and lab_infrastructure survive
         assert len(filtered) == 2
         collections = [c["collection"] for c in filtered]
@@ -141,6 +175,7 @@ class TestMetaGroundingAndNegativeRAG:
 # 3. Pinky Critic Persona Satellite Integration (FEAT-470)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestPinkyCriticPersonaIntegration:
     """Verifies critic prompt generation, JSON resilience, and chat delivery formatting."""
 
@@ -148,7 +183,7 @@ class TestPinkyCriticPersonaIntegration:
         prompt = build_critic_prompt(
             user_query="How do we optimize GPU KV cache?",
             technical_summary="AWQ 4-bit quantization with vLLM PagedAttention allocation.",
-            persona_name="Pinky"
+            persona_name="Pinky",
         )
         assert "Pinky" in prompt
         assert "AWQ 4-bit" in prompt
@@ -177,7 +212,9 @@ class TestPinkyCriticPersonaIntegration:
 
     def test_format_crosstalk_telemetry(self):
         payload = {"score": 5, "reasoning": "Sound", "slop_found": False}
-        telemetry = format_crosstalk_telemetry(source="Pinky", target="Brain", payload=payload)
+        telemetry = format_crosstalk_telemetry(
+            source="Pinky", target="Brain", payload=payload
+        )
         assert telemetry["source"] == "Pinky"
         assert telemetry["target"] == "Brain"
         assert telemetry["payload"]["score"] == 5
@@ -186,6 +223,7 @@ class TestPinkyCriticPersonaIntegration:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. FoyerRouter Preamble Stream Routing
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestFoyerRouterIntegration:
     """Verifies operational handshakes route to crosstalk stream."""
@@ -198,13 +236,17 @@ class TestFoyerRouterIntegration:
         broadcast_mock = AsyncMock()
         router.broadcast = broadcast_mock
 
-        await router._spawn_deep_thought_preamble("Hello", source="WS_test", request_id="req_123")
+        await router._spawn_deep_thought_preamble(
+            "Hello", source="WS_test", request_id="req_123"
+        )
         # Give the background task a tick to run
         await asyncio.sleep(0.05)
 
         # Verify broadcast was called with type="crosstalk"
         assert broadcast_mock.called
-        calls = [c[0][0] for c in broadcast_mock.call_args_list if isinstance(c[0][0], dict)]
+        calls = [
+            c[0][0] for c in broadcast_mock.call_args_list if isinstance(c[0][0], dict)
+        ]
         crosstalk_calls = [c for c in calls if c.get("type") == "crosstalk"]
         assert len(crosstalk_calls) > 0
         assert any(c.get("brain_source") == "Deep Thought" for c in crosstalk_calls)

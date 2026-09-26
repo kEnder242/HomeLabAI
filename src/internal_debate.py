@@ -1,6 +1,7 @@
-import logging
 import datetime
+import logging
 import os
+
 from infra.atomic_io import atomic_write_json
 
 
@@ -45,7 +46,7 @@ class InternalDebate:
             )
             try:
                 res = await self.brain.call_tool(
-# [FEAT-091] Tiered Thinking (Shallow Mode)
+                    # [FEAT-091] Tiered Thinking (Shallow Mode)
                     "deep_think",
                     arguments={
                         "task": brain_prompt,

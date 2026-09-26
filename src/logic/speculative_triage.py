@@ -6,7 +6,7 @@ import socket
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 # [FEAT-583] RDNA HyDE bypass probe: sub-15ms CPU FastEmbed vs ChromaDB port 8001
 from logic.vector_pre_triage import probe_clara_dna_sync
@@ -17,10 +17,13 @@ KENDER_HOST = "192.168.1.26"
 KENDER_PORT = 11434
 
 # [FEAT-586] Path Anchor: resolve config from this module (HomeLabAI/src/logic/ -> HomeLabAI/config/)
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "infrastructure.json"
+CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "config" / "infrastructure.json"
+)
 
 # [FEAT-586] Valid values for the operator-declarable triage engine preference.
 VALID_PREFERRED_ENGINES = ("M5_AIR", "LOCAL_VLLM")
+
 
 def _resolve_config_path() -> Path:
     """[FEAT-586] Locate config/infrastructure.json via Path anchor (module-relative).
@@ -32,6 +35,7 @@ def _resolve_config_path() -> Path:
         return CONFIG_PATH
     legacy = Path(os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json"))
     return legacy if legacy.exists() else CONFIG_PATH
+
 
 def _load_triage_preference() -> str:
     """[FEAT-586] Read the operator's preferred triage engine from infrastructure.json.
@@ -46,12 +50,15 @@ def _load_triage_preference() -> str:
                 pref = json.load(f).get("preferred_triage_engine", "M5_AIR")
             if pref in VALID_PREFERRED_ENGINES:
                 return pref
-            logging.warning(f"[FEAT-586] Unknown preferred_triage_engine '{pref}'; defaulting to M5_AIR.")
+            logging.warning(
+                f"[FEAT-586] Unknown preferred_triage_engine '{pref}'; defaulting to M5_AIR."
+            )
     except Exception as e:
         logging.warning(f"[FEAT-586] Failed to load preferred_triage_engine: {e}")
     return "M5_AIR"
 
-def _load_engine_seats() -> List[Dict[str, Any]]:
+
+def _load_engine_seats() -> list[dict[str, Any]]:
     """[FEAT-531] Load declarative engine seats from config/infrastructure.json."""
     config_path = str(_resolve_config_path())  # [FEAT-586] Path-anchored discovery
     try:
@@ -61,8 +68,10 @@ def _load_engine_seats() -> List[Dict[str, Any]]:
                 if "seats" in data:
                     return data["seats"]
     except Exception as e:
-        logging.warning(f"[SPECULATIVE] Failed to load seats from infrastructure.json: {e}")
-    
+        logging.warning(
+            f"[SPECULATIVE] Failed to load seats from infrastructure.json: {e}"
+        )
+
     # Fallback default seats
     return [
         {
@@ -72,9 +81,13 @@ def _load_engine_seats() -> List[Dict[str, Any]]:
             "port": 8000,
             "protocol": "OPENAI",
             "probe_path": "/v1/chat/completions",
-            "probe_payload": {"model": "mlx-community--Qwen3.5-9B-4bit", "messages": [{"role": "user", "content": "."}], "max_tokens": 1},
+            "probe_payload": {
+                "model": "mlx-community--Qwen3.5-9B-4bit",
+                "messages": [{"role": "user", "content": "."}],
+                "max_tokens": 1,
+            },
             "t_warmed": 0.09,
-            "t_cold": 0.85
+            "t_cold": 0.85,
         },
         {
             "id": "KENDER",
@@ -85,7 +98,7 @@ def _load_engine_seats() -> List[Dict[str, Any]]:
             "probe_path": "/api/tags",
             "probe_payload": None,
             "t_warmed": 0.12,
-            "t_cold": 1.2
+            "t_cold": 1.2,
         },
         {
             "id": "LOCAL",
@@ -96,19 +109,23 @@ def _load_engine_seats() -> List[Dict[str, Any]]:
             "probe_path": "/v1/models",
             "probe_payload": None,
             "t_warmed": 0.045,
-            "t_cold": 0.05
-        }
+            "t_cold": 0.05,
+        },
     ]
+
 
 def _probe_tcp(host: str, port: int, timeout: float = SOCKET_TIMEOUT_S) -> bool:
     """Return True if a TCP connect succeeds within *timeout* seconds."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
-def _probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_PROBE_TIMEOUT_S) -> bool:
+
+def _probe_http(
+    url: str, payload: dict | None = None, timeout: float = API_PROBE_TIMEOUT_S
+) -> bool:
     """Return True if HTTP endpoint returns 200 within *timeout* seconds."""
     try:
         if payload:
@@ -116,8 +133,11 @@ def _probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_P
             req = urllib.request.Request(
                 url,
                 data=data_bytes,
-                headers={"User-Agent": "AcmeLab/5.0", "Content-Type": "application/json"},
-                method="POST"
+                headers={
+                    "User-Agent": "AcmeLab/5.0",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
             )
         else:
             req = urllib.request.Request(url, headers={"User-Agent": "AcmeLab/5.0"})
@@ -126,13 +146,14 @@ def _probe_http(url: str, payload: Optional[dict] = None, timeout: float = API_P
     except Exception:
         return False
 
-def _probe_seat(seat: Dict[str, Any]) -> bool:
+
+def _probe_seat(seat: dict[str, Any]) -> bool:
     """[FEAT-531] Generic declarative seat health probe."""
     host = seat.get("host", "127.0.0.1")
     port = seat.get("port", 80)
     if not _probe_tcp(host, port, timeout=SOCKET_TIMEOUT_S):
         return False
-    
+
     probe_path = seat.get("probe_path", "/v1/models")
     url = f"http://{host}:{port}{probe_path}"
     payload = seat.get("probe_payload")
@@ -140,7 +161,10 @@ def _probe_seat(seat: Dict[str, Any]) -> bool:
     t_probe = 2.0 * seat.get("t_cold", 0.85)
     return _probe_http(url, payload=payload, timeout=t_probe)
 
-def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+
+def resolve_active_deep_thought_target(
+    seats: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """
     [FEAT-531] Declarative Multi-Seat Engine Resolver:
     Iterates through configured engine seats and selects the first active remote engine.
@@ -148,23 +172,26 @@ def resolve_active_deep_thought_target(seats: Optional[List[Dict[str, Any]]] = N
     """
     if seats is None:
         seats = _load_engine_seats()
-    
+
     for seat in seats:
         if seat.get("id") == "LOCAL":
             continue
         if _probe_seat(seat):
             return seat
-            
+
     # Default fallback to LOCAL seat
-    local_seat = next((s for s in seats if s.get("id") == "LOCAL"), {
-        "id": "LOCAL",
-        "name": "LOCAL",
-        "host": "127.0.0.1",
-        "port": 8088,
-        "protocol": "VLLM",
-        "t_warmed": 0.045,
-        "t_cold": 0.05
-    })
+    local_seat = next(
+        (s for s in seats if s.get("id") == "LOCAL"),
+        {
+            "id": "LOCAL",
+            "name": "LOCAL",
+            "host": "127.0.0.1",
+            "port": 8088,
+            "protocol": "VLLM",
+            "t_warmed": 0.045,
+            "t_cold": 0.05,
+        },
+    )
     return local_seat
 
 
@@ -178,12 +205,13 @@ class _EWMALatencyEstimator:
     With zero history (L_t = J_t = 0) the formula degrades to the legacy
     static head-start (2 * t_warmed), preserving the pre-FEAT-586 baseline.
     """
-    ALPHA = 1 / 8.0   # EWMA gain on smoothed latency (Jacobson & Karels RTO)
-    BETA = 1 / 4.0    # EWMA gain on jitter (mean deviation)
+
+    ALPHA = 1 / 8.0  # EWMA gain on smoothed latency (Jacobson & Karels RTO)
+    BETA = 1 / 4.0  # EWMA gain on jitter (mean deviation)
 
     def __init__(self) -> None:
-        self.latency = 0.0   # L_t: EWMA-smoothed latency (srtt)
-        self.jitter = 0.0    # J_t: EWMA-smoothed mean deviation (rttvar)
+        self.latency = 0.0  # L_t: EWMA-smoothed latency (srtt)
+        self.jitter = 0.0  # J_t: EWMA-smoothed mean deviation (rttvar)
         self._samples = 0
 
     def observe(self, measured_seconds: float) -> None:
@@ -214,12 +242,21 @@ class SpeculativeTriageRelay:
     If remote seats are unreachable, the head-start window is skipped with zero delay
     and local vLLM is dispatched immediately.
     """
-    def __init__(self, broadcast_callback, deep_thought_fn=None, vllm_fn=None, t_warmed=0.09,
-                 kender_fn=None, socket_timeout=SOCKET_TIMEOUT_S, api_timeout=API_PROBE_TIMEOUT_S,
-                 preferred_engine: Optional[str] = None):
+
+    def __init__(
+        self,
+        broadcast_callback,
+        deep_thought_fn=None,
+        vllm_fn=None,
+        t_warmed=0.09,
+        kender_fn=None,
+        socket_timeout=SOCKET_TIMEOUT_S,
+        api_timeout=API_PROBE_TIMEOUT_S,
+        preferred_engine: str | None = None,
+    ):
         self.broadcast = broadcast_callback
         self.deep_thought_fn = deep_thought_fn or kender_fn
-        self.kender_fn = self.deep_thought_fn # backward compatibility
+        self.kender_fn = self.deep_thought_fn  # backward compatibility
         self.vllm_fn = vllm_fn
         self.t_warmed = t_warmed
         # [FEAT-531] 2x Rule for Warmed Speculative Head-Start Window (2 * 0.09s = 0.18s)
@@ -227,7 +264,7 @@ class SpeculativeTriageRelay:
         # [FEAT-586] Dynamic Configurable Triage Engine Preference (declarative; overridable)
         self.preferred_engine = preferred_engine or _load_triage_preference()
         # [FEAT-586] Per-target Jacobson & Karels EWMA estimators feed the dynamic W_lead.
-        self._estimators: Dict[str, _EWMALatencyEstimator] = {}
+        self._estimators: dict[str, _EWMALatencyEstimator] = {}
         # Dynamic lead window; seeded at the legacy 2x baseline until EWMA history accumulates.
         self.lead_window = self.head_start_window
         self.socket_timeout = socket_timeout
@@ -260,8 +297,12 @@ class SpeculativeTriageRelay:
         if bypass_payload is not None:
             bypass_payload["hyde_bypassed"] = True
             bypass_payload["winner"] = "rdna_bypass"
-            bypass_payload["duration_ms"] = round((time.monotonic() - t_start) * 1000.0, 1)
-            logging.info(f"[FEAT-583] RDNA HyDE bypass engaged (explicit_links={bypass_payload.get('explicit_links')})")
+            bypass_payload["duration_ms"] = round(
+                (time.monotonic() - t_start) * 1000.0, 1
+            )
+            logging.info(
+                f"[FEAT-583] RDNA HyDE bypass engaged (explicit_links={bypass_payload.get('explicit_links')})"
+            )
             return bypass_payload, "rdna_bypass"
 
         # [FEAT-531] Declarative Multi-Seat Resolution
@@ -269,33 +310,45 @@ class SpeculativeTriageRelay:
         target_name = active_target["name"]
         t_warmed_seat = active_target.get("t_warmed", self.t_warmed)
         self.head_start_window = 2 * t_warmed_seat
-        logging.info(f"[FEAT-531] Initiating Speculative Relay (Target: {target_name}, Head-start: {self.head_start_window:.3f}s)")
+        logging.info(
+            f"[FEAT-531] Initiating Speculative Relay (Target: {target_name}, Head-start: {self.head_start_window:.3f}s)"
+        )
 
         if target_name == "LOCAL":
-            logging.info("[FEAT-531] Remote Deep Thought seats unreachable. Fast dual-check gate: dispatching local vLLM with zero delay.")
+            logging.info(
+                "[FEAT-531] Remote Deep Thought seats unreachable. Fast dual-check gate: dispatching local vLLM with zero delay."
+            )
             result = await self._run_vllm(query, context, triage_schema, request_id)
             if self._is_valid_triage(result):
                 return self._finalize_payload(result, "vllm", t_start), "vllm"
             return None, None
 
-        logging.info(f"[FEAT-500] Deep Thought target resolved: {target_name} ({active_target['host']}:{active_target['port']})")
+        logging.info(
+            f"[FEAT-500] Deep Thought target resolved: {target_name} ({active_target['host']}:{active_target['port']})"
+        )
 
         # [FEAT-586] Asymmetric head-start gate: the preferred engine claims W_lead.
         if self.preferred_engine == "LOCAL_VLLM":
             lead_name, racer_name = "vllm", "deep_thought"
             lead_launcher, racer_launcher = self._run_vllm, self._run_deep_thought
-            logging.info(f"[FEAT-586] Preferred engine LOCAL_VLLM: granting dynamic lead window to local vLLM (lead_window={self.lead_window:.3f}s)")
+            logging.info(
+                f"[FEAT-586] Preferred engine LOCAL_VLLM: granting dynamic lead window to local vLLM (lead_window={self.lead_window:.3f}s)"
+            )
         else:
             lead_name, racer_name = "deep_thought", "vllm"
             lead_launcher, racer_launcher = self._run_deep_thought, self._run_vllm
-            logging.info(f"[FEAT-586] Preferred engine M5_AIR: granting dynamic lead window to Deep Thought (lead_window={self.lead_window:.3f}s)")
+            logging.info(
+                f"[FEAT-586] Preferred engine M5_AIR: granting dynamic lead window to Deep Thought (lead_window={self.lead_window:.3f}s)"
+            )
 
         # [FEAT-586] Dynamic W_lead = (2 * t_warmed) + L_t + (4 * J_t), EWMA-smoothed.
         estimator = self._estimators.setdefault(lead_name, _EWMALatencyEstimator())
         self.lead_window = estimator.lead_window(t_warmed_seat)
 
         # 1. Launch the preferred (lead) engine
-        lead_task = asyncio.create_task(lead_launcher(query, context, triage_schema, request_id))
+        lead_task = asyncio.create_task(
+            lead_launcher(query, context, triage_schema, request_id)
+        )
         t_lead = time.monotonic()
 
         # 2. Wait for the dynamic lead window
@@ -307,25 +360,37 @@ class SpeculativeTriageRelay:
                 result = done.pop().result()
                 if self._is_valid_triage(result):
                     estimator.observe(time.monotonic() - t_lead)
-                    logging.info(f"[FEAT-586] Preferred engine ({lead_name}) won (lead window completion)")
+                    logging.info(
+                        f"[FEAT-586] Preferred engine ({lead_name}) won (lead window completion)"
+                    )
                     return self._finalize_payload(result, lead_name, t_start), lead_name
             except Exception as e:
-                logging.warning(f"[FEAT-586] Preferred engine ({lead_name}) failed in lead window: {e}")
+                logging.warning(
+                    f"[FEAT-586] Preferred engine ({lead_name}) failed in lead window: {e}"
+                )
 
         # 4. Lead slow: launch the racer
-        logging.info(f"[SPR-67_0] Preferred engine ({lead_name}) slow. Launching {racer_name} candidate...")
-        await self.broadcast({
-            "type": "crosstalk",
-            "brain": f"[SPECULATIVE] Preferred engine ({lead_name}) slow. Launching {racer_name} candidate...",
-            "brain_source": "System"
-        })
+        logging.info(
+            f"[SPR-67_0] Preferred engine ({lead_name}) slow. Launching {racer_name} candidate..."
+        )
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"[SPECULATIVE] Preferred engine ({lead_name}) slow. Launching {racer_name} candidate...",
+                "brain_source": "System",
+            }
+        )
 
-        racer_task = asyncio.create_task(racer_launcher(query, context, triage_schema, request_id))
+        racer_task = asyncio.create_task(
+            racer_launcher(query, context, triage_schema, request_id)
+        )
 
         # 5. Race the remaining tasks
         runners = [lead_task, racer_task]
         while runners:
-            done, runners = await asyncio.wait(runners, return_when=asyncio.FIRST_COMPLETED)
+            done, runners = await asyncio.wait(
+                runners, return_when=asyncio.FIRST_COMPLETED
+            )
 
             for task in done:
                 try:
@@ -338,7 +403,9 @@ class SpeculativeTriageRelay:
 
                         winner = racer_name if task is racer_task else lead_name
                         estimator.observe(time.monotonic() - t_lead)
-                        logging.info(f"[SPR-67_0] {winner.upper()} won (Speculative race)")
+                        logging.info(
+                            f"[SPR-67_0] {winner.upper()} won (Speculative race)"
+                        )
                         return self._finalize_payload(result, winner, t_start), winner
                 except Exception as e:
                     logging.warning(f"[SPR-67_0] Runner failed: {e}")
@@ -361,7 +428,7 @@ class SpeculativeTriageRelay:
         payload["quip"] = result.get("quip", "")
         return payload
 
-    def _maybe_rdna_hyde_bypass(self, query) -> Optional[Dict[str, Any]]:
+    def _maybe_rdna_hyde_bypass(self, query) -> dict[str, Any] | None:
         """[FEAT-583] RDNA HyDE bypass gate.
 
         Fires when the sub-15ms CPU vector probe finds a decisive top-1 RDNA match:
@@ -383,10 +450,12 @@ class SpeculativeTriageRelay:
         if (dist_2 - dist_1) < 0.05:
             return None
 
-        return self._build_rdna_bypass_payload(query, probe.get("best_meta") or {}, dist_1, dist_2)
+        return self._build_rdna_bypass_payload(
+            query, probe.get("best_meta") or {}, dist_1, dist_2
+        )
 
     @staticmethod
-    def _probe_rdna_top2(query) -> Optional[List[float]]:
+    def _probe_rdna_top2(query) -> list[float] | None:
         """[FEAT-583] Focused top-2 distance probe against the ChromaDB `rdna` collection.
 
         Returns [dist_1, dist_2] on success, None on any failure so the bypass
@@ -395,8 +464,9 @@ class SpeculativeTriageRelay:
         if not query or not query.strip():
             return None
         try:
-            from fastembed import TextEmbedding
             import chromadb
+            from fastembed import TextEmbedding
+
             model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
             client = chromadb.HttpClient(host="127.0.0.1", port=8001)
             client.heartbeat()
@@ -411,13 +481,15 @@ class SpeculativeTriageRelay:
         return None
 
     @staticmethod
-    def _build_rdna_bypass_payload(query, meta, dist_1, dist_2) -> Dict[str, Any]:
+    def _build_rdna_bypass_payload(query, meta, dist_1, dist_2) -> dict[str, Any]:
         """[FEAT-583] Assemble the injected triage payload for a decisive RDNA match."""
         rdna_id = meta.get("rdna_id") or meta.get("target_dna_id") or "RDNA-UNK"
         target_col = meta.get("target_collection") or "philosophy_dna"
         target_id = meta.get("target_dna_id") or ""
         target_title = meta.get("target_dna_title") or ""
-        question_text = meta.get("question_text") or meta.get("canonical_question") or query
+        question_text = (
+            meta.get("question_text") or meta.get("canonical_question") or query
+        )
 
         # Pre-compiled target DNA anchor(s) from the matched RDNA card.
         # Prefer real explicit_links when the collection carries them; otherwise
@@ -491,11 +563,7 @@ class SpeculativeTriageRelay:
             return {
                 "channel": "insight",
                 "source": "Deep Thought (Triage)",
-                "console": "Right"
+                "console": "Right",
             }
-        else: # vllm
-            return {
-                "channel": "chat",
-                "source": "Lab (Triage)",
-                "console": "Left"
-            }
+        else:  # vllm
+            return {"channel": "chat", "source": "Lab (Triage)", "console": "Left"}

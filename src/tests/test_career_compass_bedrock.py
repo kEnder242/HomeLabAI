@@ -1,8 +1,11 @@
-import os
 import json
+import os
+
 from nodes.loader import BicameralNode
 
-COMPASS_PATH = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json")
+COMPASS_PATH = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json"
+)
 
 
 def test_career_compass_file_structure():
@@ -21,7 +24,10 @@ def test_bicameral_node_bedrock_injection():
     """Verify that BicameralNode injects Tier 1 Anchor Map bedrock cleanly."""
     node = BicameralNode("test_compass_node", "Test prompt")
     assert "[CAREER_COMPASS_BEDROCK]:" in node.IDENTITY_BEDROCK
-    assert "Manageability Test Content Lead" in node.IDENTITY_BEDROCK or "Era 2019 2024" in node.IDENTITY_BEDROCK
+    assert (
+        "Manageability Test Content Lead" in node.IDENTITY_BEDROCK
+        or "Era 2019 2024" in node.IDENTITY_BEDROCK
+    )
 
 
 def test_tier_1_token_ceiling():

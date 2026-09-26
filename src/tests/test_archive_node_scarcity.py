@@ -9,20 +9,29 @@ other eras in the 18-year archive.
 import asyncio
 import json
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Mock third-party dependencies if missing in runner environment
-for mod in ['chromadb', 'aiohttp', 'mcp', 'mcp.server', 'mcp.server.fastmcp', 'fastmcp', 'fastembed']:
+for mod in [
+    "chromadb",
+    "aiohttp",
+    "mcp",
+    "mcp.server",
+    "mcp.server.fastmcp",
+    "fastmcp",
+    "fastembed",
+]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
-if 'nodes.loader' not in sys.modules:
+if "nodes.loader" not in sys.modules:
     mock_loader = MagicMock()
     # Ensure @mcp.tool() acts as a passthrough decorator
-    mock_loader.BicameralNode.return_value.mcp.tool = lambda *args, **kwargs: (lambda fn: fn)
-    sys.modules['nodes.loader'] = mock_loader
-    sys.modules['loader'] = mock_loader
-
+    mock_loader.BicameralNode.return_value.mcp.tool = lambda *args, **kwargs: (
+        lambda fn: fn
+    )
+    sys.modules["nodes.loader"] = mock_loader
+    sys.modules["loader"] = mock_loader
 
 
 class TestArchiveNodeScarcity:
@@ -34,49 +43,77 @@ class TestArchiveNodeScarcity:
 
         mock_fused = [
             (
-                'doc_2014_1',
+                "doc_2014_1",
                 {
-                    'date': '2014-06-15',
-                    'timestamp': '2014_06',
-                    'source': '2014_06.json',
-                    'text_anchor': 'Kayak PCIe telemetry validation framework deployment',
-                    'summary': 'Kayak PCIe telemetry validation framework',
-                    '_rrf_score': 0.95
-                }
+                    "date": "2014-06-15",
+                    "timestamp": "2014_06",
+                    "source": "2014_06.json",
+                    "text_anchor": "Kayak PCIe telemetry validation framework deployment",
+                    "summary": "Kayak PCIe telemetry validation framework",
+                    "_rrf_score": 0.95,
+                },
             )
         ]
 
-        with patch('src.nodes.archive_node.embed_texts', return_value=[[0.1] * 384]), \
-             patch('src.nodes.archive_node.wisdom.query', return_value={'documents': [[]], 'metadatas': [[]]}), \
-             patch('src.nodes.archive_node.stream.query', return_value={'documents': [[]], 'metadatas': [[]]}), \
-             patch('src.nodes.archive_node.keyword_search', return_value=[]), \
-             patch('src.nodes.archive_node.rrf_fuse', return_value=mock_fused), \
-             patch('src.nodes.archive_node.get_observational_memo', return_value=''), \
-             patch('os.path.exists', side_effect=lambda p: False if '2008.json' in p or '2007.json' in p else True):
+        with patch(
+            "src.nodes.archive_node.embed_texts", return_value=[[0.1] * 384]
+        ), patch(
+            "src.nodes.archive_node.wisdom.query",
+            return_value={"documents": [[]], "metadatas": [[]]},
+        ), patch(
+            "src.nodes.archive_node.stream.query",
+            return_value={"documents": [[]], "metadatas": [[]]},
+        ), patch(
+            "src.nodes.archive_node.keyword_search", return_value=[]
+        ), patch(
+            "src.nodes.archive_node.rrf_fuse", return_value=mock_fused
+        ), patch(
+            "src.nodes.archive_node.get_observational_memo", return_value=""
+        ), patch(
+            "os.path.exists",
+            side_effect=lambda p: (
+                False if "2008.json" in p or "2007.json" in p else True
+            ),
+        ):
 
-            res_raw = asyncio.run(get_context(query='was Kayak really in 2008?', domain='lab_history'))
+            res_raw = asyncio.run(
+                get_context(query="was Kayak really in 2008?", domain="lab_history")
+            )
             res = json.loads(res_raw)
 
-            assert res.get('found') is True
-            context = res.get('context', '')
-            assert '[ARCHIVAL_EVIDENCE]' in context
-            assert 'Target Year Evaluated: 2008' in context
-            assert '2014' in context
-            assert 'ABSENT in target year 2008' in context
+            assert res.get("found") is True
+            context = res.get("context", "")
+            assert "[ARCHIVAL_EVIDENCE]" in context
+            assert "Target Year Evaluated: 2008" in context
+            assert "2014" in context
+            assert "ABSENT in target year 2008" in context
 
     def test_scarcity_envelope_when_no_records_exist_anywhere(self):
         """When an entity has zero matches across all eras, return universal scarcity diagnostic."""
         from src.nodes.archive_node import get_context
 
-        with patch('src.nodes.archive_node.embed_texts', return_value=[[0.1] * 384]), \
-             patch('src.nodes.archive_node.wisdom.query', return_value={'documents': [[]], 'metadatas': [[]]}), \
-             patch('src.nodes.archive_node.stream.query', return_value={'documents': [[]], 'metadatas': [[]]}), \
-             patch('src.nodes.archive_node.keyword_search', return_value=[]), \
-             patch('src.nodes.archive_node.rrf_fuse', return_value=[]), \
-             patch('src.nodes.archive_node.get_observational_memo', return_value=''):
+        with patch(
+            "src.nodes.archive_node.embed_texts", return_value=[[0.1] * 384]
+        ), patch(
+            "src.nodes.archive_node.wisdom.query",
+            return_value={"documents": [[]], "metadatas": [[]]},
+        ), patch(
+            "src.nodes.archive_node.stream.query",
+            return_value={"documents": [[]], "metadatas": [[]]},
+        ), patch(
+            "src.nodes.archive_node.keyword_search", return_value=[]
+        ), patch(
+            "src.nodes.archive_node.rrf_fuse", return_value=[]
+        ), patch(
+            "src.nodes.archive_node.get_observational_memo", return_value=""
+        ):
 
-            res_raw = asyncio.run(get_context(query='was NonExistentProject in 2019?', domain='lab_history'))
+            res_raw = asyncio.run(
+                get_context(
+                    query="was NonExistentProject in 2019?", domain="lab_history"
+                )
+            )
             res = json.loads(res_raw)
 
-            assert res.get('found') is False
-            assert 'No relevant historical notes found' in res.get('reason', '')
+            assert res.get("found") is False
+            assert "No relevant historical notes found" in res.get("reason", "")

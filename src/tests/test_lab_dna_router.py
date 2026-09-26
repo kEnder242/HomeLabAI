@@ -15,7 +15,6 @@ from src.nodes.lab_dna_router import (
     get_collection_priorities,
 )
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. get_collection_priorities
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -84,9 +83,7 @@ class TestGetCollectionPriorities:
 class TestFilterCandidateContext:
     """Zero Context gate, live-ops suppression, and distance sorting."""
 
-    def _make_candidate(
-        self, coll: str, distance: float, doc: str = "doc"
-    ) -> dict:
+    def _make_candidate(self, coll: str, distance: float, doc: str = "doc") -> dict:
         return {"collection": coll, "distance": distance, "doc": doc}
 
     def test_empty_candidates_returns_empty(self) -> None:

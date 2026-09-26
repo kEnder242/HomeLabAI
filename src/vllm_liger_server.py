@@ -1,25 +1,28 @@
 import logging
-import uvloop
+
 import liger_kernel.transformers as lt
+import uvloop
 from vllm.entrypoints.openai.api_server import (
-    run_server, make_arg_parser, validate_parsed_serve_args
+    make_arg_parser,
+    run_server,
+    validate_parsed_serve_args,
 )
-from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.entrypoints.utils import cli_env_setup
+from vllm.utils.argparse_utils import FlexibleArgumentParser
 
 # Remove VLLM_USE_V1=0 to avoid experimental engine crashes/deadlocks
 
 # Setup Logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [vLLM-Liger] %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s [vLLM-Liger] %(levelname)s - %(message)s"
 )
+
 
 def apply_dynamic_liger(model_name: str):
     """Model-aware Liger kernel application."""
     model_lower = model_name.lower()
     logging.info(f"Applying Liger logic for model: {model_name}")
-    
+
     if "gemma2" in model_lower or "gemma-2" in model_lower:
         logging.info("Applying Liger-Kernel to Gemma 2 architecture...")
         lt.apply_liger_kernel_to_gemma2()
@@ -31,9 +34,12 @@ def apply_dynamic_liger(model_name: str):
         logging.info("Applying Liger-Kernel to Llama architecture...")
         lt.apply_liger_kernel_to_llama()
     else:
-        logging.warning(f"No specific Liger patch for {model_name}. Defaulting to Llama-native kernel.")
+        logging.warning(
+            f"No specific Liger patch for {model_name}. Defaulting to Llama-native kernel."
+        )
         # Default to Llama-native as it's our Unity standard
         lt.apply_liger_kernel_to_llama()
+
 
 def run():
     # Standard vLLM setup
@@ -49,6 +55,7 @@ def run():
 
     logging.info(f"Starting vLLM server with Liger. Model: {args.model}")
     uvloop.run(run_server(args))
+
 
 if __name__ == "__main__":
     run()

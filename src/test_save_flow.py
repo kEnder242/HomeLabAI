@@ -1,9 +1,11 @@
 import asyncio
 import json
+
 import pytest
 import websockets
 
 VERSION = "3.5.0"
+
 
 @pytest.mark.asyncio
 async def test_workspace_save_reaction():
@@ -20,12 +22,14 @@ async def test_workspace_save_reaction():
 
         # 2. Simulate Save
         filename = "test_save.md"
-        content = "## PCIe Error Burst Analysis\\nObserved 50 correctable errors in 10ms."
-        await ws.send(json.dumps({
-            "type": "workspace_save",
-            "filename": filename,
-            "content": content
-        }))
+        content = (
+            "## PCIe Error Burst Analysis\\nObserved 50 correctable errors in 10ms."
+        )
+        await ws.send(
+            json.dumps(
+                {"type": "workspace_save", "filename": filename, "content": content}
+            )
+        )
 
         # 3. Monitor for Reactions
         reactions = []
@@ -54,6 +58,7 @@ async def test_workspace_save_reaction():
         # Assertions
         assert "PINKY_NOTICE" in reactions, "Pinky did not react to save."
         print("[PASS] Collaborative save flow verified.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_workspace_save_reaction())

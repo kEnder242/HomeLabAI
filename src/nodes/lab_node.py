@@ -1,9 +1,10 @@
-from nodes.loader import BicameralNode
+import datetime
+import glob
+import json
 import logging
 import os
-import json
-import glob
-import datetime
+
+from nodes.loader import BicameralNode
 
 # [FEAT-350 / FEAT-544 / FEAT-546] Decoupled Continuous-Rubric Triage Prompt (Gold Standard)
 LAB_SYSTEM_PROMPT = (
@@ -42,13 +43,14 @@ mcp = node.mcp
 FIELD_NOTES_DATA = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data")
 SEMANTIC_MAP_FILE = os.path.join(FIELD_NOTES_DATA, "semantic_map.json")
 
+
 @mcp.tool()
 async def close_lab() -> str:
     """The Master Switch: Gracefully shuts down the Mind."""
-    return json.dumps({
-        "status": "shutdown",
-        "message": "Acme Lab is closing. Goodnight."
-    })
+    return json.dumps(
+        {"status": "shutdown", "message": "Acme Lab is closing. Goodnight."}
+    )
+
 
 @mcp.tool()
 # [FEAT-037] Hierarchical Mind (The Architect)
@@ -71,84 +73,158 @@ async def generate_bkm(topic: str, category: str = "validation") -> str:
 """
     return template
 
+
 @mcp.tool()
 async def build_semantic_map() -> str:
     """Refactors chronological notes and timeline artifacts into a 3-layer hierarchy: Strategic, Analytical, Tactical."""
     try:
         logging.info("Architect is deepening the semantic map...")
         artifacts = glob.glob(os.path.join(FIELD_NOTES_DATA, "*.json"))
-        
+
         hierarchy = {
             "strategic_layer": [],  # Rank >= 4 anchors
-            "analytical_layer": {   # Grouped by specific technical pillars
+            "analytical_layer": {  # Grouped by specific technical pillars
                 "validation": [],
                 "automation": [],
                 "architecture": [],
-                "telemetry": []
+                "telemetry": [],
             },
-            "tactical_layer": {     # Chronological distribution of events
+            "tactical_layer": {  # Chronological distribution of events
                 "total_events": 0,
                 "year_distribution": {},
-                "description": "Raw chronological technical evidence."
+                "description": "Raw chronological technical evidence.",
             },
             "meta_layer": {
                 "resonance_score": 0.0,
                 "active_themes": [],
-                "last_refactor": datetime.datetime.now().isoformat()
-            }
+                "last_refactor": datetime.datetime.now().isoformat(),
+            },
         }
-        
+
         # Pillars keywords definition
         pillars_kw = {
-            "validation": ["validation", "validate", "test", "verification", "verify", "fuzz", "regression", "checking", "check", "assert", "dttc", "qa"],
-            "automation": ["automation", "automate", "script", "tool", "pipeline", "jenkins", "build", "ci/cd", "cron", "workflow", "subprocess", "pexpect"],
-# [FEAT-457] FeatureTracker Alignment & Submodule Synchronization
-            "architecture": ["architecture", "design", "structure", "microservice", "infrastructure", "topology", "uml", "spec", "platform", "submodule", "agentic"],
-            "telemetry": ["telemetry", "monitor", "prometheus", "grafana", "rapl", "msr", "power", "thermal", "load", "sensory", "logging", "metric", "dcgm"]
+            "validation": [
+                "validation",
+                "validate",
+                "test",
+                "verification",
+                "verify",
+                "fuzz",
+                "regression",
+                "checking",
+                "check",
+                "assert",
+                "dttc",
+                "qa",
+            ],
+            "automation": [
+                "automation",
+                "automate",
+                "script",
+                "tool",
+                "pipeline",
+                "jenkins",
+                "build",
+                "ci/cd",
+                "cron",
+                "workflow",
+                "subprocess",
+                "pexpect",
+            ],
+            # [FEAT-457] FeatureTracker Alignment & Submodule Synchronization
+            "architecture": [
+                "architecture",
+                "design",
+                "structure",
+                "microservice",
+                "infrastructure",
+                "topology",
+                "uml",
+                "spec",
+                "platform",
+                "submodule",
+                "agentic",
+            ],
+            "telemetry": [
+                "telemetry",
+                "monitor",
+                "prometheus",
+                "grafana",
+                "rapl",
+                "msr",
+                "power",
+                "thermal",
+                "load",
+                "sensory",
+                "logging",
+                "metric",
+                "dcgm",
+            ],
         }
-        
+
         for art_path in artifacts:
             filename = os.path.basename(art_path)
             year = filename.replace(".json", "")
-            
+
             # Exclude metadata/non-timeline JSON files
-            if filename in ["semantic_map.json", "status.json", "themes.json", "vram_characterization.json", "file_manifest.json", "learning_ledger.json", "recruiter_report.json", "processed_jobs.json", "queue.json", "chunk_state.json", "compressed_history.json", "memo_cache.json", "nightly_dialogue.json", "null.json", "privacy_audit.json", "scan_state.json"]:
+            if filename in [
+                "semantic_map.json",
+                "status.json",
+                "themes.json",
+                "vram_characterization.json",
+                "file_manifest.json",
+                "learning_ledger.json",
+                "recruiter_report.json",
+                "processed_jobs.json",
+                "queue.json",
+                "chunk_state.json",
+                "compressed_history.json",
+                "memo_cache.json",
+                "nightly_dialogue.json",
+                "null.json",
+                "privacy_audit.json",
+                "scan_state.json",
+            ]:
                 continue
-                
+
             try:
                 with open(art_path, "r") as f:
                     data = json.load(f)
-                    
+
                 if not isinstance(data, list):
                     continue
-                    
+
                 hierarchy["tactical_layer"]["total_events"] += len(data)
-                hierarchy["tactical_layer"]["year_distribution"][year] = hierarchy["tactical_layer"]["year_distribution"].get(year, 0) + len(data)
-                
+                hierarchy["tactical_layer"]["year_distribution"][year] = hierarchy[
+                    "tactical_layer"
+                ]["year_distribution"].get(year, 0) + len(data)
+
                 for item in data:
                     if not isinstance(item, dict):
                         continue
-                        
+
                     rank = item.get("rank", 2)
                     summary = item.get("summary", "")
                     evidence = item.get("evidence", "")
                     tags = item.get("tags", [])
                     technical_gem = item.get("technical_gem", "")
-                    
+
                     anchor_text = str(summary)
                     # 1. Strategic Layer (Rank >= 4 or STRATEGIC_ANCHOR flag)
                     if rank >= 4 or "[STRATEGIC_ANCHOR]" in anchor_text:
-                        hierarchy["strategic_layer"].append({
-                            "year": year,
-                            "anchor": anchor_text[:150],
-                            "gem": technical_gem or ""
-                        })
-                        
+                        hierarchy["strategic_layer"].append(
+                            {
+                                "year": year,
+                                "anchor": anchor_text[:150],
+                                "gem": technical_gem or "",
+                            }
+                        )
+
                     # 2. Analytical Layer (Themes/Pillars)
                     summary_low = anchor_text.lower()
                     evidence_low = str(evidence).lower()
                     tags_low = [str(t).lower() for t in tags]
-                    
+
                     for pillar, keywords in pillars_kw.items():
                         matched = False
                         # Check tags first
@@ -158,36 +234,46 @@ async def build_semantic_map() -> str:
                                 break
                         # Check summary/evidence
                         if not matched:
-                            if any(k in summary_low or k in evidence_low for k in keywords):
+                            if any(
+                                k in summary_low or k in evidence_low for k in keywords
+                            ):
                                 matched = True
-                                
+
                         if matched:
                             # Avoid duplicates by summary
-                            existing_summaries = [x.get("summary") for x in hierarchy["analytical_layer"][pillar]]
+                            existing_summaries = [
+                                x.get("summary")
+                                for x in hierarchy["analytical_layer"][pillar]
+                            ]
                             if anchor_text not in existing_summaries:
-                                hierarchy["analytical_layer"][pillar].append({
-                                    "year": year,
-                                    "gem": technical_gem or "",
-                                    "summary": anchor_text[:150]
-                                })
+                                hierarchy["analytical_layer"][pillar].append(
+                                    {
+                                        "year": year,
+                                        "gem": technical_gem or "",
+                                        "summary": anchor_text[:150],
+                                    }
+                                )
             except Exception as e:
                 logging.error(f"[BUILD_SEMANTIC_MAP] Failed to parse {art_path}: {e}")
-                
+
         with open(SEMANTIC_MAP_FILE, "w") as f:
             json.dump(hierarchy, f, indent=2)
-            
+
         return "Semantic map rebuilt successfully."
     except Exception as e:
         return f"Error building semantic map: {e}"
+
 
 @mcp.tool()
 async def get_host_vitals() -> str:
     """[FEAT-557] Query live host hardware telemetry (GPU VRAM, host RAM, CPU load average, active model residency)."""
     try:
         from infra.live_telemetry import get_host_vitals as _ghv
+
         return json.dumps(_ghv(), indent=2)
     except Exception as e:
         return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
+
 
 if __name__ == "__main__":
     node.run()

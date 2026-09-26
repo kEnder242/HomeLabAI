@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Dream Voice (Stage 3: Persona Synthesis)
@@ -14,6 +13,7 @@ import json
 import logging
 import time
 from pathlib import Path
+
 import websockets
 
 # --- Configuration ---
@@ -71,7 +71,9 @@ async def generate_dream_response(websocket, prompt, mode="voice"):
 
 async def main(limit=10, mode="voice", order="forward", duration_hours=None):
     """Main synthesis loop."""
-    logging.info(f"Starting Dream Synthesis [Mode: {mode}, Limit: {limit}, Order: {order}]...")
+    logging.info(
+        f"Starting Dream Synthesis [Mode: {mode}, Limit: {limit}, Order: {order}]..."
+    )
     start_time_global = time.time()
 
     if not REFINED_PROMPTS.exists():
@@ -79,16 +81,16 @@ async def main(limit=10, mode="voice", order="forward", duration_hours=None):
         return
 
     EXPERTISE_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     target_file = SENTINEL_DATASET if mode == "sentinel" else VOICE_DATASET
-    
+
     # [FEAT-204] Resume Logic: Load already dreamed prompts
     seen_prompts = set()
     if target_file.exists():
-        with open(target_file, 'r') as f_check:
+        with open(target_file, "r") as f_check:
             for line in f_check:
                 try:
-                    instruction = json.loads(line).get('instruction')
+                    instruction = json.loads(line).get("instruction")
                     if instruction:
                         seen_prompts.add(instruction)
                 except Exception:
@@ -97,7 +99,7 @@ async def main(limit=10, mode="voice", order="forward", duration_hours=None):
     # [FEAT-296] Fast-Forward: Load and potentially reverse the queue
     with open(REFINED_PROMPTS, "r") as f_in:
         all_lines = f_in.readlines()
-    
+
     if order == "reverse":
         logging.info("[ORDER] Reversing queue to process newest items first.")
         all_lines.reverse()
@@ -111,7 +113,7 @@ async def main(limit=10, mode="voice", order="forward", duration_hours=None):
             if count >= limit:
                 logging.info(f"[LIMIT] Reached item limit ({limit}).")
                 break
-            
+
             if duration_hours:
                 elapsed = (time.time() - start_time_global) / 3600
                 if elapsed >= duration_hours:
@@ -120,7 +122,7 @@ async def main(limit=10, mode="voice", order="forward", duration_hours=None):
 
             entry = json.loads(line)
             prompt = entry.get("prompt")
-            
+
             if prompt in seen_prompts:
                 continue
 
@@ -145,11 +147,21 @@ async def main(limit=10, mode="voice", order="forward", duration_hours=None):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="Acme Lab Dream Voice Synthesis")
     parser.add_argument("limit", type=int, default=10, help="Item limit")
     parser.add_argument("mode", default="voice", help="Synthesis mode (voice|sentinel)")
-    parser.add_argument("--order", default="forward", choices=["forward", "reverse"], help="Queue order")
+    parser.add_argument(
+        "--order", default="forward", choices=["forward", "reverse"], help="Queue order"
+    )
     parser.add_argument("--hours", type=float, default=None, help="Time limit in hours")
-    
+
     args = parser.parse_args()
-    asyncio.run(main(limit=args.limit, mode=args.mode, order=args.order, duration_hours=args.hours))
+    asyncio.run(
+        main(
+            limit=args.limit,
+            mode=args.mode,
+            order=args.order,
+            duration_hours=args.hours,
+        )
+    )

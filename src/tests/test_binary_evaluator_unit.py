@@ -7,15 +7,14 @@ Verifies:
 """
 
 import pytest
-
 from src.curator.scan_curator import (
+    _compute_rank,
     evaluate_gem_quality,
     has_exact_identifiers,
     has_reproduction_recipe,
-    isolates_cause_and_effect,
-    is_actionable_bkm,
     has_zero_conversational_fluff,
-    _compute_rank,
+    is_actionable_bkm,
+    isolates_cause_and_effect,
 )
 
 
@@ -25,27 +24,30 @@ from src.curator.scan_curator import (
 class TestDeterminism:
     """Evaluate the same text N times and assert identical results every run."""
 
-    @pytest.mark.parametrize("text", [
-        # Empty / minimal
-        "",
-        # Pure fluff (no checks pass)
-        "Hello! I think maybe this could help. Hope this helps! Let me know.",
-        # Technical with all 5 checks passing
-        (
-            "Run: sudo modprobe mce_policy && dmesg | grep -i mce\n"
-            "Because the MSR 0x610 register is misconfigured, "
-            "the PCIe AER 0x10 error counter triggers a machine check. "
-            "Resolution procedure:\n"
-            "1. Edit /etc/modprobe.d/mce.conf\n"
-            "2. Set mce_policy=strict\n"
-            "3. Reboot"
-        ),
-        # Partial match – only some checks
-        (
-            "The port 8088 timeout is caused by a NIC firmware bug. "
-            "Run `ethtool -S eth0 | grep errors` to diagnose."
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Empty / minimal
+            "",
+            # Pure fluff (no checks pass)
+            "Hello! I think maybe this could help. Hope this helps! Let me know.",
+            # Technical with all 5 checks passing
+            (
+                "Run: sudo modprobe mce_policy && dmesg | grep -i mce\n"
+                "Because the MSR 0x610 register is misconfigured, "
+                "the PCIe AER 0x10 error counter triggers a machine check. "
+                "Resolution procedure:\n"
+                "1. Edit /etc/modprobe.d/mce.conf\n"
+                "2. Set mce_policy=strict\n"
+                "3. Reboot"
+            ),
+            # Partial match – only some checks
+            (
+                "The port 8088 timeout is caused by a NIC firmware bug. "
+                "Run `ethtool -S eth0 | grep errors` to diagnose."
+            ),
+        ],
+    )
     def test_zero_variance_over_100_runs(self, text: str) -> None:
         """Run evaluate_gem_quality 100 times; rank must never change."""
         results = [evaluate_gem_quality(text) for _ in range(100)]
@@ -60,9 +62,9 @@ class TestDeterminism:
         text = "Run `dmesg | grep mce` because MSR 0x610 is bad. 1. Edit config."
         results = [evaluate_gem_quality(text) for _ in range(50)]
         for r in results:
-            assert r["checks"] == results[0]["checks"], (
-                "Checks dict varied across runs — non‑deterministic!"
-            )
+            assert (
+                r["checks"] == results[0]["checks"]
+            ), "Checks dict varied across runs — non‑deterministic!"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -104,13 +106,20 @@ class TestRankCalculation:
     def test_rank_range_always_valid(self) -> None:
         """Every boolean combination yields a rank in [1, 5]."""
         import itertools
+
         for combo in itertools.product([True, False], repeat=5):
-            checks = dict(zip(
-                ["has_exact_identifiers", "has_reproduction_recipe",
-                 "isolates_cause_and_effect", "is_actionable_bkm",
-                 "has_zero_conversational_fluff"],
-                combo,
-            ))
+            checks = dict(
+                zip(
+                    [
+                        "has_exact_identifiers",
+                        "has_reproduction_recipe",
+                        "isolates_cause_and_effect",
+                        "is_actionable_bkm",
+                        "has_zero_conversational_fluff",
+                    ],
+                    combo,
+                )
+            )
             rank = _compute_rank(checks)
             assert 1 <= rank <= 5, f"Rank {rank} out of range for {combo}"
 
@@ -179,9 +188,12 @@ class TestIndividualChecks:
         assert has_zero_conversational_fluff("I think maybe it could be RAM") is False
 
     def test_fluff_none(self) -> None:
-        assert has_zero_conversational_fluff(
-            "MSR 0x610 triggers MCE. Run dmesg | grep mce to verify."
-        ) is True
+        assert (
+            has_zero_conversational_fluff(
+                "MSR 0x610 triggers MCE. Run dmesg | grep mce to verify."
+            )
+            is True
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

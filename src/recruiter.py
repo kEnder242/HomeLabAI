@@ -1,28 +1,32 @@
-import os
+import asyncio
+import datetime
 import json
 import logging
-import datetime
-import asyncio
+import os
 import re
 import time
-import aiohttp
-from typing import List, Dict
 
+import aiohttp
 from infra.atomic_io import atomic_write_json, atomic_write_text
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DRAFTS_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs")
+DRAFTS_DIR = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_briefs"
+)
 CONFIG_FILE = os.path.join(BASE_DIR, "../config/recruiter_config.json")
 SIGNATURES_FILE = os.path.join(BASE_DIR, "../config/team_signatures.json")
-PAGER_FILE = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json")
+PAGER_FILE = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+)
+
 
 def load_config():
     default = {
         "target_roles": ["Senior Platform Telemetry Engineer"],
         "target_companies": ["NVIDIA"],
         "keywords": ["telemetry"],
-        "search_sites": ["hiring.cafe", "linkedin"]
+        "search_sites": ["hiring.cafe", "linkedin"],
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -31,6 +35,7 @@ def load_config():
         except Exception:
             pass
     return default
+
 
 def load_signatures():
     if os.path.exists(SIGNATURES_FILE):
@@ -41,6 +46,7 @@ def load_signatures():
             pass
     return {}
 
+
 def trigger_pager(message, severity="INFO", source="Recruiter"):
     """Internal pager trigger to update status dashboard."""
     try:
@@ -48,22 +54,25 @@ def trigger_pager(message, severity="INFO", source="Recruiter"):
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "severity": severity.upper(),
             "source": source,
-            "message": message
+            "message": message,
         }
         activities = []
         if os.path.exists(PAGER_FILE):
             try:
-                with open(PAGER_FILE, 'r') as f:
+                with open(PAGER_FILE, "r") as f:
                     activities = json.load(f)
-            except: pass
+            except:
+                pass
         activities.append(entry)
         atomic_write_json(PAGER_FILE, activities[-20:])
     except Exception as e:
         logging.error(f"[RECRUITER] Pager Trigger Failed: {e}")
 
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [RECRUITER] %(message)s")
 config = load_config()
 signatures = load_signatures()
+
 
 class NightlyRecruiter:
     def __init__(self, archive_client=None, brain_client=None, browser_client=None):
@@ -72,15 +81,21 @@ class NightlyRecruiter:
         self.browser = browser_client
         self.config = config
         self.signatures = signatures
-        self.ledger_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/processed_jobs.json")
+        self.ledger_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/processed_jobs.json"
+        )
 
-    async def calculate_semantic_match(self, jd_text: str) -> Dict:
+    async def calculate_semantic_match(self, jd_text: str) -> dict:
         """
         [RE-FEAT-167.1] Multi-Vector Scoring Refactor.
         Tasks the Architect Brain with a semantic pass against Team Signatures.
         """
         if not self.brain or not jd_text:
-            return {"score": 0.5, "bucket": "Unknown", "evidence": "No brain or text available."}
+            return {
+                "score": 0.5,
+                "bucket": "Unknown",
+                "evidence": "No brain or text available.",
+            }
 
         prompt = f"""
         [ROLE] You are the Lead Engineer Auditor.
@@ -98,43 +113,56 @@ class NightlyRecruiter:
         3. Provide 'Evidence of Alignment': Map requirements to our signatures.
         4. Format as JSON: {{"bucket": "...", "score": 0.85, "evidence": "..."}}
         """
-        
+
         try:
             res = await self.brain.call_tool("deep_think", arguments={"task": prompt})
             # Use regex to extract JSON
-            match = re.search(r'(\{.*?\})', res.content[0].text, re.DOTALL)
+            match = re.search(r"(\{.*?\})", res.content[0].text, re.DOTALL)
             if match:
                 return json.loads(match.group(1))
         except Exception as e:
             logging.error(f"[RECRUITER] Semantic scoring failed: {e}")
-            
-        return {"score": 0.5, "bucket": "General", "evidence": "Failed to perform semantic audit."}
 
-    def is_duplicate(self, job: Dict) -> bool:
+        return {
+            "score": 0.5,
+            "bucket": "General",
+            "evidence": "Failed to perform semantic audit.",
+        }
+
+    def is_duplicate(self, job: dict) -> bool:
         """Checks the persistent ledger to prevent redundant alerts."""
         if not os.path.exists(self.ledger_path):
             return False
         try:
             with open(self.ledger_path, "r") as f:
                 ledger = json.load(f)
-            
+
             # Case 1: Direct URL match
             if job.get("url") and job.get("url") in ledger:
                 return True
-                
+
             # Case 2: Fuzzy Identity match (Title + Company)
-            identity = (job.get("title", "") + job.get("company", "")).lower().replace(" ", "").strip()
-            if not identity: return False
-            
+            identity = (
+                (job.get("title", "") + job.get("company", ""))
+                .lower()
+                .replace(" ", "")
+                .strip()
+            )
+            if not identity:
+                return False
+
             for item in ledger:
-                if not item.startswith("http") and identity == item.lower().replace(" ", "").strip():
+                if (
+                    not item.startswith("http")
+                    and identity == item.lower().replace(" ", "").strip()
+                ):
                     return True
-            
+
             return False
         except Exception:
             return False
 
-    def mark_as_processed(self, job: Dict):
+    def mark_as_processed(self, job: dict):
         """Logs the job into the ledger."""
         try:
             if not os.path.exists(self.ledger_path):
@@ -142,15 +170,15 @@ class NightlyRecruiter:
             else:
                 with open(self.ledger_path, "r") as f:
                     ledger = json.load(f)
-            
+
             url = job.get("url")
-            identity = (job.get("title", "") + job.get("company", ""))
-            
+            identity = job.get("title", "") + job.get("company", "")
+
             if url and url not in ledger:
                 ledger.append(url)
             if identity and identity not in ledger:
                 ledger.append(identity)
-                
+
             atomic_write_json(self.ledger_path, ledger[-1000:])
         except Exception as e:
             logging.error(f"[RECRUITER] Ledger Update Failed: {e}")
@@ -160,53 +188,67 @@ class NightlyRecruiter:
         if not self.archive:
             return "Expert in Silicon Validation and Telemetry."
         try:
-            res_json = await self.archive.call_tool("get_context", arguments={"query": "Diamond Rank technical gems", "n_results": 5})
+            res_json = await self.archive.call_tool(
+                "get_context",
+                arguments={"query": "Diamond Rank technical gems", "n_results": 5},
+            )
             res = json.loads(res_json.content[0].text)
             return res.get("text", "Expert in Silicon Validation.")
         except Exception:
             return "Expert in Silicon Validation."
 
-    async def search_for_jobs(self) -> List[Dict]:
+    async def search_for_jobs(self) -> list[dict]:
         """Uses the Brain's reasoning to identify target listings."""
         if not self.brain:
             return []
-        
+
         query = f"Target Roles: {', '.join(self.config.get('target_roles', []))}. Keywords: {', '.join(self.config.get('keywords', []))}."
         task = f"Find 3-5 high-fidelity job URLs matching these criteria: {query}. Provide ONLY a list of URLs."
-        
+
         try:
             res = await self.brain.call_tool("deep_think", arguments={"task": task})
             urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', res.content[0].text)
-            
+
             unique_urls = []
             for u in urls:
                 clean_u = u.split("?")[0].rstrip("/")
                 if clean_u not in [x.split("?")[0].rstrip("/") for x in unique_urls]:
                     unique_urls.append(u)
-            
+
             jobs = []
             for url in unique_urls[:5]:
-                jobs.append({"title": "Automated Search Result", "company": "External Site", "url": url, "description": ""})
-            
+                jobs.append(
+                    {
+                        "title": "Automated Search Result",
+                        "company": "External Site",
+                        "url": url,
+                        "description": "",
+                    }
+                )
+
             return jobs
         except Exception:
             return []
 
-    async def verify_and_score_jobs(self, jobs: List[Dict]) -> List[Dict]:
+    async def verify_and_score_jobs(self, jobs: list[dict]) -> list[dict]:
         """[RE-FEAT-168.2] JD Verification via Browser Node and Semantic Scoring."""
         scored_jobs = []
         for job in jobs:
             if self.is_duplicate(job):
                 continue
-                
+
             logging.info(f"[RECRUITER] Verifying: {job['url']}")
             jd_text = ""
             if self.browser:
                 try:
-                    res = await self.browser.call_tool("browse_url", arguments={"url": job['url']})
+                    res = await self.browser.call_tool(
+                        "browse_url", arguments={"url": job["url"]}
+                    )
                     jd_text = res.content[0].text
                     if "Error:" in jd_text:
-                        logging.warning(f"[RECRUITER] Verification failed for {job['url']}")
+                        logging.warning(
+                            f"[RECRUITER] Verification failed for {job['url']}"
+                        )
                         continue
                 except Exception as e:
                     logging.error(f"[RECRUITER] Browser tool failed: {e}")
@@ -221,27 +263,30 @@ class NightlyRecruiter:
             job["jd_summary"] = jd_text[:500] + "..."
             scored_jobs.append(job)
             self.mark_as_processed(job)
-            
+
         return scored_jobs
 
-    async def generate_brief(self, jobs: List[Dict], context: str) -> (str, int):
+    async def generate_brief(self, jobs: list[dict], context: str) -> (str, int):
         """[UI-042] Bucket-Aware Job Brief. Groups jobs by Team Signature Bucket."""
         date_str = datetime.datetime.now().strftime("%Y-%m-%d")
         filename = f"job_brief_{date_str}.md"
         path = os.path.join(DRAFTS_DIR, filename)
-        
+
         content = f"# 🕵️ Nightly Recruiter Brief: {date_str}\n\n"
-        
+
         # Grouping
         buckets = {}
         for job in jobs:
             b = job.get("bucket", "General")
-            if b not in buckets: buckets[b] = []
+            if b not in buckets:
+                buckets[b] = []
             buckets[b].append(job)
-            
+
         valid_jobs = len(jobs)
         if valid_jobs == 0:
-            content += "_No new high-fidelity verified matches found since last scan._\n"
+            content += (
+                "_No new high-fidelity verified matches found since last scan._\n"
+            )
         else:
             for b_name, b_jobs in buckets.items():
                 content += f"### 📦 Bucket: {b_name}\n"
@@ -257,12 +302,12 @@ class NightlyRecruiter:
                 content += "* [Hiring.Cafe: Silicon Forest Telemetry](https://hiring.cafe/search?q=telemetry+silicon+validation+hillsboro)\n"
             elif "linkedin" in site:
                 content += "* [LinkedIn: High-Fidelity Validation](https://www.linkedin.com/jobs/search/?keywords=telemetry%20silicon%20validation)\n"
-        
+
         content += "\n\n---\n*Generated by HomeLabAI (The Nightly Recruiter)*"
-        
+
         os.makedirs(DRAFTS_DIR, exist_ok=True)
         atomic_write_text(path, content)
-        
+
         return path, valid_jobs
 
     async def run_synergy_scan(self):
@@ -271,10 +316,13 @@ class NightlyRecruiter:
             return
 
         import random
+
         # Pick a random bucket to refine
         target_bucket = random.choice(list(self.signatures.keys()))
-        logging.info(f"🔍 No new jobs. Initiating hidden pedigree scan for: {target_bucket}")
-        
+        logging.info(
+            f"🔍 No new jobs. Initiating hidden pedigree scan for: {target_bucket}"
+        )
+
         prompt = f"""
         [ROLE] You are the Career Strategy Architect.
         [TASK] Search the 18-year archive for the top 3 most impactful 'Validation Scars' 
@@ -286,59 +334,77 @@ class NightlyRecruiter:
         [GOAL] Synthesize a 'Hidden Pedigree' report that can be used to strengthen the CV for this specific domain.
         STRICT: NO ROLEPLAY.
         """
-        
+
         # In V5, we use the Hub's REST injection for consistency in background tasks
         try:
             HUB_URL = "http://localhost:8765/inject"
             async with aiohttp.ClientSession() as session:
-                await session.post(HUB_URL, json={"query": f"[RECRUITER_SYNERGY]: {prompt}"}, timeout=60)
+                await session.post(
+                    HUB_URL,
+                    json={"query": f"[RECRUITER_SYNERGY]: {prompt}"},
+                    timeout=60,
+                )
             logging.info(f"✅ Synergy scan request for {target_bucket} dispatched.")
         except Exception as e:
             logging.error(f"[RECRUITER] Synergy scan failed: {e}")
 
-async def run_recruiter_task(archive_interface=None, brain_interface=None, browser_interface=None):
+
+async def run_recruiter_task(
+    archive_interface=None, brain_interface=None, browser_interface=None
+):
     recruiter = NightlyRecruiter(archive_interface, brain_interface, browser_interface)
     logging.info("Waking up for Nightly Multi-Vector Acquisition drive...")
-    
+
     ctx = await recruiter.fetch_career_context()
     raw_jobs = await recruiter.search_for_jobs()
-    
+
     # [PHASE 2] Verification and Scoring
     verified_jobs = await recruiter.verify_and_score_jobs(raw_jobs)
-    
-    brief_path, new_count = await recruiter.generate_brief(verified_jobs, ctx) if verified_jobs else (None, 0)
-    
+
+    brief_path, new_count = (
+        await recruiter.generate_brief(verified_jobs, ctx)
+        if verified_jobs
+        else (None, 0)
+    )
+
     # [UI-043] Dashboard Reporting
     try:
-        report_path = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json")
-        
+        report_path = os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
+        )
+
         # Calculate density
         density = {}
-        for job in (verified_jobs or []):
+        for job in verified_jobs or []:
             b = job.get("bucket", "General")
             density[b] = density.get(b, 0) + 1
-            
+
         report = {
             "last_run": datetime.datetime.now().isoformat(),
             "status": "UPLINK_NOMINAL",
             "brief_path": os.path.basename(brief_path) if brief_path else "None",
             "new_jobs": new_count,
-            "bucket_density": density
+            "bucket_density": density,
         }
         atomic_write_json(report_path, report)
-        
+
         # [ALARM] Pulse the dashboard pager
-        msg = f"Nightly Multi-Vector Brief Ready: {os.path.basename(brief_path)}" if brief_path else "Nightly Acquisition Sweep: No new jobs."
+        msg = (
+            f"Nightly Multi-Vector Brief Ready: {os.path.basename(brief_path)}"
+            if brief_path
+            else "Nightly Acquisition Sweep: No new jobs."
+        )
         trigger_pager(msg, severity="INFO", source="Recruiter")
-        
+
         if not verified_jobs:
             logging.info("💤 No new job listings found. Proceeding to Synergy Scan.")
             await recruiter.run_synergy_scan()
-            
+
     except Exception as e:
         logging.error(f"[RECRUITER] Reporting failed: {e}")
-    
+
     return brief_path
+
 
 if __name__ == "__main__":
     # Note: Requires interfaces to be passed in for full functionality

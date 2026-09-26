@@ -1,7 +1,9 @@
 import asyncio
+
 import aiohttp
 
 ATTENDANT_URL = "http://localhost:8765"
+
 
 async def test_attendant_heartbeat():
     async with aiohttp.ClientSession() as session:
@@ -11,6 +13,7 @@ async def test_attendant_heartbeat():
             data = await resp.json()
             assert data["state"] in ["WAKING", "READY", "HIBERNATING"]
             print(f"[PASS] Attendant Heartbeat: {data['state']}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_attendant_heartbeat())

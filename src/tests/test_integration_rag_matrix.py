@@ -1,4 +1,5 @@
 """Integration test for the RAG matrix multi-collection query."""
+
 import asyncio
 import json
 import time
@@ -26,12 +27,24 @@ def test_integration_rag_matrix():
     assert len(sources) > 0, "No sources returned in RAG payload"
 
     # Assert badging / acquisition anchors appear in text
-    assert any(badge in text for badge in ["[ACQUISITION", "[ARTIFACT:", "[CAREER:", "[BEHAVIORAL_DNA:", "[FEATURE_DNA:", "[LAB_JOURNAL:"]), "No domain badges or acquisition anchors found in payload"
+    assert any(
+        badge in text
+        for badge in [
+            "[ACQUISITION",
+            "[ARTIFACT:",
+            "[CAREER:",
+            "[BEHAVIORAL_DNA:",
+            "[FEATURE_DNA:",
+            "[LAB_JOURNAL:",
+        ]
+    ), "No domain badges or acquisition anchors found in payload"
 
     # Assert execution time is reasonable (<5000ms)
     assert elapsed_ms < 5000, f"Execution time {elapsed_ms:.1f}ms exceeded 5000ms"
 
-    print(f"[PASS] INTEGRATION RAG MATRIX: {elapsed_ms:.1f}ms, {len(text)} chars, {len(payload.get('sources', []))} sources")
+    print(
+        f"[PASS] INTEGRATION RAG MATRIX: {elapsed_ms:.1f}ms, {len(text)} chars, {len(payload.get('sources', []))} sources"
+    )
 
 
 if __name__ == "__main__":

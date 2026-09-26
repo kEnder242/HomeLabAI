@@ -1,11 +1,13 @@
 import asyncio
-import websockets
 import json
 import sys
+
+import websockets
 
 PORT = 8765
 # Use localhost since we'll run this on the server itself via SSH
 URI = f"ws://localhost:{PORT}"
+
 
 async def run_test(query):
     print(f"Connecting to {URI}...")
@@ -33,6 +35,7 @@ async def run_test(query):
                     break
     except Exception as e:
         print(f"Connection Error: {e}")
+
 
 if __name__ == "__main__":
     q = "Write a python script to calculate fibonacci numbers."

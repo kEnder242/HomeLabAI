@@ -10,7 +10,7 @@ WITHOUT hardcoded keyword/regex overrides (BKM-015 compliance).
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ PRE_TRIAGE_COLLECTIONS = [
     "long_term_wisdom",
     "career_ledger",
     "short_term_stream",
-    "lab_journal"
+    "lab_journal",
 ]
 
 
@@ -35,7 +35,10 @@ def _get_embedding_model():
     if _fastembed_model is None:
         try:
             from fastembed import TextEmbedding
-            _fastembed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+            _fastembed_model = TextEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
         except Exception as e:
             logger.error(f"[VECTOR_PRE_TRIAGE] FastEmbed initialization error: {e}")
             return None
@@ -47,6 +50,7 @@ def _get_chroma_client():
     if _chroma_client is None:
         try:
             import chromadb
+
             _chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8001)
             _chroma_client.heartbeat()
         except Exception as e:
@@ -55,7 +59,7 @@ def _get_chroma_client():
     return _chroma_client
 
 
-def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
+def probe_clara_dna_sync(query: str, top_k: int = 1) -> dict[str, Any]:
     """
     Synchronous vector probe against CLaRa-DNA collections.
     Returns:
@@ -71,7 +75,7 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
     """
     model = _get_embedding_model()
     client = _get_chroma_client()
-    
+
     if not model or not client or not query or not query.strip():
         return {
             "min_distance": 1.0,
@@ -80,9 +84,9 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
             "best_doc": "",
             "results_by_collection": {},
             "semantic_hint": "",
-            "is_casual_candidate": False
+            "is_casual_candidate": False,
         }
-    
+
     try:
         query_vec = list(model.embed([query.strip()]))[0].tolist()
     except Exception as e:
@@ -94,31 +98,39 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
             "best_doc": "",
             "results_by_collection": {},
             "semantic_hint": "",
-            "is_casual_candidate": False
+            "is_casual_candidate": False,
         }
-    
+
     best_dist = 999.0
     best_col = ""
     best_meta = {}
     best_doc = ""
     results_by_col = {}
-    
+
     for cname in PRE_TRIAGE_COLLECTIONS:
         try:
             col = client.get_collection(cname)
             res = col.query(
                 query_embeddings=[query_vec],
                 n_results=top_k,
-                include=["documents", "metadatas", "distances"]
+                include=["documents", "metadatas", "distances"],
             )
             if res and res.get("distances") and res["distances"][0]:
                 dist = res["distances"][0][0]
-                meta = res["metadatas"][0][0] if res.get("metadatas") and res["metadatas"][0] else {}
-                doc = res["documents"][0][0] if res.get("documents") and res["documents"][0] else ""
+                meta = (
+                    res["metadatas"][0][0]
+                    if res.get("metadatas") and res["metadatas"][0]
+                    else {}
+                )
+                doc = (
+                    res["documents"][0][0]
+                    if res.get("documents") and res["documents"][0]
+                    else ""
+                )
                 results_by_col[cname] = {
                     "distance": dist,
                     "metadata": meta,
-                    "document": doc
+                    "document": doc,
                 }
                 if dist < best_dist:
                     best_dist = dist
@@ -127,11 +139,17 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
                     best_doc = doc
         except Exception:
             continue
-            
+
     # Formulate semantic pre-triage hint for LLM
     hint = ""
     if best_dist < 0.55:
-        topic = best_meta.get("name") or best_meta.get("bkm_id") or best_meta.get("feature_id") or best_meta.get("domain") or best_col
+        topic = (
+            best_meta.get("name")
+            or best_meta.get("bkm_id")
+            or best_meta.get("feature_id")
+            or best_meta.get("domain")
+            or best_col
+        )
         adapter = best_meta.get("adapter", "")
         hint = f"[VECTOR_MATCH]: Top match in '{best_col}' (topic: '{topic}', distance: {best_dist:.3f})."
         if best_col == "behavioral_dna":
@@ -152,5 +170,5 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> Dict[str, Any]:
         "best_doc": best_doc,
         "results_by_collection": results_by_col,
         "semantic_hint": hint,
-        "is_casual_candidate": is_casual
+        "is_casual_candidate": is_casual,
     }

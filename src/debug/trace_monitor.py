@@ -1,11 +1,13 @@
 import os
 
+
 class TraceMonitor:
     """
     [FEAT-151] Unified Trace Monitoring (Log Delta Capture).
-    Marks log positions at start and captures only the NEW lines (deltas) 
+    Marks log positions at start and captures only the NEW lines (deltas)
     produced during a test window.
     """
+
     def __init__(self, log_paths):
         self.log_paths = log_paths
         self.marks = {}
@@ -25,18 +27,18 @@ class TraceMonitor:
         for path in self.log_paths:
             if not os.path.exists(path):
                 continue
-            
+
             current_size = os.path.getsize(path)
             mark = self.marks.get(path, 0)
-            
+
             if current_size > mark:
-                with open(path, 'r') as f:
+                with open(path, "r") as f:
                     f.seek(mark)
                     lines = f.readlines()
                     label = os.path.basename(path).upper()
                     for line in lines:
                         deltas.append(f"  [{label}] {line.strip()}")
-                
+
                 # Update mark to avoid duplicates if called repeatedly
                 self.marks[path] = current_size
         return deltas

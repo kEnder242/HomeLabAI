@@ -1,15 +1,18 @@
-import pytest
 import asyncio
+
+import pytest
+
 try:
     from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client # Import stdio_client
+    from mcp.client.stdio import stdio_client  # Import stdio_client
 except ImportError:
     ClientSession = StdioServerParameters = stdio_client = None
-import sys
 import os
+import sys
 
 # Assuming Python executable path
 PYTHON_PATH = sys.executable
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -17,6 +20,7 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
 
 @pytest.fixture(scope="module")
 async def archive_client():
@@ -30,8 +34,11 @@ async def archive_client():
     async with stdio_client(server_params) as (read_pipe, write_pipe):
         async with ClientSession(read_pipe, write_pipe) as session:
             # Apply a timeout using asyncio.wait_for for initialization
-            await asyncio.wait_for(session.initialize(), timeout=60) # Increased to 60 seconds
+            await asyncio.wait_for(
+                session.initialize(), timeout=60
+            )  # Increased to 60 seconds
             yield session
+
 
 @pytest.fixture(scope="module")
 async def brain_client():
@@ -44,8 +51,11 @@ async def brain_client():
     async with stdio_client(server_params) as (read_pipe, write_pipe):
         async with ClientSession(read_pipe, write_pipe) as session:
             # Apply a timeout using asyncio.wait_for for initialization
-            await asyncio.wait_for(session.initialize(), timeout=60) # Increased to 60 seconds
+            await asyncio.wait_for(
+                session.initialize(), timeout=60
+            )  # Increased to 60 seconds
             yield session
+
 
 @pytest.fixture(scope="module")
 async def brain_client():

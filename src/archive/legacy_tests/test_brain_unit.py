@@ -1,5 +1,7 @@
 import unittest
-from nodes.brain_node import _validate_filename, _clean_content
+
+from nodes.brain_node import _clean_content, _validate_filename
+
 
 class TestTheEditor(unittest.TestCase):
 
@@ -15,7 +17,7 @@ class TestTheEditor(unittest.TestCase):
         # 2. Path Traversal (Should strip path but remain valid if extension is ok)
         valid, name = _validate_filename("../../etc/passwd.txt")
         self.assertTrue(valid)
-        self.assertEqual(name, "passwd.txt") # Should be basename
+        self.assertEqual(name, "passwd.txt")  # Should be basename
 
         # 3. Invalid Extensions
         valid, msg = _validate_filename("malware.exe")
@@ -36,7 +38,9 @@ class TestTheEditor(unittest.TestCase):
 
         raw = "Sure, I can do that.\nData: 123"
         clean = _clean_content(raw)
-        self.assertEqual(clean, "I can do that.\nData: 123") # "Sure," is removed, rest remains
+        self.assertEqual(
+            clean, "I can do that.\nData: 123"
+        )  # "Sure," is removed, rest remains
 
         # Note: My regex was ^(Sure,)\s*. If "I can do that" follows immediately, it stays.
         # Let's verify exact behavior.
@@ -67,7 +71,8 @@ class TestTheEditor(unittest.TestCase):
         ```
         """
         clean = _clean_content(raw)
-        self.assertEqual(clean, 'print(\"Hello World\")')
+        self.assertEqual(clean, 'print("Hello World")')
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

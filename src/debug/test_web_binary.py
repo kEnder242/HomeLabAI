@@ -1,7 +1,9 @@
 import asyncio
-import websockets
 import json
+
 import numpy as np
+import websockets
+
 
 async def test_web_binary_stream():
     uri = "ws://localhost:8765"
@@ -10,14 +12,18 @@ async def test_web_binary_stream():
     try:
         async with websockets.connect(uri) as ws:
             # 1. Handshake
-            await ws.send(json.dumps({"type": "handshake", "version": "2.5.0", "client": "web-test"}))
+            await ws.send(
+                json.dumps(
+                    {"type": "handshake", "version": "2.5.0", "client": "web-test"}
+                )
+            )
             resp = await ws.recv()
             print(f"✅ Handshake: {resp}")
 
             # 2. Stream Binary Chunks (Simulating browser output)
             # 16kHz, 1 second of audio
             chunk_size = 4096
-            total_samples = 16000 * 3 # 3 seconds
+            total_samples = 16000 * 3  # 3 seconds
 
             print(f"🎤 Sending {total_samples} samples in chunks of {chunk_size}...")
 
@@ -28,7 +34,7 @@ async def test_web_binary_stream():
 
                 # Send raw bytes (matches browser .buffer)
                 await ws.send(samples.tobytes())
-                await asyncio.sleep(chunk_size / 16000) # Real-time simulation
+                await asyncio.sleep(chunk_size / 16000)  # Real-time simulation
 
             print("✅ Binary stream finished.")
 
@@ -40,6 +46,7 @@ async def test_web_binary_stream():
 
     except Exception as e:
         print(f"❌ Test Failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_web_binary_stream())

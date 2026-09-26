@@ -1,10 +1,12 @@
-import pytest
 import asyncio
-import websockets
 import json
+
+import pytest
+import websockets
 
 # --- Configuration ---
 LAB_WS_URL = "ws://localhost:8765"
+
 
 @pytest.mark.asyncio
 async def test_mcp_full_integration():
@@ -17,7 +19,15 @@ async def test_mcp_full_integration():
         print(f"DEBUG: Initial status: {init_data.get('state')}")
 
         # 1. Handshake
-        await ws.send(json.dumps({"type": "handshake", "version": "3.4.0", "client": "integration_tester"}))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "handshake",
+                    "version": "3.4.0",
+                    "client": "integration_tester",
+                }
+            )
+        )
 
         # 2. Verify Handshake Response
         msg = await asyncio.wait_for(ws.recv(), timeout=10)
@@ -59,16 +69,21 @@ async def test_mcp_full_integration():
 
                     if "Brain" in source:
                         found_brain_reply = True
-                        print(f"✅ Brain Node: deep_think verified. (Reply: {content[:100]}...)")
+                        print(
+                            f"✅ Brain Node: deep_think verified. (Reply: {content[:100]}...)"
+                        )
                         break
                     elif "500" in content:
-                        print("⚠️  Brain Node: Windows Ollama returned 500 (Offline but tool-call worked).")
+                        print(
+                            "⚠️  Brain Node: Windows Ollama returned 500 (Offline but tool-call worked)."
+                        )
                         found_brain_reply = True
                         break
             except asyncio.TimeoutError:
                 break
 
         assert found_brain_reply, "Brain failed to reply to handoff."
+
 
 if __name__ == "__main__":
     asyncio.run(test_mcp_full_integration())

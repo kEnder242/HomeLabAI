@@ -1,7 +1,8 @@
 import asyncio
-import aiohttp
-import time
 import json
+import time
+
+import aiohttp
 import pytest
 import websockets
 

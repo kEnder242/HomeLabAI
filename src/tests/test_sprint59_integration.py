@@ -13,12 +13,11 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from compiler.context_compiler import ContextCompiler
 from curator.scan_curator import evaluate_gem_quality
 from logic.cognitive_hub import CognitiveHub
 from logic.feedback_interceptor import is_critique, record_feedback
-from logic.floating_oracle import is_shallow_turn, build_floating_candidate_pool
+from logic.floating_oracle import build_floating_candidate_pool, is_shallow_turn
 
 
 @pytest.fixture
@@ -87,7 +86,10 @@ async def test_e2e_fourth_wall_critique_interception(mock_hub_env, tmp_path):
     assert is_critique(critique_query) is True
 
     # Patch record_feedback to use test ledger
-    with patch("logic.cognitive_hub.record_feedback", side_effect=lambda **kwargs: record_feedback(ledger_path=test_ledger, **kwargs)):
+    with patch(
+        "logic.cognitive_hub.record_feedback",
+        side_effect=lambda **kwargs: record_feedback(ledger_path=test_ledger, **kwargs),
+    ):
         await hub.process_query(critique_query)
 
     # 1. Verify triage LLM was completely bypassed (0 calls to lab resident)
@@ -209,8 +211,12 @@ def test_real_codebase_context_compilation():
     compiled_char_count = len(compiled_markdown)
     compaction_ratio = (raw_char_count - compiled_char_count) / raw_char_count
 
-    print(f"\n[AST COMPILER] Raw: {raw_char_count} chars -> Compiled: {compiled_char_count} chars ({compaction_ratio:.1%} reduction)")
-    assert compaction_ratio > 0.40, f"Expected >40% compaction, got {compaction_ratio:.1%}"
+    print(
+        f"\n[AST COMPILER] Raw: {raw_char_count} chars -> Compiled: {compiled_char_count} chars ({compaction_ratio:.1%} reduction)"
+    )
+    assert (
+        compaction_ratio > 0.40
+    ), f"Expected >40% compaction, got {compaction_ratio:.1%}"
 
 
 # ─── 4. Universal Epistemic Evaluator Consistency Test ────────────────────────

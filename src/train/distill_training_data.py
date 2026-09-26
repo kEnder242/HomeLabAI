@@ -1,9 +1,9 @@
-import os
-import json
-import aiohttp
 import asyncio
+import json
+import os
 import re
 
+import aiohttp
 from infra.engine_client import async_query_sovereign_engine
 
 # Source files
@@ -25,6 +25,7 @@ The Shadow Brain focuses on high-level themes, eras, and strategic impact. It do
 Format output as a JSON array of objects with 'instruction' and 'response' keys."""
 # [FEAT-458] Atlas Identity Guard & OpenAgent REST Persona Binding Contract
 
+
 # [FEAT-092] Persona De-personalization (Cognitive Firewall)
 async def generate_pairs(session, prompt, context, persona):
     query = f"[CONTEXT]:\n{context[:2000]}"
@@ -34,7 +35,7 @@ async def generate_pairs(session, prompt, context, persona):
             system_prompt=prompt,
             json_mode=True,
             temperature=0.3,
-            timeout=60.0
+            timeout=60.0,
         )
         if isinstance(data, list):
             return data
@@ -50,16 +51,17 @@ async def generate_pairs(session, prompt, context, persona):
         print(f"Error distilling for {persona}: {e}")
         return []
 
+
 async def main():
     print("--- Starting Distillation Pipeline ---")
-    
+
     # 1. Gather Context
     stories = ""
     if os.path.exists(STORIES_FILE):
         with open(STORIES_FILE, "r") as f:
             stories = f.read()
             # Strip simple HTML
-            stories = re.sub(r'<[^>]+>', ' ', stories)
+            stories = re.sub(r"<[^>]+>", " ", stories)
 
     # Grab a few artifacts for Pinky
     artifacts = ""
@@ -68,26 +70,40 @@ async def main():
             with open(os.path.join(DATA_DIR, f), "r") as jf:
                 try:
                     data = json.load(jf)
-                    for item in data[:2]: # Just take a few for proof of concept
-                        artifacts += f"File: {item.get('name')} - {item.get('summary')}\n"
-                except: pass
+                    for item in data[:2]:  # Just take a few for proof of concept
+                        artifacts += (
+                            f"File: {item.get('name')} - {item.get('summary')}\n"
+                        )
+                except:
+                    pass
 
     # 2. Distill
     async with aiohttp.ClientSession() as session:
         print("Distilling Pinky data...")
-        pinky_pairs = await generate_pairs(session, PINKY_DISTILL_PROMPT, artifacts + "\n" + stories[:1000], "Pinky")
-        
+        pinky_pairs = await generate_pairs(
+            session, PINKY_DISTILL_PROMPT, artifacts + "\n" + stories[:1000], "Pinky"
+        )
+
         print("Distilling Shadow Brain data...")
-        shadow_pairs = await generate_pairs(session, SHADOW_DISTILL_PROMPT, stories[1000:3000], "Shadow Brain")
+        shadow_pairs = await generate_pairs(
+            session, SHADOW_DISTILL_PROMPT, stories[1000:3000], "Shadow Brain"
+        )
 
     # 3. Save
     os.makedirs(os.path.dirname(__file__), exist_ok=True)
-    with open(os.path.join(os.path.dirname(__file__), "pinky_distilled.json"), "w") as f:
+    with open(
+        os.path.join(os.path.dirname(__file__), "pinky_distilled.json"), "w"
+    ) as f:
         json.dump(pinky_pairs, f, indent=2)
-    with open(os.path.join(os.path.dirname(__file__), "shadow_distilled.json"), "w") as f:
+    with open(
+        os.path.join(os.path.dirname(__file__), "shadow_distilled.json"), "w"
+    ) as f:
         json.dump(shadow_pairs, f, indent=2)
 
-    print(f"Distillation complete. Created {len(pinky_pairs)} Pinky pairs and {len(shadow_pairs)} Shadow pairs.")
+    print(
+        f"Distillation complete. Created {len(pinky_pairs)} Pinky pairs and {len(shadow_pairs)} Shadow pairs."
+    )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

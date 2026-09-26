@@ -1,9 +1,10 @@
-import pytest
-import subprocess
 import os
+import subprocess
 import sys
+
+import pytest
 import requests
-from typing import Optional
+
 
 def _find_repo_root(start_dir: str) -> str:
     """Walk up from start_dir until a directory containing a .git entry is found."""
@@ -16,12 +17,16 @@ def _find_repo_root(start_dir: str) -> str:
             return os.path.abspath(start_dir)
         current = parent
 
+
 REPO_ROOT = _find_repo_root(os.path.dirname(__file__))
 
-def get_bytecode_status(repo_root: Optional[str] = None) -> tuple[Optional[str], Optional[str], Optional[bool]]:
+
+def get_bytecode_status(
+    repo_root: str | None = None,
+) -> tuple[str | None, str | None, bool | None]:
     """[FEAT-524] Core evaluator for local Git HEAD vs served Lab Attendant boot commit."""
     root = repo_root or REPO_ROOT
-    local_commit: Optional[str] = None
+    local_commit: str | None = None
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short=7", "HEAD"],
@@ -35,8 +40,8 @@ def get_bytecode_status(repo_root: Optional[str] = None) -> tuple[Optional[str],
     except Exception:
         local_commit = None
 
-    served_commit: Optional[str] = None
-    is_vocal_status: Optional[bool] = None
+    served_commit: str | None = None
+    is_vocal_status: bool | None = None
     try:
         response = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60)
         if response.status_code == 200:
@@ -53,7 +58,7 @@ def get_bytecode_status(repo_root: Optional[str] = None) -> tuple[Optional[str],
     return local_commit, served_commit, is_vocal_status
 
 
-def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = False):
+def assert_live_bytecode(repo_root: str | None = None, enforce_vocal: bool = False):
     """[FEAT-524] Standalone / Pytest callable gate enforcing fresh bytecode before live runs."""
     local_commit, served_commit, is_vocal_status = get_bytecode_status(repo_root)
 
@@ -65,7 +70,9 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
         if "pytest" in sys.modules:
             pytest.fail(err)
         else:
-            _print_warning_box(f"[ERROR] SERVER UNREACHABLE\nLocal: {local_commit}\nServed: unknown")
+            _print_warning_box(
+                f"[ERROR] SERVER UNREACHABLE\nLocal: {local_commit}\nServed: unknown"
+            )
             raise RuntimeError(err)
 
     if local_commit and served_commit != local_commit:
@@ -89,24 +96,35 @@ def assert_live_bytecode(repo_root: Optional[str] = None, enforce_vocal: bool = 
         if "pytest" in sys.modules:
             pytest.fail(err)
         else:
-            _print_warning_box("[ERROR] LAB NOT VOCAL\nDaemon is running but vocal=False")
+            _print_warning_box(
+                "[ERROR] LAB NOT VOCAL\nDaemon is running but vocal=False"
+            )
             raise RuntimeError(err)
 
     return True
 
 
-PENDING_RESET_PATH = "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+PENDING_RESET_PATH = (
+    "/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/pending_reset.json"
+)
+
 
 def get_pending_reset_info() -> dict:
     """[FEAT-537] Reads pending reset action and quiet window state."""
     import json
+
     if os.path.exists(PENDING_RESET_PATH):
         try:
             with open(PENDING_RESET_PATH, "r") as f:
                 return json.load(f)
         except Exception:
             pass
-    return {"pending_action": "NONE", "action_level": 0, "timer_expiry_ts": 0, "reasons": []}
+    return {
+        "pending_action": "NONE",
+        "action_level": 0,
+        "timer_expiry_ts": 0,
+        "reasons": [],
+    }
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -133,7 +151,7 @@ def pytest_sessionstart(session):
             action = pending.get("pending_action", "SOFT_RELOAD")
             if action == "NONE":
                 action = "SOFT_RELOAD"
-            
+
             reasons = pending.get("reasons", [])
             reason_str = f"\nTrigger: {reasons[0]}" if reasons else ""
 
@@ -152,9 +170,9 @@ def pytest_sessionstart(session):
         print("[WARN] Could not determine boot commit (git/service unavailable)")
 
 
-_LOCAL_COMMIT: Optional[str] = None
-_SERVED_COMMIT: Optional[str] = None
-_IS_VOCAL_STATUS: Optional[bool] = None
+_LOCAL_COMMIT: str | None = None
+_SERVED_COMMIT: str | None = None
+_IS_VOCAL_STATUS: bool | None = None
 
 
 @pytest.fixture(autouse=True)
@@ -193,10 +211,14 @@ def live_vocal():
     try:
         resp = requests.get("http://127.0.0.1:8765/status?timeout=60", timeout=60)
         if resp.status_code != 200:
-            pytest.fail(f"Lab Attendant status endpoint returned HTTP {resp.status_code}")
+            pytest.fail(
+                f"Lab Attendant status endpoint returned HTTP {resp.status_code}"
+            )
         data = resp.json()
         if not data.get("vocal", False):
-            pytest.fail(f"Lab is not in vocal state (state={data.get('state')}, vocal={data.get('vocal')})")
+            pytest.fail(
+                f"Lab is not in vocal state (state={data.get('state')}, vocal={data.get('vocal')})"
+            )
         return data
     except requests.exceptions.RequestException as e:
         pytest.fail(f"Lab Attendant unreachable on port 8765: {e}")
@@ -204,7 +226,7 @@ def live_vocal():
 
 def _print_warning_box(message: str):
     """Print ASCII box with warning message."""
-    lines = message.split('\n')
+    lines = message.split("\n")
     max_len = max(len(line) for line in lines)
     border = "=" * (max_len + 4)
     print(border)
@@ -219,6 +241,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if _LOCAL_COMMIT and _SERVED_COMMIT:
         if _LOCAL_COMMIT != _SERVED_COMMIT:
             import time
+
             pending = get_pending_reset_info()
             action = pending.get("pending_action", "SOFT_RELOAD")
             if action == "NONE":
@@ -234,7 +257,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             else:
                 fix_msg = "Resident modules changed. Fast hot-reload available via POST /reload_residents (VRAM preserved)."
 
-            terminalreporter.section("⚠️ LIVE LAB SYNCHRONIZATION NOTICE (BKM-024)", sep="=", yellow=True)
+            terminalreporter.section(
+                "⚠️ LIVE LAB SYNCHRONIZATION NOTICE (BKM-024)", sep="=", yellow=True
+            )
             terminalreporter.write_line(
                 f"STALE BYTECODE DETECTED [{action}{rem}]: Local HEAD ({_LOCAL_COMMIT}) != Served ({_SERVED_COMMIT})\n"
                 f"Prescription: {fix_msg}{reasons_str}\n"
@@ -242,10 +267,13 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 "verifying against the active running daemon (matching Git HEAD) and live endpoints."
             )
         else:
-            terminalreporter.write_line(f"🎯 Live Lab Synchronized: Boot commit {_SERVED_COMMIT} matches Local HEAD.")
+            terminalreporter.write_line(
+                f"🎯 Live Lab Synchronized: Boot commit {_SERVED_COMMIT} matches Local HEAD."
+            )
     elif _LOCAL_COMMIT and not _SERVED_COMMIT:
-        terminalreporter.section("ℹ️ OFFLINE TEST RUN NOTICE (BKM-024)", sep="=", yellow=True)
+        terminalreporter.section(
+            "ℹ️ OFFLINE TEST RUN NOTICE (BKM-024)", sep="=", yellow=True
+        )
         terminalreporter.write_line(
             "Lab server on port 8765 is offline. Fast mocks passed, but final live certification is pending."
         )
-

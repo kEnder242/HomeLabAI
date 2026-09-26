@@ -19,7 +19,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. SpeakerRegistry Import (graceful fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -88,6 +87,7 @@ _BANNED_PHRASES: list[str] = [
 # 3. build_critic_prompt
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def build_critic_prompt(
     user_query: str,
     technical_summary: str,
@@ -144,9 +144,11 @@ def build_critic_prompt(
 # 4. parse_critic_payload & DnaProposal
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class DnaProposal:
     """[FEAT-590] Structured candidate proposal for CLaRa-DNA update."""
+
     id: str
     domain: str
     title: str
@@ -255,7 +257,9 @@ def _coerce_result(data: dict[str, Any]) -> CriticResult:
     # [FEAT-590] Extract candidate DNA proposal if present
     proposal = None
     prop_data = data.get("dna_proposal")
-    if isinstance(prop_data, dict) and (prop_data.get("title") or prop_data.get("summary")):
+    if isinstance(prop_data, dict) and (
+        prop_data.get("title") or prop_data.get("summary")
+    ):
         p_tags = prop_data.get("tags", [])
         if isinstance(p_tags, str):
             p_tags = [t.strip() for t in p_tags.split(",")]
@@ -283,6 +287,7 @@ def _coerce_result(data: dict[str, Any]) -> CriticResult:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. format_chat_delivery
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def format_chat_delivery(
     cartoon_retort: str,
@@ -344,6 +349,7 @@ def format_chat_delivery(
 # ═══════════════════════════════════════════════════════════════════════════════
 # 6. format_crosstalk_telemetry
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def format_crosstalk_telemetry(
     *,

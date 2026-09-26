@@ -1,5 +1,6 @@
 from dedup_utils import get_new_text
 
+
 def test_deduplication():
     print("Running Deduplication Tests...")
 
@@ -47,6 +48,7 @@ def test_deduplication():
     assert res6 == ""
 
     print("✅ All tests passed!")
+
 
 if __name__ == "__main__":
     test_deduplication()

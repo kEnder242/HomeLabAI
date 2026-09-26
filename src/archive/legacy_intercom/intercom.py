@@ -1,26 +1,31 @@
 import asyncio
-import websockets
-import pyaudio
-import sys
-import os
 import json
+import os
+import sys
 from enum import Enum, auto
+
+import pyaudio
+import websockets
 
 # --- PLATFORM HANDLING ---
 # msvcrt is Windows only. We use it for non-blocking key polling.
 try:
     import msvcrt
+
     IS_WINDOWS = True
 except ImportError:
     IS_WINDOWS = False
-    print("⚠️  Running in Non-Windows Mode. Keyboard Toggle (SPACE) will not work natively.")
+    print(
+        "⚠️  Running in Non-Windows Mode. Keyboard Toggle (SPACE) will not work natively."
+    )
 
 # --- COLOR HANDLING ---
 try:
     import colorama
+
     colorama.init(autoreset=True)
 except ImportError:
-    pass # Fallback to raw ANSI if colorama is missing
+    pass  # Fallback to raw ANSI if colorama is missing
 
 # --- CONFIGURATION ---
 VERSION = "2.1.0"
@@ -40,6 +45,7 @@ COLOR_GREEN = "\033[92m"
 COLOR_RED = "\033[91m"
 COLOR_BLUE = "\033[94m"
 
+
 # State Machine
 class ClientState(Enum):
     LOBBY = auto()
@@ -47,10 +53,12 @@ class ClientState(Enum):
     TYPING = auto()
     SHUTDOWN = auto()
 
+
 # Global Context
 STATE = ClientState.LOBBY
 SHUTDOWN_EVENT = asyncio.Event()
-PENDING_CHAR = "" # Stores the key that triggered text mode
+PENDING_CHAR = ""  # Stores the key that triggered text mode
+
 
 async def get_user_input():
     """Blocking input wrapped in a thread."""
@@ -62,6 +70,7 @@ async def get_user_input():
         return full_text
     return text
 
+
 async def check_keyboard_trigger():
     """Polls for ANY key to toggle modes (Windows Only)."""
     global PENDING_CHAR
@@ -72,14 +81,15 @@ async def check_keyboard_trigger():
         char_bytes = msvcrt.getch()
         try:
             # Try to decode the trigger char so we can re-inject it
-            PENDING_CHAR = char_bytes.decode('utf-8')
+            PENDING_CHAR = char_bytes.decode("utf-8")
         except:
-            PENDING_CHAR = "" # Ignore non-decodable keys
+            PENDING_CHAR = ""  # Ignore non-decodable keys
 
         while msvcrt.kbhit():
-            msvcrt.getch() # Clear the rest of the buffer (arrows, etc)
+            msvcrt.getch()  # Clear the rest of the buffer (arrows, etc)
         return True
     return False
+
 
 async def receive_messages(websocket):
     """Listens for server responses and updates the UI."""
@@ -94,7 +104,9 @@ async def receive_messages(websocket):
                 if s == "ready":
                     STATE = ClientState.LISTENING
                     print(f"{COLOR_GREEN}[ACME LAB]: Ready. {COLOR_RESET}")
-                    print(f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}")
+                    print(
+                        f"{COLOR_BLUE}[INFO] Press SPACE to Type, Ctrl+C to Quit.{COLOR_RESET}"
+                    )
                 elif s == "shutdown":
                     print(f"{COLOR_RED}[ACME LAB]: Closing.{COLOR_RESET}")
                     STATE = ClientState.SHUTDOWN
@@ -107,11 +119,11 @@ async def receive_messages(websocket):
                 sys.stdout.flush()
 
             elif data.get("type") == "final":
-                 print(f"\n{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
+                print(f"\n{COLOR_YELLOW}[YOU]: {data['text']}{COLOR_RESET}")
 
             elif "brain" in data:
                 source = data.get("brain_source", "Unknown")
-                content = data['brain']
+                content = data["brain"]
                 c = COLOR_PINK if "Pinky" in source else COLOR_CYAN
                 print(f"{c}[{source}]: {content}{COLOR_RESET}")
 
@@ -123,14 +135,17 @@ async def receive_messages(websocket):
                 elif event == "PINKY_DECISION":
                     decision = data.get("data", {})
                     tool = decision.get("tool")
-                    print(f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}")
+                    print(
+                        f"{COLOR_PINK}[PINKY THOUGHT]: Decided to use '{tool}'{COLOR_RESET}"
+                    )
 
     except websockets.exceptions.ConnectionClosed:
         SHUTDOWN_EVENT.set()
 
+
 async def audio_and_input_loop(websocket):
     """
-    The Core Loop. 
+    The Core Loop.
     Manages Audio Streaming AND Keyboard Polling.
     """
     global STATE
@@ -139,30 +154,40 @@ async def audio_and_input_loop(websocket):
 
     try:
         # Setup Audio
-        stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+        stream = p.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK,
+        )
         print(f"{COLOR_BLUE}[CLIENT] Connecting to Intercom...{COLOR_RESET}")
 
         while not SHUTDOWN_EVENT.is_set():
 
             # --- STATE: LISTENING (Mic On) ---
             if STATE == ClientState.LISTENING:
-                if stream.is_stopped(): stream.start_stream()
+                if stream.is_stopped():
+                    stream.start_stream()
 
                 # 1. Read Mic
                 try:
                     data = stream.read(CHUNK, exception_on_overflow=False)
                     await websocket.send(data)
-                except Exception: pass # Ignore stream errors during switch
+                except Exception:
+                    pass  # Ignore stream errors during switch
 
                 # 2. Poll Keyboard (Trigger)
                 if await check_keyboard_trigger():
                     STATE = ClientState.TYPING
-                    stream.stop_stream() # Mute Mic
-                    print(f"{COLOR_BLUE}[TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}")
+                    stream.stop_stream()  # Mute Mic
+                    print(
+                        f"{COLOR_BLUE}[TEXT MODE] Type your message (ENTER to send, empty to cancel):{COLOR_RESET}"
+                    )
                     sys.stdout.write(">> ")
                     sys.stdout.flush()
 
-                await asyncio.sleep(0.01) # Yield to event loop
+                await asyncio.sleep(0.01)  # Yield to event loop
 
             # --- STATE: TYPING (Mic Off) ---
             elif STATE == ClientState.TYPING:
@@ -181,7 +206,7 @@ async def audio_and_input_loop(websocket):
                     payload = {
                         "type": "text_input",
                         "content": user_text,
-                        "timestamp": 0 # TODO: Add real time
+                        "timestamp": 0,  # TODO: Add real time
                     }
                     await websocket.send(json.dumps(payload))
                     print(f"{COLOR_YELLOW}📝 [YOU]: {user_text}{COLOR_RESET}")
@@ -202,6 +227,7 @@ async def audio_and_input_loop(websocket):
             stream.close()
         p.terminate()
 
+
 async def connect_with_retry(uri):
     """Connection logic with retry."""
     for i in range(5):
@@ -212,13 +238,18 @@ async def connect_with_retry(uri):
             await asyncio.sleep(1)
     raise ConnectionRefusedError("Server Unreachable")
 
+
 async def main():
     uri = f"ws://{HOST}:{PORT}"
     try:
         ws = await connect_with_retry(uri)
         async with ws as websocket:
             # Handshake
-            await websocket.send(json.dumps({"type": "handshake", "version": VERSION, "client": "intercom"}))
+            await websocket.send(
+                json.dumps(
+                    {"type": "handshake", "version": VERSION, "client": "intercom"}
+                )
+            )
 
             # Tasks
             io_task = asyncio.create_task(audio_and_input_loop(websocket))
@@ -230,6 +261,7 @@ async def main():
 
     except Exception as e:
         print(f"\n{COLOR_RED}Fatal: {e}{COLOR_RESET}")
+
 
 if __name__ == "__main__":
     try:

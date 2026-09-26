@@ -10,21 +10,22 @@ Tests:
     6. Helper functions - extract_temporal_anchors
 """
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.logic.traversal_dispatcher import (
     TraversalMode,
-    format_traversal_query,
-    resolve_collection_scope,
     extract_temporal_anchors,
+    format_traversal_query,
     get_temporal_bounds,
     is_temporal_query,
+    resolve_collection_scope,
 )
 
-
 # ─── TOPIC_FIRST Mode Tests ─────────────────────────────────────────────────
+
 
 class TestTopicFirstMode:
     """Test TOPIC_FIRST traversal mode - keyword prioritization and routing."""
@@ -42,7 +43,9 @@ class TestTopicFirstMode:
         result = format_traversal_query("silicon telemetry career", "TOPIC_FIRST")
         terms = result["enriched_terms"]
         # silicon should appear before career
-        silicon_idx = next((i for i, t in enumerate(terms) if "silicon" in t.lower()), -1)
+        silicon_idx = next(
+            (i for i, t in enumerate(terms) if "silicon" in t.lower()), -1
+        )
         career_idx = next((i for i, t in enumerate(terms) if "career" in t.lower()), -1)
         if silicon_idx >= 0 and career_idx >= 0:
             assert silicon_idx < career_idx
@@ -68,6 +71,7 @@ class TestTopicFirstMode:
 
 
 # ─── TIME_FIRST Mode Tests ──────────────────────────────────────────────────
+
 
 class TestTimeFirstMode:
     """Test TIME_FIRST traversal mode - temporal anchor extraction."""
@@ -111,6 +115,7 @@ class TestTimeFirstMode:
 
 # ─── STREAM_REPLAY Mode Tests ────────────────────────────────────────────────
 
+
 class TestStreamReplayMode:
     """Test STREAM_REPLAY mode - short-term stream targeting."""
 
@@ -135,6 +140,7 @@ class TestStreamReplayMode:
 
 
 # ─── format_traversal_query Entry Point Tests ───────────────────────────────
+
 
 class TestFormatTraversalQuery:
     """Test the main format_traversal_query entry point."""
@@ -179,6 +185,7 @@ class TestFormatTraversalQuery:
 
 
 # ─── resolve_collection_scope Tests ─────────────────────────────────────────
+
 
 class TestResolveCollectionScope:
     """Test collection scope resolution based on vibe/domain/mode."""
@@ -225,7 +232,9 @@ class TestResolveCollectionScope:
 
     def test_domain_lab_history_adds_career_ledger(self):
         """Verify lab_history domain adds career_ledger."""
-        collections = resolve_collection_scope("TECHNICAL", "lab_history", "TOPIC_FIRST")
+        collections = resolve_collection_scope(
+            "TECHNICAL", "lab_history", "TOPIC_FIRST"
+        )
         assert "career_ledger" in collections
 
     def test_no_duplicates_in_collections(self):
@@ -241,6 +250,7 @@ class TestResolveCollectionScope:
 
 
 # ─── Helper Function Tests ──────────────────────────────────────────────────
+
 
 class TestExtractTemporalAnchors:
     """Test temporal anchor extraction helper."""
@@ -278,6 +288,7 @@ class TestExtractTemporalAnchors:
 
 
 # ─── Convenience Function Tests ─────────────────────────────────────────────
+
 
 class TestConvenienceFunctions:
     """Test get_temporal_bounds, is_temporal_query."""

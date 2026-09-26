@@ -2,12 +2,14 @@
 [FEAT-608 / LAB-110] Unit Test: Round Table Accountability Probe Verification
 Hermetic unit tests for probe_round_table_accountability.py with mocked HTTP responses.
 """
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from infra.probe_round_table_accountability import (
-    probe_greeting_latency,
     probe_deliberation_circuit,
-    run_round_table_accountability_probe
+    probe_greeting_latency,
+    run_round_table_accountability_probe,
 )
 
 
@@ -33,12 +35,14 @@ async def test_deliberation_circuit_pass():
     session = MagicMock()
     mock_resp = AsyncMock()
     mock_resp.status = 200
-    mock_resp.json = AsyncMock(return_value={
-        "status": "QUEUED",
-        "id": "evt_test123",
-        "routing": "SYSTEM_HEALTH",
-        "critic_score": 0.98
-    })
+    mock_resp.json = AsyncMock(
+        return_value={
+            "status": "QUEUED",
+            "id": "evt_test123",
+            "routing": "SYSTEM_HEALTH",
+            "critic_score": 0.98,
+        }
+    )
     session.post.return_value.__aenter__.return_value = mock_resp
 
     result = await probe_deliberation_circuit(session, "http://127.0.0.1:8765")
@@ -55,7 +59,10 @@ async def test_unified_probe_full_failure():
     session.get.side_effect = Exception("Connection Refused")
     session.post.side_effect = Exception("Connection Refused")
 
-    with patch("aiohttp.ClientSession", return_value=AsyncMock(__aenter__=AsyncMock(return_value=session))):
+    with patch(
+        "aiohttp.ClientSession",
+        return_value=AsyncMock(__aenter__=AsyncMock(return_value=session)),
+    ):
         telemetry = await run_round_table_accountability_probe("http://127.0.0.1:8765")
         assert telemetry["status"] == "FAIL"
         assert telemetry["error"] is not None

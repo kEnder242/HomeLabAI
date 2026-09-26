@@ -1,6 +1,6 @@
-
 import os
 import time
+
 import torch
 from moe_infinity import MoE
 
@@ -15,7 +15,7 @@ config = {
     "offload_path": offload_dir,
     "device_memory_ratio": 0.7,  # Leave some headroom for EarNode/System
     "host_memory_ratio": 0.8,
-    "prefetch": True
+    "prefetch": True,
 }
 
 print(f"Initializing MoE-Infinity with {model_path}...")
@@ -26,17 +26,18 @@ try:
     moe = MoE(model_path, config)
     print(f"Initialization complete in {time.time() - start_time:.2f}s")
 
-    # The MoE class wraps a model. Based on entrypoints/big_modeling.py, 
+    # The MoE class wraps a model. Based on entrypoints/big_modeling.py,
     # it seems it might have a .model attribute or act as a wrapper.
     # Looking at the example in big_modeling.py: outputs = model.generate(input_ids)
-    
+
     # We need a tokenizer. Let's use the one from the model path.
     from transformers import AutoTokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    
+
     input_text = "Explain the concept of Mixture of Experts in one paragraph."
     print(f"\nPrompt: {input_text}")
-    
+
     inputs = tokenizer(input_text, return_tensors="pt")
     input_ids = inputs.input_ids.to("cuda")
 
@@ -53,4 +54,5 @@ try:
 except Exception as e:
     print(f"Error during MoE-Infinity execution: {e}")
     import traceback
+
     traceback.print_exc()

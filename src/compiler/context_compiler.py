@@ -14,7 +14,6 @@ import ast
 import fnmatch
 import os
 from pathlib import Path
-from typing import Optional
 
 
 class ContextCompiler:
@@ -61,8 +60,8 @@ class ContextCompiler:
     def compile_workspace(
         self,
         root_dir: str,
-        include_patterns: Optional[list[str]] = None,
-        exclude_patterns: Optional[list[str]] = None,
+        include_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> str:
         """Compile all matching ``.py`` files and append a dependency graph."""
         root = Path(root_dir)
@@ -201,9 +200,7 @@ class ContextCompiler:
                 has_body = True
             elif isinstance(item, ast.Assign):
                 for target in item.targets:
-                    lines.append(
-                        f"{prefix}    {ast.unparse(target)} = ..."
-                    )
+                    lines.append(f"{prefix}    {ast.unparse(target)} = ...")
                 has_body = True
 
         if not has_body and not docstring:
@@ -282,9 +279,7 @@ class ContextCompiler:
             for i, arg in enumerate(args.kwonlyargs):
                 default = args.kw_defaults[i]
                 if default is not None:
-                    parts.append(
-                        f"{self._format_arg(arg)} = {ast.unparse(default)}"
-                    )
+                    parts.append(f"{self._format_arg(arg)} = {ast.unparse(default)}")
                 else:
                     parts.append(self._format_arg(arg))
 
@@ -304,8 +299,8 @@ class ContextCompiler:
     def _build_module_map(
         self,
         root_dir: str,
-        include_patterns: Optional[list[str]],
-        exclude_patterns: Optional[list[str]],
+        include_patterns: list[str] | None,
+        exclude_patterns: list[str] | None,
     ) -> dict[str, str]:
         """Map dotted module paths to relative file paths."""
         root = Path(root_dir)
@@ -324,10 +319,8 @@ class ContextCompiler:
                     continue
 
                 module_path = rel_path.replace(os.sep, "/").replace("/", ".")
-                if module_path.endswith(".py"):
-                    module_path = module_path[:-3]
-                if module_path.endswith(".__init__"):
-                    module_path = module_path[:-9]
+                module_path = module_path.removesuffix(".py")
+                module_path = module_path.removesuffix(".__init__")
 
                 module_map[module_path] = rel_path
 
@@ -364,12 +357,12 @@ class ContextCompiler:
 
     # ── pattern matching ──────────────────────────────────────────────
 
-    def _matches_include(self, rel_path: str, patterns: Optional[list[str]]) -> bool:
+    def _matches_include(self, rel_path: str, patterns: list[str] | None) -> bool:
         if patterns is None:
             return True
         return any(fnmatch.fnmatch(rel_path, pat) for pat in patterns)
 
-    def _matches_exclude(self, rel_path: str, patterns: Optional[list[str]]) -> bool:
+    def _matches_exclude(self, rel_path: str, patterns: list[str] | None) -> bool:
         if patterns is None:
             return False
         return any(fnmatch.fnmatch(rel_path, pat) for pat in patterns)

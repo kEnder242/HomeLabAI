@@ -4,9 +4,9 @@ Polymorphic LoRA Dataset Invariant, Domain Completeness, and Balance.
 """
 
 from forge.build_lora_datasets import (
-    build_dna_polymorphic_dataset,
+    DNA_OUT,
     _build_dna_synthesis_index,
-    DNA_OUT
+    build_dna_polymorphic_dataset,
 )
 
 

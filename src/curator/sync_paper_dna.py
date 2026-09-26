@@ -67,13 +67,19 @@ def collection_name(slug):
 def get_chroma_client():
     """HttpClient on port 8001 with PersistentClient fallback."""
     try:
-        logger.info("Attempting to connect to ChromaDB HttpClient on port %s:%s...", CHROMA_HOST, CHROMA_PORT)
+        logger.info(
+            "Attempting to connect to ChromaDB HttpClient on port %s:%s...",
+            CHROMA_HOST,
+            CHROMA_PORT,
+        )
         client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
         client.heartbeat()
         logger.info("HttpClient heartbeat successful.")
         return client
     except Exception as e:
-        logger.warning("HttpClient connection failed: %s. Falling back to PersistentClient.", e)
+        logger.warning(
+            "HttpClient connection failed: %s. Falling back to PersistentClient.", e
+        )
         return chromadb.PersistentClient(path=DB_PATH)
 
 
@@ -87,7 +93,7 @@ def get_safe_collection(client, name, ef):
 # ----------------------------------------------------------------------------
 # Node chunking (two-tier AST -> flat ChromaDB records)
 # ----------------------------------------------------------------------------
-_STR = lambda items: [str(i) for i in (items or [])]  # noqa: E731  (coerce pool lists)
+_STR = lambda items: [str(i) for i in (items or [])]
 
 
 def iter_paper_nodes(ast, slug):
@@ -157,7 +163,11 @@ def build_chunks(ast, slug):
         if node["node_type"] in ("doc", "section"):
             document = node["text"]
         else:
-            document = f"{node['heading']}: {node['text']}" if node["heading"] else node["text"]
+            document = (
+                f"{node['heading']}: {node['text']}"
+                if node["heading"]
+                else node["text"]
+            )
         metadata = {
             "node_id": node["node_id"],
             "node_type": node["node_type"],
@@ -167,11 +177,13 @@ def build_chunks(ast, slug):
             "citations": node["citations"],
             "candidate_pool": node["candidate_pool"],
         }
-        chunks.append({
-            "id": _chunk_id(slug, node["node_id"]),
-            "document": document,
-            "metadata": metadata,
-        })
+        chunks.append(
+            {
+                "id": _chunk_id(slug, node["node_id"]),
+                "document": document,
+                "metadata": metadata,
+            }
+        )
     return chunks
 
 
@@ -285,11 +297,13 @@ def list_paper_dna_collections():
                 count = coll.count()
             except Exception:
                 count = 0
-            out.append({
-                "slug": name[len(COLLECTION_PREFIX):],
-                "collection": name,
-                "count": count,
-            })
+            out.append(
+                {
+                    "slug": name[len(COLLECTION_PREFIX) :],
+                    "collection": name,
+                    "count": count,
+                }
+            )
         return sorted(out, key=lambda x: x["slug"])
     except Exception as e:
         logger.warning("paper_dna list collections note: %s", e)
@@ -314,7 +328,12 @@ def delete_paper_dna_collection(slug):
         if "not exist" in msg.lower() or "doesn't exist" in msg.lower():
             return {"status": "not_found", "collection": name, "slug": slugify(slug)}
         logger.warning("paper_dna delete collection note (%s): %s", name, e)
-        return {"status": "error", "collection": name, "slug": slugify(slug), "error": msg}
+        return {
+            "status": "error",
+            "collection": name,
+            "slug": slugify(slug),
+            "error": msg,
+        }
 
 
 # ----------------------------------------------------------------------------
@@ -340,21 +359,27 @@ def query_dna_collection(client, name, query_text, top_k=5):
     for i, cid in enumerate(ids):
         meta = metas[i] if i < len(metas) and metas[i] else {}
         dist = dists[i] if i < len(dists) else None
-        hits.append({
-            "id": cid,
-            "collection": name,
-            "node_id": meta.get("node_id") or cid,
-            "node_type": meta.get("node_type") or "",
-            "heading": meta.get("heading") or "",
-            "slug": meta.get("slug") or "",
-            "document": docs[i] if i < len(docs) else "",
-            "distance": dist,
-            "score": round(1.0 - dist, 4) if isinstance(dist, (int, float)) else None,
-        })
+        hits.append(
+            {
+                "id": cid,
+                "collection": name,
+                "node_id": meta.get("node_id") or cid,
+                "node_type": meta.get("node_type") or "",
+                "heading": meta.get("heading") or "",
+                "slug": meta.get("slug") or "",
+                "document": docs[i] if i < len(docs) else "",
+                "distance": dist,
+                "score": (
+                    round(1.0 - dist, 4) if isinstance(dist, (int, float)) else None
+                ),
+            }
+        )
     return hits
 
 
-def query_hybrid_dna(query_text, slug=None, collections=GLOBAL_COLLECTIONS, top_k=10, per_collection_k=5):
+def query_hybrid_dna(
+    query_text, slug=None, collections=GLOBAL_COLLECTIONS, top_k=10, per_collection_k=5
+):
     """[SPR-82.2] Hybrid cross-collection DNA search.
 
     Executes the same query against each global DNA collection (default
@@ -369,14 +394,19 @@ def query_hybrid_dna(query_text, slug=None, collections=GLOBAL_COLLECTIONS, top_
     targets += list(collections)
     merged, seen = [], set()
     for name in targets:
-        for hit in query_dna_collection(client, name, query_text, top_k=per_collection_k):
+        for hit in query_dna_collection(
+            client, name, query_text, top_k=per_collection_k
+        ):
             key = (hit["collection"], hit["id"])
             if key in seen:
                 continue
             seen.add(key)
             merged.append(hit)
     merged.sort(
-        key=lambda h: (h["score"] is not None, h["score"] if h["score"] is not None else -1),
+        key=lambda h: (
+            h["score"] is not None,
+            h["score"] if h["score"] is not None else -1,
+        ),
         reverse=True,
     )
     return merged[:top_k]
@@ -388,13 +418,21 @@ def query_hybrid_dna(query_text, slug=None, collections=GLOBAL_COLLECTIONS, top_
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="[SPR-82.2] paper_dna_<slug> ChromaDB sync & lifecycle.")
+    parser = argparse.ArgumentParser(
+        description="[SPR-82.2] paper_dna_<slug> ChromaDB sync & lifecycle."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_sync = sub.add_parser("sync", help="sync a paper JSON file/dict into paper_dna_<slug>")
+    p_sync = sub.add_parser(
+        "sync", help="sync a paper JSON file/dict into paper_dna_<slug>"
+    )
     p_sync.add_argument("paper", help="path to a canonical paper AST JSON file")
-    p_sync.add_argument("--slug", default=None, help="override the derived collection slug")
-    p_sync.add_argument("--dry-run", action="store_true", help="parse/chunk only, no ChromaDB write")
+    p_sync.add_argument(
+        "--slug", default=None, help="override the derived collection slug"
+    )
+    p_sync.add_argument(
+        "--dry-run", action="store_true", help="parse/chunk only, no ChromaDB write"
+    )
 
     sub.add_parser("list", help="list all paper_dna_* collections")
 
@@ -403,7 +441,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.command == "sync":
-        print(json.dumps(sync_paper_dna(args.paper, slug=args.slug, dry_run=args.dry_run), indent=2))
+        print(
+            json.dumps(
+                sync_paper_dna(args.paper, slug=args.slug, dry_run=args.dry_run),
+                indent=2,
+            )
+        )
     elif args.command == "list":
         print(json.dumps(list_paper_dna_collections(), indent=2))
     elif args.command == "delete":

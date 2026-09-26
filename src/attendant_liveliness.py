@@ -9,27 +9,29 @@ Modern Lab Architecture:
 - Managed Residents: src/v5/foyer/residents.py
 """
 
-import requests
-import time
-import sys
 import hashlib
 import os
+import sys
+import time
+
+import requests
 
 # Configuration
-ATTENDANT_URL = 'http://localhost:8765'
-STATUS_URL = f'{ATTENDANT_URL}/status'
-START_URL = f'{ATTENDANT_URL}/start'
-STOP_URL = f'{ATTENDANT_URL}/stop'
-CLEANUP_URL = f'{ATTENDANT_URL}/hard_reset' # [FIX] Map to existing hard_reset endpoint
+ATTENDANT_URL = "http://localhost:8765"
+STATUS_URL = f"{ATTENDANT_URL}/status"
+START_URL = f"{ATTENDANT_URL}/start"
+STOP_URL = f"{ATTENDANT_URL}/stop"
+CLEANUP_URL = f"{ATTENDANT_URL}/hard_reset"  # [FIX] Map to existing hard_reset endpoint
 
-TIMEOUT_SEC = 240 # 4 minutes total timeout for full lifecycle
-POLL_INTERVAL_SEC = 5 # Poll every 5 seconds
+TIMEOUT_SEC = 240  # 4 minutes total timeout for full lifecycle
+POLL_INTERVAL_SEC = 5  # Poll every 5 seconds
+
 
 def get_lab_key():
     """Calculates the dynamic Lab Key from style.css MD5."""
     base_dir = "/home/jallred/Dev_Lab"
     css_path = os.path.join(base_dir, "Portfolio_Dev/field_notes/style.css")
-    
+
     try:
         with open(css_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()[:8]
@@ -37,48 +39,60 @@ def get_lab_key():
         print(f"[Monitor] WARNING: Could not calculate Lab Key at {css_path}: {e}")
         return "ERROR_KEY"
 
+
 def call_attendant_api(method, url, json_payload=None):
     key = get_lab_key()
-    headers = {
-        'Content-Type': 'application/json',
-        'X-Lab-Key': key
-    }
+    headers = {"Content-Type": "application/json", "X-Lab-Key": key}
     try:
-        if method == 'GET':
+        if method == "GET":
             response = requests.get(url, headers=headers, timeout=10)
-        elif method == 'POST':
-            response = requests.post(url, json=json_payload, headers=headers, timeout=10)
+        elif method == "POST":
+            response = requests.post(
+                url, json=json_payload, headers=headers, timeout=10
+            )
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"[Monitor] ERROR: Attendant API call failed for {url} ({method}): {e}", file=sys.stderr)
+        print(
+            f"[Monitor] ERROR: Attendant API call failed for {url} ({method}): {e}",
+            file=sys.stderr,
+        )
         return {"status": "error", "message": str(e)}
+
 
 def main():
     start_time = time.time()
-    print('--- Starting Lab Attendant Liveliness Monitor (v1.0 - DEPRECATED) ---')
+    print("--- Starting Lab Attendant Liveliness Monitor (v1.0 - DEPRECATED) ---")
     print(f"Total timeout: {TIMEOUT_SEC}s")
 
     # --- Phase 1: Initial Status Check ---
     print("\n[Monitor] Phase 1: Checking current Lab status...")
-    current_status = call_attendant_api('GET', STATUS_URL)
+    current_status = call_attendant_api("GET", STATUS_URL)
 
-    if current_status.get('status') == 'error':
-        print(f"[Monitor] FATAL: Could not connect to Lab Attendant. Is the service running? {current_status.get('message')}")
+    if current_status.get("status") == "error":
+        print(
+            f"[Monitor] FATAL: Could not connect to Lab Attendant. Is the service running? {current_status.get('message')}"
+        )
         sys.exit(1)
 
-    initial_lab_running = current_status.get('foyer_up', False)
-    initial_lab_ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
-    lab_pid = current_status.get('attendant_pid', 'N/A')
+    initial_lab_running = current_status.get("foyer_up", False)
+    initial_lab_ready = current_status.get("engine_vocal", False) or current_status.get(
+        "vocal", False
+    )
+    lab_pid = current_status.get("attendant_pid", "N/A")
 
     if initial_lab_ready:
         print(f"\n[Monitor] ✅ Lab is already READY (PID: {lab_pid})!")
         sys.exit(0)
     elif initial_lab_running:
-        print(f"\n[Monitor] Lab is running (PID: {lab_pid}) but not READY. Attempting to stop for a clean restart.")
-        stop_response = call_attendant_api('POST', STOP_URL)
-        if stop_response.get('status') == 'error':
-            print(f"[Monitor] ERROR: Failed to stop Lab server: {stop_response.get('message')}")
+        print(
+            f"\n[Monitor] Lab is running (PID: {lab_pid}) but not READY. Attempting to stop for a clean restart."
+        )
+        stop_response = call_attendant_api("POST", STOP_URL)
+        if stop_response.get("status") == "error":
+            print(
+                f"[Monitor] ERROR: Failed to stop Lab server: {stop_response.get('message')}"
+            )
             sys.exit(1)
         time.sleep(POLL_INTERVAL_SEC)
     else:
@@ -86,17 +100,21 @@ def main():
 
     # --- Phase 2: Cleanup and Start Lab Server ---
     print("\n[Monitor] Phase 2: Performing cleanup...")
-    cleanup_response = call_attendant_api('POST', CLEANUP_URL)
-    if cleanup_response.get('status') == 'error':
-        print(f"[Monitor] ERROR: Failed to cleanup Lab resources: {cleanup_response.get('message')}")
+    cleanup_response = call_attendant_api("POST", CLEANUP_URL)
+    if cleanup_response.get("status") == "error":
+        print(
+            f"[Monitor] ERROR: Failed to cleanup Lab resources: {cleanup_response.get('message')}"
+        )
         sys.exit(1)
     print("[Monitor] Cleanup complete.")
 
     print("\n[Monitor] Phase 2: Starting Lab server...")
     start_payload = {"mode": "SERVICE_UNATTENDED", "disable_ear": True}
-    start_response = call_attendant_api('POST', START_URL, json_payload=start_payload)
-    if start_response.get('status') == 'error':
-        print(f"[Monitor] ERROR: Failed to start Lab server: {start_response.get('message')}")
+    start_response = call_attendant_api("POST", START_URL, json_payload=start_payload)
+    if start_response.get("status") == "error":
+        print(
+            f"[Monitor] ERROR: Failed to start Lab server: {start_response.get('message')}"
+        )
         sys.exit(1)
     print(f"[Monitor] Lab server launched. PID: {start_response.get('pid')}")
     time.sleep(POLL_INTERVAL_SEC)
@@ -105,35 +123,46 @@ def main():
     print("\n[Monitor] Phase 3: Polling for Lab readiness...")
     poll_start_time = time.time()
     while time.time() - start_time < TIMEOUT_SEC:
-        current_status = call_attendant_api('GET', STATUS_URL)
-        if current_status.get('status') == 'error':
-            print(f"[Monitor] ERROR: Could not connect to Lab Attendant during polling. {current_status.get('message')}")
+        current_status = call_attendant_api("GET", STATUS_URL)
+        if current_status.get("status") == "error":
+            print(
+                f"[Monitor] ERROR: Could not connect to Lab Attendant during polling. {current_status.get('message')}"
+            )
             sys.exit(1)
 
-        running = current_status.get('foyer_up', False)
-        ready = current_status.get('engine_vocal', False) or current_status.get('vocal', False)
-        mode = current_status.get('engine_mode', 'UNKNOWN')
-        lab_pid = current_status.get('lab_pid', 'N/A')
-        last_logs = current_status.get('last_log_lines', [])
+        running = current_status.get("foyer_up", False)
+        ready = current_status.get("engine_vocal", False) or current_status.get(
+            "vocal", False
+        )
+        mode = current_status.get("engine_mode", "UNKNOWN")
+        lab_pid = current_status.get("lab_pid", "N/A")
+        last_logs = current_status.get("last_log_lines", [])
 
-        print(f'\n[Monitor] Lab Status (Mode: {mode}, PID: {lab_pid}) - Running: {running}, Ready: {ready}')
+        print(
+            f"\n[Monitor] Lab Status (Mode: {mode}, PID: {lab_pid}) - Running: {running}, Ready: {ready}"
+        )
         if last_logs:
             for line in last_logs:
-                print(f'\t[LAB LOG] {line}')
+                print(f"\t[LAB LOG] {line}")
 
         if not running and not ready and (time.time() - poll_start_time > 10):
-            print('[Monitor] FATAL: Lab server died prematurely during polling. Aborting.')
-            print('         Check lab_attendant.log or `sudo journalctl -u lab-attendant.service` for details.')
+            print(
+                "[Monitor] FATAL: Lab server died prematurely during polling. Aborting."
+            )
+            print(
+                "         Check lab_attendant.log or `sudo journalctl -u lab-attendant.service` for details."
+            )
             sys.exit(1)
 
         if ready:
-            print('\n[Monitor] ✅ Lab is fully READY!')
+            print("\n[Monitor] ✅ Lab is fully READY!")
             sys.exit(0)
 
         time.sleep(POLL_INTERVAL_SEC)
 
-    print('\n[Monitor] ❌ Timeout: Lab did not become ready within allocated time.')
+    print("\n[Monitor] ❌ Timeout: Lab did not become ready within allocated time.")
     sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

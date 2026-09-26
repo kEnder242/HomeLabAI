@@ -30,12 +30,16 @@ DEFAULT_TARGET_DIR = os.path.expanduser("~/Dev_Lab")
 DEFAULT_OUT = os.path.join(DEFAULT_TARGET_DIR, "DELEGATION_RETROSPECTIVE.md")
 DEFAULT_LOOKBEHIND = 5
 
-_LINE_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[STORY (\d+)\] \[([A-Z_]+)\] (.*)$")
+_LINE_RE = re.compile(
+    r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[STORY (\d+)\] \[([A-Z_]+)\] (.*)$"
+)
 _START_RE = re.compile(
     r"Initiating delegation (?:\([A-Z]+\) )?(?:for Sprint \d+ )?'(?P<title>.+?)' \((?:reference: [^,]+, )?(?:target|file): (?P<file>[^)]+)\)"
 )
 _SESSION_RE = re.compile(r"Created REST session (\S+)")
-_COMPLETE_RE = re.compile(r"Story \d+ dispatch (?:\([A-Z]+\) )?complete in (?P<dur>[\d.]+)s\. finish=(?P<finish>\S+) tokens=(?P<tokens>.*)$")
+_COMPLETE_RE = re.compile(
+    r"Story \d+ dispatch (?:\([A-Z]+\) )?complete in (?P<dur>[\d.]+)s\. finish=(?P<finish>\S+) tokens=(?P<tokens>.*)$"
+)
 
 
 def _parse_ts(ts_str):
@@ -164,7 +168,13 @@ def _session_tokens(sess):
     """Defensively extract input/output/reasoning/cache token counts from a session dict."""
     t = sess.get("tokens") or {}
     if not isinstance(t, dict):
-        return {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+        return {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache_read": 0,
+            "cache_write": 0,
+        }
     cache = t.get("cache") or {}
     if isinstance(cache, dict):
         cr, cw = cache.get("read", 0), cache.get("write", 0)
@@ -189,13 +199,21 @@ def enrich_with_session_metrics(stories, sessions):
                 if f"Story {story['story']}" in (s.get("title") or ""):
                     matched.append(s)
         story["matched_sessions"] = matched
-        story["session_id"] = ", ".join(str(s.get("id")) for s in matched if s.get("id")) or (
-            ", ".join(story["session_ids"]) or "-"
-        )
-        children = [s for s in by_id.values() if s.get("parentID") in story["session_ids"]]
+        story["session_id"] = ", ".join(
+            str(s.get("id")) for s in matched if s.get("id")
+        ) or (", ".join(story["session_ids"]) or "-")
+        children = [
+            s for s in by_id.values() if s.get("parentID") in story["session_ids"]
+        ]
         story["children"] = children
 
-        agg = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+        agg = {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache_read": 0,
+            "cache_write": 0,
+        }
         cost = 0.0
         add = dele = files = 0
         agents, models = set(), set()
@@ -216,7 +234,9 @@ def enrich_with_session_metrics(stories, sessions):
                 models.add(m.get("id"))
             tm = s.get("time") or {}
             if tm.get("created") and tm.get("updated"):
-                rest_duration_ms = max(rest_duration_ms, int(tm["updated"]) - int(tm["created"]))
+                rest_duration_ms = max(
+                    rest_duration_ms, int(tm["updated"]) - int(tm["created"])
+                )
 
         story["tokens"] = agg
         story["cost"] = cost
@@ -232,7 +252,9 @@ def _run_git(target_dir, *args):
     try:
         proc = subprocess.run(
             ["git", "-C", target_dir] + list(args),
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         return proc.stdout if proc.returncode == 0 else ""
     except Exception:
@@ -256,7 +278,9 @@ def fetch_git_actuals(target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHI
             p = p.split(" -> ")[1]
         if p:
             seen.add(p)
-    lg = _run_git(target_dir, "log", "--name-only", "--pretty=", f"-{max(lookbehind, 5)}")
+    lg = _run_git(
+        target_dir, "log", "--name-only", "--pretty=", f"-{max(lookbehind, 5)}"
+    )
     for p in lg.splitlines():
         if p.strip():
             seen.add(p.strip())
@@ -323,7 +347,9 @@ def fetch_handover_reflection(session_id):
         return None
     url = f"http://127.0.0.1:4097/session/{session_id}/message"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "delegate-retrospective"})
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "delegate-retrospective"}
+        )
         with urllib.request.urlopen(req, timeout=REST_TIMEOUT) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -343,7 +369,9 @@ def fetch_handover_reflection(session_id):
     return None
 
 
-def synthesize_retrospective(stories, actual_files, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND):
+def synthesize_retrospective(
+    stories, actual_files, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND
+):
     """Render the full DELEGATION_RETROSPECTIVE.md markdown document."""
     lines = [
         "# DELEGATION_RETROSPECTIVE",
@@ -385,10 +413,16 @@ def synthesize_retrospective(stories, actual_files, target_dir=DEFAULT_TARGET_DI
             lines.append(f"### Story {num}: {st['title'] or f'Story {num}'}")
             lines.append(f"> {reflection}\n")
     if not has_reflections:
-        lines.append("No in-flight handover reflections recorded for current session set.\n")
+        lines.append(
+            "No in-flight handover reflections recorded for current session set.\n"
+        )
 
     lines += ["## Path Divergence Summary", ""]
-    diverged = [st for st in stories.values() if (st.get("thrash") or {}).get("verdict") == "THRASH"]
+    diverged = [
+        st
+        for st in stories.values()
+        if (st.get("thrash") or {}).get("verdict") == "THRASH"
+    ]
     if diverged:
         for st in diverged:
             t = st["thrash"]
@@ -435,7 +469,9 @@ def atomic_write_text(path, content):
         raise
 
 
-PLAYBOOK_PATH = os.path.join(DEFAULT_TARGET_DIR, "Portfolio_Dev", "OPENAGENT_HANDOVER_PLAYBOOK.md")
+PLAYBOOK_PATH = os.path.join(
+    DEFAULT_TARGET_DIR, "Portfolio_Dev", "OPENAGENT_HANDOVER_PLAYBOOK.md"
+)
 
 
 def update_playbook_ledger(stories, playbook_path=PLAYBOOK_PATH):
@@ -451,7 +487,11 @@ def update_playbook_ledger(stories, playbook_path=PLAYBOOK_PATH):
             st = stories[num]
             sid = st.get("session_id")
             reflection = fetch_handover_reflection(sid)
-            if reflection and len(reflection) > 30 and not reflection.startswith("As an execution peer"):
+            if (
+                reflection
+                and len(reflection) > 30
+                and not reflection.startswith("As an execution peer")
+            ):
                 clean_ref = reflection.replace("\n", " ")
                 if clean_ref[:50] not in content:
                     new_scars.append(f"- **Story {num} Reflection:** {clean_ref}")
@@ -469,7 +509,9 @@ def update_playbook_ledger(stories, playbook_path=PLAYBOOK_PATH):
         print(f"[RETRO] Note: could not update playbook ledger: {e}")
 
 
-def run_retrospective(out_path=DEFAULT_OUT, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND):
+def run_retrospective(
+    out_path=DEFAULT_OUT, target_dir=DEFAULT_TARGET_DIR, lookbehind=DEFAULT_LOOKBEHIND
+):
     """Full pipeline: parse logs -> fetch REST metrics -> git actuals -> score -> write markdown."""
     stories = parse_all_logs()
     sessions = fetch_session_metrics()
@@ -488,13 +530,34 @@ def run_retrospective(out_path=DEFAULT_OUT, target_dir=DEFAULT_TARGET_DIR, lookb
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Automated Delegation Retrospective Stage")
-    parser.add_argument("--out", default=DEFAULT_OUT, help="Output markdown path (default: ~/Dev_Lab/DELEGATION_RETROSPECTIVE.md)")
-    parser.add_argument("--dir", default=DEFAULT_TARGET_DIR, help="Target working directory for git actuals (default: ~/Dev_Lab)")
-    parser.add_argument("--lookbehind", default=DEFAULT_LOOKBEHIND, type=int, help="Commits to look back for git diff actuals (default: 5)")
-    parser.add_argument("--logs-glob", default=LOG_GLOB, help="Glob for step logs (default: /tmp/delegate_story_*.log)")
+    parser = argparse.ArgumentParser(
+        description="Automated Delegation Retrospective Stage"
+    )
+    parser.add_argument(
+        "--out",
+        default=DEFAULT_OUT,
+        help="Output markdown path (default: ~/Dev_Lab/DELEGATION_RETROSPECTIVE.md)",
+    )
+    parser.add_argument(
+        "--dir",
+        default=DEFAULT_TARGET_DIR,
+        help="Target working directory for git actuals (default: ~/Dev_Lab)",
+    )
+    parser.add_argument(
+        "--lookbehind",
+        default=DEFAULT_LOOKBEHIND,
+        type=int,
+        help="Commits to look back for git diff actuals (default: 5)",
+    )
+    parser.add_argument(
+        "--logs-glob",
+        default=LOG_GLOB,
+        help="Glob for step logs (default: /tmp/delegate_story_*.log)",
+    )
     args = parser.parse_args(argv)
-    run_retrospective(out_path=args.out, target_dir=args.dir, lookbehind=args.lookbehind)
+    run_retrospective(
+        out_path=args.out, target_dir=args.dir, lookbehind=args.lookbehind
+    )
     return 0
 
 

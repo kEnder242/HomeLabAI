@@ -8,20 +8,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from curator.draft_decomposer import (
-    promote_draft_to_db,
     _domain_source_max_id,
-    _max_numeric_id
+    _max_numeric_id,
+    promote_draft_to_db,
 )
 
 
 def test_max_numeric_id_extraction():
     """Verify numeric ID extraction from ID lists and objects."""
-    cards = [
-        {"id": "WIS-001"},
-        {"id": "WIS-042"},
-        {"id": "WIS-481"},
-        {"id": "invalid"}
-    ]
+    cards = [{"id": "WIS-001"}, {"id": "WIS-042"}, {"id": "WIS-481"}, {"id": "invalid"}]
     assert _max_numeric_id(cards, "WIS") == 481
     assert _max_numeric_id([], "WIS") == 0
 
@@ -64,7 +59,7 @@ def test_promote_draft_to_db_hermetic():
                 "title": "Hermetic Test Protocol",
                 "narrative": "A test operational protocol mandate.",
                 "origin_verbatim": "Rule 1: Hermetic test isolation.",
-                "suggested_tags": ["test", "bkm"]
+                "suggested_tags": ["test", "bkm"],
             },
             {
                 "chunk_id": "CHUNK-02",
@@ -72,20 +67,19 @@ def test_promote_draft_to_db_hermetic():
                 "title": "Hermetic Test Feature",
                 "narrative": "A test capability spec.",
                 "origin_verbatim": "Feature 1: Hermetic capabilities.",
-                "suggested_tags": ["test", "feat"]
-            }
+                "suggested_tags": ["test", "feat"],
+            },
         ]
 
-        payload = {
-            "chunks": mock_chunks,
-            "bone_collection": {"name": "Test Track"}
-        }
+        payload = {"chunks": mock_chunks, "bone_collection": {"name": "Test Track"}}
 
-        with patch("curator.draft_decomposer.WISDOM_PATH", mock_wisdom), \
-             patch("curator.draft_decomposer.PHILOSOPHY_PATH", mock_phl), \
-             patch("curator.draft_decomposer.MANIFEST_PATH", mock_manifest), \
-             patch("curator.draft_decomposer.BONE_COLLECTIONS_PATH", mock_bones), \
-             patch("curator.draft_decomposer._trigger_static_html_rebuild") as mock_rebuild:
+        with patch("curator.draft_decomposer.WISDOM_PATH", mock_wisdom), patch(
+            "curator.draft_decomposer.PHILOSOPHY_PATH", mock_phl
+        ), patch("curator.draft_decomposer.MANIFEST_PATH", mock_manifest), patch(
+            "curator.draft_decomposer.BONE_COLLECTIONS_PATH", mock_bones
+        ), patch(
+            "curator.draft_decomposer._trigger_static_html_rebuild"
+        ) as mock_rebuild:
 
             res = promote_draft_to_db(payload)
 

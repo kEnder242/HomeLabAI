@@ -1,8 +1,9 @@
+import argparse
 import os
-import sys
 import re
 import subprocess
-import argparse
+import sys
+
 
 def run_linter(file_path):
     """Run appropriate linter based on file extension."""
@@ -12,16 +13,21 @@ def run_linter(file_path):
             ruff_bin = "HomeLabAI/.venv/bin/ruff"
             if not os.path.exists(ruff_bin):
                 ruff_bin = "ruff"
-            result = subprocess.run([ruff_bin, "check", file_path], capture_output=True, text=True)
+            result = subprocess.run(
+                [ruff_bin, "check", file_path], capture_output=True, text=True
+            )
             return result.returncode == 0, result.stdout + result.stderr
         elif ext == ".sh":
-            result = subprocess.run(["bash", "-n", file_path], capture_output=True, text=True)
+            result = subprocess.run(
+                ["bash", "-n", file_path], capture_output=True, text=True
+            )
             return result.returncode == 0, result.stderr
         elif ext == ".html":
             return _lint_html_inline_js(file_path)
         return True, ""
     except Exception as e:
         return False, str(e)
+
 
 def _lint_html_inline_js(file_path):
     """Extract inline <script> blocks (no src attr, non-empty) and node --check each."""
@@ -30,7 +36,11 @@ def _lint_html_inline_js(file_path):
             content = f.read()
     except Exception as e:
         return False, f"HTML read failed: {e}"
-    blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', content, re.S | re.I)
+    blocks = re.findall(
+        r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>",
+        content,
+        re.DOTALL | re.IGNORECASE,
+    )
     errors = []
     checked = 0
     for i, block in enumerate(blocks):
@@ -41,7 +51,9 @@ def _lint_html_inline_js(file_path):
         try:
             with open(tmp, "w") as f:
                 f.write(block)
-            res = subprocess.run(["node", "--check", tmp], capture_output=True, text=True)
+            res = subprocess.run(
+                ["node", "--check", tmp], capture_output=True, text=True
+            )
             if res.returncode != 0:
                 errors.append(f"<script> block #{i}: {res.stderr.strip()}")
         except Exception as e:
@@ -50,8 +62,15 @@ def _lint_html_inline_js(file_path):
             if os.path.exists(tmp):
                 os.remove(tmp)
     if errors:
-        return False, f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors)
-    return True, f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked)."
+        return (
+            False,
+            f"HTML inline-JS syntax errors ({checked} checked):\n" + "\n".join(errors),
+        )
+    return (
+        True,
+        f"HTML inline-JS OK ({checked} non-empty inline <script> blocks checked).",
+    )
+
 
 # [FEAT-174] Multi-LoRA Expert Routing (Poor Man's MoE)
 # [FEAT-162] Multi-LoRA Cognitive Loadout
@@ -67,9 +86,13 @@ def atomic_patch(file_path, old_pattern, new_pattern, multi=False, force=False):
 
     # Apply patch
     if multi:
-        new_content, count = re.subn(old_pattern, new_pattern, content, flags=re.MULTILINE)
+        new_content, count = re.subn(
+            old_pattern, new_pattern, content, flags=re.MULTILINE
+        )
     else:
-        new_content, count = re.subn(old_pattern, new_pattern, content, count=1, flags=re.MULTILINE)
+        new_content, count = re.subn(
+            old_pattern, new_pattern, content, count=1, flags=re.MULTILINE
+        )
 
     if count == 0:
         print(f"Error: Pattern not found in {file_path}.")
@@ -89,20 +112,27 @@ def atomic_patch(file_path, old_pattern, new_pattern, multi=False, force=False):
         print(f"Warning: Patch applied but failed passive linting.\n{output}")
     return True
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Atomic Multi-Language Patcher with Passive Linting")
+    parser = argparse.ArgumentParser(
+        description="Atomic Multi-Language Patcher with Passive Linting"
+    )
     parser.add_argument("--file", required=True, help="File to patch")
     parser.add_argument("--old", required=True, help="Regex pattern to find")
     parser.add_argument("--new", required=True, help="Replacement text")
-    parser.add_argument("--multi", action="store_true", help="Replace multiple occurrences")
-    parser.add_argument("--force", action="store_true", help="Deprecated. Patcher is now fully passive.")
-    
+    parser.add_argument(
+        "--multi", action="store_true", help="Replace multiple occurrences"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Deprecated. Patcher is now fully passive."
+    )
+
     args = parser.parse_args()
-    
+
     # Handle newlines in CLI arguments
     new_pattern = args.new.replace("\\n", "\n")
     old_pattern = args.old.replace("\\n", "\n")
-    
+
     if atomic_patch(args.file, old_pattern, new_pattern, args.multi, args.force):
         sys.exit(0)
     else:

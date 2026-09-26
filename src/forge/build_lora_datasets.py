@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 [FEAT-160] / [FEAT-204] / [FEAT-246] / [BKM-055]
@@ -14,7 +13,6 @@ Assembles master_forge_curriculum.jsonl from curated foundations:
 import json
 import random
 from pathlib import Path
-from typing import Optional, Dict
 
 # --- Absolute Paths ---
 EXPERTISE_DIR = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise")
@@ -42,7 +40,7 @@ CURRICULUM_DISTRIBUTION = {
     "pedigree": 0.25,
     "dna": 0.25,
     "sentinel": 0.10,
-    "gems": 0.10
+    "gems": 0.10,
 }
 
 
@@ -66,47 +64,45 @@ def build_sentinel_dataset():
                 hint = s["hint"]
                 break
 
-        response = {
-            "intent": intent,
-            "domain": domain,
-            "situation": tag,
-            "hints": hint
-        }
+        response = {"intent": intent, "domain": domain, "situation": tag, "hints": hint}
 
-        dataset.append({
-            "instruction": f"Analyze the user query for situational awareness: '{query}'",
-            "input": "",
-            "output": json.dumps(response)
-        })
+        dataset.append(
+            {
+                "instruction": f"Analyze the user query for situational awareness: '{query}'",
+                "input": "",
+                "output": json.dumps(response),
+            }
+        )
 
     # Add Mandates
-    dataset.extend([
-        {
-            "instruction": "What is your primary mandate as the Lab Sentinel?",
-            "input": "",
-            "output": "My primary mandate is to overhear all bicameral interactions and provide dynamic VIBES and coordination HINTS. I ensure that data remains the bones, the LLM remains the muscle, and the flow that connects them remains the tendons."
-        },
-        {
-            "instruction": "Explain the Law of Semantic Indirection [BKM-015.1].",
-            "input": "",
-            "output": "The Law of Semantic Indirection states that the Hub must never use hardcoded keyword matching for orchestration. Instead, it must use the Sentinel to retrieve semantic vibes, ensuring the Lab's logic evolves as the technical archive deepens."
-        }
-    ])
+    dataset.extend(
+        [
+            {
+                "instruction": "What is your primary mandate as the Lab Sentinel?",
+                "input": "",
+                "output": "My primary mandate is to overhear all bicameral interactions and provide dynamic VIBES and coordination HINTS. I ensure that data remains the bones, the LLM remains the muscle, and the flow that connects them remains the tendons.",
+            },
+            {
+                "instruction": "Explain the Law of Semantic Indirection [BKM-015.1].",
+                "input": "",
+                "output": "The Law of Semantic Indirection states that the Hub must never use hardcoded keyword matching for orchestration. Instead, it must use the Sentinel to retrieve semantic vibes, ensuring the Lab's logic evolves as the technical archive deepens.",
+            },
+        ]
+    )
 
     with open(SENTINEL_OUT, "w") as f:
-        for entry in dataset:
-            f.write(json.dumps(entry) + "\n")
+        f.writelines(json.dumps(entry) + "\n" for entry in dataset)
     print(f"✅ Sentinel Forge Ready: {len(dataset)} pairs.")
     return len(dataset)
 
 
-def _build_dna_synthesis_index() -> Dict[str, str]:
+def _build_dna_synthesis_index() -> dict[str, str]:
     """
     [Story 865] Builds a {card_id -> narrative_context} index from the Philosophy
     and Wisdom DNA JSON collections so Reverse DNA (RDNA) pairs can surface the
     substantive synthesis behind a governing stamp, not just the routing indirection.
     """
-    index: Dict[str, str] = {}
+    index: dict[str, str] = {}
     for path in (PHILOSOPHY_JSON, WISDOM_JSON):
         if not path.exists():
             continue
@@ -152,19 +148,23 @@ def build_dna_polymorphic_dataset():
                 narrative = card.get("synthesis", {}).get("narrative_context", "")
                 quote = card.get("origin", {}).get("text", "")
                 anchors = card.get("synthesis", {}).get("lab_anchors", [])
-                
+
                 # Idiographic stamp prompt
-                dataset.append({
-                    "instruction": f"Explain the architectural philosophy defined in [{cid}] ({title}).",
-                    "input": "",
-                    "output": f"ID: [{cid}]\nTitle: {title}\nOrigin Quote: \"{quote}\"\n\nSynthesis: {narrative}\nLab Anchors: {', '.join(anchors)}"
-                })
+                dataset.append(
+                    {
+                        "instruction": f"Explain the architectural philosophy defined in [{cid}] ({title}).",
+                        "input": "",
+                        "output": f"ID: [{cid}]\nTitle: {title}\nOrigin Quote: \"{quote}\"\n\nSynthesis: {narrative}\nLab Anchors: {', '.join(anchors)}",
+                    }
+                )
                 # Concept prompt
-                dataset.append({
-                    "instruction": f"What is the core principle of '{title}' in the Federated Lab?",
-                    "input": "",
-                    "output": f"Governed by [{cid}]: {narrative}"
-                })
+                dataset.append(
+                    {
+                        "instruction": f"What is the core principle of '{title}' in the Federated Lab?",
+                        "input": "",
+                        "output": f"Governed by [{cid}]: {narrative}",
+                    }
+                )
         except Exception as pe:
             print(f"⚠️ Warning reading {PHILOSOPHY_JSON}: {pe}")
 
@@ -178,16 +178,18 @@ def build_dna_polymorphic_dataset():
                 title = card.get("synthesis", {}).get("title") or card.get("title", "")
                 narrative = card.get("synthesis", {}).get("narrative_context", "")
                 origin = card.get("origin", {}).get("text", "")
-                
-                dataset.append({
-                    "instruction": f"Recall empirical validation findings from [{cid}] ({title}).",
-                    "input": "",
-                    "output": f"[{cid}] {title}:\n{narrative}\n\nEmpirical Root: {origin}"
-                })
+
+                dataset.append(
+                    {
+                        "instruction": f"Recall empirical validation findings from [{cid}] ({title}).",
+                        "input": "",
+                        "output": f"[{cid}] {title}:\n{narrative}\n\nEmpirical Root: {origin}",
+                    }
+                )
         except Exception as we:
             print(f"⚠️ Warning reading {WISDOM_JSON}: {we}")
 
-# 3. Ingest Reverse DNA (RDNA) Questions
+    # 3. Ingest Reverse DNA (RDNA) Questions
     if RDNA_JSON.exists():
         try:
             with open(RDNA_JSON, "r", encoding="utf-8") as f:
@@ -206,16 +208,18 @@ def build_dna_polymorphic_dataset():
                 collection = target_dna.get("collection", "philosophy_dna")
                 synthesis = synthesis_index.get(target_id, "")
 
-                for q in ([primary_q] + variants):
+                for q in [primary_q] + variants:
                     if q:
                         stamp_line = f"This inquiry is governed by [{target_id}] ({target_title}). Refer to CLaRa-DNA collection '{collection}'."
                         if synthesis:
                             stamp_line += f"\n\nSynthesis: {synthesis[:600]}"
-                        dataset.append({
-                            "instruction": f"Resolve engineering inquiry to governing DNA: '{q}'",
-                            "input": "",
-                            "output": stamp_line
-                        })
+                        dataset.append(
+                            {
+                                "instruction": f"Resolve engineering inquiry to governing DNA: '{q}'",
+                                "input": "",
+                                "output": stamp_line,
+                            }
+                        )
         except Exception as re_err:
             print(f"⚠️ Warning reading {RDNA_JSON}: {re_err}")
 
@@ -223,17 +227,24 @@ def build_dna_polymorphic_dataset():
     if PROTOCOLS_MD.exists():
         try:
             import re
+
             content = PROTOCOLS_MD.read_text(encoding="utf-8")
-            bkm_sections = re.findall(r"(###?\s*\[(BKM-\d+)\].*?)(?=###?\s*\[BKM-\d+\]|\Z)", content, re.DOTALL)
+            bkm_sections = re.findall(
+                r"(###?\s*\[(BKM-\d+)\].*?)(?=###?\s*\[BKM-\d+\]|\Z)",
+                content,
+                re.DOTALL,
+            )
             for sec_text, bkm_id in bkm_sections:
                 header_line = sec_text.strip().split("\n")[0]
                 title_match = re.search(r"\[(BKM-\d+)\]\s*(.*?)(?:\n|\Z)", header_line)
                 name = title_match.group(2).strip() if title_match else bkm_id
-                dataset.append({
-                    "instruction": f"What is the operational mandate and objective of protocol [{bkm_id}] ({name})?",
-                    "input": "",
-                    "output": sec_text.strip()[:1000]
-                })
+                dataset.append(
+                    {
+                        "instruction": f"What is the operational mandate and objective of protocol [{bkm_id}] ({name})?",
+                        "input": "",
+                        "output": sec_text.strip()[:1000],
+                    }
+                )
         except Exception as bke:
             print(f"⚠️ Warning reading {PROTOCOLS_MD}: {bke}")
 
@@ -243,8 +254,13 @@ def build_dna_polymorphic_dataset():
     if FEATURES_MD.exists():
         try:
             import re
+
             content = FEATURES_MD.read_text(encoding="utf-8")
-            feat_sections = re.findall(r"(^##+\s*\[(FEAT-\d+)\].*?)(?=^##+\s*\[FEAT-\d+\]|\Z)", content, re.MULTILINE | re.DOTALL)
+            feat_sections = re.findall(
+                r"(^##+\s*\[(FEAT-\d+)\].*?)(?=^##+\s*\[FEAT-\d+\]|\Z)",
+                content,
+                re.MULTILINE | re.DOTALL,
+            )
             for sec_text, feat_id in feat_sections:
                 header_line = sec_text.strip().split("\n")[0]
                 name = re.sub(r"^##+\s*\[FEAT-\d+\]\s*", "", header_line).strip()
@@ -255,7 +271,11 @@ def build_dna_polymorphic_dataset():
                     name = feat_id
                 fields = {
                     k.strip(): re.sub(r"\s+", " ", v).strip()[:600]
-                    for k, v in re.findall(r"\*\*([A-Za-z #0-9]+):\*\*\s*(.*?)(?=\n\*\*|\Z)", sec_text, re.DOTALL)
+                    for k, v in re.findall(
+                        r"\*\*([A-Za-z #0-9]+):\*\*\s*(.*?)(?=\n\*\*|\Z)",
+                        sec_text,
+                        re.DOTALL,
+                    )
                 }
 
                 # Idiographic feature card prompt
@@ -263,31 +283,40 @@ def build_dna_polymorphic_dataset():
                 status = fields.get("Status", "")
                 if status:
                     card_parts.append(f"Status: {status}")
-                for label in ("Logic", "Rationale", "Mechanism", "Reason", "Verification"):
+                for label in (
+                    "Logic",
+                    "Rationale",
+                    "Mechanism",
+                    "Reason",
+                    "Verification",
+                ):
                     value = fields.get(label, "")
                     if value:
                         card_parts.append(f"{label}: {value}")
-                dataset.append({
-                    "instruction": f"Explain the technical capability defined in [{feat_id}] ({name}).",
-                    "input": "",
-                    "output": "\n".join(card_parts)
-                })
+                dataset.append(
+                    {
+                        "instruction": f"Explain the technical capability defined in [{feat_id}] ({name}).",
+                        "input": "",
+                        "output": "\n".join(card_parts),
+                    }
+                )
                 # Implementation mechanism prompt (stamp + substantive mechanism)
                 mechanism = fields.get("Mechanism", "")
                 if mechanism:
-                    dataset.append({
-                        "instruction": f"How is the Feature DNA defined in [{feat_id}] ({name}) implemented in the Federated Lab?",
-                        "input": "",
-                        "output": f"Governed by [{feat_id}] ({name}): {mechanism}"
-                    })
+                    dataset.append(
+                        {
+                            "instruction": f"How is the Feature DNA defined in [{feat_id}] ({name}) implemented in the Federated Lab?",
+                            "input": "",
+                            "output": f"Governed by [{feat_id}] ({name}): {mechanism}",
+                        }
+                    )
         except Exception as fe:
             print(f"⚠️ Warning reading {FEATURES_MD}: {fe}")
 
     # Write output
     DNA_OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(DNA_OUT, "w", encoding="utf-8") as f:
-        for entry in dataset:
-            f.write(json.dumps(entry) + "\n")
+        f.writelines(json.dumps(entry) + "\n" for entry in dataset)
 
     print(f"✅ Polymorphic DNA Forge Ready: {len(dataset)} pairs -> {DNA_OUT}")
     return len(dataset)
@@ -306,14 +335,18 @@ def build_history_dataset():
                 continue
             try:
                 data = json.loads(line)
-                raw_txt = data.get("context") or data.get("raw_text") or data.get("raw_llm_output", "")
+                raw_txt = (
+                    data.get("context")
+                    or data.get("raw_text")
+                    or data.get("raw_llm_output", "")
+                )
                 if not raw_txt:
                     continue
 
                 entry = {
                     "instruction": f"Recall technical details regarding: {data.get('summary', 'Engineering Concept')}",
                     "input": "",
-                    "output": raw_txt
+                    "output": raw_txt,
                 }
                 f_out.write(json.dumps(entry) + "\n")
                 count += 1
@@ -345,7 +378,7 @@ def build_voice_dataset():
                         entry = {
                             "instruction": data.get("prompt"),
                             "input": "",
-                            "output": output_txt
+                            "output": output_txt,
                         }
                         f_out.write(json.dumps(entry) + "\n")
                         count += 1
@@ -370,17 +403,21 @@ def _load_jsonl_dataset(path: Path) -> list:
                 instr = entry.get("instruction") or entry.get("prompt")
                 out = entry.get("output") or entry.get("response") or entry.get("text")
                 if instr and out:
-                    records.append({
-                        "instruction": str(instr).strip(),
-                        "input": entry.get("input", ""),
-                        "output": str(out).strip()
-                    })
+                    records.append(
+                        {
+                            "instruction": str(instr).strip(),
+                            "input": entry.get("input", ""),
+                            "output": str(out).strip(),
+                        }
+                    )
             except Exception:
                 continue
     return records
 
 
-def build_master_curriculum(output_path: Optional[Path] = None, target_size: int = 1000, seed: int = 3407) -> Path:
+def build_master_curriculum(
+    output_path: Path | None = None, target_size: int = 1000, seed: int = 3407
+) -> Path:
     """
     [FEAT-160] / [Story 86.5]
     Assembles master_forge_curriculum.jsonl with strict curriculum ratios:
@@ -400,13 +437,17 @@ def build_master_curriculum(output_path: Optional[Path] = None, target_size: int
     sentinel_items = _load_jsonl_dataset(SENTINEL_OUT)
     gems_items = _load_jsonl_dataset(GEMS_OUT)
 
-    print(f"Pool sizes: Voice={len(voice_items)}, History={len(history_items)}, DNA={len(dna_items)}, Sentinel={len(sentinel_items)}, Gems={len(gems_items)}")
+    print(
+        f"Pool sizes: Voice={len(voice_items)}, History={len(history_items)}, DNA={len(dna_items)}, Sentinel={len(sentinel_items)}, Gems={len(gems_items)}"
+    )
 
     target_voice = int(target_size * CURRICULUM_DISTRIBUTION["voice"])
     target_history = int(target_size * CURRICULUM_DISTRIBUTION["pedigree"])
     target_dna = int(target_size * CURRICULUM_DISTRIBUTION["dna"])
     target_sentinel = int(target_size * CURRICULUM_DISTRIBUTION["sentinel"])
-    target_gems = target_size - (target_voice + target_history + target_dna + target_sentinel)
+    target_gems = target_size - (
+        target_voice + target_history + target_dna + target_sentinel
+    )
 
     def sample_or_upsample(pool: list, target_count: int, label: str) -> list:
         if not pool:
@@ -432,8 +473,7 @@ def build_master_curriculum(output_path: Optional[Path] = None, target_size: int
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(dest_path, "w") as f:
-        for item in curriculum:
-            f.write(json.dumps(item) + "\n")
+        f.writelines(json.dumps(item) + "\n" for item in curriculum)
 
     print(f"✅ Master Forge Curriculum Ready: {len(curriculum)} pairs -> {dest_path}\n")
     return dest_path

@@ -1,8 +1,9 @@
 import asyncio
-import aiohttp
-import time
 import os
 import sys
+import time
+
+import aiohttp
 
 # --- Path Self-Awareness ---
 _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,13 +12,15 @@ sys.path.insert(0, os.path.join(_LAB_ROOT, "src"))
 
 # Configuration from Environment or Defaults
 ATTENDANT_URL = os.environ.get("ATTENDANT_URL", "http://localhost:8765")
-VLLM_URL = "http://localhost:8088/v1/chat/completions" # Direct to vLLM
+VLLM_URL = "http://localhost:8088/v1/chat/completions"  # Direct to vLLM
 SERVED_NAME = "unified-base"
+
 
 def get_gpu_info():
     """Returns (used, total) MiB."""
     try:
         import pynvml
+
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -37,10 +40,10 @@ async def token_burn(session):
         "messages": [
             {
                 "role": "user",
-                "content": "Explain the concept of VRAM headroom in one paragraph."
+                "content": "Explain the concept of VRAM headroom in one paragraph.",
             }
         ],
-        "max_tokens": 100
+        "max_tokens": 100,
     }
     try:
         async with session.post(VLLM_URL, json=payload) as resp:
@@ -53,7 +56,9 @@ async def token_burn(session):
         print(f"[APOLLO] Token Burn Failed: {e}")
 
 
-async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable_ear=True):
+async def run_apollo_live(
+    model_name="/speedy/models/qwen-2.5-1.5b-awq", disable_ear=True
+):
     print(f"--- 🚀 Apollo 11: V3 Active Profiling ({model_name}) ---")
 
     # 1. Hardware Detection
@@ -70,13 +75,17 @@ async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable
         try:
             async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
                 status = await resp.json()
-            
+
             if status.get("full_lab_ready") and status.get("lab_mode") == "VLLM":
                 print("[APOLLO] Lab already READY in vLLM mode. Proceeding.")
             else:
                 print("[APOLLO] Signaling V3 Master for ignition...")
                 # V3 Start Schema: engine, model, disable_ear
-                payload = {"engine": "VLLM", "model": model_name, "disable_ear": disable_ear}
+                payload = {
+                    "engine": "VLLM",
+                    "model": model_name,
+                    "disable_ear": disable_ear,
+                }
                 async with session.post(f"{ATTENDANT_URL}/start", json=payload) as resp:
                     res = await resp.json()
                     print(f"[APOLLO] Master Signal: {res.get('message')}")
@@ -91,8 +100,7 @@ async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable
         # 300s timeout for load (vLLM can be slow) + burn
         while time.time() - start_time < 300:
             current, _ = get_gpu_info()
-            if current > max_vram:
-                max_vram = current
+            max_vram = max(max_vram, current)
 
             try:
                 async with session.get(f"{ATTENDANT_URL}/heartbeat") as resp:
@@ -104,7 +112,7 @@ async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable
                     burn_triggered = True
 
                 if burn_triggered and time.time() - start_time > 200:
-                    break # Captured peak
+                    break  # Captured peak
 
                 if status.get("last_error"):
                     print(f"\n[APOLLO] FAILURE: {status['last_error']}")
@@ -114,7 +122,8 @@ async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable
 
             print(
                 f"\r[APOLLO] Current VRAM: {current:>5} MiB | Peak: {max_vram:>5} MiB",
-                end="", flush=True
+                end="",
+                flush=True,
             )
             await asyncio.sleep(1)
 
@@ -127,11 +136,13 @@ async def run_apollo_live(model_name="/speedy/models/qwen-2.5-1.5b-awq", disable
         else:
             print("[NOMINAL] Active silicon headroom verified.")
 
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="/speedy/models/qwen-2.5-1.5b-awq")
     parser.add_argument("--enable-ear", action="store_true", default=False)
     args = parser.parse_args()
-    
+
     asyncio.run(run_apollo_live(model_name=args.model, disable_ear=not args.enable_ear))

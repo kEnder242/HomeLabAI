@@ -1,31 +1,34 @@
 import asyncio
-import websockets
 import json
 import logging
 import re
-from typing import List
+
+import websockets
 
 # Configuration
 HOST = "z87-Linux.local"
 PORT = 8765
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - TEST - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - TEST - %(message)s")
+
 
 class TestResult:
-# [FEAT-201] Neural Shock (Negative Feedback Loop)
+    # [FEAT-201] Neural Shock (Negative Feedback Loop)
     def __init__(self, passed: bool, feedback: str, score: float = 0.0):
         self.passed = passed
         self.feedback = feedback
         self.score = score
 
+
 class Judge:
     def evaluate(self, prompt: str, response: str) -> TestResult:
         raise NotImplementedError
 
+
 # [FEAT-259] Targeted Hibernation (The Butler Pattern)
 # [FEAT-209] Double-Tap Search Pattern
 class RegexJudge(Judge):
-# [FEAT-030] Unity Pattern (Multi-LoRA Residency) [SCAR #5]
+    # [FEAT-030] Unity Pattern (Multi-LoRA Residency) [SCAR #5]
     def __init__(self, pattern: str, should_match: bool = True):
         self.pattern = pattern
         self.should_match = should_match
@@ -36,6 +39,7 @@ class RegexJudge(Judge):
         feedback = f"Pattern '{self.pattern}' {'found' if match else 'not found'}."
         return TestResult(passed, feedback, 1.0 if passed else 0.0)
 
+
 class InteractiveJudge(Judge):
     def evaluate(self, prompt: str, response: str) -> TestResult:
         print("\n--- INTERACTIVE JUDGE ---")
@@ -43,20 +47,22 @@ class InteractiveJudge(Judge):
         print(f"Response: {response}")
         print("-------------------------")
         choice = input("Pass? (y/n/c for comment): ").strip().lower()
-        if choice == 'y':
+        if choice == "y":
             return TestResult(True, "User approved", 1.0)
-        elif choice == 'c':
+        elif choice == "c":
             comment = input("Comment: ")
             return TestResult(True, f"User Comment: {comment}", 1.0)
         return TestResult(False, "User rejected", 0.0)
 
+
 class TestCase:
-    def __init__(self, name: str, prompt: str, judges: List[Judge]):
+    def __init__(self, name: str, prompt: str, judges: list[Judge]):
         self.name = name
         self.prompt = prompt
         self.judges = judges
 
-async def run_test_suite(test_cases: List[TestCase]):
+
+async def run_test_suite(test_cases: list[TestCase]):
     uri = f"ws://{HOST}:{PORT}"
     print(f"Connecting to {uri}...")
 
@@ -82,7 +88,9 @@ async def run_test_suite(test_cases: List[TestCase]):
                     # We might need to send "keepalives" or silence frames to drive the loop
                     # if the server loop is blocked on `websocket` iterator.
 
-                    response_json = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    response_json = await asyncio.wait_for(
+                        websocket.recv(), timeout=10.0
+                    )
                     data = json.loads(response_json)
                     response_text = data.get("brain", "")
 
@@ -107,22 +115,26 @@ async def run_test_suite(test_cases: List[TestCase]):
     except Exception as e:
         logging.error(f"Connection failed: {e}")
 
+
 if __name__ == "__main__":
     # Define Suite
     suite = [
         TestCase(
             "Basic Greeting",
             "Hello Pinky, are you there?",
-            [RegexJudge(r"(Narf|Poit|Zort|Egad)")]
+            [RegexJudge(r"(Narf|Poit|Zort|Egad)")],
         ),
         TestCase(
             "Complex Handoff",
             "Pinky, write a Python script to calculate Fibonacci sequence.",
-            [RegexJudge(r"ASK_BRAIN", should_match=False), RegexJudge(r"Brain", should_match=True)]
+            [
+                RegexJudge(r"ASK_BRAIN", should_match=False),
+                RegexJudge(r"Brain", should_match=True),
+            ],
             # Note: The server actually parses ASK_BRAIN internally and returns the Brain's response.
             # So the user sees the BRAIN's response, not the raw "ASK_BRAIN" string unless logic fails.
             # We expect the 'brain_source' to be 'The Brain'.
-        )
+        ),
     ]
 
     asyncio.run(run_test_suite(suite))

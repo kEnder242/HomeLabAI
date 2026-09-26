@@ -1,13 +1,15 @@
 import asyncio
-import websockets
 import json
 import logging
 import time
 
+import websockets
+
 # Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [TEST] %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [TEST] %(message)s")
 
 URL = "ws://localhost:8765"
+
 
 async def connect_with_retry(max_retries=10, delay=1.0):
     for i in range(max_retries):
@@ -15,9 +17,11 @@ async def connect_with_retry(max_retries=10, delay=1.0):
             ws = await websockets.connect(URL)
             return ws
         except (ConnectionRefusedError, OSError):
-            if i % 2 == 0: logging.info(f"⏳ Waiting for Lab... ({i+1}/{max_retries})")
+            if i % 2 == 0:
+                logging.info(f"⏳ Waiting for Lab... ({i+1}/{max_retries})")
             await asyncio.sleep(delay)
     raise ConnectionRefusedError("Could not connect to Acme Lab after retries.")
+
 
 async def test_tics():
     logging.info("🚀 Starting Nervous Tic Validation...")
@@ -34,7 +38,11 @@ async def test_tics():
 
         # 2. Send Delegate Command
         logging.info("📤 Sending slow query...")
-        await ws.send(json.dumps({"debug_text": "Ask the Brain to calculate the meaning of life."}))
+        await ws.send(
+            json.dumps(
+                {"debug_text": "Ask the Brain to calculate the meaning of life."}
+            )
+        )
 
         # 3. Listen for Tics
         tic_received = False
@@ -74,6 +82,7 @@ async def test_tics():
     finally:
         if ws:
             await ws.close()
+
 
 if __name__ == "__main__":
     asyncio.run(test_tics())

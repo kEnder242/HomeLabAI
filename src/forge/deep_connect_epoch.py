@@ -1,15 +1,17 @@
-import os
+import glob
 import json
 import logging
-import glob
+import os
 
 # Paths
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 KNOWLEDGE_BASE = os.path.expanduser("~/Dev_Lab/knowledge_base")
-OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "expertise/bkm_master_manifest.jsonl")
+OUTPUT_FILE = os.path.join(
+    os.path.dirname(__file__), "expertise/bkm_master_manifest.jsonl"
+)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [DEEP-CONNECT] %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [DEEP-CONNECT] %(message)s")
 
 # Year to Raw Log Mapping
 LOG_MAP = {
@@ -31,15 +33,16 @@ LOG_MAP = {
     "2024": "notes_2024_PIAV.txt",
 }
 
+
 def extract_context(log_path, snippet, window=10):
     """Searches for snippet in log_path and returns surrounding lines."""
     if not os.path.exists(log_path):
         return None
-    
+
     try:
-        with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
-        
+
         # Clean snippet for search - try whole then parts
         sub_snippets = [s.strip() for s in snippet.split(",") if len(s.strip()) > 5]
         if not sub_snippets:
@@ -49,7 +52,7 @@ def extract_context(log_path, snippet, window=10):
             clean_snippet = clean_snippet.lower()
             if len(clean_snippet) < 5:
                 continue
-            
+
             for i, line in enumerate(lines):
                 if clean_snippet in line.lower():
                     start = max(0, i - window)
@@ -59,10 +62,11 @@ def extract_context(log_path, snippet, window=10):
         logging.error(f"Error reading {log_path}: {e}")
     return None
 
+
 def run_epoch():
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     dataset = []
-    
+
     json_files = glob.glob(os.path.join(DATA_DIR, "20*.json"))
     logging.info(f"Scanning {len(json_files)} artifacts...")
 
@@ -71,47 +75,51 @@ def run_epoch():
         log_file = LOG_MAP.get(year)
         if not log_file:
             continue
-        
+
         log_path = os.path.join(KNOWLEDGE_BASE, log_file)
-        
+
         try:
-            with open(jf, 'r') as f:
+            with open(jf, "r") as f:
                 data = json.load(f)
-            
+
             for item in data:
-                if item.get('rank', 0) >= 4:
-                    evidence = item.get('evidence', '')
-                    summary = item.get('summary', '')
-                    
+                if item.get("rank", 0) >= 4:
+                    evidence = item.get("evidence", "")
+                    summary = item.get("summary", "")
+
                     # Try finding the evidence context
                     context = None
-                    if summary: # Primary search key is now summary
-                        logging.info(f"Searching for summary: {summary[:50]}... in {log_path}")
+                    if summary:  # Primary search key is now summary
+                        logging.info(
+                            f"Searching for summary: {summary[:50]}... in {log_path}"
+                        )
                         context = extract_context(log_path, summary)
-                    
+
                     if not context and summary:
                         # Fallback: search for keywords from summary
                         keywords = summary.split()[:5]
                         if len(keywords) >= 3:
                             context = extract_context(log_path, " ".join(keywords))
-                    
+
                     if context:
                         # Forged Instruction-Response Pair
                         pair = {
                             "instruction": f"Extract technical evidence and architectural BKM for the following scenario: {summary}",
                             "input": "",
-                            "output": f"### TACTICAL EVIDENCE (18-YEAR ARCHIVE):\\n{context}\\n\\n### ARCHITECTURAL BKM:\\nOne-liner: {summary}\\nCore Logic: {evidence}"
+                            "output": f"### TACTICAL EVIDENCE (18-YEAR ARCHIVE):\\n{context}\\n\\n### ARCHITECTURAL BKM:\\nOne-liner: {summary}\\nCore Logic: {evidence}",
                         }
                         dataset.append(pair)
-                        
+
         except Exception as e:
             logging.error(f"Error processing {jf}: {e}")
 
     with open(OUTPUT_FILE, "w") as f:
-        for entry in dataset:
-            f.write(json.dumps(entry) + "\n")
-            
-    logging.info(f"Epoch Complete. Generated {len(dataset)} high-fidelity BKM pairs in {OUTPUT_FILE}")
+        f.writelines(json.dumps(entry) + "\n" for entry in dataset)
+
+    logging.info(
+        f"Epoch Complete. Generated {len(dataset)} high-fidelity BKM pairs in {OUTPUT_FILE}"
+    )
+
 
 if __name__ == "__main__":
     run_epoch()

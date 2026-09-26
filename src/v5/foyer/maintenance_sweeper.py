@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import gc
 import os
-from typing import Optional
-
 
 _DEFAULT_THERMAL_ZONES: list[str] = [
     "/sys/class/thermal/thermal_zone3/temp",
@@ -28,7 +26,7 @@ class MaintenanceSweeper:
     @staticmethod
     def check_cpu_thermal_throttle(
         threshold_milli: int = 78_000,
-        thermal_zones: Optional[list[str]] = None,
+        thermal_zones: list[str] | None = None,
     ) -> tuple[bool, float]:
         """Read Linux sysfs thermal zones; return (exceeded, temp_celsius).
 
@@ -66,7 +64,7 @@ class MaintenanceSweeper:
         buffer_dict: dict,
         timestamp_dict: dict,
         max_age_s: float = 30.0,
-        current_time: Optional[float] = None,
+        current_time: float | None = None,
     ) -> list[str]:
         """Evict stale entries whose age exceeds *max_age_s*.
 

@@ -1,13 +1,17 @@
 import asyncio
-import websockets
 import json
 import logging
 import time
 
+import websockets
+
 # Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [INTERRUPT-TEST] %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - [INTERRUPT-TEST] %(message)s"
+)
 
 URL = "ws://localhost:8765"
+
 
 async def connect_with_retry(max_retries=10, delay=0.5):
     for i in range(max_retries):
@@ -15,9 +19,11 @@ async def connect_with_retry(max_retries=10, delay=0.5):
             ws = await websockets.connect(URL)
             return ws
         except (ConnectionRefusedError, OSError):
-            if i % 2 == 0: logging.info(f"⏳ Waiting for Lab... ({i+1}/{max_retries})")
+            if i % 2 == 0:
+                logging.info(f"⏳ Waiting for Lab... ({i+1}/{max_retries})")
             await asyncio.sleep(delay)
     raise ConnectionRefusedError("Could not connect to Acme Lab.")
+
 
 async def test_interrupt():
     start_time = time.time()
@@ -58,8 +64,12 @@ async def test_interrupt():
         try:
             while True:
                 msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
-                if msg.get("brain_source") == "Pinky" and "Stopping" in msg.get("brain"):
-                    logging.info("✅ Interruption Response Received: 'Stopping... Narf!'")
+                if msg.get("brain_source") == "Pinky" and "Stopping" in msg.get(
+                    "brain"
+                ):
+                    logging.info(
+                        "✅ Interruption Response Received: 'Stopping... Narf!'"
+                    )
                     interrupted = True
                     break
         except asyncio.TimeoutError:
@@ -76,9 +86,11 @@ async def test_interrupt():
     except Exception as e:
         logging.error(f"💥 Interrupt Test Failed: {e}")
     finally:
-        if ws: await ws.close()
+        if ws:
+            await ws.close()
         duration = time.time() - start_time
         logging.info(f"⏱️ Total Execution Time: {duration:.2f}s")
+
 
 if __name__ == "__main__":
     asyncio.run(test_interrupt())

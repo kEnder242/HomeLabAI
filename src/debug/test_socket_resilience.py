@@ -1,14 +1,16 @@
 import asyncio
-import aiohttp
 import os
+
+import aiohttp
 
 # Ensure we are in the right directory
 _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
 HUB_URL = "ws://localhost:8765/"
 
+
 async def test_socket_resilience():
     print("[*] Starting Socket Resilience Audit...")
-    
+
     async with aiohttp.ClientSession() as session:
         # 1. Connect Client A
         print("  [+] Connecting Client A...")
@@ -28,11 +30,11 @@ async def test_socket_resilience():
         print("  [!] Abruptly closing Client A transport...")
         await ws_a.close()
         # We don't close the session yet to simulate a raw socket drop
-        
+
         # 4. Trigger Broadcast (Handshake from B)
         print("  [*] Triggering broadcast from B. Hub must not crash.")
         await ws_b.send_json({"type": "handshake", "client": "Test_B"})
-        
+
         try:
             # Wait for B to receive its status update
             msg = await asyncio.wait_for(ws_b.receive_json(), timeout=5.0)
@@ -45,9 +47,10 @@ async def test_socket_resilience():
             return False
 
         await ws_b.close()
-    
+
     print("[*] Audit Complete.")
     return True
+
 
 if __name__ == "__main__":
     os.environ["GEMINI_CLI_IMMUNITY"] = "1"

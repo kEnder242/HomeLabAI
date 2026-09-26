@@ -1,8 +1,9 @@
 import asyncio
 import json
-import websockets
 import time
+
 import requests
+import websockets
 
 # [FEAT-342] The Rude Gauntlet
 # Certifies transition stability by sending concurrent queries to a HIBERNATING lab.
@@ -11,6 +12,7 @@ import requests
 HUB_URL = "ws://localhost:8765"
 
 # --- [FEAT-342] Browser-status HTTP poller + thermal guardrail (additive) ---
+
 
 def _read_raw_temp():
     """Read the first readable sysfs thermal sensor, raw millidegrees C."""
@@ -23,10 +25,12 @@ def _read_raw_temp():
             continue
     return None
 
+
 def read_cpu_temp_c():
     """CPU temp in degC (sysfs is millidegrees: 27800 => 27.8 C), or None."""
     raw = _read_raw_temp()
     return raw / 1000.0 if raw is not None else None
+
 
 async def http_browser_poller(stop_event):
     """Simulate intercom.html browser load: poll GET /status every 1.0s."""
@@ -34,14 +38,18 @@ async def http_browser_poller(stop_event):
     failed_once = False
     while not stop_event.is_set():
         try:
-            resp = await asyncio.to_thread(requests.get, "http://localhost:8765/status", timeout=5)
+            resp = await asyncio.to_thread(
+                requests.get, "http://localhost:8765/status", timeout=5
+            )
             if resp.status_code == 200:
                 hits += 1
                 try:
                     keys = list(resp.json().keys())
                 except Exception:
                     keys = []
-                trimmed = [k for k in keys if k in ("session_token", "state", "status")] or keys[:3]
+                trimmed = [
+                    k for k in keys if k in ("session_token", "state", "status")
+                ] or keys[:3]
                 print(f"[HTTP] poll OK: {resp.status_code} keys={trimmed}")
             elif not failed_once:
                 print(f"[HTTP] poll failed: HTTP {resp.status_code}")
@@ -53,9 +61,11 @@ async def http_browser_poller(stop_event):
         await asyncio.sleep(1.0)
     return hits
 
+
 def get_session_token():
     resp = requests.get("http://localhost:8765/status", timeout=5)
     return resp.json().get("session_token", "")
+
 
 async def trigger_query(client_id, query):
     try:
@@ -63,46 +73,78 @@ async def trigger_query(client_id, query):
         async with websockets.connect(HUB_URL) as ws:
             # Read server pushed init message
             init_msg = await ws.recv()
-            
+
             # Send handshake
             await ws.send(json.dumps({"type": "handshake", "lab_key": token}))
             ack_msg = await ws.recv()
-            
+
             # Immediate prompt via V5 chat payload format
             await ws.send(json.dumps({"type": "chat", "message": query}))
-            
+
             start_t = time.time()
-            while time.time() - start_t < 180: # 3-minute window for cold wake
+            while time.time() - start_t < 180:  # 3-minute window for cold wake
                 msg = await ws.recv()
                 data = json.loads(msg)
-                
+
                 # Check for V5 crosstalk/thought/speech payload or legacy brain field
-# [FEAT-244] Speaker Masking
-                speaker = data.get('speaker') or data.get('source') or data.get('brain_source') or ''
-                text = str(data.get('content') or data.get('text') or data.get('brain') or '')
-                
-                if speaker in ['Pinky', 'Brain', 'Shadow', 'Lab', 'Deep Thought'] or data.get('type') in ['crosstalk', 'thought', 'speech', 'chat']:
-                    if any(x in text.upper() for x in ['ROGER', 'PINKY', 'ACME', 'POIT', 'NARF', 'ZORT', 'CHECK', 'TEST']):
-                        print(f"    [Client {client_id}] SUCCESS ({speaker}): {text[:40]}...")
+                # [FEAT-244] Speaker Masking
+                speaker = (
+                    data.get("speaker")
+                    or data.get("source")
+                    or data.get("brain_source")
+                    or ""
+                )
+                text = str(
+                    data.get("content") or data.get("text") or data.get("brain") or ""
+                )
+
+                if speaker in [
+                    "Pinky",
+                    "Brain",
+                    "Shadow",
+                    "Lab",
+                    "Deep Thought",
+                ] or data.get("type") in ["crosstalk", "thought", "speech", "chat"]:
+                    if any(
+                        x in text.upper()
+                        for x in [
+                            "ROGER",
+                            "PINKY",
+                            "ACME",
+                            "POIT",
+                            "NARF",
+                            "ZORT",
+                            "CHECK",
+                            "TEST",
+                        ]
+                    ):
+                        print(
+                            f"    [Client {client_id}] SUCCESS ({speaker}): {text[:40]}..."
+                        )
                         return True
-                    if '[GIBBERISH]' in text:
-                        print(f"    [Client {client_id}] FAIL: Physical corruption detected!")
+                    if "[GIBBERISH]" in text:
+                        print(
+                            f"    [Client {client_id}] FAIL: Physical corruption detected!"
+                        )
                         return False
     except Exception as e:
         print(f"    [Client {client_id}] ERROR: {e}")
     return False
 
+
 async def run_cycle(cycle):
     print(f"\n[*] Starting Rude Cycle {cycle}/5...")
-    
+
     # 1. Force Hibernate (H2 - Lean Sleep)
     print("    [Action] Entering Lean Sleep (H2)...")
-    requests.post("http://localhost:8765/status_update", json={"state": "HIBERNATING"}, timeout=5)
-    time.sleep(10) # Settle
-    
+    requests.post(
+        "http://localhost:8765/status_update", json={"state": "HIBERNATING"}, timeout=5
+    )
+    time.sleep(10)  # Settle
+
     # 2. Fire Rude Storm (5 concurrent queries to sleeping lab)
     print("    [Action] Launching 5-node 'Wake-on-Intent' storm...")
-    
+
     # Thermal baseline (raw millidegrees + degC) right before the storm
     raw_start = _read_raw_temp()
     start_temp = read_cpu_temp_c()
@@ -110,15 +152,17 @@ async def run_cycle(cycle):
         print(f"[Thermal] raw={raw_start} => {start_temp:.1f} C")
     else:
         print("[Thermal] WARN: no readable sysfs temp sensor; guardrail skipped")
-    
+
     # Background HTTP poller (browser-status path) during the storm
     stop_event = asyncio.Event()
     poller_task = asyncio.create_task(http_browser_poller(stop_event))
-    
+
     tasks = []
     for i in range(5):
-        tasks.append(trigger_query(i, f"[ME] Rude Check {cycle}.{i}. Respond with ROGER."))
-    
+        tasks.append(
+            trigger_query(i, f"[ME] Rude Check {cycle}.{i}. Respond with ROGER.")
+        )
+
     try:
         results = await asyncio.gather(*tasks)
     finally:
@@ -129,10 +173,10 @@ async def run_cycle(cycle):
             await poller_task
         except asyncio.CancelledError:
             pass
-    
+
     wins = sum(1 for r in results if r)
     print(f"    [Result] Cycle {cycle} Wins: {wins}/5")
-    
+
     # Thermal check after the storm: max of start/end samples, ceiling 78.0 C
     raw_end = _read_raw_temp()
     end_temp = read_cpu_temp_c()
@@ -149,13 +193,14 @@ async def run_cycle(cycle):
         print(f"[Thermal] max temp: {max_temp:.1f} C (OK)")
     else:
         print("[Thermal] WARN: no readable sysfs temp sensor; guardrail skipped")
-    
+
     return wins == 5
+
 
 async def main():
     print("🔥 INITIATING THE RUDE GAUNTLET (Transition Stability Certification)")
     print("[*] Strategy: Send concurrent queries to HIBERNATING lab (No Warm Path).")
-    
+
     total_wins = 0
     for i in range(5):
         if await run_cycle(i + 1):
@@ -164,8 +209,9 @@ async def main():
         else:
             print(f"\n❌ RUDE GAUNTLET FAILED at Cycle {i+1}")
             break
-        
+
     print(f"\n🏆 GAUNTLET COMPLETE. Rude H2 Wins: {total_wins}/5")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

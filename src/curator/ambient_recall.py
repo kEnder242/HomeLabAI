@@ -25,18 +25,35 @@ CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8001"))
 DB_PATH = os.path.expanduser("~/AcmeLab/chroma_db")
 
 SHALLOW_PROMPTS = {
-    "hi", "hello", "hey", "yes", "no", "y", "n", "ok", "okay", "sure", "thanks", "thank you",
-    "proceed", "continue", "go ahead", "run it", "do it", "looks good", "status"
+    "hi",
+    "hello",
+    "hey",
+    "yes",
+    "no",
+    "y",
+    "n",
+    "ok",
+    "okay",
+    "sure",
+    "thanks",
+    "thank you",
+    "proceed",
+    "continue",
+    "go ahead",
+    "run it",
+    "do it",
+    "looks good",
+    "status",
 }
 
 LIST_PATTERN = re.compile(
-    r'(?:^|\n|\s+)'
-    r'(?:'
-        r'(\d+)[\)\.]|'
-        r'\[(\d+)\]|'
-        r'\((\d+)\)|'
-        r'(?<![a-zA-Z0-9])([a-zA-Z])[\)\.]'
-    r')\s+'
+    r"(?:^|\n|\s+)"
+    r"(?:"
+    r"(\d+)[\)\.]|"
+    r"\[(\d+)\]|"
+    r"\((\d+)\)|"
+    r"(?<![a-zA-Z0-9])([a-zA-Z])[\)\.]"
+    r")\s+"
 )
 
 _SPRINT_KEYWORD_RE = re.compile(
@@ -51,14 +68,18 @@ def get_chroma_client():
         return _chroma_client
     try:
         import chromadb
+
         client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
         client.heartbeat()
         _chroma_client = client
         return _chroma_client
     except Exception as e:
-        logger.warning(f"HttpClient connection failed: {e}. Falling back to PersistentClient.")
+        logger.warning(
+            f"HttpClient connection failed: {e}. Falling back to PersistentClient."
+        )
         try:
             import chromadb
+
             _chroma_client = chromadb.PersistentClient(path=DB_PATH)
             return _chroma_client
         except Exception:
@@ -71,7 +92,10 @@ def get_embedding_model():
         return _embedding_model if _embedding_model is not False else None
     try:
         from fastembed import TextEmbedding
-        _embedding_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+        _embedding_model = TextEmbedding(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
     except Exception:
         _embedding_model = False
     return _embedding_model if _embedding_model is not False else None
@@ -89,22 +113,32 @@ def extract_prompt_segments(cleaned: str) -> list[dict]:
         return []
     matches = list(LIST_PATTERN.finditer(cleaned))
     if len(matches) < 2:
-        bullet_matches = list(re.finditer(r'(?:^|\n)\s*[-*]\s+', cleaned))
+        bullet_matches = list(re.finditer(r"(?:^|\n)\s*[-*]\s+", cleaned))
         if len(bullet_matches) >= 2:
             segments = []
             for i, bm in enumerate(bullet_matches):
                 start = bm.end()
-                end = bullet_matches[i + 1].start() if i + 1 < len(bullet_matches) else len(cleaned)
+                end = (
+                    bullet_matches[i + 1].start()
+                    if i + 1 < len(bullet_matches)
+                    else len(cleaned)
+                )
                 seg_text = cleaned[start:end].strip()
                 if seg_text:
-                    segments.append({'id': f'bullet_{i+1}', 'label': f'Bullet {i+1}', 'text': seg_text})
+                    segments.append(
+                        {
+                            "id": f"bullet_{i+1}",
+                            "label": f"Bullet {i+1}",
+                            "text": seg_text,
+                        }
+                    )
             return segments
-        return [{'id': '1', 'label': 'Query', 'text': cleaned}]
+        return [{"id": "1", "label": "Query", "text": cleaned}]
 
     segments = []
-    preamble = cleaned[:matches[0].start()].strip()
+    preamble = cleaned[: matches[0].start()].strip()
     if preamble and len(preamble.split()) >= 3:
-        segments.append({'id': '0', 'label': 'Context', 'text': preamble})
+        segments.append({"id": "0", "label": "Context", "text": preamble})
 
     for i, m in enumerate(matches):
         marker_id = m.group(1) or m.group(2) or m.group(3) or m.group(4) or str(i + 1)
@@ -112,16 +146,46 @@ def extract_prompt_segments(cleaned: str) -> list[dict]:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(cleaned)
         seg_text = cleaned[start:end].strip()
         if seg_text:
-            segments.append({'id': marker_id, 'label': f'Item {marker_id}', 'text': seg_text})
+            segments.append(
+                {"id": marker_id, "label": f"Item {marker_id}", "text": seg_text}
+            )
 
-    return segments if segments else [{'id': '1', 'label': 'Query', 'text': cleaned}]
+    return segments if segments else [{"id": "1", "label": "Query", "text": cleaned}]
 
 
 BKM_FASTPATH_TRIGGERS = [
-    (re.compile(r"\b(?:save\s+to\s+git|add\s+to\s+git|upload\s+to\s+git|checkpoint|save\s+state|commit\s+locally)\b", re.IGNORECASE), "BKM-009", "Local Git Checkpoint & Session Continuity Protocol"),
-    (re.compile(r"\b(?:git\s+push|push\s+origin|never\s+push|git\s+discipline|git\s+boundary)\b", re.IGNORECASE), "BKM-040", "Virtual Environment Hygiene & Git Curation"),
-    (re.compile(r"\b(?:dual\s+push|git\s+mirror|secondary\s+mirror|cloud\s+redundancy)\b", re.IGNORECASE), "BKM-053", "Multi-Remote Secondary Git Mirror & Cloud Redundancy Protocol"),
-    (re.compile(r"\b(?:tri-loop|delegation\s+owner|story\s+owner|owner\s+tag)\b", re.IGNORECASE), "BKM-049", "Tri-Loop Story Delegation & Owner Tag Mandate"),
+    (
+        re.compile(
+            r"\b(?:save\s+to\s+git|add\s+to\s+git|upload\s+to\s+git|checkpoint|save\s+state|commit\s+locally)\b",
+            re.IGNORECASE,
+        ),
+        "BKM-009",
+        "Local Git Checkpoint & Session Continuity Protocol",
+    ),
+    (
+        re.compile(
+            r"\b(?:git\s+push|push\s+origin|never\s+push|git\s+discipline|git\s+boundary)\b",
+            re.IGNORECASE,
+        ),
+        "BKM-040",
+        "Virtual Environment Hygiene & Git Curation",
+    ),
+    (
+        re.compile(
+            r"\b(?:dual\s+push|git\s+mirror|secondary\s+mirror|cloud\s+redundancy)\b",
+            re.IGNORECASE,
+        ),
+        "BKM-053",
+        "Multi-Remote Secondary Git Mirror & Cloud Redundancy Protocol",
+    ),
+    (
+        re.compile(
+            r"\b(?:tri-loop|delegation\s+owner|story\s+owner|owner\s+tag)\b",
+            re.IGNORECASE,
+        ),
+        "BKM-049",
+        "Tri-Loop Story Delegation & Owner Tag Mandate",
+    ),
 ]
 
 
@@ -180,7 +244,9 @@ def is_turn_start(transcript_path: str) -> tuple[bool, str]:
     return (last_event_type == "USER_INPUT"), last_user_prompt
 
 
-def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4, seen_ids: set = None) -> list[str]:
+def probe_claradb(
+    text: str, client, model, is_qq: bool = False, limit: int = 4, seen_ids: set = None
+) -> list[str]:
     results = []
     if seen_ids is None:
         seen_ids = set()
@@ -221,7 +287,9 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
                     seen_ids.add(f_up)
                     meta = r["metadatas"][0]
                     status = meta.get("status", "ACTIVE")
-                    results.append(f"- [{f_up}] {meta.get('name', 'Feature')} ({status})")
+                    results.append(
+                        f"- [{f_up}] {meta.get('name', 'Feature')} ({status})"
+                    )
 
         if labs:
             col_bkm = client.get_collection("behavioral_dna")
@@ -239,7 +307,9 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
                             break
 
         words = set(re.findall(r"\w+", text.lower()))
-        significant_words = {w for w in words if len(w) > 2 and w not in SHALLOW_PROMPTS}
+        significant_words = {
+            w for w in words if len(w) > 2 and w not in SHALLOW_PROMPTS
+        }
 
         if model and len(significant_words) >= 1 and len(results) < limit:
             emb = list(model.embed([text[:200]]))[0].tolist()
@@ -259,7 +329,11 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
                     if fid in seen_ids:
                         continue
                     has_kw = any(w in name.lower() for w in significant_words)
-                    is_in_band = (dist <= 0.55) or (dist <= min_feat_dist + 0.10 and dist < 0.62) or (has_kw and dist <= 0.60)
+                    is_in_band = (
+                        (dist <= 0.55)
+                        or (dist <= min_feat_dist + 0.10 and dist < 0.62)
+                        or (has_kw and dist <= 0.60)
+                    )
                     if is_qq:
                         is_in_band = is_in_band or (dist <= 0.60)
                     if is_in_band:
@@ -268,7 +342,9 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
 
             if len(results) < limit:
                 col_bkm = client.get_collection("behavioral_dna")
-                r_bkm = col_bkm.query(query_embeddings=[emb], n_results=min(limit + 1, 4))
+                r_bkm = col_bkm.query(
+                    query_embeddings=[emb], n_results=min(limit + 1, 4)
+                )
                 bkm_dists = r_bkm.get("distances", [[]])[0]
                 if bkm_dists:
                     min_bkm_dist = min(bkm_dists)
@@ -281,7 +357,11 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
                         if bkm_id and bkm_id in seen_ids:
                             continue
                         has_kw = any(w in name.lower() for w in significant_words)
-                        is_in_band = (dist <= 0.55) or (dist <= min_bkm_dist + 0.10 and dist < 0.62) or (has_kw and dist <= 0.60)
+                        is_in_band = (
+                            (dist <= 0.55)
+                            or (dist <= min_bkm_dist + 0.10 and dist < 0.62)
+                            or (has_kw and dist <= 0.60)
+                        )
                         if is_qq:
                             is_in_band = is_in_band or (dist <= 0.60)
                         if is_in_band:
@@ -295,7 +375,9 @@ def probe_claradb(text: str, client, model, is_qq: bool = False, limit: int = 4,
     return results
 
 
-def probe_sprint_dna(text: str, client, limit: int = 2, seen_ids: set = None) -> list[str]:
+def probe_sprint_dna(
+    text: str, client, limit: int = 2, seen_ids: set = None
+) -> list[str]:
     if not bool(_SPRINT_KEYWORD_RE.search(text)):
         return []
     if seen_ids is None:
@@ -319,9 +401,14 @@ def probe_sprint_dna(text: str, client, limit: int = 2, seen_ids: set = None) ->
             snippet = ""
             if i < len(docs) and docs[i]:
                 snippet = next(
-                    (ln.strip() for ln in docs[i].splitlines()
-                     if ln.strip() and not ln.startswith("STORY") and not ln.startswith("SPRINT")),
-                    ""
+                    (
+                        ln.strip()
+                        for ln in docs[i].splitlines()
+                        if ln.strip()
+                        and not ln.startswith("STORY")
+                        and not ln.startswith("SPRINT")
+                    ),
+                    "",
                 )[:60]
             line = f"- [sprint_dna:{sprint_id}] L{level} {kind} (w={weight:.2f})"
             if snippet:
@@ -336,17 +423,29 @@ def probe_sprint_dna(text: str, client, limit: int = 2, seen_ids: set = None) ->
         return []
 
 
-def probe_icm(text: str, project: str, is_qq: bool = False, limit: int = 2) -> list[str]:
+def probe_icm(
+    text: str, project: str, is_qq: bool = False, limit: int = 2
+) -> list[str]:
     words = text.lower().split()
     if len(words) < 2 or text.lower() in SHALLOW_PROMPTS:
         return []
     score_threshold = 0.40 if is_qq else 0.45
     try:
         res = subprocess.run(
-            ["icm", "recall", text[:200], "-f", "json", "-l", str(limit), "-p", project],
+            [
+                "icm",
+                "recall",
+                text[:200],
+                "-f",
+                "json",
+                "-l",
+                str(limit),
+                "-p",
+                project,
+            ],
             capture_output=True,
             text=True,
-            timeout=4
+            timeout=4,
         )
         if res.returncode == 0 and res.stdout.strip():
             memories = json.loads(res.stdout)
@@ -362,12 +461,37 @@ def execute_ambient_recall(payload: dict) -> dict:
     t_start = time.time()
     agent_name = (payload.get("agent") or payload.get("agentName") or "").lower()
     session_title = (payload.get("sessionTitle") or payload.get("title") or "").lower()
-    user_input_raw = (payload.get("userMessage") or payload.get("prompt") or payload.get("last_user_message") or "")
+    user_input_raw = (
+        payload.get("userMessage")
+        or payload.get("prompt")
+        or payload.get("last_user_message")
+        or ""
+    )
 
     # 1. Delegation Bypass Guard
-    if ("junior" in agent_name or "junior" in session_title or "air" in agent_name or
-            any(marker in user_input_raw for marker in ["[STORY DELEGATION TARGET", "[TASK:", "[ORCHESTRATION INSTRUCTIONS", "[SPOON-FED TASK", "[MOMUS:", "[LIBRARIAN:"])):
-        return {"injectSteps": [], "meta": {"status": "BYPASSED_DELEGATION", "duration_ms": round((time.time() - t_start) * 1000, 2)}}
+    if (
+        "junior" in agent_name
+        or "junior" in session_title
+        or "air" in agent_name
+        or any(
+            marker in user_input_raw
+            for marker in [
+                "[STORY DELEGATION TARGET",
+                "[TASK:",
+                "[ORCHESTRATION INSTRUCTIONS",
+                "[SPOON-FED TASK",
+                "[MOMUS:",
+                "[LIBRARIAN:",
+            ]
+        )
+    ):
+        return {
+            "injectSteps": [],
+            "meta": {
+                "status": "BYPASSED_DELEGATION",
+                "duration_ms": round((time.time() - t_start) * 1000, 2),
+            },
+        }
 
     # 2. Turn-Boundary Gating Guard
     inv_num = payload.get("invocationNum", 1)
@@ -380,14 +504,26 @@ def execute_ambient_recall(payload: dict) -> dict:
         is_start, last_prompt = is_turn_start(transcript_path)
         if not is_start:
             # Internal agent tool step: exit immediately in <1ms
-            return {"injectSteps": [], "meta": {"status": "SKIPPED_TOOL_LOOP", "duration_ms": round((time.time() - t_start) * 1000, 2)}}
+            return {
+                "injectSteps": [],
+                "meta": {
+                    "status": "SKIPPED_TOOL_LOOP",
+                    "duration_ms": round((time.time() - t_start) * 1000, 2),
+                },
+            }
         cleaned = clean_prompt(last_prompt)
     else:
         # Session start
         cleaned = clean_prompt(user_input_raw)
 
     if not cleaned:
-        return {"injectSteps": [], "meta": {"status": "EMPTY_PROMPT", "duration_ms": round((time.time() - t_start) * 1000, 2)}}
+        return {
+            "injectSteps": [],
+            "meta": {
+                "status": "EMPTY_PROMPT",
+                "duration_ms": round((time.time() - t_start) * 1000, 2),
+            },
+        }
 
     # 3. Execute Vector Grounding
     client = get_chroma_client()
@@ -408,20 +544,26 @@ def execute_ambient_recall(payload: dict) -> dict:
     max_icm = 1 if multi_item_mode else 2
 
     if multi_item_mode:
-        ambient_lines.append(f"[Ambient Grounding: Multi-Item Intent Resolution ({num_segs} Segments)]")
+        ambient_lines.append(
+            f"[Ambient Grounding: Multi-Item Intent Resolution ({num_segs} Segments)]"
+        )
 
     for seg in segments:
-        seg_text = seg['text']
+        seg_text = seg["text"]
         seg_lines = []
 
-        clara_hits = probe_claradb(seg_text, client, model, is_qq=is_qq, limit=max_clara, seen_ids=seen_ids)
+        clara_hits = probe_claradb(
+            seg_text, client, model, is_qq=is_qq, limit=max_clara, seen_ids=seen_ids
+        )
         for h in clara_hits:
             m = re.search(r"\[(.*?)\]", h)
             if m:
                 all_anchors.append(m.group(1))
             seg_lines.append(f"  - Clara: {h[2:]}" if multi_item_mode else h)
 
-        sprint_hits = probe_sprint_dna(seg_text, client, limit=max_sprint, seen_ids=seen_ids)
+        sprint_hits = probe_sprint_dna(
+            seg_text, client, limit=max_sprint, seen_ids=seen_ids
+        )
         for sh in sprint_hits:
             seg_lines.append(f"  - Sprint: {sh[2:]}" if multi_item_mode else sh)
 
@@ -450,8 +592,11 @@ def execute_ambient_recall(payload: dict) -> dict:
                 "status": "INJECTED",
                 "anchors": all_anchors,
                 "breadcrumb": breadcrumb,
-                "duration_ms": duration_ms
-            }
+                "duration_ms": duration_ms,
+            },
         }
 
-    return {"injectSteps": [], "meta": {"status": "ZERO_MATCHES", "duration_ms": duration_ms}}
+    return {
+        "injectSteps": [],
+        "meta": {"status": "ZERO_MATCHES", "duration_ms": duration_ms},
+    }

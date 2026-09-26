@@ -42,7 +42,7 @@ import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 import psutil
 import requests
@@ -82,15 +82,15 @@ class LiveMetrics:
     timestamp: float = field(default_factory=time.time)
 
     # DCGM Prometheus (:9400)
-    vram_used_mb: float = 0.0      # DCGM_FI_DEV_FB_USED   (MiB)
-    vram_total_mb: float = 0.0     # DCGM_FI_DEV_FB_TOTAL  (MiB)
-    vram_pct: float = 0.0          # derived used/total*100
-    gpu_power_w: float = 0.0       # DCGM_FI_DEV_POWER_USAGE (Watts)
+    vram_used_mb: float = 0.0  # DCGM_FI_DEV_FB_USED   (MiB)
+    vram_total_mb: float = 0.0  # DCGM_FI_DEV_FB_TOTAL  (MiB)
+    vram_pct: float = 0.0  # derived used/total*100
+    gpu_power_w: float = 0.0  # DCGM_FI_DEV_POWER_USAGE (Watts)
 
     # Foyer (:8765)
-    connected_clients: int = 0     # active WS clients (Round Table turn activity)
+    connected_clients: int = 0  # active WS clients (Round Table turn activity)
     round_table_active: bool = False
-    active_lora: Optional[str] = None   # active LoRA adapter name (else None=BASE)
+    active_lora: str | None = None  # active LoRA adapter name (else None=BASE)
 
     # Local host (psutil)
     swap_used_mb: float = 0.0
@@ -101,7 +101,7 @@ class LiveMetrics:
     dcgm_online: bool = False
     foyer_online: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     def enrich(self) -> None:
@@ -113,14 +113,14 @@ class LiveMetrics:
 # ---------------------------------------------------------------------------
 # Prometheus scalar parser (mirrors telemetry_collector, no extra dep)
 # ---------------------------------------------------------------------------
-def _parse_scalar(text: str, metric_name: str) -> Optional[float]:
+def _parse_scalar(text: str, metric_name: str) -> float | None:
     """
     Minimal single-metric extractor from Prometheus text exposition format.
     Returns the first numeric value whose metric line begins with metric_name.
     """
     if _parse_prometheus is not None:
         return _parse_prometheus(text, metric_name)
-# [FEAT-261] Traceable Awakening (Mandatory Reasoning)
+    # [FEAT-261] Traceable Awakening (Mandatory Reasoning)
     # Local fallback if telemetry_collector is unavailable for some reason.
     for line in text.splitlines():
         line = line.strip()
@@ -165,7 +165,7 @@ class LiveTelemetryCollector:
     # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------
-    def _fetch_text(self, url: str) -> Optional[str]:
+    def _fetch_text(self, url: str) -> str | None:
         try:
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code == 200:
@@ -175,7 +175,7 @@ class LiveTelemetryCollector:
             log.debug(f"[live_telemetry] {url} unreachable: {exc}")
         return None
 
-    def _fetch_json(self, url: str) -> Optional[Dict[str, Any]]:
+    def _fetch_json(self, url: str) -> dict[str, Any] | None:
         text = self._fetch_text(url)
         if not text:
             return None
@@ -188,7 +188,7 @@ class LiveTelemetryCollector:
     # ------------------------------------------------------------------
     # Source scrapers
     # ------------------------------------------------------------------
-    def _scrape_dcgm(self) -> Dict[str, float]:
+    def _scrape_dcgm(self) -> dict[str, float]:
         raw = self._fetch_text(self.dcgm_url) or ""
         if not raw:
             return {"vram_used_mb": 0.0, "vram_total_mb": 0.0, "gpu_power_w": 0.0}
@@ -204,7 +204,7 @@ class LiveTelemetryCollector:
             "gpu_power_w": _parse_scalar(raw, "DCGM_FI_DEV_POWER_USAGE") or 0.0,
         }
 
-    def _scrape_foyer(self) -> Dict[str, Any]:
+    def _scrape_foyer(self) -> dict[str, Any]:
         data = self._fetch_json(self.foyer_url) or {}
         clients = int(data.get("connected_clients", 0) or 0)
         # Round Table is active when WS clients are connected to the Foyer.
@@ -218,10 +218,10 @@ class LiveTelemetryCollector:
         }
 
     @staticmethod
-    def _vllm_adapters(data: Dict[str, Any]) -> list[str]:
+    def _vllm_adapters(data: dict[str, Any]) -> list[str]:
         """Extract candidate LoRA adapter names from a vLLM /v1/models reply."""
         adapters: list[str] = []
-        for model in (data.get("data") or []):
+        for model in data.get("data") or []:
             ident = (model.get("id") or "").strip()
             if not ident:
                 continue
@@ -232,7 +232,7 @@ class LiveTelemetryCollector:
             adapters.append(short)
         return adapters
 
-    def _resolve_active_lora(self, foyer_data: Dict[str, Any]) -> Optional[str]:
+    def _resolve_active_lora(self, foyer_data: dict[str, Any]) -> str | None:
         """
         Determine the active LoRA adapter name.
 
@@ -245,7 +245,7 @@ class LiveTelemetryCollector:
         # (1) explicit adapter keys — Foyer may expose them in status.
         for key in ("active_lora", "active_adapter", "lora", "adapter"):
             val = foyer_data.get(key) or (foyer_data.get("logical") or {}).get(key)
-            sign = (str(val).strip() if val else "")
+            sign = str(val).strip() if val else ""
             if sign and sign.lower() not in ("base", "none", "-", "0", "null"):
                 return sign
 
@@ -264,7 +264,7 @@ class LiveTelemetryCollector:
             pass
         return None
 
-    def _scrape_swap(self) -> Dict[str, float]:
+    def _scrape_swap(self) -> dict[str, float]:
         try:
             swap = psutil.swap_memory()
         except Exception as exc:
@@ -308,7 +308,7 @@ class LiveTelemetryCollector:
         the manager's existing keys (vram, vitals, nodes, ...) are preserved.
         """
         try:
-            existing: Dict[str, Any] = {}
+            existing: dict[str, Any] = {}
             if os.path.exists(self.status_json):
                 with open(self.status_json, "r") as f:
                     parsed = json.load(f)
@@ -326,7 +326,7 @@ class LiveTelemetryCollector:
             log.warning(f"[live_telemetry] status write failed: {exc}")
 
 
-def _atomic_fallback_write(path: str, payload: Dict[str, Any]) -> None:
+def _atomic_fallback_write(path: str, payload: dict[str, Any]) -> None:
     """Class-1 fallback atomic write (.tmp + os.replace) for standalone use."""
     import tempfile
 
@@ -351,8 +351,8 @@ def _atomic_fallback_write(path: str, payload: Dict[str, Any]) -> None:
 # Convenience entry points (for the manager's vitals loop)
 # ---------------------------------------------------------------------------
 def merge_live_benchmarks(
-    payload: Dict[str, Any], collector: Optional[LiveTelemetryCollector] = None
-) -> Dict[str, Any]:
+    payload: dict[str, Any], collector: LiveTelemetryCollector | None = None
+) -> dict[str, Any]:
     """
     Inject a fresh live benchmark snapshot into an existing status payload
     under the ``live_telemetry`` key (in-place). This is the race-free wiring
@@ -365,8 +365,8 @@ def merge_live_benchmarks(
 
 
 def record_live_benchmarks(
-    collector: Optional[LiveTelemetryCollector] = None,
-) -> Dict[str, Any]:
+    collector: LiveTelemetryCollector | None = None,
+) -> dict[str, Any]:
     """
     One-shot: snapshot live silicon => write eventually to status.json.
 
@@ -379,7 +379,7 @@ def record_live_benchmarks(
     return sample.to_dict()
 
 
-_collector: Optional[LiveTelemetryCollector] = None
+_collector: LiveTelemetryCollector | None = None
 
 
 def get_collector() -> LiveTelemetryCollector:
@@ -390,39 +390,41 @@ def get_collector() -> LiveTelemetryCollector:
     return _collector
 
 
-def get_host_vitals() -> Dict[str, Any]:
+def get_host_vitals() -> dict[str, Any]:
     """[FEAT-557] Real-time host & silicon vitals query (NVML, psutil, CPU load, Model residency)."""
     import datetime
-    vitals: Dict[str, Any] = {
+
+    vitals: dict[str, Any] = {
         "timestamp": datetime.datetime.now().isoformat(),
         "gpu": {
             "vram_used_mb": 0.0,
             "vram_total_mb": 0.0,
             "vram_pct": 0.0,
             "power_w": 0.0,
-            "gpu_name": "NVIDIA GeForce RTX 2080 Ti"
+            "gpu_name": "NVIDIA GeForce RTX 2080 Ti",
         },
         "host_ram": {
             "used_gb": 0.0,
             "total_gb": 0.0,
             "available_gb": 0.0,
-            "percent": 0.0
+            "percent": 0.0,
         },
         "cpu": {
             "load_1m": 0.0,
             "load_5m": 0.0,
             "load_15m": 0.0,
-            "core_count": os.cpu_count() or 4
+            "core_count": os.cpu_count() or 4,
         },
         "model_residency": {
             "active_model": "llama-3.2-3b-awq",
             "active_lora": None,
-            "foyer_state": "OPERATIONAL"
-        }
+            "foyer_state": "OPERATIONAL",
+        },
     }
     # 1. GPU VRAM & Power
     try:
         import pynvml
+
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -430,7 +432,9 @@ def get_host_vitals() -> Dict[str, Any]:
         total_mb = round(info.total / (1024**2), 1)
         vitals["gpu"]["vram_used_mb"] = used_mb
         vitals["gpu"]["vram_total_mb"] = total_mb
-        vitals["gpu"]["vram_pct"] = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0
+        vitals["gpu"]["vram_pct"] = (
+            round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0
+        )
         try:
             pwr = pynvml.nvmlDeviceGetPowerUsage(handle)
             vitals["gpu"]["power_w"] = round(pwr / 1000.0, 1)
@@ -468,8 +472,12 @@ def get_host_vitals() -> Dict[str, Any]:
         if os.path.exists(STATUS_JSON):
             with open(STATUS_JSON, "r") as f:
                 s_data = json.load(f)
-                vitals["model_residency"]["foyer_state"] = s_data.get("state", "OPERATIONAL")
-                vitals["model_residency"]["active_lora"] = s_data.get("live_telemetry", {}).get("active_lora")
+                vitals["model_residency"]["foyer_state"] = s_data.get(
+                    "state", "OPERATIONAL"
+                )
+                vitals["model_residency"]["active_lora"] = s_data.get(
+                    "live_telemetry", {}
+                ).get("active_lora")
     except Exception:
         pass
 
@@ -480,7 +488,9 @@ def get_host_vitals() -> Dict[str, Any]:
 # Standalone smoke runner: python3 src/infra/live_telemetry.py
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
     snap = record_live_benchmarks()
     print("=== LIVE METRICS SNAPSHOT ===")
     print(json.dumps(snap, indent=2))

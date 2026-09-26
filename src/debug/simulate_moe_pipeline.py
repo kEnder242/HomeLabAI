@@ -17,16 +17,16 @@ model warming completes, effectively hiding 1-2 seconds of cold start latency.
 """
 
 import asyncio
-import time
 import json
 import random
-from dataclasses import dataclass, asdict
-from typing import Dict, List
+import time
+from dataclasses import asdict, dataclass
 
 
 @dataclass
 class PipelineMetrics:
     """Structured timing metrics for each pipeline stage."""
+
     intent_classification_start: float
     intent_classification_end: float
     rag_retrieval_start: float
@@ -48,19 +48,24 @@ async def simulate_intent_classification() -> str:
 
 
 # [FEAT-004] Shadow Dispatch (Predictive Intent)
-async def simulate_rag_retrieval(intent: str) -> List[Dict]:
+async def simulate_rag_retrieval(intent: str) -> list[dict]:
     """Simulate RAG retrieval based on intent."""
     await asyncio.sleep(random.uniform(0.5, 1.2))  # Simulate vector DB query
-    return [{"content": f"Relevant context for {intent}", "score": random.uniform(0.7, 0.99)}]
+    return [
+        {
+            "content": f"Relevant context for {intent}",
+            "score": random.uniform(0.7, 0.99),
+        }
+    ]
 
 
-async def simulate_workspace_context_collection() -> Dict:
+async def simulate_workspace_context_collection() -> dict:
     """Simulate workspace context collection (file indexing, git status, etc.)."""
     await asyncio.sleep(random.uniform(0.8, 1.5))  # Simulate file system ops
     return {
         "files": ["file1.py", "file2.ts", "README.md"],
         "git_status": "clean",
-        "active_branch": "main"
+        "active_branch": "main",
     }
 
 
@@ -74,7 +79,9 @@ async def simulate_model_warming(intent: str) -> bool:
     return True
 
 
-async def simulate_prompt_compilation(intent: str, rag_context: List[Dict], workspace_context: Dict) -> str:
+async def simulate_prompt_compilation(
+    intent: str, rag_context: list[dict], workspace_context: dict
+) -> str:
     """Simulate final prompt compilation."""
     await asyncio.sleep(random.uniform(0.2, 0.5))
     return f"Compiled prompt for {intent} with {len(rag_context)} RAG chunks and workspace context."
@@ -94,7 +101,7 @@ async def run_pipeline() -> PipelineMetrics:
         prompt_compilation_start=0.0,
         prompt_compilation_end=0.0,
         total_pipeline_start=time.time(),
-        total_pipeline_end=0.0
+        total_pipeline_end=0.0,
     )
 
     # Stage 1: Intent Classification (Fast, runs immediately)
@@ -139,11 +146,17 @@ async def verify_latency_hiding(metrics: PipelineMetrics) -> bool:
 
     # Calculate overlap: RAG + Workspace should finish BEFORE warming
     rag_finish_before_warming = metrics.rag_retrieval_end <= metrics.model_warming_end
-    workspace_finish_before_warming = metrics.workspace_context_end <= metrics.model_warming_end
+    workspace_finish_before_warming = (
+        metrics.workspace_context_end <= metrics.model_warming_end
+    )
 
     print("\n✅ Latency Hiding Verification:")
-    print(f"   RAG Retrieval: {rag_duration:.2f}s (Finished before warming: {rag_finish_before_warming})")
-    print(f"   Workspace Collection: {workspace_duration:.2f}s (Finished before warming: {workspace_finish_before_warming})")
+    print(
+        f"   RAG Retrieval: {rag_duration:.2f}s (Finished before warming: {rag_finish_before_warming})"
+    )
+    print(
+        f"   Workspace Collection: {workspace_duration:.2f}s (Finished before warming: {workspace_finish_before_warming})"
+    )
     print(f"   Model Warming: {warming_duration:.2f}s")
 
     return rag_finish_before_warming and workspace_finish_before_warming
@@ -152,13 +165,15 @@ async def verify_latency_hiding(metrics: PipelineMetrics) -> bool:
 async def main():
     print("🚀 Running MoE+ Latency Hiding Pipeline Simulator...")
     metrics = await run_pipeline()
-    
+
     # Print timing breakdown
     print("\n⏱️  Pipeline Timing Metrics:")
     for field in asdict(metrics).keys():
         if "start" in field or "end" in field:
             continue
-        duration = getattr(metrics, field.replace("_end", "").replace("_start", "") + "_end") - getattr(metrics, field.replace("_end", "").replace("_start", "") + "_start")
+        duration = getattr(
+            metrics, field.replace("_end", "").replace("_start", "") + "_end"
+        ) - getattr(metrics, field.replace("_end", "").replace("_start", "") + "_start")
         print(f"   {field.replace('_', ' ').title()}: {duration:.2f}s")
 
     # Verify latency hiding

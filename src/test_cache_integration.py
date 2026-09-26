@@ -1,16 +1,20 @@
-import pytest
 import os
 
+import pytest
+
 # Configuration
-DRAFTS_DIR = os.path.expanduser("~/AcmeLab/drafts") # Needed for cleaning up test artifacts
+DRAFTS_DIR = os.path.expanduser(
+    "~/AcmeLab/drafts"
+)  # Needed for cleaning up test artifacts
+
 
 @pytest.mark.asyncio
 async def test_clipboard_logic(archive_client):
     """
-# [FEAT-245] Identity Shielding (Semantic Isolation)
-    Tests the semantic clipboard (cache) functionality of the archive node.
+    # [FEAT-245] Identity Shielding (Semantic Isolation)
+        Tests the semantic clipboard (cache) functionality of the archive node.
     """
-    session = archive_client # Use the client provided by the fixture
+    session = archive_client  # Use the client provided by the fixture
 
     print("\n🧪 Starting Semantic Clipboard Integration Test...")
 
@@ -20,16 +24,18 @@ async def test_clipboard_logic(archive_client):
     res_1 = await session.call_tool("consult_clipboard", arguments={"query": query_1})
 
     if not res_1.content:
-         print("   ✅ Correct: Clipboard Empty (No Note).")
+        print("   ✅ Correct: Clipboard Empty (No Note).")
     elif res_1.content[0].text == "None":
-         print("   ✅ Correct: Clipboard Empty (String None).")
+        print("   ✅ Correct: Clipboard Empty (String None).")
     else:
-         print(f"   ❌ Failed: Expected Empty, got '{res_1.content[0].text}'")
+        print(f"   ❌ Failed: Expected Empty, got '{res_1.content[0].text}'")
 
     # 2. Test Store
     response_1 = "African or European?"
     print(f"\n2. Scribbling Note: '{response_1}'")
-    res_2 = await session.call_tool("scribble_note", arguments={"query": query_1, "response": response_1})
+    res_2 = await session.call_tool(
+        "scribble_note", arguments={"query": query_1, "response": response_1}
+    )
     print(f"   Result: {res_2.content[0].text}")
 
     # 3. Test Exact Hit
@@ -43,7 +49,9 @@ async def test_clipboard_logic(archive_client):
     # 4. Test Semantic Hit
     print(f"\n4. Consulting Clipboard (Semantic Match) for: '{query_semantic}'")
     # Note: Using lax threshold 0.4 for test safety, though 0.35 is default for consult_clipboard
-    res_4 = await session.call_tool("consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4})
+    res_4 = await session.call_tool(
+        "consult_clipboard", arguments={"query": query_semantic, "threshold": 0.4}
+    )
     content_4 = res_4.content[0].text
     print(f"   Result: {content_4}")
     assert content_4 == response_1, f"Expected '{response_1}', got '{content_4}'"
@@ -55,5 +63,3 @@ async def test_clipboard_logic(archive_client):
 
     # 6. Test File Cleanup (Ensure test artifacts are removed)
     # This test doesn't create files, so no cleanup needed.
-
-

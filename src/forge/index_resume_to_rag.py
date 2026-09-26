@@ -25,7 +25,9 @@ CHUNK_SIZE = 1000
 
 def _pick_latest_resume(directory: str) -> str | None:
     """Return path to the most recent resume .txt file."""
-    candidates = [p for p in glob(f"{directory}/*.txt") if "Resume" in p or "resume" in p]
+    candidates = [
+        p for p in glob(f"{directory}/*.txt") if "Resume" in p or "resume" in p
+    ]
     if not candidates:
         return None
 
@@ -83,7 +85,9 @@ def main() -> None:
         sections = _parse_resume_sections(resume_text)
         for section_name, content in sections.items():
             for i, chunk in enumerate(_chunk_text(content)):
-                doc_id = f"career_{hashlib.md5(f'{section_name}_{i}'.encode()).hexdigest()}"
+                doc_id = (
+                    f"career_{hashlib.md5(f'{section_name}_{i}'.encode()).hexdigest()}"
+                )
                 if not collection.get(ids=[doc_id])["ids"]:
                     collection.add(
                         documents=[chunk],

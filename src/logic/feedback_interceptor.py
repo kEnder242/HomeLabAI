@@ -25,8 +25,6 @@ import json
 import os
 import re
 import tempfile
-from typing import Optional
-
 
 # [FEAT-487] DEPRECATED — superseded by model-driven semantic triage (vibe: META,
 # domain: feedback). Kept for legacy tests only; do NOT extend this list.
@@ -75,7 +73,9 @@ def is_critique(query: str) -> bool:
 
     normalized = query.strip()
     # Strip client-side transcript tags like [ME] or [USER]
-    normalized = re.sub(r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE).strip()
+    normalized = re.sub(
+        r"^\[(?:ME|USER)\]\s*", "", normalized, flags=re.IGNORECASE
+    ).strip()
 
     # If it ends with a question mark and isn't a direct "Wait / No" objection, treat as question
     if normalized.endswith("?") and not re.search(r"(?i)^(?:wait|no\b)", normalized):
@@ -98,10 +98,10 @@ def record_feedback(
     query: str,
     flawed_output: str,
     user_correction: str,
-    ledger_path: Optional[str] = None,
-    previous_user_input: Optional[str] = None,
-    previous_full_turn: Optional[str] = None,
-    previous_triage: Optional[dict] = None,
+    ledger_path: str | None = None,
+    previous_user_input: str | None = None,
+    previous_full_turn: str | None = None,
+    previous_triage: dict | None = None,
 ) -> dict:
     """
     [FEAT-456/BKM-035] Atomically append a FAIL record to validation_ledger.jsonl.
@@ -143,7 +143,8 @@ def record_feedback(
         "previous_user_input": prev_input,
         "verdict": "FAIL",
         "flawed_output": flawed_output,
-        "previous_full_turn": previous_full_turn or f"User: {prev_input}\nAssistant: {flawed_output}",
+        "previous_full_turn": previous_full_turn
+        or f"User: {prev_input}\nAssistant: {flawed_output}",
         "previous_triage": previous_triage or {},
         "ground_truth": user_correction,
         "source": "CO_PILOT_FOURTH_WALL",

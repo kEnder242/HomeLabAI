@@ -7,13 +7,11 @@ import json
 from pathlib import Path
 
 import pytest
-
 from src.logic.override_parser import (
     is_override_query,
     parse_override_with_resident,
     save_override_to_file,
 )
-
 
 # ========================================================================
 # 1. is_override_query
@@ -71,12 +69,12 @@ class TestIsOverrideQuery:
     @pytest.mark.parametrize(
         "turn",
         [
-            "GEM-0142 looks good",        # no correction keyword
-            "What is BKM-003?",           # question, not correction
-            "Hello, how are you?",        # normal chat
-            "Tell me about GEM-9999",     # no correction keyword
-            "rank 5 is good",             # no gem/bkm id at all
-            "[ME] nice weather today",    # prefix but no id
+            "GEM-0142 looks good",  # no correction keyword
+            "What is BKM-003?",  # question, not correction
+            "Hello, how are you?",  # normal chat
+            "Tell me about GEM-9999",  # no correction keyword
+            "rank 5 is good",  # no gem/bkm id at all
+            "[ME] nice weather today",  # prefix but no id
         ],
         ids=[
             "gem-positive-sentiment",
@@ -108,10 +106,19 @@ class TestParseOverrideWithResident:
 
     def test_valid_json(self) -> None:
         async def fake_resident(prompt: str) -> str:
-            return json.dumps({"rank": 5, "title": "Safety", "synopsis": "Best practices", "domain": "security"})
+            return json.dumps(
+                {
+                    "rank": 5,
+                    "title": "Safety",
+                    "synopsis": "Best practices",
+                    "domain": "security",
+                }
+            )
 
         result = self._run(
-            parse_override_with_resident("GEM-0142", "override rank to 5", fake_resident)
+            parse_override_with_resident(
+                "GEM-0142", "override rank to 5", fake_resident
+            )
         )
         assert result is not None
         assert result["rank"] == 5
@@ -256,13 +263,25 @@ class TestSaveOverrideToFile:
         monkeypatch.setattr(
             override_parser,
             "_DEFAULT_OVERRIDES_PATH",
-            fake_home / "Dev_Lab" / "Portfolio_Dev" / "field_notes" / "data" / "overrides.json",
+            fake_home
+            / "Dev_Lab"
+            / "Portfolio_Dev"
+            / "field_notes"
+            / "data"
+            / "overrides.json",
         )
 
         ok = save_override_to_file("BKM-010", {"synopsis": "test"})
         assert ok is True
 
-        target = fake_home / "Dev_Lab" / "Portfolio_Dev" / "field_notes" / "data" / "overrides.json"
+        target = (
+            fake_home
+            / "Dev_Lab"
+            / "Portfolio_Dev"
+            / "field_notes"
+            / "data"
+            / "overrides.json"
+        )
         assert target.exists()
         data = json.loads(target.read_text())
         assert data["overrides"]["BKM-010"]["synopsis"] == "test"

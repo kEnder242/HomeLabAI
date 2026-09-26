@@ -7,6 +7,7 @@ envelopes from the Archive Node and injects EPISTEMOLOGICAL_PROTOCOL into behavi
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
 from src.logic.cognitive_hub import CognitiveHub
 
 
@@ -21,7 +22,7 @@ class TestEpistemologicalReasoning:
             broadcast_callback=AsyncMock(),
             sensory_manager=MagicMock(),
             get_vram_status=MagicMock(return_value={"vram": "healthy"}),
-            trigger_morning_briefing=AsyncMock()
+            trigger_morning_briefing=AsyncMock(),
         )
 
         scarcity_rag_context = (
@@ -40,15 +41,23 @@ class TestEpistemologicalReasoning:
             "casual": 0.05,
             "addressed_to": "PINKY",
             "situation": "Temporal verification query",
-            "hints": "2008 era"
+            "hints": "2008 era",
         }
 
         captured_guidance = []
 
         async def run_test():
-            with patch.object(hub.triage_relay, "relay", new=AsyncMock(return_value=(mock_triage_result, "kender"))), \
-                 patch.object(hub, "_fetch_rag_context", new=AsyncMock(return_value=scarcity_rag_context)), \
-                 patch.object(hub, "_process_node_stream") as mock_stream:
+            with patch.object(
+                hub.triage_relay,
+                "relay",
+                new=AsyncMock(return_value=(mock_triage_result, "kender")),
+            ), patch.object(
+                hub,
+                "_fetch_rag_context",
+                new=AsyncMock(return_value=scarcity_rag_context),
+            ), patch.object(
+                hub, "_process_node_stream"
+            ) as mock_stream:
 
                 async def intercept_stream(*args, **kwargs):
                     captured_guidance.append(kwargs.get("behavioral_guidance", ""))

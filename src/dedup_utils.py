@@ -1,9 +1,11 @@
 def get_new_text(old_text, new_window_text, lookback=10):
-    if not old_text: return new_window_text
+    if not old_text:
+        return new_window_text
 
     old_words = old_text.strip().lower().split()
     new_words = new_window_text.strip().lower().split()
-    if not new_words: return ""
+    if not new_words:
+        return ""
 
     # 1. Full Phrase Repetition (The "Echo" check)
     # If the entire new window is already at the end of our transcript, ignore it.
