@@ -32,7 +32,7 @@ def test_evaluate_nightly_accountability_pass():
         },
     }
 
-    digest = evaluate_nightly_accountability(telemetry)
+    digest = evaluate_nightly_accountability(telemetry, write_to_disk=False)
     assert digest["overall_status"] == "PASS"
     assert digest["passed_checks"] == digest["total_checks"]
     assert len(digest["discrepancies"]) == 0
@@ -59,7 +59,7 @@ def test_evaluate_nightly_accountability_zero_work_green_lie():
         "round_table_probe": {"status": "FAIL", "error": "Triage timeout"},
     }
 
-    digest = evaluate_nightly_accountability(telemetry)
+    digest = evaluate_nightly_accountability(telemetry, write_to_disk=False)
     assert digest["overall_status"] == "FAIL"
     assert len(digest["discrepancies"]) >= 2
     assert any("Green Lie" in d for d in digest["discrepancies"])

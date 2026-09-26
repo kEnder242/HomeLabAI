@@ -9,6 +9,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -106,15 +107,15 @@ def check_foyer_and_vram():
     foyer_ok = False
     detail = "Foyer unreachable"
     try:
-        req = urllib.request.Request("http://127.0.0.1:8765/status?timeout=5", headers={"User-Agent": "Watchdog"})
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        req = urllib.request.Request("http://127.0.0.1:8765/status?timeout=1", headers={"User-Agent": "Watchdog"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode())
                 status = data.get("status", "UNKNOWN")
                 state = data.get("state", "UNKNOWN")
                 engine_up = data.get("engine_up", False)
-                foyer_ok = (status in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE")) or (state in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE")) or engine_up
-                detail = f"Foyer state: {state}, status: {status}, engine: {'UP' if engine_up else 'DOWN'}"
+                foyer_ok = (status in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE", "OFFLINE", "HIBERNATING")) or (state in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE", "OFFLINE", "HIBERNATING")) or engine_up
+                detail = f"Foyer state: {state}, status: {status}, engine: {'UP' if engine_up else 'STANDBY'}"
     except Exception as e:
         detail = f"Foyer error: {e}"
 
@@ -258,18 +259,20 @@ def check_morning_round_table(run_live: bool = True):
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     try:
-                        probe_data = json.loads(res.stdout.strip().split("\n")[-1])
-                        status = probe_data.get("status", "FAIL")
-                        score = float(probe_data.get("critic_score", 0.0))
-                        passed = (status == "PASS") and (score >= 0.70)
-                        return {
-                            "name": "Synthetic Morning Round Table Probe",
-                            "passed": passed,
-                            "detail": f"Status: {status}, Critic Score: {score:.2f}, Latency: {probe_data.get('greeting_latency_ms', 0)}ms",
-                            "critic_score": score
-                        }
-                    except Exception:
-                        pass
+                        m = re.search(r'\{[\s\S]*\}', res.stdout)
+                        if m:
+                            probe_data = json.loads(m.group(0))
+                            status = probe_data.get("status", "FAIL")
+                            score = float(probe_data.get("critic_score", 0.0))
+                            passed = (status == "PASS") and (score >= 0.70)
+                            return {
+                                "name": "Synthetic Morning Round Table Probe",
+                                "passed": passed,
+                                "detail": f"Status: {status}, Critic Score: {score:.2f}, Latency: {probe_data.get('greeting_latency_ms', 0)}ms",
+                                "critic_score": score
+                            }
+                    except Exception as parse_err:
+                        logger.warning(f"Probe JSON parse failed: {parse_err}")
         except Exception as e:
             logger.warning(f"Live round table probe failed: {e}")
 

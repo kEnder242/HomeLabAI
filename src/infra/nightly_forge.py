@@ -787,7 +787,7 @@ def run_round_table_probe():
         return {"status": "FAIL", "error": "script not found"}
 
 
-def evaluate_nightly_accountability(telemetry_dict: dict) -> dict:
+def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = True) -> dict:
     """
     [FEAT-607 / LAB-110 / Story 88.4] Evaluates multi-stage nightly telemetry against
     lab_accountability_thresholds.json, detects 'The Green Lie' (zero-work exits),
@@ -941,26 +941,27 @@ def evaluate_nightly_accountability(telemetry_dict: dict) -> dict:
     }
 
     # Write digest JSON
-    output_dir = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data")
-    os.makedirs(output_dir, exist_ok=True)
-    digest_path = os.path.join(output_dir, "daily_accountability_digest.json")
-    try:
-        tmp_path = digest_path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(digest, f, indent=2)
-        os.replace(tmp_path, digest_path)
-        logger.info(
-            f"[ACCOUNTABILITY] Wrote authoritative digest to {digest_path} (Status: {overall_status})"
-        )
-    except Exception as e:
-        logger.error(f"[ACCOUNTABILITY] Failed to write digest JSON: {e}")
+    if write_to_disk:
+        output_dir = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data")
+        os.makedirs(output_dir, exist_ok=True)
+        digest_path = os.path.join(output_dir, "daily_accountability_digest.json")
+        try:
+            tmp_path = digest_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                json.dump(digest, f, indent=2)
+            os.replace(tmp_path, digest_path)
+            logger.info(
+                f"[ACCOUNTABILITY] Wrote authoritative digest to {digest_path} (Status: {overall_status})"
+            )
+        except Exception as e:
+            logger.error(f"[ACCOUNTABILITY] Failed to write digest JSON: {e}")
 
-    # Broadcast digest to Neural Pager & Intercom [FEAT-602]
-    write_step_log(
-        "ACCOUNTABILITY_DIGEST",
-        f"Status={overall_status} ({digest['passed_checks']}/{digest['total_checks']} checks passed)",
-        severity="INFO" if overall_status == "PASS" else "WARNING",
-    )
+        # Broadcast digest to Neural Pager & Intercom [FEAT-602]
+        write_step_log(
+            "ACCOUNTABILITY_DIGEST",
+            f"Status={overall_status} ({digest['passed_checks']}/{digest['total_checks']} checks passed)",
+            severity="INFO" if overall_status == "PASS" else "WARNING",
+        )
     try:
         requests.post(
             f"{FOYER_URL}/broadcast",
