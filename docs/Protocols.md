@@ -1143,4 +1143,20 @@ High-frequency multi-node LLM pipelines must decouple **lightweight stage timeli
 * **Node Traces (`HomeLabAI/logs/trace_{lab,thought,brain,pinky}.json`):** Raw HTTP wire payloads, prompt injections, and JSON schema outputs.
 * **Extraction Utility (`HomeLabAI/src/infra/read_roundtable_turn.py`):** CLI tool for instant turn extraction by `--request-id` or `--latest`.
 
+---
+
+## BKM-068: Feature Tracker & DNA Synchronization Mandate (Just-in-Time Conflict Auditing)
+**Feature Anchor:** `[FEAT-582]` / `[BKM-068]` / `[AGENTS.md Law 7]`  
+**Colloquial Alias:** "The JITC Architectural Comparator & Drift Remediation Law"  
+**Domain:** Architecture, Governance, Memory Systems  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle (Positive Framing)
+`Portfolio_Dev/FeatureTracker.md` and Federated DNA are authoritative architectural sources of record. Architecture is designed first and serves as an active comparator during development and review:
+1. **Inline Traceability:** Whenever implementing changes, identify and update affected `[FEAT-xxx]` entries and maintain inline code token anchors across docstrings, comments, and unit tests.
+2. **Just-In-Time Conflict Auditing:** In the micro-moment of reading or updating DNA records, actively cross-reference running code against human-authored bedrock design specifications (`[FEAT-xxx]`, `[LAB-xxx]`, `[BKM-xxx]`).
+3. **Agent-Caused Drift Remediation:** If an unvetted divergence between code and design was introduced solely by agents or subagent shortcuts (e.g., lazy route consolidation, mocked fallbacks, heavy CLI subprocesses in hooks), resolve it immediately (or structure clear staged action steps if large-scale).
+4. **Human-Directed Evolution:** If a divergence stems from intentional human design pivots or user directives, bubble it up explicitly to collaborate and synchronize the DNA specifications with the new architectural direction.
+
+
 
