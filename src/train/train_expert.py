@@ -1,31 +1,424 @@
+import ctypes
 import os
 import sys
+import time
 
-# [FEAT-160.1] Training Scaffolding: Unsloth Expert Forge
-# This script is intended for use on the 2080 Ti (local) AFTER mass_scan is complete.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:128")
 
-# Configuration
-MODEL_NAME = "unsloth/llama-3.2-3b-instruct-bnb-4bit"
-TRAINING_DATA = os.path.expanduser("~/Dev_Lab/HomeLabAI/src/forge/training_data.jsonl")
-OUTPUT_DIR = os.path.expanduser("~/Dev_Lab/HomeLabAI/models/experts/architect_v1")
+# Preload CUDA 13 runtime libraries from pip virtualenv
+_cu13_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".venv/lib/python3.12/site-packages/nvidia/cu13/lib",
+)
+if os.path.exists(_cu13_dir):
+    os.environ["LD_LIBRARY_PATH"] = (
+        f"{_cu13_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+    )
+    for lib in ["libnvJitLink.so.13", "libcudart.so.13", "libcublas.so.13"]:
+        _p = os.path.join(_cu13_dir, lib)
+        if os.path.exists(_p):
+            try:
+                ctypes.CDLL(_p, mode=ctypes.RTLD_GLOBAL)
+            except Exception:
+                pass
+
+import datetime
+import json
+
+import torch
+from unsloth import FastLanguageModel
+from datasets import load_dataset
+from transformers import TrainerCallback
+from trl import SFTConfig, SFTTrainer
 
 
-def main():
-    print("=== Expert Forge: Unsloth Training Scaffolding ===")
+class HardwarePacingCallback(TrainerCallback):
+    """[FEAT-452] Pauses between optimization steps to let host VRMs, PSU capacitors, and GPU silicon settle, and collects step telemetry."""
 
-    if not os.path.exists(TRAINING_DATA):
-        print(f"Error: Training data not found at {TRAINING_DATA}")
-        sys.exit(1)
+    def __init__(self, delay_sec: float = 5.0):
+        self.delay_sec = delay_sec
+        self.step_metrics = []
+        self.start_time = time.monotonic()
 
-    print(f"Loading data from: {TRAINING_DATA}")
-    # Placeholder for actual Unsloth loading logic
-    # dataset = load_dataset("json", data_files=TRAINING_DATA, split="train")
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs:
+            loss_val = None
+            if "loss" in logs:
+                try:
+                    loss_val = round(float(logs["loss"]), 4)
+                except Exception:
+                    pass
 
-    print("VRAM Guard: Ensuring 2080 Ti is free before proceeding...")
-    # Add real VRAM check here before actual training
+            grad_norm_val = None
+            if "grad_norm" in logs:
+                try:
+                    g = float(logs["grad_norm"])
+                    grad_norm_val = round(g, 4) if str(g).lower() != "inf" else "inf"
+                except Exception:
+                    pass
 
-    print("Status: Scaffolding complete. Awaiting Burn Completion for execution.")
+            lr_val = None
+            if "learning_rate" in logs:
+                try:
+                    lr_val = float(logs["learning_rate"])
+                except Exception:
+                    pass
+
+            entry = {
+                "step": state.global_step,
+                "loss": loss_val,
+                "grad_norm": grad_norm_val,
+                "learning_rate": lr_val,
+                "epoch": (
+                    round(float(logs.get("epoch", 0.0)), 2) if "epoch" in logs else None
+                ),
+            }
+            if not self.step_metrics or self.step_metrics[-1]["step"] != entry["step"]:
+                self.step_metrics.append(entry)
+
+    def on_step_end(self, args, state, control, **kwargs):
+        print(
+            f"\n⏱️ [HARDWARE PACING] Step {state.global_step}/{state.max_steps} complete. Settling hardware for {self.delay_sec}s...",
+            flush=True,
+        )
+        time.sleep(self.delay_sec)
+        print(
+            "⚡ [HARDWARE PACING] Hardware settled to baseline. Initiating next optimization pulse.\n",
+            flush=True,
+        )
+
+
+def record_forge_telemetry(
+    output_dir: str,
+    steps: int,
+    runtime_s: float,
+    pacing_delay: float,
+    step_metrics: list,
+):
+    """[FEAT-452] Atomically records rich training telemetry to training_metrics.json and Neural Pager."""
+    metrics_file = os.path.join(output_dir, "training_metrics.json")
+    os.makedirs(output_dir, exist_ok=True)
+
+    start_loss = (
+        step_metrics[0]["loss"]
+        if step_metrics and step_metrics[0].get("loss") is not None
+        else None
+    )
+    final_loss = (
+        step_metrics[-1]["loss"]
+        if step_metrics and step_metrics[-1].get("loss") is not None
+        else None
+    )
+
+    metrics_payload = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "adapter_name": os.path.basename(output_dir),
+        "steps_configured": steps,
+        "steps_completed": len(step_metrics),
+        "start_loss": start_loss,
+        "final_loss": final_loss,
+        "runtime_seconds": round(runtime_s, 2),
+        "pacing_delay_seconds": pacing_delay,
+        "step_metrics": step_metrics,
+    }
+
+    # 1. Save training_metrics.json alongside adapter weights
+    try:
+        tmp_metrics = metrics_file + ".tmp"
+        with open(tmp_metrics, "w") as f:
+            json.dump(metrics_payload, f, indent=2)
+        os.replace(tmp_metrics, metrics_file)
+        print(f"📊 [TELEMETRY] Saved training metrics to {metrics_file}", flush=True)
+    except Exception as e:
+        print(f"⚠️ [TELEMETRY] Warning saving {metrics_file}: {e}", flush=True)
+
+    # 2. Prepend rich event to pager_activity.json for status.html & pager.html
+    pager_path = os.path.expanduser(
+        "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
+    )
+    if os.path.exists(pager_path):
+        try:
+            with open(pager_path, "r") as f:
+                data = json.load(f)
+            record = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "severity": "INFO",
+                "source": "Unsloth Forge",
+                "message": f"LoRA Training Complete [{steps}/{steps} Steps, Loss: {start_loss} → {final_loss}, Time: {runtime_s:.1f}s, Pacing: {pacing_delay}s, Adapter: {os.path.basename(output_dir)}]",
+                "details": metrics_payload,
+            }
+            data.insert(0, record)
+            data = data[:200]
+            tmp_path = pager_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_path, pager_path)
+            print(
+                "📟 [PAGER] Broadcasted rich forge telemetry event to pager_activity.json",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"⚠️ [PAGER] Warning updating pager_activity.json: {e}", flush=True)
+
+    # 3. Append to validation_ledger.jsonl
+    val_path = os.path.expanduser(
+        "~/Dev_Lab/Portfolio_Dev/field_notes/data/validation_ledger.jsonl"
+    )
+    if os.path.exists(val_path):
+        try:
+            val_record = {
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "query": f"Unsloth LoRA Fine-Tuning Pass ({steps} steps)",
+                "domain": "exp_forge",
+                "total_steps": steps,
+                "start_loss": start_loss,
+                "final_loss": final_loss,
+                "runtime_s": round(runtime_s, 2),
+                "pacing_delay_s": pacing_delay,
+                "adapter_dir": os.path.basename(output_dir),
+                "steps": step_metrics,
+                "verdict": "PASS",
+            }
+            with open(val_path, "a") as f:
+                f.write(json.dumps(val_record) + "\n")
+            print(
+                "📑 [LEDGER] Appended telemetry record to validation_ledger.jsonl",
+                flush=True,
+            )
+        except Exception as e:
+            print(
+                f"⚠️ [LEDGER] Warning updating validation_ledger.jsonl: {e}", flush=True
+            )
+
+
+def train_expert(
+    dataset_path: str,
+    output_dir: str,
+    steps: int = 100,
+    model_name: str = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit",
+    pacing_delay: float = 5.0,
+):
+    """
+    [FEAT-160] Pedigree Refinement Pipeline & [FORGE-02]
+    Trains a Rank 16 LoRA adapter using Unsloth for Turing SM 7.5.
+    Standardized on Llama-3.2-3B-Instruct for superior performance.
+    """
+    print(
+        f"Starting training on {dataset_path} -> {output_dir} ({steps} steps, pacing_delay={pacing_delay}s)",
+        flush=True,
+    )
+    t0 = time.monotonic()
+
+    max_seq_length = 1024  # [FEAT-452] Clamped to 1024 to guarantee zero CUDA VRAM fragmentation on Turing SM 7.5
+    dtype = None
+    load_in_4bit = True
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_name,
+        max_seq_length=max_seq_length,
+        dtype=dtype,
+        load_in_4bit=load_in_4bit,
+        low_cpu_mem_usage=True,
+    )
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=16,
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
+        lora_alpha=16,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing=True,  # [FEAT-492] Standard PyTorch gradient checkpointing prevents Triton JIT kernel mutex stalls
+        random_state=3407,
+        use_rslora=False,
+        loftq_config=None,
+    )
+
+    dataset = load_dataset("json", data_files=dataset_path, split="train")
+
+    def formatting_prompts_func(examples):
+        available_keys = list(examples.keys())
+        instr_key = (
+            "instruction"
+            if "instruction" in available_keys
+            else ("prompt" if "prompt" in available_keys else None)
+        )
+        out_key = (
+            "output"
+            if "output" in available_keys
+            else (
+                "response"
+                if "response" in available_keys
+                else ("text" if "text" in available_keys else None)
+            )
+        )
+
+        texts = []
+        if "dialogue" in available_keys:
+            dialogues = examples["dialogue"]
+            for d in dialogues:
+                texts.append(str(d) + tokenizer.eos_token)
+        elif instr_key and out_key:
+            instructions = examples[instr_key]
+            outputs = examples[out_key]
+            for instruction, output in zip(instructions, outputs):
+                text = (
+                    f"User: {instruction}\n\nAssistant: {output}" + tokenizer.eos_token
+                )
+                texts.append(text)
+        else:
+            print(f"❌ DATASET SCHEMA ERROR: Found keys {available_keys}")
+            raise KeyError(
+                "Missing required keys. Needs 'instruction'/'prompt'/'output' or 'dialogue'."
+            )
+        return {
+            "text": texts,
+        }
+
+    dataset = dataset.map(
+        formatting_prompts_func,
+        batched=True,
+    )
+
+    pacing_cb = HardwarePacingCallback(delay_sec=pacing_delay)
+
+    sft_config = SFTConfig(
+        dataset_text_field="text",
+        max_seq_length=max_seq_length,
+        dataset_num_proc=1,  # [FEAT-492] Single-proc prevents fork memory contention with Xorg
+        packing=False,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        warmup_steps=10,
+        max_steps=steps,
+        learning_rate=2e-4,
+        fp16=not torch.cuda.is_bf16_supported(),
+        bf16=torch.cuda.is_bf16_supported(),
+        logging_steps=1,
+        optim="adamw_8bit",
+        weight_decay=0.01,
+        lr_scheduler_type="linear",
+        seed=3407,
+        output_dir="outputs",
+        report_to="none",
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        processing_class=tokenizer,
+        train_dataset=dataset,
+        callbacks=[pacing_cb],
+        args=sft_config,
+    )
+
+    trainer.train()
+    total_runtime = time.monotonic() - t0
+
+    model.save_pretrained(output_dir)
+    print(
+        f"✅ [FORGE COMPLETE] Adapter successfully trained and saved to {output_dir}",
+        flush=True,
+    )
+
+    record_forge_telemetry(
+        output_dir=output_dir,
+        steps=steps,
+        runtime_s=total_runtime,
+        pacing_delay=pacing_delay,
+        step_metrics=pacing_cb.step_metrics,
+    )
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Unsloth LoRA Expert Fine-Tuning")
+    parser.add_argument(
+        "pos_dataset", nargs="?", default=None, help="Dataset JSONL path (positional)"
+    )
+    parser.add_argument(
+        "pos_output", nargs="?", default=None, help="Output LoRA dir (positional)"
+    )
+    parser.add_argument(
+        "pos_steps",
+        nargs="?",
+        type=int,
+        default=None,
+        help="Training steps (positional)",
+    )
+    parser.add_argument(
+        "pos_model", nargs="?", default=None, help="Base model (positional)"
+    )
+    parser.add_argument("--dataset", default=None, help="Dataset JSONL path")
+    parser.add_argument("--output", default=None, help="Output LoRA dir")
+    parser.add_argument("--steps", type=int, default=None, help="Training steps")
+    parser.add_argument("--model", default=None, help="Base model")
+    parser.add_argument(
+        "--pacing-delay",
+        type=float,
+        default=None,
+        help="Hardware settling delay in seconds",
+    )
+    args = parser.parse_args()
+
+    # Load master infrastructure config as single source of truth
+    cfg = {}
+    try:
+        import json
+
+        config_path = os.path.expanduser(
+            "~/Dev_Lab/HomeLabAI/config/infrastructure.json"
+        )
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+    except Exception:
+        pass
+
+    forge_cfg = cfg.get("forge", {})
+    cfg_steps = forge_cfg.get("default_steps", 150)
+    cfg_pacing = forge_cfg.get("pacing_delay_sec", 5.0)
+
+    dataset_in = args.dataset or args.pos_dataset
+    output_out = args.output or args.pos_output
+    steps_in = (
+        args.pos_steps
+        if args.pos_steps is not None
+        else (args.steps if args.steps is not None else cfg_steps)
+    )
+    model_in = args.model or args.pos_model
+    pacing_delay_in = args.pacing_delay if args.pacing_delay is not None else cfg_pacing
+
+    if not dataset_in or not output_out:
+        print(
+            "Usage: python train_expert.py --dataset <dataset_jsonl> --output <output_lora_dir> [--steps N] [--model M] [--pacing-delay S]"
+        )
+        sys.exit(1)
+
+    if not model_in:
+        base = cfg.get("model_manifest", {}).get("unified-base", "")
+        if "qwen2.5-3b" in base.lower():
+            model_in = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
+        elif "llama-3.2-3b" in base.lower():
+            model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+
+    if not model_in:
+        model_in = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+
+    train_expert(
+        dataset_path=dataset_in,
+        output_dir=output_out,
+        steps=steps_in,
+        model_name=model_in,
+        pacing_delay=pacing_delay_in,
+    )

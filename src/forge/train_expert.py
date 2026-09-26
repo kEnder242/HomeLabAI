@@ -26,10 +26,10 @@ import datetime
 import json
 
 import torch
-from datasets import load_dataset
-from transformers import TrainerCallback, TrainingArguments
-from trl import SFTTrainer
 from unsloth import FastLanguageModel
+from datasets import load_dataset
+from transformers import TrainerCallback
+from trl import SFTConfig, SFTTrainer
 
 
 class HardwarePacingCallback(TrainerCallback):
@@ -290,33 +290,35 @@ def train_expert(
 
     pacing_cb = HardwarePacingCallback(delay_sec=pacing_delay)
 
-    trainer = SFTTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
+    sft_config = SFTConfig(
         dataset_text_field="text",
         max_seq_length=max_seq_length,
         dataset_num_proc=1,  # [FEAT-492] Single-proc prevents fork memory contention with Xorg
         packing=False,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        warmup_steps=10,
+        max_steps=steps,
+        learning_rate=2e-4,
+        fp16=not torch.cuda.is_bf16_supported(),
+        bf16=torch.cuda.is_bf16_supported(),
+        logging_steps=1,
+        optim="adamw_8bit",
+        weight_decay=0.01,
+        lr_scheduler_type="linear",
+        seed=3407,
+        output_dir="outputs",
+        report_to="none",
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        processing_class=tokenizer,
+        train_dataset=dataset,
         callbacks=[pacing_cb],
-        args=TrainingArguments(
-            per_device_train_batch_size=1,
-            gradient_accumulation_steps=4,
-            warmup_steps=10,
-            max_steps=steps,
-            learning_rate=2e-4,
-            fp16=not torch.cuda.is_bf16_supported(),
-            bf16=torch.cuda.is_bf16_supported(),
-            logging_steps=1,
-            optim="adamw_8bit",
-            weight_decay=0.01,
-            lr_scheduler_type="linear",
-            seed=3407,
-            output_dir="outputs",
-            report_to="none",
-            dataloader_num_workers=0,
-            dataloader_pin_memory=False,
-        ),
+        args=sft_config,
     )
 
     trainer.train()
