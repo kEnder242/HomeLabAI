@@ -113,9 +113,10 @@ def check_foyer_and_vram():
                 data = json.loads(resp.read().decode())
                 status = data.get("status", "UNKNOWN")
                 state = data.get("state", "UNKNOWN")
-                engine_up = data.get("engine_up", False)
-                foyer_ok = (status in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE", "OFFLINE", "HIBERNATING")) or (state in ("OPERATIONAL", "IDLE", "WAKING", "ONLINE", "OFFLINE", "HIBERNATING")) or engine_up
-                detail = f"Foyer state: {state}, status: {status}, engine: {'UP' if engine_up else 'STANDBY'}"
+                engine_up = bool(data.get("engine_up", False))
+                # Must be operational with active silicon engine to pass morning liveness
+                foyer_ok = engine_up and (status in ("OPERATIONAL", "ONLINE", "WAKING") or state in ("OPERATIONAL", "ONLINE", "WAKING"))
+                detail = f"Foyer state: {state}, status: {status}, engine: {'UP' if engine_up else 'STANDBY/DOWN'}"
     except Exception as e:
         detail = f"Foyer error: {e}"
 
