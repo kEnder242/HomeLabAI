@@ -1125,3 +1125,22 @@ Every mission-critical automated pipeline MUST have its accountability, completi
 4. **Authoritative Double-Write Digest:** The standalone watchdog writes `daily_accountability_digest.json` using atomic temporary file swaps (`.tmp` -> rename) to both `Portfolio_Dev/field_notes/data/` and `www_deploy/data/`.
 5. **Multi-Channel Alert Escalation:** Any critical failure (OOM, missing run, stale lock, probe failure) triggers an immediate Neural Pager alert to ensure rapid human awareness.
 
+---
+
+## BKM-067: Sovereign Round Table Telemetry & Trace Indexing
+**Feature Anchor:** `[FEAT-607]` / `[BKM-067]`  
+**Colloquial Alias:** "Telemetry Breadcrumbs & Wire-Trace Indexing"  
+**Domain:** Observability, Telemetry, Multi-Node Consensus  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle (Positive Framing)
+High-frequency multi-node LLM pipelines must decouple **lightweight stage timeline indexing** from **heavyweight wire-level trace payloads**. To prevent log excavation stalls and memory spikes when reviewing multi-node deliberations:
+1. Every stage event in `Portfolio_Dev/field_notes/data/foyer_stage_ledger.jsonl` MUST explicitly record the relative `log_target` file (e.g., `logs/trace_pinky.json`, `logs/trace_thought.json`).
+2. Heavy wire payloads (`logs/trace_*.json`) are formatted as continuous JSONL streams and MUST be inspected via tail-seek or the dedicated extractor utility (`HomeLabAI/src/infra/read_roundtable_turn.py`) rather than raw full-file JSON parsing.
+
+### 2. Telemetry Layout
+* **Stage Ledger (`Portfolio_Dev/field_notes/data/foyer_stage_ledger.jsonl`):** Timeline, request IDs, stage status, timestamps, and `log_target` pointers.
+* **Node Traces (`HomeLabAI/logs/trace_{lab,thought,brain,pinky}.json`):** Raw HTTP wire payloads, prompt injections, and JSON schema outputs.
+* **Extraction Utility (`HomeLabAI/src/infra/read_roundtable_turn.py`):** CLI tool for instant turn extraction by `--request-id` or `--latest`.
+
+

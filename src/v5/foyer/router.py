@@ -105,6 +105,15 @@ STAGE_TIMEOUTS = {
     "stage4_dt_synthesis": 60,
     "stage5_pinky_review": 20,
 }
+# [FEAT-607] Stage Telemetry Mapping to Physical Trace Logs
+STAGE_LOG_TARGETS = {
+    "stage1_deep_thought_triage": "logs/trace_thought.json",
+    "stage1_kender_triage": "logs/trace_lab.json",
+    "stage2_pinky_hyde": "logs/trace_pinky.json",
+    "stage3_brain_query": "logs/trace_brain.json",
+    "stage4_dt_synthesis": "logs/trace_thought.json",
+    "stage5_pinky_review": "logs/trace_pinky.json",
+}
 STAGE_LEDGER_PATH = os.path.join(DATA_DIR, "foyer_stage_ledger.jsonl")
 
 # Configure logging early
@@ -343,6 +352,7 @@ class FoyerRouter:
                 ((s[1], s[2]) for s in DIVISION_OF_LABOR_STAGES if s[0] == stage_id),
                 (stage_id, ""),
             )
+            log_target = STAGE_LOG_TARGETS.get(stage_id, "logs/trace_lab.json")
             self.stage_memory.setdefault(request_id, {})[stage_id] = status
             try:
                 os.makedirs(os.path.dirname(STAGE_LEDGER_PATH), exist_ok=True)
@@ -355,6 +365,7 @@ class FoyerRouter:
                                 "stage": stage_id,
                                 "node": stage_node,
                                 "purpose": stage_purpose,
+                                "log_target": log_target,
                                 "status": status,
                                 "detail": detail,
                             },
