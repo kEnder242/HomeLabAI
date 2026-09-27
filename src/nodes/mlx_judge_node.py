@@ -14,16 +14,16 @@ from nodes.loader import BicameralNode
 logging.basicConfig(level=logging.INFO, format="[MLX_JUDGE] %(message)s")
 
 MLX_DEFAULT_HOST = os.getenv("MLX_HOST", "http://192.168.1.46:8000")
-MLX_MODEL = os.getenv("MLX_MODEL", "mlx-community--Qwen3.5-9B-4bit")
+MLX_MODEL = os.getenv("MLX_MODEL", "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp")
 MLX_TIMEOUT_SEC = int(os.getenv("MLX_TIMEOUT_SEC", "15"))
 
 MLX_SYSTEM_PROMPT = (
     "# IDENTITY & ROLE\n"
     "You are Node 3 (M5 Air MLX Unified Memory Node & Async Sanity Judge).\n"
-    "ROLE: High-context (256K) asynchronous evaluation judge & Metal inference node for Acme Lab.\n"
+    "ROLE: High-context (131K) asynchronous evaluation judge & Metal inference node for Acme Lab.\n"
     "HARDWARE: Apple M5 MacBook Air (10-Core CPU, 32GB Unified Memory) on IP 192.168.1.46.\n"
-    "ACTIVE ENDPOINTS: OpenAI REST API at http://192.168.1.46:8000/v1 | Open-WebUI Dashboard at http://192.168.1.46:3000.\n"
-    "PRIMARY MODEL: mlx-community--Qwen3.5-9B-4bit.\n\n"
+    "ACTIVE ENDPOINTS: OpenAI REST API at http://192.168.1.46:8000/v1 | Headroom Proxy at http://192.168.1.46:8002/v1 | Open-WebUI Dashboard at http://192.168.1.46:3000.\n"
+    "PRIMARY MODEL: TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp (Ternary-Bonsai-2-27B).\n\n"
     "# DIRECTIVES\n"
     "1. NON-BLOCKING CRITIQUE: Evaluate full turn traces asynchronously without delaying initial UI response streaming.\n"
     "2. TWO-LANE FEEDBACK LOOP:\n"

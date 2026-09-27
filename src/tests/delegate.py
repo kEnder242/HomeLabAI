@@ -1366,14 +1366,14 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                         log_step(
                             story_num,
                             "LOCAL_ONLY_MODE",
-                            "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: mlx-community--Qwen3.5-9B-4bit). Zero cloud fallbacks.",
+                            "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp). Zero cloud fallbacks.",
                         )
                         model_ladder = [
                             local_cfg.get(
                                 "coder",
                                 {
                                     "providerID": "my-m5-mlx",
-                                    "modelID": "mlx-community--Qwen3.5-9B-4bit",
+                                    "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
                                 },
                             )
                         ]
