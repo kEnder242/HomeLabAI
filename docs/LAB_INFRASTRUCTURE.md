@@ -211,7 +211,7 @@
     *   **Behavior**: Executes `field_notes/aggregate_years.py` at 2:00 AM daily to synthesize date groupings and clean historical records.
 
 ### LAB-010: Apple M5 Inference Node Integration & Async Judge Protocol
-**Objective**: Integrate Node 3 (Apple M5 MacBook Air 10-Core CPU, 32GB Unified Memory) into the Round Table topology as an ultra-fast Metal-accelerated OpenAI-compliant REST provider and asynchronous 256K sanity judge.
+**Objective**: Integrate Node 3 (Apple M5 MacBook Air 10-Core CPU, 32GB Unified Memory) into the Round Table topology as an ultra-fast Metal-accelerated OpenAI-compliant REST provider and asynchronous 131K sanity judge.
 
 1.  **Node Hardware & Network Identity**:
     *   **Host**: Apple M5 MacBook Air (10-Core CPU, 32 GB Unified Memory).
@@ -219,14 +219,15 @@
     *   **Remote Admin SSH**: `ssh jasons-air@192.168.1.46`.
 2.  **Active Software Stack & Ports**:
     *   **MLX OpenAI REST API Server**: `http://192.168.1.46:8000/v1` (`mlx_lm.server`).
-    *   **Active Model**: `mlx-community/Qwen2.5-Coder-14B-Instruct-4bit`.
+    *   **Headroom Proxy**: `http://192.168.1.46:8002/v1` (TurboQuant 4-bit KV Cache, 131k context, model aliases `default`, `bonsai2`).
+    *   **Active Model**: `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` (Ternary Qwen3.8-27B frontier reasoning in ~7.2GB RAM with native MTP).
     *   **Open-WebUI Dashboard**: `http://192.168.1.46:3000` (Port 3000 visual management UI).
 3.  **Paths & Environment Relaunch Recipes**:
-    *   **MLX Venv**: `/Users/jallred/.venv-mlx/bin/mlx_lm.server --model mlx-community/Qwen2.5-Coder-14B-Instruct-4bit --host 0.0.0.0 --port 8000`
+    *   **MLX Venv**: `/Users/jallred/.venv-mlx/bin/mlx_lm.server --model TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp --host 0.0.0.0 --port 8000`
     *   **Open-WebUI Venv**: `OPENAI_API_BASE_URL="http://127.0.0.1:8000/v1" WEBUI_AUTH=False ~/.venv-webui/bin/open-webui serve --port 3000 --host 0.0.0.0`
     *   **Model Storage**: `~/.cache/huggingface/hub/`
-4.  **Async 256K Evaluation & Two-Lane Feedback Loop**:
-    *   Driven by `src/nodes/mlx_judge_node.py`. Evaluates full 256K turn traces asynchronously without delaying initial response streaming.
+4.  **Async 131K Evaluation & Two-Lane Feedback Loop**:
+    *   Driven by `src/nodes/mlx_judge_node.py`. Evaluates full 131K turn traces asynchronously without delaying initial response streaming.
     *   **Factual/Archive Feedback**: Corrections route to ChromaDB (`:8001`) and `refine_gem.py`.
     *   **Style/Persona Feedback**: Retorts route to offline LoRA dataset (`cli_voice_v1`).
 ### LAB-011: OpenAgent Swarm Service Topology (Ports 4096/4097 & Scale-to-Zero)

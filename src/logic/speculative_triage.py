@@ -82,7 +82,7 @@ def _load_engine_seats() -> list[dict[str, Any]]:
             "protocol": "OPENAI",
             "probe_path": "/v1/chat/completions",
             "probe_payload": {
-                "model": "mlx-community--Qwen3.5-9B-4bit",
+                "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
                 "messages": [{"role": "user", "content": "."}],
                 "max_tokens": 1,
             },

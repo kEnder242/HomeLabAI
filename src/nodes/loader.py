@@ -480,7 +480,7 @@ class BicameralNode:
                             (
                                 available[0]
                                 if available
-                                else "mlx-community--Qwen3.5-9B-4bit"
+                                else "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"
                             ),
                         )
                         probe_url = f"{base_url}/v1/chat/completions"
