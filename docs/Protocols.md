@@ -1158,5 +1158,29 @@ High-frequency multi-node LLM pipelines must decouple **lightweight stage timeli
 3. **Agent-Caused Drift Remediation:** If an unvetted divergence between code and design was introduced solely by agents or subagent shortcuts (e.g., lazy route consolidation, mocked fallbacks, heavy CLI subprocesses in hooks), resolve it immediately (or structure clear staged action steps if large-scale).
 4. **Human-Directed Evolution:** If a divergence stems from intentional human design pivots or user directives, bubble it up explicitly to collaborate and synchronize the DNA specifications with the new architectural direction.
 
+---
+
+## BKM-069: The Loop Ledger Protocol (Feedback Loop Registry)
+**Feature / Vibe Anchor:** `[VIBE-009]` / `[BKM-069]` / `[BKM-068]`  
+**Colloquial Alias:** "The Loop Ledger Protocol"  
+**Domain:** Architecture, Governance, Emergent Systems, Feedback Loops  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle & Vibe Grounding
+Governed by **`VIBE-009` (Feedback Loops as Complexity Engines)**: Systems achieve resilience, continuous self-correction, and emergent intelligence not from static constraints, but from active, layered feedback loops. Rather than presuming a fixed inventory of loops, the Federated Lab dynamically identifies, harvests, and registers feedback loops as they emerge across software, hardware, and cognitive layers.
+
+### 2. Canonical Registry Location
+* **Primary Ledger File:** `Portfolio_Dev/field_notes/data/loop_ledger.jsonl`
+* **Human Architectural Summary:** `Portfolio_Dev/field_notes/data/LOOP_LEDGER.md`
+
+### 3. Registry Schema & Entry Criteria
+Every feedback loop identified in the lab is recorded in the Loop Ledger with the following core dimensions:
+1. **Loop Identifier & Name:** Unique key and descriptive title for the feedback mechanism.
+2. **Vibe & Complexity Driver (`VIBE-009`):** How this specific loop drives self-correction, backpressure, or anti-fragility in the lab.
+3. **Signal Emitter (Source):** The component, daemon, sentinel, model, or probe generating the feedback signal.
+4. **Signal Consumer (Actuator / Gate):** The downstream receptor that actively ingests the feedback and executes a state transition, retry adjustment, metric gate, or dataset mutation.
+5. **Operational Horizon / Cadence:** The temporal boundary when the loop triggers (e.g., synchronous turn boundary, sub-minute stream, nightly maintenance window, post-sprint closeout).
+6. **Lifecycle State:** Status of the feedback loop (`EMERGING`, `ACTIVE`, or `REFINED`).
+
 
 
