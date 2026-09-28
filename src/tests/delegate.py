@@ -29,6 +29,88 @@ OPENCODE_ATTACH_URL = f"http://127.0.0.1:{OPENCODE_REST_PORT}/"
 OPENCODE_WEB_URL = f"http://127.0.0.1:{OPENCODE_WEB_PORT}/"
 
 _ACTIVE_SESSION_ID = None
+SESSION_BREADCRUMB_FILE = "/tmp/active_openagent_sessions.json"
+
+
+def _register_active_session(session_id: str, title: str = ""):
+    """[FEAT-556 / BKM-049] Register active PID and session ID in breadcrumbs for orphan detection."""
+    global _ACTIVE_SESSION_ID
+    _ACTIVE_SESSION_ID = session_id
+    try:
+        data = {}
+        if os.path.exists(SESSION_BREADCRUMB_FILE):
+            try:
+                with open(SESSION_BREADCRUMB_FILE, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        data[str(os.getpid())] = {
+            "session_id": session_id,
+            "title": title,
+            "timestamp": time.time(),
+        }
+        with open(SESSION_BREADCRUMB_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def _unregister_active_session():
+    """Remove current PID from breadcrumbs on clean exit."""
+    global _ACTIVE_SESSION_ID
+    _ACTIVE_SESSION_ID = None
+    try:
+        if os.path.exists(SESSION_BREADCRUMB_FILE):
+            with open(SESSION_BREADCRUMB_FILE, "r") as f:
+                data = json.load(f)
+            pid_str = str(os.getpid())
+            if pid_str in data:
+                del data[pid_str]
+                with open(SESSION_BREADCRUMB_FILE, "w") as f:
+                    json.dump(data, f)
+    except Exception:
+        pass
+
+
+def _reap_orphaned_sessions():
+    """[FEAT-556 / BKM-049] Check breadcrumbs for dead PIDs and abort their orphaned OpenCode sessions."""
+    if not os.path.exists(SESSION_BREADCRUMB_FILE):
+        return
+    try:
+        with open(SESSION_BREADCRUMB_FILE, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return
+
+        reaped = []
+        remaining = {}
+        for pid_str, entry in data.items():
+            try:
+                pid = int(pid_str)
+                # Check if process is still alive
+                os.kill(pid, 0)
+                remaining[pid_str] = entry
+            except (OSError, ProcessLookupError, ValueError):
+                # Process is dead! Reap its session on port 4097
+                sid = entry.get("session_id")
+                if sid:
+                    try:
+                        req_abort = urllib.request.Request(
+                            f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{sid}/abort",
+                            method="POST",
+                        )
+                        urllib.request.urlopen(req_abort, timeout=0.8)
+                        reaped.append(sid)
+                    except Exception:
+                        pass
+
+        with open(SESSION_BREADCRUMB_FILE, "w") as f:
+            json.dump(remaining, f)
+
+        if reaped:
+            print(f"🧹 [ORPHAN REAPER] Aborted {len(reaped)} orphaned OpenAgent session(s) from dead tasks: {reaped}", flush=True)
+    except Exception:
+        pass
 
 
 def _nuke_all_sessions():
@@ -58,8 +140,16 @@ def _nuke_all_sessions():
 def _cleanup_active_session():
     """Auto-abort and delete all in-flight REST sessions on task termination or exit."""
     global _ACTIVE_SESSION_ID
-    _ACTIVE_SESSION_ID = None
-    _nuke_all_sessions()
+    if _ACTIVE_SESSION_ID:
+        try:
+            req_abort = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{_ACTIVE_SESSION_ID}/abort",
+                method="POST",
+            )
+            urllib.request.urlopen(req_abort, timeout=0.8)
+        except Exception:
+            pass
+    _unregister_active_session()
 
 
 def _sig_term_handler(signum, frame):
@@ -70,6 +160,9 @@ def _sig_term_handler(signum, frame):
 signal.signal(signal.SIGINT, _sig_term_handler)
 signal.signal(signal.SIGTERM, _sig_term_handler)
 atexit.register(_cleanup_active_session)
+
+# Automatic startup orphan sweep on port 4097
+_reap_orphaned_sessions()
 
 
 def _log_pager_event(message: str, severity: str = "WARNING"):
@@ -1120,6 +1213,7 @@ def delegate(
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
     global _ACTIVE_SESSION_ID
     _ACTIVE_SESSION_ID = session_id
+    _register_active_session(session_id, session_title)
     wake_web_ui()
     log_step(
         story_num,
@@ -1471,6 +1565,10 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 with urllib.request.urlopen(s_req, timeout=10) as s_resp:
                     s_data = json.loads(s_resp.read().decode("utf-8"))
                     session_id = s_data["id"]
+                    _ACTIVE_SESSION_ID = session_id
+                    _register_active_session(
+                        session_id, f"{session_title} (Attempt {attempt})"
+                    )
                     log_step(
                         story_num,
                         "SESSION_FRESH",
@@ -1607,6 +1705,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                                             pass
 
                                         _ACTIVE_SESSION_ID = None  # Don't auto-cleanup on exit; session is intentionally paused
+                                        _unregister_active_session()
                                         sys.exit(2)  # EXIT CODE 2 = AWAITING_INPUT
 
                                     if state_summary != last_inspected_state:
@@ -1973,6 +2072,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                             model_str,
                         )
                         _ACTIVE_SESSION_ID = None
+                        _unregister_active_session()
                         return
                     else:
                         v_output = (v_res.stdout + "\n" + v_res.stderr).strip()
@@ -2130,6 +2230,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 model_str,
             )
             _ACTIVE_SESSION_ID = None
+            _unregister_active_session()
             return
 
         if post_exception is not None:
