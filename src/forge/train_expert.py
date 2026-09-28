@@ -23,6 +23,7 @@ if os.path.exists(_cu13_dir):
                 pass
 
 import datetime
+import gc
 import json
 
 import torch
@@ -77,6 +78,15 @@ class HardwarePacingCallback(TrainerCallback):
                 self.step_metrics.append(entry)
 
     def on_step_end(self, args, state, control, **kwargs):
+        # [FEAT-452] Inter-step CUDA cache purge and VRAM de-fragmentation
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            try:
+                torch.cuda.ipc_collect()
+            except Exception:
+                pass
+        gc.collect()
+
         print(
             f"\n⏱️ [HARDWARE PACING] Step {state.global_step}/{state.max_steps} complete. Settling hardware for {self.delay_sec}s...",
             flush=True,
@@ -113,12 +123,14 @@ def record_forge_telemetry(
     metrics_payload = {
         "timestamp": datetime.datetime.now().isoformat(),
         "adapter_name": os.path.basename(output_dir),
+        "total_steps": steps,
         "steps_configured": steps,
         "steps_completed": len(step_metrics),
         "start_loss": start_loss,
         "final_loss": final_loss,
         "runtime_seconds": round(runtime_s, 2),
         "pacing_delay_seconds": pacing_delay,
+        "steps": step_metrics,
         "step_metrics": step_metrics,
     }
 
