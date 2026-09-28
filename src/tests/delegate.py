@@ -1000,24 +1000,32 @@ def delegate(
         candidate = None
         for part in probe.replace(",", " ").split():
             clean_part = part.strip()
-            if clean_part and os.path.exists(clean_part):
-                p_dir = (
-                    clean_part
-                    if os.path.isdir(clean_part)
-                    else os.path.dirname(clean_part)
-                )
-                # Walk up until finding a directory with .opencodeignore that isn't the root monorepo
-                curr = os.path.abspath(p_dir)
-                while curr and curr != "/" and curr != os.path.expanduser("~"):
-                    if os.path.exists(
-                        os.path.join(curr, ".opencodeignore")
-                    ) and not os.path.exists(os.path.join(curr, ".gitmodules")):
-                        candidate = curr
-                        break
-                    curr = os.path.dirname(curr)
-                if candidate:
+            if not clean_part:
+                continue
+            # Try path itself or parent dirs if file does not exist yet
+            p_dir = clean_part
+            if os.path.exists(clean_part) and not os.path.isdir(clean_part):
+                p_dir = os.path.dirname(clean_part)
+            elif not os.path.exists(clean_part):
+                p_dir = os.path.dirname(clean_part)
+
+            curr = os.path.abspath(p_dir) if p_dir else ""
+            while curr and curr != "/" and curr != os.path.expanduser("~"):
+                if os.path.exists(
+                    os.path.join(curr, ".opencodeignore")
+                ) and not os.path.exists(os.path.join(curr, ".gitmodules")):
+                    candidate = curr
                     break
-        target_dir = candidate if candidate else target_dir
+                curr = os.path.dirname(curr)
+            if candidate:
+                break
+
+        if not candidate:
+            if "Portfolio_Dev" in probe:
+                candidate = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
+            else:
+                candidate = os.path.expanduser("~/Dev_Lab/HomeLabAI")
+        target_dir = candidate
 
     # Pre-check protection: target_dir must contain .opencodeignore and must not be root monorepo
     if not os.path.exists(os.path.join(target_dir, ".opencodeignore")):
