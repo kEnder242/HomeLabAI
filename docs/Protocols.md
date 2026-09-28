@@ -1184,3 +1184,26 @@ Every feedback loop identified in the lab is recorded in the Loop Ledger with th
 
 
 
+---
+
+## BKM-070: Composable Projection Topology & Re-Anchoring Protocol (D-1 Law)
+**Feature / Vibe Anchor:**  /  /  /   
+**Colloquial Alias:** "The D-1 Re-Anchoring Law & Diamond Projection Protocol"  
+**Domain:** Architecture, Projections, Mathematics, Writing Systems  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle (D-1 Re-Anchoring Law)
+Truth is invariant; Presentation is a fluid projection (). To prevent serial generative decay ( 	o B 	o C 	o 	ext{decay}$), multi-pass and multi-lens projections must **never chain serially over previously generated surface text**.
+* **The Diamond Invariant:** Every projection pass re-anchors to canonical certified bones ($\pi(\mathcal{C})$):
+  102138P = M\Bigl(\sigma_{R_{\text{global}}}\bigl(\rho_{v_{\text{global}}}(\sigma_{R_{\text{local}}}(\rho_{v_{\text{local}}}(\pi(\mathcal{C}))))\bigr)\Bigr)102138
+* **Error Bound:** By projecting from immutable origin bones rather than generated intermediate text, error accumulation is bounded by the worst single step ($\max \lambda_i \eta_i$) instead of compounding exponentially ($\sum \lambda^{k-i} \eta_i$).
+
+### 2. The Invariant Verification Ladder
+1. **CP-1 (Semantic Closure):** $\pi \circ F_L = \pi$. A projection may rotate stylistic register, but the underlying claim set, citations, and metrics must remain invariant.
+2. **CP-4 (Non-Erosion):** All canonical bones must either appear in the projected view or be explicitly declared as elided in the projection manifest.
+3. **CP-5 (Numeric Literal Integrity):** Numeric literals and metrics are high-hallucination-risk coordinates. Every numeric token in the projected output must exist verbatim in the immutable origin span ($\text{set}(\text{numerics}(P)) \subseteq \text{set}(\text{numerics}(\Omega))$). Violations trigger hard  gates.
+4. **CP-7 (Re-projection Idempotence):** (F_L(\mathcal{C})) = F_L(\mathcal{C})$. Re-projecting an already projected artifact through the same lens must yield byte-identical output (short-circuited via provenance stamps).
+
+### 3. Detector Partitioning Rule
+* **Symbolic-Only for Hard Gates:** CP-1, CP-4, CP-5, and CP-7 MUST be evaluated by deterministic symbolic detectors (AST analysis, numeric set-diff, regex, Merkle inclusion proofs) in sub-millisecond execution loops.
+* **Semantic Detectors for Style Only:** LLM-judge rubrics are strictly reserved for non-truth stylistic evaluations (e.g. tone formality, narrative flow) and must run asynchronously outside critical rendering paths.
