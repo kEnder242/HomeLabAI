@@ -1816,9 +1816,29 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["execute", "plan", "investigate", "oracle"],
-        default="execute",
-        help="Delegation mode: execute (code edit), plan (read-only plan), investigate (read-only diagnostic), or oracle (read-only long-context synthesis/review)",
+        choices=["local", "cloud", "oracle", "plan", "investigate", "execute"],
+        default="local",
+        help="Delegation mode: local (sovereign silicon), cloud (OpenCode/OpenRouter swarm), or oracle (cloud-only deep synthesis/review)",
+    )
+    parser.add_argument(
+        "--local",
+        "--local-only",
+        dest="force_local",
+        action="store_true",
+        help="Shorthand for --mode local",
+    )
+    parser.add_argument(
+        "--cloud",
+        "--cloud-only",
+        dest="force_cloud",
+        action="store_true",
+        help="Shorthand for --mode cloud",
+    )
+    parser.add_argument(
+        "--oracle",
+        dest="force_oracle",
+        action="store_true",
+        help="Shorthand for --mode oracle (cloud-only)",
     )
     parser.add_argument(
         "--verification",
@@ -1828,36 +1848,19 @@ if __name__ == "__main__":
     parser.add_argument("--dir", default=None, help="Target working directory")
     parser.add_argument(
         "--retries",
-        default=3,
+        default=1,
         type=int,
-        help="Max self-healing retries for 503/429 errors (default: 3)",
+        help="[DEPRECATED]: delegate.py is strictly single-shot per BKM-049.",
     )
     parser.add_argument(
         "--agent",
         default=None,
-        help="[DEPRECATED / UNSUPPORTED] Do not specify --agent. Routing is strictly driven by --local-only (Atlas -> Junior) or --cloud-only (Prometheus).",
+        help="Optional explicit agent override (e.g. atlas, sisyphus, junior, oracle)",
     )
     parser.add_argument(
         "--session-id",
         default=None,
-        help="Existing REST session ID to attach to for context reuse across multi-step iterations (defaults to sprint-<N>)",
-    )
-    parser.add_argument(
-        "--local-only",
-        action="store_true",
-        default=True,
-        help="Force 100 percent sovereign local execution (Atlas on KENDER 4090 decomposes to Junior on M5 Air, zero cloud fallbacks) [DEFAULT: True]",
-    )
-    parser.add_argument(
-        "--no-local-only",
-        dest="local_only",
-        action="store_false",
-        help="Allow cloud fallback ladders (Groq, OpenCode, Cohere)",
-    )
-    parser.add_argument(
-        "--cloud-only",
-        action="store_true",
-        help="Force 100 percent cloud swarm execution (Prometheus -> Cloud Swarm, zero local hardware fallbacks)",
+        help="Existing REST session ID to attach to for context reuse across multi-step iterations",
     )
     parser.add_argument(
         "--resume",
@@ -1871,8 +1874,17 @@ if __name__ == "__main__":
         help="Answer choice for the pending interactive question (used with --resume)",
     )
     args = parser.parse_args()
-    if args.cloud_only:
-        args.local_only = False
+    if args.force_oracle:
+        args.mode = "oracle"
+    elif args.force_cloud:
+        args.mode = "cloud"
+    elif args.force_local:
+        args.mode = "local"
+    elif args.mode == "execute":
+        args.mode = "local"
+
+    local_only = args.mode in ("local", "plan", "investigate")
+    cloud_only = args.mode in ("cloud", "oracle")
 
     if args.show_ledger:
         show_delegation_ledger(limit=30)
@@ -1944,11 +1956,10 @@ if __name__ == "__main__":
         sprint_num=args.sprint,
         target_dir=args.dir,
         agent=args.agent,
-        max_retries=args.retries,
         mode=args.mode,
         target_files=args.target,
         session_id=args.session_id,
         sprint_doc=args.sprint_doc,
-        local_only=args.local_only,
-        cloud_only=args.cloud_only,
+        local_only=local_only,
+        cloud_only=cloud_only,
     )
