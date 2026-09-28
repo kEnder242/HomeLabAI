@@ -34,7 +34,7 @@ from trl import SFTConfig, SFTTrainer
 
 
 class HardwarePacingCallback(TrainerCallback):
-    """[FEAT-452] Pauses between optimization steps to let host VRMs, PSU capacitors, and GPU silicon settle, and collects step telemetry."""
+    """[FEAT-160] Pauses between optimization steps to let host VRMs, PSU capacitors, and GPU silicon settle, and collects step telemetry."""
 
     def __init__(self, delay_sec: float = 5.0):
         self.delay_sec = delay_sec
@@ -78,7 +78,7 @@ class HardwarePacingCallback(TrainerCallback):
                 self.step_metrics.append(entry)
 
     def on_step_end(self, args, state, control, **kwargs):
-        # [FEAT-452] Inter-step CUDA cache purge and VRAM de-fragmentation
+        # [FEAT-160] Inter-step CUDA cache purge and VRAM de-fragmentation
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             try:
@@ -105,7 +105,7 @@ def record_forge_telemetry(
     pacing_delay: float,
     step_metrics: list,
 ):
-    """[FEAT-452] Atomically records rich training telemetry to training_metrics.json and Neural Pager."""
+    """[FEAT-160] Atomically records rich training telemetry to training_metrics.json and Neural Pager."""
     metrics_file = os.path.join(output_dir, "training_metrics.json")
     os.makedirs(output_dir, exist_ok=True)
 
