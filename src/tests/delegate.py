@@ -1430,110 +1430,48 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 {_handover_block}
 {note_block}"""
 
-    # [FEAT-493] Load model ladder dynamically from centralized infrastructure config
-    cfg_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
-    model_ladder = []
-    if os.path.exists(cfg_path):
-        try:
-            with open(cfg_path, "r") as cf:
-                cfg_obj = json.load(cf)
-                aliases = cfg_obj.get("swarm_aliases", {})
-                if local_only:
-                    local_cfg = aliases.get("local_bicameral", {})
-                    if agent in ("atlas", "librarian", "momus"):
-                        log_step(
-                            story_num,
-                            "LOCAL_ONLY_MODE",
-                            "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: qwen3:14b). Zero cloud fallbacks.",
-                        )
-                        model_ladder = [
-                            local_cfg.get("reasoner")
-                            or local_cfg.get(
-                                "architect",
-                                {
-                                    "providerID": "my-windows-4090",
-                                    "modelID": "qwen3:14b",
-                                },
-                            )
-                        ]
-                    else:
-                        log_step(
-                            story_num,
-                            "LOCAL_ONLY_MODE",
-                            "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp). Zero cloud fallbacks.",
-                        )
-                        model_ladder = [
-                            local_cfg.get(
-                                "coder",
-                                {
-                                    "providerID": "my-m5-mlx",
-                                    "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-                                },
-                            )
-                        ]
-                elif agent == "oracle" or mode == "oracle":
-                    log_step(
-                        story_num,
-                        "CLOUD_ORACLE_MODE",
-                        "Enforcing 100% Cloud Oracle Execution (OpenRouter/Cohere/Nemotron). Zero local silicon fallbacks.",
-                    )
-                    model_ladder = aliases.get(
-                        "oracle",
-                        [
-                            {"providerID": "openrouter", "modelID": "free"},
-                            {
-                                "providerID": "cohere",
-                                "modelID": "command-a-plus-05-2026",
-                            },
-                        ],
-                    )
-                elif cloud_only:
-                    log_step(
-                        story_num,
-                        "CLOUD_ONLY_MODE",
-                        "Enforcing 100% Cloud Swarm Execution (OpenRouter/Cohere). Zero local silicon fallbacks.",
-                    )
-                    model_ladder = aliases.get(
-                        "fast_worker",
-                        [
-                            {"providerID": "openrouter", "modelID": "free"},
-                            {
-                                "providerID": "cohere",
-                                "modelID": "command-a-plus-05-2026",
-                            },
-                        ],
-                    )
-                elif agent in ("prometheus", "atlas", "architect"):
-                    model_ladder = aliases.get("champion_reasoner", [])
-                elif agent in ("sisyphus", "hephaestus", "developer"):
-                    model_ladder = aliases.get("champion_coder", [])
-                else:
-                    model_ladder = aliases.get("default_ladder", [])
-        except Exception as e:
+    # =========================================================================
+    # [BKM-049 INVARIANT / ANTI-REGRESSION MANDATE]: ZERO INTERNAL RETRIES.
+    # delegate.py is strictly a single-shot execution harness.
+    # Retries are smart outer-loop operations driven by AGY diagnostics, never
+    # blind script-level loops. Zero failover ladders or retry loops permitted.
+    # =========================================================================
+
+    if local_only:
+        if agent in ("atlas", "librarian", "momus", "architect") or mode in ("plan", "investigate"):
+            current_model = {
+                "providerID": "my-windows-4090",
+                "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+            }
             log_step(
                 story_num,
-                "CONFIG_LOAD_WARN",
-                f"Could not load swarm_aliases from {cfg_path}: {e}",
+                "LOCAL_ONLY_MODE",
+                "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: Qwen3.8-27B). Zero cloud fallbacks.",
             )
-
-    if not model_ladder:
+        else:
+            current_model = {
+                "providerID": "my-m5-mlx",
+                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            }
+            log_step(
+                story_num,
+                "LOCAL_ONLY_MODE",
+                "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: Ternary-Bonsai-2-27B). Zero cloud fallbacks.",
+            )
+    elif agent == "oracle" or mode == "oracle":
+        current_model = {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         log_step(
             story_num,
-            "FALLBACK_LADDER",
-            f"Using resilient default cloud fallback ladder for agent='{agent}'.",
+            "CLOUD_ORACLE_MODE",
+            "Enforcing 100% Cloud Oracle Execution (Command-A+ / Nemotron). Zero local fallbacks.",
         )
-        model_ladder = [
-            {"providerID": "openrouter", "modelID": "free"},
-            {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-        ]
-
-    # Pre-filter unreachable endpoints so we never block on 60s socket timeouts (unless in local_only mode where we report directly)
-    if not local_only:
-        model_ladder = [
-            m for m in model_ladder if _is_provider_reachable(m.get("providerID", ""))
-        ]
-        if not model_ladder:
-            model_ladder = [{"providerID": "openrouter", "modelID": "free"}]
+    else:
+        current_model = {"providerID": "opencode", "modelID": "big-pickle"}
+        log_step(
+            story_num,
+            "CLOUD_ONLY_MODE",
+            "Enforcing 100% Cloud Swarm Execution (Big-Pickle / OpenRouter). Zero local fallbacks.",
+        )
 
     # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air 32k with TurboQuant Headroom)
     if local_only:
@@ -1546,745 +1484,288 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             )
             return
 
-    attempt = 0
-    while attempt < max_retries:
-        attempt += 1
-        # [Sprint 76 Action 3] Always guarantee a fresh session on local silicon to prevent tool history compounding
-        if attempt > 1 or local_only or not session_id:
+    log_step(
+        story_num,
+        "DISPATCH_SINGLE_SHOT",
+        f"Dispatching single-shot prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (BKM-049 Pure Single-Shot)",
+    )
+    start_time = time.time()
+
+    msg_dict = {"parts": [{"type": "text", "text": prompt}], "model": current_model}
+    msg_payload = json.dumps(msg_dict).encode("utf-8")
+
+    post_result = None
+    post_exception = None
+
+    def _do_post():
+        nonlocal post_result, post_exception
+        try:
+            msg_req = urllib.request.Request(
+                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message",
+                data=msg_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(msg_req, timeout=1800) as resp:
+                post_result = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            post_exception = exc
+
+    worker = threading.Thread(target=_do_post, daemon=True)
+    worker.start()
+
+    # Heartbeat loop while worker thread is active
+    hb_tick = 0
+    last_inspected_state = ""
+    while worker.is_alive():
+        worker.join(timeout=3.0)
+        if worker.is_alive():
+            hb_tick += 1
+            elapsed = int(time.time() - start_time)
+
+            # [FEAT-512 / BKM-047] Smart Heartbeat Polling & Live Telemetry Inspector
             try:
-                session_payload = {
-                    "directory": target_dir,
-                    "title": f"{session_title} (Attempt {attempt})",
-                    "agent": agent,
-                }
-                s_req = urllib.request.Request(
-                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
-                    data=json.dumps(session_payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
+                poll_req = urllib.request.Request(
+                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message"
                 )
-                with urllib.request.urlopen(s_req, timeout=10) as s_resp:
-                    s_data = json.loads(s_resp.read().decode("utf-8"))
-                    session_id = s_data["id"]
-                    _ACTIVE_SESSION_ID = session_id
-                    _register_active_session(
-                        session_id, f"{session_title} (Attempt {attempt})"
-                    )
-                    log_step(
-                        story_num,
-                        "SESSION_FRESH",
-                        f"Using fresh session {session_id} for attempt {attempt}",
-                    )
+                with urllib.request.urlopen(poll_req, timeout=2.0) as poll_resp:
+                    msgs = json.loads(poll_resp.read().decode("utf-8"))
+                    if msgs:
+                        last_msg = msgs[-1]
+                        parts = last_msg.get("parts", [])
+                        for p in reversed(parts):
+                            ptype = p.get("type")
+                            if ptype == "tool":
+                                tname = p.get("tool")
+                                tstate = p.get("state", {})
+                                status = tstate.get("status", "unknown")
+                                tinput = tstate.get("input", {})
+                                state_summary = f"tool:{tname} status:{status}"
+                                if tname == "task":
+                                    cat = tinput.get("category", "")
+                                    state_summary += f" category:{cat}"
+                                elif tname == "question":
+                                    # [FEAT-515 / Task 69.6.1] Interactive Popup Breakout
+                                    q_input = tinput
+                                    q_text = ""
+                                    q_options = []
+                                    if isinstance(q_input, dict):
+                                        questions = q_input.get("questions", [])
+                                        if isinstance(questions, list) and len(questions) > 0:
+                                            q_text = questions[0].get("question", "")
+                                            q_options = questions[0].get("options", [])
+                                        else:
+                                            q_text = q_input.get("question", str(q_input))
+                                            q_options = q_input.get("options", [])
+                                    else:
+                                        q_text = str(q_input)
+
+                                    log_step(
+                                        story_num,
+                                        "INTERACTIVE_POPUP_DETECTED",
+                                        "OpenCode emitted interactive question. Session paused.",
+                                        severity="CRITICAL",
+                                    )
+                                    print("\n" + "=" * 80, flush=True)
+                                    print(
+                                        f"[INTERACTIVE POPUP — SESSION {session_id}]",
+                                        flush=True,
+                                    )
+                                    print("=" * 80, flush=True)
+                                    print(f"QUESTION: {q_text}", flush=True)
+                                    if q_options:
+                                        print("\nOPTIONS:", flush=True)
+                                        for i, opt in enumerate(q_options, 1):
+                                            print(f"  [{i}] {opt}", flush=True)
+                                    print("\nTo resume, run:", flush=True)
+                                    print(
+                                        f"  python3 delegate.py --resume {session_id} --answer '<your choice>'",
+                                        flush=True,
+                                    )
+                                    print("=" * 80 + "\n", flush=True)
+
+                                    try:
+                                        breadcrumb_path = os.path.expanduser(
+                                            "~/Dev_Lab/HomeLabAI/logs/paused_session.txt"
+                                        )
+                                        os.makedirs(
+                                            os.path.dirname(breadcrumb_path),
+                                            exist_ok=True,
+                                        )
+                                        with open(breadcrumb_path, "w") as bf:
+                                            bf.write(
+                                                f"session_id={session_id}\nstory={story_num}\ntitle={title}\nquestion={q_text}\n"
+                                            )
+                                    except Exception:
+                                        pass
+
+                                    _ACTIVE_SESSION_ID = None
+                                    _unregister_active_session()
+                                    sys.exit(2)
+
+                                if state_summary != last_inspected_state:
+                                    last_inspected_state = state_summary
+                                    log_step(
+                                        story_num,
+                                        "LIVE_SWARM_STATE",
+                                        f"State transition: [{state_summary}]",
+                                    )
+                                break
             except Exception:
                 pass
 
-        current_model = model_ladder[min(attempt - 1, len(model_ladder) - 1)]
+            if post_exception is not None:
+                break
+
+            log_step(
+                story_num,
+                "HEARTBEAT",
+                f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log",
+            )
+
+    duration = time.time() - start_time
+    tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
+    model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
+
+    if post_result is not None:
+        api_err = None
+        if isinstance(post_result, dict):
+            if "error" in post_result.get("info", {}):
+                api_err = post_result["info"]["error"]
+            elif post_result.get("name") in ("APIError", "UnknownError") or "error" in post_result:
+                api_err = post_result.get("data") or post_result.get("error")
+
+        finish = post_result.get("info", {}).get("finish", "unknown") if isinstance(post_result, dict) else "unknown"
+        tokens = post_result.get("info", {}).get("tokens", {}) if isinstance(post_result, dict) else {}
+
         log_step(
             story_num,
-            "DISPATCH_ATTEMPT",
-            f"Dispatching prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (Attempt {attempt}/{max_retries})",
+            "COMPLETE",
+            f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}",
         )
-        start_time = time.time()
+        log_step(
+            story_num,
+            "WEB_UI_LINK",
+            f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+        )
 
-        msg_dict = {"parts": [{"type": "text", "text": prompt}], "model": current_model}
-        msg_payload = json.dumps(msg_dict).encode("utf-8")
+        parts = post_result.get("parts", []) if isinstance(post_result, dict) else []
+        text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+        full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
 
-        post_result = None
-        post_exception = None
+        if api_err and not full_text:
+            err_msg = api_err.get("data", {}).get("message") if isinstance(api_err, dict) else str(api_err)
+            log_step(story_num, "API_ERROR_DETECTED", f"Provider API Error: {err_msg}", severity="CRITICAL")
+            _log_delegation_ledger(
+                sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                session_id, duration, tokens, "API_ERROR", 1, verification, False, str(err_msg)[:200], model_str
+            )
+            _cleanup_active_session()
+            sys.exit(1)
 
-        def _do_post():
-            nonlocal post_result, post_exception
+        _log_live_usage_telemetry(
+            story_num, sprint_num, title, current_model, duration, tokens, len(full_text)
+        )
+
+        if full_text:
+            print("\n" + "═" * 80, flush=True)
+            print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
+            print("═" * 80, flush=True)
+            print(full_text, flush=True)
+            print("═" * 80 + "\n", flush=True)
+
+            blocker_match = re.search(
+                r"(?:\[BLOCKER REPORT:\s*(.+?)\]|\*\*Blocker Report:\*\*\s*(.+))",
+                full_text,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if blocker_match:
+                blocker_text = (blocker_match.group(1) or blocker_match.group(2) or "").strip()
+                log_step(story_num, "BLOCKER_DETECTED", f"Subagent emitted blocker report: {blocker_text}", severity="CRITICAL")
+                _log_delegation_ledger(
+                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                    session_id, duration, tokens, "BLOCKER_HALT", 1, verification, False, blocker_text[:200], model_str
+                )
+                _cleanup_active_session()
+                sys.exit(1)
+
+        if verification and verification != "Post-dispatch AGY Validation":
+            log_step(story_num, "VERIFICATION_START", f"Executing single-shot verification: {verification}")
             try:
-                msg_req = urllib.request.Request(
-                    f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message",
-                    data=msg_payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
+                monorepo_root = os.path.expanduser("~/Dev_Lab")
+                v_res = subprocess.run(
+                    verification,
+                    shell=True,
+                    cwd=monorepo_root if os.path.exists(monorepo_root) else (target_dir or os.getcwd()),
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                 )
-                with urllib.request.urlopen(msg_req, timeout=1800) as resp:
-                    post_result = json.loads(resp.read().decode("utf-8"))
-            except Exception as exc:
-                post_exception = exc
-
-        worker = threading.Thread(target=_do_post, daemon=True)
-        worker.start()
-
-        # Heartbeat loop while worker thread is active
-        hb_tick = 0
-        last_inspected_state = ""
-        while worker.is_alive():
-            worker.join(timeout=3.0)
-            if worker.is_alive():
-                hb_tick += 1
-                elapsed = int(time.time() - start_time)
-
-                # [FEAT-512 / BKM-047] Smart Heartbeat Polling & Live Telemetry Inspector
-                try:
-                    poll_req = urllib.request.Request(
-                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message"
-                    )
-                    with urllib.request.urlopen(poll_req, timeout=2.0) as poll_resp:
-                        msgs = json.loads(poll_resp.read().decode("utf-8"))
-                        if msgs:
-                            last_msg = msgs[-1]
-                            parts = last_msg.get("parts", [])
-                            for p in reversed(parts):
-                                ptype = p.get("type")
-                                if ptype == "tool":
-                                    tname = p.get("tool")
-                                    tstate = p.get("state", {})
-                                    status = tstate.get("status", "unknown")
-                                    tinput = tstate.get("input", {})
-                                    state_summary = f"tool:{tname} status:{status}"
-                                    if tname == "task":
-                                        cat = tinput.get("category", "")
-                                        state_summary += f" category:{cat}"
-                                    elif tname == "question":
-                                        # [FEAT-515 / Task 69.6.1] Interactive Popup Breakout
-                                        # Extract question content for CLI display, then exit with code 2 (AWAITING_INPUT)
-                                        q_input = tinput
-                                        q_text = ""
-                                        q_options = []
-                                        if isinstance(q_input, dict):
-                                            questions = q_input.get("questions", [])
-                                            if (
-                                                isinstance(questions, list)
-                                                and questions
-                                            ):
-                                                q0 = (
-                                                    questions[0]
-                                                    if isinstance(questions[0], dict)
-                                                    else {}
-                                                )
-                                                q_text = q0.get(
-                                                    "question", str(questions)
-                                                )
-                                                q_options = q0.get("options", [])
-                                            else:
-                                                q_text = str(q_input)
-                                        else:
-                                            q_text = str(q_input)
-
-                                        log_step(
-                                            story_num,
-                                            "INTERACTIVE_POPUP_DETECTED",
-                                            "OpenCode emitted interactive question. Session paused.",
-                                            severity="CRITICAL",
-                                        )
-                                        print("\n" + "=" * 80, flush=True)
-                                        print(
-                                            f"[INTERACTIVE POPUP — SESSION {session_id}]",
-                                            flush=True,
-                                        )
-                                        print("=" * 80, flush=True)
-                                        print(f"QUESTION: {q_text}", flush=True)
-                                        if q_options:
-                                            print("\nOPTIONS:", flush=True)
-                                            for i, opt in enumerate(q_options, 1):
-                                                print(f"  [{i}] {opt}", flush=True)
-                                        print("\nTo resume, run:", flush=True)
-                                        print(
-                                            f"  python3 delegate.py --resume {session_id} --answer '<your choice>'",
-                                            flush=True,
-                                        )
-                                        print("=" * 80 + "\n", flush=True)
-
-                                        # Persist session ID breadcrumb for easy resume discovery
-                                        try:
-                                            breadcrumb_path = os.path.expanduser(
-                                                "~/Dev_Lab/HomeLabAI/logs/paused_session.txt"
-                                            )
-                                            os.makedirs(
-                                                os.path.dirname(breadcrumb_path),
-                                                exist_ok=True,
-                                            )
-                                            with open(breadcrumb_path, "w") as bf:
-                                                bf.write(
-                                                    f"session_id={session_id}\nstory={story_num}\ntitle={title}\nquestion={q_text}\n"
-                                                )
-                                        except Exception:
-                                            pass
-
-                                        _ACTIVE_SESSION_ID = None  # Don't auto-cleanup on exit; session is intentionally paused
-                                        _unregister_active_session()
-                                        sys.exit(2)  # EXIT CODE 2 = AWAITING_INPUT
-
-                                    if state_summary != last_inspected_state:
-                                        last_inspected_state = state_summary
-                                        log_step(
-                                            story_num,
-                                            "LIVE_SWARM_STATE",
-                                            f"State transition: [{state_summary}]",
-                                        )
-                                    break
-                except Exception:
-                    pass
-
-                if post_exception is not None:
-                    break
-
-                # Heartbeat stdout line keeps process output active and prevents silent watchdog timeouts
-                log_step(
-                    story_num,
-                    "HEARTBEAT",
-                    f"OpenAgent execution in progress... ({elapsed}s elapsed). Step log: /tmp/delegate_story_{story_num}.log",
-                )
-
-        duration = time.time() - start_time
-
-        if post_result is not None:
-            # [FEAT-556 / Swarm Hardening] Check for provider API errors embedded in payload
-            api_err = None
-            if isinstance(post_result, dict):
-                if "error" in post_result.get("info", {}):
-                    api_err = post_result["info"]["error"]
-                elif (
-                    post_result.get("name") in ("APIError", "UnknownError")
-                    or "error" in post_result
-                ):
-                    api_err = post_result.get("data") or post_result.get("error")
-
-            finish = (
-                post_result.get("info", {}).get("finish", "unknown")
-                if isinstance(post_result, dict)
-                else "unknown"
-            )
-            tokens = (
-                post_result.get("info", {}).get("tokens", {})
-                if isinstance(post_result, dict)
-                else {}
-            )
-            log_step(
-                story_num,
-                "COMPLETE",
-                f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}",
-            )
-            log_step(
-                story_num,
-                "WEB_UI_LINK",
-                f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
-            )
-
-            # [BKM-033 / BKM-034] Extract and display execution response & Handover Reflection directly from in-flight chunk
-            parts = (
-                post_result.get("parts", []) if isinstance(post_result, dict) else []
-            )
-            text_parts = [
-                p.get("text", "")
-                for p in parts
-                if isinstance(p, dict) and p.get("type") == "text"
-            ]
-            full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
-
-            # If provider returned an error and no text, trigger fallback to next model in ladder
-            if api_err and not full_text:
-                err_msg = (
-                    api_err.get("data", {}).get("message")
-                    if isinstance(api_err, dict)
-                    else str(api_err)
-                )
-                log_step(
-                    story_num,
-                    "API_ERROR_DETECTED",
-                    f"Provider API Error on attempt {attempt}/{max_retries}: {err_msg}",
-                    severity="WARNING",
-                )
-                if attempt < max_retries:
-                    print(
-                        f"[!] [STORY {story_num}] Provider {current_model.get('providerID')}/{current_model.get('modelID')} error: {err_msg[:120]}... Falling back to next model in ladder...",
-                        flush=True,
-                    )
-                    continue
-
-            # [FEAT-496] Passive Swarm Telemetry Tap
-            _log_live_usage_telemetry(
-                story_num,
-                sprint_num,
-                title,
-                current_model,
-                duration,
-                tokens,
-                len(full_text),
-            )
-
-            blocker_match = None
-            blocker_text = ""
-            is_silent_failure = False
-
-            tier_str = (
-                "[SWARM:LOCAL]"
-                if local_only
-                else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
-            )
-            model_str = (
-                f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
-                if current_model
-                else "unknown"
-            )
-
-            if full_text:
-                print("\n" + "═" * 80, flush=True)
-                print(
-                    f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]",
-                    flush=True,
-                )
-                print("═" * 80, flush=True)
-                print(full_text, flush=True)
-                print("═" * 80 + "\n", flush=True)
-
-                # [FEAT-512] Attempt automatic Blocker Report ingestion
-                try:
-                    blocker_match = re.search(
-                        r"(?:\[BLOCKER REPORT:\s*(.+?)\]|\*\*Blocker Report:\*\*\s*(.+))",
-                        full_text,
-                        re.DOTALL | re.IGNORECASE,
-                    )
-                    if blocker_match:
-                        blocker_text = (
-                            blocker_match.group(1) or blocker_match.group(2) or ""
-                        ).strip()
-                        log_step(
-                            story_num,
-                            "BLOCKER_DETECTED",
-                            f"Subagent emitted blocker report: {blocker_text}",
-                            severity="CRITICAL",
-                        )
-                        subprocess.run(
-                            [
-                                "icm",
-                                "store",
-                                "-t",
-                                "errors-resolved",
-                                "-c",
-                                f"Story {story_num} ({title}) Blocker: {blocker_text}",
-                                "-i",
-                                "critical",
-                                "-k",
-                                f"blocker,delegation,openagent,story-{story_num},sprint-{sprint_num}",
-                            ],
-                            capture_output=True,
-                            text=True,
-                            check=False,
-                        )
-                except Exception:
-                    pass
-
-                # Attempt automatic ICM ingestion
-                try:
-                    reflection_match = re.search(
-                        r"(?:\[HANDOVER REFLECTION\]|\*\*Handover Reflection:\*\*)\s*(.+)",
-                        full_text,
-                        re.DOTALL | re.IGNORECASE,
-                    )
-                    reflection_text = (
-                        reflection_match.group(1).strip()
-                        if reflection_match
-                        else full_text[:400]
-                    )
-                    icm_content = f"Story {story_num} ({title}) Delegation Reflection: {reflection_text}"
-                    subprocess.run(
-                        [
-                            "icm",
-                            "store",
-                            "-t",
-                            "errors-resolved",
-                            "-c",
-                            icm_content,
-                            "-i",
-                            "high",
-                            "-k",
-                            f"delegation,openagent,prompt-tuning,story-{story_num},sprint-{sprint_num}",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                except Exception:
-                    pass
-            else:
-                # [FEAT-515 / Task 69.6.2] Silent Failure Escalation Gate
-                # Core Law: "Fix the delegation infrastructure; do not manually finish the sprint."
-                is_silent_failure = finish == "unknown"
-                if is_silent_failure and attempt < max_retries:
-                    log_step(
-                        story_num,
-                        "SILENT_FAILURE_RETRY",
-                        f"Attempt {attempt}/{max_retries} returned zero text/tools. Falling back to next model in ladder...",
-                        severity="WARNING",
-                    )
-                    print(
-                        f"[!] [STORY {story_num}] Model {current_model.get('providerID')}/{current_model.get('modelID')} returned no output. Retrying with next model in ladder...",
-                        flush=True,
-                    )
-                    continue
-                elif is_silent_failure:
-                    log_step(
-                        story_num,
-                        "SILENT_DELEGATION_FAILURE",
-                        f"[ALERT: SILENT_DELEGATION_FAILURE] finish={finish}, zero text parts. "
-                        f"Model: {current_model}. Session: {session_id}. Duration: {duration:.1f}s.",
-                        severity="CRITICAL",
-                    )
-
+                if v_res.returncode == 0:
+                    log_step(story_num, "VERIFICATION_PASSED", f"Verification passed: {verification}")
                     _log_delegation_ledger(
-                        sprint_num,
-                        story_num,
-                        title,
-                        mode,
-                        tier_str,
-                        target_files or reference_file,
-                        session_id,
-                        duration,
-                        tokens,
-                        "SILENT_FAILURE",
-                        attempt,
-                        verification,
-                        False,
-                        "Silent failure across all ladder attempts",
-                        model_str,
+                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                        session_id, duration, tokens, "SUCCESS", 1, verification, True, "", model_str
                     )
-
-                    # Persist to delegation_failures.log for retrospective analysis
-                    try:
-                        fail_log_dir = os.path.expanduser("~/Dev_Lab/HomeLabAI/logs")
-                        os.makedirs(fail_log_dir, exist_ok=True)
-                        fail_log_path = os.path.join(
-                            fail_log_dir, "delegation_failures.log"
-                        )
-                        ts = time.strftime("%Y-%m-%d %H:%M:%S")
-                        fail_entry = (
-                            f"[{ts}] SILENT_DELEGATION_FAILURE\n"
-                            f"  Story: {story_num} ({title})\n"
-                            f"  Sprint: {sprint_num}\n"
-                            f"  Agent: {agent}\n"
-                            f"  Model: {current_model}\n"
-                            f"  Session: {session_id}\n"
-                            f"  Duration: {duration:.1f}s\n"
-                            f"  finish={finish}, tokens={tokens}\n"
-                            f"  Web UI: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}\n"
-                            f"  Raw Parts: {json.dumps(parts[:3], indent=2)}\n"
-                            f"{'=' * 60}\n"
-                        )
-                        with open(fail_log_path, "a") as fl:
-                            fl.write(fail_entry)
-                    except Exception:
-                        pass
-
-                    # ICM store for pattern tracking
-                    try:
-                        subprocess.run(
-                            [
-                                "icm",
-                                "store",
-                                "-t",
-                                "errors-resolved",
-                                "-c",
-                                f"SILENT_DELEGATION_FAILURE: Story {story_num} ({title}) — finish={finish}, no text, model={current_model.get('modelID', 'unknown')}. Session {session_id}.",
-                                "-i",
-                                "critical",
-                                "-k",
-                                f"silent-failure,delegation,story-{story_num},sprint-{sprint_num}",
-                            ],
-                            capture_output=True,
-                            text=True,
-                            check=False,
-                        )
-                    except Exception:
-                        pass
-
-                    print(
-                        "\n[!!!] DELEGATION HALTED: Silent failure detected across all ladder attempts. The delegation infrastructure needs fixing.",
-                        flush=True,
-                    )
-                    print(
-                        f"[!!!] Inspect session: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
-                        flush=True,
-                    )
-                    print(
-                        "[!!!] Failure log: ~/Dev_Lab/HomeLabAI/logs/delegation_failures.log",
-                        flush=True,
-                    )
-                    _cleanup_active_session()
-                    sys.exit(3)  # EXIT CODE 3 = SILENT_DELEGATION_FAILURE
+                    _ACTIVE_SESSION_ID = None
+                    _unregister_active_session()
+                    return
                 else:
-                    # Non-unknown finish with empty text (e.g. tool-only response) — warn but don't halt
-                    print(
-                        f"[!] [STORY {story_num}] Note: No text parts returned in completion chunk (finish={finish}). Check Web UI.",
-                        flush=True,
-                    )
-
-            # [BKM-049] Automated Verification Execution & 3-Fix-Retry Loop
-            is_valid_cmd = (
-                verification
-                and verification.strip()
-                and verification.strip().lower()
-                not in (
-                    "post-dispatch agy validation",
-                    "none",
-                    "n/a",
-                    "manual",
-                    "post-dispatch validation",
-                )
-            )
-            if is_valid_cmd and (full_text or not is_silent_failure):
-                log_step(
-                    story_num,
-                    "RUN_VERIFICATION",
-                    f"Executing verification command: {verification}",
-                )
-                try:
-                    monorepo_root = os.path.expanduser("~/Dev_Lab")
-                    v_res = subprocess.run(
-                        verification,
-                        shell=True,
-                        cwd=(
-                            monorepo_root
-                            if os.path.exists(monorepo_root)
-                            else (target_dir or os.getcwd())
-                        ),
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    if v_res.returncode == 0:
-                        log_step(
-                            story_num,
-                            "VERIFICATION_SUCCESS",
-                            f"Verification passed cleanly: {verification}",
-                        )
-                        print(
-                            f"✅ [STORY {story_num}] Verification PASSED.", flush=True
-                        )
-                        _log_delegation_ledger(
-                            sprint_num,
-                            story_num,
-                            title,
-                            mode,
-                            tier_str,
-                            target_files or reference_file,
-                            session_id,
-                            duration,
-                            tokens,
-                            "SUCCESS",
-                            attempt,
-                            verification,
-                            True,
-                            "",
-                            model_str,
-                        )
-                        _ACTIVE_SESSION_ID = None
-                        _unregister_active_session()
-                        return
-                    else:
-                        v_output = (v_res.stdout + "\n" + v_res.stderr).strip()
-                        log_step(
-                            story_num,
-                            "VERIFICATION_FAILED",
-                            f"Verification failed (code {v_res.returncode}): {v_output[:300]}",
-                            severity="WARNING",
-                        )
-                        print(
-                            f"❌ [STORY {story_num}] Verification FAILED (code {v_res.returncode}):\n{v_output[:500]}",
-                            flush=True,
-                        )
-                        if attempt < max_retries:
-                            _run_bkm049_diagnostics(
-                                story_num, attempt, reason="verification_failed"
-                            )
-                            prompt = (
-                                f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
-                                f"The previous implementation for Story {story_num}: '{title}' FAILED verification.\n\n"
-                                f"Command: {verification}\n"
-                                f"Exit Code: {v_res.returncode}\n"
-                                f"Output:\n{v_output[:2500]}\n\n"
-                                f"Target Scope: {target_files or reference_file}\n"
-                                f"Repair the code surgically using clara-dna_safe_patch to fix all errors and satisfy verification. "
-                                f"Ensure no syntax errors or breaking changes are introduced."
-                            )
-                            print(
-                                f"[!] [STORY {story_num}] Retrying with Attempt {attempt + 1}/{max_retries}...",
-                                flush=True,
-                            )
-                            continue
-                        else:
-                            log_step(
-                                story_num,
-                                "VERIFICATION_EXHAUSTED",
-                                f"All {max_retries} attempts failed verification.",
-                                severity="CRITICAL",
-                            )
-                            _log_delegation_ledger(
-                                sprint_num,
-                                story_num,
-                                title,
-                                mode,
-                                tier_str,
-                                target_files or reference_file,
-                                session_id,
-                                duration,
-                                tokens,
-                                "VERIFICATION_FAILED",
-                                attempt,
-                                verification,
-                                False,
-                                v_output[:200],
-                                model_str,
-                            )
-                            _cleanup_active_session()
-                            sys.exit(1)
-                except subprocess.TimeoutExpired:
+                    v_output = (v_res.stdout + "\n" + v_res.stderr).strip()
                     log_step(
                         story_num,
-                        "VERIFICATION_TIMEOUT",
-                        f"Verification timed out after 120s: {verification}",
-                        severity="WARNING",
-                    )
-                    if attempt < max_retries:
-                        _run_bkm049_diagnostics(
-                            story_num, attempt, reason="verification_timeout"
-                        )
-                        prompt = (
-                            f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
-                            f"The previous implementation for Story {story_num} timed out during verification ({verification}).\n"
-                            f"Resolve infinite loops or blocking calls."
-                        )
-                        continue
-                    else:
-                        _log_delegation_ledger(
-                            sprint_num,
-                            story_num,
-                            title,
-                            mode,
-                            tier_str,
-                            target_files or reference_file,
-                            session_id,
-                            duration,
-                            tokens,
-                            "VERIFICATION_TIMEOUT",
-                            attempt,
-                            verification,
-                            False,
-                            "Verification timed out after 120s",
-                            model_str,
-                        )
-                        _cleanup_active_session()
-                        sys.exit(1)
-            else:
-                # If no verification command provided, check for blocker report
-                if blocker_match and attempt < max_retries:
-                    _run_bkm049_diagnostics(
-                        story_num, attempt, reason="blocker_detected"
-                    )
-                    prompt = (
-                        f"[BKM-049 FIX RETRY ATTEMPT {attempt + 1}/{max_retries}]\n"
-                        f"A blocker was identified during Story {story_num} execution:\n"
-                        f"{blocker_text}\n\n"
-                        f"Resolve this blocker or provide a clean alternative implementation within assigned target scope."
-                    )
-                    print(
-                        f"[!] [STORY {story_num}] Blocker detected. Retrying with Attempt {attempt + 1}/{max_retries}...",
-                        flush=True,
-                    )
-                    continue
-                elif blocker_match:
-                    log_step(
-                        story_num,
-                        "BLOCKER_HALT",
-                        f"Blocker could not be resolved after {max_retries} attempts: {blocker_text}",
+                        "VERIFICATION_FAILED",
+                        f"Verification failed (code {v_res.returncode}): {v_output[:300]}",
                         severity="CRITICAL",
                     )
+                    print(
+                        f"❌ [STORY {story_num}] Verification FAILED (code {v_res.returncode}):\n{v_output[:500]}",
+                        flush=True,
+                    )
                     _log_delegation_ledger(
-                        sprint_num,
-                        story_num,
-                        title,
-                        mode,
-                        tier_str,
-                        target_files or reference_file,
-                        session_id,
-                        duration,
-                        tokens,
-                        "BLOCKER_HALT",
-                        attempt,
-                        verification,
-                        False,
-                        blocker_text[:200],
-                        model_str,
+                        sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                        session_id, duration, tokens, "VERIFICATION_FAILED", 1, verification, False, v_output[:200], model_str
                     )
                     _cleanup_active_session()
                     sys.exit(1)
-
-            _log_delegation_ledger(
-                sprint_num,
-                story_num,
-                title,
-                mode,
-                tier_str,
-                target_files or reference_file,
-                session_id,
-                duration,
-                tokens,
-                "COMPLETED_UNVERIFIED",
-                attempt,
-                verification,
-                None,
-                "",
-                model_str,
-            )
-            _ACTIVE_SESSION_ID = None
-            _unregister_active_session()
-            return
-
-        if post_exception is not None:
-            e = post_exception
-            err_ctx = _format_error_context(e)
-            tier_str = (
-                "[SWARM:LOCAL]"
-                if local_only
-                else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
-            )
-            model_str = (
-                f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
-                if current_model
-                else "unknown"
-            )
-            if (
-                isinstance(e, urllib.error.HTTPError)
-                and e.code in (502, 503, 504, 429)
-                and attempt < max_retries
-            ):
-                backoff = (2**attempt) + random.uniform(0.5, 1.5)
-                msg = f"HTTP {e.code} transient error on attempt {attempt}/{max_retries}. Backing off {backoff:.1f}s...\n{err_ctx}"
-                log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
-                time.sleep(backoff)
-            elif attempt < max_retries:
-                backoff = (2**attempt) + random.uniform(0.5, 1.5)
-                msg = f"Dispatch error ({e}) on attempt {attempt}/{max_retries}. Retrying in {backoff:.1f}s...\n{err_ctx}"
-                log_step(story_num, "RETRY_BACKOFF", msg, severity="WARNING")
-                time.sleep(backoff)
-            else:
+            except subprocess.TimeoutExpired:
                 log_step(
                     story_num,
-                    "FAILED",
-                    f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}",
+                    "VERIFICATION_TIMEOUT",
+                    f"Verification timed out after 120s: {verification}",
                     severity="CRITICAL",
                 )
                 _log_delegation_ledger(
-                    sprint_num,
-                    story_num,
-                    title,
-                    mode,
-                    tier_str,
-                    target_files or reference_file,
-                    session_id,
-                    duration,
-                    {},
-                    "DISPATCH_FAILED",
-                    attempt,
-                    verification,
-                    False,
-                    str(e)[:200],
-                    model_str,
+                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                    session_id, duration, tokens, "VERIFICATION_TIMEOUT", 1, verification, False, "Verification timed out after 120s", model_str
                 )
+                _cleanup_active_session()
                 sys.exit(1)
+
+        _log_delegation_ledger(
+            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+            session_id, duration, tokens, "COMPLETED_UNVERIFIED", 1, verification, None, "", model_str
+        )
+        _ACTIVE_SESSION_ID = None
+        _unregister_active_session()
+        return
+
+    if post_exception is not None:
+        e = post_exception
+        err_ctx = _format_error_context(e)
+        log_step(
+            story_num,
+            "FAILED",
+            f"Dispatch failed after {duration:.1f}s: {e}\n{err_ctx}",
+            severity="CRITICAL",
+        )
+        _log_delegation_ledger(
+            sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+            session_id, duration, {}, "DISPATCH_FAILED", 1, verification, False, str(e)[:200], model_str
+        )
+        _cleanup_active_session()
+        sys.exit(1)
+
 
 
 if __name__ == "__main__":
