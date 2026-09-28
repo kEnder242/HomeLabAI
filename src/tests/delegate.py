@@ -385,8 +385,9 @@ def _log_delegation_ledger(
     error_reason: str = "",
     model_name: str = "",
     agent_role: str = "",
+    reflection: str = "",
 ):
-    """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl."""
+    """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl and ICM."""
     knobs = _extract_telemetry_knobs(
         target_scope, model_name, status, error_reason, agent_role=agent_role
     )
@@ -408,6 +409,7 @@ def _log_delegation_ledger(
         "verification_passed": verification_passed,
         "error_reason": error_reason or "",
         "model": model_name or "unknown",
+        "reflection": reflection or "",
         "knobs": knobs,
     }
     line = json.dumps(ledger_entry) + "\n"
@@ -422,6 +424,21 @@ def _log_delegation_ledger(
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "a") as f:
                 f.write(line)
+        except Exception:
+            pass
+
+    # [BKM-049 Feedback Loop] Ingest handover reflection into persistent ICM
+    if reflection and reflection.strip():
+        try:
+            icm_bin = os.path.expanduser("~/.local/bin/icm")
+            if not os.path.exists(icm_bin):
+                icm_bin = "icm"
+            icm_content = f"Story {story_num} ({title}) [{tier} via {model_name}]: {reflection.strip()}"
+            subprocess.run(
+                [icm_bin, "store", "-t", "delegation_feedback", "-c", icm_content],
+                capture_output=True,
+                timeout=5,
+            )
         except Exception:
             pass
 
@@ -1392,9 +1409,7 @@ Sprint Reference: {effective_sprint_doc}
         except Exception:
             pass
 
-    _handover_block = ""
-    if agent != "atlas":
-        _handover_block = """[HANDOVER REFLECTION]
+    _handover_block = """[HANDOVER REFLECTION]
 As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 """
 
@@ -1414,6 +1429,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
 {details}
 
+{_handover_block}
 {note_block}"""
     else:
         prompt = f"""{ambient_grounding_block}{tier1_block}[TIER 2: BOUNDED STORY TARGET SPECIFICATION]
@@ -1667,12 +1683,23 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             story_num, sprint_num, title, current_model, duration, tokens, len(full_text)
         )
 
+        reflection_text = ""
         if full_text:
             print("\n" + "═" * 80, flush=True)
             print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
             print("═" * 80, flush=True)
             print(full_text, flush=True)
             print("═" * 80 + "\n", flush=True)
+
+            refl_match = re.search(
+                r"(?:\[HANDOVER REFLECTION\]|\*\*Handover Reflection:\*\*)\s*(.+?)(?:\n\n\[|\Z)",
+                full_text,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if refl_match:
+                reflection_text = refl_match.group(1).strip()
+            elif "[HANDOVER REFLECTION]" in full_text:
+                reflection_text = full_text.split("[HANDOVER REFLECTION]")[-1].strip()
 
             blocker_match = re.search(
                 r"(?:\[BLOCKER REPORT:\s*(.+?)\]|\*\*Blocker Report:\*\*\s*(.+))",
@@ -1684,7 +1711,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 log_step(story_num, "BLOCKER_DETECTED", f"Subagent emitted blocker report: {blocker_text}", severity="CRITICAL")
                 _log_delegation_ledger(
                     sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                    session_id, duration, tokens, "BLOCKER_HALT", 1, verification, False, blocker_text[:200], model_str
+                    session_id, duration, tokens, "BLOCKER_HALT", 1, verification, False, blocker_text[:200], model_str,
+                    reflection=reflection_text,
                 )
                 _cleanup_active_session()
                 sys.exit(1)
@@ -1705,7 +1733,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     log_step(story_num, "VERIFICATION_PASSED", f"Verification passed: {verification}")
                     _log_delegation_ledger(
                         sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                        session_id, duration, tokens, "SUCCESS", 1, verification, True, "", model_str
+                        session_id, duration, tokens, "SUCCESS", 1, verification, True, "", model_str,
+                        reflection=reflection_text,
                     )
                     _ACTIVE_SESSION_ID = None
                     _unregister_active_session()
@@ -1724,7 +1753,8 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                     )
                     _log_delegation_ledger(
                         sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                        session_id, duration, tokens, "VERIFICATION_FAILED", 1, verification, False, v_output[:200], model_str
+                        session_id, duration, tokens, "VERIFICATION_FAILED", 1, verification, False, v_output[:200], model_str,
+                        reflection=reflection_text,
                     )
                     _cleanup_active_session()
                     sys.exit(1)
@@ -1737,14 +1767,16 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 )
                 _log_delegation_ledger(
                     sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-                    session_id, duration, tokens, "VERIFICATION_TIMEOUT", 1, verification, False, "Verification timed out after 120s", model_str
+                    session_id, duration, tokens, "VERIFICATION_TIMEOUT", 1, verification, False, "Verification timed out after 120s", model_str,
+                    reflection=reflection_text,
                 )
                 _cleanup_active_session()
                 sys.exit(1)
 
         _log_delegation_ledger(
             sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-            session_id, duration, tokens, "COMPLETED_UNVERIFIED", 1, verification, None, "", model_str
+            session_id, duration, tokens, "COMPLETED_UNVERIFIED", 1, verification, None, "", model_str,
+            reflection=reflection_text,
         )
         _ACTIVE_SESSION_ID = None
         _unregister_active_session()
