@@ -428,7 +428,8 @@ class SpineManager:
     def spine_path(cls, paper_id: str, base_dir: Path | str | None = None) -> Path:
         """Resolve the absolute-or-relative spine path for ``paper_id``."""
         root = cls.PAPERS_DIR if base_dir is None else Path(base_dir)
-        return Path(root) / f"PAPER-{paper_id}_spine.json"
+        filename = f"{paper_id}_spine.json" if str(paper_id).startswith("PAPER-") else f"PAPER-{paper_id}_spine.json"
+        return Path(root) / filename
 
     # ------------------------------------------------------------- persistence
 
@@ -490,12 +491,12 @@ class SpineManager:
         return path
 
     @classmethod
-    def empty_spine(cls, paper_id: str) -> dict[str, Any]:
+    def empty_spine(cls, paper_id: str, title: str = "") -> dict[str, Any]:
         """Return the canonical zero-state spine skeleton for ``paper_id``."""
         return {
             "schema": cls.SCHEMA_VERSION,
             "paper_id": str(paper_id),
-            "title": "",
+            "title": str(title or ""),
             "versions": [],
             "topology": {},
             "document_dna": [],
@@ -585,8 +586,9 @@ class SpineManager:
         """
         archive = spine_data.setdefault("document_dna", [])
         index = len(archive) + 1
-        paper_id = str(spine_data.get("paper_id", ""))
-        doc_dna_id = f"DOC-{paper_id}-{index:03d}"
+        raw_paper_id = str(spine_data.get("paper_id", ""))
+        paper_slug = raw_paper_id[len("PAPER-"):] if raw_paper_id.startswith("PAPER-") else raw_paper_id
+        doc_dna_id = f"DOC-{paper_slug}-{index:03d}"
 
         archive.append(
             {
