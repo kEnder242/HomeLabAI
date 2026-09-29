@@ -782,7 +782,10 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 3. **Outer Diagnostic Action Loop:** Between local retry attempts (Attempt 1a → 1b → 1c), the primary orchestrator (AGY) MUST read and synthesize the subagent's reflection alongside error traces, fixing missing imports, tightening schema bounds, refining prompt anchors, or tuning `opencode.json` configuration *before* re-dispatching.
 
 #### 3. Mandatory Diagnostics Between Retries
-Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform four diagnostic probes:
+Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform five diagnostic probes:
+0. **Playbook Quick-Diagnostic Index Audit (Mandatory First Step):**
+   - Read Section 0 (lines 1–60) of [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md).
+   - Match the observed failure symptom directly against the Playbook's Quick-Diagnostic Routing Table before re-dispatching.
 1. **Cognitive Feedback Probe:** Inspect the subagent's `[HANDOVER REFLECTION]` and transcript to identify where prompt wording, missing files, or context limits tripped up the model.
 2. **Server & Silicon State:**
    - Probe inference endpoints (`curl http://192.168.1.46:8000/v1/models`, `nvidia-smi`).
