@@ -1226,3 +1226,23 @@ Truth is invariant; Presentation is a fluid projection (). To prevent serial gen
 ### 3. Detector Partitioning Rule
 * **Symbolic-Only for Hard Gates:** CP-1, CP-4, CP-5, and CP-7 MUST be evaluated by deterministic symbolic detectors (AST analysis, numeric set-diff, regex, Merkle inclusion proofs) in sub-millisecond execution loops.
 * **Semantic Detectors for Style Only:** LLM-judge rubrics are strictly reserved for non-truth stylistic evaluations (e.g. tone formality, narrative flow) and must run asynchronously outside critical rendering paths.
+
+---
+
+## BKM-073: Document Spine Topology & Node Mutation Invariant
+**Feature Anchor:** `[FEAT-626]` / `[FEAT-627]` / `[INS-041]`  
+**Colloquial Alias:** "The Spine & Bone Decoupling Protocol"  
+**Domain:** Architecture, Document Management, Projections, Writing Systems  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Principle
+Documents are structured trees of immutable conceptual nodes bound together by an ordered Spine index. To prevent destructive file overwrites and exponential AST drift across revisions, document topology is strictly decoupled into two isolated layers:
+1. **The Spine Layer (`papers/<paper_id>/spine.json`):** Holds the hierarchical sequence of immutable `node_id` strings, section boundaries, and tree depth. The spine knows *what* nodes exist and in *what order*, but does not store raw prose.
+2. **The Bone Node Layer (`bones/<node_id>.json`):** Holds the rich micro-history for a single node: base text ($v_1$), revision stack ($v_2 \dots v_n$), HyDE voice tags, and DNA pointers (`WIS`, `VIBE`, `INS`).
+
+### 2. Operational Invariants
+1. **Structural Operations Mutate Spine Only:** `MOVE`, `REORDER`, `ADD_TO_SPINE`, or `DELETE_FROM_SPINE` mutate `spine.json` deterministically without modifying the underlying bone records.
+2. **Textual Operations Mutate Bone Only:** `REWORD`, `BLEND`, or `REFINE` append an approved new version ($v_{n+1}$) to `bones/<node_id>.json` without modifying `spine.json`.
+3. **Lens Projection Caching:** Projected manuscripts are compiled on-demand from the Spine by selecting the highest-scoring revision per node under the active Lens rubric and caching output to `papers/<paper_id>/projections/<lens_id>.json`.
+4. **Micro-Scale Proving Ground:** Interactive LLM dialectics, revision blending, and "reason why" validations occur in the single-node sandbox (`projection_studio.html`) before being rendered in the master manuscript editor (`writer.html`).
+
