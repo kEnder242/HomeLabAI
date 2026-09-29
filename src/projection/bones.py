@@ -37,15 +37,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 __all__ = [
     "BONE_SCHEMA_VERSION",
+    "SPINE_SCHEMA_VERSION",
     "DocumentAST",
     "DocumentNode",
+    "SpineManager",
     "extract_bones",
     "normalize_ast",
     "reconcile_diff",
@@ -373,3 +378,233 @@ def _flag_ids(bone: dict[str, Any]) -> set[str]:
         for f in bone.get("review_flags", []) or []
         if isinstance(f, dict)
     }
+
+
+def _utc_now_iso() -> str:
+    """Timezone-aware UTC stamp used by every spine mutation."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+# Bumped when the spine payload shape changes. Distinct from BONE_SCHEMA_VERSION:
+# bones are per-section structural anchors, the spine is the per-paper manifest.
+SPINE_SCHEMA_VERSION = "spine.v1"
+
+
+class SpineManager:
+    """[FEAT-626 / FEAT-628] Self-contained spine manifest & document DNA vault.
+
+    The spine (``PAPER-<paper_id>_spine.json``) is the single authoritative index
+    for a paper's version lineage, topological node mapping, and the
+    document-scoped DNA archive. It is a *self-contained* artifact (BKM-073 /
+    INS-041): every mutation is expressed as a plain-dict operation against a
+    spine dict that is written out in full, so no runtime reconstitution engine
+    or sparse micro-file is ever required to recover state.
+
+    Three invariants are enforced here:
+
+    1. **Lineage uniqueness (BKM-070 re-anchoring).** ``register_version`` is
+       idempotent per ``version_id`` -- re-registering an existing version never
+       forks the lineage or duplicates history.
+    2. **Content addressing.** ``map_node`` stores a ``text_hash`` rather than
+       raw prose, so topology stays an index of *where* content lives without
+       duplicating the self-contained version files.
+    3. **Quarantine gate (FEAT-628 / BKM-060).** ``add_document_dna`` stamps
+       every record ``promoted_to_global=None``. Document-scoped DNA never
+       reaches global lab DNA (WIS/INS) implicitly; promotion is an explicit,
+       separately-certified act (Story 95.6).
+
+    Persistence is atomic (``.tmp`` + :func:`os.replace`) per the Class 1
+    Atomic Reliability mandate, so a crashed write can never leave a torn spine.
+    """
+
+    SCHEMA_VERSION = SPINE_SCHEMA_VERSION
+
+    #: Default archive root for self-contained paper versions and their spines.
+    PAPERS_DIR = Path("Portfolio_Dev/field_notes/data/papers")
+
+    # ------------------------------------------------------------------ paths
+
+    @classmethod
+    def spine_path(cls, paper_id: str, base_dir: Path | str | None = None) -> Path:
+        """Resolve the absolute-or-relative spine path for ``paper_id``."""
+        root = cls.PAPERS_DIR if base_dir is None else Path(base_dir)
+        return Path(root) / f"PAPER-{paper_id}_spine.json"
+
+    # ------------------------------------------------------------- persistence
+
+    @classmethod
+    def load_spine(cls, paper_id: str, base_dir: Path | str | None = None) -> dict[str, Any]:
+        """Load the spine for ``paper_id``, or return a valid empty skeleton.
+
+        A missing spine is not an error: a fresh paper legitimately has no
+        history yet, and the caller must be able to ``register_version`` against
+        a skeleton without a bootstrap write. The skeleton always carries the
+        canonical ``SCHEMA_VERSION`` so a first save is already conformant.
+        """
+        path = cls.spine_path(paper_id, base_dir)
+        if not path.exists():
+            return cls.empty_spine(paper_id)
+
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+
+        if not isinstance(data, dict):
+            raise TypeError(f"Spine at {path} is not a JSON object: {type(data)}")
+
+        # Tolerate hand-edited / partial spines by re-asserting the container
+        # types the mutators below rely on. Unknown keys are preserved.
+        data.setdefault("schema", cls.SCHEMA_VERSION)
+        data["paper_id"] = str(data.get("paper_id") or paper_id)
+        if not isinstance(data.get("versions"), list):
+            data["versions"] = []
+        if not isinstance(data.get("topology"), dict):
+            data["topology"] = {}
+        if not isinstance(data.get("document_dna"), list):
+            data["document_dna"] = []
+        return data
+
+    @classmethod
+    def save_spine(
+        cls,
+        paper_id: str,
+        data: dict[str, Any],
+        base_dir: Path | str | None = None,
+    ) -> Path:
+        """Atomically persist ``data`` as the spine for ``paper_id``.
+
+        Returns the written path. The ``.tmp`` + :func:`os.replace` sequence
+        guarantees a reader never observes a half-written spine.
+        """
+        path = cls.spine_path(paper_id, base_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = dict(data)
+        payload["schema"] = cls.SCHEMA_VERSION
+        payload["paper_id"] = str(paper_id)
+
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=False)
+            handle.write("\n")
+        os.replace(tmp_path, path)
+        return path
+
+    @classmethod
+    def empty_spine(cls, paper_id: str) -> dict[str, Any]:
+        """Return the canonical zero-state spine skeleton for ``paper_id``."""
+        return {
+            "schema": cls.SCHEMA_VERSION,
+            "paper_id": str(paper_id),
+            "title": "",
+            "versions": [],
+            "topology": {},
+            "document_dna": [],
+        }
+
+    # -------------------------------------------------------------- versioning
+
+    @staticmethod
+    def register_version(
+        spine_data: dict[str, Any],
+        version_id: str,
+        filename: str,
+        parent_version: str | None = None,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """Register a document version in the lineage. Idempotent per version_id.
+
+        Re-registering an existing ``version_id`` is a no-op that still returns
+        the mutated spine, so replaying an ingest is safe (BKM-070: re-anchoring,
+        never serial compounding).
+        """
+        versions = spine_data.setdefault("versions", [])
+        if any(str(v.get("version_id")) == str(version_id) for v in versions if isinstance(v, dict)):
+            return spine_data
+
+        versions.append(
+            {
+                "version_id": str(version_id),
+                "filename": str(filename),
+                "parent_version": str(parent_version) if parent_version else None,
+                "description": str(description or ""),
+                "registered_at": _utc_now_iso(),
+            }
+        )
+        return spine_data
+
+    @staticmethod
+    def map_node(
+        spine_data: dict[str, Any],
+        node_id: str,
+        version_id: str,
+        section_id: str,
+        block_id: str = "",
+        role: str = "",
+        text: str = "",
+    ) -> dict[str, Any]:
+        """Map a topological node to a ``(section, block)`` pair within a version.
+
+        Stores a ``text_hash`` (16-hex sha256 prefix) instead of the raw prose:
+        the self-contained version file already owns the text, and duplicating it
+        here would let the two drift. An empty ``text`` yields an empty hash so
+        a purely positional mapping stays explicit.
+        """
+        text_hash = ""
+        if text:
+            text_hash = hashlib.sha256(str(text).encode("utf-8")).hexdigest()[:16]
+
+        topology = spine_data.setdefault("topology", {})
+        node = topology.setdefault(str(node_id), {})
+        node.setdefault("node_id", str(node_id))
+        node.setdefault("versions", {})
+        node["versions"][str(version_id)] = {
+            "version_id": str(version_id),
+            "section_id": str(section_id),
+            "block_id": str(block_id or ""),
+            "role": str(role or ""),
+            "text_hash": text_hash,
+        }
+        return spine_data
+
+    # ------------------------------------------------------- document DNA vault
+
+    @staticmethod
+    def add_document_dna(
+        spine_data: dict[str, Any],
+        theme: str,
+        title: str,
+        text: str,
+        origin_node_id: str = "",
+    ) -> str:
+        """Add a document-scoped DNA record and return its allocated ID.
+
+        IDs are ``DOC-<paper_id>-<NNN>`` with a zero-padded sequential index
+        derived from the current record count. Every record is stamped
+        ``promoted_to_global=None`` -- document DNA is quarantined (FEAT-628)
+        until an explicit certified promotion flips that field.
+        """
+        archive = spine_data.setdefault("document_dna", [])
+        index = len(archive) + 1
+        paper_id = str(spine_data.get("paper_id", ""))
+        doc_dna_id = f"DOC-{paper_id}-{index:03d}"
+
+        archive.append(
+            {
+                "doc_dna_id": doc_dna_id,
+                "theme": str(theme or ""),
+                "title": str(title or ""),
+                "text": str(text or ""),
+                "origin_node_id": str(origin_node_id or ""),
+                "promoted_to_global": None,
+                "extracted_at": _utc_now_iso(),
+            }
+        )
+        return doc_dna_id
+
+    @staticmethod
+    def get_document_dna(spine_data: dict[str, Any], doc_dna_id: str) -> dict[str, Any] | None:
+        """Return the DNA record matching ``doc_dna_id``, or ``None`` if absent."""
+        for record in spine_data.get("document_dna", []) or []:
+            if isinstance(record, dict) and str(record.get("doc_dna_id")) == str(doc_dna_id):
+                return record
+        return None
