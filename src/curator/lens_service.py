@@ -180,15 +180,26 @@ def grade_paper(
     lens = json.loads(lens_path.read_text(encoding="utf-8"))
 
     # 2. Load Base AST
-    ast_path = PAPERS_DIR / f"{paper_id}_{revision_id}.json"
-    if not ast_path.exists():
-        ast_path = PAPERS_DIR / f"{paper_id}_v1.json"
-    if not ast_path.exists():
-        ast_path = PAPERS_DIR / f"{paper_id}.json"
-    if not ast_path.exists():
-        ast_path = PAPERS_DIR / "PAPER-RESUME_v1.json"
-    if not ast_path.exists():
-        raise FileNotFoundError(f"Paper AST not found at {ast_path}")
+    # Deterministic resolution without silent fallback to prevent revision diff masking (Oracle D1 / WIS-487)
+    ast_path = None
+    candidate_names = [
+        f"{paper_id}_{revision_id}.json",
+    ]
+    if revision_id in ("v1_baseline", "baseline", "v1"):
+        candidate_names.extend([f"{paper_id}_v1.json", f"{paper_id}.json"])
+    elif revision_id is None or revision_id == "":
+        candidate_names.extend([f"{paper_id}_v1.json", f"{paper_id}.json"])
+
+    for name in candidate_names:
+        candidate_path = PAPERS_DIR / name
+        if candidate_path.exists():
+            ast_path = candidate_path
+            break
+
+    if not ast_path:
+        raise FileNotFoundError(
+            f"Paper AST revision '{revision_id}' not found for '{paper_id}' at {PAPERS_DIR}"
+        )
 
     ast = json.loads(ast_path.read_text(encoding="utf-8"))
 
