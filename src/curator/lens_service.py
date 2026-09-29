@@ -63,6 +63,24 @@ WEAK_OPENINGS = [
     ("participated in", "Collaborated on / Drove"),
 ]
 
+# Canonical paper artifacts persist as `PAPER-<id>_...`. Paper ids already carry
+# the `PAPER-` prefix (e.g. `PAPER-RESUME`), so re-prefixing unconditionally would
+# yield `PAPER-PAPER-RESUME`. Prefix only when absent, which also keeps the default
+# id byte-identical to the historical output filename.
+PAPER_FILENAME_PREFIX = "PAPER-"
+
+
+def build_revision_filename(paper_id: str, lens_id: str) -> str:
+    """Builds the staged-revision filename, dynamically scoped to `paper_id`.
+
+    Story 94.3 / SPR-94.0: grading must not hardcode a single paper id, otherwise
+    grading a second paper silently overwrites the first paper's output.
+    """
+    stem = str(paper_id).strip() or "PAPER-RESUME"
+    if not stem.startswith(PAPER_FILENAME_PREFIX):
+        stem = f"{PAPER_FILENAME_PREFIX}{stem}"
+    return f"{stem}_v2_{lens_id}.json"
+
 
 def craft_lens(
     lens_id: str,
@@ -165,6 +183,8 @@ def grade_paper(
     ast_path = PAPERS_DIR / f"{paper_id}_{revision_id}.json"
     if not ast_path.exists():
         ast_path = PAPERS_DIR / f"{paper_id}_v1.json"
+    if not ast_path.exists():
+        ast_path = PAPERS_DIR / f"{paper_id}.json"
     if not ast_path.exists():
         ast_path = PAPERS_DIR / "PAPER-RESUME_v1.json"
     if not ast_path.exists():
@@ -298,8 +318,9 @@ def grade_paper(
 
                     bullet["review_flags"] = b_flags
 
-    # Save staged revision
-    rev_filename = f"PAPER-RESUME_v2_{lens_id}.json"
+    # Save staged revision. The filename is dynamically scoped to `paper_id` so that
+    # grading a second paper no longer overwrites the first paper's staged output.
+    rev_filename = build_revision_filename(paper_id, lens_id)
     rev_path = PAPERS_DIR / rev_filename
     rev_path.write_text(json.dumps(staged_ast, indent=2), encoding="utf-8")
     logger.info(f"✅ Graded paper -> {rev_path} ({total_flags} review flags attached)")
