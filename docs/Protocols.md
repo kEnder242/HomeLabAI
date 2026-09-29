@@ -35,6 +35,8 @@
     - **During In-Flight Sprints (BKM-006 / BKM-049)**: Answering a QQ is an out-of-band telemetry check. It does NOT abort, cancel, or stall the active sprint backlog. The agent answers the question and immediately continues executing pending sprint stories.
     - **During Interactive Sessions**: If no sprint or task queue is active, answering a QQ completes the turn and awaits the next user directive.
 4.  **Explicit Pause Gate**: To deliberately pause or abort an ongoing sprint, use explicit command keywords: `PAUSE`, `HOLD`, `STOP`, `ABORT`, or `LET'S DISCUSS`.
+5.  **Zero Mutation Mandate**: Committing protocol documentation updates must remain strictly local per BKM-040.
+
 
 ## BKM-005: The Design Studio (Greenlight before Code Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
