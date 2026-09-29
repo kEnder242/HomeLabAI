@@ -46,8 +46,11 @@ def get_unified_base_model():
 # [FEAT-435] Evergreen Career Compass Memory Ledger
 class BicameralNode:
     """
-    [FEAT-145] Bicameral Node: Standardized MCP wrapper for local/remote LLM nodes.
-    Supports Multi-LoRA, Liger-Kernels, and Engine Health reporting.
+    [FEAT-145.2] Bicameral Node: Standardized thin MCP orchestration proxy for
+    local/remote LLM nodes. Nodes hold no resident model state -- all inference is
+    delegated over REST to headless engines (vLLM / oMLX / Ollama).
+    Supports Multi-LoRA routing, lazily-resolved Liger-Kernels (opt-in only), and
+    Engine Health reporting. Startup footprint is stdlib + FastMCP + aiohttp.
     """
 
     def __init__(self, name, system_prompt):
@@ -88,19 +91,20 @@ class BicameralNode:
 
         self.name = name.lower()
 
-        # [FEAT-210] Optimized kernels (Lazy Load)
-        if os.environ.get("DISABLE_EAR") != "1":
-            try:
-                from liger_kernel.transformers import (
-                    apply_liger_kernel_to_llama,
-                    apply_liger_kernel_to_qwen2,
-                )
-
-                apply_liger_kernel_to_qwen2()
-                apply_liger_kernel_to_llama()
-                logging.debug(f"[{self.name}] Liger kernels applied (Qwen + Llama).")
-            except Exception as e:
-                logging.warning(f"[{self.name}] Liger application failed: {e}")
+        # [FEAT-210 / FEAT-145.2] Thin-Proxy Kernel Policy (LAB-003):
+        # Acme Lab nodes are MCP orchestration proxies. Every completion is delegated
+        # over REST to a headless engine (vLLM :8088, oMLX :8000/8002, Ollama :11434),
+        # so no torch module is ever constructed in this process. Patching Liger kernels
+        # here is therefore a no-op that merely duplicates the PyTorch + Transformers
+        # runtime across every node process (~2.2 GB RAM / 1.8 GB swap across 5 nodes).
+        # Kernel application is NEVER eager: it is opt-in via LAB_ENABLE_LIGER=1 and
+        # resolved lazily inside apply_liger_kernels() so the import cost is only ever
+        # paid by a process that actually performs local inference.
+        # DISABLE_EAR=1 remains an authoritative kill switch for the CI/CD fast-path.
+        self._liger_requested = (
+            os.environ.get("LAB_ENABLE_LIGER") == "1"
+            and os.environ.get("DISABLE_EAR") != "1"
+        )
 
         # Load Career Compass Tier 1 Anchor Map Bedrock [FEAT-434]
         career_compass_path = os.path.expanduser(
@@ -271,6 +275,37 @@ class BicameralNode:
             source_name=self.name,
             response_format=response_format,
         )
+
+    def apply_liger_kernels(self) -> bool:
+        """
+        [FEAT-210 / FEAT-145.2] Opt-in, strictly-local kernel application (LAB-003).
+
+        This is the ONLY sanctioned entry point for Liger/Torch kernel patching. The
+        import is resolved inside this function body, never at module import time and
+        never from __init__(), so a thin-proxy node that never performs local inference
+        never pays the PyTorch + Transformers resident-memory cost.
+
+        Returns True if kernels were applied, False if the dependency is unavailable or
+        the feature is not explicitly enabled. Callers MUST treat a False return as a
+        benign no-op: node startup must never fail because of an optional ML extra.
+        """
+        if not self._liger_requested:
+            return False
+
+        try:
+            # Strictly lazy: torch/transformers are NOT in sys.modules until this runs.
+            from liger_kernel.transformers import (
+                apply_liger_kernel_to_llama,
+                apply_liger_kernel_to_qwen2,
+            )
+
+            apply_liger_kernel_to_qwen2()
+            apply_liger_kernel_to_llama()
+            logging.debug(f"[{self.name}] Liger kernels applied (Qwen + Llama).")
+            return True
+        except Exception as e:
+            logging.warning(f"[{self.name}] Liger application failed: {e}")
+            return False
 
     def _load_json(self, path):
         if os.path.exists(path):
