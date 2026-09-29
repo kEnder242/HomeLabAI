@@ -209,6 +209,15 @@ class FoyerRouter:
         self.waterfall_queue = asyncio.Queue()
         self.broadcast_queue = asyncio.Queue()
         self.trigger_task = trigger_task
+        # [FEAT-259.2 / LAB-096] Socket-Gated Ear Poller state.
+        # The wake event is constructed lazily inside the running loop (see
+        # _ensure_sensory_gate) so the poller can gate-sleep indefinitely
+        # instead of spinning a 0.5s poll that churns the audio heap.
+        self._sensory_wake_event = None
+        # Client-reported mic state (mirrors the "mic_state" WS frame). Defaults
+        # True so a socket that never announces mic state preserves the legacy
+        # eager-polling behavior.
+        self._mic_active = True
 
         # [Task 6.3] Hygiene: Global Process Tracking
         from collections import deque
@@ -3189,6 +3198,8 @@ class FoyerRouter:
             success = await self.sensory.rearm_sensory_ear()
             if success:
                 self.status.sensory_mode = SensoryMode.ACTIVE
+                # [FEAT-259.2] Un-muting the ear clears the poller gate.
+                self._signal_sensory_wake("EarNode manually rearmed")
                 return web.json_response({"status": "REARMED"})
             else:
                 return web.json_response(
@@ -3941,6 +3952,9 @@ class FoyerRouter:
             self.disconnect_timer.cancel()
             self.disconnect_timer = None
 
+        # [FEAT-259.2] Wake the socket-gated sensory poller: an intercom socket is live.
+        self._signal_sensory_wake("intercom websocket connected")
+
         await ws.send_str(json.dumps(self.status.to_dict()))
 
         authenticated = False  # [FEAT-426] First frame must be a valid handshake.
@@ -4047,7 +4061,13 @@ class FoyerRouter:
                             )
                     elif m_type == "mic_state":
                         active = data.get("active", False)
+                        # [FEAT-259.2] Client-side mute is a first-class poller gate.
+                        self._mic_active = bool(active)
                         logger.info(f"Mic state changed: {active}")
+                        if self._mic_active:
+                            self._signal_sensory_wake("client mic unmuted")
+                        else:
+                            self._signal_sensory_sleep("client mic muted")
                 elif msg.type == aiohttp.WSMsgType.BINARY:
                     if not authenticated:
                         # [FEAT-426] Refuse audio before an authenticated handshake.
@@ -4066,6 +4086,10 @@ class FoyerRouter:
             if ws in self.connected_clients:
                 self.connected_clients.remove(ws)
             logger.info(f"Client disconnected: {socket_id}")
+
+            # [FEAT-259.2] Last socket gone — send the poller into gated deep sleep.
+            if not self.connected_clients:
+                self._signal_sensory_sleep("last intercom websocket disconnected")
 
             # Start disconnect timer if no clients connected and mode is DEBUG_BRAIN
             if not self.connected_clients and self.mode == "DEBUG_BRAIN":
@@ -4493,10 +4517,77 @@ class FoyerRouter:
                     )
             await asyncio.sleep(30)
 
+    # [FEAT-259.2 / LAB-096] Socket-Gated Ear Poller primitives.
+    def _ensure_sensory_gate(self):
+        """Lazily build the poller wake Event inside the running loop.
+
+        Constructing asyncio primitives in __init__ is unsafe when the Router is
+        built outside the loop it is served on, so the gate is materialized on
+        first use (idempotent, single-threaded event loop => no race).
+        """
+        gate = getattr(self, "_sensory_wake_event", None)
+        if gate is None:
+            gate = asyncio.Event()
+            self._sensory_wake_event = gate
+        return gate
+
+    def _sensory_muted(self) -> bool:
+        """[FEAT-259.2] True when the ear is muted by config, runtime, or client."""
+        if getattr(self, "disable_ear", False):
+            return True
+        status = getattr(self, "status", None)
+        if status is not None and status.sensory_mode != SensoryMode.ACTIVE:
+            return True
+        return not getattr(self, "_mic_active", True)
+
+    def _sensory_gate_open(self) -> bool:
+        """[FEAT-259.2] Poller runs only with >=1 intercom socket AND unmuted ear."""
+        return bool(self.connected_clients) and not self._sensory_muted()
+
+    def _signal_sensory_wake(self, reason: str = ""):
+        """Release the poller from gated sleep (socket connect / mic unmute)."""
+        gate = self._ensure_sensory_gate()
+        if not gate.is_set():
+            gate.set()
+            logger.info(f"[FOYER] Sensory poller wake signalled ({reason}).")
+
+    def _signal_sensory_sleep(self, reason: str = ""):
+        """Send the poller to gated deep sleep (last socket gone / mic muted)."""
+        gate = self._ensure_sensory_gate()
+        if gate.is_set():
+            gate.clear()
+            logger.info(f"[FOYER] Sensory poller quiesce signalled ({reason}).")
+
     async def ear_poller_loop(self):
-        """[FEAT-259.1] Global Sensory Sentinel."""
+        """[FEAT-259.1] Global Sensory Sentinel.
+        [FEAT-259.2 / LAB-096] Socket-Gated: when no Intercom WebSocket is
+        connected, or the ear is muted (operator flag, PAUSED/DISABLED sensory
+        mode, or a client mic_state mute), the coroutine blocks on an
+        asyncio.Event instead of spinning a 0.5s poll that repeatedly swaps
+        audio pages across the heap. Woken by _signal_sensory_wake().
+        """
+        gate = self._ensure_sensory_gate()
+        quiesced = False
         while True:
             try:
+                if not self._sensory_gate_open():
+                    if not quiesced:
+                        quiesced = True
+                        logger.info(
+                            "[FEAT-259.2] Ear poller quiesced (no intercom socket / sensory muted). "
+                            "Entering gated sleep — no 0.5s spin."
+                        )
+                    # Any pending signal is stale while the gate predicate is false,
+                    # so clear-then-wait cannot swallow a real wakeup (no await between).
+                    gate.clear()
+                    await gate.wait()
+                    continue
+
+                if quiesced:
+                    quiesced = False
+                    logger.info(
+                        "[FEAT-259.2] Ear poller resumed (intercom socket present, sensory unmuted)."
+                    )
                 query = self.sensory.check_turn_end()
                 if query:
                     import uuid
@@ -4514,9 +4605,14 @@ class FoyerRouter:
                     )
             except Exception as e:
                 logger.warning("[FOYER] resident wake failed", exc_info=True)
-                await self.broadcast(
-                    {"type": "error", "message": "Wake failed: " + str(e)}
-                )
+                try:
+                    await self.broadcast(
+                        {"type": "error", "message": "Wake failed: " + str(e)}
+                    )
+                except Exception:
+                    logger.warning(
+                        "[FOYER] Failed to broadcast poller error (non-blocking).", exc_info=True
+                    )
             await asyncio.sleep(0.5)
 
     async def scheduled_tasks_loop(self):
