@@ -780,6 +780,9 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    - Ingests the reflection into persistent short/long-term memory (`icm store -t delegation_feedback`).
    - Appends the reflection into persistent ledger records (`HomeLabAI/data/delegation_ledger.jsonl` and `Portfolio_Dev/field_notes/data/delegation_ledger.jsonl`).
 3. **Outer Diagnostic Action Loop:** Between local retry attempts (Attempt 1a → 1b → 1c), the primary orchestrator (AGY) MUST read and synthesize the subagent's reflection alongside error traces, fixing missing imports, tightening schema bounds, refining prompt anchors, or tuning `opencode.json` configuration *before* re-dispatching.
+4. **The Psychological Safety & Naive Start Contract:**
+   - Every dispatch explicitly reassures the subagent that all needed context is provided, that first-try naive starts are safe and encouraged, and that mistakes/assumptions will be met with constructive outer-loop feedback rather than silent penalties.
+   - Paves a clean path for local execution by eliminating exploratory paralysis and establishing bidirectional honor-bound trust across swarm layers.
 
 #### 3. Mandatory Diagnostics Between Retries
 Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform five diagnostic probes:

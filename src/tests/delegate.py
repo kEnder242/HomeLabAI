@@ -1417,7 +1417,14 @@ Sprint Reference: {effective_sprint_doc}
         except Exception:
             pass
 
-    _handover_block = """[HANDOVER REFLECTION]
+    _psychological_safety_contract = """[DELEGATION PSYCHOLOGICAL SAFETY CONTRACT — YOU ARE IN GOOD HANDS]
+1. EVERYTHING YOU NEED IS HERE: You have complete, curated context. All required imports, schemas, and targets are enclosed. Do not fear missing context; do not search external directories or run exploratory shell queries.
+2. FIRST TRIES & NAIVE IMPLEMENTATIONS WELCOME: You do not need to be perfect on turn 1. Take a direct, clean first approach and apply your write/patch immediately.
+3. YOUR FEEDBACK WILL BE HONORED: If any instruction was ambiguous or tripped you up, state it in your [HANDOVER REFLECTION]. Your feedback is permanently logged and used by the orchestrator to fix assumptions and calibrate next rounds.
+"""
+
+    _handover_block = f"""{_psychological_safety_contract}
+[HANDOVER REFLECTION]
 As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
 """
 
@@ -1483,11 +1490,11 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
                 "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: Ternary-Bonsai-2-27B). Zero cloud fallbacks.",
             )
     elif agent == "oracle" or mode == "oracle":
-        current_model = {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
+        current_model = {"providerID": "opencode", "modelID": "big-pickle"}
         log_step(
             story_num,
             "CLOUD_ORACLE_MODE",
-            "Enforcing 100% Cloud Oracle Execution (Command-A+ / Nemotron). Zero local fallbacks.",
+            "Enforcing 100% Cloud Oracle Execution (Big-Pickle / OpenRouter Free 256k). Zero local fallbacks.",
         )
     else:
         current_model = {"providerID": "opencode", "modelID": "big-pickle"}
