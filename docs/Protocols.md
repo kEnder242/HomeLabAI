@@ -26,12 +26,15 @@
 *   **Behavior**: When interacting with the Lab after a fresh boot, the Agent must recognize that nodes (Archive, Pinky, Brain) come online in stages.
 *   **Verification**: Wait for the staggered `[READY]` signals in the logs before assuming full capability. Refer to **[FEAT-133]** for the underlying technical law.
 
-## BKM-004: The QQ Protocol (Quick Question)
-**Objective**: Prevent state drift and over-investigation during collaborative sessions.
+## BKM-004: The QQ Protocol (Quick Question & Non-Perturbing Lens)
+**Objective**: Prevent state drift and unsolicited speculative mutations while preserving active sprint momentum.
 
-1.  **Shorthand (QQ)**: Treat "QQ: [Question]" as a literal **Quick Question (Talk Only)**. Evaluates strictly as conversational text analysis. Fulfillment consists **exclusively** of providing a direct, concise answer.
-2.  **Absolute Halt**: A "QQ" response constitutes 100% completion of the task. Do not proceed to diagnostics, coding, or log-scraping.
-3.  **Persistence of Halt**: Informational or retrospective queries (e.g., "Tell me what you did", "Explain that log") do NOT signal a resumption of work. The Agent MUST remain in the **HALT** state until the user provides an explicit execution directive (e.g., "Fix it", "Proceed", "Apply").
+1.  **Non-Invasive Diagnostic Scope**: Treat "QQ: [Question]" as a non-perturbing informational inquiry. Use read-only tools (file reads, log queries, memory recall, system status) to answer factually and concisely.
+2.  **No Speculative Mutations**: Never interpret a QQ as an implied work order or begin modifying code, configurations, or system state based on the question.
+3.  **Sprint Decoupling (No Unintentional Halts)**:
+    - **During In-Flight Sprints (BKM-006 / BKM-049)**: Answering a QQ is an out-of-band telemetry check. It does NOT abort, cancel, or stall the active sprint backlog. The agent answers the question and immediately continues executing pending sprint stories.
+    - **During Interactive Sessions**: If no sprint or task queue is active, answering a QQ completes the turn and awaits the next user directive.
+4.  **Explicit Pause Gate**: To deliberately pause or abort an ongoing sprint, use explicit command keywords: `PAUSE`, `HOLD`, `STOP`, `ABORT`, or `LET'S DISCUSS`.
 
 ## BKM-005: The Design Studio (Greenlight before Code Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
