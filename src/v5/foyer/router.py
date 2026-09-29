@@ -884,8 +884,14 @@ class FoyerRouter:
                 # [FEAT-615 / BKM-065] Direct AST/Regex Markdown Backflow (/dna/edit_source)
                 web.post("/dna/edit_source", self.handle_dna_edit_source),
                 web.post("/attendant/dna/edit_source", self.handle_dna_edit_source),
+                # [FEAT-627 / Story 95.6] Editorial Dialogue Gutter & Synthetic Mutation Blending
+                web.post("/api/node/blend", self.handle_node_blend),
+                web.post("/node/blend", self.handle_node_blend),
+                web.post("/attendant/api/node/blend", self.handle_node_blend),
+                web.post("/attendant/node/blend", self.handle_node_blend),
             ]
         )
+
 
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
 
@@ -2602,6 +2608,17 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-606] handle_paper_swap_lens failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_node_blend(self, request):
+        """[FEAT-627 / Story 95.6] Handle synthetic revision blending and stamping."""
+        try:
+            body = await request.json()
+            from projection.recommender import handle_node_blend_request
+            status_code, payload = handle_node_blend_request(body)
+            return web.json_response(payload, status=status_code)
+        except Exception as e:
+            logger.error(f"[FOYER] /api/node/blend failed: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
 
     async def handle_paper_cite_selection(self, request):
         """[FEAT-606] POST /paper/cite_selection — attaches DNA citation anchor tag to specified node."""
