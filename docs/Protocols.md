@@ -1229,20 +1229,23 @@ Truth is invariant; Presentation is a fluid projection (). To prevent serial gen
 
 ---
 
-## BKM-073: Document Spine Topology & Node Mutation Invariant
-**Feature Anchor:** `[FEAT-626]` / `[FEAT-627]` / `[INS-041]`  
-**Colloquial Alias:** "The Spine & Bone Decoupling Protocol"  
+## BKM-073: Document Spine Topology & Self-Contained Version Invariant
+**Feature Anchor:** `[FEAT-626]` / `[FEAT-627]` / `[FEAT-628]` / `[INS-041]`  
+**Colloquial Alias:** "The Self-Contained Spine & Document-DNA Protocol"  
 **Domain:** Architecture, Document Management, Projections, Writing Systems  
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Principle
-Documents are structured trees of immutable conceptual nodes bound together by an ordered Spine index. To prevent destructive file overwrites and exponential AST drift across revisions, document topology is strictly decoupled into two isolated layers:
-1. **The Spine Layer (`papers/<paper_id>/spine.json`):** Holds the hierarchical sequence of immutable `node_id` strings, section boundaries, and tree depth. The spine knows *what* nodes exist and in *what order*, but does not store raw prose.
-2. **The Bone Node Layer (`bones/<node_id>.json`):** Holds the rich micro-history for a single node: base text ($v_1$), revision stack ($v_2 \dots v_n$), HyDE voice tags, and DNA pointers (`WIS`, `VIBE`, `INS`).
+Documents are structured trees of conceptual nodes tracked across historical milestones. To prevent destructive overwrites while avoiding sparse micro-file fragmentation, document topology follows the **Self-Contained Milestone Architecture**:
+1. **Self-Contained Version Artifacts (`PAPER-<id>_<version>.json`):** Every certified major milestone (`v1`, `v2_recruiter`, `v3_executive`) is stored as a 100% self-contained, human-readable JSON artifact. The file *is* the verified artifact; no runtime reconstitution engine is required to read or publish a version.
+2. **The Master Spine Manifest (`PAPER-<id>_spine.json`):** Holds version ancestry lineage (`["v1", "v2", "v3"]`), cross-version node coordinate mappings (`MOVE`, `REWORD`, `ADD`, `DELETE`), and the local **Document-Scoped DNA Archive** (`document_dna: []`).
 
-### 2. Operational Invariants
-1. **Structural Operations Mutate Spine Only:** `MOVE`, `REORDER`, `ADD_TO_SPINE`, or `DELETE_FROM_SPINE` mutate `spine.json` deterministically without modifying the underlying bone records.
-2. **Textual Operations Mutate Bone Only:** `REWORD`, `BLEND`, or `REFINE` append an approved new version ($v_{n+1}$) to `bones/<node_id>.json` without modifying `spine.json`.
-3. **Lens Projection Caching:** Projected manuscripts are compiled on-demand from the Spine by selecting the highest-scoring revision per node under the active Lens rubric and caching output to `papers/<paper_id>/projections/<lens_id>.json`.
-4. **Micro-Scale Proving Ground:** Interactive LLM dialectics, revision blending, and "reason why" validations occur in the single-node sandbox (`projection_studio.html`) before being rendered in the master manuscript editor (`writer.html`).
+### 2. Document-Scoped DNA & Horizontal Lab Promotion Gate
+1. **Quarantine by Default:** Bullet-level lessons, citations, and draft notes are assigned local IDs (`DOC-<paper_slug>-<idx>`) and quarantined inside `PAPER-<id>_spine.json`. They never pollute global vector memory during active drafting.
+2. **The Graduation Gate (`BKM-060`):** When a document-scoped insight demonstrates broad, lab-wide architectural utility ($\ge 0.85$ transfer score), a human or agent executes `promote_to_lab_dna()`. The record is minted as permanent global DNA (`WIS-xxx` or `INS-xxx`), appended to `wisdom_data.json`, and synced to ChromaDB `:8001`.
+
+### 3. Operational Invariants
+1. **Zero Sparse Micro-Files:** The filesystem stores complete paper AST versions and the spine manifest; fragmented single-node files (`bones/<node_id>.json`) are strictly barred.
+2. **Single-Node Sandbox Boundary:** Interactive LLM dialectics, revision blending, and "Reason Why" validations occur in the single-node sandbox (`projection_studio.html`) before approved mutations are stamped into complete paper versions.
+3. **Lens Projection Invariant:** Projections evaluate against the active Lens rubric; quality inversions (newer version worse than older) trigger immediate warnings regardless of lens.
 
