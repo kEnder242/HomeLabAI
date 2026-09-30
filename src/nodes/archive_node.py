@@ -668,13 +668,54 @@ def parse_multi_voice_hyde(hyde_vector_text: str) -> str:
     return " ".join(parts) if parts else hyde_vector_text
 
 
-def select_vector_query(query: str, hyde_vector_text: str) -> str:
-    """[FEAT-437] Choose the ChromaDB vector query: use the AI-produced HyDE override
-    when it is substantial, otherwise fall back to the raw user query. The multi-voice
-    Composite HyDE tag format is parsed cleanly (split on '|' / [VALIDATION]/[STRATEGY]/[SRE]
-    markers) rather than being treated as a single flat tag."""
+def resolve_rdna_hyde_exemplar(query: str, client=None, distance_floor: float = 0.45) -> tuple[str, dict]:
+    """[FEAT-630] RDNA-Assisted HyDE Exemplar Routing Bridge.
+    Matches incoming sparse/abstract natural language queries against the RDNA collection
+    in ChromaDB (:8001). If a high-confidence exemplar match is found (dist <= distance_floor),
+    returns the pre-synthesized narrative expansion and target_dna binding metadata without
+    incurring LLM generation latency or hallucination risk.
+    """
+    if not query or len(query.strip()) < 5:
+        return query, {}
+    try:
+        if client is None:
+            import chromadb
+            client = chromadb.HttpClient(host="localhost", port=8001)
+        col = client.get_collection("rdna")
+        res = col.query(query_texts=[query[:300]], n_results=1)
+        dists = res.get("distances", [[]])[0]
+        if dists and dists[0] <= distance_floor:
+            meta = res["metadatas"][0][0]
+            target_dna = meta.get("target_dna")
+            if isinstance(target_dna, str):
+                try:
+                    target_dna = json.loads(target_dna)
+                except Exception:
+                    pass
+            title = meta.get("title") or meta.get("question") or ""
+            target_title = (target_dna.get("title") if isinstance(target_dna, dict) else "") or ""
+            expansion = f"{title} {target_title}".strip()
+            return (expansion if len(expansion) > 10 else query), {
+                "rdna_id": meta.get("id") or res["ids"][0][0],
+                "target_dna": target_dna,
+                "confidence": 1.0 - dists[0],
+            }
+    except Exception:
+        pass
+    return query, {}
+
+
+def select_vector_query(query: str, hyde_vector_text: str, enable_rdna: bool = True) -> str:
+    """[FEAT-437 / FEAT-630] Choose the ChromaDB vector query:
+    1. If explicit substantial hyde_vector_text provided, parse multi-voice composite.
+    2. Otherwise, check RDNA exemplar bridge for zero-latency semantic expansion.
+    3. Fall back cleanly to the raw user query."""
     if hyde_vector_text and len(hyde_vector_text.strip()) > 10:
         return parse_multi_voice_hyde(hyde_vector_text)
+    if enable_rdna:
+        expanded, match_meta = resolve_rdna_hyde_exemplar(query)
+        if match_meta:
+            return expanded
     return query
 
 
