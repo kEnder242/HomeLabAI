@@ -3,6 +3,8 @@ Description=Field Notes Nightly Maintenance & Synthesis Sweep (2:00 AM)
 After=network.target
 
 [Service]
+User=jallred
+Group=jallred
 Type=oneshot
 TimeoutStartSec=12600
 MemoryHigh=5.5G

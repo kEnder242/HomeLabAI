@@ -34,14 +34,25 @@ fi
 export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
 export VLLM_USE_FLASHINFER_SAMPLER=0
 
-LORA_LEGACY="/speedy/models/adapters"
-LORA_MODULES="cli_voice_v1=$LORA_LEGACY/cli_voice_v1 shadow_brain_v2=$LORA_LEGACY/shadow_brain_v2 lab_history_v1=$LORA_LEGACY/lab_history_v1"
+LORA_BASE="/speedy/models/adapters"
+LORA_MODULES=""
+for adapter in cli_voice_v1 lab_history_v1 triage_v1 reviewer_v1; do
+    if [ -f "$LORA_BASE/$adapter/adapter_config.json" ]; then
+        if [ -z "$LORA_MODULES" ]; then
+            LORA_MODULES="$adapter=$LORA_BASE/$adapter"
+        else
+            LORA_MODULES="$LORA_MODULES $adapter=$LORA_BASE/$adapter"
+        fi
+    fi
+done
 
 # [Task 17.2] Architecture Check: Only load Llama LoRAs if using a Llama base
-if [[ "$MODEL_PATH" == *"Llama"* || "$MODEL_PATH" == *"llama"* ]]; then
+if [[ ("$MODEL_PATH" == *"Llama"* || "$MODEL_PATH" == *"llama"*) && -n "$LORA_MODULES" ]]; then
     LORA_ARGS="--enable-lora --max-loras 4 --max-cpu-loras 10 --lora-modules $LORA_MODULES"
 else
-    echo "Non-Llama architecture detected. Disabling incompatible Llama LoRA modules."
+    if [[ "$MODEL_PATH" != *"Llama"* && "$MODEL_PATH" != *"llama"* ]]; then
+        echo "Non-Llama architecture detected. Disabling incompatible Llama LoRA modules."
+    fi
     LORA_ARGS=""
 fi
 

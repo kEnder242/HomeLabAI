@@ -1148,6 +1148,7 @@ Every mission-critical automated pipeline MUST have its accountability, completi
 3. **Mandatory State Age Verification:** A passing state file timestamp older than the current window (e.g., >24 hours old) must be classified as `STALE_FAILURE`, preventing historical passing runs from masking silent current-day failures.
 4. **Authoritative Double-Write Digest:** The standalone watchdog writes `daily_accountability_digest.json` using atomic temporary file swaps (`.tmp` -> rename) to both `Portfolio_Dev/field_notes/data/` and `www_deploy/data/`.
 5. **Multi-Channel Alert Escalation:** Any critical failure (OOM, missing run, stale lock, probe failure) triggers an immediate Neural Pager alert to ensure rapid human awareness.
+6. **Phase-Isolated Execution Decoupling ([FEAT-629]):** Upstream stage failures (such as LoRA adapter fine-tuning timeouts or dataset hiccups) must NEVER cascade to abort downstream synthesis tasks (Subconscious Dreaming, Wisdom Refinement, Sprint DNA Sync, Federated Benchmarks, Morning Round Table Probe, or Historical Journal Bridge / Mass Scan). Foyer state must be guaranteed restored to OPERATIONAL, and every downstream stage executed inside isolated protective error boundaries so that independent deliverables proceed and full-system accountability is truthfully rendered.
 
 ---
 
