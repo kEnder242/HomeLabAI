@@ -43,6 +43,7 @@ from v5.common.types import (
     SensoryMode,
 )
 from v5.foyer.maintenance_sweeper import MaintenanceSweeper
+from v5.ignition.manager import IgnitionManager
 
 # [LAB-010] Lazy import — M5 Air may not be available at startup.
 try:
@@ -228,6 +229,8 @@ class FoyerRouter:
         self.stage_memory = {}  # request_id -> {stage_id: status}
 
         self.status = LabStatus()
+        # [FEAT-136 / Story 95.21] In-Process Lab Attendant Supervisor (eliminates flat-file IPC fragility)
+        self.ignition = IgnitionManager(status=self.status, residents=self.residents)
         # [FEAT-028] Deep Thought health-tracking state (restored from V4 acme_lab.py)
         self.thought_online = False
         self._last_brain_fail = 0
@@ -3194,9 +3197,17 @@ class FoyerRouter:
                 status=423,
             )
 
+        # [FEAT-136 / Story 95.21] In-Process Direct Ignition Execution
+        if action.lower() == "wake":
+            logger.info("[FOYER] [FEAT-136] Initiating in-process silicon wake...")
+            asyncio.create_task(self.ignition.start_lab(reason="REMOTE_WAKE"))
+        elif action.lower() == "sleep":
+            logger.info("[FOYER] Initiating in-process silicon sleep...")
+            asyncio.create_task(self.ignition.stop_lab(reason="REMOTE_SLEEP"))
+
         await self.enqueue_intent(f"[OPERATIONAL] {action.upper()}", source="REMOTE")
         return web.json_response(
-            {"status": "success", "message": f"{action.capitalize()} signal enqueued."}
+            {"status": "success", "message": f"{action.capitalize()} signal initiated."}
         )
 
     async def handle_rearm_ear(self, request):
@@ -3494,6 +3505,19 @@ class FoyerRouter:
 
         # [FEAT-503] Eager Resident Node Ignition: Boot all resident workers on startup
         self._launch_resident_boot_async()
+
+        # [FEAT-136 / FEAT-517 / Story 95.18 / Story 95.21] Safe-Pilot Autonomous Startup Ignition
+        try:
+            infra_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+            hib_enabled = True
+            if os.path.exists(infra_path):
+                with open(infra_path, "r") as f:
+                    hib_enabled = json.load(f).get("hibernation", {}).get("enabled", True)
+            if not hib_enabled:
+                logger.info("[BOOT] [FEAT-136] Hibernation disabled. Scheduling autonomous startup ignition...")
+                asyncio.create_task(self.ignition.start_lab(reason="FEAT-136_STARTUP_IGNITION"))
+        except Exception as e:
+            logger.error(f"[BOOT] Failed to evaluate startup ignition: {e}")
 
         # [Task 5.2] Execute one-off trigger task if requested
         trigger_task = getattr(self, "trigger_task", None)
@@ -4709,8 +4733,14 @@ class FoyerRouter:
                                         event.status == "PENDING"
                                         and event.id not in self.processed_ids
                                     ):
-                                        # [FIX] Filter out operational signals from reasoning engine
+                                        # [FIX / Story 95.21] Filter out operational signals from reasoning engine & trigger in-process ignition
                                         if event.query.startswith("[OPERATIONAL]"):
+                                            if event.query == "[OPERATIONAL] WAKE":
+                                                logger.info("[FOYER] [FEAT-136] Draining OPERATIONAL WAKE signal -> triggering in-process ignition...")
+                                                asyncio.create_task(self.ignition.start_lab(reason="QUEUE_WAKE"))
+                                            elif event.query == "[OPERATIONAL] SLEEP":
+                                                logger.info("[FOYER] Draining OPERATIONAL SLEEP signal -> triggering in-process sleep...")
+                                                asyncio.create_task(self.ignition.stop_lab(reason="QUEUE_SLEEP"))
                                             self.processed_ids.append(event.id)
                                             continue
 
