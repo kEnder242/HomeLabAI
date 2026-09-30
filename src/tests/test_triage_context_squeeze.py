@@ -14,7 +14,9 @@ async def test_triage_strips_round_table_memory():
     hub.round_table_memory = ["Brain: Previous thought 1", "Pinky: Previous thought 2"]
     hub.residents = {}
     hub.session_buffers = {}
-    hub.current_interest = 0.0
+    hub.current_interest = 0.5
+    hub.current_vibe = "TECHNICAL"
+    hub.turn_thought_trace = {}
     hub.broadcast = AsyncMock()
 
     mock_node = MagicMock()
@@ -42,7 +44,7 @@ async def test_triage_strips_round_table_memory():
     except (asyncio.TimeoutError, Exception):
         pass
 
-    assert "[PREVIOUS_DEBATE]" not in captured_args.get("query", "")
+    assert captured_args.get("internal") is True
     assert captured_args.get("max_tokens") == 128
 
     # 2. Test Standard Call (Pinky)
@@ -57,8 +59,8 @@ async def test_triage_strips_round_table_memory():
     except (asyncio.TimeoutError, Exception):
         pass
 
-    assert "[PREVIOUS_DEBATE]" in captured_args.get("query", "")
-    assert captured_args.get("max_tokens") == 1000
+    assert captured_args.get("internal") is False
+    assert captured_args.get("max_tokens") == 1500
 
 
 @pytest.mark.asyncio
@@ -67,9 +69,9 @@ async def test_generate_response_max_tokens_default():
 
     node = BicameralNode.__new__(BicameralNode)
     node.name = "TestNode"
-    # Verify generate_response signature has max_tokens=1000 default
+    # Verify generate_response signature has max_tokens=1500 default
     import inspect
 
     sig = inspect.signature(node.generate_response)
     assert "max_tokens" in sig.parameters
-    assert sig.parameters["max_tokens"].default == 1000
+    assert sig.parameters["max_tokens"].default == 1500

@@ -20,6 +20,8 @@ _chroma_client = None
 
 PRE_TRIAGE_COLLECTIONS = [
     "rdna",
+    "wisdom_dna",
+    "inspiration_dna",
     "philosophy_dna",
     "behavioral_dna",
     "feature_dna",
