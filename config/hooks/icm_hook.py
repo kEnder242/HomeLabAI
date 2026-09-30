@@ -5,6 +5,7 @@ import re
 import socket
 import subprocess
 import sys
+import time
 
 
 def probe_socket(host: str, port: int, timeout: float = 0.15) -> bool:
@@ -39,6 +40,7 @@ def get_chroma_client():
     return None
 
 
+SHALLOWER_WORDS = {"and", "the", "for", "with", "this", "that", "from", "into", "onto", "your", "have"}
 SHALLOW_PROMPTS = {
     "hi",
     "hello",
@@ -150,7 +152,10 @@ def extract_literal_ids(text: str) -> list[str]:
     bkms = re.findall(r"\b(BKM-\d{3})\b", text, re.IGNORECASE)
     feats = re.findall(r"\b(FEAT-\d{3,4})\b", text, re.IGNORECASE)
     labs = re.findall(r"\b(LAB-\d{3})\b", text, re.IGNORECASE)
+    ins = re.findall(r"\b(INS-\d{3})\b", text, re.IGNORECASE)
     wis = re.findall(r"\b(WIS-\d{3}|PHL-\d{3})\b", text, re.IGNORECASE)
+    rdnas = re.findall(r"\b(RDNA-\d{3})\b", text, re.IGNORECASE)
+    vibes = re.findall(r"\b(VIBE-\d{3})\b", text, re.IGNORECASE)
     sprs = re.findall(r"\b(SPR(?:INT)?[-_ ]?\d+(?:\.\d+)?)\b", text, re.IGNORECASE)
 
     for b in sorted(set(bkms)):
@@ -159,8 +164,14 @@ def extract_literal_ids(text: str) -> list[str]:
         results.append(f"- [{f.upper()}] (Literal Feature Anchor)")
     for l in sorted(set(labs)):
         results.append(f"- [{l.upper()}] (Literal Lab Anchor)")
+    for i_id in sorted(set(ins)):
+        results.append(f"- [{i_id.upper()}] (Literal Inspiration Anchor)")
     for w in sorted(set(wis)):
-        results.append(f"- [{w.upper()}] (Literal Philosophy Anchor)")
+        results.append(f"- [{w.upper()}] (Literal Wisdom/Philosophy Anchor)")
+    for r in sorted(set(rdnas)):
+        results.append(f"- [{r.upper()}] (Literal RDNA Research Anchor)")
+    for v in sorted(set(vibes)):
+        results.append(f"- [{v.upper()}] (Literal Vibe Anchor)")
     for s in sorted(set(sprs)):
         results.append(f"- [{s.upper()}] (Literal Sprint Anchor)")
     return results
@@ -225,6 +236,7 @@ def probe_claradb(
     ins_ids = re.findall(r"\b(INS-\d{3})\b", text, re.IGNORECASE)
     phl_ids = re.findall(r"\b(PHL-\d{3})\b", text, re.IGNORECASE)
     wis_ids = re.findall(r"\b(WIS-\d{3})\b", text, re.IGNORECASE)
+    rdna_ids = re.findall(r"\b(RDNA-\d{3})\b", text, re.IGNORECASE)
     vibe_ids = re.findall(r"\b(VIBE-\d{3})\b", text, re.IGNORECASE)
 
     try:
@@ -253,6 +265,11 @@ def probe_claradb(
                 if i_up not in seen_ids:
                     seen_ids.add(i_up)
                     results.append(f"- [{i_up}] Inspiration/Philosophy (Offline)")
+            for r_id in rdna_ids:
+                r_up = r_id.upper()
+                if r_up not in seen_ids:
+                    seen_ids.add(r_up)
+                    results.append(f"- [{r_up}] RDNA Research (Offline)")
             return results
 
         # Exact ID Lookups (< 2ms)
@@ -331,6 +348,21 @@ def probe_claradb(
                         meta = r["metadatas"][0]
                         results.append(f"- [{w_up}] {meta.get('title', 'Wisdom')}")
 
+        if rdna_ids:
+            try:
+                col_rdna = client.get_collection("rdna")
+                for r_id in rdna_ids:
+                    r_up = r_id.upper()
+                    if r_up in seen_ids:
+                        continue
+                    r = col_rdna.get(ids=[r_up])
+                    if r and r.get("metadatas"):
+                        seen_ids.add(r_up)
+                        meta = r["metadatas"][0]
+                        results.append(f"- [{r_up}] {meta.get('question', meta.get('title', 'RDNA Research'))}")
+            except Exception:
+                pass
+
         if vibe_ids:
             try:
                 col_vibe = client.get_collection("vibe_dna")
@@ -364,7 +396,7 @@ def probe_claradb(
             except Exception:
                 pass
 
-        # Dynamic Distance-Banded Reverse Lookup (< 15ms)
+        # Dynamic Distance-Banded Multi-Bucket Reverse Lookup (< 25ms)
         if model is None:
             model = get_fastembed()
         words = set(re.findall(r"\w+", text.lower()))
@@ -375,97 +407,166 @@ def probe_claradb(
         if model and len(significant_words) >= 1 and len(results) < limit:
             emb = list(model.embed([text[:200]]))[0].tolist()
 
-            # Query candidate pool from feature_dna
-            col_feat = client.get_collection("feature_dna")
-            r_feat = col_feat.query(query_embeddings=[emb], n_results=min(limit + 2, 6))
-            feat_dists = r_feat.get("distances", [[]])[0]
-            if feat_dists:
-                min_feat_dist = min(feat_dists)
-                for i, dist in enumerate(feat_dists):
-                    if len(results) >= limit:
-                        break
-                    meta = r_feat["metadatas"][0][i]
-                    name = meta.get("name", "Feature")
-                    fid = meta.get("feature_id") or r_feat["ids"][0][i].split("_")[0]
-                    status = meta.get("status", "ACTIVE")
-                    if fid in seen_ids:
-                        continue
-                    has_kw = any(w in name.lower() for w in significant_words)
-                    is_in_band = (
-                        (dist <= 0.55)
-                        or (dist <= min_feat_dist + 0.10 and dist < 0.62)
-                        or (has_kw and dist <= 0.60)
-                    )
-                    if is_qq:
-                        is_in_band = is_in_band or (dist <= 0.60)
-                    if is_in_band:
-                        seen_ids.add(fid)
-                        results.append(f"- [{fid}] {name} ({status})")
-
-            # Query candidate pool from behavioral_dna
-            if len(results) < limit:
-                col_bkm = client.get_collection("behavioral_dna")
-                r_bkm = col_bkm.query(
-                    query_embeddings=[emb], n_results=min(limit + 1, 4)
-                )
-                bkm_dists = r_bkm.get("distances", [[]])[0]
-                if bkm_dists:
-                    min_bkm_dist = min(bkm_dists)
-                    for i, dist in enumerate(bkm_dists):
-                        if len(results) >= limit:
+            # Bucket 1: feature_dna (Quota: 2)
+            try:
+                col_feat = client.get_collection("feature_dna")
+                r_feat = col_feat.query(query_embeddings=[emb], n_results=min(limit + 2, 6))
+                feat_dists = r_feat.get("distances", [[]])[0]
+                if feat_dists:
+                    min_feat_dist = min(feat_dists)
+                    feat_count = 0
+                    for i, dist in enumerate(feat_dists):
+                        if feat_count >= 2 or len(results) >= limit:
                             break
-                        meta = r_bkm["metadatas"][0][i]
-                        name = meta.get("name", "Protocol")
-                        bkm_id = meta.get("bkm_id")
-                        if bkm_id and bkm_id in seen_ids:
+                        meta = r_feat["metadatas"][0][i]
+                        name = meta.get("name", "Feature")
+                        fid = meta.get("feature_id") or r_feat["ids"][0][i].split("_")[0]
+                        status = meta.get("status", "ACTIVE")
+                        if fid in seen_ids:
                             continue
                         has_kw = any(w in name.lower() for w in significant_words)
                         is_in_band = (
-                            (dist <= 0.55)
-                            or (dist <= min_bkm_dist + 0.10 and dist < 0.62)
-                            or (has_kw and dist <= 0.60)
+                            (dist <= 0.45)
+                            or (dist <= min_feat_dist + 0.08 and dist < 0.52)
+                            or (has_kw and dist <= 0.55)
                         )
                         if is_qq:
-                            is_in_band = is_in_band or (dist <= 0.60)
+                            is_in_band = is_in_band or (dist <= 0.58)
                         if is_in_band:
-                            if bkm_id:
-                                seen_ids.add(bkm_id)
-                                results.append(f"- [{bkm_id}] {name}")
-                            else:
-                                results.append(f"- {name}")
+                            seen_ids.add(fid)
+                            results.append(f"- [{fid}] {name} ({status})")
+                            feat_count += 1
+            except Exception as e_feat:
+                if hook_errors is not None:
+                    hook_errors.append(f"feature_dna query error: {e_feat}")
 
-            # Query candidate pool from philosophy_dna if prompt targets wisdom/philosophy
+            # Bucket 2: behavioral_dna (Quota: 2)
+            try:
+                if len(results) < limit:
+                    col_bkm = client.get_collection("behavioral_dna")
+                    r_bkm = col_bkm.query(
+                        query_embeddings=[emb], n_results=min(limit + 1, 4)
+                    )
+                    bkm_dists = r_bkm.get("distances", [[]])[0]
+                    if bkm_dists:
+                        min_bkm_dist = min(bkm_dists)
+                        bkm_count = 0
+                        for i, dist in enumerate(bkm_dists):
+                            if bkm_count >= 2 or len(results) >= limit:
+                                break
+                            meta = r_bkm["metadatas"][0][i]
+                            name = meta.get("name", "Protocol")
+                            bkm_id = meta.get("bkm_id")
+                            if bkm_id and bkm_id in seen_ids:
+                                continue
+                            has_kw = any(w in name.lower() for w in significant_words)
+                            is_in_band = (
+                                (dist <= 0.48)
+                                or (dist <= min_bkm_dist + 0.08 and dist < 0.55)
+                                or (has_kw and dist <= 0.55)
+                            )
+                            if is_qq:
+                                is_in_band = is_in_band or (dist <= 0.58)
+                            if is_in_band:
+                                if bkm_id:
+                                    seen_ids.add(bkm_id)
+                                    results.append(f"- [{bkm_id}] {name}")
+                                else:
+                                    results.append(f"- {name}")
+                                bkm_count += 1
+            except Exception as e_bkm:
+                if hook_errors is not None:
+                    hook_errors.append(f"behavioral_dna query error: {e_bkm}")
+
+            # Bucket 3: wisdom_dna (Quota: 2 - Triggered on debugging/error/wisdom or exact match)
+            wis_triggers = {"error", "fail", "bug", "crash", "regression", "gotcha", "debug", "wisdom", "postmortem", "lora", "vram", "adapter", "timeout"}
+            if (any(t in words for t in wis_triggers) or bool(wis_ids)) and len(results) < limit:
+                try:
+                    col_wis = client.get_collection("wisdom_dna")
+                    r_wis = col_wis.query(query_embeddings=[emb], n_results=3)
+                    wis_dists = r_wis.get("distances", [[]])[0]
+                    wis_count = 0
+                    for i, dist in enumerate(wis_dists):
+                        if wis_count >= 2 or len(results) >= limit:
+                            break
+                        meta = r_wis["metadatas"][0][i]
+                        wid = meta.get("wisdom_id") or r_wis["ids"][0][i]
+                        if wid in seen_ids:
+                            continue
+                        title = meta.get("title", "Wisdom Heuristic")
+                        if dist <= 0.50:
+                            seen_ids.add(wid)
+                            results.append(f"- [{wid}] {title}")
+                            wis_count += 1
+                except Exception as e_wis:
+                    if hook_errors is not None:
+                        hook_errors.append(f"wisdom_dna query error: {e_wis}")
+
+            # Bucket 4: inspiration_dna / philosophy_dna (Quota: 2 - Triggered on philosophy/concept/design or exact match)
             phl_triggers = {
                 "philosophy",
-                "wisdom",
+                "inspiration",
+                "axiom",
+                "design",
                 "origin",
                 "synthesis",
-                "gem",
-                "pearl",
-                "vector",
+                "intent",
+                "grounding",
+                "human",
+                "autonomy",
             }
             if (
                 any(t in words for t in phl_triggers)
-                or bool(re.search(r"\b(WIS-\d+|PHL-\d+)\b", text, re.IGNORECASE))
+                or bool(ins_ids or phl_ids)
             ) and len(results) < limit:
                 try:
-                    col_phl = client.get_collection("philosophy_dna")
-                    r_phl = col_phl.query(query_embeddings=[emb], n_results=2)
-                    phl_dists = r_phl.get("distances", [[]])[0]
-                    for i, dist in enumerate(phl_dists):
-                        if len(results) >= limit:
-                            break
-                        meta = r_phl["metadatas"][0][i]
-                        wid = meta.get("wisdom_id", "WIS")
-                        if wid in seen_ids:
-                            continue
-                        title = meta.get("title", "Wisdom")
-                        if dist <= 0.65:
-                            seen_ids.add(wid)
-                            results.append(f"- [{wid}] {title}")
+                    col_ins = None
+                    try:
+                        col_ins = client.get_collection("inspiration_dna")
+                    except Exception:
+                        col_ins = client.get_collection("philosophy_dna")
+                    if col_ins:
+                        r_phl = col_ins.query(query_embeddings=[emb], n_results=3)
+                        phl_dists = r_phl.get("distances", [[]])[0]
+                        phl_count = 0
+                        for i, dist in enumerate(phl_dists):
+                            if phl_count >= 2 or len(results) >= limit:
+                                break
+                            meta = r_phl["metadatas"][0][i]
+                            wid = meta.get("inspiration_id") or meta.get("wisdom_id") or r_phl["ids"][0][i]
+                            if wid in seen_ids:
+                                continue
+                            title = meta.get("title", meta.get("name", "Inspiration"))
+                            if dist <= 0.50:
+                                seen_ids.add(wid)
+                                results.append(f"- [{wid}] {title}")
+                                phl_count += 1
                 except Exception as phl_e:
                     if hook_errors is not None:
-                        hook_errors.append(f"philosophy_dna query failed: {phl_e}")
+                        hook_errors.append(f"inspiration_dna query failed: {phl_e}")
+
+            # Bucket 5: rdna (Quota: 1 - HyDE Exemplar Routing Bridge)
+            rdna_triggers = {"hyde", "exemplar", "research", "spike", "hypothesis", "variant"}
+            if (any(t in words for t in rdna_triggers) or bool(rdna_ids)) and len(results) < limit:
+                try:
+                    col_rdna = client.get_collection("rdna")
+                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=2)
+                    rdna_dists = r_rdna.get("distances", [[]])[0]
+                    for i, dist in enumerate(rdna_dists):
+                        if len(results) >= limit:
+                            break
+                        meta = r_rdna["metadatas"][0][i]
+                        rid = meta.get("id") or r_rdna["ids"][0][i]
+                        if rid in seen_ids:
+                            continue
+                        q_text = meta.get("question", meta.get("title", "Research Question"))
+                        if dist <= 0.45:
+                            seen_ids.add(rid)
+                            results.append(f"- [{rid}] HyDE Exemplar: {q_text}")
+                            break
+                except Exception as rdna_e:
+                    if hook_errors is not None:
+                        hook_errors.append(f"rdna query failed: {rdna_e}")
     except Exception as e:
         if hook_errors is not None:
             hook_errors.append(f"ClaraDB probe exception: {e}")
@@ -595,6 +696,7 @@ def probe_icm(
 
 
 def main():
+    start_time = time.perf_counter()
     hook_errors = []
     try:
         payload = json.load(sys.stdin)
@@ -876,7 +978,21 @@ def main():
             ambient_lines.append("[Direct Literal Code/Protocol Anchors]")
             ambient_lines.extend(literal_fallbacks)
 
-    # 5. Fail-Graceful Warning & Error Reporting
+    # 5. Fail-Graceful Warning & Error Reporting (LAB-112 / BKM-062)
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    warn_threshold_ms = float(os.environ.get("HOOK_WARN_THRESHOLD_MS", 150.0))
+
+    if elapsed_ms > warn_threshold_ms:
+        lat_msg = f"Hook execution took {elapsed_ms:.1f}ms (threshold: {warn_threshold_ms:.0f}ms)"
+        hook_errors.append(lat_msg)
+        try:
+            sys.stderr.write(
+                f"\n\033[33m⚠️ [Hook Latency Warning]\033[0m {lat_msg}\n"
+            )
+            sys.stderr.flush()
+        except Exception:
+            pass
+
     if hook_errors:
         err_summary = "; ".join(hook_errors[:3])
         # Prominent stderr alert for the operator
@@ -889,7 +1005,7 @@ def main():
             pass
 
         # Injected prompt notice so agent and transcript record the defect
-        warning_header = f"[⚠️ AMBIENT HOOK WARNING: Degraded Execution — Hook error(s) occurred and need to be fixed: {err_summary}]"
+        warning_header = f"[⚠️ AMBIENT HOOK WARNING: Degraded Execution — Hook notice/error(s): {err_summary}]"
         ambient_lines.insert(0, warning_header)
 
     # 6. Emit Final JSON Output
@@ -902,7 +1018,7 @@ def main():
         if multi_item_mode:
             summary_parts.insert(0, f"{num_segs} items")
 
-        detail = " | ".join(summary_parts) if summary_parts else "Context Active"
+        detail = f"{' | '.join(summary_parts)} ({elapsed_ms:.1f}ms)" if summary_parts else f"Context Active ({elapsed_ms:.1f}ms)"
         try:
             status_color = "\033[33m" if hook_errors else "\033[36m"
             sys.stderr.write(
