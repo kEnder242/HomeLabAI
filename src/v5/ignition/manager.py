@@ -286,6 +286,11 @@ class IgnitionManager:
                 logging.error(
                     "[IGNITION] vLLM failed to bind port 8088 within 5 minutes."
                 )
+                self.record_pager(
+                    "[VLLM_BIND_FAIL] vLLM failed to bind port 8088 within 5 minutes. Silicon in ERROR state.",
+                    severity="CRITICAL",
+                    source="IgnitionManager",
+                )
                 self.recovery_attempts += 1
                 cooldown = 5 + (self.recovery_attempts * 120)
                 self.cooldown_until = time.time() + cooldown
@@ -301,6 +306,34 @@ class IgnitionManager:
             self.operational_start_time = time.time()
             self.recovery_in_progress = False
             logging.info("[IGNITION] Physical silicon is READY.")
+
+            # [FEAT-629 / BKM-066] Verify active LoRA adapters on port 8088 and report status to Pager
+            try:
+                import urllib.request
+                import json
+                req = urllib.request.Request("http://localhost:8088/v1/models")
+                with urllib.request.urlopen(req, timeout=2) as r:
+                    if r.status == 200:
+                        m_data = json.loads(r.read().decode("utf-8"))
+                        loaded_ids = [m.get("id") for m in m_data.get("data", [])]
+                        expected_adapters = ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"]
+                        missing_adapters = [a for a in expected_adapters if a not in loaded_ids]
+                        if missing_adapters:
+                            loaded_str = ", ".join([a for a in loaded_ids if a in expected_adapters]) or "none"
+                            self.record_pager(
+                                f"[VLLM_LORA_DEGRADED] Missing or failed LoRA adapters on ignition: {', '.join(missing_adapters)} (Loaded: {loaded_str})",
+                                severity="WARNING",
+                                source="vLLM",
+                            )
+                        else:
+                            self.record_pager(
+                                f"[VLLM_LORA_READY] All {len(expected_adapters)} canonical LoRA adapters loaded successfully.",
+                                severity="INFO",
+                                source="vLLM",
+                            )
+            except Exception as le:
+                logging.debug(f"[IGNITION] Adapter audit probe note: {le}")
+
             # [Task 6.6] Lock is NOT released here; it is held while OPERATIONAL
             self.update_status_file()
             return True
