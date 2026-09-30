@@ -59,12 +59,13 @@ except ImportError:
 
 
 class IgnitionManager:
-    def __init__(self):
-        # Rename process
-        if setproctitle:
+    def __init__(self, status=None, residents=None):
+        # Rename process only if running standalone
+        if setproctitle and status is None:
             setproctitle.setproctitle("acme_ignition_v5")
 
-        self.status = LabStatus()
+        self.status = status if status is not None else LabStatus()
+        self.residents = residents
         self._vram_lock_fd = None
         from collections import deque
 
