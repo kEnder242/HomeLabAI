@@ -18,7 +18,7 @@ from pathlib import Path
 EXPERTISE_DIR = Path("/home/jallred/Dev_Lab/HomeLabAI/src/forge/expertise")
 DEV_LAB = Path("/home/jallred/Dev_Lab")
 DNA_DIR = DEV_LAB / "Portfolio_Dev" / "dna"
-PHILOSOPHY_JSON = DNA_DIR / "philosophy_data.json"
+PHILOSOPHY_JSON = DNA_DIR / "inspiration_data.json" if (DNA_DIR / "inspiration_data.json").exists() else DNA_DIR / "philosophy_data.json"
 WISDOM_JSON = DNA_DIR / "wisdom_data.json"
 RDNA_JSON = DNA_DIR / "rdna_questions.json"
 PROTOCOLS_MD = DEV_LAB / "HomeLabAI" / "docs" / "Protocols.md"
