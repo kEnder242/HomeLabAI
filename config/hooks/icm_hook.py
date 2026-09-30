@@ -222,6 +222,10 @@ def probe_claradb(
     bkms = re.findall(r"\b(BKM-\d{3})\b", text, re.IGNORECASE)
     feats = re.findall(r"\b(FEAT-\d{3,4})\b", text, re.IGNORECASE)
     labs = re.findall(r"\b(LAB-\d{3})\b", text, re.IGNORECASE)
+    ins_ids = re.findall(r"\b(INS-\d{3})\b", text, re.IGNORECASE)
+    phl_ids = re.findall(r"\b(PHL-\d{3})\b", text, re.IGNORECASE)
+    wis_ids = re.findall(r"\b(WIS-\d{3})\b", text, re.IGNORECASE)
+    vibe_ids = re.findall(r"\b(VIBE-\d{3})\b", text, re.IGNORECASE)
 
     try:
         if client is None:
@@ -244,50 +248,121 @@ def probe_claradb(
                 if f_up not in seen_ids:
                     seen_ids.add(f_up)
                     results.append(f"- [{f_up}] Feature Anchor (Offline)")
+            for i_id in ins_ids + phl_ids:
+                i_up = i_id.upper()
+                if i_up not in seen_ids:
+                    seen_ids.add(i_up)
+                    results.append(f"- [{i_up}] Inspiration/Philosophy (Offline)")
             return results
 
         # Exact ID Lookups (< 2ms)
         if bkms:
-            col_bkm = client.get_collection("behavioral_dna")
-            for b in bkms:
-                b_up = b.upper()
-                if b_up in seen_ids:
-                    continue
-                r = col_bkm.get(where={"bkm_id": b_up})
-                if r and r.get("metadatas"):
-                    seen_ids.add(b_up)
-                    meta = r["metadatas"][0]
-                    results.append(f"- [{b_up}] {meta.get('name', 'Protocol')}")
+            try:
+                col_bkm = client.get_collection("behavioral_dna")
+                for b in bkms:
+                    b_up = b.upper()
+                    if b_up in seen_ids:
+                        continue
+                    r = col_bkm.get(where={"bkm_id": b_up})
+                    if r and r.get("metadatas"):
+                        seen_ids.add(b_up)
+                        meta = r["metadatas"][0]
+                        results.append(f"- [{b_up}] {meta.get('name', 'Protocol')}")
+            except Exception:
+                pass
 
         if feats:
-            col_feat = client.get_collection("feature_dna")
-            for f in feats:
-                f_up = f.upper()
-                if f_up in seen_ids:
-                    continue
-                r = col_feat.get(where={"feature_id": f_up})
-                if r and r.get("metadatas"):
-                    seen_ids.add(f_up)
-                    meta = r["metadatas"][0]
-                    status = meta.get("status", "ACTIVE")
-                    results.append(
-                        f"- [{f_up}] {meta.get('name', 'Feature')} ({status})"
-                    )
+            try:
+                col_feat = client.get_collection("feature_dna")
+                for f in feats:
+                    f_up = f.upper()
+                    if f_up in seen_ids:
+                        continue
+                    r = col_feat.get(where={"feature_id": f_up})
+                    if r and r.get("metadatas"):
+                        seen_ids.add(f_up)
+                        meta = r["metadatas"][0]
+                        status = meta.get("status", "ACTIVE")
+                        results.append(
+                            f"- [{f_up}] {meta.get('name', 'Feature')} ({status})"
+                        )
+            except Exception:
+                pass
+
+        if ins_ids or phl_ids:
+            try:
+                col_ins = client.get_collection("inspiration_dna")
+            except Exception:
+                try:
+                    col_ins = client.get_collection("philosophy_dna")
+                except Exception:
+                    col_ins = None
+            if col_ins:
+                for item_id in (ins_ids + phl_ids):
+                    i_up = item_id.upper()
+                    if i_up in seen_ids:
+                        continue
+                    r = col_ins.get(ids=[i_up])
+                    if not (r and r.get("metadatas")):
+                        r = col_ins.get(where={"inspiration_id": i_up})
+                    if r and r.get("metadatas"):
+                        seen_ids.add(i_up)
+                        meta = r["metadatas"][0]
+                        results.append(f"- [{i_up}] {meta.get('title', meta.get('name', 'Inspiration'))}")
+
+        if wis_ids:
+            try:
+                col_wis = client.get_collection("wisdom_dna")
+            except Exception:
+                try:
+                    col_wis = client.get_collection("philosophy_dna")
+                except Exception:
+                    col_wis = None
+            if col_wis:
+                for w in wis_ids:
+                    w_up = w.upper()
+                    if w_up in seen_ids:
+                        continue
+                    r = col_wis.get(ids=[w_up])
+                    if not (r and r.get("metadatas")):
+                        r = col_wis.get(where={"wisdom_id": w_up})
+                    if r and r.get("metadatas"):
+                        seen_ids.add(w_up)
+                        meta = r["metadatas"][0]
+                        results.append(f"- [{w_up}] {meta.get('title', 'Wisdom')}")
+
+        if vibe_ids:
+            try:
+                col_vibe = client.get_collection("vibe_dna")
+                for v in vibe_ids:
+                    v_up = v.upper()
+                    if v_up in seen_ids:
+                        continue
+                    r = col_vibe.get(ids=[v_up])
+                    if r and r.get("metadatas"):
+                        seen_ids.add(v_up)
+                        meta = r["metadatas"][0]
+                        results.append(f"- [{v_up}] {meta.get('name', meta.get('title', 'Vibe'))}")
+            except Exception:
+                pass
 
         if labs:
-            col_bkm = client.get_collection("behavioral_dna")
-            all_infra = col_bkm.get(where={"type": "INFRA"})
-            if all_infra and all_infra.get("metadatas"):
-                for l in labs:
-                    l_target = l.upper()
-                    if l_target in seen_ids:
-                        continue
-                    for meta in all_infra["metadatas"]:
-                        name = meta.get("name", "")
-                        if l_target in name.upper():
-                            seen_ids.add(l_target)
-                            results.append(f"- [{l_target}] {name}")
-                            break
+            try:
+                col_bkm = client.get_collection("behavioral_dna")
+                all_infra = col_bkm.get(where={"type": "INFRA"})
+                if all_infra and all_infra.get("metadatas"):
+                    for l in labs:
+                        l_target = l.upper()
+                        if l_target in seen_ids:
+                            continue
+                        for meta in all_infra["metadatas"]:
+                            name = meta.get("name", "")
+                            if l_target in name.upper():
+                                seen_ids.add(l_target)
+                                results.append(f"- [{l_target}] {name}")
+                                break
+            except Exception:
+                pass
 
         # Dynamic Distance-Banded Reverse Lookup (< 15ms)
         if model is None:
