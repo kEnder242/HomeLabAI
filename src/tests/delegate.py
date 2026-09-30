@@ -1466,99 +1466,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     # delegate.py is strictly a single-shot execution harness.
     # Retries are smart outer-loop operations driven by AGY diagnostics, never
     # blind script-level loops. Zero failover ladders or retry loops permitted.
+    # Model routing, fallbacks, and agent defaults are delegated 100% to OpenAgent
+    # declarative config (oh-my-openagent.json).
     # =========================================================================
-
-    # [FEAT-493] Load model ladder dynamically from centralized infrastructure config
-    cfg_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
-    model_ladder = []
-    if os.path.exists(cfg_path):
-        try:
-            with open(cfg_path, "r") as cf:
-                cfg_obj = json.load(cf)
-                aliases = cfg_obj.get("swarm_aliases", {})
-                if local_only:
-                    local_cfg = aliases.get("local_bicameral", {})
-                    if agent in ("atlas", "librarian", "momus", "architect") or mode in ("plan", "investigate"):
-                        log_step(
-                            story_num,
-                            "LOCAL_ONLY_MODE",
-                            "Enforcing Sovereign Local Silicon Conductor on Node KENDER (Windows RTX 4090 Ollama: Qwen3.8-27B). Zero cloud fallbacks.",
-                        )
-                        model_ladder = [
-                            local_cfg.get("reasoner") or local_cfg.get("architect", {
-                                "providerID": "my-windows-4090",
-                                "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
-                            })
-                        ]
-                    else:
-                        log_step(
-                            story_num,
-                            "LOCAL_ONLY_MODE",
-                            "Enforcing Sovereign Local Silicon Leaf Worker on Node Brain (M5 Air MLX: Ternary-Bonsai-2-27B). Zero cloud fallbacks.",
-                        )
-                        model_ladder = [
-                            local_cfg.get("coder", {
-                                "providerID": "my-m5-mlx",
-                                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-                            })
-                        ]
-                elif agent == "oracle" or mode == "oracle":
-                    log_step(
-                        story_num,
-                        "CLOUD_ORACLE_MODE",
-                        "Enforcing 100% Cloud Oracle Execution (OpenRouter Free / Big-Pickle / Cohere 256k). Zero local fallbacks.",
-                    )
-                    model_ladder = aliases.get("oracle", [
-                        {"providerID": "openrouter", "modelID": "free"},
-                        {"providerID": "opencode", "modelID": "big-pickle"},
-                        {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-                    ])
-                elif cloud_only:
-                    log_step(
-                        story_num,
-                        "CLOUD_ONLY_MODE",
-                        "Enforcing 100% Cloud Swarm Execution (OpenRouter Free / Big-Pickle / Cohere). Zero local fallbacks.",
-                    )
-                    model_ladder = aliases.get("fast_worker", [
-                        {"providerID": "openrouter", "modelID": "free"},
-                        {"providerID": "opencode", "modelID": "big-pickle"},
-                        {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-                    ])
-                elif agent in ("prometheus", "atlas", "architect"):
-                    model_ladder = aliases.get("champion_reasoner", [])
-                elif agent in ("sisyphus", "hephaestus", "developer"):
-                    model_ladder = aliases.get("champion_coder", [])
-                else:
-                    model_ladder = aliases.get("default_ladder", [])
-        except Exception:
-            pass
-
-    if not model_ladder:
-        if local_only:
-            if agent in ("atlas", "librarian", "momus", "architect") or mode in ("plan", "investigate"):
-                model_ladder = [{"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL"}]
-            else:
-                model_ladder = [{"providerID": "my-m5-mlx", "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"}]
-        elif agent == "oracle" or mode == "oracle":
-            model_ladder = [
-                {"providerID": "openrouter", "modelID": "free"},
-                {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-            ]
-        elif cloud_only:
-            model_ladder = [
-                {"providerID": "openrouter", "modelID": "free"},
-                {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-            ]
-        else:
-            model_ladder = [
-                {"providerID": "openrouter", "modelID": "free"},
-                {"providerID": "opencode", "modelID": "big-pickle"},
-                {"providerID": "cohere", "modelID": "command-a-plus-05-2026"},
-            ]
-
-    current_model = model_ladder[0]
 
     # [Sprint 76 Action 2] Hard Context Ceiling Gate for Local Silicon (M5 Air 32k with TurboQuant Headroom)
     if local_only:
@@ -1574,11 +1484,12 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     log_step(
         story_num,
         "DISPATCH_SINGLE_SHOT",
-        f"Dispatching single-shot prompt to session {session_id} using {current_model['providerID']}/{current_model['modelID']} (BKM-049 Pure Single-Shot)",
+        f"Dispatching single-shot prompt to session {session_id} for agent '{agent}' (BKM-049 Pure Single-Shot)",
     )
     start_time = time.time()
+    model_str = agent
 
-    msg_dict = {"parts": [{"type": "text", "text": prompt}], "model": current_model}
+    msg_dict = {"parts": [{"type": "text", "text": prompt}]}
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     post_result = None
@@ -1712,10 +1623,14 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 
     duration = time.time() - start_time
     tier_str = "[SWARM:LOCAL]" if local_only else ("[SWARM:CLOUD]" if cloud_only else "[SWARM:HYBRID]")
-    model_str = f"{current_model.get('providerID', 'unknown')}/{current_model.get('modelID', 'unknown')}"
 
     if post_result is not None:
         api_err = None
+        model_obj = post_result.get("info", {}).get("model") if isinstance(post_result, dict) else None
+        if not isinstance(model_obj, dict):
+            model_obj = {"providerID": agent, "modelID": "openagent"}
+        model_str = f"{model_obj.get('providerID', agent)}/{model_obj.get('modelID', 'openagent')}"
+
         if isinstance(post_result, dict):
             if "error" in post_result.get("info", {}):
                 api_err = post_result["info"]["error"]
@@ -1751,7 +1666,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
             sys.exit(1)
 
         _log_live_usage_telemetry(
-            story_num, sprint_num, title, current_model, duration, tokens, len(full_text)
+            story_num, sprint_num, title, model_obj, duration, tokens, len(full_text)
         )
 
         reflection_text = ""
