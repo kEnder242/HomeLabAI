@@ -31,6 +31,7 @@ Design constraints:
 from __future__ import annotations
 
 import difflib
+import json
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -811,15 +812,23 @@ def complete_live_traced(
             continue
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip(), {
-                "seat": seat_id,
-                "host": resolved.get("active_host") or resolved.get("host"),
-                "port": resolved.get("port"),
-                "model": resolved.get("default_model"),
-                "elapsed_ms": elapsed_ms,
-                "attempts": attempts,
-            }
+        if raw is not None:
+            if isinstance(raw, (dict, list)):
+                raw_str = json.dumps(raw)
+            elif isinstance(raw, str) and raw.strip():
+                raw_str = raw.strip()
+            else:
+                raw_str = None
+
+            if raw_str is not None:
+                return raw_str, {
+                    "seat": seat_id,
+                    "host": resolved.get("active_host") or resolved.get("host"),
+                    "port": resolved.get("port"),
+                    "model": resolved.get("default_model"),
+                    "elapsed_ms": elapsed_ms,
+                    "attempts": attempts,
+                }
         attempts.append(
             _attempt_note(seat_id, "empty or failed completion", elapsed_ms)
         )
@@ -872,15 +881,23 @@ async def acomplete_live_traced(
             continue
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip(), {
-                "seat": seat_id,
-                "host": resolved.get("active_host") or resolved.get("host"),
-                "port": resolved.get("port"),
-                "model": resolved.get("default_model"),
-                "elapsed_ms": elapsed_ms,
-                "attempts": attempts,
-            }
+        if raw is not None:
+            if isinstance(raw, (dict, list)):
+                raw_str = json.dumps(raw)
+            elif isinstance(raw, str) and raw.strip():
+                raw_str = raw.strip()
+            else:
+                raw_str = None
+
+            if raw_str is not None:
+                return raw_str, {
+                    "seat": seat_id,
+                    "host": resolved.get("active_host") or resolved.get("host"),
+                    "port": resolved.get("port"),
+                    "model": resolved.get("default_model"),
+                    "elapsed_ms": elapsed_ms,
+                    "attempts": attempts,
+                }
         attempts.append(
             _attempt_note(seat_id, "empty or failed completion", elapsed_ms)
         )

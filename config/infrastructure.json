@@ -120,18 +120,18 @@
             {"providerID": "my-windows-4090", "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL"}
         ],
         "fast_worker": [
-            {"providerID": "openrouter", "modelID": "free"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"},
             {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],
         "default_ladder": [
-            {"providerID": "openrouter", "modelID": "free"},
+            {"providerID": "openrouter", "modelID": "openrouter/free"},
             {"providerID": "opencode", "modelID": "big-pickle"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],
         "oracle": [
+            {"providerID": "openrouter", "modelID": "openrouter/free"},
             {"providerID": "opencode", "modelID": "big-pickle"},
-            {"providerID": "openrouter", "modelID": "free"},
             {"providerID": "cohere", "modelID": "command-a-plus-05-2026"}
         ],
         "local_bicameral": {
