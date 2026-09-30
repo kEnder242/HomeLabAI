@@ -13,10 +13,16 @@ Consolidated from:
     citation-expansion intent family.
 
 Design constraints:
-  * Hermetic and deterministic. No network, no LLM, no filesystem. This module
-    is a *routing adapter*, so it must answer in bounded time.
+  * Hermetic and deterministic *by default*. No network, no LLM, no filesystem
+    on the import path or the default call path. This module is a *routing
+    adapter*, so it must answer in bounded time. The single exception is the
+    opt-in live silicon seam ([FEAT-627] Story 95.10, ``live=True`` /
+    ``complete_live``), which is a separate, explicitly requested excursion.
   * BKM-015: scoring is lexical token containment, never semantic grading. It
     is a triage pre-filter, not a judgement.
+  * BKM-070 section 3: a live LLM judge is a *prose* synthesizer on the
+    non-truth axis only. Its output is adjudicated by the same symbolic CP
+    gates as the deterministic path, so silicon never votes on truthfulness.
   * Cover letters are grounded exclusively in certified bone prose. When the
     evidence base is insufficient the synthesizer says so rather than
     fabricating achievement claims.
@@ -26,6 +32,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
@@ -34,13 +41,21 @@ from .bones import extract_bones
 __all__ = [
     "BLEND_ROUTE_PATH",
     "BLEND_SEGMENT_BUDGET",
+    "COVER_LETTER_EVIDENCE_LIMIT",
+    "LIVE_SEAT_LADDER",
     "NODE_BLEND_ROUTE",
     "STOPWORDS",
     "TRIAGE_INTENTS",
     "RecommendationRouter",
     "RevisionBlender",
+    "SiliconUnreachableError",
     "TopicAlignmentMatrix",
+    "acomplete_live",
+    "build_gate_document",
+    "build_live_blend_judge",
+    "complete_live",
     "handle_node_blend_request",
+    "load_shared_detectors",
 ]
 
 # Bounded vocabulary; lexical containment only.
@@ -242,6 +257,11 @@ class TopicAlignmentMatrix:
         }
 
 
+#: How many evidence lines a grounded letter may cite. Citing more than the
+#: strongest few dilutes the letter; citing fewer understates the evidence base.
+COVER_LETTER_EVIDENCE_LIMIT = 3
+
+
 class RecommendationRouter:
     """Deterministic triage router and grounded cover-letter synthesizer."""
 
@@ -334,19 +354,34 @@ class RecommendationRouter:
 
     # -- cover letter -------------------------------------------------------
 
-    def synthesize_cover_letter(self, bones, job_desc: str) -> str:
-        """Compose a cover letter grounded exclusively in certified bone prose.
+    def select_grounding_evidence(
+        self,
+        bones,
+        job_desc: str,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Rank bone prose against a job description, most defensible first.
 
-        Evidence lines are lifted verbatim from the strongest-matching bones.
-        If no bone clears the grounding threshold the synthesizer returns an
-        explicit insufficiency notice instead of inventing achievements.
+        Returns ``{"status", "reason", "evidence", "covered", "job_tokens",
+        "overall"}``. ``status`` is ``insufficient_grounding`` when the job
+        description carries no usable tokens or when no bone paragraph scores
+        above zero, in which case ``evidence`` is empty.
+
+        This selector is the single definition of "what may be cited". Both the
+        deterministic letter and the live silicon letter (Story 95.10) consume
+        it, so a model-written letter is grounded in exactly the evidence the
+        hermetic path would have used -- a live pass cannot widen the claim set.
         """
         job_tokens = _token_set(job_desc)
         if not job_tokens:
-            return (
-                "INSUFFICIENT GROUNDING: no job description supplied, so no "
-                "evidence-backed letter can be synthesized."
-            )
+            return {
+                "status": "insufficient_grounding",
+                "reason": "no job description supplied, so no evidence-backed letter can be synthesized",
+                "evidence": [],
+                "covered": [],
+                "job_tokens": [],
+                "overall": 0.0,
+            }
 
         scored: list[tuple[float, str, dict]] = []
         for bone in self._iter_bones(bones):
@@ -359,20 +394,60 @@ class RecommendationRouter:
                     scored.append((detail["score"], text, bone))
 
         if not scored:
-            return (
-                "INSUFFICIENT GROUNDING: none of the certified bones align with "
-                "the supplied job description. Refusing to fabricate evidence."
-            )
+            return {
+                "status": "insufficient_grounding",
+                "reason": (
+                    "none of the certified bones align with the supplied job "
+                    "description. Refusing to fabricate evidence"
+                ),
+                "evidence": [],
+                "covered": [],
+                "job_tokens": sorted(job_tokens),
+                "overall": 0.0,
+            }
 
         # Deterministic ordering: score desc, then longest evidence first, then
         # bone id and text for full reproducibility.
         scored.sort(key=lambda item: (-item[0], -len(item[1]), str(item[2].get("bone_id", "")), item[1]))
 
-        top = scored[:3]
+        cap = COVER_LETTER_EVIDENCE_LIMIT if limit is None else max(0, int(limit))
+        top = scored[:cap]
         overall = min(1.0, sum(score for score, _, _ in top) / len(top))
-        covered = set()
+        covered: set[str] = set()
         for _, text, _ in top:
             covered |= _token_set(text) & job_tokens
+
+        return {
+            "status": "success",
+            "reason": "",
+            "evidence": [
+                {
+                    "text": text,
+                    "bone_id": str(bone.get("bone_id", "unknown")),
+                    "score": score,
+                }
+                for score, text, bone in top
+            ],
+            "covered": sorted(covered),
+            "job_tokens": sorted(job_tokens),
+            "overall": overall,
+        }
+
+    def synthesize_cover_letter(self, bones, job_desc: str) -> str:
+        """Compose a cover letter grounded exclusively in certified bone prose.
+
+        Evidence lines are lifted verbatim from the strongest-matching bones.
+        If no bone clears the grounding threshold the synthesizer returns an
+        explicit insufficiency notice instead of inventing achievements.
+        """
+        grounding = self.select_grounding_evidence(bones, job_desc)
+        if grounding["status"] != "success":
+            return f"INSUFFICIENT GROUNDING: {grounding['reason']}."
+
+        evidence = grounding["evidence"]
+        covered = grounding["covered"]
+        job_tokens = grounding["job_tokens"]
+        overall = grounding["overall"]
 
         lines = [
             "Subject: Alignment of certified projection bones with target role",
@@ -385,8 +460,8 @@ class RecommendationRouter:
             "",
             "EVIDENCE BASE:",
         ]
-        for index, (_, text, bone) in enumerate(top, start=1):
-            lines.append(f"{index}. {text}  [bone: {bone.get('bone_id', 'unknown')}]")
+        for index, item in enumerate(evidence, start=1):
+            lines.append(f"{index}. {item['text']}  [bone: {item['bone_id']}]")
         lines += [
             "",
             "ALIGNMENT:",
@@ -394,7 +469,7 @@ class RecommendationRouter:
                 f"- Target requirements addressed: {len(covered)}/{len(job_tokens)} "
                 f"({overall:.2f} mean bone alignment)."
             ),
-            f"- Highest-signal requirement: {min(sorted(covered)) if covered else 'n/a'}.",
+            f"- Highest-signal requirement: {min(covered) if covered else 'n/a'}.",
         ]
         return "\n".join(lines)
 
@@ -557,6 +632,406 @@ def _token_diff(source_tokens: list[str], candidate_tokens: list[str]) -> dict[s
         "dels": len(removed),
         "unchanged": sum(i2 - i1 for tag, i1, i2, _j1, _j2 in matcher.get_opcodes() if tag == "equal"),
     }
+
+
+# ---------------------------------------------------------------------------
+# [FEAT-627 / Story 95.10] Live silicon seam -- the opt-in LLM editorial judge
+# ---------------------------------------------------------------------------
+#
+# Story 95.6 built the blend *contract* hermetically and left the judge as an
+# injectable seam. This block is that seam's live implementation: the lab is
+# an LLM powerhouse (vLLM :8088, M5 Air :8000, Ollama :11434), and BKM-024
+# requires the final certification of a behavior to be proven against live
+# silicon, not only against mocks.
+#
+# Reuse boundary (WIS-487): transport, seat probing, and OpenAI/Ollama response
+# parsing belong to ``infra.engine_client`` -- the lab's single engine client,
+# and the only place the Resilience Downshift Ladder is encoded. This module
+# owns only (a) the *priority order* of the ladder and (b) the refusal
+# semantics. Forking a second HTTP client here would guarantee the resilience
+# behavior drifts between modules, which is the same anti-pattern that forbids
+# forking the CP detectors above.
+#
+# BKM-070 section 3 is load-bearing: the live judge synthesizes *prose* only.
+# Its output is fed to the same shared CP-1 / CP-5 gate as the deterministic
+# path, so silicon can never decide whether a candidate is truthful. An offline
+# engine is an explicit :class:`SiliconUnreachableError`, never a silent
+# fallback to the deterministic blend presented as a model result.
+
+#: Seat priority: local vLLM first (lowest latency, always resident), then the
+#: M5 Air OpenAI-compatible node, then KENDER's Ollama. Each entry is a
+#: complete ``infra.engine_client`` seat, so the shared client can be handed a
+#: single-seat list and this module keeps sole ownership of the ordering.
+LIVE_SEAT_LADDER: tuple[dict[str, Any], ...] = (
+    {
+        "id": "LOCAL",
+        "host": "127.0.0.1",
+        "port": 8088,
+        "protocol": "VLLM",
+        "probe_path": "/v1/models",
+        "probe_payload": None,
+        "default_model": "shadow_brain_v2",
+        "t_warmed": 0.045,
+        "t_cold": 0.05,
+    },
+    {
+        "id": "M5_AIR",
+        "host": "192.168.1.46",
+        "port": 8000,
+        "protocol": "OPENAI",
+        "probe_path": "/v1/models",
+        "probe_payload": None,
+        "default_model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+        "t_warmed": 0.09,
+        "t_cold": 0.85,
+    },
+    {
+        "id": "KENDER",
+        "host": "192.168.1.26",
+        "port": 11434,
+        "protocol": "OLLAMA",
+        "probe_path": "/api/tags",
+        "probe_payload": None,
+        "default_model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL",
+        "t_warmed": 0.12,
+        "t_cold": 1.2,
+    },
+)
+
+#: Generation budget for a live editorial pass. A blend is an operator
+#: interaction inside the Foyer, not a batch job, so this stays well inside the
+#: request timeout even when the first cold seat stalls.
+LIVE_COMPLETION_TIMEOUT_S = 60.0
+
+#: Low temperature on purpose: the judge is rewriting two known revisions, not
+#: brainstorming. High variance would trade CP-5 losses for style points.
+LIVE_JUDGE_TEMPERATURE = 0.2
+
+
+class SiliconUnreachableError(ConnectionError):
+    """No configured engine seat produced a completion (BKM-024 honesty gate).
+
+    Subclasses :class:`ConnectionError` so a caller already guarding the
+    transport can catch the base type, while a caller that must distinguish
+    "silicon is down" from "silicon answered badly" catches this type and
+    falls back explicitly rather than silently.
+    """
+
+
+def _engine_client() -> Any:
+    """Load the lab's engine client at call time.
+
+    Lazy by mandate: this module keeps a hermetic import path, and
+    ``infra.engine_client`` imports ``requests`` and reads the infrastructure
+    config. A failure is surfaced as :class:`SiliconUnreachableError` rather
+    than degrading to a fabricated completion.
+    """
+    try:
+        from infra import engine_client
+    except (ImportError, OSError) as exc:  # pragma: no cover - module is local
+        raise SiliconUnreachableError(
+            "infra.engine_client is unreachable; the live silicon seam cannot open"
+        ) from exc
+    return engine_client
+
+
+def _seat_candidates(seats: Any = None) -> list[dict[str, Any]]:
+    """Normalize a seat override into the ladder this module will walk.
+
+    Accepts a sequence of seats or a ``{seat_id: seat}`` mapping, mirroring
+    the shapes the rest of the lab uses for seat collections.
+    """
+    if seats is None:
+        return [dict(seat) for seat in LIVE_SEAT_LADDER]
+    if isinstance(seats, Mapping):
+        return [dict(seat) for seat in seats.values()]
+    return [dict(seat) for seat in seats]
+
+
+def _prepare_seat(seat: Mapping[str, Any], model: str) -> dict[str, Any]:
+    """One seat, with an optional model override applied."""
+    resolved = dict(seat)
+    if model:
+        resolved["default_model"] = str(model)
+    return resolved
+
+
+def _attempt_note(seat_id: str, error: str, elapsed_ms: int) -> dict[str, Any]:
+    """A single rung of the ladder, recorded so no failure is silent."""
+    return {"seat": seat_id, "error": error, "elapsed_ms": elapsed_ms}
+
+
+def _exhausted(attempts: list[dict[str, Any]]) -> SiliconUnreachableError:
+    """The refusal: an explicit error naming every rung that was tried."""
+    tried = ", ".join(str(note.get("seat")) for note in attempts) or "(no seats configured)"
+    return SiliconUnreachableError(
+        "no engine seat produced a completion; tried "
+        f"{tried}. The deterministic blend is unaffected -- the lab has no live "
+        "judge right now. Wake an engine via http://127.0.0.1:8765/wake (BKM-044)."
+    )
+
+
+def complete_live_traced(
+    prompt: str,
+    system_prompt: str = "",
+    *,
+    temperature: float = LIVE_JUDGE_TEMPERATURE,
+    timeout: float = LIVE_COMPLETION_TIMEOUT_S,
+    model: str = "",
+    seats: Any = None,
+    json_mode: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    """Walk :data:`LIVE_SEAT_LADDER` and return ``(text, provenance)``.
+
+    Provenance names the seat that answered and every rung that did not, so a
+    downstream ``synthesis_source`` claim is always auditable against the
+    hardware that actually produced the prose (BKM-024 traceability).
+    """
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("live completion requires a non-empty prompt")
+
+    client = _engine_client()
+    attempts: list[dict[str, Any]] = []
+
+    for seat in _seat_candidates(seats):
+        resolved = _prepare_seat(seat, model)
+        seat_id = str(resolved.get("id", "UNKNOWN"))
+        started = time.monotonic()
+        try:
+            raw = client.query_sovereign_engine(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                json_mode=json_mode,
+                temperature=temperature,
+                timeout=timeout,
+                seats=[resolved],
+            )
+        except Exception as exc:  # noqa: BLE001  # network boundary; reason recorded
+            attempts.append(_attempt_note(seat_id, f"{type(exc).__name__}: {exc}", 0))
+            continue
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip(), {
+                "seat": seat_id,
+                "host": resolved.get("active_host") or resolved.get("host"),
+                "port": resolved.get("port"),
+                "model": resolved.get("default_model"),
+                "elapsed_ms": elapsed_ms,
+                "attempts": attempts,
+            }
+        attempts.append(
+            _attempt_note(seat_id, "empty or failed completion", elapsed_ms)
+        )
+
+    raise _exhausted(attempts)
+
+
+def complete_live(prompt: str, system_prompt: str = "", **kwargs: Any) -> str:
+    """Live completion, text only. Raises if no seat answers."""
+    text, _provenance = complete_live_traced(prompt, system_prompt, **kwargs)
+    return text
+
+
+async def acomplete_live_traced(
+    prompt: str,
+    system_prompt: str = "",
+    *,
+    temperature: float = LIVE_JUDGE_TEMPERATURE,
+    timeout: float = LIVE_COMPLETION_TIMEOUT_S,
+    model: str = "",
+    seats: Any = None,
+    json_mode: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    """Async twin of :func:`complete_live_traced`.
+
+    The shared client offloads its blocking ``requests`` call to the default
+    executor, so the event loop is never held by a 60s inference stall.
+    """
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("live completion requires a non-empty prompt")
+
+    client = _engine_client()
+    attempts: list[dict[str, Any]] = []
+
+    for seat in _seat_candidates(seats):
+        resolved = _prepare_seat(seat, model)
+        seat_id = str(resolved.get("id", "UNKNOWN"))
+        started = time.monotonic()
+        try:
+            raw = await client.async_query_sovereign_engine(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                json_mode=json_mode,
+                temperature=temperature,
+                timeout=timeout,
+                seats=[resolved],
+            )
+        except Exception as exc:  # noqa: BLE001  # network boundary; reason recorded
+            attempts.append(_attempt_note(seat_id, f"{type(exc).__name__}: {exc}", 0))
+            continue
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip(), {
+                "seat": seat_id,
+                "host": resolved.get("active_host") or resolved.get("host"),
+                "port": resolved.get("port"),
+                "model": resolved.get("default_model"),
+                "elapsed_ms": elapsed_ms,
+                "attempts": attempts,
+            }
+        attempts.append(
+            _attempt_note(seat_id, "empty or failed completion", elapsed_ms)
+        )
+
+    raise _exhausted(attempts)
+
+
+async def acomplete_live(prompt: str, system_prompt: str = "", **kwargs: Any) -> str:
+    """Async live completion, text only. Raises if no seat answers."""
+    text, _provenance = await acomplete_live_traced(prompt, system_prompt, **kwargs)
+    return text
+
+
+def _render_blend_prompt(contract: Mapping[str, Any]) -> str:
+    """Flatten a judge contract into the structured blending prompt.
+
+    The four required coordinates -- both parent revisions, the human
+    instruction, and the active lens rubric -- are always present as labeled
+    blocks even when empty, so the judge can distinguish "no guidance was
+    supplied" from "guidance was dropped in transit". Dropping an empty
+    section silently is how a blend ends up ignoring the operator's lens.
+    """
+    sources = contract.get("sources") or {}
+
+    def _source(key: str) -> tuple[str, str]:
+        entry = sources.get(key) or {}
+        return (
+            str(entry.get("version_id", "") or ""),
+            str(entry.get("text", "") or ""),
+        )
+
+    id_a, text_a = _source("v_a")
+    id_b, text_b = _source("v_b")
+    lens_id = str(contract.get("lens_id", "") or "") or "(no lens active)"
+    instruction = str(contract.get("human_instruction", "") or "") or "(none supplied)"
+    rubric = str(contract.get("rubric_terms", "") or "") or "(none supplied)"
+
+    return "\n".join(
+        [
+            f"PAPER: {contract.get('paper_id', '')}",
+            f"NODE: {contract.get('node_id', '')}",
+            f"ACTIVE LENS: {lens_id}",
+            "",
+            f"HUMAN INSTRUCTION: {instruction}",
+            "",
+            f"LENS RUBRIC TERMS: {rubric}",
+            "",
+            f"SOURCE v_a [{id_a}]:",
+            text_a or "(empty)",
+            "",
+            f"SOURCE v_b [{id_b}]:",
+            text_b or "(empty)",
+            "",
+            "Blend the two sources above into ONE candidate revision for this",
+            "node, honoring the human instruction and the active lens rubric.",
+            "Return the candidate prose only -- no preamble, no commentary, no",
+            "markdown fences.",
+        ]
+    )
+
+
+def build_live_blend_judge(
+    *,
+    temperature: float = LIVE_JUDGE_TEMPERATURE,
+    timeout: float = LIVE_COMPLETION_TIMEOUT_S,
+    model: str = "",
+    seats: Any = None,
+    trace: dict[str, Any] | None = None,
+) -> Callable[[dict[str, Any]], str]:
+    """Build a live judge callable over :meth:`RevisionBlender.build_judge_contract`.
+
+    The returned callable satisfies the ``judge`` seam on
+    :meth:`RevisionBlender.blend_revisions` exactly, so wiring live silicon
+    needs no new call path and cannot bypass the CP gate: the blend runner
+    validates whatever prose this returns.
+
+    Pass a ``trace`` dict to receive the provenance of the seat that answered.
+    """
+
+    def _judge(contract: dict[str, Any]) -> str:
+        text, provenance = complete_live_traced(
+            _render_blend_prompt(contract),
+            str(contract.get("system_directive", "")),
+            temperature=temperature,
+            timeout=timeout,
+            model=model,
+            seats=seats,
+        )
+        if isinstance(trace, dict):
+            trace.update(provenance)
+        return text
+
+    return _judge
+
+
+def build_live_blend_judge_async(
+    *,
+    temperature: float = LIVE_JUDGE_TEMPERATURE,
+    timeout: float = LIVE_COMPLETION_TIMEOUT_S,
+    model: str = "",
+    seats: Any = None,
+    trace: dict[str, Any] | None = None,
+) -> Callable[[dict[str, Any]], Any]:
+    """Async twin of :func:`build_live_blend_judge`."""
+
+    async def _judge(contract: dict[str, Any]) -> str:
+        text, provenance = await acomplete_live_traced(
+            _render_blend_prompt(contract),
+            str(contract.get("system_directive", "")),
+            temperature=temperature,
+            timeout=timeout,
+            model=model,
+            seats=seats,
+        )
+        if isinstance(trace, dict):
+            trace.update(provenance)
+        return text
+
+    return _judge
+
+
+def load_shared_detectors() -> tuple[Any, Any] | None:
+    """Public accessor for the authoritative ``(validate_paper_ast, verify_containment)`` pair.
+
+    Exposed so sibling grounded-prose paths -- notably
+    :mod:`projection.cover_letter` -- adjudicate against the *same* CP
+    implementation instead of re-deriving numeric containment locally.
+    ``None`` means the curator package could not be loaded, which callers must
+    report as ``UNVERIFIED`` rather than treat as a pass.
+    """
+    return _shared_detectors()
+
+
+def build_gate_document(
+    node_id: str,
+    text: str,
+    *,
+    paper_id: str = "projection_candidate",
+    section_id: str = "sec_gate",
+    revision_id: str = "candidate",
+) -> dict[str, Any]:
+    """Public single-node Paper AST builder for the shared CP gate.
+
+    The cover-letter grounding gate needs the *same* document shape the
+    blender's gate consumes. Exposing the builder here keeps a single AST
+    dialect in the module instead of two subtly different ones that drift the
+    moment the shared validators tighten (WIS-487).
+    """
+    return _node_document(
+        node_id, section_id, text, paper_id=paper_id, revision_id=revision_id
+    )
 
 
 class RevisionBlender:
@@ -856,28 +1331,25 @@ class RevisionBlender:
             return None, ref
         return ref, "inline"
 
-    def blend_revisions(
+    def _prepare_blend(
         self,
         paper_id: str,
         node_id: str,
         v_a: Any,
         v_b: Any,
-        human_instruction: str = "",
-        lens_id: str = "",
+        human_instruction: str,
+        lens_id: str,
         *,
         versions: Any = None,
         rubric_terms: str = "",
         mode: str = "union",
-        judge: Callable[[dict[str, Any]], str] | None = None,
     ) -> dict[str, Any]:
-        """Blend two revisions into a validated candidate.
+        """Resolve both revisions and build the judge contract.
 
-        ``v_a`` / ``v_b`` accept raw prose, a ``{"version_id", "text"}`` mapping,
-        or a version id resolvable against ``versions``. The default path is
-        fully hermetic. When a ``judge`` callable is injected it is handed the
-        structured contract from :meth:`build_judge_contract` and its return
-        value is used as the candidate prose; the CP gates then run identically
-        on that output, so an injected judge cannot bypass validation.
+        Returns either an ``unresolved_revision`` payload or the resolved
+        context. The sync runner and the async live runner both consume this,
+        so the two paths cannot drift on resolution semantics or on which
+        contract the judge is handed (Story 95.10).
         """
         text_a, ref_a = self._resolve_revision_text(v_a, versions)
         text_b, ref_b = self._resolve_revision_text(v_b, versions)
@@ -897,20 +1369,45 @@ class RevisionBlender:
 
         assert text_a is not None and text_b is not None  # narrowed by unresolved check
 
-        contract = self.build_judge_contract(
-            paper_id, node_id, ref_a, ref_b, human_instruction, lens_id,
-            rubric_terms=rubric_terms, text_a=text_a, text_b=text_b,
-        )
+        return {
+            "status": "success",
+            "text_a": text_a,
+            "text_b": text_b,
+            "ref_a": ref_a,
+            "ref_b": ref_b,
+            "lens_id": str(lens_id or ""),
+            "human_instruction": str(human_instruction or ""),
+            "contract": self.build_judge_contract(
+                paper_id, node_id, ref_a, ref_b, human_instruction, lens_id,
+                rubric_terms=rubric_terms, text_a=text_a, text_b=text_b,
+            ),
+            "synthesis": self.synthesize(
+                text_a, text_b, human_instruction, rubric_terms, mode
+            ),
+        }
 
-        synthesis = self.synthesize(text_a, text_b, human_instruction, rubric_terms, mode)
-        candidate_text = synthesis["candidate_text"]
-        synthesis_source = "deterministic"
+    def _assemble_blend(
+        self,
+        paper_id: str,
+        node_id: str,
+        prepared: dict[str, Any],
+        candidate_text: str,
+        synthesis_source: str,
+        *,
+        versions: Any = None,
+        silicon: dict[str, Any] | None = None,
+        judge_note: str = "",
+    ) -> dict[str, Any]:
+        """Run the shared CP gate over a candidate and build the result payload.
 
-        if judge is not None:
-            judged = judge(contract)
-            if isinstance(judged, str) and judged.strip():
-                candidate_text = judged.strip()
-                synthesis_source = "judge"
+        This is the single place the verdict is produced, so a live LLM
+        candidate, an injected judge candidate, and the deterministic
+        superset candidate are all adjudicated by the same symbolic gate
+        (BKM-070 section 3: silicon proposes, the gate disposes).
+        """
+        text_a = prepared["text_a"]
+        text_b = prepared["text_b"]
+        synthesis = prepared["synthesis"]
 
         # Truth-scoped parent text: the union of both source revisions, so CP-5
         # asks whether the blend lost a metric either parent carried.
@@ -918,15 +1415,15 @@ class RevisionBlender:
         cp = self.validate_candidate(paper_id, node_id, candidate_text, source_text)
 
         candidate_tokens = _tokenize(candidate_text)
-        return {
+        result = {
             "status": "success",
             "feature": "FEAT-627",
             "paper_id": str(paper_id),
             "node_id": str(node_id),
-            "v_a": ref_a,
-            "v_b": ref_b,
-            "lens_id": str(lens_id or ""),
-            "instruction": str(human_instruction or ""),
+            "v_a": prepared["ref_a"],
+            "v_b": prepared["ref_b"],
+            "lens_id": prepared["lens_id"],
+            "instruction": prepared["human_instruction"],
             "mode": synthesis["mode"],
             "synthesis_source": synthesis_source,
             "candidate_text": candidate_text,
@@ -938,9 +1435,141 @@ class RevisionBlender:
                 "v_b": _token_diff(_tokenize(text_b), candidate_tokens),
             },
             "cp": cp,
-            "judge_contract": contract,
+            "judge_contract": prepared["contract"],
             "next_version_id": self.next_version_id(versions),
         }
+        if silicon is not None:
+            result["silicon"] = silicon
+        if judge_note:
+            result["judge_note"] = judge_note
+        return result
+
+    def blend_revisions(
+        self,
+        paper_id: str,
+        node_id: str,
+        v_a: Any,
+        v_b: Any,
+        human_instruction: str = "",
+        lens_id: str = "",
+        *,
+        versions: Any = None,
+        rubric_terms: str = "",
+        mode: str = "union",
+        judge: Callable[[dict[str, Any]], str] | None = None,
+        live: bool = False,
+        live_options: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Blend two revisions into a validated candidate.
+
+        ``v_a`` / ``v_b`` accept raw prose, a ``{"version_id", "text"}`` mapping,
+        or a version id resolvable against ``versions``. The default path is
+        fully hermetic. When a ``judge`` callable is injected it is handed the
+        structured contract from :meth:`build_judge_contract` and its return
+        value is used as the candidate prose; the CP gates then run identically
+        on that output, so an injected judge cannot bypass validation.
+
+        ``live=True`` wires the Story 95.10 silicon seam when no explicit
+        ``judge`` was supplied: the contract is rendered into the structured
+        blending prompt and dispatched to :data:`LIVE_SEAT_LADDER`. That
+        excursion raises :class:`SiliconUnreachableError` when every rung
+        fails -- an offline engine is never reported as a successful blend.
+        ``live_options`` is forwarded to :func:`build_live_blend_judge`
+        (``temperature``, ``timeout``, ``model``, ``seats``).
+        """
+        prepared = self._prepare_blend(
+            paper_id, node_id, v_a, v_b, human_instruction, lens_id,
+            versions=versions, rubric_terms=rubric_terms, mode=mode,
+        )
+        if prepared["status"] != "success":
+            return prepared
+
+        candidate_text = prepared["synthesis"]["candidate_text"]
+        synthesis_source = "deterministic"
+        silicon: dict[str, Any] | None = None
+        judge_note = ""
+
+        active_judge = judge
+        if active_judge is None and live:
+            silicon_holder: dict[str, Any] = {}
+            active_judge = build_live_blend_judge(
+                trace=silicon_holder, **dict(live_options or {})
+            )
+            silicon = silicon_holder
+
+        if active_judge is not None:
+            judged = active_judge(prepared["contract"])
+            if isinstance(judged, str) and judged.strip():
+                candidate_text = judged.strip()
+                synthesis_source = "live_llm" if live and judge is None else "judge"
+            else:
+                # An injected judge that returns nothing must not be mistaken
+                # for a model result; the deterministic candidate stands and
+                # the substitution is reported.
+                judge_note = (
+                    "judge returned no usable prose; the deterministic "
+                    "superset candidate was retained"
+                )
+
+        return self._assemble_blend(
+            paper_id, node_id, prepared, candidate_text, synthesis_source,
+            versions=versions, silicon=silicon, judge_note=judge_note,
+        )
+
+    async def ablend_revisions(
+        self,
+        paper_id: str,
+        node_id: str,
+        v_a: Any,
+        v_b: Any,
+        human_instruction: str = "",
+        lens_id: str = "",
+        *,
+        versions: Any = None,
+        rubric_terms: str = "",
+        mode: str = "union",
+        live: bool = True,
+        live_options: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Async blend over the live silicon seam.
+
+        Identical semantics to :meth:`blend_revisions` with ``live=True``;
+        the shared client offloads its blocking request to an executor, so a
+        cold engine cannot stall the Foyer event loop. CP-1 / CP-5 run on the
+        returned prose exactly as they do on the synchronous path.
+        """
+        prepared = self._prepare_blend(
+            paper_id, node_id, v_a, v_b, human_instruction, lens_id,
+            versions=versions, rubric_terms=rubric_terms, mode=mode,
+        )
+        if prepared["status"] != "success":
+            return prepared
+
+        candidate_text = prepared["synthesis"]["candidate_text"]
+        synthesis_source = "deterministic"
+        judge_note = ""
+        silicon: dict[str, Any] | None = None
+
+        if live:
+            silicon_holder: dict[str, Any] = {}
+            judge = build_live_blend_judge_async(
+                trace=silicon_holder, **(dict(live_options or {}))
+            )
+            silicon = silicon_holder
+            judged = await judge(prepared["contract"])
+            if isinstance(judged, str) and judged.strip():
+                candidate_text = judged.strip()
+                synthesis_source = "live_llm"
+            else:
+                judge_note = (
+                    "live judge returned no usable prose; the deterministic "
+                    "superset candidate was retained"
+                )
+
+        return self._assemble_blend(
+            paper_id, node_id, prepared, candidate_text, synthesis_source,
+            versions=versions, silicon=silicon, judge_note=judge_note,
+        )
 
 
 def _iter_version_entries(versions: Any) -> Iterable[dict[str, Any]]:
@@ -1062,17 +1691,48 @@ def _handle_blend(payload: Mapping[str, Any], service: Any) -> dict[str, Any]:
             }
 
     rubric_terms = service.load_rubric_terms(lens_id) if lens_id else ""
-    result = RevisionBlender().blend_revisions(
-        paper_id,
-        node_id,
-        v_a,
-        v_b,
-        str(payload.get("human_instruction") or ""),
-        lens_id,
-        versions=versions,
-        rubric_terms=rubric_terms,
-        mode=str(payload.get("mode") or "union"),
-    )
+
+    # Story 95.10: the live silicon seam is opt-in per request. The default
+    # stays hermetic so the blend route keeps its bounded-time guarantee, and
+    # the studio's chat gutter can ask for a live pass explicitly.
+    live_options: dict[str, Any] = {}
+    if payload.get("model"):
+        live_options["model"] = str(payload["model"])
+    if payload.get("timeout"):
+        try:
+            live_options["timeout"] = float(payload["timeout"])
+        except (TypeError, ValueError):
+            return {
+                "status": "error",
+                "error": "timeout must be a number of seconds",
+                "http_status": 400,
+            }
+
+    blender = RevisionBlender()
+    try:
+        result = blender.blend_revisions(
+            paper_id,
+            node_id,
+            v_a,
+            v_b,
+            str(payload.get("human_instruction") or ""),
+            lens_id,
+            versions=versions,
+            rubric_terms=rubric_terms,
+            mode=str(payload.get("mode") or "union"),
+            live=bool(payload.get("live")),
+            live_options=live_options or None,
+        )
+    except SiliconUnreachableError as exc:
+        # The handler never raises, but it also never invents a blend: an
+        # offline engine is reported as a 503 so the studio can tell the
+        # operator to wake silicon rather than showing a stale candidate.
+        return {
+            "status": "error",
+            "error": str(exc),
+            "silicon": "unreachable",
+            "http_status": 503,
+        }
     if result.get("status") != "success":
         result.setdefault("http_status", 422)
         return result
