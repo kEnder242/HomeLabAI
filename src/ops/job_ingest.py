@@ -630,13 +630,21 @@ def _assert_criteria_sane(criteria: list[dict[str, Any]]) -> None:
 # --- Public API --------------------------------------------------------------
 
 
-def extract_job_tokens_and_rubric(job_text: str, slug: str, title: str = "") -> dict[str, Any]:
-    """Extract job tokens and compile a valid Lens rubric, fully offline.
+def extract_job_tokens_and_rubric(
+    job_text: str,
+    slug: str,
+    title: str = "",
+    live: bool = False,
+) -> dict[str, Any]:
+    """Extract job tokens and compile a valid Lens rubric.
 
     Args:
         job_text: Raw job description. Must be at least ``MIN_CONTENT_CHARS``.
         slug: Identifier for the target role; also seeds the lens title/persona.
         title: Optional human role title (e.g. "Principal Site Reliability Engineer").
+        live: When True, route persona/impact/tenet extraction through the
+            shared live engine ladder (vLLM -> M5 Air -> Ollama). Engines are
+            unreachable => SiliconUnreachableError (BKM-024 fail-closed).
 
     Returns:
         dict with:
@@ -646,7 +654,7 @@ def extract_job_tokens_and_rubric(job_text: str, slug: str, title: str = "") -> 
             * ``tier_0_structural`` -- extracted required tokens, degree/cert
               keywords, density limits, min years (all deterministic)
             * ``tier_1_semantic``  -- hiring manager persona, domain impact focus,
-              leadership tenets
+              leadership tenets (LLM-extracted when ``live=True``)
             * ``persona``         -- hiring-manager persona overlay
             * ``criteria``        -- rules handed to ``craft_lens``
             * ``overflow``        -- semantic rules dropped by the tier_1 cap
@@ -655,6 +663,7 @@ def extract_job_tokens_and_rubric(job_text: str, slug: str, title: str = "") -> 
     Raises:
         ValueError: on empty/too-short content, a bad slug, or a refusal from
             ``craft_lens``. Never returns a partially-valid rubric.
+        SiliconUnreachableError: when ``live=True`` and no engine seat answers.
     """
     if not isinstance(job_text, str):
         raise ValueError(f"job_text must be a string, got {type(job_text).__name__}")
@@ -692,11 +701,83 @@ def extract_job_tokens_and_rubric(job_text: str, slug: str, title: str = "") -> 
         "leadership_tenets": _leadership_tenets(normalized),
     }
 
+    # --- Live LLM semantic persona extraction (FEAT-622 / BKM-024) ---------------
+    if live:
+        # Route semantic persona through the shared engine ladder
+        # (vLLM -> M5 Air -> Ollama) per BKM-024 fail-closed invariant.
+        from projection.recommender import (
+            complete_live_traced,
+            SiliconUnreachableError,
+        )
+
+        persona_prompt = (
+            "Analyze this job posting and extract the hiring manager persona, "
+            "domain impact focus, and key rubric tenets.\n\n"
+            f"Job Posting:\n{normalized[:800]}"
+        )
+
+        system_prompt = (
+            "You are an expert HR persona extraction specialist. Output a valid "
+            "JSON object with exactly these keys: hiring_manager_persona, "
+            "domain_impact_focus, key_rubric_tenets.\n\n"
+            "hiring_manager_persona: JSON object with fields: tone (string), "
+            "seniority_expectations (list of strings), primary_priorities (list of "
+            "strings).\n"
+            "domain_impact_focus: JSON object with fields: business_context "
+            "(string), scale (string), core_mission (string).\n"
+            "key_rubric_tenets: JSON array of 3-5 strings, each a core principle "
+            "the candidate will be judged on.\n\n"
+            "Return ONLY the JSON object, no other text."
+        )
+
+        try:
+            raw_json, _trace = complete_live_traced(persona_prompt, system_prompt, json_mode=True)
+            semantic = json.loads(raw_json)
+        except SiliconUnreachableError:
+            raise
+        except Exception as exc:
+            raise SiliconUnreachableError(
+                f"live persona extraction failed: {exc}"
+            ) from exc
+
+        # Map the LLM output to the expected structure
+        hiring_manager_persona = semantic.get("hiring_manager_persona", {})
+        domain_impact_focus = semantic.get("domain_impact_focus", {})
+        key_rubric_tenets = semantic.get("key_rubric_tenets", [])
+
+        # Override deterministic semantic extraction with LLM results
+        tokens["impact_focus"] = {
+            "tenets": (
+                [domain_impact_focus.get("business_context", "")]
+                if domain_impact_focus.get("business_context")
+                else []
+            ),
+            "evidence": "",
+        }
+        tokens["leadership_tenets"] = {
+            "tenets": list(key_rubric_tenets),
+            "evidence": "",
+        }
+
+        persona = {
+            "name": f"{title.strip() or slug.title()} Hiring Manager",
+            "role": title.strip() or f"{slug.replace('_', ' ').title()} Hiring Manager",
+            "lens_perspective": (
+                f"Pragmatic hiring manager targeting "
+                f"{seniority[0] if seniority else 'senior'} level talent for "
+                f"{domain_impact_focus.get('core_mission', '')}"
+            ),
+            "seniority_signals": seniority,
+            "team_scope": team_scope,
+            "chain_of_command": chain,
+            "llm_extracted": True,
+        }
+    else:
+        persona = _build_persona(slug, title, "", seniority, team_scope, chain)
+
     overflow: list[str] = []
     criteria = _tier_0_criteria(tokens) + _tier_1_criteria(tokens, overflow)
     _assert_criteria_sane(criteria)
-
-    persona = _build_persona(slug, title, "", seniority, team_scope, chain)
 
     compiled = craft_lens(
         lens_id=f"{JOB_LENS_PREFIX}{slug}",
@@ -738,6 +819,18 @@ def extract_job_tokens_and_rubric(job_text: str, slug: str, title: str = "") -> 
         "overflow": overflow,
         "content_sha256": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
     }
+
+
+def extract_job_posting_semantics(
+    job_text: str,
+    slug: str = "target_role",
+    title: str = "",
+    *,
+    live: bool = False,
+    live_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """[FEAT-622 / BKM-024] Extract structured semantic persona and tokens from job text."""
+    return extract_job_tokens_and_rubric(job_text, slug=slug, title=title, live=live)
 
 
 def _load_source_text(source_path: str) -> str:
@@ -784,6 +877,7 @@ def ingest_job_posting(
     company: str = None,
     output_dir: str = None,
     lens_dir: str = None,
+    live: bool = False,
 ) -> tuple[str, str]:
     """Freeze a posting and compile its rubric. Returns (job_path, lens_path).
 
@@ -791,6 +885,12 @@ def ingest_job_posting(
     atomically (``.tmp`` + ``os.replace``). Requires exactly one of
     ``source_path`` or ``text``. Raises ValueError on a craft refusal rather
     than persisting a half-built artifact.
+
+    When ``live=True``, the tier_1 semantic extraction (hiring manager persona,
+    domain impact focus, leadership tenets) is performed via the shared live
+    engine ladder (vLLM -> M5 Air -> Ollama). Raises
+    ``SiliconUnreachableError`` when all engine seats are unreachable
+    (BKM-024 fail-closed invariant).
     """
     if bool(source_path) == bool(text):
         raise ValueError("provide exactly one of source_path or text")
@@ -807,7 +907,7 @@ def ingest_job_posting(
     if not resolved_slug:
         raise ValueError("could not derive a slug; pass --slug explicitly")
 
-    payload = extract_job_tokens_and_rubric(job_text, resolved_slug, resolved_title)
+    payload = extract_job_tokens_and_rubric(job_text, resolved_slug, resolved_title, live=live)
 
     jobs_root = Path(output_dir).expanduser() if output_dir else DEFAULT_JOBS_DIR
     lenses_root = Path(lens_dir).expanduser() if lens_dir else DEFAULT_LENS_DIR
@@ -881,6 +981,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Target directory for generated lens rubrics (default: {DEFAULT_LENS_DIR}).",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable live LLM semantic persona extraction via vLLM/M5 Air/Ollama. "
+            "When engines are unreachable, raises SiliconUnreachableError (BKM-024)."
+        ),
+    )
     return parser
 
 
@@ -901,6 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
             company=args.company,
             output_dir=args.output_dir,
             lens_dir=args.lens_dir,
+            live=args.live,
         )
     except (ValueError, FileNotFoundError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
