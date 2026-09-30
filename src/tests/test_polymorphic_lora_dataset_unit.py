@@ -11,12 +11,12 @@ from forge.build_lora_datasets import (
 
 
 def test_dna_synthesis_index_resolution():
-    """Verify that synthesis index correctly indexes narrative contexts from wisdom and philosophy."""
+    """Verify that synthesis index correctly indexes narrative contexts from wisdom and philosophy/inspiration."""
     index = _build_dna_synthesis_index()
     assert isinstance(index, dict)
     assert len(index) >= 400
     # Spot check presence of key domains
-    assert any(k.startswith("PHL-") for k in index.keys())
+    assert any(k.startswith("INS-") or k.startswith("PHL-") for k in index.keys())
     assert any(k.startswith("WIS-") for k in index.keys())
 
 
