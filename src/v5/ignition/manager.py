@@ -156,6 +156,24 @@ class IgnitionManager:
         if self.status.state in ["WAKING", "OPERATIONAL"]:
             return True
 
+        # [FEAT-125] Smart-Reuse Protocol (Warm Start)
+        try:
+            req = urllib.request.Request("http://localhost:8088/v1/models")
+            with urllib.request.urlopen(req, timeout=1) as resp:
+                if resp.status == 200:
+                    self.status.state = "OPERATIONAL"
+                    self.status.engine_up = True
+                    self.status.vocal = True
+                    self.operational_start_time = time.time()
+                    self.recovery_in_progress = False
+                    self.update_status_file()
+                    logging.info(
+                        "[IGNITION] [FEAT-125] vLLM already active on port 8088. Warm-start transition to OPERATIONAL."
+                    )
+                    return True
+        except Exception:
+            pass
+
         # [FEAT-302] Adaptive Cooldown Tracking
         now = time.time()
         if now < self.cooldown_until:
