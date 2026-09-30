@@ -280,11 +280,13 @@ async def main():
         action="store_true",
         help="Single controlled cold-start certification turn",
     )
-    parser.add_argument(
-        "--smoke",
-        action="store_true",
-        help="Fast smoke run: 3 cycles with 0-minute wait",
-    )
+    # [DEPRECATED / BKM-010 VIOLATION]: Rapid 0m cycle runs neuter the 5x5 quiescence test.
+    # Left intentionally commented out to serve as an explicit architectural reminder.
+    # parser.add_argument(
+    #     "--smoke",
+    #     action="store_true",
+    #     help="Fast smoke run: 3 cycles with 0-minute wait",
+    # )
     parser.add_argument(
         "--intervals",
         nargs="+",
@@ -297,9 +299,10 @@ async def main():
     if args.cold_cert:
         print("💎 INITIATING CONTROLLED COLD-START CERTIFICATION (STORY 54.12)")
         intervals = [0]
-    elif args.smoke:
-        print("🧪 INITIATING SMOKE TEST (3 Rapid Cycles, 0m Wait)")
-        intervals = [0, 0, 0]
+    # elif args.smoke:
+    #     # Intentionally removed: canonical 5x5 is strictly a 75-minute staged gauntlet [0, 5, 10, 20, 40].
+    #     print("🧪 INITIATING SMOKE TEST (3 Rapid Cycles, 0m Wait)")
+    #     intervals = [0, 0, 0]
     elif args.intervals is not None:
         intervals = args.intervals
         print(f"💎 INITIATING CUSTOM TIMED GAUNTLET: intervals = {intervals}")
