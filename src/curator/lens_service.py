@@ -169,10 +169,99 @@ def craft_lens(
     }
 
 
+def evaluate_node_tier1_semantic(
+    node_text: str,
+    rubric_rules: list[dict] | None = None,
+    lens_perspective: str = "",
+    *,
+    live: bool = False,
+    live_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """[FEAT-585 / FEAT-627 / BKM-024] Evaluates node text against Tier-1 semantic rubric criteria."""
+    if not node_text or not node_text.strip():
+        return {
+            "status": "success",
+            "semantic_score": 0.0,
+            "passed_criteria": [],
+            "violations": [],
+            "rationale": "Empty node text",
+            "source": "deterministic",
+        }
+
+    if live:
+        from projection.recommender import complete_live_traced, SiliconUnreachableError
+
+        rule_descriptions = []
+        for r in rubric_rules or []:
+            if isinstance(r, dict):
+                rule_descriptions.append(f"- [{r.get('rule_id', 'RULE')}]: {r.get('description', r.get('target', ''))}")
+        rules_text = "\n".join(rule_descriptions) if rule_descriptions else "- General executive clarity and metric ownership"
+
+        system_prompt = (
+            "You are a Tier-1 semantic rubric evaluator judging resume AST prose against target lens criteria. "
+            "Evaluate whether the candidate prose fulfills the rubric rules and perspective. "
+            "Output valid JSON with exactly these keys: "
+            "{\"semantic_score\": float (0.0 to 1.0), \"passed_criteria\": list[str], \"violations\": list[dict[str, str]], \"rationale\": str}."
+        )
+        prompt = (
+            f"LENS PERSPECTIVE:\n{lens_perspective or 'Senior Technical Hiring Manager'}\n\n"
+            f"RUBRIC CRITERIA:\n{rules_text}\n\n"
+            f"CANDIDATE PROSE TO EVALUATE:\n{node_text}\n\n"
+            "Evaluate strictly. Return ONLY the JSON response."
+        )
+
+        try:
+            raw_json, trace = complete_live_traced(prompt, system_prompt, json_mode=True, **(live_options or {}))
+            data = json.loads(raw_json)
+            return {
+                "status": "success",
+                "semantic_score": float(data.get("semantic_score", 0.8)),
+                "passed_criteria": list(data.get("passed_criteria", [])),
+                "violations": list(data.get("violations", [])),
+                "rationale": str(data.get("rationale", "")),
+                "source": "live_llm",
+                "silicon": trace,
+            }
+        except SiliconUnreachableError:
+            raise
+        except Exception as exc:
+            raise SiliconUnreachableError(f"Live semantic evaluation failed: {exc}") from exc
+
+    # Deterministic fallback heuristics
+    words = [w.strip(".,;:\"'()") for w in node_text.lower().split(" ") if w]
+    first_word = words[0] if words else ""
+    has_metric = bool(re.search(r"\d+|%|x\b|\$|ms\b|seconds|hours", node_text, re.IGNORECASE))
+    violations = []
+    passed = []
+
+    if first_word in POWER_VERBS:
+        passed.append("POWER_VERB")
+    else:
+        violations.append({"rule_id": "FIRST_3_WORDS_POWER_VERB", "suggestion": f"Strengthen opening verb '{first_word}'"})
+
+    if has_metric:
+        passed.append("QUANTIFIED_METRIC")
+    else:
+        violations.append({"rule_id": "SO_WHAT_METRIC_DRILL", "suggestion": "Lacks quantified operational impact"})
+
+    score = len(passed) / (len(passed) + len(violations)) if (passed or violations) else 0.5
+    return {
+        "status": "success",
+        "semantic_score": score,
+        "passed_criteria": passed,
+        "violations": violations,
+        "rationale": f"Deterministic heuristic audit: {len(passed)} passed, {len(violations)} violations",
+        "source": "deterministic",
+    }
+
+
 def grade_paper(
     paper_id: str = "PAPER-RESUME",
     revision_id: str = "v1_baseline",
     lens_id: str = "farah_sharghi_recruiter_v1",
+    *,
+    live: bool = False,
+    live_options: dict[str, Any] | None = None,
 ) -> dict:
     """Evaluates paper AST chunk-by-chunk against active rubric, attaching 3-tier review flags."""
     # 1. Load Lens
