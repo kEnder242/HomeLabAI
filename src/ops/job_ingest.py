@@ -635,6 +635,7 @@ def extract_job_tokens_and_rubric(
     slug: str,
     title: str = "",
     live: bool = False,
+    live_options: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract job tokens and compile a valid Lens rubric.
 
@@ -731,7 +732,12 @@ def extract_job_tokens_and_rubric(
         )
 
         try:
-            raw_json, _trace = complete_live_traced(persona_prompt, system_prompt, json_mode=True)
+            raw_json, _trace = complete_live_traced(
+                persona_prompt,
+                system_prompt,
+                json_mode=True,
+                **(dict(live_options or {})),
+            )
             semantic = json.loads(raw_json)
         except SiliconUnreachableError:
             raise
@@ -830,7 +836,9 @@ def extract_job_posting_semantics(
     live_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """[FEAT-622 / BKM-024] Extract structured semantic persona and tokens from job text."""
-    return extract_job_tokens_and_rubric(job_text, slug=slug, title=title, live=live)
+    return extract_job_tokens_and_rubric(
+        job_text, slug=slug, title=title, live=live, live_options=live_options
+    )
 
 
 def _load_source_text(source_path: str) -> str:
