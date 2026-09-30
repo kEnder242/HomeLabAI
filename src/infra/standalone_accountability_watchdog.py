@@ -393,6 +393,26 @@ def audit_and_emit_digest(run_live_probe: bool = True):
         except Exception as e:
             logger.error(f"Failed to write digest to {out_file}: {e}")
 
+    # [FEAT-607 / BKM-066] Stamp failure into nightly_dialogue.json so interleaved log is never dark/silent on abort
+    if overall_status != "PASS":
+        dialogue_path = OUTPUT_DIR / "nightly_dialogue.json"
+        try:
+            discrepancy_str = "; ".join(discrepancies) if discrepancies else "Unspecified pipeline failure"
+            dialogue_payload = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "topic": "Nightly Accountability Sentinel (Watchdog)",
+                "content": f"🚨 **[ACCOUNTABILITY AUDIT: {overall_status}]**\n\n**Checks Passed:** {passed_count}/{total_count}\n**Discrepancies:** {discrepancy_str}\n\n_Detected by Standalone Morning Accountability Watchdog (FEAT-619)._"
+            }
+            tmp_dialogue = OUTPUT_DIR / "nightly_dialogue.json.tmp"
+            with open(tmp_dialogue, "w", encoding="utf-8") as df:
+                json.dump(dialogue_payload, df, indent=4)
+                df.flush()
+                os.fsync(df.fileno())
+            os.replace(tmp_dialogue, dialogue_path)
+            logger.info(f"✅ Stamped watchdog failure notice into {dialogue_path}")
+        except Exception as de:
+            logger.warning(f"Failed to stamp watchdog failure notice into dialogue: {de}")
+
     # Broadcast Neural Pager / Alert
     if overall_status != "PASS":
         trigger_pager(

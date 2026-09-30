@@ -614,8 +614,9 @@ def run_dream_cycle() -> dict:
     dream_script = os.path.join(BASE_DIR, "dream_cycle.py")
     if os.path.exists(dream_script):
         try:
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run(
-                [sys.executable, dream_script],
+                [py_bin, dream_script],
                 capture_output=True,
                 text=True,
                 timeout=900,
@@ -973,6 +974,26 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
             )
         except Exception as e:
             logger.error(f"[ACCOUNTABILITY] Failed to write digest JSON: {e}")
+
+        # [FEAT-607 / BKM-066] Stamp failure into nightly_dialogue.json so interleaved log is never dark/silent on abort
+        if overall_status != "PASS":
+            dialogue_path = os.path.join(output_dir, "nightly_dialogue.json")
+            try:
+                discrepancy_str = "; ".join(discrepancies) if discrepancies else "Unspecified pipeline failure"
+                dialogue_payload = {
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "topic": "Nightly Accountability Sentinel",
+                    "content": f"🚨 **[NIGHTLY FORGE ABORT / {overall_status}]**\n\n**Checks Passed:** {digest['passed_checks']}/{digest['total_checks']}\n**Discrepancies:** {discrepancy_str}\n\n_Subconscious dreaming and downstream sweeps were halted to protect host and model state._"
+                }
+                tmp_dialogue = dialogue_path + ".tmp"
+                with open(tmp_dialogue, "w", encoding="utf-8") as df:
+                    json.dump(dialogue_payload, df, indent=4)
+                    df.flush()
+                    os.fsync(df.fileno())
+                os.replace(tmp_dialogue, dialogue_path)
+                logger.info(f"[ACCOUNTABILITY] Stamped abort notice into {dialogue_path}")
+            except Exception as de:
+                logger.warning(f"[ACCOUNTABILITY] Failed to stamp abort into dialogue: {de}")
 
         # Broadcast digest to Neural Pager & Intercom [FEAT-602]
         write_step_log(
