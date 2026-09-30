@@ -396,7 +396,7 @@ def probe_claradb(
             except Exception:
                 pass
 
-        # Dynamic Distance-Banded Multi-Bucket Reverse Lookup (< 25ms)
+        # Dynamic Distance-Banded Multi-Bucket Reverse Lookup (FEAT-631 Universal First Spot Model)
         if model is None:
             model = get_fastembed()
         words = set(re.findall(r"\w+", text.lower()))
@@ -407,17 +407,38 @@ def probe_claradb(
         if model and len(significant_words) >= 1 and len(results) < limit:
             emb = list(model.embed([text[:200]]))[0].tolist()
 
-            # Bucket 1: feature_dna (Quota: 2)
+            # Domain Quotas: FEAT & BKM get top 3 capacity; other peer domains get top 2 capacity.
+            domain_caps = {
+                "feature_dna": 3,
+                "behavioral_dna": 3,
+                "wisdom_dna": 2,
+                "inspiration_dna": 2,
+                "rdna": 2,
+                "loop_dna": 2,
+                "vibe_dna": 2,
+            }
+            domain_counts = {d: 0 for d in domain_caps}
+
+            # Helper for distance gating
+            def check_in_band(dist, min_dist, has_kw):
+                base_in = (
+                    (dist <= 0.48)
+                    or (dist <= min_dist + 0.08 and dist < 0.54)
+                    or (has_kw and dist <= 0.56)
+                )
+                if is_qq:
+                    base_in = base_in or (dist <= 0.58)
+                return base_in
+
+            # --- PASS 1: Dedicated Universal First Spot (1 guaranteed slot per active peer domain) ---
+            # 1. feature_dna (First Spot)
             try:
                 col_feat = client.get_collection("feature_dna")
                 r_feat = col_feat.query(query_embeddings=[emb], n_results=min(limit + 2, 6))
-                feat_dists = r_feat.get("distances", [[]])[0]
-                if feat_dists:
-                    min_feat_dist = min(feat_dists)
-                    feat_count = 0
-                    for i, dist in enumerate(feat_dists):
-                        if feat_count >= 2 or len(results) >= limit:
-                            break
+                f_dists = r_feat.get("distances", [[]])[0]
+                if f_dists:
+                    min_f = min(f_dists)
+                    for i, dist in enumerate(f_dists):
                         meta = r_feat["metadatas"][0][i]
                         name = meta.get("name", "Feature")
                         fid = meta.get("feature_id") or r_feat["ids"][0][i].split("_")[0]
@@ -425,101 +446,69 @@ def probe_claradb(
                         if fid in seen_ids:
                             continue
                         has_kw = any(w in name.lower() for w in significant_words)
-                        is_in_band = (
-                            (dist <= 0.45)
-                            or (dist <= min_feat_dist + 0.08 and dist < 0.52)
-                            or (has_kw and dist <= 0.55)
-                        )
-                        if is_qq:
-                            is_in_band = is_in_band or (dist <= 0.58)
-                        if is_in_band:
+                        if check_in_band(dist, min_f, has_kw):
                             seen_ids.add(fid)
                             results.append(f"- [{fid}] {name} ({status})")
-                            feat_count += 1
+                            domain_counts["feature_dna"] += 1
+                            break  # Claimed First Spot
             except Exception as e_feat:
                 if hook_errors is not None:
                     hook_errors.append(f"feature_dna query error: {e_feat}")
 
-            # Bucket 2: behavioral_dna (Quota: 2)
+            # 2. behavioral_dna (First Spot)
             try:
                 if len(results) < limit:
                     col_bkm = client.get_collection("behavioral_dna")
-                    r_bkm = col_bkm.query(
-                        query_embeddings=[emb], n_results=min(limit + 1, 4)
-                    )
-                    bkm_dists = r_bkm.get("distances", [[]])[0]
-                    if bkm_dists:
-                        min_bkm_dist = min(bkm_dists)
-                        bkm_count = 0
-                        for i, dist in enumerate(bkm_dists):
-                            if bkm_count >= 2 or len(results) >= limit:
-                                break
+                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=min(limit + 1, 4))
+                    b_dists = r_bkm.get("distances", [[]])[0]
+                    if b_dists:
+                        min_b = min(b_dists)
+                        for i, dist in enumerate(b_dists):
                             meta = r_bkm["metadatas"][0][i]
                             name = meta.get("name", "Protocol")
                             bkm_id = meta.get("bkm_id")
                             if bkm_id and bkm_id in seen_ids:
                                 continue
                             has_kw = any(w in name.lower() for w in significant_words)
-                            is_in_band = (
-                                (dist <= 0.48)
-                                or (dist <= min_bkm_dist + 0.08 and dist < 0.55)
-                                or (has_kw and dist <= 0.55)
-                            )
-                            if is_qq:
-                                is_in_band = is_in_band or (dist <= 0.58)
-                            if is_in_band:
+                            if check_in_band(dist, min_b, has_kw):
                                 if bkm_id:
                                     seen_ids.add(bkm_id)
                                     results.append(f"- [{bkm_id}] {name}")
                                 else:
                                     results.append(f"- {name}")
-                                bkm_count += 1
+                                domain_counts["behavioral_dna"] += 1
+                                break  # Claimed First Spot
             except Exception as e_bkm:
                 if hook_errors is not None:
                     hook_errors.append(f"behavioral_dna query error: {e_bkm}")
 
-            # Bucket 3: wisdom_dna (Quota: 2 - Triggered on debugging/error/wisdom or exact match)
-            wis_triggers = {"error", "fail", "bug", "crash", "regression", "gotcha", "debug", "wisdom", "postmortem", "lora", "vram", "adapter", "timeout"}
-            if (any(t in words for t in wis_triggers) or bool(wis_ids)) and len(results) < limit:
-                try:
+            # 3. wisdom_dna (First Spot)
+            try:
+                if len(results) < limit:
                     col_wis = client.get_collection("wisdom_dna")
                     r_wis = col_wis.query(query_embeddings=[emb], n_results=3)
-                    wis_dists = r_wis.get("distances", [[]])[0]
-                    wis_count = 0
-                    for i, dist in enumerate(wis_dists):
-                        if wis_count >= 2 or len(results) >= limit:
-                            break
-                        meta = r_wis["metadatas"][0][i]
-                        wid = meta.get("wisdom_id") or r_wis["ids"][0][i]
-                        if wid in seen_ids:
-                            continue
-                        title = meta.get("title", "Wisdom Heuristic")
-                        if dist <= 0.50:
-                            seen_ids.add(wid)
-                            results.append(f"- [{wid}] {title}")
-                            wis_count += 1
-                except Exception as e_wis:
-                    if hook_errors is not None:
-                        hook_errors.append(f"wisdom_dna query error: {e_wis}")
+                    w_dists = r_wis.get("distances", [[]])[0]
+                    if w_dists:
+                        min_w = min(w_dists)
+                        for i, dist in enumerate(w_dists):
+                            meta = r_wis["metadatas"][0][i]
+                            wid = meta.get("wisdom_id") or r_wis["ids"][0][i]
+                            if wid in seen_ids:
+                                continue
+                            title = meta.get("title", "Wisdom Heuristic")
+                            has_kw = any(w in title.lower() for w in significant_words)
+                            if check_in_band(dist, min_w, has_kw) or dist <= 0.52:
+                                seen_ids.add(wid)
+                                results.append(f"- [{wid}] {title}")
+                                domain_counts["wisdom_dna"] += 1
+                                break  # Claimed First Spot
+            except Exception as e_wis:
+                if hook_errors is not None:
+                    hook_errors.append(f"wisdom_dna query error: {e_wis}")
 
-            # Bucket 4: inspiration_dna / philosophy_dna (Quota: 2 - Triggered on philosophy/concept/design or exact match)
-            phl_triggers = {
-                "philosophy",
-                "inspiration",
-                "axiom",
-                "design",
-                "origin",
-                "synthesis",
-                "intent",
-                "grounding",
-                "human",
-                "autonomy",
-            }
-            if (
-                any(t in words for t in phl_triggers)
-                or bool(ins_ids or phl_ids)
-            ) and len(results) < limit:
-                try:
+            # 4. inspiration_dna / philosophy_dna (First Spot)
+            try:
+                if len(results) < limit:
                     col_ins = None
                     try:
                         col_ins = client.get_collection("inspiration_dna")
@@ -527,46 +516,125 @@ def probe_claradb(
                         col_ins = client.get_collection("philosophy_dna")
                     if col_ins:
                         r_phl = col_ins.query(query_embeddings=[emb], n_results=3)
-                        phl_dists = r_phl.get("distances", [[]])[0]
-                        phl_count = 0
-                        for i, dist in enumerate(phl_dists):
-                            if phl_count >= 2 or len(results) >= limit:
-                                break
-                            meta = r_phl["metadatas"][0][i]
-                            wid = meta.get("inspiration_id") or meta.get("wisdom_id") or r_phl["ids"][0][i]
-                            if wid in seen_ids:
-                                continue
-                            title = meta.get("title", meta.get("name", "Inspiration"))
-                            if dist <= 0.50:
-                                seen_ids.add(wid)
-                                results.append(f"- [{wid}] {title}")
-                                phl_count += 1
-                except Exception as phl_e:
-                    if hook_errors is not None:
-                        hook_errors.append(f"inspiration_dna query failed: {phl_e}")
+                        p_dists = r_phl.get("distances", [[]])[0]
+                        if p_dists:
+                            min_p = min(p_dists)
+                            for i, dist in enumerate(p_dists):
+                                meta = r_phl["metadatas"][0][i]
+                                pid = meta.get("inspiration_id") or meta.get("wisdom_id") or r_phl["ids"][0][i]
+                                if pid in seen_ids:
+                                    continue
+                                title = meta.get("title", meta.get("name", "Inspiration"))
+                                has_kw = any(w in title.lower() for w in significant_words)
+                                if check_in_band(dist, min_p, has_kw) or dist <= 0.52:
+                                    seen_ids.add(pid)
+                                    results.append(f"- [{pid}] {title}")
+                                    domain_counts["inspiration_dna"] += 1
+                                    break  # Claimed First Spot
+            except Exception as phl_e:
+                if hook_errors is not None:
+                    hook_errors.append(f"inspiration_dna query error: {phl_e}")
 
-            # Bucket 5: rdna (Quota: 1 - HyDE Exemplar Routing Bridge)
-            rdna_triggers = {"hyde", "exemplar", "research", "spike", "hypothesis", "variant"}
-            if (any(t in words for t in rdna_triggers) or bool(rdna_ids)) and len(results) < limit:
-                try:
+            # 5. rdna (First Spot - HyDE Exemplars)
+            try:
+                if len(results) < limit:
                     col_rdna = client.get_collection("rdna")
-                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=2)
-                    rdna_dists = r_rdna.get("distances", [[]])[0]
-                    for i, dist in enumerate(rdna_dists):
-                        if len(results) >= limit:
-                            break
-                        meta = r_rdna["metadatas"][0][i]
-                        rid = meta.get("id") or r_rdna["ids"][0][i]
-                        if rid in seen_ids:
-                            continue
-                        q_text = meta.get("question", meta.get("title", "Research Question"))
-                        if dist <= 0.45:
-                            seen_ids.add(rid)
-                            results.append(f"- [{rid}] HyDE Exemplar: {q_text}")
-                            break
-                except Exception as rdna_e:
-                    if hook_errors is not None:
-                        hook_errors.append(f"rdna query failed: {rdna_e}")
+                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=3)
+                    rd_dists = r_rdna.get("distances", [[]])[0]
+                    if rd_dists:
+                        min_rd = min(rd_dists)
+                        for i, dist in enumerate(rd_dists):
+                            meta = r_rdna["metadatas"][0][i]
+                            rid = meta.get("id") or r_rdna["ids"][0][i]
+                            if rid in seen_ids:
+                                continue
+                            q_text = meta.get("question", meta.get("title", "Research Question"))
+                            has_kw = any(w in q_text.lower() for w in significant_words)
+                            if check_in_band(dist, min_rd, has_kw) or dist <= 0.48:
+                                seen_ids.add(rid)
+                                results.append(f"- [{rid}] HyDE Exemplar: {q_text}")
+                                domain_counts["rdna"] += 1
+                                break  # Claimed First Spot
+            except Exception as rdna_e:
+                if hook_errors is not None:
+                    hook_errors.append(f"rdna query error: {rdna_e}")
+
+            # 6. loop_dna / vibe_dna (First Spot - Feedback Loops & System Vibes)
+            try:
+                if len(results) < limit:
+                    col_loop = None
+                    try:
+                        col_loop = client.get_collection("loop_dna")
+                    except Exception:
+                        try:
+                            col_loop = client.get_collection("vibe_dna")
+                        except Exception:
+                            col_loop = None
+                    if col_loop:
+                        r_loop = col_loop.query(query_embeddings=[emb], n_results=3)
+                        l_dists = r_loop.get("distances", [[]])[0]
+                        if l_dists:
+                            min_l = min(l_dists)
+                            for i, dist in enumerate(l_dists):
+                                meta = r_loop["metadatas"][0][i]
+                                lid = meta.get("loop_id") or meta.get("id") or r_loop["ids"][0][i]
+                                if lid in seen_ids:
+                                    continue
+                                title = meta.get("title", meta.get("name", "Feedback Loop"))
+                                has_kw = any(w in title.lower() for w in significant_words)
+                                if check_in_band(dist, min_l, has_kw) or dist <= 0.52:
+                                    seen_ids.add(lid)
+                                    results.append(f"- [{lid}] {title}")
+                                    domain_counts["loop_dna"] += 1
+                                    break  # Claimed First Spot
+            except Exception as loop_e:
+                if hook_errors is not None:
+                    hook_errors.append(f"loop_dna query error: {loop_e}")
+
+            # --- PASS 2: Capacity Ceiling Fill (Expand FEAT & BKM up to 3, others up to 2) ---
+            # Fill remaining budget from feature_dna
+            if len(results) < limit and domain_counts["feature_dna"] < domain_caps["feature_dna"]:
+                try:
+                    if 'r_feat' in locals() and f_dists:
+                        for i, dist in enumerate(f_dists):
+                            if len(results) >= limit or domain_counts["feature_dna"] >= domain_caps["feature_dna"]:
+                                break
+                            meta = r_feat["metadatas"][0][i]
+                            fid = meta.get("feature_id") or r_feat["ids"][0][i].split("_")[0]
+                            name = meta.get("name", "Feature")
+                            status = meta.get("status", "ACTIVE")
+                            if fid in seen_ids:
+                                continue
+                            has_kw = any(w in name.lower() for w in significant_words)
+                            if check_in_band(dist, min_f, has_kw):
+                                seen_ids.add(fid)
+                                results.append(f"- [{fid}] {name} ({status})")
+                                domain_counts["feature_dna"] += 1
+                except Exception:
+                    pass
+
+            # Fill remaining budget from behavioral_dna
+            if len(results) < limit and domain_counts["behavioral_dna"] < domain_caps["behavioral_dna"]:
+                try:
+                    if 'r_bkm' in locals() and b_dists:
+                        for i, dist in enumerate(b_dists):
+                            if len(results) >= limit or domain_counts["behavioral_dna"] >= domain_caps["behavioral_dna"]:
+                                break
+                            meta = r_bkm["metadatas"][0][i]
+                            bkm_id = meta.get("bkm_id")
+                            name = meta.get("name", "Protocol")
+                            if bkm_id and bkm_id in seen_ids:
+                                continue
+                            has_kw = any(w in name.lower() for w in significant_words)
+                            if check_in_band(dist, min_b, has_kw):
+                                if bkm_id:
+                                    seen_ids.add(bkm_id)
+                                    results.append(f"- [{bkm_id}] {name}")
+                                else:
+                                    results.append(f"- {name}")
+                                domain_counts["behavioral_dna"] += 1
+                except Exception:
+                    pass
     except Exception as e:
         if hook_errors is not None:
             hook_errors.append(f"ClaraDB probe exception: {e}")
