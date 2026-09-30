@@ -502,7 +502,7 @@ def run_unsloth_forge() -> bool:
     except Exception as e:
         logger.error(f"[FEAT-160] Error executing nightly_lora_training module: {e}")
         write_step_log("UNSLOTH_FORGE_ERROR", str(e))
-        return False
+        return False, []
 
     trained, status = _parse_lora_summary(res.stdout)
     if res.returncode == 0 and status == "SUCCESS":
@@ -512,7 +512,7 @@ def run_unsloth_forge() -> bool:
         write_step_log(
             "UNSLOTH_FORGE_COMPLETE", f"returncode=0 status={status} adapters={trained}"
         )
-        return True
+        return True, trained
 
     logger.error(
         f"[FEAT-160] Multi-adapter LoRA training incomplete (code {res.returncode}, status={status}): trained={trained}"
@@ -522,10 +522,10 @@ def run_unsloth_forge() -> bool:
         "UNSLOTH_FORGE_FAILED",
         f"returncode={res.returncode} status={status} trained={trained} stderr={err_tail}",
     )
-    return False
+    return False, trained
 
 
-def _run_legacy_single_adapter_forge() -> bool:
+def _run_legacy_single_adapter_forge() -> tuple[bool, list[str]]:
     """[FEAT-160] Legacy single-adapter ``train_expert.py`` pass (degraded mode).
 
     Preserved as the fallback path when the discrete multi-adapter module
@@ -568,17 +568,17 @@ def _run_legacy_single_adapter_forge() -> bool:
         if res.returncode == 0:
             logger.info("[FEAT-160] LoRA training pass completed successfully.")
             write_step_log("UNSLOTH_FORGE_COMPLETE", "returncode=0")
-            return True
+            return True, ["local-unified-base"]
         else:
             logger.error(
                 f"[FEAT-160] LoRA training failed with code {res.returncode}: {res.stderr[-300:]}"
             )
             write_step_log("UNSLOTH_FORGE_FAILED", f"returncode={res.returncode}")
-            return False
+            return False, []
     except Exception as e:
         logger.error(f"[FEAT-160] Error executing train_expert.py: {e}")
         write_step_log("UNSLOTH_FORGE_ERROR", str(e))
-        return False
+        return False, []
 
 
 def _parse_lora_summary(stdout: str):
@@ -1076,117 +1076,76 @@ def main():
             "[NIGHTLY STEP 2 - QUIESCE] Requesting Foyer VRAM Quiesce for LoRA Training..."
         )
         quiesced = quiesce_vllm()
+        trained_adapters = []
 
         if not quiesced:
-            logger.critical(
-                "[FATAL] [NIGHTLY FORGE] Cannot proceed with LoRA training: VRAM was NOT evicted. Aborting training to protect host memory stability."
+            logger.warning(
+                "[NIGHTLY STEP 2] VRAM was NOT evicted. Skipping LoRA training to protect host memory stability; proceeding to downstream phases (DECOUPLED)."
             )
             write_step_log(
-                "UNSLOTH_FORGE_ABORTED", "VRAM not free - aborting to prevent collision"
+                "UNSLOTH_FORGE_SKIPPED", "VRAM not free - skipping training to prevent collision", severity="WARNING"
             )
             if os.path.exists(MAINTENANCE_LOCK_PATH):
                 try:
                     os.remove(MAINTENANCE_LOCK_PATH)
                 except Exception:
                     pass
-            # Re-ignite lab back to operational
+            # Ensure Foyer is restored to operational for downstream tasks
             re_ignite_vllm()
+            training_ok = False
+        else:
+            # Settling Cooldown 1: 15s post-quiesce VRAM drain
+            logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
+            write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
+            time.sleep(15)
 
-            # Emergency Failure Digest
-            evaluate_nightly_accountability(
-                {
-                    "gpu_power_clamped": gpu_power_ok,
-                    "vram_quiesced": False,
-                    "lora_status": "ABORTED_QUIESCE_FAIL",
-                    "adapters_trained": [],
-                    "re_ignited": True,
-                    "dream_telemetry": {
-                        "status": "FAIL",
-                        "turns_synthesized": 0,
-                        "items_refined": 0,
-                        "error": "Aborted during quiesce",
-                    },
-                    "round_table_probe": {
-                        "status": "FAIL",
-                        "error": "Skipped due to quiesce failure",
-                    },
-                }
-            )
-            return
-
-        # Settling Cooldown 1: 15s post-quiesce VRAM drain
-        logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
-        write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
-        time.sleep(15)
-
-        # =========================================================================
-        # STEP 3: MISSION-CRITICAL LoRA FINE-TUNING [FEAT-160 / FEAT-214] (~15-30m bounded)
-        # =========================================================================
-        # WHY: This is the primary neural synthesis deliverable of the night.
-        # It trains discrete adapters (cli_voice_v1, lab_history_v1, triage_v1, reviewer_v1).
-        # Placed FIRST in the maintenance window so it runs on clean VRAM with zero contention,
-        # perfectly bounded within 15-30 minutes, without risk of starvation.
-        try:
-            logger.info(
-                "[NIGHTLY STEP 3 - LoRA FORGE] Executing Local Unsloth Multi-Adapter LoRA Fine-Tuning Pass..."
-            )
-            training_ok = run_unsloth_forge()
-            if not training_ok:
-                logger.error(
-                    "[FATAL] [NIGHTLY FORGE] LoRA training pass failed. Aborting downstream sweep to prevent uncoordinated state."
-                )
-                write_step_log(
-                    "SWEEP_ABORTED_ON_TRAIN_FAIL",
-                    "Aborting downstream sweep due to training failure",
-                )
-            else:
-                # Settling Cooldown 2: 15s post-training thermal settling
+            # =========================================================================
+            # STEP 3: MISSION-CRITICAL LoRA FINE-TUNING [FEAT-160 / FEAT-214] (~15-30m bounded)
+            # =========================================================================
+            # WHY: Trains discrete adapters (cli_voice_v1, lab_history_v1, triage_v1, reviewer_v1).
+            # Placed FIRST in the maintenance window so it runs on clean VRAM with zero contention.
+            try:
                 logger.info(
-                    "[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown..."
+                    "[NIGHTLY STEP 3 - LoRA FORGE] Executing Local Unsloth Multi-Adapter LoRA Fine-Tuning Pass..."
                 )
-                write_step_log("TRAINING_SETTLING", "Sleeping 15s")
-                time.sleep(15)
-        finally:
-            # =====================================================================
-            # STEP 4: RE-IGNITION [FEAT-136] (~60s budget)
-            # =====================================================================
-            # WHY: Restores Foyer state to OPERATIONAL and re-loads resident models.
-            # Executes in a finally block to guarantee the lab is NEVER left dead or
-            # stranded in HIBERNATING state if training fails or raises.
-            logger.info(
-                "[NIGHTLY STEP 4 - RE-IGNITION] Re-igniting Foyer state to OPERATIONAL (Hot-reloading LoRA adapters)..."
-            )
-            re_ignite_vllm()
-
-        if not training_ok:
-            evaluate_nightly_accountability(
-                {
-                    "gpu_power_clamped": gpu_power_ok,
-                    "vram_quiesced": quiesced,
-                    "lora_status": "FAILED",
-                    "adapters_trained": [],
-                    "re_ignited": True,
-                    "dream_telemetry": {
-                        "status": "FAIL",
-                        "turns_synthesized": 0,
-                        "items_refined": 0,
-                        "error": "Training failed",
-                    },
-                    "round_table_probe": {
-                        "status": "FAIL",
-                        "error": "Skipped due to training failure",
-                    },
-                }
-            )
-            record_nightly_completion(lock_fd, status="FAILED")
-            return
+                training_ok, trained_adapters = run_unsloth_forge()
+                if not training_ok:
+                    logger.warning(
+                        f"[WARNING] [NIGHTLY FORGE] LoRA training incomplete: trained={trained_adapters}. Proceeding to downstream synthesis phases (DECOUPLED)."
+                    )
+                    write_step_log(
+                        "TRAINING_WARNING",
+                        f"LoRA training incomplete: trained={trained_adapters}",
+                        severity="WARNING",
+                    )
+                else:
+                    # Settling Cooldown 2: 15s post-training thermal settling
+                    logger.info(
+                        "[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown..."
+                    )
+                    write_step_log("TRAINING_SETTLING", "Sleeping 15s")
+                    time.sleep(15)
+            except Exception as te:
+                logger.error(f"[NIGHTLY STEP 3] LoRA training exception: {te}")
+                training_ok = False
+                trained_adapters = []
+            finally:
+                # =====================================================================
+                # STEP 4: RE-IGNITION [FEAT-136] (~60s budget)
+                # =====================================================================
+                # WHY: Restores Foyer state to OPERATIONAL and re-loads resident models.
+                # Executes in a finally block to guarantee the lab is NEVER left stranded.
+                logger.info(
+                    "[NIGHTLY STEP 4 - RE-IGNITION] Re-igniting Foyer state to OPERATIONAL (Hot-reloading LoRA adapters)..."
+                )
+                re_ignite_vllm()
 
         if args.forge_only:
             logger.info("=== NIGHTLY FORGE (FORGE ONLY) COMPLETE ===")
             write_step_log(
-                "ORCHESTRATION_COMPLETE", "Forge-only pass completed successfully"
+                "ORCHESTRATION_COMPLETE", "Forge-only pass completed"
             )
-            record_nightly_completion(lock_fd, status="COMPLETED")
+            record_nightly_completion(lock_fd, status="COMPLETED" if training_ok else "DEGRADED")
             return
 
         # =========================================================================
@@ -1194,31 +1153,55 @@ def main():
         # =========================================================================
         # WHY: Generates subconscious dreams on high-rank gems, dedupes wisdom cards,
         # and synchronizes ChromaDB polymorphic DNA collections.
-        logger.info(
-            "[NIGHTLY STEP 5 - POST-TRAINING REFINEMENT] Initiating Subconscious Dreaming on newly refined gems..."
-        )
-        dream_telemetry = run_dream_cycle()
+        dream_telemetry = {
+            "status": "FAIL",
+            "turns_synthesized": 0,
+            "items_refined": 0,
+            "error": "Not run",
+        }
+        try:
+            logger.info(
+                "[NIGHTLY STEP 5 - POST-TRAINING REFINEMENT] Initiating Subconscious Dreaming on newly refined gems..."
+            )
+            dream_telemetry = run_dream_cycle()
+        except Exception as de:
+            logger.error(f"[NIGHTLY STEP 5] Subconscious dreaming error: {de}")
+            dream_telemetry = {
+                "status": "FAIL",
+                "turns_synthesized": 0,
+                "items_refined": 0,
+                "error": str(de),
+            }
 
         # 5b. Automated Wisdom Synthesis Refinement & Deduplication Pass [FEAT-562] (~1-2m)
-        logger.info(
-            "[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass..."
-        )
-        run_wisdom_refine()
+        try:
+            logger.info(
+                "[NIGHTLY WISDOM] Initiating Automated Wisdom Synthesis Refinement & Deduplication Pass..."
+            )
+            run_wisdom_refine()
+        except Exception as we:
+            logger.error(f"[NIGHTLY WISDOM] Wisdom refinement error: {we}")
 
         # 5c. Automated Sprint DNA Sync & Manifest Compilation [FEAT-557] (~1m)
-        logger.info(
-            "[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation..."
-        )
-        run_sprint_dna_sync()
+        try:
+            logger.info(
+                "[NIGHTLY SPRINT_DNA] Initiating Automated Sprint DNA Sync & Manifest Compilation..."
+            )
+            run_sprint_dna_sync()
+        except Exception as se:
+            logger.error(f"[NIGHTLY SPRINT_DNA] Sprint DNA sync error: {se}")
 
         # =========================================================================
         # STEP 6: DYNAMIC FEDERATED BENCHMARK SWEEP [FEAT-495] (~2m budget)
         # =========================================================================
         # WHY: Validates TTFT, ITL, and throughput on the freshly re-ignited resident models.
-        logger.info(
-            "[NIGHTLY STEP 6 - BENCHMARK] Executing Dynamic Federated Benchmark Sweep..."
-        )
-        run_benchmark_sweep()
+        try:
+            logger.info(
+                "[NIGHTLY STEP 6 - BENCHMARK] Executing Dynamic Federated Benchmark Sweep..."
+            )
+            run_benchmark_sweep()
+        except Exception as be:
+            logger.error(f"[NIGHTLY STEP 6] Dynamic benchmark sweep error: {be}")
 
         # Settling Cooldown 3: 60s socket draining and silicon quiescence window before Round Table Probe (BKM-044)
         logger.info(
@@ -1229,10 +1212,15 @@ def main():
         # =========================================================================
         # STEP 6b: SYNTHETIC MORNING ROUND TABLE PROBE [FEAT-608 / Story 88.3]
         # =========================================================================
-        logger.info(
-            "[NIGHTLY STEP 6b - ROUND TABLE] Executing Synthetic Morning Round Table Accountability Probe..."
-        )
-        probe_result = run_round_table_probe()
+        probe_result = {"status": "FAIL", "error": "Not run"}
+        try:
+            logger.info(
+                "[NIGHTLY STEP 6b - ROUND TABLE] Executing Synthetic Morning Round Table Accountability Probe..."
+            )
+            probe_result = run_round_table_probe()
+        except Exception as pe:
+            logger.error(f"[NIGHTLY STEP 6b] Round table probe error: {pe}")
+            probe_result = {"status": "FAIL", "error": str(pe)}
 
         # =========================================================================
         # STEP 6c: AUTHORITATIVE ACCOUNTABILITY DIGEST [FEAT-607 / Story 88.4]
@@ -1243,19 +1231,16 @@ def main():
         telemetry_payload = {
             "gpu_power_clamped": gpu_power_ok,
             "vram_quiesced": quiesced,
-            "lora_status": "COMPLETED" if training_ok else "FAILED",
-            "adapters_trained": (
-                ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"]
-                if training_ok
-                else []
-            ),
+            "lora_status": "COMPLETED" if training_ok else ("SKIPPED_QUIESCE_FAIL" if not quiesced else "FAILED"),
+            "adapters_trained": trained_adapters,
             "re_ignited": True,
             "dream_telemetry": dream_telemetry,
             "round_table_probe": probe_result,
         }
         digest = evaluate_nightly_accountability(telemetry_payload)
+        overall_status = digest.get("overall_status", "UNKNOWN")
         logger.info(
-            f"📋 Nightly Accountability Status: {digest.get('overall_status')} ({digest.get('passed_checks')}/{digest.get('total_checks')} checks passed)"
+            f"📋 Nightly Accountability Status: {overall_status} ({digest.get('passed_checks')}/{digest.get('total_checks')} checks passed)"
         )
 
         # =========================================================================
@@ -1263,21 +1248,25 @@ def main():
         # =========================================================================
         # TIME BUDGET: UNBOUNDED (1 to 4+ hours / mops up the remainder of the night)
         # WHY: mass_scan.py processes the massive archive of historical notes and journal entries.
-        # It is designed to run indefinitely/mop up the rest of the available time window.
-        # Placed at the very end so that if it takes hours (or runs until dawn),
-        # it NEVER starves LoRA training, never delays re-ignition, and cannot hold up the lab.
+        # Placed at the very end so that it NEVER starves earlier phases.
         logger.info(
             "[NIGHTLY STEP 7 - TAIL MOP-UP] Initiating Historical Journal Bridge & Mass Scan Mop-up Pass..."
         )
-        run_journal_to_dna_bridge()
-        run_mass_scan()
+        try:
+            run_journal_to_dna_bridge()
+        except Exception as jbe:
+            logger.error(f"[NIGHTLY STEP 7] Historical journal bridge error: {jbe}")
+        try:
+            run_mass_scan()
+        except Exception as mse:
+            logger.error(f"[NIGHTLY STEP 7] Mass scan mop-up error: {mse}")
 
-        logger.info("=== NIGHTLY FORGE ORCHESTRATION COMPLETE ===")
+        logger.info(f"=== NIGHTLY FORGE ORCHESTRATION COMPLETE (Status: {overall_status}) ===")
         write_step_log(
             "ORCHESTRATION_COMPLETE",
-            "All nightly maintenance, LoRA training, and tail mass scan phases passed",
+            f"Nightly maintenance completed with overall status={overall_status}",
         )
-        record_nightly_completion(lock_fd, status="COMPLETED")
+        record_nightly_completion(lock_fd, status="COMPLETED" if overall_status == "PASS" else overall_status)
     except Exception as e:
         logger.error(f"[FATAL] Nightly forge encountered unhandled exception: {e}")
         try:

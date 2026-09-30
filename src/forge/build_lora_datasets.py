@@ -57,7 +57,9 @@ def build_sentinel_dataset():
             SITUATIONS = []
 
     dataset = []
-    for query, tag, intent, domain in CURRICULUM:
+    for item in CURRICULUM:
+        query, tag, intent = item[0], item[1], item[2]
+        domain = item[4] if len(item) > 4 else "standard"
         hint = "Proceed with caution."
         for s in SITUATIONS:
             if s["tag"] == tag:
@@ -342,6 +344,11 @@ def build_history_dataset():
                 )
                 if not raw_txt:
                     continue
+
+                if isinstance(raw_txt, list):
+                    raw_txt = "\n".join(str(item) for item in raw_txt)
+                else:
+                    raw_txt = str(raw_txt)
 
                 entry = {
                     "instruction": f"Recall technical details regarding: {data.get('summary', 'Engineering Concept')}",
