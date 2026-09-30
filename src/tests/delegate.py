@@ -984,6 +984,7 @@ def delegate(
     sprint_doc=None,
     local_only=True,
     cloud_only=False,
+    profile="auto",
 ):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
@@ -1417,6 +1418,34 @@ Sprint Reference: {effective_sprint_doc}
         except Exception:
             pass
 
+    # [LAB-113] Role-Aware Context Profiles & Dynamic Pointers
+    effective_profile = profile
+    if effective_profile == "auto":
+        probe_text = f"{title} {details} {target_files or ''} {reference_file or ''}".lower()
+        if any(k in probe_text for k in ["paper", "resume", "projection", "lens", "studio", "editorial", "blend"]):
+            effective_profile = "editorial"
+        elif any(k in probe_text for k in ["rdna", "research", "investigate", "interview"]):
+            effective_profile = "research"
+        else:
+            effective_profile = "builder"
+
+    dynamic_pointer_block = ""
+    if effective_profile == "editorial":
+        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — EDITORIAL PROFILE (LAB-113)]
+- Narrative & Axiom Anchors: [INS-041], [DOC-xxx], [VIBE-xxx]
+- Technical Anchors: Query on-demand via `clara-dna_query_dna` (e.g. `[FEAT-626]`, `[WIS-501]`) for fact verification.
+"""
+    elif effective_profile == "research":
+        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — RESEARCH PROFILE (LAB-113)]
+- Exemplar HyDE & Questions: [RDNA-xxx], [PHL-xxx]
+- Discovery Anchors: Use `clara-dna_query_dna(collection="rdna", query="...")` for zero-latency exemplar routing.
+"""
+    else:  # builder
+        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — SURGICAL BUILDER PROFILE (LAB-113)]
+- Invariant Tool Protocols: [BKM-011] safe_patch, [BKM-012] no-full-replace, [BKM-040] venv/git discipline.
+- Architecture Anchors: Ingested on demand via `clara-dna_query_dna`. Zero full-file DNA bloat.
+"""
+
     _psychological_safety_contract = """[DELEGATION PSYCHOLOGICAL SAFETY CONTRACT — YOU ARE IN GOOD HANDS]
 1. EVERYTHING YOU NEED IS HERE: You have complete, curated context. All required imports, schemas, and targets are enclosed. Do not fear missing context; do not search external directories or run exploratory shell queries.
 2. FIRST TRIES & NAIVE IMPLEMENTATIONS WELCOME: You do not need to be perfect on turn 1. Take a direct, clean first approach and apply your write/patch immediately.
@@ -1439,7 +1468,9 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 - Sprint Reference: {reference_file}
 - Edit Target(s): {target_files or reference_file}
 - Mode: {mode.upper()}
+- Context Profile: {effective_profile.upper()}
 
+{dynamic_pointer_block}
 {mandate_block}
 
 {details}
@@ -1887,9 +1918,10 @@ if __name__ == "__main__":
         help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question",
     )
     parser.add_argument(
-        "--answer",
-        default=None,
-        help="Answer choice for the pending interactive question (used with --resume)",
+        "--profile",
+        default="auto",
+        choices=["auto", "builder", "editorial", "research"],
+        help="Context profile for contract-driven dynamic pointers (LAB-113): builder, editorial, or research",
     )
     args = parser.parse_args()
     if args.force_oracle:
@@ -1980,4 +2012,5 @@ if __name__ == "__main__":
         sprint_doc=args.sprint_doc,
         local_only=local_only,
         cloud_only=cloud_only,
+        profile=args.profile,
     )
