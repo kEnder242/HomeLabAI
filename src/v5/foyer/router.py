@@ -945,6 +945,7 @@ class FoyerRouter:
                 waterfall_queue=self.waterfall_queue,
                 set_active_domain=self.update_active_domain,
             )
+            self.clear_pending_reset()
             logger.info(
                 "[FOYER] [FEAT-490] Resident nodes and CognitiveHub hot-reloaded successfully. vLLM VRAM preserved."
             )
@@ -3830,6 +3831,9 @@ class FoyerRouter:
                 expiry = data.get("timer_expiry_ts", 0)
                 action = data.get("pending_action", "NONE")
                 now = time.time()
+                last_commit = data.get("last_commit", "")
+                if last_commit and last_commit == getattr(self, "boot_commit", ""):
+                    return False, "NONE", 0
                 if action != "NONE" and expiry > now:
                     return True, action, int(expiry - now)
             except Exception:
