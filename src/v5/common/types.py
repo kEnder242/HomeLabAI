@@ -46,7 +46,7 @@ class NodeStatus:
 
 @dataclass
 class LabStatus:
-    state: str = "HIBERNATING"
+    state: str = "INIT"
     timestamp: float = field(default_factory=time.time)
     state_changed_at: float = field(default_factory=time.time)
     version: str = LAB_VERSION

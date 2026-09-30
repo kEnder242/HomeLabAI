@@ -56,6 +56,7 @@
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
 6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
 7.  **Mid-Flight Guidance Capture (Recommended Practice)**: When the operator provides last-minute guidance, constraints, or preference hints within an "AFK" / "Heads Down" prompt, the agent is strongly encouraged to jot down these instructions into the active sprint plan (`SPRINT_PLAN_*.md`) or session notes under a dedicated `## 📝 Operator Directives & Mid-Flight Guidance` section. This acts as a reliable reminder so critical guidance is never forgotten during deep autonomous focus or context compaction.
+8.  **Delegation & Owner Tag Discipline (BKM-049)**: During an autonomous Heads Down sprint, every story MUST declare an Assigned Owner (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). The orchestrating agent must dispatch stories via `delegate.py` adhering to the Tri-Loop safety contracts, diagnostic retries, and handover reflection audits before taking over or mutating state directly.
 
 ## BKM-007: Work Completion Report
 **Objective**: Restore technical context after a deep work cycle.
