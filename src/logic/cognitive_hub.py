@@ -371,10 +371,11 @@ def build_two_mice_stage_prompt(
         )
         return (
             section
-            + "[STAGE_1_INSTRUCTIONS]: You are Brain. Jason asked a technical question. Extract the exact "
-            "technical ground truth (platforms, firmware, tools, scars) from <historical_record> in 3-4 dense "
-            "bullet points. Provide pure technical signal for Pinky — no narrative preamble, no filler, no "
-            "conversational framing. "
+            + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper and Subconscious Intuition node. "
+            "Jason asked a technical question. Evaluate candidate context against the user query: drop irrelevant/tangential items, "
+            "extract the exact technical ground truth (platforms, firmware, tools, scars, bedrock invariants) from <historical_record> in 3-4 dense "
+            "bullet points, and append high-leverage '💡 Curator Note: [ID] connects with [ID]' annotations when synergistic connections exist. "
+            "Provide pure technical signal for Pinky — no narrative preamble, no filler, no conversational framing. "
             "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 3-4 dense technical "
             "bullet points directly, then yield the floor.\n"
             f"[USER_QUERY]: {user_query.strip()}\n"
