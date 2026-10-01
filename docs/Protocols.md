@@ -281,12 +281,16 @@ All diagnostic forensics MUST reference the canonical black box log:
 > **Purpose:** To ensure clear, iterative project development through structured planning and execution.
 
 ### 1. Document Architecture
-*   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/SPRINT_PLAN_SPR_XX_X.md`.
+*   **Location**: All Master Sprint Plans reside in `Portfolio_Dev/docs/sprints/active/SPRINT_PLAN_SPR_XX_X.md`.
 *   **Structure**: Every task/story MUST include:
-    - **How**: Technical implementation path.
-    - **Why**: Strategic architectural rationale.
+    - **How & Why**: Technical implementation mechanism and strategic architectural rationale.
     - **Assigned Owner**: Explicit execution tier (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). Direct code modifications by AGY on swarm-tagged stories are strictly forbidden per `BKM-049`.
     - **Target Files**: Explicit file paths targeted for modification.
+    - **Mandatory 4-Anchor Specification ([BKM-043] / [BKM-048] "Fingertips" Law)**:
+      * **Anchor 1 (Target Files & Line Anchors)**: Explicit file paths, target functions/classes, and line numbers.
+      * **Anchor 2 (Verification Command)**: Verbatim CLI/pytest command and exact return/exit criteria.
+      * **Anchor 3 (Verbatim Code Anchors & Injection Specs)**: **MANDATORY EXECUTABLE CODE SNIPPETS**. Must contain the exact before/after code blocks, function signatures, class stubs, and complete companion pytest test fixtures. Descriptive summaries or omitting Anchor 3 code blocks is strictly forbidden.
+      * **Anchor 4 (Silicon Invariants & DNA Links)**: Memory caps, latency budgets, and BKM/FEAT anchors.
 *   **Pointers**: Conductor-level plans (`conductor/tracks/<track_id>/plan.md`) must contain explicit pointers to the Master Sprint Plan and any relevant forensic audits or BKMs.
 
 ### 2. The Planning Phase (The "Greenlight" Gate)
