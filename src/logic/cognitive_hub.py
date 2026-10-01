@@ -1441,6 +1441,11 @@ class CognitiveHub:
                         "casual": {"type": "number"},
                         "intrigue": {"type": "number"},
                         "importance": {"type": "number"},
+                        "target_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Target DNA domains/collections to search (e.g. ['behavioral_dna'], ['feature_dna'], ['career_ledger'], or [] for ZERO DNA / casual banter)",
+                        },
                     },
                     "required": [
                         "inferred_intent",
@@ -1488,6 +1493,7 @@ class CognitiveHub:
             "  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n"
             "  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n"
             "• INFERRED INTENT: Concise 3-6 word action phrase.\n"
+            "• TARGET DOMAINS: Array of collections to search (e.g. ['behavioral_dna'], ['feature_dna'], ['career_ledger'], ['wisdom_dna'], or [] for ZERO DNA / casual talk).\n"
         )
         if vector_hint:
             triage_mode_context += f"\n{vector_hint}\n"
@@ -1658,6 +1664,10 @@ class CognitiveHub:
         t_parsed["calculated_interest"] = final_interest
 
         target = t_parsed.get("addressed_to", "PINKY").lower()
+        target_domains = t_parsed.get("target_domains", [])
+        if not isinstance(target_domains, list):
+            target_domains = [str(target_domains)] if target_domains else []
+        self.current_target_domains = target_domains
 
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
