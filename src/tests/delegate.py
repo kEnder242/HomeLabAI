@@ -1086,8 +1086,8 @@ def delegate(
             "atlas",
             "sisyphus-junior",
             "junior",
-            "momus",
-            "librarian",
+            "hephaestus",
+            "daedalus",
             "default",
         ):
             print(
@@ -1329,30 +1329,20 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
             except Exception:
                 pass
 
-        # Category routing for Atlas subagent tasks:
-        # coder -> M5 Air MLX (Junior / Daedalus for surgical code patching)
-        # unspecified-low -> Windows RTX 4090 (Librarian / Momus for symbol resolution & test running)
-        _scout_category = "deep" if cloud_only else "unspecified-low"
         _coder_category = "deep" if cloud_only else "coder"
-        _verifier_category = "deep" if cloud_only else "unspecified-low"
         mandate_block = f"""[STORY {story_num}: {title}]
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-[ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 3-TIER BICAMERAL CASCADE]
-1. Read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
-2. [STAGE 1: ANCHOR RESOLUTION — KENDER SCOUT]
-   - If line numbers or incumbent code anchors are unknown, dispatch task(category="{_scout_category}", prompt="[LIBRARIAN: Inspect {target_files or reference_file} and extract exact code anchors for Story {story_num}]").
-3. [STAGE 2: SURGICAL CODE MODIFICATION — M5 AIR JUNIOR]
-   - Dispatch task(category="{_coder_category}", prompt="[TASK: Modify {target_files or reference_file} for Story {story_num}] - Tool: clara-dna_safe_patch ...") to Junior on Apple M5 Air.
-   - Junior has NO bash and runs NO tests. Junior applies surgical AST patches and relays non-blocking lint errors.
-4. [STAGE 3: VERIFICATION & LINT RUNNER — KENDER MOMUS]
-   - Dispatch task(category="{_verifier_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus on KENDER.
-   - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
-   - If Momus reports failure, dispatch task(category="{_coder_category}", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Junior (M5 Air) to solve the subtle AST/escaping error.
-5. [STAGE 4: SYNTHESIS & REPORT]
-   - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
-        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian ({_scout_category}), patch via Junior ({_coder_category}), verify via Momus ({_verifier_category}), escalate to Daedalus ({_coder_category}) on error."
+[ORCHESTRATION INSTRUCTIONS FOR ATLAS — 2-TIER SWARM CONDUCTION]
+You are Atlas, the Layer 2 Tactical Conductor on Node KENDER (Windows RTX 4090).
+You operate under AGENTS_L2.md. You have read, grep, glob, and task. You have write: deny and edit: deny.
+
+1. Inspect the target file(s) and Story {story_num} specification.
+2. In Turn 2, synthesize a single bounded (<2,000 token) 4-anchor contract for Layer 3.
+3. Dispatch via task(category="{_coder_category}", prompt="You are operating under AGENTS_L3.md. Target: {target_files or reference_file}. Tool: clara-dna_safe_patch. Details: <exact patch anchors and implementation instructions>. Verification: <command>").
+4. When Layer 3 completes or reports blockers, summarize the completion/reflection report to AGY. Emit ONE task() call per turn."""
+        note_block = f"[NOTE] Read Story {story_num}. Ingest requirements, inspect target files, and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
