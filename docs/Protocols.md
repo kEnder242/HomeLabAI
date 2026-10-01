@@ -791,7 +791,7 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    - Paves a clean path for local execution by eliminating exploratory paralysis and establishing bidirectional honor-bound trust across swarm layers.
 
 #### 3. Mandatory Diagnostics Between Retries
-Before initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform five diagnostic probes:
+Before formulating any fix or initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform a comprehensive comparative audit across five diagnostic dimensions:
 0. **Playbook Quick-Diagnostic Index Audit (Mandatory First Step):**
    - Read Section 0 (lines 1–60) of [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md).
    - Match the observed failure symptom directly against the Playbook's Quick-Diagnostic Routing Table before re-dispatching.
@@ -802,9 +802,10 @@ Before initiating a retry for a stalled, failed, or timed-out subagent, the orch
 3. **Session Transcripts & Logs:**
    - Inspect OpenCode / subagent transcripts for syntax loops, compaction triggers, or unhandled tool rejections.
    - Verify whether OpenCode auto-compaction hijacked the context window.
-4. **Harness & Configuration Audit:**
-   - Audit `delegate.py` and `opencode.json` for prompt contradictions (e.g. Single Task Law vs. micro-patterns).
-   - Verify file permissions, diff patch formats, and linting constraints.
+4. **Comprehensive Code, Configuration & Environment Audit:**
+   - Compare the playbook rules directly against the actual delegation code in [`delegate.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/tests/delegate.py).
+   - Audit central configuration files (`~/.config/opencode/oh-my-openagent.json`, `opencode.json`) for tool permissions, prompt bloat, or model routing drift.
+   - Verify target files, inline AST line anchors, and runtime harness environment to guarantee zero discrepancy before retrying.
 
 #### 4. Root Cause Escalation Matrix
 | Failure Symptom | Diagnostic Finding | Remediation Required Before Retry |
