@@ -855,6 +855,9 @@ class FoyerRouter:
                     "/attendant/dna/connections_graph",
                     self.handle_dna_connections_graph,
                 ),
+                # [FEAT-632 / FEAT-633 / FEAT-634] Flywheel Closure: Thumbs Up/Down Telemetry
+                web.post("/feedback", self.handle_feedback),
+                web.post("/attendant/feedback", self.handle_feedback),
                 # [SPR-85.6 / FEAT-595] Google Docs Export Engine (/paper/export_gdoc)
                 web.post("/paper/export_gdoc", self.handle_paper_export_gdoc),
                 web.post("/attendant/paper/export_gdoc", self.handle_paper_export_gdoc),
@@ -1030,6 +1033,28 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-561] Wisdom save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_feedback(self, request: web.Request) -> web.Response:
+        """[FEAT-632 / FEAT-633 / FEAT-634] Flywheel Closure: Record user feedback (thumbs up/down)."""
+        try:
+            payload = await request.json()
+            turn_id = payload.get("turn_id", "unknown")
+            rating = str(payload.get("rating", "UP")).upper()
+            notes = payload.get("notes", "")
+            entry = {
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "turn_id": turn_id,
+                "rating": rating,
+                "notes": notes,
+            }
+            ledger_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/data/foyer_feedback_ledger.jsonl")
+            os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+            with open(ledger_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+            return web.json_response({"status": "success", "recorded": entry})
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-632] Feedback recording failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=400)
 
     async def handle_wisdom_save_card(self, request):
         """[FEAT-568] REST endpoint for atomic single-card surgical saving and instant ChromaDB sync."""
