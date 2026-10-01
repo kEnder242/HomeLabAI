@@ -1197,13 +1197,48 @@ def delegate(
 
     if not active_session_valid:
         # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
-        _nuke_all_sessions()
+        agent_model_bindings = {
+            "atlas": {
+                "providerID": "my-windows-4090",
+                "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+            },
+            "sisyphus": {
+                "providerID": "opencode",
+                "modelID": "big-pickle",
+            },
+            "oracle": {
+                "providerID": "opencode",
+                "modelID": "big-pickle",
+            },
+            "prometheus": {
+                "providerID": "opencode",
+                "modelID": "big-pickle",
+            },
+            "sisyphus-junior": {
+                "providerID": "my-m5-mlx",
+                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            },
+            "junior": {
+                "providerID": "my-m5-mlx",
+                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            },
+            "hephaestus": {
+                "providerID": "my-m5-mlx",
+                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            },
+        }
+
         try:
             session_payload = {
                 "directory": target_dir,
                 "title": session_title,
                 "agent": agent,
             }
+            if agent in agent_model_bindings:
+                session_payload["model"] = {
+                    "providerID": agent_model_bindings[agent]["providerID"],
+                    "id": agent_model_bindings[agent]["modelID"],
+                }
             req = urllib.request.Request(
                 f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
                 data=json.dumps(session_payload).encode("utf-8"),
@@ -1304,27 +1339,30 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
             except Exception:
                 pass
 
-        # [FEAT-515 / Task 69.6.3] Lean Atlas Task Dispatcher:
-        # Category: unspecified-low (local Windows RTX 4090) or deep (cloud ladder under --cloud-only)
-        _atlas_dispatch_category = "deep" if cloud_only else "unspecified-low"
+        # Category routing for Atlas subagent tasks:
+        # coder -> M5 Air MLX (Junior / Daedalus for surgical code patching)
+        # unspecified-low -> Windows RTX 4090 (Librarian / Momus for symbol resolution & test running)
+        _scout_category = "deep" if cloud_only else "unspecified-low"
+        _coder_category = "deep" if cloud_only else "coder"
+        _verifier_category = "deep" if cloud_only else "unspecified-low"
         mandate_block = f"""[STORY {story_num}: {title}]
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-[ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 4-STAGE CASCADE]
+[ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 3-TIER BICAMERAL CASCADE]
 1. Read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
-2. [STAGE 1: ANCHOR RESOLUTION]
-   - If line numbers or incumbent code anchors are unknown, dispatch task(category="{_atlas_dispatch_category}", prompt="[LIBRARIAN: Inspect {target_files or reference_file} and extract exact code anchors for Story {story_num}]").
-3. [STAGE 2: SURGICAL CODE MODIFICATION]
-   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[TASK: Modify {target_files or reference_file} for Story {story_num}] - Tool: clara-dna_safe_patch ...") to Junior.
-   - Junior has NO bash and runs NO tests. Junior relays non-blocking lint errors from safe_patch.
-4. [STAGE 3: VERIFICATION & LINT RUNNER]
-   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus.
+2. [STAGE 1: ANCHOR RESOLUTION — KENDER SCOUT]
+   - If line numbers or incumbent code anchors are unknown, dispatch task(category="{_scout_category}", prompt="[LIBRARIAN: Inspect {target_files or reference_file} and extract exact code anchors for Story {story_num}]").
+3. [STAGE 2: SURGICAL CODE MODIFICATION — M5 AIR JUNIOR]
+   - Dispatch task(category="{_coder_category}", prompt="[TASK: Modify {target_files or reference_file} for Story {story_num}] - Tool: clara-dna_safe_patch ...") to Junior on Apple M5 Air.
+   - Junior has NO bash and runs NO tests. Junior applies surgical AST patches and relays non-blocking lint errors.
+4. [STAGE 3: VERIFICATION & LINT RUNNER — KENDER MOMUS]
+   - Dispatch task(category="{_verifier_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus on KENDER.
    - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
-   - If Momus reports failure, dispatch task(category="coder", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Junior (M5 Air) to solve the subtle AST/escaping error.
+   - If Momus reports failure, dispatch task(category="{_coder_category}", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Junior (M5 Air) to solve the subtle AST/escaping error.
 5. [STAGE 4: SYNTHESIS & REPORT]
    - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
-        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus, escalate to Daedalus on error."
+        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian ({_scout_category}), patch via Junior ({_coder_category}), verify via Momus ({_verifier_category}), escalate to Daedalus ({_coder_category}) on error."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
@@ -1520,7 +1558,15 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     start_time = time.time()
     model_str = agent
 
-    msg_dict = {"parts": [{"type": "text", "text": prompt}]}
+    msg_dict = {
+        "agent": agent,
+        "parts": [{"type": "text", "text": prompt}],
+    }
+    if agent in agent_model_bindings:
+        msg_dict["model"] = {
+            "providerID": agent_model_bindings[agent]["providerID"],
+            "modelID": agent_model_bindings[agent]["modelID"],
+        }
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     post_result = None
