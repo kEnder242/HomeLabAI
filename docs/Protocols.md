@@ -286,7 +286,7 @@ All diagnostic forensics MUST reference the canonical black box log:
     - **How & Why**: Technical implementation mechanism and strategic architectural rationale.
     - **Assigned Owner**: Explicit execution tier (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). Direct code modifications by AGY on swarm-tagged stories are strictly forbidden per `BKM-049`.
     - **Target Files**: Explicit file paths targeted for modification.
-    - **Mandatory 4-Anchor Specification ([BKM-043] / [BKM-048] "Fingertips" Law)**:
+    - **Mandatory 4-Anchor Specification ([BKM-043])**:
       * **Anchor 1 (Target Files & Line Anchors)**: Explicit file paths, target functions/classes, and line numbers.
       * **Anchor 2 (Verification Command)**: Verbatim CLI/pytest command and exact return/exit criteria.
       * **Anchor 3 (Verbatim Code Anchors & Injection Specs)**: **MANDATORY EXECUTABLE CODE SNIPPETS**. Must contain the exact before/after code blocks, function signatures, class stubs, and complete companion pytest test fixtures. Descriptive summaries or omitting Anchor 3 code blocks is strictly forbidden.
