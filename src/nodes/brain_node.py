@@ -94,5 +94,25 @@ async def get_host_vitals() -> str:
         return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
 
 
+@mcp.tool()
+async def direct_flight_override(target_domains: list[str], query: str = "") -> str:
+    """[FEAT-636] Direct Flight: In-flight dynamic retrieval scope override.
+    Allows Brain to immediately pull from specific Chroma collections (e.g. ['blackboard_ledger_dna'])
+    without triggering a recursive 2-3s re-triage loop.
+    """
+    try:
+        from logic.vector_pre_triage import probe_clara_dna_sync
+        res = probe_clara_dna_sync(query, collections=target_domains)
+        return json.dumps({
+            "status": "success",
+            "target_domains": target_domains,
+            "semantic_hint": res.get("semantic_hint", ""),
+            "best_doc": res.get("best_doc", ""),
+            "min_distance": res.get("min_distance", 1.0),
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
 if __name__ == "__main__":
     node.run()  # [FEAT-240] Run the Native Sampling Bridge
