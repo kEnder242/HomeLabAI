@@ -84,17 +84,14 @@ async def ping_engine(force: bool = False) -> str:
 
 
 @mcp.tool()
-async def direct_flight_override(target_domain: str, query: str) -> str:
-    """[FEAT-636] In-Flight Dynamic Retrieval Scope Override.
-    Directly queries a specific CLaRa-DNA collection in-flight without triggering a recursive re-triage loop.
-    """
+async def get_host_vitals() -> str:
+    """[FEAT-557] Query live host hardware telemetry (GPU VRAM, host RAM, CPU load average, active model residency)."""
     try:
-        from logic.vector_pre_triage import probe_clara_dna_sync
+        from infra.live_telemetry import get_host_vitals as _ghv
 
-        res = probe_clara_dna_sync(query, collections=[target_domain])
-        return json.dumps(res, indent=2)
+        return json.dumps(_ghv(), indent=2)
     except Exception as e:
-        return json.dumps({"error": f"Direct flight override failed: {e}"})
+        return json.dumps({"error": f"Failed to retrieve host vitals: {e}"})
 
 
 if __name__ == "__main__":
