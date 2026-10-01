@@ -1197,36 +1197,26 @@ def delegate(
 
     if not active_session_valid:
         # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
-        agent_model_bindings = {
-            "atlas": {
-                "providerID": "my-windows-4090",
-                "modelID": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
-            },
-            "sisyphus": {
-                "providerID": "opencode",
-                "modelID": "big-pickle",
-            },
-            "oracle": {
-                "providerID": "opencode",
-                "modelID": "big-pickle",
-            },
-            "prometheus": {
-                "providerID": "opencode",
-                "modelID": "big-pickle",
-            },
-            "sisyphus-junior": {
-                "providerID": "my-m5-mlx",
-                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            },
-            "junior": {
-                "providerID": "my-m5-mlx",
-                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            },
-            "hephaestus": {
-                "providerID": "my-m5-mlx",
-                "modelID": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            },
-        }
+        # Dynamically resolve agent model bindings from oh-my-openagent.json (declarative source of record)
+        agent_model_bindings = {}
+        omo_config_path = os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
+        if os.path.exists(omo_config_path):
+            try:
+                with open(omo_config_path, "r", encoding="utf-8") as f:
+                    omo_cfg = json.load(f)
+                    agents_cfg = omo_cfg.get("agents", {})
+                    for a_name, a_info in agents_cfg.items():
+                        raw_model = a_info.get("model", "")
+                        if "/" in raw_model:
+                            prov, mod = raw_model.split("/", 1)
+                            agent_model_bindings[a_name] = {
+                                "providerID": prov,
+                                "modelID": mod,
+                            }
+                    if "sisyphus-junior" in agent_model_bindings and "junior" not in agent_model_bindings:
+                        agent_model_bindings["junior"] = agent_model_bindings["sisyphus-junior"]
+            except Exception:
+                pass
 
         try:
             session_payload = {
@@ -1558,15 +1548,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
     start_time = time.time()
     model_str = agent
 
-    msg_dict = {
-        "agent": agent,
-        "parts": [{"type": "text", "text": prompt}],
-    }
-    if agent in agent_model_bindings:
-        msg_dict["model"] = {
-            "providerID": agent_model_bindings[agent]["providerID"],
-            "modelID": agent_model_bindings[agent]["modelID"],
-        }
+    msg_dict = {"parts": [{"type": "text", "text": prompt}]}
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     post_result = None
