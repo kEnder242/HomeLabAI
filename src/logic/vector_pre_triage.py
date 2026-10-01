@@ -61,9 +61,12 @@ def _get_chroma_client():
     return _chroma_client
 
 
-def probe_clara_dna_sync(query: str, top_k: int = 1) -> dict[str, Any]:
+def probe_clara_dna_sync(
+    query: str, top_k: int = 1, collections: list[str] | None = None
+) -> dict[str, Any]:
     """
     Synchronous vector probe against CLaRa-DNA collections.
+    Supports optional collection filtering and immediate 0ms bypass for ZERO DNA ([]).
     Returns:
     {
         "min_distance": float,
@@ -75,6 +78,18 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> dict[str, Any]:
         "is_casual_candidate": bool
     }
     """
+    # [FEAT-540 / Story 96.2] Immediate 0ms bypass for explicit ZERO DNA
+    if collections is not None and len(collections) == 0:
+        return {
+            "min_distance": 1.0,
+            "best_collection": "",
+            "best_meta": {},
+            "best_doc": "",
+            "results_by_collection": {},
+            "semantic_hint": "[ZERO_DNA]: Vector probe bypassed by intent scope filter.",
+            "is_casual_candidate": True,
+        }
+
     model = _get_embedding_model()
     client = _get_chroma_client()
 
@@ -109,7 +124,19 @@ def probe_clara_dna_sync(query: str, top_k: int = 1) -> dict[str, Any]:
     best_doc = ""
     results_by_col = {}
 
-    for cname in PRE_TRIAGE_COLLECTIONS:
+    # Determine target collections
+    if collections:
+        target_cols = []
+        for c in PRE_TRIAGE_COLLECTIONS:
+            for req in collections:
+                req_clean = req.strip().lower()
+                if req_clean in c.lower() or c.lower().startswith(req_clean):
+                    target_cols.append(c)
+                    break
+    else:
+        target_cols = PRE_TRIAGE_COLLECTIONS
+
+    for cname in target_cols:
         try:
             col = client.get_collection(cname)
             res = col.query(
