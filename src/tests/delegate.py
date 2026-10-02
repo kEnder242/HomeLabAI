@@ -1086,8 +1086,8 @@ def delegate(
             "atlas",
             "sisyphus-junior",
             "junior",
-            "momus",
-            "librarian",
+            "hephaestus",
+            "daedalus",
             "default",
         ):
             print(
@@ -1197,13 +1197,38 @@ def delegate(
 
     if not active_session_valid:
         # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
-        _nuke_all_sessions()
+        # Dynamically resolve agent model bindings from oh-my-openagent.json (declarative source of record)
+        agent_model_bindings = {}
+        omo_config_path = os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
+        if os.path.exists(omo_config_path):
+            try:
+                with open(omo_config_path, "r", encoding="utf-8") as f:
+                    omo_cfg = json.load(f)
+                    agents_cfg = omo_cfg.get("agents", {})
+                    for a_name, a_info in agents_cfg.items():
+                        raw_model = a_info.get("model", "")
+                        if "/" in raw_model:
+                            prov, mod = raw_model.split("/", 1)
+                            agent_model_bindings[a_name] = {
+                                "providerID": prov,
+                                "modelID": mod,
+                            }
+                    if "sisyphus-junior" in agent_model_bindings and "junior" not in agent_model_bindings:
+                        agent_model_bindings["junior"] = agent_model_bindings["sisyphus-junior"]
+            except Exception:
+                pass
+
         try:
             session_payload = {
                 "directory": target_dir,
                 "title": session_title,
                 "agent": agent,
             }
+            if agent in agent_model_bindings:
+                session_payload["model"] = {
+                    "providerID": agent_model_bindings[agent]["providerID"],
+                    "id": agent_model_bindings[agent]["modelID"],
+                }
             req = urllib.request.Request(
                 f"http://127.0.0.1:{OPENCODE_REST_PORT}/session",
                 data=json.dumps(session_payload).encode("utf-8"),
@@ -1304,27 +1329,20 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
             except Exception:
                 pass
 
-        # [FEAT-515 / Task 69.6.3] Lean Atlas Task Dispatcher:
-        # Category: unspecified-low (local Windows RTX 4090) or deep (cloud ladder under --cloud-only)
-        _atlas_dispatch_category = "deep" if cloud_only else "unspecified-low"
+        _coder_category = "deep" if cloud_only else "coder"
         mandate_block = f"""[STORY {story_num}: {title}]
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-[ORCHESTRATION INSTRUCTIONS FOR ATLAS — THE 4-STAGE CASCADE]
-1. Read the Story {story_num} section in '{reference_file}'{_sprint_line_pointer}.
-2. [STAGE 1: ANCHOR RESOLUTION]
-   - If line numbers or incumbent code anchors are unknown, dispatch task(category="{_atlas_dispatch_category}", prompt="[LIBRARIAN: Inspect {target_files or reference_file} and extract exact code anchors for Story {story_num}]").
-3. [STAGE 2: SURGICAL CODE MODIFICATION]
-   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[TASK: Modify {target_files or reference_file} for Story {story_num}] - Tool: clara-dna_safe_patch ...") to Junior.
-   - Junior has NO bash and runs NO tests. Junior relays non-blocking lint errors from safe_patch.
-4. [STAGE 3: VERIFICATION & LINT RUNNER]
-   - Dispatch task(category="{_atlas_dispatch_category}", prompt="[MOMUS: Run verification command: pytest / python3 build / ruff check]") to Momus.
-   - Momus executes bash, digests tracebacks, and reports pass/fail back to you.
-   - If Momus reports failure, dispatch task(category="coder", prompt="[DAEDALUS: Fix failing patch for Story {story_num}] - Failing Diff: ... - Traceback: ...") to Junior (M5 Air) to solve the subtle AST/escaping error.
-5. [STAGE 4: SYNTHESIS & REPORT]
-   - When Momus reports all tests PASS, synthesize a 2-line completion report to AGY."""
-        note_block = f"[NOTE] Read Story {story_num}. Drive the Agent Cascade: resolve anchors via Librarian, patch via Junior, verify via Momus, escalate to Daedalus on error."
+[ORCHESTRATION INSTRUCTIONS FOR ATLAS — 2-TIER SWARM CONDUCTION]
+You are Atlas, the Layer 2 Tactical Conductor on Node KENDER (Windows RTX 4090).
+You operate under AGENTS_L2.md. You have read, grep, glob, and task. You have write: deny and edit: deny.
+
+1. Inspect the target file(s) and Story {story_num} specification.
+2. In Turn 2, synthesize a single bounded (<2,000 token) 4-anchor contract for Layer 3.
+3. Dispatch via task(category="{_coder_category}", prompt="You are operating under AGENTS_L3.md. Target: {target_files or reference_file}. Tool: clara-dna_safe_patch. Details: <exact patch anchors and implementation instructions>. Verification: <command>").
+4. When Layer 3 completes or reports blockers, summarize the completion/reflection report to AGY. Emit ONE task() call per turn."""
+        note_block = f"[NOTE] Read Story {story_num}. Ingest requirements, inspect target files, and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
 You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
@@ -1369,32 +1387,32 @@ Sprint Reference: {effective_sprint_doc}
 ---
 """
 
-    # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
+    # [FEAT-600 / LAB-019 / FEAT-631] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
     ambient_grounding_block = ""
-    if not local_only:
-        try:
-            req_payload = json.dumps(
-                {
-                    "prompt": f"{title} {details[:300]}",
-                    "invocationNum": 1,
-                    "agent": agent,
-                }
-            ).encode("utf-8")
-            amb_req = urllib.request.Request(
-                "http://127.0.0.1:8765/ambient_recall",
-                data=req_payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
-                amb_data = json.loads(amb_resp.read().decode("utf-8"))
-                steps = amb_data.get("injectSteps", [])
-                if steps and "ephemeralMessage" in steps[0]:
-                    ambient_grounding_block = (
-                        f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
-                    )
-        except Exception:
-            pass
-    elif local_only and effective_sprint_doc:
+    try:
+        req_payload = json.dumps(
+            {
+                "prompt": f"{title} {details[:300]}",
+                "invocationNum": 1,
+                "agent": agent,
+            }
+        ).encode("utf-8")
+        amb_req = urllib.request.Request(
+            "http://127.0.0.1:8765/ambient_recall",
+            data=req_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
+            amb_data = json.loads(amb_resp.read().decode("utf-8"))
+            steps = amb_data.get("injectSteps", [])
+            if steps and "ephemeralMessage" in steps[0]:
+                ambient_grounding_block = (
+                    f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+                )
+    except Exception:
+        pass
+
+    if local_only and effective_sprint_doc:
         # [Sprint 76 Action 4] Lean Local Anchor: Zero prompt bloat. Point directly to disk.
         tier1_block = f"""[TIER 1: SOVEREIGN SPRINT CONTEXT]
 - Reference File: {effective_sprint_doc} (On disk; inspect via read tool if architectural context is needed)
