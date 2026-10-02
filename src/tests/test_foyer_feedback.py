@@ -1,175 +1,164 @@
-"""
-[FEAT-632/633/634] Flywheel Closure: Tests for feedback telemetry endpoint.
-
-Tests the /feedback and /attendant/feedback routes for human thumbs up/down telemetry.
-"""
-
-import json
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
-from aiohttp import web
-from aiohttp.test_utils import make_mocked_request
+import asyncio
+import json
+import tempfile
+import os
+import sys
+from pathlib import Path
+from unittest.mock import patch
 
-# Import the FoyerRouter from the correct path
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent / "HomeLabAI" / "src"))
+
+from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
+
+# Import the router module
+import v5.foyer.router as router_mod
 from v5.foyer.router import FoyerRouter
 
 
-class TestFoyerFeedback:
-    """Test feedback telemetry endpoint."""
+class _R:
+    """Dummy class for binding handler methods."""
+    pass
 
-    def setup_method(self, method):
-        """Set up test fixtures before each test method."""
-        # Create a temporary directory for FEEDBACK_LEDGER_PATH
-        self.temp_dir = tempfile.mkdtemp()
-        self.ledger_path = Path(self.temp_dir) / "foyer_feedback_ledger.jsonl"
 
-        # Monkeypatch the module-level FEEDBACK_LEDGER_PATH constant
-        import v5.foyer.router as router_module
-        self.original_feedback_ledger_path = router_module.FEEDBACK_LEDGER_PATH
-        router_module.FEEDBACK_LEDGER_PATH = str(self.ledger_path)
+@pytest.fixture
+def mock_feedback_ledger_path():
+    """Create a temporary ledger file for testing."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+        tmp_ledger_path = f.name
+    
+    yield tmp_ledger_path
+    
+    # Clean up
+    if os.path.exists(tmp_ledger_path):
+        os.unlink(tmp_ledger_path)
 
-        # Create a minimal aiohttp app with only handle_feedback
-        self.app = web.Application()
+
+@pytest.fixture
+def feedback_handler():
+    """Create a feedback handler for testing."""
+    dummy_obj = _R()
+    handler = FoyerRouter.handle_feedback.__get__(dummy_obj, FoyerRouter)
+    return handler
+
+
+@pytest.fixture
+def test_app(feedback_handler, mock_feedback_ledger_path):
+    """Create a test app with the feedback handler."""
+    # Monkey patch the FEEDBACK_LEDGER_PATH
+    original_path = router_mod.FEEDBACK_LEDGER_PATH
+    router_mod.FEEDBACK_LEDGER_PATH = mock_feedback_ledger_path
+    
+    try:
+        # Create a minimal aiohttp app with just the feedback handler
+        app = web.Application()
+        app.router.add_post("/feedback", feedback_handler)
         
-        # Create a bare object to bind the handle_feedback method to
-        bare_router = type('BareRouter', (), {})()
-        bare_router.handle_feedback = FoyerRouter.handle_feedback.__get__(bare_router, FoyerRouter)
-        
-        # Add the route
-        self.app.router.add_post("/feedback", bare_router.handle_feedback)
-        self.app.router.add_post("/attendant/feedback", bare_router.handle_feedback)
-        
-        # Store bare_router for use in tests
-        self.bare_router = bare_router
+        yield app
+    finally:
+        # Restore the original path
+        router_mod.FEEDBACK_LEDGER_PATH = original_path
 
-    def teardown_method(self, method):
-        """Clean up after each test method."""
-        # Restore original FEEDBACK_LEDGER_PATH
-        import v5.foyer.router as router_module
-        router_module.FEEDBACK_LEDGER_PATH = self.original_feedback_ledger_path
 
-        # Clean up temporary directory
-        import shutil
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    @pytest.mark.asyncio
-    async def test_feedback_success_up_and_down(self):
-        """Test successful feedback submission for UP and DOWN ratings."""
-        # Test UP rating
-        request_up = make_mocked_request(
-            'POST',
-            '/feedback',
-            headers={'Content-Type': 'application/json'},
-            app=self.app,
-            payload=json.dumps({"turn_id": "t1", "rating": "UP"}).encode()
+@pytest.mark.asyncio
+async def test_upvote_appends_ledger(test_app, mock_feedback_ledger_path):
+    """Test that upvote appends to ledger correctly."""
+    # Create test client
+    async with TestClient(TestServer(test_app)) as client:
+        # Make a POST request with upvote data
+        response = await client.post(
+            "/feedback",
+            json={
+                "rating": "UP",
+                "query": "q1",
+                "request_id": "r1",
+                "response": "ok"
+            }
         )
         
-        # Add json() method to the request
-        async def json_up():
-            return {"turn_id": "t1", "rating": "UP"}
-        request_up.json = json_up
+        # Verify response
+        assert response.status == 200
+        data = await response.json()
+        assert data["status"] == "success"
+        assert data["rating"] == "UP"
+        assert "latency_ms" in data
+        assert data["latency_ms"] < 10  # Should be fast
         
-        # Call handle_feedback directly
-        response_up = await self.bare_router.handle_feedback(request_up)
-        assert response_up.status == 200
-        data_up = json.loads(response_up.text)
-        assert data_up["status"] == "success"
-        assert data_up["turn_id"] == "t1"
-        assert data_up["rating"] == "UP"
-        assert "ledger" in data_up
-        assert "timestamp" in data_up
+        # Verify ledger file was created and contains the data
+        with open(mock_feedback_ledger_path, 'r') as f:
+            lines = f.readlines()
+            assert len(lines) == 1
+            record = json.loads(lines[0])
+            assert record["rating"] == "UP"
+            assert record["query"] == "q1"
+            assert record["request_id"] == "r1"
+            assert record["source"] == "UI"
 
-        # Test DOWN rating
-        request_down = make_mocked_request(
-            'POST',
-            '/feedback',
-            headers={'Content-Type': 'application/json'},
-            app=self.app,
-            payload=json.dumps({"turn_id": "t1", "rating": "DOWN"}).encode()
+
+@pytest.mark.asyncio
+async def test_downvote_appends_ledger_and_foil(test_app, mock_feedback_ledger_path):
+    """Test that downvote appends both main record and memory_foil record."""
+    # Create test client
+    async with TestClient(TestServer(test_app)) as client:
+        # Make a POST request with downvote data
+        response = await client.post(
+            "/feedback",
+            json={
+                "rating": "DOWN",
+                "query": "q2",
+                "request_id": "r2",
+                "response": "not good",
+                "note": "bad response"
+            }
         )
         
-        # Add json() method to the request
-        async def json_down():
-            return {"turn_id": "t1", "rating": "DOWN"}
-        request_down.json = json_down
+        # Verify response
+        assert response.status == 200
+        data = await response.json()
+        assert data["status"] == "success"
+        assert data["rating"] == "DOWN"
         
-        response_down = await self.bare_router.handle_feedback(request_down)
-        assert response_down.status == 200
-        data_down = json.loads(response_down.text)
-        assert data_down["status"] == "success"
-        assert data_down["turn_id"] == "t1"
-        assert data_down["rating"] == "DOWN"
+        # Verify ledger file contains 2 lines: main record + memory_foil
+        with open(mock_feedback_ledger_path, 'r') as f:
+            lines = f.readlines()
+            assert len(lines) == 2
+            
+            # First line should be the main record
+            main_record = json.loads(lines[0])
+            assert main_record["rating"] == "DOWN"
+            assert main_record["query"] == "q2"
+            assert main_record["request_id"] == "r2"
+            assert main_record["source"] == "UI"
+            assert main_record["user_note"] == "bad response"
+            
+            # Second line should be the memory_foil record
+            foil_record = json.loads(lines[1])
+            assert foil_record["type"] == "memory_foil"
+            assert foil_record["request_id"] == "r2"
+            assert foil_record["query"] == "q2"
+            assert foil_record["note"] == "bad response"
 
-        # Verify ledger file contains both entries
-        assert self.ledger_path.exists()
-        lines = self.ledger_path.read_text().strip().split("\n")
-        assert len(lines) == 2
 
-        # Parse and verify each record
-        record1 = json.loads(lines[0])
-        record2 = json.loads(lines[1])
-
-        # Check first record (UP)
-        assert record1["turn_id"] == "t1"
-        assert record1["rating"] == "UP"
-        assert "timestamp" in record1
-        assert "notes" in record1
-
-        # Check second record (DOWN)
-        assert record2["turn_id"] == "t1"
-        assert record2["rating"] == "DOWN"
-        assert "timestamp" in record2
-        assert "notes" in record2
-
-    @pytest.mark.asyncio
-    async def test_feedback_validation_errors(self):
-        """Test feedback validation error cases."""
-        # Create a bare object to bind the handle_feedback method to
-        bare_router = type('BareRouter', (), {})()
-        bare_router.handle_feedback = FoyerRouter.handle_feedback.__get__(bare_router, FoyerRouter)
-
-        # Test missing turn_id
-        request_no_turn = make_mocked_request(
-            'POST',
-            '/feedback',
-            headers={'Content-Type': 'application/json'},
-            app=self.app,
-            payload=json.dumps({"rating": "UP"}).encode()
+@pytest.mark.asyncio
+async def test_invalid_rating_rejected(test_app):
+    """Test that invalid rating is rejected with 400 error."""
+    # Create test client
+    async with TestClient(TestServer(test_app)) as client:
+        # Make a POST request with invalid rating
+        response = await client.post(
+            "/feedback",
+            json={
+                "rating": "MAYBE",
+                "query": "q3",
+                "request_id": "r3",
+                "response": "test"
+            }
         )
         
-        # Add json() method to the request
-        async def json_no_turn():
-            return {"rating": "UP"}
-        request_no_turn.json = json_no_turn
-        
-        response_no_turn = await bare_router.handle_feedback(request_no_turn)
-        assert response_no_turn.status == 400
-        data_no_turn = json.loads(response_no_turn.text)
-        assert data_no_turn["status"] == "ERROR"
-        assert "'turn_id' is required" in data_no_turn["message"]
-
-        # Test invalid rating
-        request_invalid_rating = make_mocked_request(
-            'POST',
-            '/feedback',
-            headers={'Content-Type': 'application/json'},
-            app=self.app,
-            payload=json.dumps({"turn_id": "x", "rating": "SIDEWAYS"}).encode()
-        )
-        
-        # Add json() method to the request
-        async def json_invalid_rating():
-            return {"turn_id": "x", "rating": "SIDEWAYS"}
-        request_invalid_rating.json = json_invalid_rating
-        
-        response_invalid_rating = await bare_router.handle_feedback(request_invalid_rating)
-        assert response_invalid_rating.status == 400
-        data_invalid_rating = json.loads(response_invalid_rating.text)
-        assert data_invalid_rating["status"] == "ERROR"
-        assert "'rating' must be UP or DOWN" in data_invalid_rating["message"]
-
-        # Verify ledger file is empty (no valid records written)
-        assert not self.ledger_path.exists() or self.ledger_path.read_text().strip() == ""
+        # Verify response
+        assert response.status == 400
+        data = await response.json()
+        assert data["status"] == "ERROR"
+        assert "rating' must be UP or DOWN" in data["message"]
