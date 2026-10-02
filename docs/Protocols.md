@@ -767,70 +767,29 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 
 ---
 
-## BKM-049: Tri-Loop Story Delegation, Diagnostic & Feedback Protocol
-**Feature Anchor:** `[FEAT-522]` / `[BKM-049]` / `[BKM-069]` / `[VIBE-009]`  
-**Domain:** Swarm Delegation, Autonomous Subagent Execution, Cognitive Feedback & Harness Diagnostics  
+## BKM-049: The Delegation Execution Rulebook (Tri-Loop Story Delegation Protocol)
+**Feature Anchor:** `[FEAT-522]` / `[BKM-049]` / `[BKM-071]` / `[BKM-069]` / `[VIBE-009]`  
+**Domain:** Swarm Delegation, Autonomous Subagent Execution, Story Lifecycle & Execution Invariants  
 **Status:** ACTIVE / MANDATORY  
 
 #### 1. The Tri-Loop Law
 1. **Execution Tiers & Retry Boundaries:**
-   * **`[SWARM:LOCAL]` (The 3-Loop Diagnostic Mandate):** When targeting sovereign local silicon (Windows RTX 4090 Kender + macOS M5 Air Brain), the orchestrator MUST execute up to **3 full diagnostic remediation rounds on local silicon** (Attempt 1a → diagnose & fix harness/prompt/knobs → Attempt 1b → Attempt 1c). Any failure on Attempt 1 requires the orchestrator to diagnose the failure, adjust the harness/config/prompt, and retry on local. Local silicon is NEVER abandoned after a single failure. Only after all 3 diagnosed local attempts are exhausted does the story escalate to Cloud Swarm (`[SWARM:CLOUD]`), followed by Primary Takeover (`[AGY:TAKEOVER]`).
+   * **`[SWARM:LOCAL]` (The 3-Loop Diagnostic Mandate):** When targeting sovereign local silicon (Windows RTX 4090 Kender + macOS M5 Air Brain), the orchestrator MUST execute up to **3 full diagnostic remediation rounds on local silicon** (Attempt 1a → diagnose & fix harness/prompt/knobs via [BKM-071] → Attempt 1b → Attempt 1c). Any failure on Attempt 1 requires the orchestrator to diagnose the failure, adjust the harness/config/prompt, and retry on local. Local silicon is NEVER abandoned after a single failure. Only after all 3 diagnosed local attempts are exhausted does the story escalate to Cloud Swarm (`[SWARM:CLOUD]`), followed by Primary Takeover (`[AGY:TAKEOVER]`).
    * **`[SWARM:CLOUD]` (Direct Cloud Route):** When a story is tagged `[SWARM:CLOUD]`, local attempts are skipped entirely. The dispatch routes directly to Cloud Swarm (Groq / OpenCode Cloud / Big-Pickle / Cohere). If Cloud Swarm fails, it skips local retries and routes straight to Primary Takeover (`[AGY:TAKEOVER]`).
    * **`[AGY:PRIMARY]` (Direct Architectural Core):** Architectural scaffolding, protocol governance, and schema bootstrap executed directly by the primary agent.
-2. **Never Blindly Retry (Zero Internal Script Loops):** `delegate.py` is strictly a single-shot execution harness. Retries are smart outer-loop operations driven by AGY diagnostics, never blind script-level loops. A retry within local silicon (or between escalation tiers) is strictly defined as an execution attempt preceded by root-cause diagnosis and harness/prompt remediation.
+2. **Never Blindly Retry (Zero Internal Script Loops):** `delegate.py` is strictly a single-shot execution harness. Retries are smart outer-loop operations driven by AGY diagnostics, never blind script-level loops. A retry within local silicon (or between escalation tiers) is strictly defined as an execution attempt preceded by root-cause diagnosis and harness/prompt remediation per **[BKM-071]**.
 3. **Non-Convergence Circuit Breaker ("Definition of Insanity" Law):** If a local worker generates degenerate output, enters an unrecoverable non-convergent loop, or demonstrates fundamental capacity failure for a specific task and a viable harness/prompt remedy is not apparent, the orchestrator is authorized to trip the circuit breaker immediately. The orchestrator logs the diagnostic failure reason in the sprint ledger and escalates directly to `[SWARM:CLOUD]` or `[AGY:TAKEOVER]` without burning identical futile retry cycles.
 4. **Safe-Patch Mandate (Anti-Bash-Clobber):** Subagents MUST NOT use destructive bash file writes (`cat << 'EOF' >` or `echo >`) on existing codebase files. Subagents must invoke `clara-dna_safe_patch` (or atomic patchers) for existing files, reserving `write` strictly for new standalone files.
 
-#### 2. The Cognitive Feedback Loop & Handover Reflection Law (VIBE-009 / BKM-069)
-1. **Mandatory Handover Reflection Injection:** Every delegation dispatch MUST include the standardized `[HANDOVER REFLECTION]` prompt block requesting the peer subagent to candidly report:
-   - What tripped it up during execution.
-   - What was inaccurate, missing, or ambiguous in the prompt/anchors.
-   - What single change to the instructions would have accelerated completion.
-2. **Automated Reflection Ingestion & Invariant Persistence:**
-   - The delegation harness (`delegate.py`) automatically extracts the subagent's `[HANDOVER REFLECTION]` from execution output.
-   - Ingests the reflection into persistent short/long-term memory (`icm store -t delegation_feedback`).
-   - Appends the reflection into persistent ledger records (`HomeLabAI/data/delegation_ledger.jsonl` and `Portfolio_Dev/field_notes/data/delegation_ledger.jsonl`).
-3. **Outer Diagnostic Action Loop:** Between local retry attempts (Attempt 1a → 1b → 1c), the primary orchestrator (AGY) MUST read and synthesize the subagent's reflection alongside error traces, fixing missing imports, tightening schema bounds, refining prompt anchors, or tuning `opencode.json` configuration *before* re-dispatching.
-4. **The Psychological Safety & Naive Start Contract:**
-   - Every dispatch explicitly reassures the subagent that all needed context is provided, that first-try naive starts are safe and encouraged, and that mistakes/assumptions will be met with constructive outer-loop feedback rather than silent penalties.
-   - Paves a clean path for local execution by eliminating exploratory paralysis and establishing bidirectional honor-bound trust across swarm layers.
-
-#### 3. Mandatory Diagnostics Between Retries
-Before formulating any fix or initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST perform a comprehensive comparative audit across five diagnostic dimensions:
-0. **Playbook Quick-Diagnostic Index Audit (Mandatory First Step):**
-   - Read Section 0 (lines 1–60) of [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md).
-   - Match the observed failure symptom directly against the Playbook's Quick-Diagnostic Routing Table before re-dispatching.
-1. **Cognitive Feedback Probe:** Inspect the subagent's `[HANDOVER REFLECTION]` and transcript to identify where prompt wording, missing files, or context limits tripped up the model.
-2. **Server & Silicon State:**
-   - Probe inference endpoints (`curl http://192.168.1.46:8000/v1/models`, `nvidia-smi`).
-   - Check socket states (`ss -tulpn | grep 4097` or target port) to ensure child connections are not hanging.
-3. **Session Transcripts & Logs:**
-   - Inspect OpenCode / subagent transcripts for syntax loops, compaction triggers, or unhandled tool rejections.
-   - Verify whether OpenCode auto-compaction hijacked the context window.
-4. **Comprehensive Code, Configuration & Environment Audit:**
-   - Compare the playbook rules directly against the actual delegation code in [`delegate.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/tests/delegate.py).
-   - Audit central configuration files (`~/.config/opencode/oh-my-openagent.json`, `opencode.json`) for tool permissions, prompt bloat, or model routing drift.
-   - Verify target files, inline AST line anchors, and runtime harness environment to guarantee zero discrepancy before retrying.
-
-#### 4. Root Cause Escalation Matrix
-| Failure Symptom | Diagnostic Finding | Remediation Required Before Retry |
-| :--- | :--- | :--- |
-| `"Model is busy"` / 503 | Parallel requests exceeded single-stream ceiling | Enforce Single Task Law; serialize dispatches. |
-| Subagent freezes mid-read | Auto-compaction agent spawned | Set `"compaction": {"auto": false}` in `opencode.json`. |
-| Ruff / Syntax loop | Indentation or multiline whitespace slip | Provide explicit AST line anchors or simplify patch scope. |
-| Bash clobber attempt | Subagent attempted `echo >` on existing file | Inject explicit `clara-dna_safe_patch` JSON tool call schema into prompt. |
-| Context Overflow | Prompt exceeded 28k local ceiling | Decompose prompt into atomic sub-tasks; remove large inline code dumps. |
-| Code 3: Silent Failure | 0 text tokens streamed; session deadlocked | Check inference server health; escalate to Attempt 2 (Cloud Swarm). |
-
-#### 5. The 5-Minute Watchdog & Inspection Gate Law
+#### 2. The 5-Minute Watchdog & Inspection Gate Law
 1. **Inspection Gate, Not an Automatic Kill:** The 5-minute watchdog ceiling is an **Inspection Gate**, not a blind termination trigger. Reaching 5 minutes does NOT mean immediate cancellation.
 2. **Active Progress Probe:** At the 5-minute mark, the orchestrator must inspect the live session:
    - Query `GET /session/{id}` or `GET /session/{id}/message` to inspect token generation and tool calls.
    - **Progressing:** If tokens are actively flowing and constructive work is progressing, extend the timer window.
    - **Stalled:** If token generation is dead, or the agent is spinning in an unresolvable tool retry loop or orphaned subagent wait, only then terminate the attempt.
-3. **Mandatory Zombie Cleanup:** When an attempt is halted, timed out, or interrupted, the harness (`delegate.py`) and orchestrator MUST issue an explicit `POST /session/{id}/abort` frame to the OpenCode REST port. Never allow orphaned subagent loops to churn GPU silicon after client disconnects.
+3. **Mandatory Zombie Cleanup:** When an attempt is halted, timed out, or interrupted, the harness (`delegate.py`) and orchestrator MUST issue an explicit `POST /session/{id}/abort` frame to the OpenCode REST port (`4097`). Never allow orphaned subagent loops to churn GPU silicon after client disconnects.
 
-#### 6. The Story Owner Tag & Anti-Bypass Guard
+#### 3. The Story Owner Tag & Anti-Bypass Guard
 1. **Mandatory Owner Tag in Sprint Stories:** Every story defined in `SPRINT_PLAN_*.md` MUST specify an explicit `Assigned Owner:` tag:
    - `[SWARM:LOCAL]`: Story is assigned to local silicon execution via `delegate.py` with up to 3 diagnostic remediation rounds on local silicon.
    - `[SWARM:CLOUD]`: Story is assigned to cloud swarm burst via `delegate.py` directly, skipping local retries.
@@ -838,19 +797,64 @@ Before formulating any fix or initiating a retry for a stalled, failed, or timed
 2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing delegation attempts via `delegate.py` (including all 3 local diagnostic rounds for `[SWARM:LOCAL]`).
 3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier (and its required diagnostic retries) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
 
-#### 7. Sovereign Local Silicon Topology Invariant (KENDER -> Air)
+#### 4. Sovereign Local Silicon Topology Invariant (KENDER -> Air)
 1. **The Sovereign Conductor & Leaf Worker Pattern:**
    `[SWARM:LOCAL]` execution MUST strictly adhere to the canonical bicameral silicon topology:
-   - **Conductor (Root Dispatch / Architectural Roles):** Node KENDER (Windows RTX 4090 Ollama: `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL` / `Atlas` / `Momus` / `Architect`). Receives the sprint story, conducts architecture planning, and dispatches bounded leaf tasks.
+   - **Conductor (Root Dispatch / Architectural Roles):** Node KENDER (Windows RTX 4090 Ollama: `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL` / `Atlas` / `Architect`). Receives the sprint story, conducts architecture planning, and dispatches bounded leaf tasks.
    - **Leaf Worker (Surgical Patching / Execution):** Node Brain (macOS M5 Air MLX via Headroom `:8002`: `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` / `Sisyphus-Junior` or `Daedalus`). Receives spoon-fed 4-anchor tasks, applies atomic `clara-dna_safe_patch` edits, and is strictly forbidden from delegating further (`task: deny`).
-   - **Verifier (Execution & Lint Runner):** Node KENDER (Windows RTX 4090 / `Momus`). Executes verification commands and digests tracebacks back to Atlas.
 2. **Topology Deviation Invariant:** Any inversion or deviation from this pattern constitutes an immediate operational failure. `delegate.py` and diagnostic monitors MUST enforce this check and fail immediately upon deviation.
 
-#### 8. Post-Sprint Adversarial Oracle Sweep Gate (BKM-061)
-1. **Mandatory Post-Sprint Closeout Sweep:** Before any sprint is marked `COMPLETED` or certified, the orchestrator MUST invoke the **Dual Adversarial Oracle Sweep** defined in **[BKM-061]**:
-   - **Oracle 1 (Architecture & Invariants):** Audits threshold math, schema consistency, vector boundaries, and zero-work invariants.
-   - **Oracle 2 (Side Effects & Blast Radius):** Audits port/socket contention, background daemon lifecycles, and backwards compatibility shims.
-2. **Glaring Issue Remediation Gate:** If oracles discover glaring deficiencies or hidden "Green Lies", the orchestrator MUST fix and certify all glaring issues before publishing the final Work Completion Report ([BKM-007]).
+#### 5. Handover Reflection Ingestion & Feedback Record
+1. **Standardized Reflection Capture:** Every delegation dispatch automatically extracts the subagent's `[HANDOVER REFLECTION]` reporting what tripped it up, what was missing/ambiguous, and what single change would accelerate completion.
+2. **Persistent Storage:** Reflections are persisted to `icm store -t delegation_feedback` and recorded in `HomeLabAI/data/delegation_ledger.jsonl`.
+3. **Inter-Attempt Diagnostic Index:** For all failure diagnosis, prompt tuning, circular trap prevention, and playbook references, proceed immediately to **[BKM-071]**.
+
+---
+
+## BKM-071: Delegation Diagnostics, Circular Traps & Playbook Index Guide
+**Feature Anchor:** `[FEAT-522]` / `[BKM-049]` / `[BKM-071]` / `[BKM-069]` / `[VIBE-009]`  
+**Domain:** Subagent Diagnostics, Troubleshooting Ladders, Anti-Waffle Governance & Playbook Routing  
+**Status:** ACTIVE / MANDATORY  
+
+#### 1. The Diagnostic Escalation Ladder
+Before formulating any fix or initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST execute this 4-step diagnostic ladder:
+1. **Cognitive Feedback Probe:** Inspect the subagent's `[HANDOVER REFLECTION]` and transcript to identify where prompt wording, missing files, or context limits tripped up the model.
+2. **Silicon Endpoints & Socket Health:**
+   - Probe inference endpoints (`curl http://192.168.1.46:8000/v1/models`, `nvidia-smi` on KENDER).
+   - Check socket states (`ss -tulpn | grep 4097`) to ensure child connections are not hanging or orphaned.
+3. **Context Window & Token Audit:**
+   - Verify prompt token count (<1,500 tokens for initial dispatch).
+   - Check whether auto-compaction hijacked the context window or if unhandled tool outputs flooded history.
+4. **Version Control Ground Truth Audit (Mandatory Before Code/Config Edits):**
+   - Check Git status and recent commits in `~/.config/opencode` and `Dev_Lab`:
+     ```bash
+     cd ~/.config/opencode && git status && git log -n 5 --oneline
+     git status && git log -n 5 --oneline
+     ```
+   - Baseline current code against known working commits before editing any config, prompt, or harness script.
+
+#### 2. Waffle Points & Circular Traps Ledger (Anti-Regression Laws)
+When diagnosing failures, agents frequently fall into circular reasoning loops where they modify settings back and forth until returning to the broken origin. The following ledger documents these traps to prevent circular churn:
+
+| Waffle Trap | The Circular Failure Pattern | The Invariant Reality & Fix |
+| :--- | :--- | :--- |
+| **1. Agent Naming & Identity Drift** | Renaming `sisyphus-junior` $\leftrightarrow$ `junior` $\leftrightarrow$ `worker` $\leftrightarrow$ `sisyphus` when a dispatch fails, breaking category mappings in `oh-my-openagent.json`. | **Invariant:** Root dispatch is ALWAYS `atlas` on KENDER 4090; leaf worker is ALWAYS `sisyphus-junior` (or `hephaestus` for greenfield) on M5 Air. Atlas dispatches to Junior via `task(category="coder")`. Never rename agent personas. |
+| **2. Prompt Bloat & "Safety Contract" Token Tax** | Adding 1,500 words of "safety contracts", detailed protocol paragraphs, and schemas into `delegate.py` or system prompts to "help" the model, inflating context to 25k tokens, blowing local KV cache/VRAM, causing the subagent to hang, which prompts adding *more* warnings. | **Invariant:** Keep initial dispatch payloads LEAN (<1,500 tokens). Strip all narrative essays, duplicate rules, and redundant psychological safety contracts. Ground context JITC via CLaRa-DNA (:8001) full documents rather than static text bloat. |
+| **3. Tool Permission Resurrections** | Subagent struggles to find a file or edit text; agent re-enables `grep` or native `edit` in permissions. `grep` floods 100k tokens of logs into context; `edit` fails on 1-space indentation drift. Agent disables them, but re-enables them 2 sprints later. | **Invariant:** `grep` and `edit` are HARD-BANNED (`permission: { "grep": "deny", "edit": "deny" }`). Leaf workers MUST use `clara-dna_safe_patch` for surgical edits and `locate_grounding` for path lookups. Never re-allow banned tools. |
+| **4. Direct Config Edits & Symlink Bypass** | Editing `~/.config/opencode/opencode.json` directly as a regular file, accidentally breaking the symlink to `/home/jallred/Dev_Lab/opencode.json` or leaving changes uncommitted in git. | **Invariant:** `~/.config/opencode/` files are symlinks to version-controlled repo paths. Always edit the repository source file, and commit changes locally to both `Dev_Lab` and `~/.config/opencode`. |
+| **5. The Amnesia / Brainstorming Trap** | When a dispatch stalls or fails, the orchestrator attempts to brainstorm a novel configuration or architecture from scratch, ignoring that a clean working version existed in Git 2 commits ago. | **Invariant:** ALWAYS run `git diff` and `git log` against recent commits in `~/.config/opencode` and `Dev_Lab` before modifying code. Revert to the last known working git checkpoint first. |
+
+#### 3. Quick-Diagnostic Routing Table to OpenAgent Playbook
+For detailed implementation recipes, configuration schemas, and operational mechanics, consult the corresponding sections of [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md):
+
+| Failure Symptom / Scenario | Playbook Reference Section | Key Remediation Action |
+| :--- | :--- | :--- |
+| `"Model is busy"` / 503 / Stream Stalls | [Playbook §1: Model Allocation & Swarm Topology](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#1-model-allocation--swarm-topology) | Check single-concurrency queue; remove `interleaved` reasoning from Ollama provider. |
+| Subagent freezes mid-read / Token Flood | [Playbook §3: Context & Token Optimization](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#3-context--token-optimization) | Disable auto-compaction; enforce `icm_*` and `grep` tool denials; check 750ms CLaRa timeout. |
+| Port 4097 hangs / Zombie Sessions | [Playbook §2: Session Lifecycle & Visibility](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#2-session-lifecycle--webview-visibility-bkm-034-point-12) | Trigger `_nuke_all_sessions()` via `POST /session/{id}/abort`; ensure socket activation on 4096. |
+| Category routing fails / Paid tier fallback | [Playbook §4: Swarm & Configuration Map](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#4-swarm--configuration-map) | Ensure all 7 categories are explicitly declared in `oh-my-openagent.json`. |
+| Tool permission denied on Atlas or Junior | [Playbook §6: The Agent Cascade Architecture](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#6-the-agent-cascade-architecture-context-isolated-swarms) | Verify Cascade Permission Matrix (§6.2): Atlas (`task`, `locate_grounding`), Junior (`safe_patch`, `bash`). |
+| Configuration regressions / Forgotten ground truth | [Playbook §8: Version Control Ground Truth Anchor](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#8-the-version-control-ground-truth-anchor-local-git-repositories) | Inspect `git log` and `git diff` in `~/.config/opencode` and `Dev_Lab`; restore known good commit. |
 
 ---
 
