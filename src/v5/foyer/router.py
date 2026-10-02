@@ -68,6 +68,9 @@ INFRA_CONFIG = os.path.join(
     LAB_DIR, "config", "infrastructure.json"
 )  # [FEAT-028] Deep Thought topology
 
+# [FEAT-632] Flywheel ledger consumed by Portfolio_Dev/sync_chroma_dna.py (loop_dna)
+FEEDBACK_LEDGER_PATH = os.path.join(LAB_DIR, "data", "foyer_feedback_ledger.jsonl")
+
 # [SPR-52.0 / SPR-67.0 / FEAT-500] 5-Stage Division of Labor Orchestration
 DIVISION_OF_LABOR_STAGES = (
     (
@@ -881,6 +884,9 @@ class FoyerRouter:
                 web.post(
                     "/attendant/dna/approve_synapse", self.handle_dna_approve_synapse
                 ),
+                # [FEAT-632/633/634] Flywheel Closure: human thumbs up/down telemetry
+                web.post("/feedback", self.handle_feedback),
+                web.post("/attendant/feedback", self.handle_feedback),
                 # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Hook
                 web.post("/ambient_recall", self.handle_ambient_recall),
                 web.post("/attendant/ambient_recall", self.handle_ambient_recall),
@@ -897,6 +903,58 @@ class FoyerRouter:
 
 
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
+
+    async def handle_feedback(self, request):
+        """[FEAT-632/633/634] Flywheel Closure: thumbs up/down -> feedback ledger.
+
+        Persists a single feedback packet as one JSON line in
+        foyer_feedback_ledger.jsonl (DATA_DIR, same dir as foyer_queue.jsonl)
+        so Portfolio_Dev/sync_chroma_dna.py can parse it into loop_dna.
+        """
+        try:
+            try:
+                payload = await request.json()
+            except Exception:
+                return web.json_response(
+                    {"status": "ERROR", "message": "Invalid JSON body"}, status=400
+                )
+            if not isinstance(payload, dict):
+                return web.json_response(
+                    {"status": "ERROR", "message": "Expected JSON object"}, status=400
+                )
+            turn_id = payload.get("turn_id")
+            if not turn_id:
+                return web.json_response(
+                    {"status": "ERROR", "message": "'turn_id' is required"}, status=400
+                )
+            rating = str(payload.get("rating", "UP")).strip().upper()
+            if rating not in ("UP", "DOWN"):
+                return web.json_response(
+                    {"status": "ERROR", "message": "'rating' must be UP or DOWN"},
+                    status=400,
+                )
+            record = {
+                "timestamp": int(time.time()),
+                "turn_id": str(turn_id),
+                "rating": rating,
+                "notes": str(payload.get("notes", "")),
+            }
+            ledger_path = FEEDBACK_LEDGER_PATH
+            os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+            with open(ledger_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+            return web.json_response(
+                {
+                    "status": "success",
+                    "turn_id": record["turn_id"],
+                    "rating": rating,
+                    "ledger": ledger_path,
+                    "timestamp": record["timestamp"],
+                }
+            )
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-632] Feedback record failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_reload_residents(self, request):
         """[FEAT-490] REST endpoint for fast hot-reloading of resident Python nodes without touching vLLM."""
