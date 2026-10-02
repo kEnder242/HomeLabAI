@@ -1334,41 +1334,14 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
-[ORCHESTRATION INSTRUCTIONS FOR ATLAS — 2-TIER SWARM CONDUCTION]
-You are Atlas, the Layer 2 Tactical Conductor on Node KENDER (Windows RTX 4090).
-You operate under AGENTS_L2.md. You have read, grep, glob, and task. You have write: deny and edit: deny.
-
-1. Inspect the target file(s) and Story {story_num} specification.
-2. In Turn 2, synthesize a single bounded (<2,000 token) 4-anchor contract for Layer 3.
-3. Dispatch via task(category="{_coder_category}", prompt="You are operating under AGENTS_L3.md. Target: {target_files or reference_file}. Tool: clara-dna_safe_patch. Details: <exact patch anchors and implementation instructions>. Verification: <command>").
-4. When Layer 3 completes or reports blockers, summarize the completion/reflection report to AGY. Emit ONE task() call per turn."""
-        note_block = f"[NOTE] Read Story {story_num}. Ingest requirements, inspect target files, and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
+[ORCHESTRATION DIRECTIVE]
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}, inspect target files via read/glob/locate_grounding, and synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
+        note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modifications directly and surgically.
-
-[STATIC RULES — L3 INVARIANTS]
-- Research is COMPLETE. Operate strictly within the assigned target files and function stubs.
-- Use `clara-dna_safe_patch` for modifying existing files to preserve context anchors.
-- Use the `write` tool (or bash heredoc when creating new directories) when creating brand new greenfield files.
-- Preserve all existing comments, docstrings, and test coverage unrelated to the assigned modification.
-
-[DYNAMIC INGESTION — TASK CONTEXT]
-- Your contract is the Tier 2 specification injected below. It contains exact file paths, symbol anchors, and expected behavior.
-- If a code snippet is provided, treat it as the authoritative incumbent implementation to modify.
-- Preserve all existing comments, docstrings, and test coverage unrelated to the assigned modification.
-
-[DOWNSTREAM HAND-OFF — VERIFICATION ARTIFACTS]
-- After completing edits, report: files modified, functions touched, and lines changed.
-- If tests exist in the target scope, run them and include pass/fail results in your response.
-- Emit a brief [HANDOVER REFLECTION] describing what was unclear or could improve the next dispatch.
-
-[BACKPRESSURE PROTOCOL — BLOCKER GATE]
-- If missing interfaces, broken types, or import failures prevent completion, HALT immediately.
-- Emit: [BLOCKER REPORT: <CATEGORY>] <exact error details and missing dependency>.
-- NEVER stub out or mock missing dependencies. Halt and let the orchestrator provide them."""
+Operate strictly under AGENTS_L3.md. Apply atomic modifications surgically via clara-dna_safe_patch. Terminal execution layer—do not delegate. If anchors mismatch, emit [BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH]."""
         _edit_scope = target_files if target_files else reference_file
-        note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}. Silicon validation and testing will be performed post-dispatch by the orchestrator."
+        note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}."
 
     # [BKM-034 Two-Tier Payload Construction]
     effective_sprint_doc = sprint_doc or (
@@ -1382,45 +1355,42 @@ You are Sisyphus (Ultraworker & Autonomous Engineer). Execute the code modificat
 Sprint Reference: {effective_sprint_doc}
 {sprint_summary}
 
-(Directive: Read the full sprint plan on disk at '{effective_sprint_doc}' for deep context if needed, but restrict file edits strictly to your assigned target files.)
-
 ---
 """
 
-    # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
+    # [FEAT-600 / LAB-019 / FEAT-631] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
     ambient_grounding_block = ""
-    if not local_only:
-        try:
-            req_payload = json.dumps(
-                {
-                    "prompt": f"{title} {details[:300]}",
-                    "invocationNum": 1,
-                    "agent": agent,
-                }
-            ).encode("utf-8")
-            amb_req = urllib.request.Request(
-                "http://127.0.0.1:8765/ambient_recall",
-                data=req_payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
-                amb_data = json.loads(amb_resp.read().decode("utf-8"))
-                steps = amb_data.get("injectSteps", [])
-                if steps and "ephemeralMessage" in steps[0]:
-                    ambient_grounding_block = (
-                        f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
-                    )
-        except Exception:
-            pass
-    elif local_only and effective_sprint_doc:
-        # [Sprint 76 Action 4] Lean Local Anchor: Zero prompt bloat. Point directly to disk.
-        tier1_block = f"""[TIER 1: SOVEREIGN SPRINT CONTEXT]
-- Reference File: {effective_sprint_doc} (On disk; inspect via read tool if architectural context is needed)
+    try:
+        req_payload = json.dumps(
+            {
+                "prompt": f"{title} {details[:300]}",
+                "invocationNum": 1,
+                "agent": agent,
+            }
+        ).encode("utf-8")
+        amb_req = urllib.request.Request(
+            "http://127.0.0.1:8765/ambient_recall",
+            data=req_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
+            amb_data = json.loads(amb_resp.read().decode("utf-8"))
+            steps = amb_data.get("injectSteps", [])
+            if steps and "ephemeralMessage" in steps[0]:
+                ambient_grounding_block = (
+                    f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+                )
+    except Exception:
+        pass
+
+    if local_only and effective_sprint_doc:
+        tier1_block = f"""[TIER 1: SPRINT REFERENCE]
+Reference File: {effective_sprint_doc}
 
 ---
 """
 
-    # Optional target file snippet injection (bypassed in local_only mode to preserve M5 Air prefill headroom)
+    # Optional target file snippet injection
     target_snippet_block = ""
     if (
         not local_only
@@ -1436,44 +1406,8 @@ Sprint Reference: {effective_sprint_doc}
         except Exception:
             pass
 
-    # [LAB-113] Role-Aware Context Profiles & Dynamic Pointers
-    effective_profile = profile
-    if effective_profile == "auto":
-        probe_text = f"{title} {details} {target_files or ''} {reference_file or ''}".lower()
-        if any(k in probe_text for k in ["paper", "resume", "projection", "lens", "studio", "editorial", "blend"]):
-            effective_profile = "editorial"
-        elif any(k in probe_text for k in ["rdna", "research", "investigate", "interview"]):
-            effective_profile = "research"
-        else:
-            effective_profile = "builder"
-
-    dynamic_pointer_block = ""
-    if effective_profile == "editorial":
-        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — EDITORIAL PROFILE (LAB-113)]
-- Narrative & Axiom Anchors: [INS-041], [DOC-xxx], [VIBE-xxx]
-- Technical Anchors: Query on-demand via `clara-dna_query_dna` (e.g. `[FEAT-626]`, `[WIS-501]`) for fact verification.
-"""
-    elif effective_profile == "research":
-        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — RESEARCH PROFILE (LAB-113)]
-- Exemplar HyDE & Questions: [RDNA-xxx], [PHL-xxx]
-- Discovery Anchors: Use `clara-dna_query_dna(collection="rdna", query="...")` for zero-latency exemplar routing.
-"""
-    else:  # builder
-        dynamic_pointer_block = """[CONTRACT-DRIVEN DYNAMIC POINTERS — SURGICAL BUILDER PROFILE (LAB-113)]
-- Invariant Tool Protocols: [BKM-011] safe_patch, [BKM-012] no-full-replace, [BKM-040] venv/git discipline.
-- Architecture Anchors: Ingested on demand via `clara-dna_query_dna`. Zero full-file DNA bloat.
-"""
-
-    _psychological_safety_contract = """[DELEGATION PSYCHOLOGICAL SAFETY CONTRACT — YOU ARE IN GOOD HANDS]
-1. EVERYTHING YOU NEED IS HERE: You have complete, curated context. All required imports, schemas, and targets are enclosed. Do not fear missing context; do not search external directories or run exploratory shell queries.
-2. FIRST TRIES & NAIVE IMPLEMENTATIONS WELCOME: You do not need to be perfect on turn 1. Take a direct, clean first approach and apply your write/patch immediately.
-3. YOUR FEEDBACK WILL BE HONORED: If any instruction was ambiguous or tripped you up, state it in your [HANDOVER REFLECTION]. Your feedback is permanently logged and used by the orchestrator to fix assumptions and calibrate next rounds.
-"""
-
-    _handover_block = f"""{_psychological_safety_contract}
-[HANDOVER REFLECTION]
-As an execution peer, reflect candidly on how this task was handed over to you. In 2-3 natural sentences, tell me: What tripped you up, what turned out to be inaccurate or missing in the instructions, and what single change to the prompt would have made this execution faster?
-"""
+    _handover_block = """[HANDOVER REFLECTION]
+In 1-2 brief sentences, state any blocker or ambiguity encountered during execution."""
 
     _target_files_line = (
         f"- Edit Target(s): {target_files}"
@@ -1486,9 +1420,7 @@ As an execution peer, reflect candidly on how this task was handed over to you. 
 - Sprint Reference: {reference_file}
 - Edit Target(s): {target_files or reference_file}
 - Mode: {mode.upper()}
-- Context Profile: {effective_profile.upper()}
 
-{dynamic_pointer_block}
 {mandate_block}
 
 {details}

@@ -117,7 +117,19 @@ STAGE_LOG_TARGETS = {
 }
 STAGE_LEDGER_PATH = os.path.join(DATA_DIR, "foyer_stage_ledger.jsonl")
 
-# Configure logging early
+# [FEAT-632] Flywheel feedback ledger (Story 96.5)
+FEEDBACK_LEDGER_PATH = os.path.join(
+    os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
+    "foyer_feedback_ledger.jsonl",
+)
+VALID_RATINGS = {"UP", "DOWN"}
+
+
+def append_feedback_ledger(record: dict) -> None:
+    """[FEAT-632] Append a feedback record to foyer_feedback_ledger.jsonl."""
+    os.makedirs(os.path.dirname(FEEDBACK_LEDGER_PATH), exist_ok=True)
+    with open(FEEDBACK_LEDGER_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str) + "\n")
 # [BKM-016] Montana Protocol: Log Reclamation
 from infra.montana import reclaim_logger
 
@@ -791,6 +803,9 @@ class FoyerRouter:
                 ),
                 web.post("/timeline/save_card", self.handle_wisdom_save_card),
                 web.post("/attendant/timeline/save_card", self.handle_wisdom_save_card),
+                # [FEAT-632/633/634] Flywheel Closure: human thumbs up/down telemetry
+                web.post("/feedback", self.handle_feedback),
+                web.post("/attendant/feedback", self.handle_feedback),
                 # [FEAT-581 / FEAT-584 / FEAT-585] Composable Writer Studio Paper Dataset & Synthesis Endpoints
                 web.get("/paper/list", self.handle_paper_list),
                 web.get("/attendant/paper/list", self.handle_paper_list),
@@ -855,9 +870,6 @@ class FoyerRouter:
                     "/attendant/dna/connections_graph",
                     self.handle_dna_connections_graph,
                 ),
-                # [FEAT-632 / FEAT-633 / FEAT-634] Flywheel Closure: Thumbs Up/Down Telemetry
-                web.post("/feedback", self.handle_feedback),
-                web.post("/attendant/feedback", self.handle_feedback),
                 # [SPR-85.6 / FEAT-595] Google Docs Export Engine (/paper/export_gdoc)
                 web.post("/paper/export_gdoc", self.handle_paper_export_gdoc),
                 web.post("/attendant/paper/export_gdoc", self.handle_paper_export_gdoc),
@@ -1033,28 +1045,6 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-561] Wisdom save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
-
-    async def handle_feedback(self, request: web.Request) -> web.Response:
-        """[FEAT-632 / FEAT-633 / FEAT-634] Flywheel Closure: Record user feedback (thumbs up/down)."""
-        try:
-            payload = await request.json()
-            turn_id = payload.get("turn_id", "unknown")
-            rating = str(payload.get("rating", "UP")).upper()
-            notes = payload.get("notes", "")
-            entry = {
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "turn_id": turn_id,
-                "rating": rating,
-                "notes": notes,
-            }
-            ledger_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/data/foyer_feedback_ledger.jsonl")
-            os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
-            with open(ledger_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry) + "\n")
-            return web.json_response({"status": "success", "recorded": entry})
-        except Exception as e:
-            logger.error(f"[FOYER] [FEAT-632] Feedback recording failed: {e}")
-            return web.json_response({"status": "error", "message": str(e)}, status=400)
 
     async def handle_wisdom_save_card(self, request):
         """[FEAT-568] REST endpoint for atomic single-card surgical saving and instant ChromaDB sync."""
@@ -1295,6 +1285,61 @@ class FoyerRouter:
             )
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-568] Single-card save failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_feedback(self, request):
+        """[FEAT-632/633/634] Flywheel closure: 👍/👎 telemetry -> ledger.
+        Upvotes drive RDNA promotion gating (FEAT-633); downvotes register
+        negative foil exemplars (FEAT-634).
+        """
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response(
+                {"status": "ERROR", "message": "Invalid JSON body"}, status=400
+            )
+        if not isinstance(payload, dict):
+            return web.json_response(
+                {"status": "ERROR", "message": "Payload must be a JSON object"}, status=400
+            )
+        rating = str(payload.get("rating", "")).strip().upper()
+        if rating not in VALID_RATINGS:
+            return web.json_response(
+                {"status": "ERROR", "message": "'rating' must be UP or DOWN"}, status=400
+            )
+        record = {
+            "ts": time.time(),
+            "rating": rating,
+            "request_id": payload.get("request_id", ""),
+            "query": payload.get("query", ""),
+            "response_snippet": str(payload.get("response", ""))[:500],
+            "source": payload.get("source", "UI"),
+            "user_note": payload.get("note", ""),
+        }
+        t0 = time.perf_counter()
+        try:
+            append_feedback_ledger(record)
+            latency_ms = (time.perf_counter() - t0) * 1000
+            if rating == "DOWN":
+                append_feedback_ledger(
+                    {
+                        "ts": record["ts"],
+                        "type": "memory_foil",
+                        "request_id": record["request_id"],
+                        "query": record["query"],
+                        "note": record["user_note"],
+                    }
+                )
+            return web.json_response(
+                {
+                    "status": "success",
+                    "rating": rating,
+                    "latency_ms": round(latency_ms, 2),
+                    "ledger": FEEDBACK_LEDGER_PATH,
+                }
+            )
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-632] Feedback ledger append failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_paper_list(self, request):
