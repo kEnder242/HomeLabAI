@@ -437,6 +437,29 @@
 3. **Workspace Customization Tracking**:
    * Lifecycle hook definitions tracked in repository Git under `.agents/hooks.json` and `.agents/scripts/icm_hook.py` (mirrored to `HomeLabAI/config/hooks/`).
 
+### LAB-115: Headroom Proxy, TurboQuant KV Compression & Silicon Reasoning Control Protocol
+**Objective**: Formalize the cross-node silicon API topology, port assignments, TurboQuant 4-bit KV cache compression bounds, and reasoning/thinking control mechanisms for Node KENDER and Apple M5 Air.
+
+1. **Silicon Node Port Map & Endpoints**:
+   * **Node Brain (Apple M5 Air / `192.168.1.46`)**:
+     * **Raw oMLX Daemon**: Port `8000` (`http://192.168.1.46:8000/v1`) — Raw OpenAI-compatible inference engine running `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp`.
+     * **Headroom Proxy**: Port `8002` (`http://192.168.1.46:8002/v1`) — **Mandatory harness entrypoint** (`BKM-047`/`BKM-051`). Manages prompt prefill buffers and dynamic TurboQuant 4-bit KV quantization, strictly guarding macOS Metal from breaching the `iogpu.wired_limit_mb` 24.46 GB allocation ceiling.
+     * **Context & Output Limits**: 131,072 context window / 8,192 output ceiling.
+     * **Reasoning Profile**: Suppressed. Emits direct deterministic code, JSON, and tool calls with `'reasoning': 0`.
+   * **Node KENDER (Windows RTX 4090 24GB / `192.168.1.26`)**:
+     * **Ollama Engine**: Port `11434` (`http://192.168.1.26:11434`) running `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL`.
+     * **Headroom**: ~14.8 GB dedicated VRAM KV cache headroom.
+     * **Context & Output Limits**: 32,768 context window / 8,192 output ceiling.
+     * **Reasoning Control**: By default, Qwen reasoning models output `<think>...</think>`. To prevent runaway thinking loops and token ceiling lockups (`finish=length`), thinking is actively suppressed for L2 conduction via lean 2-tier prompt directives or stripped Ollama Modelfile templates.
+
+2. **Inverted Role Prohibition (Hardware Asymmetry Invariant)**:
+   * **Never Swap Kender and Air**: Kender (RTX 4090) provides fast tensor prefill and high decode throughput suited for **Layer 2 Conductor (Atlas)**. M5 Air provides massive unified memory headroom (131k context) suited for **Layer 3 Worker (Junior)** holding large multi-file ASTs.
+   * Swapping them degrades L2 turnaround and risks 24GB CUDA OOM on L3 multi-file diffs.
+
+3. **OpenAgent / Harness Invariant**:
+   * All OpenAgent / OpenCode config mappings in `opencode.json` must target `http://192.168.1.46:8002/v1` (Headroom Proxy) rather than raw port 8000.
+
+
 
 
 
