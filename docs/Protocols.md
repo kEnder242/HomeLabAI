@@ -811,50 +811,21 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 
 ---
 
-## BKM-071: Delegation Diagnostics, Circular Traps & Playbook Index Guide
-**Feature Anchor:** `[FEAT-522]` / `[BKM-049]` / `[BKM-071]` / `[BKM-069]` / `[VIBE-009]`  
-**Domain:** Subagent Diagnostics, Troubleshooting Ladders, Anti-Waffle Governance & Playbook Routing  
+## BKM-071: Delegation Playbook Index
+**Feature Anchor:** `[FEAT-522]` / `[BKM-049]` / `[BKM-071]`  
+**Domain:** Swarm Delegation, Playbook Routing & Index Grounding  
 **Status:** ACTIVE / MANDATORY  
+**Modus Operandi:** Index Only — strictly a lean single-line routing pointer into [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md) to preserve ambient hook context efficiency.
 
-#### 1. The Diagnostic Escalation Ladder
-Before formulating any fix or initiating a retry for a stalled, failed, or timed-out subagent, the orchestrator MUST execute this 4-step diagnostic ladder:
-1. **Cognitive Feedback Probe:** Inspect the subagent's `[HANDOVER REFLECTION]` and transcript to identify where prompt wording, missing files, or context limits tripped up the model.
-2. **Silicon Endpoints & Socket Health:**
-   - Probe inference endpoints (`curl http://192.168.1.46:8000/v1/models`, `nvidia-smi` on KENDER).
-   - Check socket states (`ss -tulpn | grep 4097`) to ensure child connections are not hanging or orphaned.
-3. **Context Window & Token Audit:**
-   - Verify prompt token count (<1,500 tokens for initial dispatch).
-   - Check whether auto-compaction hijacked the context window or if unhandled tool outputs flooded history.
-4. **Version Control Ground Truth Audit (Mandatory Before Code/Config Edits):**
-   - Check Git status and recent commits in `~/.config/opencode` and `Dev_Lab`:
-     ```bash
-     cd ~/.config/opencode && git status && git log -n 5 --oneline
-     git status && git log -n 5 --oneline
-     ```
-   - Baseline current code against known working commits before editing any config, prompt, or harness script.
-
-#### 2. Waffle Points & Circular Traps Ledger (Anti-Regression Laws)
-When diagnosing failures, agents frequently fall into circular reasoning loops where they modify settings back and forth until returning to the broken origin. The following ledger documents these traps to prevent circular churn:
-
-| Waffle Trap | The Circular Failure Pattern | The Invariant Reality & Fix |
-| :--- | :--- | :--- |
-| **1. Agent Naming & Identity Drift** | Renaming `sisyphus-junior` $\leftrightarrow$ `junior` $\leftrightarrow$ `worker` $\leftrightarrow$ `sisyphus` when a dispatch fails, breaking category mappings in `oh-my-openagent.json`. | **Invariant:** Root dispatch is ALWAYS `atlas` on KENDER 4090; leaf worker is ALWAYS `sisyphus-junior` (or `hephaestus` for greenfield) on M5 Air. Atlas dispatches to Junior via `task(category="coder")`. Never rename agent personas. |
-| **2. Prompt Bloat & "Safety Contract" Token Tax** | Adding 1,500 words of "safety contracts", detailed protocol paragraphs, and schemas into `delegate.py` or system prompts to "help" the model, inflating context to 25k tokens, blowing local KV cache/VRAM, causing the subagent to hang, which prompts adding *more* warnings. | **Invariant:** Keep initial dispatch payloads LEAN (<1,500 tokens). Strip all narrative essays, duplicate rules, and redundant psychological safety contracts. Ground context JITC via CLaRa-DNA (:8001) full documents rather than static text bloat. |
-| **3. Tool Permission Resurrections** | Subagent struggles to find a file or edit text; agent re-enables `grep` or native `edit` in permissions. `grep` floods 100k tokens of logs into context; `edit` fails on 1-space indentation drift. Agent disables them, but re-enables them 2 sprints later. | **Invariant:** `grep` and `edit` are HARD-BANNED (`permission: { "grep": "deny", "edit": "deny" }`). Leaf workers MUST use `clara-dna_safe_patch` for surgical edits and `locate_grounding` for path lookups. Never re-allow banned tools. |
-| **4. Direct Config Edits & Symlink Bypass** | Editing `~/.config/opencode/opencode.json` directly as a regular file, accidentally breaking the symlink to `/home/jallred/Dev_Lab/opencode.json` or leaving changes uncommitted in git. | **Invariant:** `~/.config/opencode/` files are symlinks to version-controlled repo paths. Always edit the repository source file, and commit changes locally to both `Dev_Lab` and `~/.config/opencode`. |
-| **5. The Amnesia / Brainstorming Trap** | When a dispatch stalls or fails, the orchestrator attempts to brainstorm a novel configuration or architecture from scratch, ignoring that a clean working version existed in Git 2 commits ago. | **Invariant:** ALWAYS run `git diff` and `git log` against recent commits in `~/.config/opencode` and `Dev_Lab` before modifying code. Revert to the last known working git checkpoint first. |
-
-#### 3. Quick-Diagnostic Routing Table to OpenAgent Playbook
-For detailed implementation recipes, configuration schemas, and operational mechanics, consult the corresponding sections of [`OPENAGENT_HANDOVER_PLAYBOOK.md`](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md):
-
-| Failure Symptom / Scenario | Playbook Reference Section | Key Remediation Action |
-| :--- | :--- | :--- |
-| `"Model is busy"` / 503 / Stream Stalls | [Playbook §1: Model Allocation & Swarm Topology](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#1-model-allocation--swarm-topology) | Check single-concurrency queue; remove `interleaved` reasoning from Ollama provider. |
-| Subagent freezes mid-read / Token Flood | [Playbook §3: Context & Token Optimization](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#3-context--token-optimization) | Disable auto-compaction; enforce `icm_*` and `grep` tool denials; check 750ms CLaRa timeout. |
-| Port 4097 hangs / Zombie Sessions | [Playbook §2: Session Lifecycle & Visibility](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#2-session-lifecycle--webview-visibility-bkm-034-point-12) | Trigger `_nuke_all_sessions()` via `POST /session/{id}/abort`; ensure socket activation on 4096. |
-| Category routing fails / Paid tier fallback | [Playbook §4: Swarm & Configuration Map](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#4-swarm--configuration-map) | Ensure all 7 categories are explicitly declared in `oh-my-openagent.json`. |
-| Tool permission denied on Atlas or Junior | [Playbook §6: The Agent Cascade Architecture](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#6-the-agent-cascade-architecture-context-isolated-swarms) | Verify Cascade Permission Matrix (§6.2): Atlas (`task`, `locate_grounding`), Junior (`safe_patch`, `bash`). |
-| Configuration regressions / Forgotten ground truth | [Playbook §8: Version Control Ground Truth Anchor](file:///home/jallred/Dev_Lab/Portfolio_Dev/docs/playbooks/OPENAGENT_HANDOVER_PLAYBOOK.md#8-the-version-control-ground-truth-anchor-local-git-repositories) | Inspect `git log` and `git diff` in `~/.config/opencode` and `Dev_Lab`; restore known good commit. |
+- **§0 Quick-Diagnostic Routing:** Symptom lookup, inter-retry comparative audit, and discrepancy verification.
+- **§1 Swarm Topology & Models:** KENDER 4090 (`Atlas` / Qwen 27B), M5 Air (`Junior` / Bonsai 27B), Cloud Tier (`Big-Pickle` / `OpenRouter Free`).
+- **§2 Lifecycle & Visibility:** REST 4097 dispatch, Web UI 4096 proxy, `safe_patch` mandate, single-tenant zombie nuke.
+- **§3 Token Optimization:** Narrow `--dir`, zero Gemini in OpenAgent, Port 8002 Headroom proxy, subagent tool denial (`icm_*`, `grep`).
+- **§4 Swarm Map & Taxonomy:** Symlink law (`~/.config/opencode`), 7 category routes, Layer 3 terminal execution (`task: deny`).
+- **§5 Safety Gates & Loops:** Pre-delegation audit, git ownership gate (workers never commit), loop circuit breakers.
+- **§6 Cascade Architecture:** 3-Tier hierarchy (AGY L1 $\to$ Atlas L2 $\to$ Junior L3) and permission matrix.
+- **§7 Calibration Ledger:** Sprint root-cause calibration history and verified operational fixes.
+- **§8 Git Ground Truth Anchor:** Dual repos (`Dev_Lab` + `~/.config/opencode`), VSCode multi-root visibility, anti-amnesia `git log`/`git diff` mandate.
 
 ---
 
