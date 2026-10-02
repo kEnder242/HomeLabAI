@@ -274,7 +274,13 @@ def probe_claradb(
                 if r and r.get("metadatas"):
                     seen_ids.add(b_up)
                     meta = r["metadatas"][0]
-                    results.append(f"- [{b_up}] {meta.get('name', 'Protocol')}")
+                    name = meta.get("name", "Protocol")
+                    docs = r.get("documents", [])
+                    doc_text = docs[0].strip() if docs and docs[0] else ""
+                    if doc_text:
+                        results.append(f"### [{b_up}] {name}\n{doc_text}\n")
+                    else:
+                        results.append(f"- [{b_up}] {name}")
 
         if feats:
             col_feat = client.get_collection("feature_dna")
@@ -286,10 +292,14 @@ def probe_claradb(
                 if r and r.get("metadatas"):
                     seen_ids.add(f_up)
                     meta = r["metadatas"][0]
+                    name = meta.get("name", "Feature")
                     status = meta.get("status", "ACTIVE")
-                    results.append(
-                        f"- [{f_up}] {meta.get('name', 'Feature')} ({status})"
-                    )
+                    docs = r.get("documents", [])
+                    doc_text = docs[0].strip() if docs and docs[0] else ""
+                    if doc_text:
+                        results.append(f"### [{f_up}] {name} ({status})\n{doc_text}\n")
+                    else:
+                        results.append(f"- [{f_up}] {name} ({status})")
 
         if labs:
             col_bkm = client.get_collection("behavioral_dna")
@@ -299,11 +309,16 @@ def probe_claradb(
                     l_target = l.upper()
                     if l_target in seen_ids:
                         continue
-                    for meta in all_infra["metadatas"]:
+                    for idx, meta in enumerate(all_infra["metadatas"]):
                         name = meta.get("name", "")
                         if l_target in name.upper():
                             seen_ids.add(l_target)
-                            results.append(f"- [{l_target}] {name}")
+                            docs = all_infra.get("documents", [])
+                            doc_text = docs[idx].strip() if idx < len(docs) and docs[idx] else ""
+                            if doc_text:
+                                results.append(f"### [{l_target}] {name}\n{doc_text}\n")
+                            else:
+                                results.append(f"- [{l_target}] {name}")
                             break
 
         words = set(re.findall(r"\w+", text.lower()))
@@ -338,7 +353,12 @@ def probe_claradb(
                         is_in_band = is_in_band or (dist <= 0.60)
                     if is_in_band:
                         seen_ids.add(fid)
-                        results.append(f"- [{fid}] {name} ({status})")
+                        docs = r_feat.get("documents", [[]])[0]
+                        doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
+                        if doc_text:
+                            results.append(f"### [{fid}] {name} ({status})\n{doc_text}\n")
+                        else:
+                            results.append(f"- [{fid}] {name} ({status})")
 
             if len(results) < limit:
                 col_bkm = client.get_collection("behavioral_dna")
@@ -365,11 +385,19 @@ def probe_claradb(
                         if is_qq:
                             is_in_band = is_in_band or (dist <= 0.60)
                         if is_in_band:
+                            docs = r_bkm.get("documents", [[]])[0]
+                            doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
                             if bkm_id:
                                 seen_ids.add(bkm_id)
-                                results.append(f"- [{bkm_id}] {name}")
+                                if doc_text:
+                                    results.append(f"### [{bkm_id}] {name}\n{doc_text}\n")
+                                else:
+                                    results.append(f"- [{bkm_id}] {name}")
                             else:
-                                results.append(f"- {name}")
+                                if doc_text:
+                                    results.append(f"### {name}\n{doc_text}\n")
+                                else:
+                                    results.append(f"- {name}")
     except Exception as e:
         logger.error(f"Error in probe_claradb: {e}")
     return results
@@ -457,7 +485,7 @@ def probe_icm(
         )
         rows = cursor.fetchall()
         conn.close()
-        return [f"- ({r[0]}) {r[1].splitlines()[0][:140]}" for r in rows if r and r[1]]
+        return [f"- ({r[0]}) {r[1]}" for r in rows if r and r[1]]
     except Exception as e:
         logger.warning(f"[LAB-019] In-process icm recall failed: {e}")
         return []
