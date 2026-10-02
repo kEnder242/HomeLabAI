@@ -68,9 +68,6 @@ INFRA_CONFIG = os.path.join(
     LAB_DIR, "config", "infrastructure.json"
 )  # [FEAT-028] Deep Thought topology
 
-# [FEAT-632] Flywheel ledger consumed by Portfolio_Dev/sync_chroma_dna.py (loop_dna)
-FEEDBACK_LEDGER_PATH = os.path.join(LAB_DIR, "data", "foyer_feedback_ledger.jsonl")
-
 # [SPR-52.0 / SPR-67.0 / FEAT-500] 5-Stage Division of Labor Orchestration
 DIVISION_OF_LABOR_STAGES = (
     (
@@ -120,7 +117,19 @@ STAGE_LOG_TARGETS = {
 }
 STAGE_LEDGER_PATH = os.path.join(DATA_DIR, "foyer_stage_ledger.jsonl")
 
-# Configure logging early
+# [FEAT-632] Flywheel feedback ledger (Story 96.5)
+FEEDBACK_LEDGER_PATH = os.path.join(
+    os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
+    "foyer_feedback_ledger.jsonl",
+)
+VALID_RATINGS = {"UP", "DOWN"}
+
+
+def append_feedback_ledger(record: dict) -> None:
+    """[FEAT-632] Append a feedback record to foyer_feedback_ledger.jsonl."""
+    os.makedirs(os.path.dirname(FEEDBACK_LEDGER_PATH), exist_ok=True)
+    with open(FEEDBACK_LEDGER_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str) + "\n")
 # [BKM-016] Montana Protocol: Log Reclamation
 from infra.montana import reclaim_logger
 
@@ -794,6 +803,9 @@ class FoyerRouter:
                 ),
                 web.post("/timeline/save_card", self.handle_wisdom_save_card),
                 web.post("/attendant/timeline/save_card", self.handle_wisdom_save_card),
+                # [FEAT-632/633/634] Flywheel Closure: human thumbs up/down telemetry
+                web.post("/feedback", self.handle_feedback),
+                web.post("/attendant/feedback", self.handle_feedback),
                 # [FEAT-581 / FEAT-584 / FEAT-585] Composable Writer Studio Paper Dataset & Synthesis Endpoints
                 web.get("/paper/list", self.handle_paper_list),
                 web.get("/attendant/paper/list", self.handle_paper_list),
@@ -884,9 +896,6 @@ class FoyerRouter:
                 web.post(
                     "/attendant/dna/approve_synapse", self.handle_dna_approve_synapse
                 ),
-                # [FEAT-632/633/634] Flywheel Closure: human thumbs up/down telemetry
-                web.post("/feedback", self.handle_feedback),
-                web.post("/attendant/feedback", self.handle_feedback),
                 # [FEAT-600 / LAB-019] Resident Ambient Memory & Knowledge Hook
                 web.post("/ambient_recall", self.handle_ambient_recall),
                 web.post("/attendant/ambient_recall", self.handle_ambient_recall),
@@ -903,58 +912,6 @@ class FoyerRouter:
 
 
         # [FIX-CORS] Middleware handles CORS at app creation; no per-route setup needed.
-
-    async def handle_feedback(self, request):
-        """[FEAT-632/633/634] Flywheel Closure: thumbs up/down -> feedback ledger.
-
-        Persists a single feedback packet as one JSON line in
-        foyer_feedback_ledger.jsonl (DATA_DIR, same dir as foyer_queue.jsonl)
-        so Portfolio_Dev/sync_chroma_dna.py can parse it into loop_dna.
-        """
-        try:
-            try:
-                payload = await request.json()
-            except Exception:
-                return web.json_response(
-                    {"status": "ERROR", "message": "Invalid JSON body"}, status=400
-                )
-            if not isinstance(payload, dict):
-                return web.json_response(
-                    {"status": "ERROR", "message": "Expected JSON object"}, status=400
-                )
-            turn_id = payload.get("turn_id")
-            if not turn_id:
-                return web.json_response(
-                    {"status": "ERROR", "message": "'turn_id' is required"}, status=400
-                )
-            rating = str(payload.get("rating", "UP")).strip().upper()
-            if rating not in ("UP", "DOWN"):
-                return web.json_response(
-                    {"status": "ERROR", "message": "'rating' must be UP or DOWN"},
-                    status=400,
-                )
-            record = {
-                "timestamp": int(time.time()),
-                "turn_id": str(turn_id),
-                "rating": rating,
-                "notes": str(payload.get("notes", "")),
-            }
-            ledger_path = FEEDBACK_LEDGER_PATH
-            os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
-            with open(ledger_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record) + "\n")
-            return web.json_response(
-                {
-                    "status": "success",
-                    "turn_id": record["turn_id"],
-                    "rating": rating,
-                    "ledger": ledger_path,
-                    "timestamp": record["timestamp"],
-                }
-            )
-        except Exception as e:
-            logger.error(f"[FOYER] [FEAT-632] Feedback record failed: {e}")
-            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_reload_residents(self, request):
         """[FEAT-490] REST endpoint for fast hot-reloading of resident Python nodes without touching vLLM."""
@@ -1328,6 +1285,61 @@ class FoyerRouter:
             )
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-568] Single-card save failed: {e}")
+            return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_feedback(self, request):
+        """[FEAT-632/633/634] Flywheel closure: 👍/👎 telemetry -> ledger.
+        Upvotes drive RDNA promotion gating (FEAT-633); downvotes register
+        negative foil exemplars (FEAT-634).
+        """
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response(
+                {"status": "ERROR", "message": "Invalid JSON body"}, status=400
+            )
+        if not isinstance(payload, dict):
+            return web.json_response(
+                {"status": "ERROR", "message": "Payload must be a JSON object"}, status=400
+            )
+        rating = str(payload.get("rating", "")).strip().upper()
+        if rating not in VALID_RATINGS:
+            return web.json_response(
+                {"status": "ERROR", "message": "'rating' must be UP or DOWN"}, status=400
+            )
+        record = {
+            "ts": time.time(),
+            "rating": rating,
+            "request_id": payload.get("request_id", ""),
+            "query": payload.get("query", ""),
+            "response_snippet": str(payload.get("response", ""))[:500],
+            "source": payload.get("source", "UI"),
+            "user_note": payload.get("note", ""),
+        }
+        t0 = time.perf_counter()
+        try:
+            append_feedback_ledger(record)
+            latency_ms = (time.perf_counter() - t0) * 1000
+            if rating == "DOWN":
+                append_feedback_ledger(
+                    {
+                        "ts": record["ts"],
+                        "type": "memory_foil",
+                        "request_id": record["request_id"],
+                        "query": record["query"],
+                        "note": record["user_note"],
+                    }
+                )
+            return web.json_response(
+                {
+                    "status": "success",
+                    "rating": rating,
+                    "latency_ms": round(latency_ms, 2),
+                    "ledger": FEEDBACK_LEDGER_PATH,
+                }
+            )
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-632] Feedback ledger append failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
 
     async def handle_paper_list(self, request):
