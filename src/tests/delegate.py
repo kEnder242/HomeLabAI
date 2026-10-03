@@ -1329,7 +1329,7 @@ Inspect tracebacks, logs, and target code files. Output a structured diagnostic 
             except Exception:
                 pass
 
-        _coder_category = "deep" if cloud_only else "coder"
+        _coder_category = "deep" if cloud_only else "quick"
         mandate_block = f"""[STORY {story_num}: {title}]
 Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
@@ -1468,12 +1468,14 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         f"Dispatching single-shot prompt to session {session_id} for agent '{agent}' (BKM-049 Pure Single-Shot)",
     )
     start_time = time.time()
+    model_str = agent
     msg_dict = {"agent": agent, "parts": [{"type": "text", "text": prompt}]}
     if agent in agent_model_bindings:
         msg_dict["model"] = {
             "providerID": agent_model_bindings[agent]["providerID"],
             "modelID": agent_model_bindings[agent]["modelID"],
         }
+        model_str = f"{agent_model_bindings[agent]['providerID']}/{agent_model_bindings[agent]['modelID']}"
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     post_result = None
