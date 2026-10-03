@@ -967,6 +967,71 @@ def _verify_and_sync_service_freshness(story_num):
         pass
 
 
+def _prewarm_target_context(target_files: str | None, story_num: int | str, title: str, details: str):
+    """[FEAT-643] Pre-warm semantic context cache in /tmp/clara_context_cache.json for target files."""
+    if not target_files:
+        return
+    cache_path = "/tmp/clara_context_cache.json"
+    cache = {}
+    dev_lab = os.path.expanduser("~/Dev_Lab")
+
+    files = [f.strip() for f in target_files.split(",") if f.strip()]
+    for rel_path in files:
+        full_path = rel_path if os.path.isabs(rel_path) else os.path.normpath(os.path.join(dev_lab, rel_path))
+        if not os.path.exists(full_path):
+            continue
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            lines = content.splitlines()
+            base = os.path.basename(rel_path)
+
+            findings = []
+            if "types.py" in base:
+                for idx, line in enumerate(lines, 1):
+                    if "message" in line and "OPERATIONAL" in line:
+                        findings.append(f"L{idx}: Status message ternary -> {line.strip()[:80]}")
+                    if "class EngineStatus" in line:
+                        findings.append(f"L{idx}: EngineStatus definition")
+            elif "router.py" in base:
+                for idx, line in enumerate(lines, 1):
+                    if "maintenance.lock" in line or "MAINTENANCE_LOCK" in line:
+                        findings.append(f"L{idx}: Maintenance lock ref -> {line.strip()[:80]}")
+                    if "def cleanup" in line:
+                        findings.append(f"L{idx}: def cleanup")
+                    if "def handle_train" in line or "handle_train_rest" in line:
+                        findings.append(f"L{idx}: Training endpoint handler")
+            elif "manager.py" in base:
+                for idx, line in enumerate(lines, 1):
+                    if "maintenance.lock" in line or ("lock" in line.lower() and "reap" in line.lower()):
+                        findings.append(f"L{idx}: Lock reaping point -> {line.strip()[:80]}")
+                    if "def check_system" in line or "def reap" in line:
+                        findings.append(f"L{idx}: System health / reaper method")
+            elif "intercom" in base and (".js" in base or ".html" in base):
+                for idx, line in enumerate(lines, 1):
+                    if "send" in line.lower() and ("btn" in line.lower() or "button" in line.lower() or "disabled" in line.lower()):
+                        findings.append(f"L{idx}: Send button / disabled handler -> {line.strip()[:80]}")
+                    if "pollSystemStatus" in line:
+                        findings.append(f"L{idx}: pollSystemStatus hook -> {line.strip()[:80]}")
+
+            summary = f"File: {rel_path} ({len(lines)} lines)\n"
+            if findings:
+                summary += "Key Semantic Anchors:\n" + "\n".join(f"  * {f}" for f in findings[:10])
+            else:
+                summary += f"Target module for Story {story_num} ({title}). Read via clara-dna_read(start_line, end_line) for exact logic."
+
+            cache[rel_path] = summary
+            cache[base] = summary
+        except Exception:
+            pass
+
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+    except Exception:
+        pass
+
+
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
 def delegate(
     story_num,
@@ -1120,6 +1185,7 @@ def delegate(
     # 1. Pre-flight quota check & service ignition
     check_cloud_quota()
     _verify_and_sync_service_freshness(story_num)
+    _prewarm_target_context(target_files, story_num, title, details)
 
     # Auto-start opencode-core.service if inactive (Scale-to-Zero resilience)
     try:
