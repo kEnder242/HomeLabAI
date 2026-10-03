@@ -30,6 +30,8 @@ vitals loop. `record_live_benchmarks()` is the standalone merge-write variant
 (reads current status.json, merges, atomic write) for use outside the loop.
 
 Design constraints honored:
+  - [FEAT-641] Passive Polling Guarantee: 100% GET-only reads across all telemetry sinks
+    (/status, /sys_metrics, /telemetry_kpi, DCGM :9400) with zero /wake or ignition side effects.
   - Class-1: only `requests` + `psutil`, both already runtime-safe in the tree.
   - Read-only HTTP, short timeouts, never blocks the loop.
   - Every endpoint failure degrades to a safe default (0 / None), never raises.
