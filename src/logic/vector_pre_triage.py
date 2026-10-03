@@ -171,6 +171,7 @@ def probe_clara_dna_sync(
 
     # Formulate semantic pre-triage hint for LLM
     hint = ""
+    suggested_vibe = "SOCRATIC"
     if best_dist < 0.55:
         topic = (
             best_meta.get("name")
@@ -181,14 +182,25 @@ def probe_clara_dna_sync(
         )
         adapter = best_meta.get("adapter", "")
         hint = f"[VECTOR_MATCH]: Top match in '{best_col}' (topic: '{topic}', distance: {best_dist:.3f})."
-        if best_col == "behavioral_dna":
-            hint += " Contains BKM Protocol / Operational Guidance."
+        if best_col in ("behavioral_dna", "feature_dna"):
+            hint += " Contains BKM Protocol / System Architecture / Tactical Guidance."
+            suggested_vibe = "TACTICAL" if "bkm" in str(topic).lower() else "ARCHITECTURAL"
+        elif best_col in ("philosophy_dna", "inspiration_dna"):
+            hint += " Contains Philosophical / Conceptual Principles."
+            suggested_vibe = "SOCRATIC"
+        elif best_col in ("long_term_wisdom", "career_ledger"):
+            hint += " Contains Historical Milestones & Executive Lore."
+            suggested_vibe = "CHRONICLE"
         elif best_col in ("short_term_stream", "lab_journal"):
             hint += " Matches recent conversation history / prior turns."
+            suggested_vibe = "RETROSPECTIVE"
         elif adapter:
             hint += f" Suggested adapter/domain: {adapter}."
+            if "for" in adapter or "panic" in str(topic).lower():
+                suggested_vibe = "FORENSIC"
     elif best_dist > 0.68:
-        hint = f"[VECTOR_MATCH]: Low archive semantic similarity (min_dist={best_dist:.3f} > 0.68)."
+        hint = f"[VECTOR_MATCH]: Low archive semantic similarity (min_dist={best_dist:.3f} > 0.68). General conceptual or conversational inquiry."
+        suggested_vibe = "SOCRATIC"
 
     is_casual = best_dist > 0.68
 
@@ -199,5 +211,6 @@ def probe_clara_dna_sync(
         "best_doc": best_doc,
         "results_by_collection": results_by_col,
         "semantic_hint": hint,
+        "suggested_vibe": suggested_vibe,
         "is_casual_candidate": is_casual,
     }
