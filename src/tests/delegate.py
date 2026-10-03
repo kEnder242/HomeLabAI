@@ -704,7 +704,7 @@ def _format_error_context(exc) -> str:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
         m5_status = (
-            "UP" if s.connect_ex(("192.168.1.46", 8000)) == 0 else "DOWN/REFUSED"
+            "UP" if s.connect_ex(("192.168.1.46", 8002)) == 0 else "DOWN/REFUSED"
         )
         s.close()
     except Exception:
@@ -723,7 +723,7 @@ def _format_error_context(exc) -> str:
         w4090_status = "ERROR"
 
     details.append(
-        f"  └─ Silicon Reachability: M5(8000)={m5_status} | 4090(11434)={w4090_status}"
+        f"  └─ Silicon Reachability: M5(8002)={m5_status} | 4090(11434)={w4090_status}"
     )
     return "\n".join(details)
 
@@ -967,87 +967,17 @@ def _verify_and_sync_service_freshness(story_num):
         pass
 
 
-def _reduce_file_via_m5_air(rel_path: str, full_path: str, max_chars: int = 6000) -> str | None:
-    """[FEAT-643] Neural Map-Reduce code summarizer running on M5 Air (oMLX port 8000)."""
-    try:
-        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-        snippet = content[:max_chars]
-        payload = {
-            "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a code reduction engine. Summarize the key classes, state constants, lock paths, lifecycle hooks, and architectural mechanisms of this file in under 120 words."
-                },
-                {
-                    "role": "user",
-                    "content": f"File: {rel_path} ({len(content.splitlines())} lines)\n{snippet}"
-                }
-            ],
-            "max_tokens": 160,
-            "temperature": 0.1
-        }
-        req = urllib.request.Request(
-            "http://192.168.1.46:8000/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            res = json.load(resp)
-            summary = res["choices"][0]["message"]["content"].strip()
-            return summary
-    except Exception:
-        return None
-
-
 def _prewarm_target_context(target_files: str | None, story_num: int | str, title: str, details: str):
     """[FEAT-643] Pre-warm semantic context cache in /tmp/clara_context_cache.json via M5 Air Neural Map-Reduce."""
     if not target_files:
         return
-    cache_path = "/tmp/clara_context_cache.json"
-    cache = {}
-    dev_lab = os.path.expanduser("~/Dev_Lab")
-
-    files = [f.strip() for f in target_files.split(",") if f.strip()]
-    for rel_path in files:
-        full_path = rel_path if os.path.isabs(rel_path) else os.path.normpath(os.path.join(dev_lab, rel_path))
-        if not os.path.exists(full_path):
-            continue
-        try:
-            base = os.path.basename(rel_path)
-            # 1. Attempt Neural Map-Reduce via M5 Air
-            neural_summary = _reduce_file_via_m5_air(rel_path, full_path)
-            if neural_summary:
-                summary = f"File: {rel_path}\n[M5 AIR NEURAL REDUCTION]\n{neural_summary}"
-            else:
-                # 2. Fallback to deterministic anchor scanner if M5 Air unreachable
-                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                    content = f.read()
-                lines = content.splitlines()
-                findings = []
-                for idx, line in enumerate(lines, 1):
-                    s = line.strip()
-                    if any(k in s for k in ("lock", "LOCK", "state", "STATE", "status", "STATUS", "sendBtn", "disabled", "reap", "cleanup")):
-                        if len(s) < 100:
-                            findings.append(f"L{idx}: {s}")
-                summary = f"File: {rel_path} ({len(lines)} lines)\n"
-                if findings:
-                    summary += "Key Semantic Anchors:\n" + "\n".join(f"  * {f}" for f in findings[:10])
-                else:
-                    summary += f"Target module for Story {story_num} ({title}). Read via clara-dna_read(start_line, end_line) for exact logic."
-
-            cache[rel_path] = summary
-            cache[base] = summary
-        except Exception:
-            pass
-
     try:
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(cache, f, indent=2)
-    except Exception:
-        pass
+        from v5.cognition.context_prewarmer import prewarm_files
+        files = [f.strip() for f in target_files.split(",") if f.strip()]
+        if files:
+            prewarm_files(files, max_workers=4)
+    except Exception as e:
+        sys.stderr.write(f"[*] Pre-warm warning: {e}\n")
 
 
 # [FEAT-440] Taxonomy Separation: Agent DNA vs. User Work History
