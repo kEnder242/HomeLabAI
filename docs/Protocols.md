@@ -58,7 +58,8 @@
 7.  **Mid-Flight Guidance Capture (Recommended Practice)**: When the operator provides last-minute guidance, constraints, or preference hints within an "AFK" / "Heads Down" prompt, the agent is strongly encouraged to jot down these instructions into the active sprint plan (`SPRINT_PLAN_*.md`) or session notes under a dedicated `## 📝 Operator Directives & Mid-Flight Guidance` section. This acts as a reliable reminder so critical guidance is never forgotten during deep autonomous focus or context compaction.
 8.  **Delegation & Owner Tag Discipline (BKM-049)**: During an autonomous Heads Down sprint, every story MUST declare an Assigned Owner (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). The orchestrating agent must dispatch stories via `delegate.py` adhering to the Tri-Loop safety contracts, diagnostic retries, and handover reflection audits before taking over or mutating state directly.
     *   **Caution Against Delegation Bypass**: Primary agents must NEVER bypass planned swarm delegation to directly write or edit code for `[SWARM:*]` stories. Skipping delegation circumvents swarm capability validation, corrupts telemetry, and denies worker models the diagnostic iterations required to improve playbook calibrations. Direct takeover (`[AGY:TAKEOVER]`) is strictly illegal without exhausted delegation attempts.
-    *   **Bounded Conductor Context & Pre-Warming ([FEAT-642] / [FEAT-643] / [DISC-001])**: Conductor dispatches must pre-warm target file semantic digests into `/tmp/clara_context_cache.json`. Conductor workers operate under Bounded Reader (`clara-dna_read`), receiving structural AST blueprints and pre-warmed semantic digests in <400 tokens to eliminate multi-turn slicing loops and prevent context bloat.
+    *   **Bounded Conductor Context & Pre-Warming ([FEAT-642] / [FEAT-643] / [DISC-011])**: Conductor dispatches must pre-warm target file semantic digests into `/tmp/clara_context_cache.json`. Conductor workers operate under Bounded Reader (`clara-dna_read`), receiving structural AST blueprints and pre-warmed semantic digests in <400 tokens to eliminate multi-turn slicing loops and prevent context bloat.
+
 
 
 ## BKM-007: Work Completion Report
@@ -812,8 +813,9 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 2. **Persistent Storage:** Reflections are persisted to `icm store -t delegation_feedback` and recorded in `HomeLabAI/data/delegation_ledger.jsonl`.
 3. **Inter-Attempt Diagnostic Index:** For all failure diagnosis, prompt tuning, circular trap prevention, and playbook references, proceed immediately to **[BKM-071]**.
 
-#### 6. Bounded Conductor Context & Semantic Pre-Warming Invariant ([FEAT-642] / [FEAT-643] / [DISC-001])
-1. **The Just-In-Time Illusion (`DISC-001`):** To preserve L2 conductor agency without inducing context bloat or multi-turn slicing loops, `delegate.py` MUST pre-warm target file semantic digests (`_prewarm_target_context`) into `/tmp/clara_context_cache.json` before session execution.
+#### 6. Bounded Conductor Context & Semantic Pre-Warming Invariant ([FEAT-642] / [FEAT-643] / [DISC-011])
+1. **The Just-In-Time Illusion (`DISC-011`):** To preserve L2 conductor agency without inducing context bloat or multi-turn slicing loops, `delegate.py` MUST pre-warm target file semantic digests (`_prewarm_target_context`) into `/tmp/clara_context_cache.json` before session execution.
+
 2. **First-Touch AST Blueprint & Digest:** When the conductor invokes `clara-dna_read(file_path)`, the tool serves a bounded (<400 tokens) payload containing the full class/def AST blueprint alongside the pre-warmed semantic digest.
 3. **Raw Read Denial:** Conductor personas are denied raw, unbuffered whole-file reads (`read: deny` / `grep: deny`) to enforce structural grounding and prevent 100k+ token context blowouts. Slicing is bounded to max 150 lines per call.
 
