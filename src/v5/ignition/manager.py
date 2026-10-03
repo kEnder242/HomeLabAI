@@ -525,9 +525,10 @@ class IgnitionManager:
                                                     )
                                                 )
                                             elif op == "LOCK":
-                                                # Create maintenance lock file
+                                                # [FEAT-639] Create maintenance lock file with PID payload
                                                 try:
-                                                    open(MAINTENANCE_LOCK, "w").close()
+                                                    with open(MAINTENANCE_LOCK, "w") as f:
+                                                        f.write(f"pid={os.getpid()}\ntimestamp={int(time.time())}\nservice=ignition_manager\n")
                                                 except Exception:
                                                     pass
                                                 self.status.state = "MAINTENANCE"

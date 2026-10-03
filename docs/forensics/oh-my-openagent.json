@@ -1,0 +1,210 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+  "disabled_providers": [
+    "google",
+    "mistral"
+  ],
+  "disabled_tools": [
+    "edit",
+    "grep",
+    "codegraph_codegraph_explore"
+  ],
+  "disabled_agents": [
+    "multimodal-looker",
+    "explore"
+  ],
+  "runtime_fallback": {
+    "enabled": true,
+    "retry_on_errors": [
+      400,
+      429,
+      500,
+      502,
+      503,
+      529
+    ],
+    "max_fallback_attempts": 3,
+    "cooldown_seconds": 60,
+    "timeout_seconds": 30,
+    "notify_on_fallback": true
+  },
+  "agents": {
+    "atlas": {
+      "model": "my-windows-4090/hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+      "fallback_models": [],
+      "permission": {
+        "edit": "deny",
+        "write": "allow",
+        "bash": "allow",
+        "grep": "deny",
+        "read": "deny",
+        "clara-dna_safe_patch": "allow",
+        "clara-dna_locate_grounding": "allow",
+        "clara-dna_read": "allow",
+        "task": "allow",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Atlas (L2 Tactical Conductor & Implementer). Operates on KENDER 4090. Use clara-dna_read to inspect high-density AST blueprints and pre-warmed digests (<350 tokens). Apply surgical code edits directly via clara-dna_safe_patch or write. Run verification commands via bash. Complete stories in a tight, bounded loop. Keep conductor context pristine (<3,000 tokens)."
+    },
+    "Atlas": {
+      "model": "my-windows-4090/hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+      "fallback_models": [],
+      "permission": {
+        "edit": "deny",
+        "write": "allow",
+        "bash": "allow",
+        "grep": "deny",
+        "read": "deny",
+        "clara-dna_safe_patch": "allow",
+        "clara-dna_locate_grounding": "allow",
+        "clara-dna_read": "allow",
+        "task": "allow",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Atlas (L2 Tactical Conductor & Implementer). Operates on KENDER 4090. Use clara-dna_read to inspect high-density AST blueprints and pre-warmed digests (<350 tokens). Apply surgical code edits directly via clara-dna_safe_patch or write. Run verification commands via bash. Complete stories in a tight, bounded loop. Keep conductor context pristine (<3,000 tokens)."
+    },
+    "sisyphus-junior": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": [],
+      "permission": {
+        "edit": "deny",
+        "write": "allow",
+        "bash": "allow",
+        "read": "deny",
+        "clara-dna_read": "deny",
+        "clara-dna_safe_patch": "allow",
+        "task": "deny",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Sisyphus-Junior (L3 Blind Surgical Worker). Operates strictly under AGENTS_L3.md. Grounding was ALREADY COMPLETED by Conductor (Atlas). Do NOT explore or read files. You are a pure patch execution engine. Apply the exact write/safe_patch edits from the contract immediately on Turn 1. Zero unconstrained reasoning monologue. Run assigned verification command and return output."
+    },
+    "Sisyphus-Junior": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": [],
+      "permission": {
+        "edit": "deny",
+        "write": "allow",
+        "bash": "allow",
+        "read": "deny",
+        "clara-dna_read": "deny",
+        "clara-dna_safe_patch": "allow",
+        "task": "deny",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Sisyphus-Junior (L3 Blind Surgical Worker). Operates strictly under AGENTS_L3.md. Grounding was ALREADY COMPLETED by Conductor (Atlas). Do NOT explore or read files. You are a pure patch execution engine. Apply the exact write/safe_patch edits from the contract immediately on Turn 1. Zero unconstrained reasoning monologue. Run assigned verification command and return output."
+    },
+    "daedalus": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": [],
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "task": "deny",
+        "clara-dna_safe_patch": "allow",
+        "bash": "deny",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Daedalus (L3 Blocker Surgeon). Operates strictly under AGENTS_L3.md. Ingests failing diff/traceback and applies atomic AST corrections via clara-dna_safe_patch. Zero bash exploration."
+    },
+    "hephaestus": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": [],
+      "permission": {
+        "edit": "allow",
+        "task": "deny",
+        "icm_*": "deny",
+        "websearch_*": "deny",
+        "codegraph_*": "deny"
+      },
+      "prompt_append": "Hephaestus (L3 Greenfield Scaffolder). Operates strictly under AGENTS_L3.md. Scaffolds new files with full structure using write and verifies imports."
+    },
+    "prometheus": {
+      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "fallback_models": [
+        "cohere/command-a-plus-05-2026"
+      ],
+      "permission": {
+        "edit": "deny"
+      },
+      "prompt_append": "Prometheus (Architectural Planner). Read-only analysis. Formulates structured architectural plans and investigation reports without editing code."
+    },
+    "oracle": {
+      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "fallback_models": [
+        "openrouter/openrouter/free"
+      ],
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "clara-dna_safe_patch": "deny",
+        "question": "deny"
+      },
+      "prompt_append": "Cloud Oracle. Read-only long-context conceptual synthesis and adversarial review."
+    },
+    "sisyphus": {
+      "model": "openrouter/openrouter/free",
+      "fallback_models": [
+        "opencode/free"
+      ],
+      "permission": {
+        "edit": "allow"
+      },
+      "prompt_append": "Sisyphus (Cloud Generalist). Use clara-dna_safe_patch for surgical file edits."
+    }
+  },
+  "categories": {
+    "quick": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": []
+    },
+    "coder": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": []
+    },
+    "ultrabrain": {
+      "model": "openrouter/openrouter/free",
+      "fallback_models": [
+        "cohere/command-a-plus-05-2026"
+      ]
+    },
+    "deep": {
+      "model": "openrouter/openrouter/free",
+      "fallback_models": [
+        "cohere/command-a-plus-05-2026"
+      ]
+    },
+    "unspecified-high": {
+      "model": "openrouter/openrouter/free",
+      "fallback_models": [
+        "cohere/command-a-plus-05-2026"
+      ]
+    },
+    "visual-engineering": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": []
+    },
+    "writing": {
+      "model": "my-m5-mlx/TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+      "fallback_models": []
+    },
+    "unspecified-low": {
+      "model": "my-windows-4090/hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+      "fallback_models": []
+    }
+  }
+}

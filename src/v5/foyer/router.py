@@ -182,6 +182,114 @@ def resolve_thought_url():
     return "http://localhost:11434/api/tags"
 
 
+# ============================================================================
+# [FEAT-639] Story 97.3 — Dead-Lock Reaping, Watchdog & Queue Hardening
+# Module-level helpers (pure, unit-testable: no FoyerRouter instance state).
+# ============================================================================
+
+# [FEAT-639] Hard ceiling on a single adapter training subprocess (60 minutes).
+TRAIN_HARD_TIMEOUT_S = 3600
+# [FEAT-639] PID-less maintenance.lock older than this (12h) is considered stale.
+MAINTENANCE_LOCK_MAX_AGE_S = 12 * 3600
+# [FEAT-639] Canonical lock path (matches nightly_lora_training.MAINTENANCE_LOCK_PATH).
+_MAINTENANCE_LOCK_PATH = os.path.join(
+    os.path.expanduser("~/Dev_Lab/HomeLabAI"), "run", "maintenance.lock"
+)
+
+
+def is_pid_alive(pid) -> bool:
+    """[FEAT-639] Kernel PID liveness probe (mimics standalone_accountability_watchdog)."""
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def parse_lock_pid(lock_path):
+    """[FEAT-639] Extract PID from a maintenance.lock file.
+
+    Supports bare-PID format (single integer line) and the structured
+    ``pid=...`` format written by nightly_lora_training.py / queue_watcher.
+    Returns int or None.
+    """
+    try:
+        with open(lock_path, "r") as f:
+            for line in f:
+                line_s = line.strip()
+                if not line_s:
+                    continue
+                if line_s.startswith("pid="):
+                    cand = line_s.split("=", 1)[1].strip()
+                    if cand.isdigit():
+                        return int(cand)
+                elif line_s.isdigit():
+                    return int(line_s)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def reap_stale_maintenance_lock(lock_path=None, max_age_s=None) -> dict:
+    """[FEAT-639] Reap an orphaned maintenance.lock left behind by a dead process.
+
+    Reaps (deletes) the lock ONLY when:
+      * a PID is parsed from the lock AND the PID is dead, OR
+      * no parseable PID exists AND the lock mtime is older than ``max_age_s``.
+    Returns {"reaped": bool, "reason": str} for caller alerting/telemetry.
+    """
+    lock_path = lock_path or _MAINTENANCE_LOCK_PATH
+    if max_age_s is None:
+        max_age_s = MAINTENANCE_LOCK_MAX_AGE_S
+    try:
+        if not os.path.exists(lock_path):
+            return {"reaped": False, "reason": "no_lock_present"}
+        pid = parse_lock_pid(lock_path)
+        if pid is not None:
+            if not is_pid_alive(pid):
+                os.remove(lock_path)
+                return {
+                    "reaped": True,
+                    "reason": f"dead_pid:{pid}",
+                }
+            return {"reaped": False, "reason": f"pid_alive:{pid}"}
+        age_s = time.time() - os.path.getmtime(lock_path)
+        if age_s > max_age_s:
+            os.remove(lock_path)
+            return {
+                "reaped": True,
+                "reason": f"pidless_lock_age_s:{int(age_s)}",
+            }
+        return {
+            "reaped": False,
+            "reason": f"pidless_lock_recent_age_s:{int(age_s)}",
+        }
+    except Exception as e:
+        logger.warning(f"[LOCK REAPER] Reap sweep error: {e}")
+        return {"reaped": False, "reason": f"error:{e}"}
+
+
+async def communicate_with_watchdog(process, timeout_s):
+    """[FEAT-639] Bounded subprocess communicate with a hard kill watchdog.
+
+    Returns (stdout, stderr, timed_out). On timeout the process is killed,
+    awaited, and (b"", b"", True) is returned.
+    """
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(), timeout_s
+        )
+        return stdout, stderr, False
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        return b"", b"", True
+
+
 class FoyerRouter:
     def __init__(
         self,
@@ -358,6 +466,15 @@ class FoyerRouter:
     def record_pager(self, message, severity="INFO", source="Foyer"):
         """[Task 9.9] Centralized Pager Logging."""
         trigger_pager(message, severity=severity, source=source)
+
+    async def communicate_with_watchdog(self, process, timeout_s):
+        """[FEAT-639] Story 97.3 wrapper: 60m hard watchdog on training subprocesses.
+
+        Delegates to the module-level helper; keeps the call site in
+        handle_train_rest readable and instance-oriented.
+        Returns (stdout, stderr, timed_out).
+        """
+        return await communicate_with_watchdog(process, timeout_s)
 
     def register_stage_hook(self, stage_id, hook):
         """[SPR-52.0 / Task 52.3] Register a callable fired on stage transitions."""
@@ -3397,7 +3514,24 @@ class FoyerRouter:
                         stderr=asyncio.subprocess.PIPE,
                         cwd=SRC_DIR,
                     )
-                    stdout, stderr = await process.communicate()
+                    # [FEAT-639] Story 97.3: Hard 60-minute watchdog — abort hung
+                    # training jobs before the 06:00 AM audit. On timeout the
+                    # subprocess is killed and the adapter is marked
+                    # "timeout_killed" so the sequencer moves on to the next.
+                    stdout, stderr, train_timed_out = await self.communicate_with_watchdog(
+                        process, TRAIN_HARD_TIMEOUT_S
+                    )
+
+                    if train_timed_out:
+                        logger.error(
+                            f"[FORGE][FEAT-639] {target} exceeded "
+                            f"{TRAIN_HARD_TIMEOUT_S // 60}-minute hard watchdog; "
+                            f"process killed."
+                        )
+                        results.append(
+                            {"adapter": target, "status": "timeout_killed"}
+                        )
+                        continue
 
                     if process.returncode == 0:
                         logger.info(f"[FORGE] {target} completed successfully.")
@@ -4757,6 +4891,33 @@ class FoyerRouter:
 
                 # [FEAT-537] Attendant-Native 30-Minute Quiet Window Rolling Reset Evaluator
                 await self.evaluate_rolling_reset()
+
+                # [FEAT-639] Story 97.3 — Daily 05:45 Dead-Lock Reaping Sweep.
+                # A SIGKILL during nightly training can orphan run/maintenance.lock,
+                # blocking /wake (423 LOCKED) and stranding VRAM. Reap it, page
+                # CRITICAL, and re-ignite in-process (FEAT-136 path).
+                now_dt = datetime.datetime.now()
+                last_reap_date = getattr(self, "_last_lock_reap_date", None)
+                if (
+                    now_dt.hour * 60 + now_dt.minute >= 5 * 60 + 45
+                    and last_reap_date != now_dt.date()
+                ):
+                    self._last_lock_reap_date = now_dt.date()
+                    try:
+                        r = reap_stale_maintenance_lock()
+                        if r["reaped"]:
+                            self.record_pager(
+                                f"[LOCK REAPER] CRITICAL dead-lock reaped: {r['reason']} — triggering /wake",
+                                severity="CRITICAL",
+                                source="LockReaper",
+                            )
+                            asyncio.create_task(
+                                self.ignition.start_lab(reason="DEADLOCK_REAPER")
+                            )
+                    except Exception as reap_err:
+                        logger.warning(
+                            f"[FEAT-639][LOCK REAPER] Sweep error (non-blocking): {reap_err}"
+                        )
             except Exception as e:
                 logger.error(f"[ALARM] Scheduled tasks failure: {e}")
 
