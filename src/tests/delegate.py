@@ -1468,9 +1468,12 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         f"Dispatching single-shot prompt to session {session_id} for agent '{agent}' (BKM-049 Pure Single-Shot)",
     )
     start_time = time.time()
-    model_str = agent
-
-    msg_dict = {"parts": [{"type": "text", "text": prompt}]}
+    msg_dict = {"agent": agent, "parts": [{"type": "text", "text": prompt}]}
+    if agent in agent_model_bindings:
+        msg_dict["model"] = {
+            "providerID": agent_model_bindings[agent]["providerID"],
+            "modelID": agent_model_bindings[agent]["modelID"],
+        }
     msg_payload = json.dumps(msg_dict).encode("utf-8")
 
     post_result = None
