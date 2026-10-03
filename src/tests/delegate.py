@@ -1246,6 +1246,27 @@ def delegate(
 
     session_title = f"Sprint {sprint_num} Story {story_num} (Run {int(time.time())}) — [{mode.upper()}:{agent.upper()}] {title}"
 
+    # Dynamically resolve agent model bindings from oh-my-openagent.json (declarative source of record)
+    agent_model_bindings = {}
+    omo_config_path = os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
+    if os.path.exists(omo_config_path):
+        try:
+            with open(omo_config_path, "r", encoding="utf-8") as f:
+                omo_cfg = json.load(f)
+                agents_cfg = omo_cfg.get("agents", {})
+                for a_name, a_info in agents_cfg.items():
+                    raw_model = a_info.get("model", "")
+                    if "/" in raw_model:
+                        prov, mod = raw_model.split("/", 1)
+                        agent_model_bindings[a_name] = {
+                            "providerID": prov,
+                            "modelID": mod,
+                        }
+                if "sisyphus-junior" in agent_model_bindings and "junior" not in agent_model_bindings:
+                    agent_model_bindings["junior"] = agent_model_bindings["sisyphus-junior"]
+        except Exception:
+            pass
+
     # 2. Attach to existing session or create a fresh session via REST API on port 4097
     active_session_valid = False
     if session_id:
@@ -1266,26 +1287,6 @@ def delegate(
 
     if not active_session_valid:
         # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
-        # Dynamically resolve agent model bindings from oh-my-openagent.json (declarative source of record)
-        agent_model_bindings = {}
-        omo_config_path = os.path.expanduser("~/.config/opencode/oh-my-openagent.json")
-        if os.path.exists(omo_config_path):
-            try:
-                with open(omo_config_path, "r", encoding="utf-8") as f:
-                    omo_cfg = json.load(f)
-                    agents_cfg = omo_cfg.get("agents", {})
-                    for a_name, a_info in agents_cfg.items():
-                        raw_model = a_info.get("model", "")
-                        if "/" in raw_model:
-                            prov, mod = raw_model.split("/", 1)
-                            agent_model_bindings[a_name] = {
-                                "providerID": prov,
-                                "modelID": mod,
-                            }
-                    if "sisyphus-junior" in agent_model_bindings and "junior" not in agent_model_bindings:
-                        agent_model_bindings["junior"] = agent_model_bindings["sisyphus-junior"]
-            except Exception:
-                pass
 
         try:
             session_payload = {
