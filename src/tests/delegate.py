@@ -967,8 +967,43 @@ def _verify_and_sync_service_freshness(story_num):
         pass
 
 
+def _reduce_file_via_m5_air(rel_path: str, full_path: str, max_chars: int = 6000) -> str | None:
+    """[FEAT-643] Neural Map-Reduce code summarizer running on M5 Air (oMLX port 8000)."""
+    try:
+        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        snippet = content[:max_chars]
+        payload = {
+            "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a code reduction engine. Summarize the key classes, state constants, lock paths, lifecycle hooks, and architectural mechanisms of this file in under 120 words."
+                },
+                {
+                    "role": "user",
+                    "content": f"File: {rel_path} ({len(content.splitlines())} lines)\n{snippet}"
+                }
+            ],
+            "max_tokens": 160,
+            "temperature": 0.1
+        }
+        req = urllib.request.Request(
+            "http://192.168.1.46:8000/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            res = json.load(resp)
+            summary = res["choices"][0]["message"]["content"].strip()
+            return summary
+    except Exception:
+        return None
+
+
 def _prewarm_target_context(target_files: str | None, story_num: int | str, title: str, details: str):
-    """[FEAT-643] Pre-warm semantic context cache in /tmp/clara_context_cache.json for target files."""
+    """[FEAT-643] Pre-warm semantic context cache in /tmp/clara_context_cache.json via M5 Air Neural Map-Reduce."""
     if not target_files:
         return
     cache_path = "/tmp/clara_context_cache.json"
@@ -981,44 +1016,27 @@ def _prewarm_target_context(target_files: str | None, story_num: int | str, titl
         if not os.path.exists(full_path):
             continue
         try:
-            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read()
-            lines = content.splitlines()
             base = os.path.basename(rel_path)
-
-            findings = []
-            if "types.py" in base:
-                for idx, line in enumerate(lines, 1):
-                    if "message" in line and "OPERATIONAL" in line:
-                        findings.append(f"L{idx}: Status message ternary -> {line.strip()[:80]}")
-                    if "class EngineStatus" in line:
-                        findings.append(f"L{idx}: EngineStatus definition")
-            elif "router.py" in base:
-                for idx, line in enumerate(lines, 1):
-                    if "maintenance.lock" in line or "MAINTENANCE_LOCK" in line:
-                        findings.append(f"L{idx}: Maintenance lock ref -> {line.strip()[:80]}")
-                    if "def cleanup" in line:
-                        findings.append(f"L{idx}: def cleanup")
-                    if "def handle_train" in line or "handle_train_rest" in line:
-                        findings.append(f"L{idx}: Training endpoint handler")
-            elif "manager.py" in base:
-                for idx, line in enumerate(lines, 1):
-                    if "maintenance.lock" in line or ("lock" in line.lower() and "reap" in line.lower()):
-                        findings.append(f"L{idx}: Lock reaping point -> {line.strip()[:80]}")
-                    if "def check_system" in line or "def reap" in line:
-                        findings.append(f"L{idx}: System health / reaper method")
-            elif "intercom" in base and (".js" in base or ".html" in base):
-                for idx, line in enumerate(lines, 1):
-                    if "send" in line.lower() and ("btn" in line.lower() or "button" in line.lower() or "disabled" in line.lower()):
-                        findings.append(f"L{idx}: Send button / disabled handler -> {line.strip()[:80]}")
-                    if "pollSystemStatus" in line:
-                        findings.append(f"L{idx}: pollSystemStatus hook -> {line.strip()[:80]}")
-
-            summary = f"File: {rel_path} ({len(lines)} lines)\n"
-            if findings:
-                summary += "Key Semantic Anchors:\n" + "\n".join(f"  * {f}" for f in findings[:10])
+            # 1. Attempt Neural Map-Reduce via M5 Air
+            neural_summary = _reduce_file_via_m5_air(rel_path, full_path)
+            if neural_summary:
+                summary = f"File: {rel_path}\n[M5 AIR NEURAL REDUCTION]\n{neural_summary}"
             else:
-                summary += f"Target module for Story {story_num} ({title}). Read via clara-dna_read(start_line, end_line) for exact logic."
+                # 2. Fallback to deterministic anchor scanner if M5 Air unreachable
+                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+                lines = content.splitlines()
+                findings = []
+                for idx, line in enumerate(lines, 1):
+                    s = line.strip()
+                    if any(k in s for k in ("lock", "LOCK", "state", "STATE", "status", "STATUS", "sendBtn", "disabled", "reap", "cleanup")):
+                        if len(s) < 100:
+                            findings.append(f"L{idx}: {s}")
+                summary = f"File: {rel_path} ({len(lines)} lines)\n"
+                if findings:
+                    summary += "Key Semantic Anchors:\n" + "\n".join(f"  * {f}" for f in findings[:10])
+                else:
+                    summary += f"Target module for Story {story_num} ({title}). Read via clara-dna_read(start_line, end_line) for exact logic."
 
             cache[rel_path] = summary
             cache[base] = summary
