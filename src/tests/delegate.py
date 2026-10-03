@@ -1320,7 +1320,7 @@ Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION DIRECTIVE]
-Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Keep conductor context pristine (<2,000 tokens); DO NOT call read on full multi-file bodies. For multi-file inspections, dispatch an ephemeral reduction sub-task to Air via task(category='{_coder_category}'). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use clara-dna_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
         note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
