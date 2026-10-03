@@ -58,10 +58,8 @@ def test_nightly_forge_liveness_missing(tmp_path):
 def test_audit_and_emit_digest(tmp_path):
     """Test full decoupled audit digest compilation and emission."""
     out_dir = tmp_path / "field_notes" / "data"
-    www_dir = tmp_path / "www_deploy" / "data"
 
     with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", out_dir), \
-         patch("infra.standalone_accountability_watchdog.WWW_DEPLOY_DIR", www_dir), \
          patch("infra.standalone_accountability_watchdog.check_gpu_power_clamp", return_value={"name": "GPU", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_foyer_and_vram", return_value={"name": "Foyer", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_stale_locks", return_value={"name": "Locks", "passed": True, "detail": "OK"}), \
@@ -73,5 +71,11 @@ def test_audit_and_emit_digest(tmp_path):
         digest = audit_and_emit_digest(run_live_probe=False)
         assert digest["overall_status"] == "PASS"
         assert digest["passed_checks"] == 7
+        # [Story 971] Single canonical home: digest AND ledger live only under field_notes/data
         assert (out_dir / "daily_accountability_digest.json").exists()
-        assert (www_dir / "daily_accountability_digest.json").exists()
+        assert (out_dir / "accountability_ledger.jsonl").exists()
+        ledger_entry = json.loads((out_dir / "accountability_ledger.jsonl").read_text().strip())
+        assert ledger_entry["overall_status"] == "PASS"
+        assert ledger_entry["passed_checks"] == 7 and ledger_entry["total_checks"] == 7
+        assert ledger_entry["discrepancies"] == []
+        assert not (tmp_path / "www_deploy").exists()

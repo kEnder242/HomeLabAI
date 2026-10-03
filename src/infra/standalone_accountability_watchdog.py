@@ -26,8 +26,12 @@ CONFIG_DIR = HOMELAB_DIR / "config"
 RUN_DIR = HOMELAB_DIR / "run"
 THRESHOLDS_PATH = CONFIG_DIR / "lab_accountability_thresholds.json"
 OUTPUT_DIR = LAB_ROOT / "Portfolio_Dev" / "field_notes" / "data"
-WWW_DEPLOY_DIR = LAB_ROOT / "www_deploy" / "data"
 DIGEST_FILE = "daily_accountability_digest.json"
+# [Story 971 / FEAT-619 evolution] Single canonical home for all runtime data:
+# the watchdog no longer mirrors to www_deploy/. Ledger is appended (not replaced)
+# so the interleaved timeline in status.html accumulates every audit run.
+LEDGER_FILE = "accountability_ledger.jsonl"
+LEDGER_MAX_BYTES = 5 * 1024 * 1024  # 5MB: rotate ledger before it stalls the static pager poller
 
 NIGHTLY_FORGE_STATE = RUN_DIR / "nightly_forge_state.json"
 NIGHTLY_LORA_STATE = RUN_DIR / "nightly_lora_training_state.json"
@@ -313,6 +317,37 @@ def check_morning_round_table(run_live: bool = True):
     }
 
 
+def append_accountability_ledger(digest: dict):
+    """[Story 971] Append one flat JSONL line per audit run to the single-home ledger.
+
+    The ledger lives at OUTPUT_DIR / 'accountability_ledger.jsonl' and is the canonical
+    runtime data home shared with the static status page (which polls it alongside
+    pager_activity.json). Each line carries exactly the accountability fields the
+    timeline needs; failures here are logged and swallowed so a ledger hiccup can
+    never take down the audit itself (the digest is already on disk by this point).
+    """
+    entry = {
+        "timestamp": digest["timestamp"],
+        "overall_status": digest["overall_status"],
+        "passed_checks": digest["passed_checks"],
+        "total_checks": digest["total_checks"],
+        "discrepancies": digest["discrepancies"],
+    }
+    ledger_path = OUTPUT_DIR / LEDGER_FILE
+    try:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        if ledger_path.exists() and ledger_path.stat().st_size > LEDGER_MAX_BYTES:
+            os.replace(ledger_path, ledger_path.with_suffix(".jsonl.1"))
+        line = json.dumps(entry, separators=(",", ":"))
+        with open(ledger_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        logger.info(f"✅ Appended audit entry to single-home ledger: {ledger_path} (Status: {digest['overall_status']})")
+    except Exception as e:
+        logger.error(f"Failed to append to accountability ledger: {e}")
+
+
 def audit_and_emit_digest(run_live_probe: bool = True):
     """Run full decoupled accountability audit and write digest JSON."""
     checks = []
@@ -378,20 +413,23 @@ def audit_and_emit_digest(run_live_probe: bool = True):
         "discrepancies": discrepancies,
     }
 
-    # Write digest to output locations with atomic fsync
-    for target_dir in [OUTPUT_DIR, WWW_DEPLOY_DIR]:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        out_file = target_dir / DIGEST_FILE
-        tmp_file = target_dir / f"{DIGEST_FILE}.tmp"
-        try:
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                f.write(json.dumps(digest, indent=2))
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_file, out_file)
-            logger.info(f"✅ Wrote authoritative digest to {out_file} (Status: {overall_status})")
-        except Exception as e:
-            logger.error(f"Failed to write digest to {out_file}: {e}")
+    # [Story 971] Single canonical home: write the digest ONLY to OUTPUT_DIR (Portfolio_Dev/field_notes/data).
+    # The www_deploy mirror was removed — the static site and the watchdog share one home now.
+    out_file = OUTPUT_DIR / DIGEST_FILE
+    tmp_file = OUTPUT_DIR / f"{DIGEST_FILE}.tmp"
+    try:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(digest, indent=2))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, out_file)
+        logger.info(f"✅ Wrote authoritative digest to {out_file} (Status: {overall_status})")
+    except Exception as e:
+        logger.error(f"Failed to write digest to {out_file}: {e}")
+
+    # [Story 971] Append this audit run to the single-home interleaved JSONL ledger consumed by status.html
+    append_accountability_ledger(digest)
 
     # [FEAT-607 / BKM-066] Stamp failure into nightly_dialogue.json so interleaved log is never dark/silent on abort
     if overall_status != "PASS":
