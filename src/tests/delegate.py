@@ -1059,20 +1059,21 @@ def delegate(
         )
         sys.exit(1)
 
-    # [BKM-049 / BKM-061] Canonical Topology Gate: Oracle is STRICTLY cloud-only.
+    # [BKM-049 / BKM-061] Canonical Topology Gate
     if mode == "oracle":
         cloud_only = True
         local_only = False
         agent = "oracle"
-    elif cloud_only:
+    elif mode == "cloud" or cloud_only:
+        cloud_only = True
         local_only = False
-        if agent and agent not in ("sisyphus", "prometheus", "oracle", "default"):
+        if agent and agent not in ("sisyphus", "default"):
             print(
-                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud-only mode.",
+                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --cloud mode.",
                 file=sys.stderr,
             )
             print(
-                "   Cloud execution strictly routes to Sisyphus (Executor), Prometheus (Planner), or Oracle (Synthesizer).",
+                "   Cloud execution strictly routes to Sisyphus (Executor) or Oracle (Synthesizer).",
                 file=sys.stderr,
             )
             print(
@@ -1080,8 +1081,10 @@ def delegate(
                 file=sys.stderr,
             )
             sys.exit(1)
-        agent = agent if agent else ("sisyphus" if mode == "execute" else "prometheus")
-    elif local_only:
+        agent = agent if agent else "sisyphus"
+    elif mode == "local" or local_only:
+        local_only = True
+        cloud_only = False
         if agent and agent not in (
             "atlas",
             "sisyphus-junior",
@@ -1091,7 +1094,7 @@ def delegate(
             "default",
         ):
             print(
-                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --local-only mode.",
+                f"\n❌ [DELEGATION REJECTED]: Agent '{agent}' is invalid for --local mode.",
                 file=sys.stderr,
             )
             print(
@@ -1283,24 +1286,6 @@ Your goal is high-level conceptual structuring, thematic clustering, and adversa
   3. ADVERSARIAL PEER REVIEW: Scrutinize logical gaps, KV/context assumptions, and missing literature.
   4. ACADEMIC TAXONOMY BRIDGES: Map informal engineering idioms to formal literature citations."""
         note_block = "[NOTE] Output the conceptual synthesis / adversarial review report in markdown only. Apply ZERO file edits."
-    elif mode == "plan":
-        mandate_block = """[READ-ONLY PLANNING DIRECTIVE — NO CODE EDITS]
-You are Prometheus (Lead Architect). You MUST NOT edit files, run code modifications, or emit file edit tool calls.
-Inspect the target files and output a structured plan:
-  1. ROOT CAUSE & ARCHITECTURAL IMPACT
-  2. TARGET FILES & EXACT SYMBOL ANCHORS
-  3. PROPOSED FIX OPTIONS (Option A vs Option B with trade-offs)
-  4. VERIFICATION STRATEGY & RISK RATING"""
-        note_block = "[NOTE] Output the architecture plan in markdown only. Apply ZERO file edits. Execution will be performed in a separate story."
-    elif mode == "investigate":
-        mandate_block = """[READ-ONLY INVESTIGATION DIRECTIVE — NO CODE EDITS]
-You are Prometheus (Lead Investigator). You MUST NOT edit files or run code modifications.
-Inspect tracebacks, logs, and target code files. Output a structured diagnostic report:
-  1. ERROR TRACEBACK AUDIT
-  2. REPRODUCTION STEPS
-  3. IDENTIFIED BOTTLENECK / RACE CONDITION
-  4. RECOMMENDED REMEDIATION"""
-        note_block = "[NOTE] Output the diagnostic investigation report in markdown only. Apply ZERO file edits."
     elif agent == "atlas":
         # Calculate approximate line range in sprint document for Story pointer
         _sprint_line_pointer = ""
@@ -1335,7 +1320,7 @@ Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION DIRECTIVE]
-Operate strictly under AGENTS_L2.md. Ingest Story {story_num}, inspect target files via read/glob/locate_grounding, and synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Keep conductor context pristine (<2,000 tokens); DO NOT call read on full multi-file bodies. For multi-file inspections, dispatch an ephemeral reduction sub-task to Air via task(category='{_coder_category}'). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
         note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
@@ -1820,9 +1805,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["local", "cloud", "oracle", "plan", "investigate", "execute"],
+        choices=["local", "cloud", "oracle"],
         default="local",
-        help="Delegation mode: local (sovereign silicon), cloud (OpenCode/OpenRouter swarm), or oracle (cloud-only deep synthesis/review)",
+        help="Delegation mode: local (Atlas on sovereign silicon), cloud (Sisyphus on Cloud swarm), or oracle (Cloud Oracle review)",
     )
     parser.add_argument(
         "--local",
@@ -1842,7 +1827,7 @@ if __name__ == "__main__":
         "--oracle",
         dest="force_oracle",
         action="store_true",
-        help="Shorthand for --mode oracle (cloud-only)",
+        help="Shorthand for --mode oracle",
     )
     parser.add_argument(
         "--verification",
@@ -1885,10 +1870,8 @@ if __name__ == "__main__":
         args.mode = "cloud"
     elif args.force_local:
         args.mode = "local"
-    elif args.mode == "execute":
-        args.mode = "local"
 
-    local_only = args.mode in ("local", "plan", "investigate")
+    local_only = args.mode == "local"
     cloud_only = args.mode in ("cloud", "oracle")
 
     if args.show_ledger:
