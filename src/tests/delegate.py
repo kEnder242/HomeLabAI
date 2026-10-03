@@ -972,6 +972,9 @@ def _prewarm_target_context(target_files: str | None, story_num: int | str, titl
     if not target_files:
         return
     try:
+        homelab_src = os.path.expanduser("~/Dev_Lab/HomeLabAI/src")
+        if homelab_src not in sys.path:
+            sys.path.insert(0, homelab_src)
         from v5.cognition.context_prewarmer import prewarm_files
         files = [f.strip() for f in target_files.split(",") if f.strip()]
         if files:
