@@ -362,15 +362,22 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 "vibe": {
                     "type": "string",
                     "enum": [
-                        "TECHNICAL",
-                        "CASUAL",
-                        "HISTORICAL",
-                        "ANALYTICAL",
-                        "OPERATIONAL",
+                        "SOCRATIC",
                         "FORENSIC",
+                        "CHRONICLE",
+                        "RETROSPECTIVE",
+                        "ARCHITECTURAL",
+                        "TACTICAL",
+                        "STRATEGIC",
+                        "PROVOCATIVE",
+                        "METABOLIC",
+                        "TECHNICAL",
+                        "OPERATIONAL",
+                        "ANALYTICAL",
                         "META",
                         "WYWO",
                         "SUPERVISORY",
+                        "CASUAL",
                     ],
                 },
                 "domain": {
@@ -488,8 +495,15 @@ class TriageEngine:
             "Translate user intent (I think the user is trying to say...).\n"
             "Grammatical Tense & Temporal Horizon Rules:\n"
             "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
-            "  * Immediate Horizon / Peer Reference ('what did Pinky mean?', 'you just said...', 'today') -> domain: \"lab_internal\", vibe: \"CASUAL\" (Sliding multi-turn memory, Zero Archive RAG).\n"
-            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"exp_tlm\" or \"lab_history\" (ChromaDB RAG).\n"
+            "  * Conceptual Inquiries / Philosophical Exploration / General Greeting ('hello', 'how does this work?', 'why') -> domain: \"lab_internal\", vibe: \"SOCRATIC\" (Sliding multi-turn memory, Zero Archive RAG).\n"
+            "  * Crash Logs / Stack Trace / Dead PIDs / Kernel Panics -> domain: \"exp_for\", vibe: \"FORENSIC\".\n"
+            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"lab_history\" or \"exp_tlm\", vibe: \"CHRONICLE\" (ChromaDB RAG).\n"
+            "  * Recent Lab Sprints / Yesterday's Debugging / Active Session Progress -> domain: \"lab_internal\", vibe: \"RETROSPECTIVE\".\n"
+            "  * Architectural Design / Interfaces / Complexity Conservation (INS-038) -> domain: \"standard\", vibe: \"ARCHITECTURAL\".\n"
+            "  * Concrete Code Edits / Fixes / Verification / Tests -> domain: \"standard\", vibe: \"TACTICAL\".\n"
+            "  * Portfolio Vision / Executive Synthesis / Leadership Notes -> domain: \"standard\", vibe: \"STRATEGIC\".\n"
+            "  * Red-Teaming / Disagreement Trapping / Stress Testing -> domain: \"standard\", vibe: \"PROVOCATIVE\".\n"
+            "  * Document Spine Curation / Memory Pruning / Refining DNA -> domain: \"standard\", vibe: \"METABOLIC\".\n"
             '  * Ambiguous / Underspecified -> domain: "unclear", hyde_vector_text: "" (Pinky Speculative Foil).\n'
             "HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n"
             "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
@@ -498,7 +512,7 @@ class TriageEngine:
             "  4. lab_history (18-Year Archive): historical project notes (2005-2025).\n"
             "If the intent maps to an archival domain (exp_*, lab_history), synthesize a 3-part Composite HyDE Vector:\n"
             "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\n"
-            'If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: "" and vibe: CASUAL.'
+            'If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: "" and vibe: SOCRATIC.'
         )
 
     @staticmethod
@@ -514,7 +528,7 @@ class TriageEngine:
                 return {
                     "inferred_intent": clean[:100],
                     "addressed_to": "NONE",
-                    "vibe": "CASUAL",
+                    "vibe": "SOCRATIC",
                     "domain": "standard",
                     "casual": 0.5,
                     "intrigue": 0.5,
@@ -585,7 +599,7 @@ class TriageEngine:
             return {
                 "inferred_intent": "Empty turn.",
                 "addressed_to": "NONE",
-                "vibe": "CASUAL",
+                "vibe": "SOCRATIC",
                 "domain": "standard",
                 "casual": 0.8,
                 "intrigue": 0.1,
@@ -606,9 +620,9 @@ class TriageEngine:
         # 4. Fallback on parse failure
         if parsed is None:
             parsed = {
-                "inferred_intent": "Parse failed – defaulting to casual.",
+                "inferred_intent": "Parse failed – defaulting to socratic.",
                 "addressed_to": "NONE",
-                "vibe": "CASUAL",
+                "vibe": "SOCRATIC",
                 "domain": "standard",
                 "casual": 0.5,
                 "intrigue": 0.5,
@@ -649,7 +663,7 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
         payload = {}
 
     defaults: dict[str, Any] = {
-        "vibe": "CASUAL",
+        "vibe": "SOCRATIC",
         "addressed_to": "NONE",
         "importance": 0.5,
         "domain": "standard",
