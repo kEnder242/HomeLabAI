@@ -110,9 +110,13 @@ class LabStatus:
                     else self.state
                 )
             ),
-            "message": (
-                "Systems Nominal" if self.state == "OPERATIONAL" else "Lab Hibernating"
-            ),
+            "message": {
+                # [FEAT-639] Story 97.3: Genuine per-state status strings.
+                # No "Lab Hibernating" emitted for non-hibernating states.
+                "OPERATIONAL": "Systems Nominal",
+                "HIBERNATING": "Standby (Scale-to-Zero)",
+                "MAINTENANCE": "Maintenance",
+            }.get(self.state, "Lab Offline"),
             "timestamp": time.strftime("%H:%M:%S", time.localtime(self.timestamp)),
             "version": self.version,
             "vram_used": self.vram_used,
