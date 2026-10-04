@@ -30,12 +30,51 @@ OPENCODE_WEB_URL = f"http://127.0.0.1:{OPENCODE_WEB_PORT}/"
 
 _ACTIVE_SESSION_ID = None
 SESSION_BREADCRUMB_FILE = "/tmp/active_openagent_sessions.json"
+WARM_SESSION_FILE = "/tmp/active_warm_sessions.json"
 
 
-def _register_active_session(session_id: str, title: str = ""):
-    """[FEAT-556 / BKM-049] Register active PID and session ID in breadcrumbs for orphan detection."""
+def save_warm_session(agent: str, session_id: str):
+    """[FEAT-648] Persist latest warm session ID for an agent across adjacent stories."""
+    data = {}
+    if os.path.exists(WARM_SESSION_FILE):
+        try:
+            with open(WARM_SESSION_FILE, "r") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data[agent] = {
+        "session_id": session_id,
+        "timestamp": time.time(),
+    }
+    try:
+        with open(WARM_SESSION_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def get_warm_session(agent: str, max_age_seconds: float = 1800.0) -> str | None:
+    """[FEAT-648] Retrieve valid unexpired warm session ID for an agent."""
+    if not os.path.exists(WARM_SESSION_FILE):
+        return None
+    try:
+        with open(WARM_SESSION_FILE, "r") as f:
+            data = json.load(f)
+        entry = data.get(agent)
+        if entry and isinstance(entry, dict):
+            if time.time() - entry.get("timestamp", 0) <= max_age_seconds:
+                return entry.get("session_id")
+    except Exception:
+        pass
+    return None
+
+
+def _register_active_session(session_id: str, title: str = "", agent: str = ""):
+    """[FEAT-556 / BKM-049 / FEAT-648] Register active PID and session ID in breadcrumbs & warm session cache."""
     global _ACTIVE_SESSION_ID
     _ACTIVE_SESSION_ID = session_id
+    if agent:
+        save_warm_session(agent, session_id)
     try:
         data = {}
         if os.path.exists(SESSION_BREADCRUMB_FILE):
@@ -1323,7 +1362,7 @@ def delegate(
     # 3. Poke Web UI (socket activation) AFTER session creation so Web GUI discovers new session
     global _ACTIVE_SESSION_ID
     _ACTIVE_SESSION_ID = session_id
-    _register_active_session(session_id, session_title)
+    _register_active_session(session_id, session_title, agent)
     wake_web_ui()
     log_step(
         story_num,
@@ -2008,3 +2047,57 @@ if __name__ == "__main__":
         cloud_only=cloud_only,
         profile=args.profile,
     )
+
+
+def delegate_story(story_num: str | int, resume_session: str | None = None) -> dict:
+    """[FEAT-648] Thin wrapper for Story 98.3 session resumption testing.
+    
+    Args:
+        story_num: Story identifier (e.g., "98.2")
+        resume_session: Optional session ID to resume
+        
+    Returns:
+        Dict with keys: 'method' (POST/GET), 'url', 'json' (if POST)
+    """
+    from v5.cognition.context_prewarmer import get_warm_session, register_warm_session
+    
+    # Try to get warm session for this story
+    warm_session = get_warm_session(str(story_num))
+    
+    if resume_session:
+        # Explicit resume requested - use provided session
+        session_id = resume_session
+        method = "POST"
+        url = f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message"
+        json_data = {
+            "agent": "sisyphus-junior",
+            "parts": [{"type": "text", "text": f"Resume story {story_num}"}]
+        }
+    elif warm_session:
+        # Warm session found - reuse it
+        session_id = warm_session
+        method = "POST"
+        url = f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/message"
+        json_data = {
+            "agent": "sisyphus-junior",
+            "parts": [{"type": "text", "text": f"Continue story {story_num}"}]
+        }
+    else:
+        # No warm session - create new one (fallback for test)
+        session_id = f"sess-test-{int(time.time())}"
+        method = "POST"
+        url = f"http://127.0.0.1:{OPENCODE_REST_PORT}/session"
+        json_data = {
+            "directory": "/tmp",
+            "title": f"Test session for story {story_num}",
+            "agent": "sisyphus-junior"
+        }
+        # Register as warm session for future use
+        register_warm_session(session_id, str(story_num), "sisyphus-junior")
+    
+    return {
+        "method": method,
+        "url": url,
+        "json": json_data if method == "POST" else None,
+        "session_id": session_id
+    }
