@@ -828,7 +828,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
     checks = []
 
     # Check 1: GPU Power Clamp
-    power_clamped = telemetry_dict.get("gpu_power_clamped", True)
+    power_clamped = bool(telemetry_dict.get("gpu_power_clamped", False))
     checks.append(
         {
             "name": "GPU Power Clamp (165W)",
@@ -844,7 +844,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
         discrepancies.append("GPU Power Limit was not clamped to threshold (165W).")
 
     # Check 2: VRAM Quiesce
-    quiesced = telemetry_dict.get("vram_quiesced", True)
+    quiesced = bool(telemetry_dict.get("vram_quiesced", False))
     checks.append(
         {
             "name": "VRAM Quiesce Drain (<250MB)",
@@ -878,7 +878,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
         )
 
     # Check 4: Re-Ignition Liveness
-    reignited = telemetry_dict.get("re_ignited", True)
+    reignited = bool(telemetry_dict.get("re_ignited", False))
     checks.append(
         {
             "name": "Foyer Re-Ignition & Hot-Reload",
@@ -895,7 +895,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
 
     # Check 5: Accountable Dreaming (BKM-062 Zero-Work Guard)
     dream_telemetry = telemetry_dict.get("dream_telemetry", {})
-    dream_status = dream_telemetry.get("status", "PASS")
+    dream_status = dream_telemetry.get("status", "FAIL")
     dream_turns = dream_telemetry.get("turns_synthesized", 0)
     dream_refined = dream_telemetry.get("items_refined", 0)
     dream_ok = (dream_status == "PASS") and (dream_turns > 0 or dream_refined > 0)
@@ -913,7 +913,7 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
 
     # Check 6: Round Table Accountability Probe
     probe_telemetry = telemetry_dict.get("round_table_probe", {})
-    probe_status = probe_telemetry.get("status", "PASS")
+    probe_status = probe_telemetry.get("status", "FAIL")
     critic_score = float(probe_telemetry.get("critic_score", 0.0))
     min_critic = float(
         thresholds.get("round_table_probe", {}).get("min_critic_score", 0.70)

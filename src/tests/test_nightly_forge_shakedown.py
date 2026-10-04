@@ -21,12 +21,12 @@ sys.path.insert(0, FIELD_NOTES_DIR)
 
 import mass_scan
 import refine_gem
-from src.forge import train_expert
 from src.infra import nightly_forge
 
 
 def test_import_integrity_all_nightly_modules():
     """Verify that all core modules involved in the 2:00 AM nightly run import without error."""
+    from src.forge import train_expert
     assert hasattr(nightly_forge, "main")
     assert hasattr(nightly_forge, "quiesce_vllm")
     assert hasattr(nightly_forge, "re_ignite_vllm")
@@ -89,9 +89,11 @@ def test_train_expert_dataset_mapper_with_live_ledger():
                 texts.append(str(d) + mock_tokenizer.eos_token)
         return {"text": texts}
 
-    batch = {"dialogue": raw_dialogues[:50]}
+    expected_count = min(50, len(raw_dialogues))
+    batch = {"dialogue": raw_dialogues[:expected_count]}
     result = formatting_prompts_func(batch)
-    assert len(result["text"]) == 50
+    assert len(result["text"]) == expected_count
+    assert len(result["text"]) > 0
     for formatted_text in result["text"]:
         assert "<|end_of_text|>" in formatted_text
         assert "User:" in formatted_text
