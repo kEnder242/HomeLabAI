@@ -1017,6 +1017,7 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 2. **Polymorphic Aliasing (`INS` $\leftrightarrow$ `PHL`):** The prefix `INS` (Inspirations & Insights) is the canonical domain identifier for epistemological axioms. To prevent historical document drift and ensure zero broken links across code comments and papers, all ingestion parsers, MCP servers, and UI components must support polymorphic aliasing where `PHL-xxx` seamlessly resolves to `INS-xxx` and vice versa.
 3. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
 4. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
+5. **Single-Library & 24/7 ChromaDB Daemon Mesh:** All ambient vector retrieval across AGY and OpenCode MUST consume the single canonical library (`HomeLabAI/src/curator/ambient_recall.py`) querying the 24/7 resident ChromaDB service on port 8001 (`chroma-server.service`). Never fork duplicate hook scripts across `.agents/scripts/` or `config/hooks/`, and never proxy ambient vector recall through transitory LLM cognitive routers.
 
 ---
 
