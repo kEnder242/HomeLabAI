@@ -7,19 +7,42 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 import clara_dna_mcp_server
 
+def test_stage_research_persists_plan():
+    res = clara_dna_mcp_server.stage_research(
+        file_path="src/logic/processor.py",
+        plan_content="Refactor vector query pipeline",
+        patch_blueprint="<<<SEARCH\nold_code()\n===\nnew_code()\n>>>",
+        ast_anchors=["class VectorProcessor", "def query()"],
+        diff_directives=["Replace sync urllib with async REST client"]
+    )
+    assert res["status"] == "staged"
+    assert res["file_path"] == "src/logic/processor.py"
+
+    # Verify research tool recalls this staged plan as fresh empirical findings
+    result = clara_dna_mcp_server.research("src/logic/processor.py")
+    assert "Conductor Blueprint: Applied Scalpel Match for src/logic/processor.py" in result
+    assert "class VectorProcessor" in result
+    assert "new_code()" in result
+    assert "Refactor vector query pipeline" in result
+
+
 def test_research_tool():
-    # Write dummy notes
-    notes_path = "/tmp/clara_conductor_notes.json"
-    with open(notes_path, "w") as f:
-        json.dump({"dummy_file.py": {"notes": "test notes", "ast_anchors": ["anchor1"], "diff_directives": []}}, f)
+    # Test staging and recalling
+    clara_dna_mcp_server.stage_research(
+        file_path="dummy_file.py",
+        plan_content="test notes",
+        patch_blueprint="patch_blueprint_content",
+        ast_anchors=["anchor1"]
+    )
         
     result = clara_dna_mcp_server.research("dummy_file.py")
-    assert "Structured Findings for dummy_file.py:" in result
-    assert "test notes" in result
+    assert "Conductor Blueprint: Applied Scalpel Match for dummy_file.py" in result
+    assert "anchor1" in result
+    assert "patch_blueprint_content" in result
     
     # Fallback test
-    fallback_result = clara_dna_mcp_server.research("other_file.py")
-    assert "Fallback Analysis for other_file.py:" in fallback_result
+    fallback_result = clara_dna_mcp_server.research("unseen_file.py")
+    assert "Fallback Analysis for unseen_file.py:" in fallback_result
 
 def test_failure_whisperer_tool():
     test_output = "Some random text\nE   AssertionError: expected True but got False\nMore text"
