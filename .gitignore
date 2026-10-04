@@ -30,6 +30,7 @@ data/
 # If you add real keys, add it here!
 vendor/
 logs/forensic_*.json
+logs/reboot_review_*
 
 # [FEAT-151] Transient Telemetry
 logs/trace_*.json
