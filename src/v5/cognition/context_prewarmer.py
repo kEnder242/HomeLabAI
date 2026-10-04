@@ -13,6 +13,7 @@ import concurrent.futures
 import json
 import os
 import sys
+import time
 import urllib.request
 import urllib.error
 
@@ -211,6 +212,84 @@ def prewarm_files(file_paths: list[str], max_workers: int = 4, force: bool = Fal
             except Exception as e:
                 results[fp] = f"Pre-warm failed: {e}"
     return results
+
+
+WARM_SESSIONS_PATH = "/tmp/active_warm_sessions.json"
+
+
+def register_warm_session(session_id: str, story_id: str, model: str = "unknown") -> None:
+    """[FEAT-648] Persist warm OpenCode REST session ID for adjacent story resumption."""
+    try:
+        data = {}
+        if os.path.exists(WARM_SESSIONS_PATH):
+            with open(WARM_SESSIONS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        data[session_id] = {
+            "story_id": story_id,
+            "model": model,
+            "created_ts": time.time(),
+            "last_used_ts": time.time(),
+        }
+        with open(WARM_SESSIONS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def get_warm_session(story_id: str | None = None) -> str | None:
+    """[FEAT-648] Retrieve a warm session ID, optionally filtered by story_id."""
+    if not os.path.exists(WARM_SESSIONS_PATH):
+        return None
+    try:
+        with open(WARM_SESSIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not data:
+            return None
+        # If story_id specified, find matching session
+        if story_id:
+            for sid, info in data.items():
+                if info.get("story_id") == story_id:
+                    info["last_used_ts"] = time.time()
+                    _save_warm_sessions(data)
+                    return sid
+        # Otherwise return most recently used session
+        latest = max(data.items(), key=lambda kv: kv[1].get("last_used_ts", 0))
+        latest[1]["last_used_ts"] = time.time()
+        _save_warm_sessions(data)
+        return latest[0]
+    except Exception:
+        return None
+
+
+def _load_warm_sessions() -> dict:
+    """Internal helper to read the warm session registry from disk."""
+    if not os.path.exists(WARM_SESSIONS_PATH):
+        return {}
+    try:
+        with open(WARM_SESSIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_warm_sessions(data: dict) -> None:
+    """Internal helper to atomically write warm sessions."""
+    try:
+        tmp_path = WARM_SESSIONS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, WARM_SESSIONS_PATH)
+    except Exception:
+        pass
+
+
+def clear_warm_session(session_id: str) -> None:
+    """[FEAT-648] Remove a warm session from the registry by session ID."""
+    data = _load_warm_sessions()
+    if session_id in data:
+        del data[session_id]
+        _save_warm_sessions(data)
 
 
 if __name__ == "__main__":
