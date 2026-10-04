@@ -1380,7 +1380,7 @@ Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use clara-dna_rea
         note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-Operate strictly under AGENTS_L3.md. Apply atomic modifications surgically via clara-dna_safe_patch. Terminal execution layer—do not delegate. If anchors mismatch, emit [BLOCKER REPORT: ANCHOR_DRIFT_MISMATCH]."""
+The architectural plan for this task is vetted and solid. Do not perform open-ended file searches or re-plan the system. All exact implementation details, AST anchors, and patch blueprints come directly from your JITC research tool. Trust the plan, and verify the live details by running research(target_file) on Turn 1. 1) Review empirical findings from research(). 2) Apply surgical changes via safe_patch(). 3) Run verification (call failure_whisperer(traceback) on failure). 4) Call handoff_checkpoint() on pass."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}."
 
