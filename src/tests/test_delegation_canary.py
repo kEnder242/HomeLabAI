@@ -63,3 +63,22 @@ def test_hook_execution_under_100ms():
     assert elapsed_ms < 150.0, f"Hook took {elapsed_ms:.1f}ms (expected < 150ms)"
     res = json.loads(p.stdout)
     assert "injectSteps" in res
+
+
+def test_ambient_delegation_telemetry():
+    """[Story 99.1 / FEAT-650] Verify _trigger_ambient_hook_telemetry executes cleanly and surfaces memory state."""
+    import os
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    from delegate import _trigger_ambient_hook_telemetry
+    res = _trigger_ambient_hook_telemetry(
+        story_num="99.1",
+        title="Test Telemetry Integration",
+        duration=1.2,
+        status="SUCCESS"
+    )
+    assert res["status"] in ("SUCCESS", "SKIPPED")
+    if res["status"] == "SUCCESS":
+        assert "injectSteps" in res
+        assert len(res["injectSteps"]) > 0
+

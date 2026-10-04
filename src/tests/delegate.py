@@ -152,6 +152,53 @@ def _reap_orphaned_sessions():
         pass
 
 
+def _trigger_ambient_hook_telemetry(
+    story_num: str, title: str, duration: float, status: str = "SUCCESS"
+) -> dict:
+    """[FEAT-650] Execute ambient hook telemetry at the conclusion of story delegation.
+    Surfaces Grounding Header and JITC memory state even in headless / non-interactive runs.
+    """
+    hook_script = os.path.expanduser("~/.gemini/config/scripts/ambient_hook.sh")
+    if not os.path.exists(hook_script):
+        hook_script = os.path.abspath(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "config/scripts/ambient_hook.sh",
+            )
+        )
+    
+    if not os.path.exists(hook_script):
+        return {"status": "SKIPPED", "reason": "hook_script_not_found"}
+
+    payload = {
+        "invocationNum": 1,
+        "userMessage": f"Story {story_num}: {title} ({status}, {duration:.1f}s)",
+    }
+    try:
+        p = subprocess.run(
+            [hook_script],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+        )
+        if p.returncode == 0:
+            res = json.loads(p.stdout)
+            steps = res.get("injectSteps", [])
+            for step in steps:
+                text = step.get("text", "")
+                if "🧬" in text or "Grounding" in text:
+                    print("\n" + "-" * 70, flush=True)
+                    print(f"📡 [AMBIENT HOOK TELEMETRY] Story {story_num} Memory Reflection:", flush=True)
+                    print(text[:400], flush=True)
+                    print("-" * 70 + "\n", flush=True)
+            return {"status": "SUCCESS", "injectSteps": steps, "raw": res}
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)}
+    return {"status": "FAILED"}
+
+
+
 def _nuke_all_sessions():
     """[BKM-034] Unconditionally abort all in-flight and orphaned sessions on OpenCode REST port 4097."""
     try:
@@ -1788,6 +1835,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                         session_id, duration, tokens, "SUCCESS", 1, verification, True, "", model_str,
                         reflection=reflection_text,
                     )
+                    _trigger_ambient_hook_telemetry(story_num, title, duration, "SUCCESS")
                     _ACTIVE_SESSION_ID = None
                     _unregister_active_session()
                     return
@@ -1808,6 +1856,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                         session_id, duration, tokens, "VERIFICATION_FAILED", 1, verification, False, v_output[:200], model_str,
                         reflection=reflection_text,
                     )
+                    _trigger_ambient_hook_telemetry(story_num, title, duration, "VERIFICATION_FAILED")
                     _cleanup_active_session()
                     sys.exit(1)
             except subprocess.TimeoutExpired:
@@ -1822,6 +1871,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                     session_id, duration, tokens, "VERIFICATION_TIMEOUT", 1, verification, False, "Verification timed out after 120s", model_str,
                     reflection=reflection_text,
                 )
+                _trigger_ambient_hook_telemetry(story_num, title, duration, "VERIFICATION_TIMEOUT")
                 _cleanup_active_session()
                 sys.exit(1)
 
@@ -1830,6 +1880,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             session_id, duration, tokens, "COMPLETED_UNVERIFIED", 1, verification, None, "", model_str,
             reflection=reflection_text,
         )
+        _trigger_ambient_hook_telemetry(story_num, title, duration, "COMPLETED_UNVERIFIED")
         _ACTIVE_SESSION_ID = None
         _unregister_active_session()
         return

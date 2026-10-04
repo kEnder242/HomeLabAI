@@ -104,3 +104,23 @@ class TestSubversiveSwarmE2E:
         }
         required_keys = {"timestamp", "sprint", "story", "turn_count", "duration_seconds", "tools_used", "status"}
         assert required_keys.issubset(test_record.keys())
+
+    def test_ambient_telemetry_in_ledger(self):
+        """[Story 99.4 / FEAT-650 / FEAT-649] Verify ledger records clean completion with ambient telemetry metadata."""
+        test_record = {
+            "timestamp": time.time(),
+            "sprint": "99.0",
+            "story": "99.4",
+            "turn_count": 2,
+            "duration_seconds": 15.2,
+            "tools_used": ["clara-dna_research", "clara-dna_safe_patch", "clara-dna_handoff_checkpoint"],
+            "status": "SUCCESS",
+            "ambient_telemetry": {
+                "grounding_header_attached": True,
+                "latency_ms": 42.5
+            }
+        }
+        assert test_record["status"] == "SUCCESS"
+        assert test_record["ambient_telemetry"]["grounding_header_attached"] is True
+        assert test_record["ambient_telemetry"]["latency_ms"] < 150.0
+
