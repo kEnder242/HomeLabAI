@@ -490,9 +490,9 @@ def probe_claradb(
                 domain_counts = {d: 0 for d in domain_caps}
 
                 def check_in_band(dist, min_dist, has_kw):
-                    base = (dist <= 0.50) or (dist <= min_dist + 0.08 and dist < 0.55) or (has_kw and dist <= 0.58)
+                    base = (dist <= 0.76) or (dist <= min_dist + 0.08 and dist < 0.82) or (has_kw and dist <= 0.80)
                     if is_qq:
-                        base = base or (dist <= 0.60)
+                        base = base or (dist <= 0.80)
                     return base
 
                 # Feature DNA Bucket
@@ -525,10 +525,10 @@ def probe_claradb(
                     if hook_errors is not None:
                         hook_errors.append(f"feature_dna query failed: {e}")
 
-                # Behavioral DNA (BKM) Bucket
+                # Behavioral DNA (BKM / LAB / INFRA) Bucket
                 try:
                     col_bkm = client.get_collection("behavioral_dna")
-                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=4)
+                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=6)
                     b_dists = r_bkm.get("distances", [[]])[0]
                     if b_dists:
                         min_b = min(b_dists)
@@ -536,20 +536,26 @@ def probe_claradb(
                             if domain_counts["behavioral_dna"] >= domain_caps["behavioral_dna"]:
                                 break
                             meta = r_bkm["metadatas"][0][i]
-                            bkm_id = meta.get("bkm_id")
                             name = meta.get("name", "Protocol")
-                            if bkm_id and bkm_id in seen_ids:
+                            bkm_id = meta.get("bkm_id")
+                            if not bkm_id:
+                                raw_id = r_bkm["ids"][0][i] if "ids" in r_bkm and i < len(r_bkm["ids"][0]) else ""
+                                m_anchor = re.search(r"\b(BKM-\d+(?:\.\d+)?|LAB-\d+|FEAT-\d+|INFRA_[a-f0-9]+)\b", raw_id + " " + name, re.IGNORECASE)
+                                if m_anchor:
+                                    bkm_id = m_anchor.group(1).upper()
+                                else:
+                                    bkm_id = raw_id or "BKM"
+                            if bkm_id in seen_ids:
                                 continue
                             has_kw = any(w in name.lower() for w in significant_words)
                             if check_in_band(dist, min_b, has_kw):
-                                if bkm_id:
-                                    seen_ids.add(bkm_id)
+                                seen_ids.add(bkm_id)
                                 docs = r_bkm.get("documents", [[]])[0]
                                 doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
                                 if doc_text:
-                                    results.append(f"### [{bkm_id or 'BKM'}] {name}\n{doc_text}\n")
+                                    results.append(f"### [{bkm_id}] {name}\n{doc_text}\n")
                                 else:
-                                    results.append(f"- [{bkm_id or 'BKM'}] {name}")
+                                    results.append(f"- [{bkm_id}] {name}")
                                 domain_counts["behavioral_dna"] += 1
                 except Exception as e:
                     if hook_errors is not None:
@@ -571,7 +577,7 @@ def probe_claradb(
                             if wid in seen_ids:
                                 continue
                             has_kw = any(w in title.lower() for w in significant_words)
-                            if check_in_band(dist, min_w, has_kw) or dist <= 0.52:
+                            if check_in_band(dist, min_w, has_kw):
                                 seen_ids.add(wid)
                                 docs = r_wis.get("documents", [[]])[0]
                                 doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
@@ -605,7 +611,7 @@ def probe_claradb(
                                 if pid in seen_ids:
                                     continue
                                 has_kw = any(w in title.lower() for w in significant_words)
-                                if check_in_band(dist, min_i, has_kw) or dist <= 0.52:
+                                if check_in_band(dist, min_i, has_kw):
                                     seen_ids.add(pid)
                                     docs = r_ins.get("documents", [[]])[0]
                                     doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
@@ -634,10 +640,38 @@ def probe_claradb(
                             if rid in seen_ids:
                                 continue
                             has_kw = any(w in q_text.lower() for w in significant_words)
-                            if check_in_band(dist, min_rd, has_kw) or dist <= 0.48:
+                            if check_in_band(dist, min_rd, has_kw):
                                 seen_ids.add(rid)
                                 results.append(f"- [{rid}] HyDE Exemplar: {q_text}")
                                 domain_counts["rdna"] += 1
+                except Exception:
+                    pass
+
+                # Loop DNA Bucket
+                try:
+                    col_loop = client.get_collection("loop_dna")
+                    r_loop = col_loop.query(query_embeddings=[emb], n_results=3)
+                    l_dists = r_loop.get("distances", [[]])[0]
+                    if l_dists:
+                        min_l = min(l_dists)
+                        for i, dist in enumerate(l_dists):
+                            if domain_counts["loop_dna"] >= domain_caps["loop_dna"]:
+                                break
+                            meta = r_loop["metadatas"][0][i]
+                            lid = meta.get("loop_id") or r_loop["ids"][0][i]
+                            name = meta.get("name", meta.get("title", "Feedback Loop"))
+                            if lid in seen_ids:
+                                continue
+                            has_kw = any(w in name.lower() for w in significant_words)
+                            if check_in_band(dist, min_l, has_kw):
+                                seen_ids.add(lid)
+                                docs = r_loop.get("documents", [[]])[0]
+                                doc_text = docs[i].strip() if i < len(docs) and docs[i] else ""
+                                if doc_text:
+                                    results.append(f"### [{lid}] {name}\n{doc_text}\n")
+                                else:
+                                    results.append(f"- [{lid}] {name}")
+                                domain_counts["loop_dna"] += 1
                 except Exception:
                     pass
     except Exception as e:
