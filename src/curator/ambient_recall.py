@@ -787,17 +787,14 @@ def probe_icm(
         return []
 
 
-def main():
+def execute_ambient_recall(payload: dict) -> dict:
+    """[FEAT-600 / LAB-019 / BKM-060] Core ambient memory & knowledge recall engine.
+    
+    Can be called directly within a resident daemon (e.g. Foyer / lab-attendant :8765)
+    with warm in-memory FastEmbed & ChromaDB instances, or via CLI subprocess.
+    """
     start_time = time.perf_counter()
     hook_errors = []
-    try:
-        payload = json.load(sys.stdin)
-    except Exception as e:
-        sys.stderr.write(
-            f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Invalid hook payload on stdin: {e}\n"
-        )
-        print(json.dumps({"injectSteps": []}))
-        return
 
     # Sisyphus-Junior and swarm delegation bypass
     agent_name = (payload.get("agent") or payload.get("agentName") or "").lower()
@@ -824,8 +821,7 @@ def main():
             ]
         )
     ):
-        print(json.dumps({"injectSteps": []}))
-        return
+        return {"injectSteps": []}
 
     inv_num = payload.get("invocationNum", 1)
     workspace_paths = payload.get("workspacePaths", [])
@@ -865,34 +861,26 @@ def main():
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             breadcrumb = f"> 🧬 **Grounding**: Session Wake-Up ({len(recent_mems)} recent memories • {elapsed_ms:.1f}ms)"
             session_start_lines.insert(0, f"[Grounding Header: {breadcrumb}]")
-            print(
-                json.dumps(
-                    {
-                        "injectSteps": [
-                            {"ephemeralMessage": "\n".join(session_start_lines)}
-                        ]
-                    }
-                )
-            )
-            return
+            return {
+                "injectSteps": [
+                    {"ephemeralMessage": "\n".join(session_start_lines)}
+                ]
+            }
         else:
-            print(json.dumps({"injectSteps": []}))
-            return
+            return {"injectSteps": []}
 
     # Subsequent Turns: Gating and Multi-Item Segmentation
     transcript_path = payload.get("transcriptPath")
     if transcript_path and os.path.exists(transcript_path):
         is_start, last_prompt = is_turn_start(transcript_path)
         if not is_start:
-            print(json.dumps({"injectSteps": []}))
-            return
+            return {"injectSteps": []}
         cleaned = clean_prompt(last_prompt)
     else:
         cleaned = clean_prompt(user_input_raw)
 
     if not cleaned:
-        print(json.dumps({"injectSteps": []}))
-        return
+        return {"injectSteps": []}
 
     is_qq = cleaned.lower().startswith("qq")
     search_query = re.sub(r"^qq[:!\s]*", "", cleaned, flags=re.IGNORECASE).strip()
@@ -1044,13 +1032,23 @@ def main():
         breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in anchors[:4]]) if anchors else 'Nominal'} ({len(anchors)} hits • {elapsed_ms:.1f}ms)"
         ambient_lines.insert(0, f"[Grounding Header: {breadcrumb}]")
 
-        print(
-            json.dumps(
-                {"injectSteps": [{"ephemeralMessage": "\n".join(ambient_lines)}]}
-            )
-        )
+        return {"injectSteps": [{"ephemeralMessage": "\n".join(ambient_lines)}]}
     else:
+        return {"injectSteps": []}
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except Exception as e:
+        sys.stderr.write(
+            f"\n\033[31m⚠️ [Hook Error / Degraded Mode]\033[0m Invalid hook payload on stdin: {e}\n"
+        )
         print(json.dumps({"injectSteps": []}))
+        return
+
+    res = execute_ambient_recall(payload)
+    print(json.dumps(res))
 
 
 if __name__ == "__main__":
