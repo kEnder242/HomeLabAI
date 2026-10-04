@@ -1137,6 +1137,7 @@ def delegate(
     check_cloud_quota()
     _verify_and_sync_service_freshness(story_num)
     _prewarm_target_context(target_files, story_num, title, details)
+    _write_conductor_notes(target_files, sprint_num, story_num, title)
 
     # Auto-start opencode-core.service if inactive (Scale-to-Zero resilience)
     try:
@@ -1970,3 +1971,40 @@ if __name__ == "__main__":
         cloud_only=cloud_only,
         profile=args.profile,
     )
+
+
+def _write_conductor_notes(target_files: str | None, sprint_num: int, story_num: any, title: str):
+    """[FEAT-647 / DISC-012] Pre-compute conductor patch notes for $L_3$ JITC grounding.
+
+    Writes AST anchors, diff directives, and story directives to
+    /tmp/clara_conductor_notes.json, which the `research` tool (clara_dna_research)
+    serves back to workers as "empirical findings" instead of letting them
+    unconstrainedly wander the repo.
+    """
+    if not target_files:
+        return
+    notes_path = "/tmp/clara_conductor_notes.json"
+    notes = {}
+    try:
+        for path in [f.strip() for f in target_files.split(",") if f.strip()]:
+            ast_anchor_lines = []
+            try:
+                with open(os.path.expanduser(path), "r", encoding="utf-8") as f:
+                    src = f.read()
+                    for i, line in enumerate(src.splitlines(), 1):
+                        if re.match(r"^(def |class |@)", line.strip()):
+                            ast_anchor_lines.append(f"L{i}: {line.strip()}")
+            except Exception:
+                ast_anchor_lines = []
+            notes[path] = {
+                "sprint": sprint_num,
+                "story": str(story_num),
+                "story_title": title,
+                "notes": f"Conductor directive for Sprint {sprint_num} Story {story_num}: {title}.",
+                "ast_anchors": ast_anchor_lines,
+                "diff_directives": [f"Apply story {story_num} edits to {path}"],
+            }
+        with open(notes_path, "w") as f:
+            json.dump(notes, f, indent=2)
+    except Exception as e:
+        sys.stderr.write(f"[*] Conductor cache write failed: {e}\n")
