@@ -63,3 +63,13 @@ def test_evaluate_nightly_accountability_zero_work_green_lie():
     assert digest["overall_status"] == "FAIL"
     assert len(digest["discrepancies"]) >= 2
     assert any("Green Lie" in d for d in digest["discrepancies"])
+
+
+def test_evaluate_nightly_accountability_empty_payload_fails_fast():
+    """Verify BKM-062: Missing or empty telemetry dictionary fails all checks with FAIL status."""
+    digest = evaluate_nightly_accountability({}, write_to_disk=False)
+    assert digest["overall_status"] == "FAIL"
+    assert digest["passed_checks"] == 0
+    assert digest["total_checks"] == 6
+    assert len(digest["discrepancies"]) >= 4
+
