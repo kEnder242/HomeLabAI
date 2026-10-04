@@ -908,9 +908,15 @@ def execute_ambient_recall(payload: dict) -> dict:
             f"[Ambient Grounding: Multi-Item Intent Resolution ({num_segs} Segments)]"
         )
 
-    for seg in segments:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def process_single_segment(seg):
         seg_text = seg["text"]
         seg_lines = []
+        seg_clara_summary = []
+        seg_icm_summary = []
+        seg_errors = []
+        seg_seen_ids = set()
 
         # 1. Dedicated DNA Buckets with full document text
         try:
@@ -920,13 +926,13 @@ def execute_ambient_recall(payload: dict) -> dict:
                 model=fastembed_model,
                 is_qq=is_qq,
                 limit=10,
-                seen_ids=seen_ids,
-                hook_errors=hook_errors,
+                seen_ids=seg_seen_ids,
+                hook_errors=seg_errors,
             )
             for h in clara_hits:
                 match = re.search(r"\[(.*?)\]", h)
                 if match:
-                    all_summary_clara.append(match.group(1))
+                    seg_clara_summary.append(match.group(1))
                 if multi_item_mode:
                     if h.startswith("### "):
                         seg_lines.append(f"  {h}")
@@ -935,7 +941,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 else:
                     seg_lines.append(h)
         except Exception as ce:
-            hook_errors.append(f"Clara segment probe failed ({seg['label']}): {ce}")
+            seg_errors.append(f"Clara segment probe failed ({seg['label']}): {ce}")
 
         # 2. Sprint DNA probe for segment
         try:
@@ -943,8 +949,8 @@ def execute_ambient_recall(payload: dict) -> dict:
                 seg_text,
                 client=chroma_client,
                 limit=2,
-                seen_ids=seen_ids,
-                hook_errors=hook_errors,
+                seen_ids=seg_seen_ids,
+                hook_errors=seg_errors,
             )
             for sh in sprint_hits:
                 if multi_item_mode:
@@ -952,7 +958,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 else:
                     seg_lines.append(sh)
         except Exception as se:
-            hook_errors.append(f"Sprint segment probe failed ({seg['label']}): {se}")
+            seg_errors.append(f"Sprint segment probe failed ({seg['label']}): {se}")
 
         # 3. In-process SQLite Memory probe for segment
         try:
@@ -961,22 +967,46 @@ def execute_ambient_recall(payload: dict) -> dict:
                 project=project,
                 is_qq=is_qq,
                 limit=2,
-                hook_errors=hook_errors,
+                hook_errors=seg_errors,
             )
             for ih in icm_hits:
                 m_top = re.search(r"\((.*?)\)", ih)
                 if m_top:
-                    all_summary_icm.append(m_top.group(1))
+                    seg_icm_summary.append(m_top.group(1))
                 if multi_item_mode:
                     seg_lines.append(f"  - ICM: {ih[2:]}")
                 else:
                     seg_lines.append(ih)
         except Exception as ie:
-            hook_errors.append(f"ICM segment probe failed ({seg['label']}): {ie}")
+            seg_errors.append(f"ICM segment probe failed ({seg['label']}): {ie}")
+
+        return {
+            "seg": seg,
+            "seg_lines": seg_lines,
+            "clara_summary": seg_clara_summary,
+            "icm_summary": seg_icm_summary,
+            "errors": seg_errors,
+            "seen_ids": seg_seen_ids,
+        }
+
+    # Parallelize segment processing across threads
+    if num_segs > 1:
+        with ThreadPoolExecutor(max_workers=min(6, num_segs)) as pool:
+            seg_results = list(pool.map(process_single_segment, segments))
+    else:
+        seg_results = [process_single_segment(segments[0])]
+
+    for s_res in seg_results:
+        seg = s_res["seg"]
+        seg_lines = s_res["seg_lines"]
+        all_summary_clara.extend(s_res["clara_summary"])
+        all_summary_icm.extend(s_res["icm_summary"])
+        hook_errors.extend(s_res["errors"])
+        seen_ids.update(s_res["seen_ids"])
 
         if seg_lines:
             if multi_item_mode:
-                snippet = seg_text[:50] + ("..." if len(seg_text) > 50 else "")
+                snippet = seg["text"][:50] + ("..." if len(seg["text"]) > 50 else "")
                 ambient_lines.append(f"▸ {seg['label']} (\"{snippet}\"):")
                 ambient_lines.extend(seg_lines)
             else:
