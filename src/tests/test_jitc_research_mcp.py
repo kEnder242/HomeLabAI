@@ -125,7 +125,7 @@ def test_live_mcp_stage_and_research(mcp_proc):
     assert len(content_list) > 0, "Empty content in research response"
     text = content_list[0].get("text", "")
 
-    assert f"Applied Scalpel Match for {test_file}" in text
+    assert f"STAGED CONDUCTOR BLUEPRINT: `{test_file}`" in text
     assert "class LiveTestNode" in text
     assert "new_logic()" in text
     assert "Live stdio JSON-RPC test plan" in text
