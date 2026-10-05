@@ -1332,6 +1332,8 @@ def delegate(
         agent = agent if agent else "atlas"
 
     _target_display = target_files if target_files else reference_file
+    live_gate_status = "UNSPECIFIED"
+    live_gate_details = ""
     log_step(
         story_num,
         "START",
