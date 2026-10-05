@@ -24,6 +24,10 @@ CONFIG_PATH = (
 # [FEAT-586] Valid values for the operator-declarable triage engine preference.
 VALID_PREFERRED_ENGINES = ("M5_AIR", "LOCAL_VLLM")
 
+# [STORY 99.3] Silicon reconciliation: purge stale runtime reconcile-sentinel
+# on every (re)execution so importlib.reload resets module-level state.
+globals().pop("_SILICON_RECONCILE_SENTINEL", None)
+
 
 def _resolve_config_path() -> Path:
     """[FEAT-586] Locate config/infrastructure.json via Path anchor (module-relative).

@@ -1062,7 +1062,11 @@ class FoyerRouter:
             import importlib
 
             import logic.cognitive_hub
+            import logic.speculative_triage
 
+            # [STORY 99.3] Reconcile silicon topology before cognitive hub so
+            # module-level seat endpoints refresh from infrastructure.json.
+            importlib.reload(logic.speculative_triage)
             importlib.reload(logic.cognitive_hub)
             from logic.cognitive_hub import CognitiveHub
 
@@ -1081,11 +1085,13 @@ class FoyerRouter:
             logger.info(
                 "[FOYER] [FEAT-490] Resident nodes and CognitiveHub hot-reloaded successfully. vLLM VRAM preserved."
             )
+            logger.info("[FOYER] Silicon topology and cognitive modules reconciled.")
             return web.json_response(
                 {
                     "status": "success",
                     "message": f"Resident nodes hot-reloaded successfully (commit: {getattr(self, 'boot_commit', 'unknown')}). vLLM VRAM preserved.",
                     "commit": getattr(self, "boot_commit", "unknown"),
+                    "reconciled_silicon": True,
                 }
             )
         except Exception as e:
