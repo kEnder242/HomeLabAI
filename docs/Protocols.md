@@ -486,21 +486,23 @@ HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py \
                 ==> Exposes query_dna(), get_protocol(), list_collections() for exact lookups.
    ```
 
-2. **Channel 1: Automagic Context Injection (ICM Hook)**:
-   * **Turnkey Engine**: ICM (`/home/jallred/.local/bin/icm`) acts as the native prompt-injection plugin.
+2. **Channel 1: Automagic Context Injection (ICM / Ambient Hook)**:
+   * **Target Layer**: Strictly dedicated to **Layer 1 (Strategic Planning & Architecture)**—whether operating via AGY CLI or via Cloud OpenCode planning orchestrators (e.g., Prometheus / Sisyphus Cloud personas).
+   * **Turnkey Engine**: `ambient_hook.sh` / ICM (`/home/jallred/.local/bin/icm`) acts as the pre-invocation prompt-injection engine.
    * **Configuration**: `~/.config/icm/config.toml` sets `provider = "chroma"` and `chroma_url = "http://localhost:8001"`. 
    * **Port Law**: **Port 8001 is ChromaDB.** (Port 8000 is Prometheus RAPL Exporter — pointing ICM to 8000 breaks vector retrieval).
-   * **Hook Registration**: `settings.json` registers `icm hook prompt` under `BeforeAgent`. On every prompt, ICM queries ChromaDB `:8001` via vector similarity and automagically prepends relevant context to the prompt before the LLM generates a response.
+   * **Execution Isolation Law (BKM-076)**: **Layers 2 & 3 (Conductor Atlas & Worker Junior) are STRICTLY EXEMPT from pre-invocation prompt hooks.** Injecting ambient vector memories into local code-editing loops induces KV cache bloat, tool-output feedback contamination, and cognitive wandering. L2/L3 operate exclusively on staged contracts, AST outlines, and compiler/pytest tracebacks.
 
 3. **Channel 2: On-Demand Tool Bridge (`clara-dna` MCP Server)**:
-   * **Purpose**: Allows agents to run surgical, targeted lookups during execution (e.g. `get_protocol("BKM-015")` or `query_dna("feature_dna", "Unity Pattern")`).
+   * **Purpose**: Allows agents across all layers to run surgical, on-demand lookups during execution (e.g. `get_protocol("BKM-015")`, `query_dna("feature_dna", "Unity Pattern")`, or `clara-dna_read()`).
    * **Zero Overhead**: Uses `chromadb.HttpClient` to talk to port 8001 over HTTP. Zero VRAM, zero GPU, <1MB RAM.
    * **Registration**:
      * **AGY (Antigravity CLI v1.1.10)**: Registered in `~/.gemini/config/mcp_config.json` under `mcpServers.clara-dna`.
      * **OpenAgent (OpenCode)**: Registered in `HomeLabAI/.opencode.json` under `mcp.clara-dna`.
 
 4. **Relationship & Identity Boundaries**:
-   * **AGY Identity**: AGY is Antigravity CLI (binary: `~/.local/bin/agy`). Config files live at `~/.gemini/antigravity-cli/settings.json` for settings/hooks and `~/.gemini/config/mcp_config.json` for MCP servers.
+   * **AGY & Cloud OpenCode Identity**: Frontier intelligence orchestrators (AGY, Cloud Prometheus/Sisyphus) manage sprint plans, cross-system invariants, and acceptance gates.
+   * **Local Swarm Identity**: Atlas ($L_2$ Conductor on 4090) and Junior ($L_3$ Worker on M5 Air) execute surgical AST modifications and live verification without ambient prompt noise.
    * **ICM vs. CLaRa DNA**: ICM remembers *what happened* across sessions; CLaRa DNA knows *what the architectural rules are* from ChromaDB `:8001`.
    * **Lab HyDE vs. Agent Injection**: Cognitive Hub HyDE ([FEAT-436]) handles *user-facing* RAG for the lab runtime; ICM + CLaRa DNA handles *agent-facing* grounding for code builders.
 
@@ -1027,7 +1029,7 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 2. **Polymorphic Aliasing (`INS` $\leftrightarrow$ `PHL`):** The prefix `INS` (Inspirations & Insights) is the canonical domain identifier for epistemological axioms. To prevent historical document drift and ensure zero broken links across code comments and papers, all ingestion parsers, MCP servers, and UI components must support polymorphic aliasing where `PHL-xxx` seamlessly resolves to `INS-xxx` and vice versa.
 3. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
 4. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
-5. **Single-Library & 24/7 ChromaDB Daemon Mesh:** All ambient vector retrieval across AGY and OpenCode MUST consume the single canonical library (`HomeLabAI/src/curator/ambient_recall.py`) querying the 24/7 resident ChromaDB service on port 8001 (`chroma-server.service`). Never fork duplicate hook scripts across `.agents/scripts/` or `config/hooks/`, and never proxy ambient vector recall through transitory LLM cognitive routers.
+5. **Single-Library & 24/7 ChromaDB Daemon Mesh:** All ambient vector retrieval for Layer 1 strategic planning (whether running via AGY CLI or Cloud OpenCode orchestrators like Prometheus/Sisyphus) MUST consume the single canonical library (`HomeLabAI/src/curator/ambient_recall.py`) querying the 24/7 resident ChromaDB service on port 8001 (`chroma-server.service`). Never fork duplicate hook scripts across `.agents/scripts/` or `config/hooks/`, and never attach pre-turn ambient hooks to Layer 2/3 local execution workers.
 
 ---
 
