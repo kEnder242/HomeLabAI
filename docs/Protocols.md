@@ -808,14 +808,24 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    - **Leaf Worker (Surgical Patching / Execution):** Node Brain (macOS M5 Air MLX via Headroom `:8002`: `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` / `Sisyphus-Junior` or `Daedalus`). Receives spoon-fed 4-anchor tasks, applies atomic `clara-dna_safe_patch` edits, and is strictly forbidden from delegating further (`task: deny`).
 2. **Topology Deviation Invariant:** Any inversion or deviation from this pattern constitutes an immediate operational failure. `delegate.py` and diagnostic monitors MUST enforce this check and fail immediately upon deviation.
 
-#### 5. Handover Reflection Ingestion & Feedback Record
-1. **Standardized Reflection Capture:** Every delegation dispatch automatically extracts the subagent's `[HANDOVER REFLECTION]` reporting what tripped it up, what was missing/ambiguous, and what single change would accelerate completion.
-2. **Persistent Storage:** Reflections are persisted to `icm store -t delegation_feedback` and recorded in `HomeLabAI/data/delegation_ledger.jsonl`.
-3. **Inter-Attempt Diagnostic Index:** For all failure diagnosis, prompt tuning, circular trap prevention, and playbook references, proceed immediately to **[BKM-071]**.
+#### 5. Handover Reflection Ingestion, Live Mandate Audit & Action ([FEAT-654] / [BKM-024])
+1. **Standardized Reflection & Live Gate Tag Capture:** Every delegation dispatch automatically extracts the subagent's `[HANDOVER REFLECTION]` and parses for machine-readable Live Gate tags:
+   - `[LIVE_GATE_PENDING: daemon=<port/name> endpoint=<path> probe=<test_command>]`
+   - `[LIVE_GATE: PASSED]`
+2. **Persistent Storage & Ledger Status:** Reflections, `live_gate_status`, and `live_gate_details` are recorded in `HomeLabAI/data/delegation_ledger.jsonl` and persisted to `icm store -t delegation_feedback`.
+3. **Orchestrator Action on `LIVE_GATE_PENDING` (The Live Gate):**
+   - When `LIVE_GATE_PENDING` is reported, sandbox unit-test passes are strictly **Provisional**.
+   - The primary orchestrator (AGY) is **STRICTLY FORBIDDEN from executing `git commit` or certifying task completion** on sandbox mocks alone.
+   - AGY MUST execute the mandatory live validation actions:
+     1. Hot-reload the live daemon (`POST http://127.0.0.1:8765/reload_residents` or `systemctl --user restart ...`).
+     2. Run the designated live probe / integration test against active daemons and reachable silicon endpoints (`BKM-024`).
+     3. Verify real runtime logs and confirm zero degradation before committing code.
+4. **Orchestrator Action on `LIVE_GATE: PASSED`:** If `[LIVE_GATE: PASSED]` is reported (pure algorithmic logic with 100% genuine execution and zero daemon dependencies), AGY audits git diffs, verifies tests, and certifies the story.
+5. **Action on Missing Tag:** If a subagent modifies codebase logic but omits the Live Gate tag, AGY must treat the story as `LIVE_GATE_PENDING` and perform live daemon verification before committing.
+6. **Inter-Attempt Diagnostic Index:** For all failure diagnosis, prompt tuning, circular trap prevention, and playbook references, proceed immediately to **[BKM-071]**.
 
 #### 6. Bounded Conductor Context & Semantic Pre-Warming Invariant ([FEAT-642] / [FEAT-643] / [DISC-011])
 1. **The Just-In-Time Illusion (`DISC-011`):** To preserve L2 conductor agency without inducing context bloat or multi-turn slicing loops, `delegate.py` MUST pre-warm target file semantic digests (`_prewarm_target_context`) into `/tmp/clara_context_cache.json` before session execution.
-
 2. **First-Touch AST Blueprint & Digest:** When the conductor invokes `clara-dna_read(file_path)`, the tool serves a bounded (<400 tokens) payload containing the full class/def AST blueprint alongside the pre-warmed semantic digest.
 3. **Raw Read Denial:** Conductor personas are denied raw, unbuffered whole-file reads (`read: deny` / `grep: deny`) to enforce structural grounding and prevent 100k+ token context blowouts. Slicing is bounded to max 150 lines per call.
 

@@ -472,8 +472,10 @@ def _log_delegation_ledger(
     model_name: str = "",
     agent_role: str = "",
     reflection: str = "",
+    live_gate_status: str = "UNSPECIFIED",
+    live_gate_details: str = "",
 ):
-    """[FEAT-552 / BKM-049] Record structured delegation execution to persistent delegation_ledger.jsonl and ICM."""
+    """[FEAT-552 / BKM-049 / FEAT-654] Record structured delegation execution to persistent delegation_ledger.jsonl and ICM."""
     knobs = _extract_telemetry_knobs(
         target_scope, model_name, status, error_reason, agent_role=agent_role
     )
@@ -496,6 +498,8 @@ def _log_delegation_ledger(
         "error_reason": error_reason or "",
         "model": model_name or "unknown",
         "reflection": reflection or "",
+        "live_gate_status": live_gate_status,
+        "live_gate_details": live_gate_details,
         "knobs": knobs,
     }
     line = json.dumps(ledger_entry) + "\n"
@@ -562,9 +566,9 @@ def show_delegation_ledger(limit: int = 20):
     )
     print("=" * 110)
     print(
-        f"{'TIMESTAMP':<20} | {'SPRINT':<6} | {'STORY':<8} | {'TIER':<14} | {'STATUS':<20} | {'DUR(s)':<7} | {'MODEL'}"
+        f"{'TIMESTAMP':<19} | {'SPR':<6} | {'STORY':<8} | {'TIER':<10} | {'STATUS':<16} | {'LIVE_GATE':<12} | {'DUR(s)':<7} | {'MODEL'}"
     )
-    print("-" * 110)
+    print("-" * 115)
 
     local_total = 0
     local_success = 0
@@ -588,12 +592,13 @@ def show_delegation_ledger(limit: int = 20):
         ts = r.get("timestamp", "")[:19]
         spr = f"SPR-{r.get('sprint', '?')}"
         sty = str(r.get("story", "?"))[:8]
-        tier = r.get("tier", "?")[:14]
-        status = r.get("status", "?")[:20]
+        tier = r.get("tier", "?")[:10]
+        status = r.get("status", "?")[:16]
+        lg_status = r.get("live_gate_status", "UNSPECIFIED")[:12]
         dur = f"{r.get('duration_s', 0):.1f}"
-        model = str(r.get("model", "?"))[:30]
+        model = str(r.get("model", "?"))[:25]
         print(
-            f"{ts:<20} | {spr:<6} | {sty:<8} | {tier:<14} | {status:<20} | {dur:<7} | {model}"
+            f"{ts:<19} | {spr:<6} | {sty:<8} | {tier:<10} | {status:<16} | {lg_status:<12} | {dur:<7} | {model}"
         )
 
     print("=" * 110)
@@ -607,6 +612,83 @@ def show_delegation_ledger(limit: int = 20):
         f"  [SWARM:CLOUD] Runs: {cloud_total:<4} | Successes: {cloud_success:<4} | Success Rate: {c_rate:.1f}%"
     )
     print("=" * 110)
+
+
+def _load_agent_rules(agent_name: str) -> str:
+    """[Story 99.0 / BKM-049] Dynamically load and inline the appropriate AGENTS_L*.md rule file."""
+    rule_file = "AGENTS_L2.md" if agent_name in ["atlas", "Atlas"] else "AGENTS_L3.md"
+    search_paths = [
+        os.path.expanduser(f"~/Dev_Lab/{rule_file}"),
+        os.path.join(os.getcwd(), rule_file),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), f"../../../{rule_file}")),
+    ]
+    for p in search_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except Exception:
+                pass
+    return ""
+
+
+def _probe_mcp_server() -> tuple[bool, str]:
+    """[Story 99.0 / BKM-024 / FEAT-486 / FEAT-658] Fast stdio JSON-RPC + OpenCode REST /mcp verification with auto-healing."""
+    mcp_script = "/home/jallred/AcmeLab/src/clara_dna_mcp_server.py"
+    py_bin = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
+    if not os.path.exists(mcp_script) or not os.path.exists(py_bin):
+        return False, f"MCP script or Python binary missing ({mcp_script})"
+    try:
+        proc = subprocess.Popen(
+            [py_bin, mcp_script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        init_req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "delegate_probe", "version": "1.0"}},
+        }) + "\n"
+        proc.stdin.write(init_req)
+        proc.stdin.flush()
+        resp_line = proc.stdout.readline()
+        proc.terminate()
+        if not (resp_line and "result" in json.loads(resp_line)):
+            return False, f"Unexpected response from MCP server: {resp_line}"
+    except Exception as e:
+        return False, f"MCP subprocess probe error: {e}"
+
+    # Verify OpenCode REST /mcp endpoint status
+    def _check_opencode_mcp():
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/mcp", headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                clara_status = data.get("clara-dna", {}).get("status")
+                return clara_status == "connected", clara_status
+        except Exception as e:
+            return False, str(e)
+
+    is_connected, status_val = _check_opencode_mcp()
+    if is_connected:
+        return True, "OK"
+
+    # Auto-heal: restart opencode-core.service if connection dropped or failed
+    try:
+        log_step(0, "MCP_AUTO_HEAL", f"OpenCode MCP status is '{status_val}'. Restarting opencode-core.service...", severity="WARNING")
+        subprocess.run(["systemctl", "--user", "restart", "opencode-core.service"], check=False)
+        for _ in range(6):
+            time.sleep(1.0)
+            is_conn, stat = _check_opencode_mcp()
+            if is_conn:
+                return True, "OK (auto-healed opencode-core.service)"
+        return False, f"OpenCode MCP status remained '{stat}' after auto-heal restart"
+    except Exception as e:
+        return False, f"Auto-heal failed: {e}"
 
 
 def check_cloud_quota(provider="opencode"):
@@ -1361,7 +1443,22 @@ def delegate(
             active_session_valid = False
 
     if not active_session_valid:
-        # Pre-flight sweep: nuke any orphaned/zombie sessions on port 4097
+        # Pre-flight Live MCP Server Probe
+        mcp_ok, mcp_msg = _probe_mcp_server()
+        if not mcp_ok:
+            log_step(
+                story_num,
+                "MCP_PREFLIGHT_FAILED",
+                f"Canonical MCP server probe failed: {mcp_msg}",
+                severity="CRITICAL",
+            )
+            sys.exit(1)
+        else:
+            log_step(
+                story_num,
+                "MCP_PREFLIGHT_OK",
+                "Canonical MCP server (:stdio) verified live with all mandatory tools",
+            )
 
         try:
             session_payload = {
@@ -1462,11 +1559,19 @@ Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION DIRECTIVE]
-Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use clara-dna_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}'). If contract is under-specified, halt on Turn 1 with [BLOCKER REPORT: MISSING_CONTEXT]."""
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use clara-dna_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}').
+If ANY tool in your manifest is unavailable, or contract is under-specified, FAST-HALT IMMEDIATELY ON TURN 1 (<50 tokens) with:
+[BLOCKER REPORT: TOOL UNAVAILABLE]
+Reason: <tool_name> is unavailable.
+Strictly zero internal reasoning monologues once a blocker is detected."""
         note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-The architectural plan for this task is vetted and solid. Do not perform open-ended file searches or re-plan the system. All exact implementation details, AST anchors, and patch blueprints come directly from your JITC research tool. Trust the plan, and verify the live details by running research(target_file) on Turn 1. 1) Review empirical findings from research(). 2) Apply surgical changes via safe_patch(). 3) Run verification (call failure_whisperer(traceback) on failure). 4) Call handoff_checkpoint() on pass."""
+The architectural plan for this task is vetted and solid. Do not perform open-ended file searches or re-plan the system. All exact implementation details, AST anchors, and patch blueprints come directly from your JITC research tool. Trust the plan, and verify the live details by running research(target_file) on Turn 1. 1) Review empirical findings from research(). 2) Apply surgical changes via safe_patch(). 3) Run verification (call failure_whisperer(traceback) on failure). 4) Call handoff_checkpoint() on pass.
+If ANY mandatory tool is missing or fails, FAST-HALT IMMEDIATELY ON TURN 1 (<50 tokens) with:
+[BLOCKER REPORT: TOOL UNAVAILABLE]
+Reason: <tool_name> is unavailable.
+Strictly zero internal reasoning monologues once a blocker is detected."""
         _edit_scope = target_files if target_files else reference_file
         note_block = f"[NOTE] Apply code modifications strictly to {_edit_scope}."
 
@@ -1500,7 +1605,7 @@ Sprint Reference: {effective_sprint_doc}
             data=req_payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(amb_req, timeout=0.25) as amb_resp:
+        with urllib.request.urlopen(amb_req, timeout=0.50) as amb_resp:
             amb_data = json.loads(amb_resp.read().decode("utf-8"))
             steps = amb_data.get("injectSteps", [])
             if steps and "ephemeralMessage" in steps[0]:
@@ -1536,6 +1641,9 @@ Reference File: {effective_sprint_doc}
     _handover_block = """[HANDOVER REFLECTION]
 In 1-2 brief sentences, state any blocker or ambiguity encountered during execution."""
 
+    raw_rules = _load_agent_rules(agent)
+    agent_rules_block = f"\n[OPERATIONAL INVARIANTS & ABORT MANDATES]\n{raw_rules}\n" if raw_rules else ""
+
     _target_files_line = (
         f"- Edit Target(s): {target_files}"
         if target_files
@@ -1548,6 +1656,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 - Edit Target(s): {target_files or reference_file}
 - Mode: {mode.upper()}
 
+{agent_rules_block}
 {mandate_block}
 
 {details}
@@ -1561,6 +1670,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 {_target_files_line}
 - Delegation Mode: {mode.upper()}
 
+{agent_rules_block}
 {mandate_block}
 
 [FUNCTIONAL REQUIREMENTS & 4-ANCHOR SPECIFICATION]
@@ -1783,6 +1893,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         )
 
         reflection_text = ""
+        live_gate_status = "UNSPECIFIED"
+        live_gate_details = ""
         if full_text:
             print("\n" + "═" * 80, flush=True)
             print(f"📢 [OPENAGENT EXECUTION REPORT & HANDOVER REFLECTION — STORY {story_num}]", flush=True)
@@ -1800,6 +1912,24 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             elif "[HANDOVER REFLECTION]" in full_text:
                 reflection_text = full_text.split("[HANDOVER REFLECTION]")[-1].strip()
 
+            # [FEAT-654 Airtight Live Gate Parsing]
+            lg_match = re.search(r"\[LIVE_GATE_PENDING:\s*(.+?)\]", full_text, re.IGNORECASE)
+            if lg_match:
+                live_gate_status = "PENDING"
+                live_gate_details = lg_match.group(1).strip()
+                print(
+                    f"\n╔════════════════════════════════════════════════════════════════════════════╗\n"
+                    f"║ ⚠️  [FEAT-654 LIVE GATE PENDING] Layer 1 (AGY) Live Certification Required ║\n"
+                    f"╠════════════════════════════════════════════════════════════════════════════╣\n"
+                    f"║ Sandbox mocks passed. Live integration must be certified by AGY:           ║\n"
+                    f"║ Target: {live_gate_details[:66]:<66} ║\n"
+                    f"║ Mandate: Hot-reload daemon (:8765) & test live silicon before Git merge!  ║\n"
+                    f"╚════════════════════════════════════════════════════════════════════════════╝\n",
+                    flush=True,
+                )
+            elif "[LIVE_GATE: PASSED]" in full_text.upper():
+                live_gate_status = "PASSED"
+
             blocker_match = re.search(
                 r"(?:\[BLOCKER REPORT:\s*(.+?)\]|\*\*Blocker Report:\*\*\s*(.+))",
                 full_text,
@@ -1812,6 +1942,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                     sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
                     session_id, duration, tokens, "BLOCKER_HALT", 1, verification, False, blocker_text[:200], model_str,
                     reflection=reflection_text,
+                    live_gate_status=live_gate_status,
+                    live_gate_details=live_gate_details,
                 )
                 _cleanup_active_session()
                 sys.exit(1)
@@ -1820,10 +1952,11 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             log_step(story_num, "VERIFICATION_START", f"Executing single-shot verification: {verification}")
             try:
                 monorepo_root = os.path.expanduser("~/Dev_Lab")
+                exec_cwd = target_dir if (target_dir and os.path.exists(target_dir)) else (monorepo_root if os.path.exists(monorepo_root) else os.getcwd())
                 v_res = subprocess.run(
                     verification,
                     shell=True,
-                    cwd=monorepo_root if os.path.exists(monorepo_root) else (target_dir or os.getcwd()),
+                    cwd=exec_cwd,
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -1834,6 +1967,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                         sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
                         session_id, duration, tokens, "SUCCESS", 1, verification, True, "", model_str,
                         reflection=reflection_text,
+                        live_gate_status=live_gate_status,
+                        live_gate_details=live_gate_details,
                     )
                     _trigger_ambient_hook_telemetry(story_num, title, duration, "SUCCESS")
                     _ACTIVE_SESSION_ID = None
@@ -1855,6 +1990,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                         sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
                         session_id, duration, tokens, "VERIFICATION_FAILED", 1, verification, False, v_output[:200], model_str,
                         reflection=reflection_text,
+                        live_gate_status=live_gate_status,
+                        live_gate_details=live_gate_details,
                     )
                     _trigger_ambient_hook_telemetry(story_num, title, duration, "VERIFICATION_FAILED")
                     _cleanup_active_session()
@@ -1870,6 +2007,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                     sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
                     session_id, duration, tokens, "VERIFICATION_TIMEOUT", 1, verification, False, "Verification timed out after 120s", model_str,
                     reflection=reflection_text,
+                    live_gate_status=live_gate_status,
+                    live_gate_details=live_gate_details,
                 )
                 _trigger_ambient_hook_telemetry(story_num, title, duration, "VERIFICATION_TIMEOUT")
                 _cleanup_active_session()
@@ -1879,6 +2018,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
             session_id, duration, tokens, "COMPLETED_UNVERIFIED", 1, verification, None, "", model_str,
             reflection=reflection_text,
+            live_gate_status=live_gate_status,
+            live_gate_details=live_gate_details,
         )
         _trigger_ambient_hook_telemetry(story_num, title, duration, "COMPLETED_UNVERIFIED")
         _ACTIVE_SESSION_ID = None
@@ -1896,7 +2037,9 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         )
         _log_delegation_ledger(
             sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
-            session_id, duration, {}, "DISPATCH_FAILED", 1, verification, False, str(e)[:200], model_str
+            session_id, duration, {}, "DISPATCH_FAILED", 1, verification, False, str(e)[:200], model_str,
+            live_gate_status=live_gate_status,
+            live_gate_details=live_gate_details,
         )
         _cleanup_active_session()
         sys.exit(1)
