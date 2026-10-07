@@ -81,7 +81,7 @@ def get_fastembed():
     return _fastembed_model if _fastembed_model is not False else None
 
 
-def probe_socket(host: str, port: int, timeout: float = 0.15) -> bool:
+def probe_socket(host: str, port: int, timeout: float = 0.25) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
@@ -99,7 +99,7 @@ class ChromaRestClient:
     def _refresh_cols(self):
         try:
             req = urllib.request.Request(f"{self.base_url}/collections")
-            with urllib.request.urlopen(req, timeout=0.3) as resp:
+            with urllib.request.urlopen(req, timeout=0.4) as resp:
                 cols = json.loads(resp.read().decode("utf-8"))
                 self._col_cache = {c["name"]: c["id"] for c in cols}
         except Exception:
@@ -117,7 +117,7 @@ class ChromaRestClient:
     def heartbeat(self):
         try:
             req = urllib.request.Request("http://127.0.0.1:8001/api/v1/heartbeat")
-            with urllib.request.urlopen(req, timeout=0.15) as resp:
+            with urllib.request.urlopen(req, timeout=0.25) as resp:
                 return resp.status == 200
         except Exception:
             return True
@@ -182,7 +182,7 @@ def get_chroma_client():
 
         port = int(os.environ.get("CHROMA_PORT", 8001))
         for h in candidates:
-            if probe_socket(h, port, timeout=0.15):
+            if probe_socket(h, port, timeout=0.25):
                 return ChromaRestClient(base_url=f"http://{h}:{port}/api/v2/tenants/default_tenant/databases/default_database")
     except Exception:
         pass
@@ -275,7 +275,7 @@ def get_recent_memories(limit=4):
     try:
         import sqlite3
 
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.05)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.1)
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -480,25 +480,25 @@ def probe_claradb(
                 emb = list(model.embed([text[:2048]]))[0].tolist()
 
                 domain_caps = {
-                    "feature_dna": 3,
-                    "behavioral_dna": 2,
-                    "wisdom_dna": 2,
-                    "inspiration_dna": 1,
-                    "rdna": 1,
-                    "loop_dna": 1,
+                    "feature_dna": 4,
+                    "behavioral_dna": 3,
+                    "wisdom_dna": 3,
+                    "inspiration_dna": 2,
+                    "rdna": 2,
+                    "loop_dna": 2,
                 }
                 domain_counts = {d: 0 for d in domain_caps}
 
                 def check_in_band(dist, min_dist, has_kw):
-                    base = (dist <= 0.76) or (dist <= min_dist + 0.08 and dist < 0.82) or (has_kw and dist <= 0.80)
+                    base = (dist <= 0.78) or (dist <= min_dist + 0.10 and dist < 0.84) or (has_kw and dist <= 0.82)
                     if is_qq:
-                        base = base or (dist <= 0.80)
+                        base = base or (dist <= 0.82)
                     return base
 
                 # Feature DNA Bucket
                 try:
                     col_feat = client.get_collection("feature_dna")
-                    r_feat = col_feat.query(query_embeddings=[emb], n_results=6)
+                    r_feat = col_feat.query(query_embeddings=[emb], n_results=8)
                     f_dists = r_feat.get("distances", [[]])[0]
                     if f_dists:
                         min_f = min(f_dists)
@@ -528,7 +528,7 @@ def probe_claradb(
                 # Behavioral DNA (BKM / LAB / INFRA) Bucket
                 try:
                     col_bkm = client.get_collection("behavioral_dna")
-                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=6)
+                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=8)
                     b_dists = r_bkm.get("distances", [[]])[0]
                     if b_dists:
                         min_b = min(b_dists)
@@ -564,7 +564,7 @@ def probe_claradb(
                 # Wisdom DNA Bucket
                 try:
                     col_wis = client.get_collection("wisdom_dna")
-                    r_wis = col_wis.query(query_embeddings=[emb], n_results=4)
+                    r_wis = col_wis.query(query_embeddings=[emb], n_results=6)
                     w_dists = r_wis.get("distances", [[]])[0]
                     if w_dists:
                         min_w = min(w_dists)
@@ -598,7 +598,7 @@ def probe_claradb(
                     except Exception:
                         col_ins = client.get_collection("philosophy_dna")
                     if col_ins:
-                        r_ins = col_ins.query(query_embeddings=[emb], n_results=3)
+                        r_ins = col_ins.query(query_embeddings=[emb], n_results=5)
                         i_dists = r_ins.get("distances", [[]])[0]
                         if i_dists:
                             min_i = min(i_dists)
@@ -627,7 +627,7 @@ def probe_claradb(
                 # Reverse DNA (RDNA HyDE Exemplar) Bucket
                 try:
                     col_rdna = client.get_collection("rdna")
-                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=3)
+                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=4)
                     rd_dists = r_rdna.get("distances", [[]])[0]
                     if rd_dists:
                         min_rd = min(rd_dists)
@@ -650,7 +650,7 @@ def probe_claradb(
                 # Loop DNA Bucket
                 try:
                     col_loop = client.get_collection("loop_dna")
-                    r_loop = col_loop.query(query_embeddings=[emb], n_results=3)
+                    r_loop = col_loop.query(query_embeddings=[emb], n_results=4)
                     l_dists = r_loop.get("distances", [[]])[0]
                     if l_dists:
                         min_l = min(l_dists)
@@ -762,7 +762,7 @@ def probe_icm(
     try:
         import sqlite3
 
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.05)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.1)
         cursor = conn.cursor()
 
         fts_query = " OR ".join(f'"{w}"' for w in words[:6])
@@ -925,7 +925,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 client=chroma_client,
                 model=fastembed_model,
                 is_qq=is_qq,
-                limit=10,
+                limit=15,
                 seen_ids=seg_seen_ids,
                 hook_errors=seg_errors,
             )
@@ -948,7 +948,7 @@ def execute_ambient_recall(payload: dict) -> dict:
             sprint_hits = probe_sprint_dna(
                 seg_text,
                 client=chroma_client,
-                limit=2,
+                limit=3,
                 seen_ids=seg_seen_ids,
                 hook_errors=seg_errors,
             )
@@ -966,7 +966,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 seg_text,
                 project=project,
                 is_qq=is_qq,
-                limit=2,
+                limit=3,
                 hook_errors=seg_errors,
             )
             for ih in icm_hits:
@@ -1039,7 +1039,7 @@ def execute_ambient_recall(payload: dict) -> dict:
             ambient_lines.extend(literal_fallbacks)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-    warn_threshold_ms = float(os.environ.get("HOOK_WARN_THRESHOLD_MS", 150.0))
+    warn_threshold_ms = float(os.environ.get("HOOK_WARN_THRESHOLD_MS", 550.0))
 
     if elapsed_ms > warn_threshold_ms:
         lat_msg = f"Hook execution took {elapsed_ms:.1f}ms (threshold: {warn_threshold_ms:.0f}ms)"
@@ -1059,7 +1059,7 @@ def execute_ambient_recall(payload: dict) -> dict:
 
     if ambient_lines:
         anchors = list(seen_ids)
-        breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in anchors[:4]]) if anchors else 'Nominal'} ({len(anchors)} hits • {elapsed_ms:.1f}ms)"
+        breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in anchors[:6]]) if anchors else 'Nominal'} ({len(anchors)} hits • {elapsed_ms:.1f}ms)"
         ambient_lines.insert(0, f"[Grounding Header: {breadcrumb}]")
 
         return {"injectSteps": [{"ephemeralMessage": "\n".join(ambient_lines)}]}
