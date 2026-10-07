@@ -1068,6 +1068,9 @@ class FoyerRouter:
             # module-level seat endpoints refresh from infrastructure.json.
             importlib.reload(logic.speculative_triage)
             importlib.reload(logic.cognitive_hub)
+            if "curator.ambient_recall" in sys.modules:
+                import curator.ambient_recall
+                importlib.reload(curator.ambient_recall)
             from logic.cognitive_hub import CognitiveHub
 
             self.cognitive = CognitiveHub(

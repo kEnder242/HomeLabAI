@@ -1266,26 +1266,26 @@ Documents are structured trees of conceptual nodes tracked across historical mil
 
 ---
 
-## BKM-077: Conversational Ball-Tracking & Actionable Item Ledger (BALL_TRACK)
+## BKM-077: Conversational Anchor Tracking Protocol (ANCHOR_TRACK)
 **Feature Anchor:** `[FEAT-649]` / `[BKM-077]` / `[BKM-004]` / `[BKM-006]`  
-**Colloquial Alias:** "The Anti-Dropped-Ball Protocol & Conversation Ledger"  
+**Colloquial Alias:** "The Conversational Anchor Ledger Protocol"  
 **Domain:** Agent Coordination, Task Capture, Conversational Accountability, Sprints  
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Operational Imperative
-During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug reports, and design inquiries are frequently raised across conversational turns. To prevent dropped balls, context-loss during truncation, or premature crystalization into sprint stories, the orchestrator MUST maintain a strict **BALL_TRACK Ledger**.
+During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug reports, and design inquiries are frequently raised across conversational turns. To prevent dropped topics, context-loss during truncation, or premature crystallization into sprint stories, the orchestrator MUST maintain a strict **ANCHOR_TRACK Ledger**.
 
 ### 2. The 3 Lifecycle Phases
 1. **CAPTURE WITH USER (In-Conversation Stage):**
-   - Every identified triage item, bug, or design topic is assigned a discrete tracking tag (`BALL-01`, `BALL-02`, ...).
+   - Every identified triage item, bug, or design topic is assigned a discrete tracking tag (`ANCHOR-01`, `ANCHOR-02`, ...).
    - Inquiries prefixed with `QQ` (`BKM-004`) remain informational lookups and do NOT generate work items unless explicitly converted by the user.
-   - Items remain conversational topics until verbally aligned and captured into a unified tabular ledger.
-2. **SPRINT CRYSTALIZATION (The Planning Stage):**
-   - Once verbal consensus is reached, the items are mapped to sprint stories (`Story <N>.1`, `Story <N>.2`, ...).
-   - The sprint plan MUST include the verbatim BALL_TRACK ledger table reflecting the exact state (`DONE`, `STAGED`, `DROPPED`, `DEFERRED`).
+   - Topics remain conversational anchors until verbally aligned and captured into a unified tabular ledger.
+2. **SPRINT CRYSTALLIZATION (The Planning Stage):**
+   - Once verbal consensus is reached, the anchors are mapped to sprint stories (`Story <N>.1`, `Story <N>.2`, ...).
+   - The sprint plan MUST include the verbatim ANCHOR_TRACK ledger table reflecting the exact state (`DONE`, `STAGED`, `DROPPED`, `DEFERRED`).
 3. **HEADS DOWN EXECUTION (The Delivery Stage):**
    - Execution proceeds under `BKM-006` and `BKM-007` with assigned owner tags (`[AGY:PRIMARY]` vs `[SWARM:LOCAL]`).
-   - Every completed item transitions its BALL state to `✅ DONE` in the sprint plan ledger.
+   - Every completed anchor transitions its state to `✅ DONE` in the sprint plan ledger.
 
 
 ---
