@@ -1940,10 +1940,37 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 
     if post_result is not None:
         api_err = None
-        model_obj = post_result.get("info", {}).get("model") if isinstance(post_result, dict) else None
-        if not isinstance(model_obj, dict):
-            model_obj = {"providerID": agent, "modelID": "openagent"}
-        model_str = f"{model_obj.get('providerID', agent)}/{model_obj.get('modelID', 'openagent')}"
+        info = post_result.get("info", {}) if isinstance(post_result, dict) else {}
+        runtime_provider = info.get("providerID") or agent
+        runtime_model = info.get("modelID") or "openagent"
+        model_obj = {"providerID": runtime_provider, "modelID": runtime_model}
+        model_str = f"{runtime_provider}/{runtime_model}"
+
+        # [BKM-049 / BKM-061] Strict Hardware / Cloud Delegation Verification Gate
+        if cloud_only:
+            if runtime_provider in ("my-windows-4090", "my-m5-mlx"):
+                err_msg = f"Delegation violation: mode '{mode}' assigned to cloud but executed on local silicon '{runtime_provider}' ({runtime_model})!"
+                log_step(story_num, "CLOUD_DELEGATION_VIOLATION", err_msg, severity="CRITICAL")
+                _log_delegation_ledger(
+                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                    session_id, duration, {}, "DELEGATION_VIOLATION", 1, verification, False, err_msg[:200], model_str
+                )
+                _cleanup_active_session()
+                sys.exit(1)
+            else:
+                log_step(story_num, "CLOUD_DELEGATION_CONFIRMED", f"Cloud execution verified on {model_str}")
+        elif local_only:
+            if runtime_provider not in ("my-windows-4090", "my-m5-mlx"):
+                err_msg = f"Delegation violation: mode 'local' assigned to sovereign silicon but executed on cloud provider '{runtime_provider}' ({runtime_model})!"
+                log_step(story_num, "LOCAL_DELEGATION_VIOLATION", err_msg, severity="CRITICAL")
+                _log_delegation_ledger(
+                    sprint_num, story_num, title, mode, tier_str, target_files or reference_file,
+                    session_id, duration, {}, "DELEGATION_VIOLATION", 1, verification, False, err_msg[:200], model_str
+                )
+                _cleanup_active_session()
+                sys.exit(1)
+            else:
+                log_step(story_num, "LOCAL_DELEGATION_CONFIRMED", f"Local execution verified on sovereign silicon {model_str}")
 
         if isinstance(post_result, dict):
             if "error" in post_result.get("info", {}):
@@ -1957,7 +1984,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         log_step(
             story_num,
             "COMPLETE",
-            f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s. finish={finish} tokens={tokens}",
+            f"Story {story_num} dispatch ({mode.upper()}) complete in {duration:.1f}s via {model_str}. finish={finish} tokens={tokens}",
         )
         log_step(
             story_num,
