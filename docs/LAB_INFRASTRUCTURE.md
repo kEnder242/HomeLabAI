@@ -248,7 +248,7 @@
     *   **Hook**: Registered under `BeforeAgent` in `~/.gemini/antigravity-cli/settings.json` (`icm hook prompt`).
     *   **Behavior**: Executes semantic vector similarity searches against ChromaDB `:8001` on every prompt, automagically prepending top matching context to the prompt before turn generation.
 2.  **On-Demand Tool Bridge Channel (CLaRa DNA MCP Server)**:
-    *   **Engine**: `clara-dna` FastMCP server (`AcmeLab/src/clara_dna_mcp_server.py`) using `chromadb.HttpClient` on port `8001`. Zero VRAM, zero GPU, <1MB RAM.
+    *   **Engine**: `clara-dna` FastMCP server (`HomeLabAI/src/mcp/clara_dna_mcp_server.py`) using `chromadb.HttpClient` on port `8001`. Zero VRAM, zero GPU, <1MB RAM.
     *   **Registration**: Registered in `~/.gemini/config/mcp_config.json` (AGY) and `HomeLabAI/.opencode.json` (OpenAgent).
     *   **Tools**: Exposes `query_dna()`, `get_protocol()`, and `list_collections()`.
 3.  **Response Transparency Badge Protocol (UI Feedback Loop)**:

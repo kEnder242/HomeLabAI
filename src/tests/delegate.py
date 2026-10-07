@@ -634,7 +634,11 @@ def _load_agent_rules(agent_name: str) -> str:
 
 def _probe_mcp_server() -> tuple[bool, str]:
     """[Story 99.0 / BKM-024 / FEAT-486 / FEAT-658] Fast stdio JSON-RPC + OpenCode REST /mcp verification with auto-healing."""
-    mcp_script = "/home/jallred/AcmeLab/src/clara_dna_mcp_server.py"
+    canonical_paths = [
+        os.path.expanduser("~/Dev_Lab/HomeLabAI/src/mcp/clara_dna_mcp_server.py"),
+        "/home/jallred/AcmeLab/src/clara_dna_mcp_server.py",
+    ]
+    mcp_script = next((p for p in canonical_paths if os.path.exists(p)), canonical_paths[0])
     py_bin = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
     if not os.path.exists(mcp_script) or not os.path.exists(py_bin):
         return False, f"MCP script or Python binary missing ({mcp_script})"

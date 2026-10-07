@@ -481,7 +481,7 @@ HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py \
           │     ==> Automagically injects top vector matches into system prompt BEFORE turn 1.
           │
           └───► CHANNEL 2: ON-DEMAND MCP BRIDGE (clara-dna MCP Server)
-                `AcmeLab/src/clara_dna_mcp_server.py` (chromadb.HttpClient -> :8001)
+                `HomeLabAI/src/mcp/clara_dna_mcp_server.py` (chromadb.HttpClient -> :8001)
                 `~/.gemini/config/mcp_config.json` (AGY) / `.opencode.json` (OpenAgent)
                 ==> Exposes query_dna(), get_protocol(), list_collections() for exact lookups.
    ```
