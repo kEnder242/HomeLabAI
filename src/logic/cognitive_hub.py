@@ -1789,7 +1789,7 @@ class CognitiveHub:
             # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
             behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
             # Pass the triage hints as context so Pinky has something to synthesize.
-            rag_context = await self._fetch_rag_context(turn, t_parsed)
+            rag_context = await self._fetch_rag_context(turn, t_parsed, request_id=request_id)
             context = f"Triage Situation: {t_parsed.get('situation', '')}\nTriage Hints: {t_parsed.get('hints', '')}"
             if rag_context:
                 context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
@@ -1838,7 +1838,7 @@ class CognitiveHub:
                     handover_context = context if context else rag_context
                 else:
                     handover_context = context or await self._fetch_rag_context(
-                        turn, t_parsed
+                        turn, t_parsed, request_id=request_id
                     )
             if (
                 handover_context
@@ -1934,7 +1934,7 @@ class CognitiveHub:
                 "brain" in self.residents or "thought" in self.residents
             ) and vibe != "CASUAL":
                 brain_prefetch_task = asyncio.create_task(
-                    self._fetch_rag_context(turn, t_parsed)
+                    self._fetch_rag_context(turn, t_parsed, request_id=request_id)
                 )
 
             # Pinky leads Turn 1 (Explicitly addressed to PINKY)
@@ -2429,7 +2429,11 @@ class CognitiveHub:
         return await self.synthesize_preamble_quip(query)
 
     async def resolve_hyde_vector(
-        self, query: str, triage_result: dict, timeout: float = 8.0
+        self,
+        query: str,
+        triage_result: dict,
+        timeout: float = 8.0,
+        request_id: str = "default",
     ) -> tuple:
         """[FEAT-437] 3-Tier HyDE Failover Cascade:
         Tier 1 (Pinky Local vLLM with cli_voice_v1 LoRA):
@@ -2474,6 +2478,8 @@ class CognitiveHub:
                     tools=[],
                     temperature=0.2,
                     max_tokens=150,
+                    scope=ContextScope.TURN,      # [FEAT-640] Mandatory single-turn isolation
+                    request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
                     pinky_hyde += token
                 clean_hyde = scrub_hyde_vector(pinky_hyde.strip())
@@ -2517,7 +2523,7 @@ class CognitiveHub:
         )
         return "", DIRECT_RAW_QUERY
 
-    async def _fetch_rag_context(self, turn, t_parsed, n_results=3):
+    async def _fetch_rag_context(self, turn, t_parsed, n_results=3, request_id: str = "default"):
         """[FEAT-437/442/454/541] Post-triage RAG retrieval with Two-Stage Zero-Duplicate Cache:
         Passes AI-produced HyDE vector text or utilizes pre-triage vector probe results from
         ChromaDB collections to bypass redundant database lookups (0ms cache hits)."""
@@ -2530,7 +2536,9 @@ class CognitiveHub:
         )
         if domain_val in ("lab_internal", "unclear", "feedback", "unknown", "standard"):
             return ""
-        hyde, hyde_tier = await self.resolve_hyde_vector(turn, t_parsed)
+        hyde, hyde_tier = await self.resolve_hyde_vector(
+            turn, t_parsed, request_id=request_id
+        )
         # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB
         if not hyde:
             return ""

@@ -155,5 +155,73 @@ async def test_tier3_log_emitted(caplog):
     assert "[FEAT-437][TIER3]" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_resolve_hyde_vector_turn_scope_isolation():
+    """[FEAT-640] HyDE synthesis must dispatch with ContextScope.TURN scope."""
+    from memory.blackboard_ledger import ContextScope
+
+    hub = CognitiveHub.__new__(CognitiveHub)
+    hub.residents = {"pinky": MagicMock()}
+    hub.session_buffers = {}
+    hub.current_interest = 0.5
+    hub.current_vibe = "TECHNICAL"
+    hub.turn_thought_trace = {}
+    hub.broadcast = AsyncMock()
+
+    captured = {}
+
+    async def fake_agen(nid, q, c, s, kw):
+        captured["query"] = q
+        captured["context"] = c
+        captured["scope"] = kw.get("scope")
+        captured["request_id"] = kw.get("request_id")
+        yield "A" * 10
+
+    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)
+    triage = {"inferred_intent": "check gpu", "domain": "hardware", "vibe": "TECHNICAL"}
+    vec, tier = await hub.resolve_hyde_vector("check the gpu", triage, request_id="req-42")
+    assert tier == PINKY_LOCAL_VLLM
+    assert vec == "A" * 10
+    assert captured["scope"] == ContextScope.TURN
+    assert captured["request_id"] == "req-42"
+
+
+@pytest.mark.asyncio
+async def test_hyde_synthesis_does_not_ingest_previous_debate():
+    """[FEAT-640] Prior debate context must NOT leak into HyDE synthesis prompt."""
+    from memory.blackboard_ledger import ContextScope
+
+    hub = CognitiveHub.__new__(CognitiveHub)
+    hub.residents = {"pinky": MagicMock()}
+    hub.session_buffers = {}
+    hub.current_interest = 0.5
+    hub.current_vibe = "TECHNICAL"
+    hub.turn_thought_trace = {}
+    hub.broadcast = AsyncMock()
+    hub.round_table_memory = ["User: hi", "Pinky: Hello! How can I help?"]
+    hub.blackboard_ledger = None
+
+    captured = {}
+
+    async def fake_agen(nid, q, c, s, kw):
+        captured["query"] = q
+        captured["context"] = c
+        captured["scope"] = kw.get("scope")
+        yield "B" * 12
+
+    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)
+    triage = {
+        "inferred_intent": "technical question",
+        "domain": "hardware",
+        "vibe": "TECHNICAL",
+    }
+    vec, tier = await hub.resolve_hyde_vector("why does vllm deadlock on turing", triage)
+    assert tier == PINKY_LOCAL_VLLM
+    assert "A" not in vec and vec == "B" * 12
+    assert "[PREVIOUS_DEBATE]" not in captured["query"]
+    assert "User: hi" not in captured["query"]
+    assert captured["scope"] == ContextScope.TURN
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
