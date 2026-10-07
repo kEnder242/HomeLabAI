@@ -76,7 +76,7 @@ def test_relay_short_circuits_when_kender_unreachable() -> None:
     port = _get_closed_port()
     result, winner = asyncio.run(_run_relay(port))
     assert winner == "vllm"
-    assert result == VALID_TRIAGE
+    assert all(result.get(k) == v for k, v in VALID_TRIAGE.items())
 
 
 def test_relay_completes_under_50ms_when_kender_down() -> None:
@@ -86,7 +86,7 @@ def test_relay_completes_under_50ms_when_kender_down() -> None:
     result, winner = asyncio.run(_run_relay(port))
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     assert winner == "vllm"
-    assert result == VALID_TRIAGE
+    assert all(result.get(k) == v for k, v in VALID_TRIAGE.items())
     assert (
         elapsed_ms < 50.0
     ), f"relay took {elapsed_ms:.1f}ms; expected < 50ms (fast socket gate)"

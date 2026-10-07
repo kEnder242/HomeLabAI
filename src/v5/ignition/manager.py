@@ -184,6 +184,24 @@ class IgnitionManager:
             return False
 
         if not self._acquire_vram_lock():
+            # [FEAT-125] Fallback check: If lock acquisition failed because another process is managing silicon, verify if vLLM is active
+            try:
+                import urllib.request
+                req = urllib.request.Request("http://localhost:8088/v1/models")
+                with urllib.request.urlopen(req, timeout=1) as resp:
+                    if resp.status == 200:
+                        self.status.state = "OPERATIONAL"
+                        self.status.engine_up = True
+                        self.status.vocal = True
+                        self.operational_start_time = time.time()
+                        self.recovery_in_progress = False
+                        self.update_status_file()
+                        logging.info(
+                            "[IGNITION] [FEAT-125] VRAM Mutex held by companion, but vLLM active on port 8088. Warm-start transition to OPERATIONAL."
+                        )
+                        return True
+            except Exception:
+                pass
             return False
 
         self.recovery_in_progress = True
@@ -925,6 +943,25 @@ class IgnitionManager:
         asyncio.create_task(self.continuous_burn_loop())
         asyncio.create_task(self.journal_monitor())
         while True:
+            # [FEAT-125] Background silicon liveness probe: If engine is up on 8088, ensure state reflects OPERATIONAL
+            if self.status.state not in ["OPERATIONAL", "WAKING"]:
+                try:
+                    import urllib.request
+                    req = urllib.request.Request("http://localhost:8088/v1/models")
+                    with urllib.request.urlopen(req, timeout=1) as resp:
+                        if resp.status == 200:
+                            self.status.state = "OPERATIONAL"
+                            self.status.engine_up = True
+                            self.status.vocal = True
+                            if self.operational_start_time == 0:
+                                self.operational_start_time = time.time()
+                            self.recovery_in_progress = False
+                            logging.info(
+                                "[IGNITION] [FEAT-125] Live vLLM detected on port 8088. Synchronized state to OPERATIONAL."
+                            )
+                except Exception:
+                    pass
+
             # [FEAT-302] Stability Latch: Reset backoff if stable for >5m
             if self.status.state == "OPERATIONAL" and self.operational_start_time > 0:
                 stable_dur = time.time() - self.operational_start_time

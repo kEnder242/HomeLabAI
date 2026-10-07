@@ -58,7 +58,7 @@
             "probe_path": "/v1/models",
             "probe_payload": null,
             "default_model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            "t_warmed": 0.09,
+            "t_warmed": 0.20,
             "t_cold": 0.85
         },
         {
@@ -71,7 +71,7 @@
             "probe_path": "/api/tags",
             "probe_payload": null,
             "default_model": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
-            "t_warmed": 0.04,
+            "t_warmed": 0.20,
             "t_cold": 0.2,
             "vram_gb": 24,
             "headroom_pct": 0.25
@@ -84,7 +84,7 @@
             "protocol": "VLLM",
             "probe_path": "/v1/models",
             "probe_payload": null,
-            "t_warmed": 0.045,
+            "t_warmed": 0.20,
             "t_cold": 0.05
         }
     ],

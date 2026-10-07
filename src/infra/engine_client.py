@@ -42,7 +42,7 @@ def load_engine_seats() -> list[dict[str, Any]]:
             "probe_path": "/v1/models",
             "probe_payload": None,
             "default_model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
-            "t_warmed": 0.09,
+            "t_warmed": 0.20,
             "t_cold": 0.85,
         },
         {
@@ -54,7 +54,7 @@ def load_engine_seats() -> list[dict[str, Any]]:
             "probe_path": "/api/tags",
             "probe_payload": None,
             "default_model": "hf.co/unsloth/Qwen3-14B-GGUF:UD-Q4_K_XL",
-            "t_warmed": 0.12,
+            "t_warmed": 0.20,
             "t_cold": 1.2,
         },
         {
@@ -66,7 +66,7 @@ def load_engine_seats() -> list[dict[str, Any]]:
             "probe_path": "/v1/models",
             "probe_payload": None,
             "default_model": "shadow_brain_v2",
-            "t_warmed": 0.045,
+            "t_warmed": 0.20,
             "t_cold": 0.05,
         },
     ]

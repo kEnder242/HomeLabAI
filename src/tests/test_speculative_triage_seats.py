@@ -60,7 +60,7 @@ def test_resolve_active_seat_m5_air_priority():
             "name": "M5_AIR",
             "host": "192.168.1.46",
             "port": 8000,
-            "t_warmed": 0.09,
+            "t_warmed": 0.20,
             "t_cold": 0.85,
         },
         {
@@ -68,7 +68,7 @@ def test_resolve_active_seat_m5_air_priority():
             "name": "KENDER",
             "host": "192.168.1.26",
             "port": 11434,
-            "t_warmed": 0.12,
+            "t_warmed": 0.20,
             "t_cold": 1.2,
         },
         {
@@ -76,7 +76,7 @@ def test_resolve_active_seat_m5_air_priority():
             "name": "LOCAL",
             "host": "127.0.0.1",
             "port": 8088,
-            "t_warmed": 0.045,
+            "t_warmed": 0.20,
             "t_cold": 0.05,
         },
     ]
@@ -87,15 +87,19 @@ def test_resolve_active_seat_m5_air_priority():
     with patch("logic.speculative_triage._probe_seat", side_effect=mock_probe):
         target = resolve_active_deep_thought_target(mock_seats)
         assert target["id"] == "M5_AIR"
-        assert target["t_warmed"] == 0.09
+        assert target["t_warmed"] == 0.20
 
 
-@pytest.mark.asyncio
-async def test_speculative_relay_2x_headstart_window():
+def test_speculative_relay_2x_headstart_window():
     """Verify speculative relay sets head_start_window to 2 * t_warmed."""
     broadcast_mock = AsyncMock()
     vllm_mock = AsyncMock(
         return_value={"vibe": "CASUAL", "addressed_to": "PINKY", "importance": 0.1}
     )
-    relay = SpeculativeTriageRelay(broadcast_mock, vllm_fn=vllm_mock, t_warmed=0.09)
-    assert relay.head_start_window == pytest.approx(0.18, rel=1e-2)
+    # Default calibrated baseline: t_warmed=0.20 -> 0.40s (400ms) head start
+    relay = SpeculativeTriageRelay(broadcast_mock, vllm_fn=vllm_mock)
+    assert relay.head_start_window == pytest.approx(0.40, rel=1e-2)
+
+    # Custom override verification
+    custom_relay = SpeculativeTriageRelay(broadcast_mock, vllm_fn=vllm_mock, t_warmed=0.09)
+    assert custom_relay.head_start_window == pytest.approx(0.18, rel=1e-2)
