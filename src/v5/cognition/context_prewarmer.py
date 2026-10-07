@@ -17,9 +17,30 @@ import time
 import urllib.request
 import urllib.error
 
-CONTEXT_CACHE_PATH = "/tmp/clara_context_cache.json"
+CONTEXT_CACHE_DIR = os.environ.get("JIT_CACHE_DIR", os.path.expanduser("~/Dev_Lab/.jit_cache"))
+CONTEXT_CACHE_PATH = os.path.join(CONTEXT_CACHE_DIR, "clara_context_cache.json")
+SUB_INFERENCE_LEDGER_PATH = os.path.join(CONTEXT_CACHE_DIR, "sub_inference_ledger.jsonl")
 M5_AIR_HEADROOM_URL = "http://192.168.1.46:8002/v1/chat/completions"
 M5_AIR_MODEL = "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"
+
+
+def record_sub_inference_receipt(engine: str, file_path: str, prompt_tokens: int, completion_tokens: int) -> None:
+    """[Story 100.4 / FEAT-648] Record sub-inference compute receipt to .jit_cache/sub_inference_ledger.jsonl."""
+    try:
+        os.makedirs(CONTEXT_CACHE_DIR, exist_ok=True)
+        record = {
+            "timestamp": time.time(),
+            "iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "engine": engine,
+            "target_file": file_path,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
+        with open(SUB_INFERENCE_LEDGER_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 
 def extract_ast_outline(file_path: str, content: str) -> str:
@@ -100,13 +121,20 @@ def reduce_file_via_m5_air(file_path: str, raw_lines: list[str], max_chars: int 
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             res = json.load(resp)
-            return res["choices"][0]["message"]["content"].strip()
+            content = res["choices"][0]["message"]["content"].strip()
+
+            # [Story 100.4] Sub-inference audit receipt
+            usage = res.get("usage", {})
+            p_tok = usage.get("prompt_tokens") or max(1, len(snippet) // 4)
+            c_tok = usage.get("completion_tokens") or max(1, len(content) // 4)
+            record_sub_inference_receipt("m5_air", file_path, p_tok, c_tok)
+            return content
     except Exception:
         return None
 
 
 def get_cached_semantic_summary(file_path: str) -> str | None:
-    """Read cached semantic summary from /tmp/clara_context_cache.json."""
+    """Read cached semantic summary from persistent .jit_cache/clara_context_cache.json with mtime validation."""
     if not os.path.exists(CONTEXT_CACHE_PATH):
         return None
     try:
@@ -114,29 +142,78 @@ def get_cached_semantic_summary(file_path: str) -> str | None:
             cache = json.load(f)
         clean_path = file_path.strip().lstrip("./")
         base = os.path.basename(clean_path)
+
+        dev_lab = os.path.expanduser("~/Dev_Lab")
+        full_path = file_path if os.path.isabs(file_path) else os.path.normpath(os.path.join(dev_lab, file_path))
+        disk_mtime = os.path.getmtime(full_path) if os.path.exists(full_path) else None
+
         for k, v in cache.items():
             if k.strip().lstrip("./") == clean_path or os.path.basename(k) == base or clean_path in k:
-                return v if isinstance(v, str) else v.get("summary", "")
+                if isinstance(v, dict):
+                    cached_mtime = v.get("mtime")
+                    if disk_mtime is not None and cached_mtime is not None and disk_mtime > cached_mtime:
+                        return None
+                    return v.get("summary", "")
+                elif isinstance(v, str):
+                    return v
     except Exception:
         pass
     return None
 
 
-def write_cached_semantic_summary(file_path: str, summary: str) -> None:
-    """Store semantic summary in /tmp/clara_context_cache.json."""
+def write_cached_semantic_summary(file_path: str, summary: str, mtime: float | None = None) -> None:
+    """Store semantic summary in persistent .jit_cache/clara_context_cache.json with mtime."""
     try:
+        os.makedirs(CONTEXT_CACHE_DIR, exist_ok=True)
         cache = {}
         if os.path.exists(CONTEXT_CACHE_PATH):
             with open(CONTEXT_CACHE_PATH, "r", encoding="utf-8") as f:
                 cache = json.load(f)
         clean_path = file_path.strip().lstrip("./")
         base = os.path.basename(clean_path)
-        cache[clean_path] = summary
-        cache[base] = summary
-        with open(CONTEXT_CACHE_PATH, "w", encoding="utf-8") as f:
+
+        if mtime is None:
+            dev_lab = os.path.expanduser("~/Dev_Lab")
+            full_path = file_path if os.path.isabs(file_path) else os.path.normpath(os.path.join(dev_lab, file_path))
+            mtime = os.path.getmtime(full_path) if os.path.exists(full_path) else time.time()
+
+        entry = {
+            "summary": summary,
+            "mtime": mtime,
+            "cached_at": time.time(),
+        }
+        cache[clean_path] = entry
+        cache[base] = entry
+        tmp_path = CONTEXT_CACHE_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(cache, f, indent=2)
+        os.replace(tmp_path, CONTEXT_CACHE_PATH)
     except Exception:
         pass
+
+
+def evict_cached_summary(file_path: str) -> bool:
+    """[Story 100.3 / FEAT-648] File-scoped cache invalidation when a target file is modified."""
+    if not os.path.exists(CONTEXT_CACHE_PATH):
+        return False
+    try:
+        with open(CONTEXT_CACHE_PATH, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        clean_path = file_path.strip().lstrip("./")
+        base = os.path.basename(clean_path)
+        popped = False
+        for k in list(cache.keys()):
+            if k.strip().lstrip("./") == clean_path or os.path.basename(k) == base or clean_path in k:
+                cache.pop(k, None)
+                popped = True
+        if popped:
+            tmp_path = CONTEXT_CACHE_PATH + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(cache, f, indent=2)
+            os.replace(tmp_path, CONTEXT_CACHE_PATH)
+        return popped
+    except Exception:
+        return False
 
 
 def reduce_file(file_path: str, force: bool = False, timeout: float = 45.0) -> str:

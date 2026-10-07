@@ -51,3 +51,5 @@ tool_log.md
 
 # OMO planning workspace (untracked scratch)
 .omo/
+
+.jit_cache/

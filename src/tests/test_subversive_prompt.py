@@ -151,9 +151,9 @@ class TestOhMyOpenAgentConfig:
         
         # Agent-level permission mapping (simple names replacing clara-dna_*):
         expected_perms = {
-            'sisyphus-junior': {'read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
+            'sisyphus-junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
                                 'failure_whisperer': 'allow', 'handoff_checkpoint': 'allow', 'locate_path': 'allow'},
-            'Sisyphus-Junior': {'read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
+            'Sisyphus-Junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
                                 'failure_whisperer': 'allow', 'handoff_checkpoint': 'allow', 'locate_path': 'allow'},
             'daedalus': {'safe_patch': 'allow', 'research': 'deny', 'failure_whisperer': 'deny',
                          'handoff_checkpoint': 'deny', 'locate_path': 'deny'},
