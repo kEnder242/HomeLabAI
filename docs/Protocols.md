@@ -1284,3 +1284,36 @@ During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug 
    - Execution proceeds under `BKM-006` and `BKM-007` with assigned owner tags (`[AGY:PRIMARY]` vs `[SWARM:LOCAL]`).
    - Every completed item transitions its BALL state to `✅ DONE` in the sprint plan ledger.
 
+
+---
+
+## BKM-078: JIT_ONE_SHOT Protocol (The Single-Shot Worker & L2 Anti-Spiral Orchestration)
+**Feature Anchor:** `[FEAT-655]` / `[BKM-078]` / `[INS-042]` / `[WIS-482]`  
+**Colloquial Alias:** "The Patch-Test-Diagnose-Recommend Protocol"  
+**Domain:** Multi-Tier Agent Orchestration, Ephemeral Worker Lifecycles, Anti-Waffle Governance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Philosophy
+In multi-tier swarms, letting open-weights surgical workers ($L_3$) attempt recursive self-fixing when tests fail triggers the **"Waffle Trap" (`[INS-042]`)** and quadratic context accumulation. A worker's context degrades with every failed stack trace.
+The `JIT_ONE_SHOT` protocol mandates that surgical workers operate as **ephemeral single-shot probes**:
+- Workers execute a single attempt: **Patch $\to$ Test $\to$ Diagnose $\to$ Recommend $\to$ Exit**.
+- Workers are strictly forbidden from attempting recursive self-fixing loops.
+- Terminal tracebacks and dirty intermediate diffs die with the worker session, shielding $L_2$ from context pollution.
+
+### 2. The Layer 3 Execution Contract (`AGENTS_L3.md`)
+1. **Turn 1 (Patch):** Ingest blueprint from JIT research tools and apply changes via `safe_patch()`.
+2. **Turn 2 (Test):** Run the verification command via `bash`.
+3. **Turn 3 (Resolve):**
+   - **On Pass:** Call `jit_checkpoint("SUCCESS", ...)` and terminate cleanly.
+   - **On Fail:** Use in-context traceback and diff to diagnose root cause. Synthesize a concise 3-line diagnostic report:
+     * `[FAILURE]`: Specific failing assertion or error.
+     * `[ROOT_CAUSE]`: Exact causal hypothesis based on test output.
+     * `[RECOMMENDATION]`: Specific proposed blueprint adjustment.
+   - **Terminate Immediately:** Emit the 3-line report and exit. Do NOT modify files further.
+
+### 3. The Layer 2 Anti-Spiral Orchestration Role (`AGENTS_L2.md`)
+Layer 2 (Atlas) holds the macro plan and session trajectory. When receiving Layer 3's recommendation:
+1. **Anti-Spiral Verification:** Atlas inspects whether the recommendation is circular (proposing changes already tried or regressing to previous states).
+2. **Macro Judgment:** Atlas decides whether to adopt the recommendation, synthesize an alternative architectural fix, or modify test parameters.
+3. **Pristine Retry:** If retrying, Atlas updates the blueprint via `jit_stage()` and dispatches a **fresh, zero-mileage Layer 3 worker instance** via `task()`.
+4. **Stall Declaration:** If successive pristine workers fail the same assertion without progress, Atlas halts execution and escalates to Layer 1.
