@@ -1752,6 +1752,13 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         if target_files
         else f"- Edit Target(s): {reference_file} (same as reference)"
     )
+    local_thinking_suppression = ""
+    if local_only:
+        local_thinking_suppression = """[OPERATIONAL INVARIANT: ZERO THINKING / REASONING MONOLOGUE (LAB-115)]
+You are operating in direct tactical execution mode on local silicon.
+Do NOT emit <think> tags, internal monologues, or extended reasoning blocks.
+Begin your output immediately with surgical tool calls or code edits.\n\n"""
+
     if agent == "atlas":
         prompt = f"""[STORY DELEGATION TARGET: STORY {story_num}]
 - Title: {title}
@@ -1759,7 +1766,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 - Edit Target(s): {target_files or reference_file}
 - Mode: {mode.upper()}
 
-{agent_rules_block}
+{local_thinking_suppression}{agent_rules_block}
 {mandate_block}
 
 {details}
@@ -1773,7 +1780,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 {_target_files_line}
 - Delegation Mode: {mode.upper()}
 
-{agent_rules_block}
+{local_thinking_suppression}{agent_rules_block}
 {mandate_block}
 
 [FUNCTIONAL REQUIREMENTS & 4-ANCHOR SPECIFICATION]
