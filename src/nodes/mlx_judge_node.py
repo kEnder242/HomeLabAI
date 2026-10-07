@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="[MLX_JUDGE] %(message)s")
 
 MLX_DEFAULT_HOST = os.getenv("MLX_HOST", "http://192.168.1.46:8000")
 MLX_MODEL = os.getenv("MLX_MODEL", "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp")
-MLX_TIMEOUT_SEC = int(os.getenv("MLX_TIMEOUT_SEC", "15"))
+MLX_TIMEOUT_SEC = int(os.getenv("MLX_TIMEOUT_SEC", "45"))
 
 MLX_SYSTEM_PROMPT = (
     "# IDENTITY & ROLE\n"

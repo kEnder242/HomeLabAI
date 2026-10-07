@@ -578,7 +578,7 @@ class CognitiveHub:
             broadcast_callback=self.broadcast,
             kender_fn=self._dispatch_kender_triage,
             vllm_fn=self._dispatch_vllm_triage,
-            t_warmed=0.09,
+            t_warmed=0.20,
         )
 
         # [FEAT-T20.2] Wire telemetry callback on each BicameralNode resident

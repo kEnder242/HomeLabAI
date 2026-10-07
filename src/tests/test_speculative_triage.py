@@ -27,7 +27,7 @@ async def mock_kender_fast(query, context, schema, request_id):
 
 # Mock Kender function (slow)
 async def mock_kender_slow(query, context, schema, request_id):
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.5)
     return {
         "vibe": "TECHNICAL",
         "addressed_to": "BRAIN",

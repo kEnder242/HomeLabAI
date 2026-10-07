@@ -233,8 +233,14 @@ class _EWMALatencyEstimator:
         self.jitter += self.BETA * (abs(err) - self.jitter)
 
     def lead_window(self, t_warmed: float) -> float:
-        """[FEAT-586] W_lead = (2 * t_warmed) + L_t + (4 * J_t)."""
-        return (2.0 * float(t_warmed)) + self.latency + (4.0 * self.jitter)
+        """[FEAT-586] Dynamic Lead Window.
+        Initial baseline is 2 * t_warmed (calibrated to full warm triage completion).
+        As EWMA history accumulates, W_lead tracks L_t + (4 * J_t) with a floor of (2 * t_warmed).
+        """
+        baseline = 2.0 * float(t_warmed)
+        if self._samples == 0:
+            return baseline
+        return max(baseline, self.latency + (4.0 * self.jitter))
 
 
 class SpeculativeTriageRelay:
@@ -252,7 +258,7 @@ class SpeculativeTriageRelay:
         broadcast_callback,
         deep_thought_fn=None,
         vllm_fn=None,
-        t_warmed=0.09,
+        t_warmed=0.20,
         kender_fn=None,
         socket_timeout=SOCKET_TIMEOUT_S,
         api_timeout=API_PROBE_TIMEOUT_S,
@@ -263,7 +269,7 @@ class SpeculativeTriageRelay:
         self.kender_fn = self.deep_thought_fn  # backward compatibility
         self.vllm_fn = vllm_fn
         self.t_warmed = t_warmed
-        # [FEAT-531] 2x Rule for Warmed Speculative Head-Start Window (2 * 0.09s = 0.18s)
+        # [FEAT-531] 2x Rule for Warmed Speculative Head-Start Window (2 * 0.20s = 0.40s)
         self.head_start_window = 2 * t_warmed
         # [FEAT-586] Dynamic Configurable Triage Engine Preference (declarative; overridable)
         self.preferred_engine = preferred_engine or _load_triage_preference()
@@ -385,6 +391,7 @@ class SpeculativeTriageRelay:
             }
         )
 
+        t_racer = time.monotonic()
         racer_task = asyncio.create_task(
             racer_launcher(query, context, triage_schema, request_id)
         )
@@ -406,7 +413,13 @@ class SpeculativeTriageRelay:
                                 r.cancel()
 
                         winner = racer_name if task is racer_task else lead_name
-                        estimator.observe(time.monotonic() - t_lead)
+                        win_estimator = self._estimators.setdefault(
+                            winner, _EWMALatencyEstimator()
+                        )
+                        elapsed = time.monotonic() - (
+                            t_racer if task is racer_task else t_lead
+                        )
+                        win_estimator.observe(elapsed)
                         logging.info(
                             f"[SPR-67_0] {winner.upper()} won (Speculative race)"
                         )
