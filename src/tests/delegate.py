@@ -1650,7 +1650,7 @@ Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION DIRECTIVE]
-Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use jit_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Stage blueprints via jit_stage(target_file, ...) and synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}').
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use jit_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Stage blueprints via jit_stage(target_file, ...) and synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}', run_in_background=False). Do NOT background the subagent (`run_in_background=False`). Await Layer 3 worker execution results, verify with bash, and synthesize the final [HANDOVER REFLECTION] to AGY.
 If ANY tool in your manifest is unavailable, or contract is under-specified, FAST-HALT IMMEDIATELY ON TURN 1 (<50 tokens) with:
 [BLOCKER REPORT: TOOL UNAVAILABLE]
 Reason: <tool_name> is unavailable.
