@@ -237,6 +237,24 @@ def check_nightly_forge_liveness():
     try:
         state = json.loads(NIGHTLY_FORGE_STATE.read_text(encoding="utf-8"))
         status = state.get("status", "UNKNOWN")
+        winner_pid = state.get("winner_pid")
+
+        # If marked RUNNING, verify PID is actually alive
+        if status == "RUNNING" and winner_pid:
+            if not is_pid_alive(winner_pid):
+                logger.warning(
+                    "[REAP] Nightly forge marked RUNNING but PID %s is dead. Marking CRASHED.",
+                    winner_pid,
+                )
+                status = "CRASHED"
+                state["status"] = "CRASHED"
+                state["crashed_at"] = time.time()
+                state["crashed_iso"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                try:
+                    NIGHTLY_FORGE_STATE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+
         last_ts = state.get("last_completed_timestamp", 0)
         age_hours = (time.time() - last_ts) / 3600.0 if last_ts else 999.0
         
@@ -244,7 +262,7 @@ def check_nightly_forge_liveness():
         return {
             "name": "Nightly Forge Orchestration",
             "passed": passed,
-            "detail": f"Status: {status} (Age: {age_hours:.1f}h)",
+            "detail": f"Status: {status} (Age: {age_hours:.1f}h)" if status != "CRASHED" else f"Status: CRASHED (DEAD PID {winner_pid})",
             "status": status,
             "age_hours": round(age_hours, 1)
         }
