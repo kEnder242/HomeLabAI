@@ -162,7 +162,7 @@ async def test_resolve_hyde_vector_turn_scope_isolation():
 
     hub = CognitiveHub.__new__(CognitiveHub)
     hub.residents = {"pinky": MagicMock()}
-    hub.session_buffers = {}
+    hub.session_buffers = {}  # type: ignore
     hub.current_interest = 0.5
     hub.current_vibe = "TECHNICAL"
     hub.turn_thought_trace = {}
@@ -177,7 +177,7 @@ async def test_resolve_hyde_vector_turn_scope_isolation():
         captured["request_id"] = kw.get("request_id")
         yield "A" * 10
 
-    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)
+    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)  # type: ignore
     triage = {"inferred_intent": "check gpu", "domain": "hardware", "vibe": "TECHNICAL"}
     vec, tier = await hub.resolve_hyde_vector("check the gpu", triage, request_id="req-42")
     assert tier == PINKY_LOCAL_VLLM
@@ -193,13 +193,13 @@ async def test_hyde_synthesis_does_not_ingest_previous_debate():
 
     hub = CognitiveHub.__new__(CognitiveHub)
     hub.residents = {"pinky": MagicMock()}
-    hub.session_buffers = {}
+    hub.session_buffers = {}  # type: ignore
     hub.current_interest = 0.5
     hub.current_vibe = "TECHNICAL"
     hub.turn_thought_trace = {}
     hub.broadcast = AsyncMock()
     hub.round_table_memory = ["User: hi", "Pinky: Hello! How can I help?"]
-    hub.blackboard_ledger = None
+    hub.blackboard_ledger = None  # type: ignore
 
     captured = {}
 
@@ -209,7 +209,7 @@ async def test_hyde_synthesis_does_not_ingest_previous_debate():
         captured["scope"] = kw.get("scope")
         yield "B" * 12
 
-    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)
+    hub._process_node_stream = lambda nid, q, c, s, **kw: fake_agen(nid, q, c, s, kw)  # type: ignore
     triage = {
         "inferred_intent": "technical question",
         "domain": "hardware",
