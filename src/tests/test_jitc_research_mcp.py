@@ -85,6 +85,17 @@ def test_live_mcp_tools_list(mcp_proc):
     for tool_name in mandatory_tools:
         assert tool_name in tool_names, f"Mandatory tool '{tool_name}' missing from live MCP tools: {tool_names}"
 
+    canonical_jit_tools = [
+        "jit_read",
+        "jit_locate",
+        "jit_stage",
+        "jit_research",
+        "jit_diagnose",
+        "jit_checkpoint",
+    ]
+    for jt in canonical_jit_tools:
+        assert jt in tool_names, f"Canonical JIT tool '{jt}' missing from live MCP tools: {tool_names}"
+
 
 def test_live_mcp_stage_and_research(mcp_proc):
     """[FEAT-647] Live stdio test: Stage a plan and recall it via research tool."""
@@ -182,3 +193,89 @@ def test_live_mcp_locate_path(mcp_proc):
     }
     resp = _send_rpc(mcp_proc, req)
     assert "result" in resp, f"locate_path call failed: {resp}"
+
+
+def test_live_mcp_canonical_jit_tools_flow(mcp_proc):
+    """[Story 100.2 / FEAT-649] Test the full canonical jit_* tool calling flow over live JSON-RPC stdio."""
+    test_target = "src/v5/cognition/test_dummy_target.py"
+
+    # 1. jit_stage
+    stage_req = {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+            "name": "jit_stage",
+            "arguments": {
+                "file_path": test_target,
+                "plan_content": "Canonical JIT orchestration plan",
+                "patch_blueprint": "<<<SEARCH\nfoo()\n===\nbar()\n>>>",
+                "ast_anchors": ["def test_dummy()"],
+                "diff_directives": ["Replace foo with bar"],
+            },
+        },
+    }
+    stage_resp = _send_rpc(mcp_proc, stage_req)
+    assert "result" in stage_resp, f"jit_stage failed: {stage_resp}"
+
+    # 2. jit_research
+    research_req = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+            "name": "jit_research",
+            "arguments": {"file_path": test_target},
+        },
+    }
+    research_resp = _send_rpc(mcp_proc, research_req)
+    assert "result" in research_resp, f"jit_research failed: {research_resp}"
+    content = research_resp["result"]["content"][0]["text"]
+    assert "Canonical JIT orchestration plan" in content
+    assert "def test_dummy()" in content
+
+    # 3. jit_diagnose
+    diag_req = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "jit_diagnose",
+            "arguments": {"test_output": "Traceback (most recent call last):\n  File 'test_dummy.py', line 20\nE   AssertionError: 404 != 200"},
+        },
+    }
+    diag_resp = _send_rpc(mcp_proc, diag_req)
+    assert "result" in diag_resp, f"jit_diagnose failed: {diag_resp}"
+    diag_text = diag_resp["result"]["content"][0]["text"]
+    assert "AssertionError: 404 != 200" in diag_text
+
+    # 4. jit_checkpoint
+    chk_req = {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+            "name": "jit_checkpoint",
+            "arguments": {
+                "status": "SUCCESS",
+                "summary": "Canonical JIT shakedown checkpoint",
+                "artifacts_modified": [test_target],
+            },
+        },
+    }
+    chk_resp = _send_rpc(mcp_proc, chk_req)
+    assert "result" in chk_resp, f"jit_checkpoint failed: {chk_resp}"
+
+    # 5. jit_locate
+    loc_req = {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {
+            "name": "jit_locate",
+            "arguments": {"pattern": "context_prewarmer"},
+        },
+    }
+    loc_resp = _send_rpc(mcp_proc, loc_req)
+    assert "result" in loc_resp, f"jit_locate failed: {loc_resp}"
+

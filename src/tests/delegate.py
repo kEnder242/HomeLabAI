@@ -910,6 +910,82 @@ def _ping_host(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
+def aggregate_sub_inference_tokens(since_timestamp: float = 0.0) -> dict:
+    """[Story 100.5 / FEAT-649] Ingest sub-inference receipts from .jit_cache/sub_inference_ledger.jsonl.
+
+    Returns aggregated token breakdown: {
+        'prompt_tokens': int,
+        'completion_tokens': int,
+        'total_tokens': int,
+        'entries_count': int
+    }
+    """
+    ledger_path = os.path.expanduser("~/Dev_Lab/.jit_cache/sub_inference_ledger.jsonl")
+    totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "entries_count": 0,
+    }
+    if not os.path.exists(ledger_path):
+        return totals
+    try:
+        with open(ledger_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    ts = entry.get("timestamp", 0)
+                    if ts >= since_timestamp:
+                        totals["prompt_tokens"] += entry.get("prompt_tokens", 0)
+                        totals["completion_tokens"] += entry.get("completion_tokens", 0)
+                        totals["total_tokens"] += entry.get("total_tokens", 0)
+                        totals["entries_count"] += 1
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return totals
+
+
+def record_swarm_telemetry(
+    story_num: int,
+    sprint_num: int,
+    title: str,
+    model_obj: dict,
+    duration: float,
+    tokens: dict,
+    text_len: int,
+    start_time: float = 0.0,
+    raw_tp: float = None,
+):
+    """[Story 100.5 / FEAT-649] Unified Swarm Telemetry blending OpenCode direct LLM tokens with M5 Air sub-inference receipts."""
+    sub_inf = aggregate_sub_inference_tokens(since_timestamp=start_time)
+    if sub_inf["total_tokens"] > 0:
+        if isinstance(tokens, dict):
+            tokens["sub_inference"] = sub_inf
+            tokens["blended_total"] = tokens.get("total", 0) + sub_inf["total_tokens"]
+        try:
+            from infra.cumulative_telemetry import log_telemetry_event
+            log_telemetry_event(
+                source=f"delegate.py (Sub-Inference Story {story_num})",
+                task_title=f"{title} [M5 Air Map-Reduce]",
+                seat="Apple M5 Air",
+                provider="mlx_headroom",
+                model="TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+                tokens_generated=sub_inf["completion_tokens"],
+                duration_seconds=0.0,
+            )
+        except Exception:
+            pass
+
+    _log_live_usage_telemetry(
+        story_num, sprint_num, title, model_obj, duration, tokens, text_len, raw_tp=raw_tp
+    )
+
+
 def _log_live_usage_telemetry(
     story_num: int,
     sprint_num: int,
@@ -1152,16 +1228,21 @@ def _prewarm_target_context(target_files: str | None, story_num: int | str, titl
 
 
 def _write_conductor_notes(target_files: str | None, sprint_num: int, story_num: any, title: str):
-    """[FEAT-647 / DISC-012] Pre-compute conductor patch notes for $L_3$ JITC grounding.
+    """[FEAT-647 / DISC-012 / Story 100.3] Pre-compute conductor patch notes for $L_3$ JITC grounding.
 
     Writes AST anchors, diff directives, and story directives to
-    /tmp/clara_conductor_notes.json, which the `research` tool (clara_dna_research)
-    serves back to workers as "empirical findings" instead of letting them
+    .jit_cache/clara_conductor_notes.json (with /tmp fallback), which the `jit_research` / `research`
+    tool serves back to workers as "empirical findings" instead of letting them
     unconstrainedly wander the repo.
     """
     if not target_files:
         return
-    notes_path = "/tmp/clara_conductor_notes.json"
+    jit_cache_dir = os.path.expanduser("~/Dev_Lab/.jit_cache")
+    os.makedirs(jit_cache_dir, exist_ok=True)
+    notes_paths = [
+        os.path.join(jit_cache_dir, "clara_conductor_notes.json"),
+        "/tmp/clara_conductor_notes.json",
+    ]
     notes = {}
     try:
         for path in [f.strip() for f in target_files.split(",") if f.strip()]:
@@ -1182,8 +1263,12 @@ def _write_conductor_notes(target_files: str | None, sprint_num: int, story_num:
                 "ast_anchors": ast_anchor_lines,
                 "diff_directives": [f"Apply story {story_num} edits to {path}"],
             }
-        with open(notes_path, "w") as f:
-            json.dump(notes, f, indent=2)
+        for n_path in notes_paths:
+            try:
+                with open(n_path, "w", encoding="utf-8") as f:
+                    json.dump(notes, f, indent=2)
+            except Exception:
+                pass
     except Exception as e:
         sys.stderr.write(f"[*] Conductor cache write failed: {e}\n")
 
@@ -1561,7 +1646,7 @@ Sprint Reference: {reference_file}{_sprint_line_pointer}
 Edit Target(s): {target_files or reference_file}
 
 [ORCHESTRATION DIRECTIVE]
-Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use clara-dna_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}').
+Operate strictly under AGENTS_L2.md. Ingest Story {story_num}. Use jit_read to inspect file outlines and slice exact line ranges, keeping conductor context pristine (<2,000 tokens). Stage blueprints via jit_stage(target_file, ...) and synthesize a single bounded (<2,000 token) contract for Layer 3 via task(category='{_coder_category}').
 If ANY tool in your manifest is unavailable, or contract is under-specified, FAST-HALT IMMEDIATELY ON TURN 1 (<50 tokens) with:
 [BLOCKER REPORT: TOOL UNAVAILABLE]
 Reason: <tool_name> is unavailable.
@@ -1890,8 +1975,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             _cleanup_active_session()
             sys.exit(1)
 
-        _log_live_usage_telemetry(
-            story_num, sprint_num, title, model_obj, duration, tokens, len(full_text)
+        record_swarm_telemetry(
+            story_num, sprint_num, title, model_obj, duration, tokens, len(full_text), start_time=start_time
         )
 
         reflection_text = ""
