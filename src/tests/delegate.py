@@ -1683,28 +1683,40 @@ Sprint Reference: {effective_sprint_doc}
 
     # [FEAT-600 / LAB-019 / FEAT-631] Resident Ambient Memory & Knowledge Recall for OpenAgent Dispatches
     ambient_grounding_block = ""
-    try:
-        req_payload = json.dumps(
-            {
-                "prompt": f"{title} {details[:300]}",
-                "invocationNum": 1,
-                "agent": agent,
-            }
-        ).encode("utf-8")
-        amb_req = urllib.request.Request(
-            "http://127.0.0.1:8765/ambient_recall",
-            data=req_payload,
-            headers={"Content-Type": "application/json"},
+    if local_only:
+        log_step(
+            story_num,
+            "AMBIENT_HOOK",
+            "Bypassed ambient recall for local silicon to preserve KENDER 4090 / M5 Air context budget",
         )
-        with urllib.request.urlopen(amb_req, timeout=0.50) as amb_resp:
-            amb_data = json.loads(amb_resp.read().decode("utf-8"))
-            steps = amb_data.get("injectSteps", [])
-            if steps and "ephemeralMessage" in steps[0]:
-                ambient_grounding_block = (
-                    f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
-                )
-    except Exception:
-        pass
+    else:
+        try:
+            req_payload = json.dumps(
+                {
+                    "prompt": f"{title} {details[:300]}",
+                    "invocationNum": 1,
+                    "agent": agent,
+                }
+            ).encode("utf-8")
+            amb_req = urllib.request.Request(
+                "http://127.0.0.1:8765/ambient_recall",
+                data=req_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(amb_req, timeout=0.50) as amb_resp:
+                amb_data = json.loads(amb_resp.read().decode("utf-8"))
+                steps = amb_data.get("injectSteps", [])
+                if steps and "ephemeralMessage" in steps[0]:
+                    ambient_grounding_block = (
+                        f"{steps[0]['ephemeralMessage']}\n\n---\n\n"
+                    )
+                    log_step(
+                        story_num,
+                        "AMBIENT_HOOK",
+                        "Active ambient recall injected for Cloud/Oracle",
+                    )
+        except Exception:
+            pass
 
     if local_only and effective_sprint_doc:
         tier1_block = f"""[TIER 1: SPRINT REFERENCE]
@@ -1829,6 +1841,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
     # Heartbeat loop while worker thread is active
     hb_tick = 0
     last_inspected_state = ""
+    last_activity_time = time.time()
+    last_activity_metric = None
     while worker.is_alive():
         worker.join(timeout=3.0)
         if worker.is_alive():
@@ -1843,6 +1857,19 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                 with urllib.request.urlopen(poll_req, timeout=2.0) as poll_resp:
                     msgs = json.loads(poll_resp.read().decode("utf-8"))
                     if msgs:
+                        total_parts = sum(len(m.get("parts", [])) for m in msgs if isinstance(m, dict))
+                        total_text_chars = sum(
+                            len(p.get("text", ""))
+                            for m in msgs
+                            if isinstance(m, dict)
+                            for p in m.get("parts", [])
+                            if isinstance(p, dict)
+                        )
+                        current_metric = (len(msgs), total_parts, total_text_chars)
+                        if current_metric != last_activity_metric:
+                            last_activity_metric = current_metric
+                            last_activity_time = time.time()
+
                         last_msg = msgs[-1]
                         parts = last_msg.get("parts", [])
                         for p in reversed(parts):
@@ -1917,6 +1944,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 
                                 if state_summary != last_inspected_state:
                                     last_inspected_state = state_summary
+                                    last_activity_time = time.time()
                                     log_step(
                                         story_num,
                                         "LIVE_SWARM_STATE",
@@ -1925,6 +1953,30 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                                 break
             except Exception:
                 pass
+
+            # [BKM-060] Dead-Air Inactivity Watchdog (120s stall detector)
+            dead_air_seconds = time.time() - last_activity_time
+            if dead_air_seconds > 120.0:
+                log_step(
+                    story_num,
+                    "DEAD_AIR_TIMEOUT",
+                    f"Execution stalled: zero token or message progress for {int(dead_air_seconds)}s (total elapsed {elapsed}s). Aborting session {session_id}.",
+                    severity="CRITICAL",
+                )
+                try:
+                    abort_req = urllib.request.Request(
+                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/abort",
+                        data=b"{}",
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(abort_req, timeout=5.0)
+                except Exception:
+                    pass
+                post_exception = TimeoutError(
+                    f"Dead-air inactivity watchdog triggered after {int(dead_air_seconds)}s without progress"
+                )
+                break
 
             if post_exception is not None:
                 break
