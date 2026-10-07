@@ -26,7 +26,11 @@ def _send_rpc(proc: subprocess.Popen, request: dict) -> dict:
 @pytest.fixture(scope="module")
 def mcp_proc():
     """Spawns the real canonical MCP server subprocess over stdio."""
-    mcp_script = "/home/jallred/AcmeLab/src/clara_dna_mcp_server.py"
+    canonical_paths = [
+        os.path.expanduser("~/Dev_Lab/HomeLabAI/src/mcp/clara_dna_mcp_server.py"),
+        "/home/jallred/AcmeLab/src/clara_dna_mcp_server.py",
+    ]
+    mcp_script = next((p for p in canonical_paths if os.path.exists(p)), canonical_paths[0])
     py_bin = "/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"
     assert os.path.exists(mcp_script), f"Canonical MCP server script not found: {mcp_script}"
     assert os.path.exists(py_bin), f"Python virtualenv binary not found: {py_bin}"
