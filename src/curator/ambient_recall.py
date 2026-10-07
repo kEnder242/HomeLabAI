@@ -477,7 +477,7 @@ def probe_claradb(
             if model is None:
                 model = get_fastembed()
             if model is not None:
-                emb = list(model.embed([text[:300]]))[0].tolist()
+                emb = list(model.embed([text[:2048]]))[0].tolist()
 
                 domain_caps = {
                     "feature_dna": 3,
