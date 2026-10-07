@@ -1954,29 +1954,43 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             except Exception:
                 pass
 
-            # [BKM-060] Dead-Air Inactivity Watchdog (120s stall detector)
+            # [BKM-060] Dead-Air Inactivity Watchdog (300s stall detector for local silicon, 180s for cloud)
+            dead_air_threshold = 300.0 if local_only else 180.0
             dead_air_seconds = time.time() - last_activity_time
-            if dead_air_seconds > 120.0:
-                log_step(
-                    story_num,
-                    "DEAD_AIR_TIMEOUT",
-                    f"Execution stalled: zero token or message progress for {int(dead_air_seconds)}s (total elapsed {elapsed}s). Aborting session {session_id}.",
-                    severity="CRITICAL",
-                )
-                try:
-                    abort_req = urllib.request.Request(
-                        f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/abort",
-                        data=b"{}",
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
+            if dead_air_seconds > dead_air_threshold:
+                kender_active = False
+                if local_only:
+                    try:
+                        k_req = urllib.request.Request("http://192.168.1.26:11434/api/ps")
+                        with urllib.request.urlopen(k_req, timeout=1.5) as k_resp:
+                            k_data = json.loads(k_resp.read().decode("utf-8"))
+                            models = k_data.get("models", [])
+                            if models and dead_air_seconds < 420.0:
+                                kender_active = True
+                    except Exception:
+                        pass
+
+                if not kender_active:
+                    log_step(
+                        story_num,
+                        "DEAD_AIR_TIMEOUT",
+                        f"Execution stalled: zero token or message progress for {int(dead_air_seconds)}s (total elapsed {elapsed}s). Aborting session {session_id}.",
+                        severity="CRITICAL",
                     )
-                    urllib.request.urlopen(abort_req, timeout=5.0)
-                except Exception:
-                    pass
-                post_exception = TimeoutError(
-                    f"Dead-air inactivity watchdog triggered after {int(dead_air_seconds)}s without progress"
-                )
-                break
+                    try:
+                        abort_req = urllib.request.Request(
+                            f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{session_id}/abort",
+                            data=b"{}",
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(abort_req, timeout=5.0)
+                    except Exception:
+                        pass
+                    post_exception = TimeoutError(
+                        f"Dead-air inactivity watchdog triggered after {int(dead_air_seconds)}s without progress"
+                    )
+                    break
 
             if post_exception is not None:
                 break
