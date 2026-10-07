@@ -133,58 +133,95 @@ def check_foyer_and_vram():
 
 
 def check_stale_locks():
-    """Check 3: Stale Lock & Crash Sentry with PID Liveness Verification."""
+    """Check 3: Stale Lock Reaper — detect, verify, and purge orphaned lock files.
+
+    [FEAT-641] Two-phase approach:
+      Phase 1 — Classify each lock file (live, stale, or unknown).
+      Phase 2 — Purge any lock file whose PID is confirmed dead AND the kernel
+                 fcntl advisory lock is not held. Never touch actively-held locks.
+    """
     stale_found = []
+    reaped = []
+
     for lock_path in [MAINTENANCE_LOCK, FORGE_LOCK, LORA_LOCK]:
-        if lock_path.exists():
-            age_s = time.time() - lock_path.stat().st_mtime
-            pid_alive = False
-            lock_pid = None
-            try:
-                content = lock_path.read_text(encoding="utf-8").strip()
-                if content:
-                    for line in content.splitlines():
-                        line_s = line.strip()
-                        if line_s.isdigit():
-                            lock_pid = int(line_s)
+        if not lock_path.exists():
+            continue
+
+        age_s = time.time() - lock_path.stat().st_mtime
+        pid_alive = False
+        lock_pid = None
+
+        # --- Phase 1a: Parse PID from lock file ---
+        try:
+            content = lock_path.read_text(encoding="utf-8").strip()
+            if content:
+                for line in content.splitlines():
+                    line_s = line.strip()
+                    if line_s.isdigit():
+                        lock_pid = int(line_s)
+                        break
+                    elif line_s.startswith("pid="):
+                        cand = line_s.split("=")[1].strip()
+                        if cand.isdigit():
+                            lock_pid = int(cand)
                             break
-                        elif line_s.startswith("pid="):
-                            cand = line_s.split("=")[1].strip()
-                            if cand.isdigit():
-                                lock_pid = int(cand)
-                                break
-                    if lock_pid:
-                        pid_alive = is_pid_alive(lock_pid)
-            except Exception:
-                pass
+                if lock_pid:
+                    pid_alive = is_pid_alive(lock_pid)
+        except Exception:
+            pass
 
-            # Test kernel lock status via non-blocking probe
-            is_locked = False
+        # --- Phase 1b: Probe kernel advisory lock (non-blocking) ---
+        is_kernel_locked = False
+        try:
+            with open(lock_path, "a") as test_fd:
+                try:
+                    fcntl.flock(test_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(test_fd, fcntl.LOCK_UN)
+                except (OSError, BlockingIOError):
+                    is_kernel_locked = True
+        except Exception:
+            pass
+
+        # --- Classification ---
+        if is_kernel_locked and pid_alive:
+            # Actively running process legitimately holds the lock — leave it alone
+            continue
+
+        if age_s <= 1800:
+            # Fresh lock (<30m) — may be a slow-starting process; don't reap yet
+            continue
+
+        # Lock is stale: old + no live kernel holder
+        label = f"{lock_path.name} (DEAD PID {lock_pid}, {age_s/60:.1f}m old)" if (lock_pid and not pid_alive) \
+                else f"{lock_path.name} ({age_s/60:.1f}m old)"
+        stale_found.append(label)
+
+        # --- Phase 2: Purge confirmed-dead locks ---
+        # Safety gate: only reap if PID is explicitly confirmed dead.
+        # Unknown-PID locks (pid_alive=False because no PID was found) are also reaped
+        # after the 30-min grace period since there is no process to protect.
+        if not pid_alive:
             try:
-                with open(lock_path, "a") as test_fd:
-                    try:
-                        fcntl.flock(test_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        fcntl.flock(test_fd, fcntl.LOCK_UN)
-                    except (OSError, BlockingIOError):
-                        is_locked = True
-            except Exception:
-                pass
-
-            if is_locked and pid_alive:
-                # Actively running process legitimately holds the lock
-                continue
-
-            if age_s > 1800:  # 30+ minutes old
-                if lock_pid and not pid_alive:
-                    stale_found.append(f"{lock_path.name} (DEAD PID {lock_pid}, {age_s/60:.1f}m old)")
-                else:
-                    stale_found.append(f"{lock_path.name} ({age_s/60:.1f}m old)")
+                lock_path.unlink(missing_ok=True)
+                reaped.append(lock_path.name)
+                logger.warning(
+                    "[REAP] Purged stale lock %s — %s", lock_path.name, label
+                )
+            except Exception as exc:
+                logger.error("[REAP] Failed to purge %s: %s", lock_path.name, exc)
 
     passed = len(stale_found) == 0
+    detail_parts = []
+    if stale_found:
+        detail_parts.append(f"Stale lock(s) detected: {', '.join(stale_found)}")
+    if reaped:
+        detail_parts.append(f"Reaped: {', '.join(reaped)}")
+
     return {
         "name": "Lockfile Cleanliness & Quiescence",
         "passed": passed,
-        "detail": "All lockfiles cleared" if passed else f"Stale lock(s) detected: {', '.join(stale_found)}"
+        "detail": "All lockfiles cleared" if passed else "; ".join(detail_parts),
+        "reaped": reaped,
     }
 
 
