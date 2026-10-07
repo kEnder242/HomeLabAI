@@ -480,25 +480,25 @@ def probe_claradb(
                 emb = list(model.embed([text[:2048]]))[0].tolist()
 
                 domain_caps = {
-                    "feature_dna": 4,
-                    "behavioral_dna": 3,
-                    "wisdom_dna": 3,
-                    "inspiration_dna": 2,
-                    "rdna": 2,
-                    "loop_dna": 2,
+                    "feature_dna": 3,
+                    "behavioral_dna": 2,
+                    "wisdom_dna": 2,
+                    "inspiration_dna": 1,
+                    "rdna": 1,
+                    "loop_dna": 1,
                 }
                 domain_counts = {d: 0 for d in domain_caps}
 
                 def check_in_band(dist, min_dist, has_kw):
-                    base = (dist <= 0.78) or (dist <= min_dist + 0.10 and dist < 0.84) or (has_kw and dist <= 0.82)
+                    base = (dist <= 0.76) or (dist <= min_dist + 0.08 and dist < 0.82) or (has_kw and dist <= 0.80)
                     if is_qq:
-                        base = base or (dist <= 0.82)
+                        base = base or (dist <= 0.80)
                     return base
 
                 # Feature DNA Bucket
                 try:
                     col_feat = client.get_collection("feature_dna")
-                    r_feat = col_feat.query(query_embeddings=[emb], n_results=8)
+                    r_feat = col_feat.query(query_embeddings=[emb], n_results=6)
                     f_dists = r_feat.get("distances", [[]])[0]
                     if f_dists:
                         min_f = min(f_dists)
@@ -528,7 +528,7 @@ def probe_claradb(
                 # Behavioral DNA (BKM / LAB / INFRA) Bucket
                 try:
                     col_bkm = client.get_collection("behavioral_dna")
-                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=8)
+                    r_bkm = col_bkm.query(query_embeddings=[emb], n_results=6)
                     b_dists = r_bkm.get("distances", [[]])[0]
                     if b_dists:
                         min_b = min(b_dists)
@@ -564,7 +564,7 @@ def probe_claradb(
                 # Wisdom DNA Bucket
                 try:
                     col_wis = client.get_collection("wisdom_dna")
-                    r_wis = col_wis.query(query_embeddings=[emb], n_results=6)
+                    r_wis = col_wis.query(query_embeddings=[emb], n_results=4)
                     w_dists = r_wis.get("distances", [[]])[0]
                     if w_dists:
                         min_w = min(w_dists)
@@ -598,7 +598,7 @@ def probe_claradb(
                     except Exception:
                         col_ins = client.get_collection("philosophy_dna")
                     if col_ins:
-                        r_ins = col_ins.query(query_embeddings=[emb], n_results=5)
+                        r_ins = col_ins.query(query_embeddings=[emb], n_results=3)
                         i_dists = r_ins.get("distances", [[]])[0]
                         if i_dists:
                             min_i = min(i_dists)
@@ -627,7 +627,7 @@ def probe_claradb(
                 # Reverse DNA (RDNA HyDE Exemplar) Bucket
                 try:
                     col_rdna = client.get_collection("rdna")
-                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=4)
+                    r_rdna = col_rdna.query(query_embeddings=[emb], n_results=3)
                     rd_dists = r_rdna.get("distances", [[]])[0]
                     if rd_dists:
                         min_rd = min(rd_dists)
@@ -650,7 +650,7 @@ def probe_claradb(
                 # Loop DNA Bucket
                 try:
                     col_loop = client.get_collection("loop_dna")
-                    r_loop = col_loop.query(query_embeddings=[emb], n_results=4)
+                    r_loop = col_loop.query(query_embeddings=[emb], n_results=3)
                     l_dists = r_loop.get("distances", [[]])[0]
                     if l_dists:
                         min_l = min(l_dists)
@@ -925,7 +925,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 client=chroma_client,
                 model=fastembed_model,
                 is_qq=is_qq,
-                limit=15,
+                limit=10,
                 seen_ids=seg_seen_ids,
                 hook_errors=seg_errors,
             )
@@ -948,7 +948,7 @@ def execute_ambient_recall(payload: dict) -> dict:
             sprint_hits = probe_sprint_dna(
                 seg_text,
                 client=chroma_client,
-                limit=3,
+                limit=2,
                 seen_ids=seg_seen_ids,
                 hook_errors=seg_errors,
             )
@@ -966,7 +966,7 @@ def execute_ambient_recall(payload: dict) -> dict:
                 seg_text,
                 project=project,
                 is_qq=is_qq,
-                limit=3,
+                limit=2,
                 hook_errors=seg_errors,
             )
             for ih in icm_hits:
@@ -1039,7 +1039,7 @@ def execute_ambient_recall(payload: dict) -> dict:
             ambient_lines.extend(literal_fallbacks)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-    warn_threshold_ms = float(os.environ.get("HOOK_WARN_THRESHOLD_MS", 550.0))
+    warn_threshold_ms = float(os.environ.get("HOOK_WARN_THRESHOLD_MS", 600.0))
 
     if elapsed_ms > warn_threshold_ms:
         lat_msg = f"Hook execution took {elapsed_ms:.1f}ms (threshold: {warn_threshold_ms:.0f}ms)"
@@ -1059,7 +1059,7 @@ def execute_ambient_recall(payload: dict) -> dict:
 
     if ambient_lines:
         anchors = list(seen_ids)
-        breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in anchors[:6]]) if anchors else 'Nominal'} ({len(anchors)} hits • {elapsed_ms:.1f}ms)"
+        breadcrumb = f"> 🧬 **Grounding**: {' '.join([f'[{a}]' for a in anchors[:4]]) if anchors else 'Nominal'} ({len(anchors)} hits • {elapsed_ms:.1f}ms)"
         ambient_lines.insert(0, f"[Grounding Header: {breadcrumb}]")
 
         return {"injectSteps": [{"ephemeralMessage": "\n".join(ambient_lines)}]}
