@@ -206,13 +206,23 @@ async def safe_patch(
     except Exception as e:
         return {"success": False, "error": f"Failed to read {file_path}: {e}"}
 
-    # Normalize literal \n strings if passed escaped
-    old_norm = old_pattern.replace("\\n", "\n") if "\\n" in old_pattern and "\n" not in old_pattern else old_pattern
-    new_norm = new_pattern.replace("\\n", "\n") if "\\n" in new_pattern and "\n" not in new_pattern else new_pattern
+    # Normalize line endings and escaped newlines
+    old_norm = old_pattern.replace("\r\n", "\n").replace("\r", "\n")
+    new_norm = new_pattern.replace("\r\n", "\n").replace("\r", "\n")
+    if "\\n" in old_norm and "\n" not in old_norm:
+        old_norm = old_norm.replace("\\n", "\n")
+    if "\\n" in new_norm and "\n" not in new_norm:
+        new_norm = new_norm.replace("\\n", "\n")
+
+    # Unescape escaped quotes (e.g. \" passed from JSON-RPC) if file uses unescaped quotes
+    if r'\"' in old_norm and r'\"' not in content and '"' in content:
+        old_norm = old_norm.replace(r'\"', '"')
+    if r'\"' in new_norm and r'\"' not in content:
+        new_norm = new_norm.replace(r'\"', '"')
 
     # Attempt 1: Exact string replace
-    is_exact_match = old_norm in content
-    if is_exact_match:
+    count = 0
+    if old_norm in content:
         if multi:
             new_content = content.replace(old_norm, new_norm)
             count = content.count(old_norm)
@@ -220,11 +230,10 @@ async def safe_patch(
             new_content = content.replace(old_norm, new_norm, 1)
             count = 1
     else:
-        # Attempt 2: Flexible whitespace literal match (handles newline / indentation drift)
+        # Attempt 2: Flexible whitespace literal match (handles newline / indentation drift across lines)
         old_stripped = "\n".join(line.strip() for line in old_norm.splitlines() if line.strip())
-        content_lines = content.splitlines()
+        content_lines = content.splitlines(keepends=True)
         matched_idx = -1
-        # Quick check if stripped lines match sequentially
         for idx in range(len(content_lines)):
             window = "\n".join(l.strip() for l in content_lines[idx:idx + len(old_norm.splitlines())] if l.strip())
             if window == old_stripped and old_stripped:
@@ -232,7 +241,6 @@ async def safe_patch(
                 break
 
         if matched_idx != -1:
-            # Replace the exact slice of lines
             lines_to_replace = len([l for l in old_norm.splitlines() if l.strip()])
             end_idx = matched_idx
             matched_count = 0
@@ -240,20 +248,30 @@ async def safe_patch(
                 if content_lines[end_idx].strip():
                     matched_count += 1
                 end_idx += 1
-            new_content = "\n".join(content_lines[:matched_idx] + [new_norm] + content_lines[end_idx:])
+            new_content = "".join(content_lines[:matched_idx] + [new_norm] + content_lines[end_idx:])
             count = 1
         else:
-            # Attempt 3: Regex substitution (escaped for safety if unescaped compilation fails)
-            try:
-                count_limit = 0 if multi else 1
-                new_content, count = re.subn(old_norm, lambda m: new_norm, content, count=count_limit, flags=re.MULTILINE)
-            except Exception:
+            # Attempt 3: Tokenized whitespace-tolerant regex (handles arbitrary spacing / indentation drift)
+            tokens = [re.escape(t) for t in old_norm.split() if t]
+            if tokens:
+                fuzzy_pattern = r"\s*".join(tokens)
                 try:
-                    # Escape special characters if raw regex compilation failed (e.g. LaTeX backslashes)
-                    escaped_old = re.escape(old_norm)
-                    new_content, count = re.subn(escaped_old, lambda m: new_norm, content, count=count_limit, flags=re.MULTILINE)
-                except Exception as regex_err:
-                    return {"success": False, "error": f"Pattern matching failed: {regex_err}"}
+                    count_limit = 0 if multi else 1
+                    new_content, count = re.subn(fuzzy_pattern, lambda m: new_norm, content, count=count_limit)
+                except Exception:
+                    count = 0
+
+            # Attempt 4: Raw regex substitution if explicit regex was passed
+            if count == 0:
+                try:
+                    count_limit = 0 if multi else 1
+                    new_content, count = re.subn(old_norm, lambda m: new_norm, content, count=count_limit, flags=re.MULTILINE)
+                except Exception:
+                    try:
+                        escaped_old = re.escape(old_norm)
+                        new_content, count = re.subn(escaped_old, lambda m: new_norm, content, count=count_limit, flags=re.MULTILINE)
+                    except Exception as regex_err:
+                        return {"success": False, "error": f"Pattern matching failed: {regex_err}"}
 
     if count == 0:
         return {
