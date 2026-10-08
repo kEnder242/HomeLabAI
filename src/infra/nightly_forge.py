@@ -21,6 +21,7 @@ Execution Flow Architecture & Time Budgets:
 
 import datetime
 import fcntl
+import gc
 import json
 import logging
 import os
@@ -29,6 +30,7 @@ import subprocess
 import sys
 import time
 
+import torch
 import requests
 
 logging.basicConfig(
@@ -409,18 +411,62 @@ def re_ignite_vllm():
         except Exception as e:
             logger.warning(f"[MAINTENANCE] Error removing lockfile: {e}")
 
+    # VRAM quiescence before waking Foyer (FEAT-101.8)
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+        logger.info("[FEAT-136] VRAM cache emptied and Python garbage collected before wake.")
+    except Exception as e:
+        logger.warning(f"[FEAT-136] VRAM quiescence warning: {e}")
+
     try:
         requests.post(f"{FOYER_URL}/wake", timeout=10)
         resp = requests.post(
             f"{FOYER_URL}/status_update", json={"state": "OPERATIONAL"}, timeout=10
         )
         if resp.status_code == 200:
-            logger.info("[FEAT-213] Foyer state restored to OPERATIONAL.")
+            logger.info("[FEAT-136] Foyer state restored to OPERATIONAL.")
             write_step_log("RE_IGNITE_OK", "Foyer OPERATIONAL restored")
-            return True
+            # Blocking v1/models gate: probe until 200 OK before declaring success
+            logger.info(
+                "[FEAT-136] Blocking probe gate: polling http://127.0.0.1:8088/v1/models ..."
+            )
+            if _v1_models_blocking_probe():
+                logger.info("[FEAT-136] Foyer live: v1/models responded 200 OK.")
+                return True
     except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
     write_step_log("RE_IGNITE_END")
+    return False
+
+
+def _v1_models_blocking_probe(
+    timeout_total: int = 180, poll_interval: float = 2, single_timeout: float = 5
+) -> bool:
+    """[FEAT-101.8] Blocking probe gate. Polls http://127.0.0.1:8088/v1/models until 200 OK.
+
+    Respects the overall total timeout (180s) across poll attempts; each GET uses
+    single_timeout=5s. Returns True on 200 OK, False if no 200 is seen within
+    timeout_total or errors occur continuously.
+    """
+    elapsed = 0.0
+    start_time = time.monotonic()
+    while elapsed < timeout_total:
+        try:
+            r = requests.get(
+                "http://127.0.0.1:8088/v1/models", timeout=single_timeout
+            )
+            if r.status_code == 200:
+                return True
+        except Exception:
+            # Continuous errors do not short-circuit; keep polling
+            pass
+        time.sleep(poll_interval)
+        elapsed = time.monotonic() - start_time
+    logger.warning(
+        "[FEAT-136] v1/models probe gate timed out after 180s - port 8088 did not return 200 OK."
+    )
     return False
 
 
@@ -1122,12 +1168,12 @@ def main():
                         severity="WARNING",
                     )
                 else:
-                    # Settling Cooldown 2: 15s post-training thermal settling
+                    # Settling Cooldown 2: 30s post-training thermal settling
                     logger.info(
-                        "[NIGHTLY COOLDOWN 2] Settling 15s post-training thermal cooldown..."
+                        "[NIGHTLY COOLDOWN 2] Settling 30s post-training thermal cooldown..."
                     )
-                    write_step_log("TRAINING_SETTLING", "Sleeping 15s")
-                    time.sleep(15)
+                    write_step_log("TRAINING_SETTLING", "Sleeping 30s")
+                    time.sleep(30)
             except Exception as te:
                 logger.error(f"[NIGHTLY STEP 3] LoRA training exception: {te}")
                 training_ok = False
