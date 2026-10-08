@@ -1629,21 +1629,33 @@ Your goal is high-level conceptual structuring, thematic clustering, and adversa
                     r_lines = rf.readlines()
                     start_idx = None
                     end_idx = None
+                    # Priority 1: Match heading line containing Story <num>
                     for idx, line in enumerate(r_lines):
-                        if f"Story {story_num}" in line:
+                        s = line.strip()
+                        if s.startswith("#") and f"Story {story_num}" in s:
                             start_idx = idx + 1
                             break
+                    # Priority 2: Substring anywhere
+                    if not start_idx:
+                        for idx, line in enumerate(r_lines):
+                            if f"Story {story_num}" in line:
+                                start_idx = idx + 1
+                                break
                     if start_idx:
-                        # Find next story or end of section
+                        first_line = r_lines[start_idx - 1].lstrip()
+                        header_level = len(first_line) - len(first_line.lstrip("#")) or 4
                         for idx in range(start_idx, len(r_lines)):
-                            if (
-                                "### ⏱️ Story" in r_lines[idx]
-                                or "### 🏛️ Architecture" in r_lines[idx]
-                            ):
+                            cur = r_lines[idx].lstrip()
+                            if cur.startswith("#"):
+                                cur_lvl = len(cur) - len(cur.lstrip("#"))
+                                if cur_lvl <= header_level:
+                                    end_idx = idx
+                                    break
+                            elif cur.startswith("---") and idx > start_idx + 3:
                                 end_idx = idx
                                 break
                         if not end_idx:
-                            end_idx = min(len(r_lines), start_idx + 140)
+                            end_idx = min(len(r_lines), start_idx + 80)
                         _sprint_line_pointer = f" (Lines {start_idx}–{end_idx})"
             except Exception:
                 pass
