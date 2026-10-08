@@ -1753,11 +1753,8 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         else f"- Edit Target(s): {reference_file} (same as reference)"
     )
     local_thinking_suppression = ""
-    if local_only:
-        local_thinking_suppression = """[OPERATIONAL INVARIANT: ZERO THINKING / REASONING MONOLOGUE (LAB-115)]
-You are operating in direct tactical execution mode on local silicon.
-Do NOT emit <think> tags, internal monologues, or extended reasoning blocks.
-Begin your output immediately with surgical tool calls or code edits.\n\n"""
+    # Invariant: Rely on OpenCode's native reasoning extraction and lean context;
+    # prompt-level thinking suppression clashes with base model weights.
 
     if agent == "atlas":
         prompt = f"""[STORY DELEGATION TARGET: STORY {story_num}]
