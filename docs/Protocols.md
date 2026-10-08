@@ -244,7 +244,7 @@ All diagnostic forensics MUST reference the canonical black box log:
     * 📜 **5-Sprint Lookback**: Document review of the preceding 5 sprint plans, logs, and retrospectives to ensure no historical anti-patterns or circular fixes are repeated.
     * 🚫 **Pre-Flight Mistake Ledger**: Explicitly enumerate 3–5 concrete mistakes that would have been made without this grounding (e.g. patching wrong scripts, altering hardware pacing delays, creating multi-home duplicates).
     * 🧭 **Grounding Gap Declaration**: Assert zero ungrounded items or explicitly list open gaps requiring operator guidance before any code modification begins.
-    * 🛠️ **Mandatory Phase 0: Documentation Fortification & Housekeeping**: Every sprint plan MUST dedicate "Phase 0" to repairing outdated doc pointers, correcting tool argument flags, and updating `FeatureTracker.md` / `DIAGNOSTIC_SCRIPT_MAP.md` before story execution begins. This ensures future agents are pointed in the right direction and documentation debt is paid forward rather than compounded.
+    * 🛠️ **Mandatory Phase 0: Pre-Execution Housekeeping**: Strictly bounded to repairing outdated doc pointers, correcting tool flags, and updating `FeatureTracker.md` / `DIAGNOSTIC_SCRIPT_MAP.md` identified *during planning/grounding* before story execution begins. In-flight tool failures during execution are treated as live harness friction under BKM-048/BKM-082, never deferred.
 
 
 ## BKM-022: The Atomic File Swap Protocol (Filesystem Safety)
@@ -1460,9 +1460,10 @@ Agents are frequently tempted to treat new user prompts as greenfield tasks or t
    - When specifying sprint stories, anti-regression cautions, and subagent prompt anchors, steer away from negative prohibitions (*"Don't do X"*).
    - Formulate all cautions as positive context guidance: ***"Do Y because Z context guides you to do it this way."*** Providing the affirmative action anchored in past historical context eliminates negative constraint inversion and guides autonomous subagents toward correct implementation without thrash.
 
-7. **Mandatory "Phase 0: Documentation Fortification & Housekeeping" Session:**
-   - Every sprint plan derived from a Sprint Grounding Run MUST include an upfront **"Phase 0: Documentation Fortification & Housekeeping"** section executed *before* code stories.
-   - Phase 0 addresses documentation drift uncovered during grounding: updating outdated script pointers, correcting tool argument flags, registering new FEAT tags, and clarifying physical constraints in `DIAGNOSTIC_SCRIPT_MAP.md` and `FeatureTracker.md`. This ensures future JITC agent invocations are always pointed in the right direction.
+7. **Pre-Execution Housekeeping vs. In-Flight Harness Friction Mandate**:
+   - **Pre-Execution Housekeeping (Phase 0)**: Every sprint plan derived from a Sprint Grounding Run dedicates an upfront **"Phase 0: Pre-Execution Housekeeping"** section strictly bounded to addressing documentation debt, outdated script pointers, tool argument flags, and FEAT registrations identified *during planning and historical grounding*. Once story execution begins, Phase 0 is officially sealed.
+   - **In-Flight Harness Friction (Never Deferred)**: Any unforeseen tool failure, harness breakdown, or subagent bypass (e.g. `clara-dna_safe_patch` falling back to custom Python scripts) discovered *during* story execution is classified as **In-Flight Harness Friction**, NOT future housekeeping.
+   - **The Anti-Bypass / Harness Halt Mandate**: Per `BKM-048` (§3), when a core harness tool stumbles mid-sprint, the orchestrator MUST NOT gloss over the failure because an internal worker fallback succeeded. The incident MUST be immediately appended to the live `📜 Sprint Log` (`BKM-081`) and reported to the operator. If upcoming stories depend on that broken tool, the sprint MUST halt to fix the harness immediately rather than allowing tool debt to compound across subsequent dispatches.
 
 
 

@@ -101,8 +101,8 @@
         "local-unified-base": "llama-3.2-3b-awq",
         "unified-base": "llama-3.2-3b-awq"
     },
-    "forge": {
-        "default_steps": 350,
+"forge": {
+    "default_steps": 350,
         "pacing_delay_sec": 5.0,
         "batch_size": 1,
         "gradient_accumulation_steps": 4,

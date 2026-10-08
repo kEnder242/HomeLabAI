@@ -151,6 +151,43 @@ class IgnitionManager:
             except Exception:
                 pass
 
+    def _kill_stale_vllm(self):
+        """Kill stale vLLM processes and clean up PID file."""
+        # Read PID from vllm.pid
+        pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
+        if os.path.exists(pid_file):
+            try:
+                with open(pid_file, "r") as f:
+                    pid = int(f.read().strip())
+                # Kill the process with SIGKILL if active
+                if psutil.pid_exists(pid):
+                    subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
+            except Exception:
+                pass
+        # Execute pkill commands
+        subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+        subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
+        # Cleanly remove vllm.pid
+        if os.path.exists(pid_file):
+            os.remove(pid_file)
+        # Verify port 8088 is free (allow time for processes to terminate)
+        import time
+        time.sleep(1)  # Give processes time to terminate
+        try:
+            import urllib.request
+            import urllib.error
+            req = urllib.request.Request("http://localhost:8088/v1/models", method="HEAD")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                # Port is still in use - log but don't fail the method
+                logging.debug(f"[IGNITION] Port 8088 may still be in use after kill (status {resp.status})")
+        except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
+            # Port is free (good)
+            logging.debug("[IGNITION] Port 8088 verified free after kill")
+        except Exception as e:
+            # Other error - log but continue
+            logging.debug(f"[IGNITION] Port check error after kill (continuing): {e}")
+
+
     async def start_lab(self, reason="INTENT"):
         """[FEAT-265.8] Ignition sequence."""
         if self.status.state in ["WAKING", "OPERATIONAL"]:
@@ -271,7 +308,7 @@ class IgnitionManager:
 
             # Poll for API readiness and perform cognitive vocality check
             api_ready = False
-            for _ in range(60):  # Up to 5 minutes
+            for _ in range(360):  # Up to 30 minutes at 5s polling intervals
                 try:
                     import json
                     import urllib.request
@@ -333,9 +370,11 @@ class IgnitionManager:
                 self.cooldown_until = time.time() + cooldown
                 self.status.state = "ERROR"
                 self.recovery_in_progress = False
+                self._kill_stale_vllm()  # Kill any remaining vLLM processes
                 self._release_vram_lock()  # Release on failure
                 self.update_status_file()
                 return False
+
 
             self.status.state = "OPERATIONAL"
             self.status.engine_up = True
