@@ -110,6 +110,35 @@ class TestBuildCriticPrompt:
         assert data["user_query"] == "hello"
         assert data["technical_summary"] == "world"
 
+    def test_output_schema_four_key_scorecard(self) -> None:
+        """[Story 100.12] output_schema declares exactly the four-key scorecard."""
+        data = json.loads(build_critic_prompt("q", "s"))
+        assert set(data["output_schema"].keys()) == {
+            "score",
+            "reasoning",
+            "slop_found",
+            "retort",
+        }
+        assert "cartoon_retort" not in data["output_schema"]
+        assert "critique_suggestions" not in data["output_schema"]
+
+    def test_critic_generates_grounded_reasoning_and_retort(self) -> None:
+        """[Story 100.12] A four-key payload round-trips all fields via parse."""
+        payload = json.dumps(
+            {
+                "score": 4,
+                "reasoning": "RAG context supports the answer on three points.",
+                "slop_found": False,
+                "retort": "Narf! Solid, but Brain's got more cables.",
+            }
+        )
+        result = parse_critic_payload(payload)
+        assert result.score == 4
+        assert result.reasoning == "RAG context supports the answer on three points."
+        assert result.slop_found is False
+        assert result.retort == "Narf! Solid, but Brain's got more cables."
+        assert result.cartoon_retort == result.retort
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. parse_critic_payload
@@ -285,6 +314,21 @@ class TestFormatChatDelivery:
         """Empty summary returns just the retort."""
         result = format_chat_delivery("Only retort!", "")
         assert result == "Only retort!"
+
+    def test_format_chat_delivery_blends_retort_and_reasoning(self) -> None:
+        """[Story 100.12] Blends the quip with the WHY, prefix stripped, blank-line separator."""
+        result = format_chat_delivery(
+            cartoon_retort="[Pinky] Narf!",
+            technical_summary="The score is 4 because RAG context supports it.",
+        )
+        # Quip present, speaker prefix stripped
+        assert "Narf!" in result
+        assert "[Pinky]" not in result
+        # Grounded reasoning WHY present
+        assert "The score is 4 because RAG context supports it." in result
+        # Blank-line separator between quip and reasoning
+        assert "Narf!\n\n" in result
+        assert result.index("Narf!") < result.index("The score is 4")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
