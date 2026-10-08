@@ -215,10 +215,10 @@ def format_markdown_table(data: Dict[str, Any]) -> str:
     totals = data.get("totals", {})
 
     lines = [
-        f"### 📊 Sprint {sprint} Telemetry Report (Conductor + L3 Sub-Inference)",
+        f"### 📊 Sprint {sprint} Telemetry Report",
         "",
-        "| Story | Status | Mode | Conductor Tokens | L3 Hidden Tokens | Blended Total | Cached Tokens | Wall Time (min) |",
-        "|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|",
+        "| Story | Status | Mode | Tokens | Cached | Wall Time (min) |",
+        "|---|:---:|:---:|:---:|:---:|:---:|",
     ]
 
     for s in stories:
@@ -226,21 +226,17 @@ def format_markdown_table(data: Dict[str, Any]) -> str:
         status = s["status"]
         status_badge = "✅ PASS" if status == "VERIFIED" else ("🟦 DONE" if status == "COMPLETED" else ("🔄 RUN" if status == "IN_PROGRESS" else "❌ FAIL"))
         mode = s["mode"].upper()
-        cond = f"{s['tokens_conductor']:,}"
-        l3 = f"+{s['tokens_l3_sub']:,}" if s['tokens_l3_sub'] > 0 else "—"
-        tot = f"**{s['tokens_total']:,}**"
+        tot = f"{s['tokens_total']:,}"
         cache = f"{s['tokens_cached']:,}"
         dur = f"{s['duration_minutes']:.2f}m"
 
-        lines.append(f"| **{st_id}** | {status_badge} | `{mode}` | {cond} | {l3} | {tot} | {cache} | {dur} |")
+        lines.append(f"| **{st_id}** | {status_badge} | `{mode}` | {tot} | {cache} | {dur} |")
 
-    lines.append("|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
-    t_cond = f"**{totals.get('tokens_conductor', 0):,}**"
-    t_l3 = f"**+{totals.get('tokens_l3_sub', 0):,}**"
+    lines.append("|---|:---:|:---:|:---:|:---:|:---:|")
     t_tot = f"**{totals.get('tokens_total', 0):,}**"
     t_cache = f"**{totals.get('tokens_cached', 0):,}**"
     t_dur = f"**{totals.get('wall_time_minutes', 0.0):.2f}m**"
-    lines.append(f"| **TOTALS** | **{data.get('completed_stories', 0)}/{data.get('total_stories', 0)}** | — | {t_cond} | {t_l3} | {t_tot} | {t_cache} | {t_dur} |")
+    lines.append(f"| **TOTALS** | **{data.get('completed_stories', 0)}/{data.get('total_stories', 0)}** | — | {t_tot} | {t_cache} | {t_dur} |")
     lines.append("")
 
     return "\n".join(lines)
