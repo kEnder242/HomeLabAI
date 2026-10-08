@@ -553,7 +553,6 @@ async def stage_research(
     return {
         "status": "staged",
         "file_path": file_path,
-        "blueprint": patch_blueprint or plan_content,
     }
 
 
