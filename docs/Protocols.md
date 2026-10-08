@@ -213,7 +213,9 @@ All diagnostic forensics MUST reference the canonical black box log:
 8.  **Non-Blocking HyDE Synthesis**: Triage and HyDE vector generation must NEVER block on local VRAM status or output empty filler. When the local engine is warming (`not get_vram_status()`), `cognitive_hub.py` must route `triage_mode_context` immediately to Deep Thought on KENDER (`192.168.1.26:11434`) for instant 3-part Composite HyDE query synthesis (`[VALIDATION] | [STRATEGY] | [SRE]`).
 
 ## BKM-024: Validation-Aware Synchronization & Live Verification
+**Feature Anchor:** `[BKM-024]` / `[FEAT-497]` / `[INS-047]` ("Live is King, History is Queen")  
 **Objective**: Lab must be current and left in a recoverable state that will recover to live automatically, ensuring physical daemon processes and silicon endpoints match active sprint code before task certification.
+
 
 1.  **The Recoverable State Invariant**:
     *   **Liveness $\neq$ Static Immobility**: Heavy compute operations (Nightly Forge training, VRAM reallocation, deep service resets) are legitimate lifecycle transitions. Quiescing or restarting the lab is expected when needed.
@@ -1419,7 +1421,7 @@ Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite,
 ---
 
 ## BKM-082: Sprint Grounding Run (Historical Anchoring & Horizon-Aware Pre-Flight Mandate)
-**Feature Anchor:** `[BKM-082]` / `[BKM-001]` / `[BKM-005]` / `[BKM-006]` / `[BKM-020]` / `[BKM-048]` / `[FEAT-659]`  
+**Feature Anchor:** `[BKM-082]` / `[BKM-001]` / `[BKM-005]` / `[BKM-006]` / `[BKM-020]` / `[BKM-048]` / `[FEAT-659]` / `[INS-047]` ("Live is King, History is Queen")  
 **Colloquial Alias:** "The Sprint Grounding Run / Historical Horizon Pre-Flight Invariant"  
 **Domain:** Sprint Architecture, Diagnostic Horizon, Historical Invariants, Anti-Amnesia Governance  
 **Status:** ACTIVE / MANDATORY  
