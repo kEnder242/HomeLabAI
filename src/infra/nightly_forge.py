@@ -731,12 +731,12 @@ def run_sprint_dna_sync():
     """[FEAT-557 / Story 77.0] Automated Sprint DNA ChromaDB Sync & Manifest Compilation Pass."""
     logger.info("[SPRINT_DNA] Initiating Sprint DNA sync and manifest compilation...")
     write_step_log("SPRINT_DNA_START")
-    script = os.path.expanduser("~/Dev_Lab/Portfolio_Dev/sync_chroma_dna.py")
+    script = os.path.join(HOMELAB_DIR, "src", "curator", "sync_sprint_dna.py")
     if os.path.exists(script):
         try:
             py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run(
-                [py_bin, script, "--collection", "sprint_dna"],
+                [py_bin, script],
                 capture_output=True,
                 text=True,
                 timeout=300,
