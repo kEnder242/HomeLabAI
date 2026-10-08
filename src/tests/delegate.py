@@ -2318,11 +2318,8 @@ if __name__ == "__main__":
         type=int,
         help="[DEPRECATED]: delegate.py is strictly single-shot per BKM-049.",
     )
-    parser.add_argument(
-        "--agent",
-        default=None,
-        help="Optional explicit agent override (e.g. atlas, sisyphus, junior, oracle)",
-    )
+    # Note: --agent flag removed per BKM-049/BKM-071; mode strictly determines entrypoint agent:
+    # local -> atlas, cloud -> sisyphus, oracle -> oracle.
     parser.add_argument(
         "--session-id",
         default=None,
@@ -2420,7 +2417,7 @@ if __name__ == "__main__":
         args.verification,
         sprint_num=args.sprint,
         target_dir=args.dir,
-        agent=args.agent,
+        agent=None,
         mode=args.mode,
         target_files=args.target,
         session_id=args.session_id,
