@@ -1220,19 +1220,25 @@ def _verify_and_sync_service_freshness(story_num):
 
 
 def _prewarm_target_context(target_files: str | None, story_num: int | str, title: str, details: str):
-    """[FEAT-643] Pre-warm semantic context cache in /tmp/clara_context_cache.json via M5 Air Neural Map-Reduce."""
+    """[FEAT-643] Pre-warm semantic context cache in .jit_cache via M5 Air Neural Map-Reduce asynchronously."""
     if not target_files:
         return
-    try:
-        homelab_src = os.path.expanduser("~/Dev_Lab/HomeLabAI/src")
-        if homelab_src not in sys.path:
-            sys.path.insert(0, homelab_src)
-        from v5.cognition.context_prewarmer import prewarm_files
-        files = [f.strip() for f in target_files.split(",") if f.strip()]
-        if files:
-            prewarm_files(files, max_workers=4)
-    except Exception as e:
-        sys.stderr.write(f"[*] Pre-warm warning: {e}\n")
+    import threading
+
+    def _worker():
+        try:
+            homelab_src = os.path.expanduser("~/Dev_Lab/HomeLabAI/src")
+            if homelab_src not in sys.path:
+                sys.path.insert(0, homelab_src)
+            from v5.cognition.context_prewarmer import prewarm_files
+            files = [f.strip() for f in target_files.split(",") if f.strip()]
+            if files:
+                prewarm_files(files, max_workers=4)
+        except Exception as e:
+            sys.stderr.write(f"[*] Async pre-warm warning: {e}\n")
+
+    t = threading.Thread(target=_worker, name=f"prewarm_{story_num}", daemon=True)
+    t.start()
 
 
 def _write_conductor_notes(target_files: str | None, sprint_num: int, story_num: any, title: str):
