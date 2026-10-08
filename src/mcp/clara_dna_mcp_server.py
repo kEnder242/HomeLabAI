@@ -308,7 +308,7 @@ async def safe_patch(
 
 
 @mcp.tool()
-async def locate_grounding(
+async def jit_locate(
     pattern: str,
     intent_description: str,
     max_results: int = 15,
@@ -404,7 +404,7 @@ def _get_ast_cached(full_path: str, full_content: str) -> str:
 
 
 @mcp.tool()
-async def read(
+async def jit_read(
     file_path: str,
     start_line: int | None = None,
     end_line: int | None = None,
@@ -525,7 +525,7 @@ def _save_conductor_notes(notes: dict) -> bool:
 
 
 @mcp.tool()
-async def stage_research(
+async def jit_stage(
     file_path: str,
     plan_content: str,
     patch_blueprint: str = "",
@@ -568,11 +568,11 @@ def _load_agents_l3_rules() -> str:
                     return f.read().strip()
             except Exception:
                 pass
-    return "You are the Layer 3 Blind Surgical Worker. Ingest blueprint, apply clara-dna_safe_patch, run pytest, and call handoff_checkpoint. Zero wandering."
+    return "You are the Layer 3 Blind Surgical Worker. Ingest blueprint, apply safe_patch, run pytest, and call jit_checkpoint. Zero wandering."
 
 
 @mcp.tool()
-async def research(file_path: str, query: str = "") -> str:
+async def jit_research(file_path: str, query: str = "") -> str:
     """[Story 98.6 / FEAT-647] JITC Research tool. Recalls pre-computed L2 conductor blueprints or loads AGENTS_L3.md rules as fresh empirical findings.
     - file_path: Target file path, basename, or 'AGENTS_L3.md' to load operational rules.
     - query: Optional search query.
@@ -630,7 +630,7 @@ async def research(file_path: str, query: str = "") -> str:
 
 
 @mcp.tool()
-async def failure_whisperer(test_output: str, error_context: str = "") -> str:
+async def jit_diagnose(test_output: str, error_context: str = "") -> str:
     """Scans the test output / traceback, isolates the failing assertion / error line, and returns an atomic 2-line diagnosis."""
     match = re.search(r"E\s+(.*)", test_output)
     failing_line = match.group(1) if match else "Unknown error"
@@ -638,7 +638,7 @@ async def failure_whisperer(test_output: str, error_context: str = "") -> str:
 
 
 @mcp.tool()
-async def handoff_checkpoint(
+async def jit_checkpoint(
     status: str, summary: str, artifacts_modified: list = None
 ) -> dict:
     """Appends a JSON record with timestamp, status, summary, and artifacts to delegation_ledger.jsonl."""
@@ -669,76 +669,6 @@ async def handoff_checkpoint(
     return {"status": "success", "record": record}
 
 
-@mcp.tool()
-async def locate_path(
-    pattern: str, intent_description: str = "", max_results: int = 15
-) -> dict:
-    """Fast repository path locator and module resolver across federated submodules."""
-    return locate_grounding(pattern, intent_description, max_results)
-
-
-# ---------------------------------------------------------------------------
-# [Story 100.2 / FEAT-649] Canonical JIT Tool Interfaces
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def jit_read(
-    file_path: str,
-    start_line: int | None = None,
-    end_line: int | None = None,
-    outline_only: bool = True,
-) -> dict:
-    """[FEAT-642 / FEAT-648] JIT Bounded Reader. Inspects file AST blueprints & pre-warmed semantic summaries in <400 tokens."""
-    return await read(file_path=file_path, start_line=start_line, end_line=end_line, outline_only=outline_only)
-
-
-@mcp.tool()
-async def jit_locate(
-    pattern: str, intent_description: str = "", max_results: int = 15
-) -> dict:
-    """[FEAT-649] JIT Fast Path Locator. Returns relative repository paths without code body bloat."""
-    return locate_grounding(pattern=pattern, intent_description=intent_description, max_results=max_results)
-
-
-@mcp.tool()
-async def jit_stage(
-    file_path: str,
-    plan_content: str,
-    patch_blueprint: str = "",
-    ast_anchors: list = None,
-    diff_directives: list = None,
-) -> dict:
-    """[FEAT-647 / FEAT-649] JIT Stage Blueprint. L2 Conductor stages patch blueprints into .jit_cache for L3 worker recall."""
-    return await stage_research(
-        file_path=file_path,
-        plan_content=plan_content,
-        patch_blueprint=patch_blueprint,
-        ast_anchors=ast_anchors,
-        diff_directives=diff_directives,
-    )
-
-
-@mcp.tool()
-async def jit_research(file_path: str, query: str = "") -> str:
-    """[FEAT-647 / FEAT-649] JIT Research Recall. L3 Surgical Worker recalls staged blueprints or loads AGENTS_L3.md operational rules."""
-    return await research(file_path=file_path, query=query)
-
-
-@mcp.tool()
-async def jit_diagnose(test_output: str, error_context: str = "") -> str:
-    """[FEAT-649] JIT Test Failure Diagnosis. Isolates failing assertions/tracebacks into an atomic 2-line diagnosis."""
-    return await failure_whisperer(test_output=test_output, error_context=error_context)
-
-
-@mcp.tool()
-async def jit_checkpoint(
-    status: str, summary: str, artifacts_modified: list = None
-) -> dict:
-    """[FEAT-649] JIT Handover Checkpoint. Commits status and modified artifacts to delegation_ledger.jsonl."""
-    return await handoff_checkpoint(status=status, summary=summary, artifacts_modified=artifacts_modified)
-
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-
-

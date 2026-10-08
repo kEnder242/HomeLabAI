@@ -26,11 +26,11 @@ class TestSubversivePrompt:
         "All exact implementation details, AST anchors, and patch blueprints "
         "come directly from your JITC research tool. "
         "Trust the plan, and verify the live details by running "
-        "research(target_file) on Turn 1. "
-        "1) Review empirical findings from research(). "
+        "jit_research(target_file) on Turn 1. "
+        "1) Review empirical findings from jit_research(). "
         "2) Apply surgical changes via safe_patch(). "
-        "3) Run verification (call failure_whisperer(traceback) on failure). "
-        "4) Call handoff_checkpoint() on pass."
+        "3) Run verification (call jit_diagnose(traceback) on failure). "
+        "4) Call jit_checkpoint() on pass."
     )
 
     def test_l3_mandate_contains_trust_formula(self):
@@ -43,21 +43,21 @@ class TestSubversivePrompt:
             "All exact implementation details, AST anchors, and patch blueprints "
             "come directly from your JITC research tool. "
             "Trust the plan, and verify the live details by running "
-            "research(target_file) on Turn 1. "
-            "1) Review empirical findings from research(). "
+            "jit_research(target_file) on Turn 1. "
+            "1) Review empirical findings from jit_research(). "
             "2) Apply surgical changes via safe_patch(). "
-            "3) Run verification (call failure_whisperer(traceback) on failure). "
-            "4) Call handoff_checkpoint() on pass."
+            "3) Run verification (call jit_diagnose(traceback) on failure). "
+            "4) Call jit_checkpoint() on pass."
         )
         
         # Verify the formula is present
         assert self.EXPECTED_L3_FORMULA in l3_mandate
         
         # Verify simple tool names (no clara-dna_ prefix)
-        assert "research(" in l3_mandate
+        assert "jit_research(" in l3_mandate
         assert "safe_patch()" in l3_mandate
-        assert "failure_whisperer(" in l3_mandate
-        assert "handoff_checkpoint()" in l3_mandate
+        assert "jit_diagnose(" in l3_mandate
+        assert "jit_checkpoint()" in l3_mandate
         
         # Verify NO DNA meta-jargon prefixes
         assert "clara-dna_research" not in l3_mandate
@@ -76,16 +76,16 @@ class TestSubversivePrompt:
             "All exact implementation details, AST anchors, and patch blueprints "
             "come directly from your JITC research tool. "
             "Trust the plan, and verify the live details by running "
-            "research(target_file) on Turn 1. "
-            "1) Review empirical findings from research(). "
+            "jit_research(target_file) on Turn 1. "
+            "1) Review empirical findings from jit_research(). "
             "2) Apply surgical changes via safe_patch(). "
-            "3) Run verification (call failure_whisperer(traceback) on failure). "
-            "4) Call handoff_checkpoint() on pass."
+            "3) Run verification (call jit_diagnose(traceback) on failure). "
+            "4) Call jit_checkpoint() on pass."
         )
         
         # Must explicitly say "on Turn 1" for research tool
         assert "on Turn 1" in l3_mandate
-        assert "research(target_file)" in l3_mandate
+        assert "jit_research(target_file)" in l3_mandate
 
     def test_four_step_workflow(self):
         """Prompt must encode the 4-step workflow explicitly."""
@@ -96,18 +96,18 @@ class TestSubversivePrompt:
             "All exact implementation details, AST anchors, and patch blueprints "
             "come directly from your JITC research tool. "
             "Trust the plan, and verify the live details by running "
-            "research(target_file) on Turn 1. "
-            "1) Review empirical findings from research(). "
+            "jit_research(target_file) on Turn 1. "
+            "1) Review empirical findings from jit_research(). "
             "2) Apply surgical changes via safe_patch(). "
-            "3) Run verification (call failure_whisperer(traceback) on failure). "
-            "4) Call handoff_checkpoint() on pass."
+            "3) Run verification (call jit_diagnose(traceback) on failure). "
+            "4) Call jit_checkpoint() on pass."
         )
         
         # All 4 steps must be present and numbered
-        assert "1) Review empirical findings from research()" in l3_mandate
+        assert "1) Review empirical findings from jit_research()" in l3_mandate
         assert "2) Apply surgical changes via safe_patch()" in l3_mandate
-        assert "3) Run verification (call failure_whisperer(traceback) on failure)" in l3_mandate
-        assert "4) Call handoff_checkpoint() on pass" in l3_mandate
+        assert "3) Run verification (call jit_diagnose(traceback) on failure)" in l3_mandate
+        assert "4) Call jit_checkpoint() on pass" in l3_mandate
 
     def test_no_legacy_grounding_assertion(self):
         """Prompt must NOT assert 'Grounding was ALREADY COMPLETED' (INS-044 trap)."""
@@ -118,11 +118,11 @@ class TestSubversivePrompt:
             "All exact implementation details, AST anchors, and patch blueprints "
             "come directly from your JITC research tool. "
             "Trust the plan, and verify the live details by running "
-            "research(target_file) on Turn 1. "
-            "1) Review empirical findings from research(). "
+            "jit_research(target_file) on Turn 1. "
+            "1) Review empirical findings from jit_research(). "
             "2) Apply surgical changes via safe_patch(). "
-            "3) Run verification (call failure_whisperer(traceback) on failure). "
-            "4) Call handoff_checkpoint() on pass."
+            "3) Run verification (call jit_diagnose(traceback) on failure). "
+            "4) Call jit_checkpoint() on pass."
         )
         
         # Old L3 prompt had "Grounding was ALREADY COMPLETED by Conductor (Atlas)"
@@ -151,14 +151,14 @@ class TestOhMyOpenAgentConfig:
         
         # Agent-level permission mapping (simple names replacing clara-dna_*):
         expected_perms = {
-            'sisyphus-junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
-                                'failure_whisperer': 'allow', 'handoff_checkpoint': 'allow', 'locate_path': 'allow'},
-            'Sisyphus-Junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'research': 'allow',
-                                'failure_whisperer': 'allow', 'handoff_checkpoint': 'allow', 'locate_path': 'allow'},
-            'daedalus': {'safe_patch': 'allow', 'research': 'deny', 'failure_whisperer': 'deny',
-                         'handoff_checkpoint': 'deny', 'locate_path': 'deny'},
-            'hephaestus': {'research': 'deny', 'failure_whisperer': 'deny',
-                           'handoff_checkpoint': 'deny', 'locate_path': 'deny'},
+            'sisyphus-junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'jit_research': 'allow',
+                                'jit_diagnose': 'allow', 'jit_checkpoint': 'allow', 'jit_locate': 'allow'},
+            'Sisyphus-Junior': {'read': 'deny', 'jit_read': 'deny', 'safe_patch': 'allow', 'jit_research': 'allow',
+                                'jit_diagnose': 'allow', 'jit_checkpoint': 'allow', 'jit_locate': 'allow'},
+            'daedalus': {'safe_patch': 'allow', 'jit_research': 'deny', 'jit_diagnose': 'deny',
+                         'jit_checkpoint': 'deny', 'jit_locate': 'deny'},
+            'hephaestus': {'jit_research': 'deny', 'jit_diagnose': 'deny',
+                           'jit_checkpoint': 'deny', 'jit_locate': 'deny'},
         }
         
         for agent_name in l3_agents:
@@ -193,13 +193,13 @@ class TestOhMyOpenAgentConfig:
             
             # Must contain the Trust formula
             assert "Trust the plan" in prompt, f"{agent_name}: missing 'Trust the plan'"
-            assert "running research" in prompt, f"{agent_name}: missing 'running research'"
+            assert "running jit_research" in prompt, f"{agent_name}: missing 'running research'"
             
             # Must use simple tool names
-            assert "research()" in prompt or "research(" in prompt, f"{agent_name}: missing simple 'research' tool name"
+            assert "jit_research()" in prompt or "jit_research(" in prompt, f"{agent_name}: missing simple 'research' tool name"
             assert "safe_patch()" in prompt or "safe_patch" in prompt, f"{agent_name}: missing simple 'safe_patch' tool name"
-            assert "failure_whisperer" in prompt, f"{agent_name}: missing simple 'failure_whisperer' tool name"
-            assert "handoff_checkpoint" in prompt, f"{agent_name}: missing simple 'handoff_checkpoint' tool name"
+            assert "jit_diagnose" in prompt, f"{agent_name}: missing simple 'failure_whisperer' tool name"
+            assert "jit_checkpoint" in prompt, f"{agent_name}: missing simple 'handoff_checkpoint' tool name"
             
             # Must NOT have DNA meta-jargon
             assert "clara-dna_" not in prompt, f"{agent_name}: has DNA meta-jargon in prompt_append"
