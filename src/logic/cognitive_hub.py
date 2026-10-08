@@ -1483,10 +1483,11 @@ class CognitiveHub:
             '  - "MICE": User explicitly addresses both/group (e.g. "Hey guys", "Mice", "Both of you", "You two", "Team").\n'
             '  - "SYSTEM": User addresses meta/supervisor engine (e.g. "feedback: ...", "tweak scalars").\n'
             "• 6 CORE ARCHETYPES (vibe & domain):\n"
-            '  1. CASUAL: Conversational pleasantries, small talk ("hi", "hello", "good morning") -> vibe="CASUAL", domain="unknown".\n'
+            # [DEFEATURED - Sprint 100 / FEAT-640]: CASUAL removed from active prompt; SOCRATIC absorbs greetings.
+            # '  1. CASUAL: Conversational pleasantries, small talk ("hi", "hello", "good morning") -> vibe="CASUAL", domain="unknown".\n'
             '  2. WYWO: Standup briefs or overnight activity inquiries ("what did you do while I was out?", "morning briefing") -> vibe="WYWO", domain="acme_lab_history".\n'
             '  3. META: Supervisory feedback, prompt engineering discussions, triage adjustments, tone/verbosity critiques ("feedback: ...", "Visible Consensus spam") -> vibe="META", domain="feedback" or "lab_internal".\n'
-            '  4. HISTORICAL: Questions on past Intel/career projects or specific years ("what did we do in 2018 for RAPL validation?") -> vibe="HISTORICAL", domain="work_history".\n'
+            '  4. HISTORICAL: Questions on past career / hardware projects or specific years ("what did we do in 2018 for RAPL validation?") -> vibe="HISTORICAL", domain="work_history".\n'
             '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures ("check GPU VRAM status and thermal levels") -> vibe="OPERATIONAL", domain="exp_tlm".\n'
             '  6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night") -> vibe="FORENSIC", domain="exp_for".\n'
             "• SCALAR RUBRIC:\n"
