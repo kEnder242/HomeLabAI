@@ -1,0 +1,24 @@
+model_list:
+  - model_name: "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL"
+    litellm_params:
+      model: "ollama_chat/hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL"
+      api_base: "http://192.168.1.26:11434"
+      extra_body:
+        options:
+          enable_thinking: false
+
+  - model_name: "atlas:27b"
+    litellm_params:
+      model: "ollama_chat/atlas:27b"
+      api_base: "http://192.168.1.26:11434"
+      extra_body:
+        options:
+          enable_thinking: false
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+
+general_settings:
+  disable_master_key_return: true
+  dangerously_permit_weak_or_unset_master_key: true

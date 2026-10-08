@@ -1323,24 +1323,24 @@ Layer 2 (Atlas) holds the macro plan and session trajectory. When receiving Laye
 
 ---
 
-## BKM-079: Kender Thought-Stripping Proxy & Silicon Decoupling Protocol
+## BKM-079: LiteLLM Kender Gateway & Native Ollama API Protocol
 **Feature Anchor:** `[LAB-115]` / `[LAB-116]` / `[BKM-079]`  
-**Colloquial Alias:** "Hardware-Level Reasoning Eraser"  
-**Domain:** Local Silicon Integration, Reverse Proxying, Thinking Suppression  
+**Colloquial Alias:** "Standard Gateway Architecture"  
+**Domain:** Local Silicon Integration, Gateway Proxying, Thinking Configuration  
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Core Law
-Prompt-level instructions ("Do NOT think" / "Do NOT output `<think>` tags") and custom Modelfile Jinja stop sequences clash with base model weights on reasoning models (such as Qwen 2.5 / 3.8), creating token probability conflicts and failure loops on large contexts.
-Thinking suppression on local silicon MUST be enforced strictly in the communications transport pipeline, never via prompt persuasion.
+Custom monkey-patch proxies that strip chunks from response streams create opaque black boxes and conceal agent activity from OpenCode. Thinking configuration on local silicon MUST be enforced via declarative API gateway translation to Ollama's native `/api/chat` endpoint, never via response-stream censorship.
 
 ### 2. Architecture & Service
-1. **The Daemon (`kender-proxy.service`)**:
-   - Runs on the host Linux workstation on `127.0.0.1:11435`.
-   - Reverse-proxies upstream to Node KENDER Ollama on `192.168.1.26:11434`.
-2. **Stream Sanitization**:
-   - For `/v1/chat/completions` (SSE streaming): Intercepts incoming chunks from Ollama, strips all `reasoning` and `reasoning_content` delta blocks, and suppresses chunks that contain zero content or tool calls.
-   - For `/v1/chat/completions` (non-streaming): Deletes `reasoning` and `reasoning_content` keys from the message dictionary.
-   - For all other endpoints (`/v1/models`, `/api/*`): Forwards requests and responses transparently.
+1. **The Daemon (`litellm-kender.service`)**:
+   - Runs as a systemd user service on `127.0.0.1:11435`.
+   - Managed via `/home/jallred/Dev_Lab/HomeLabAI/config/litellm_kender.yaml`.
+   - Routes inbound OpenAI `/v1/chat/completions` directly to Node KENDER Ollama's native `/api/chat` (`http://192.168.1.26:11434`).
+2. **Native Thinking Control**:
+   - Configured with `extra_body.options.enable_thinking: false` for pure, direct execution without GPU reasoning stalls.
+   - Retains full, uncensored response transparency: tool calls, thought streams, and conversational text pass transparently to OpenCode.
 3. **OpenCode Invariant**:
-   - All OpenCode mappings in `opencode.json` for `my-windows-4090` MUST point to `http://127.0.0.1:11435/v1` instead of directly to port 11434.
+   - OpenCode mappings in `opencode.json` for `my-windows-4090` point to `http://127.0.0.1:11435/v1`.
+
 
