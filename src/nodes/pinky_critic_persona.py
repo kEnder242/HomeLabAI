@@ -111,8 +111,8 @@ def build_critic_prompt(
     Returns
     -------
     A JSON-formatted string that instructs the LLM to return a structured
-    critique payload with ``cartoon_retort``, ``critique_suggestions``,
-    and ``banned_phrases``.
+    critique payload with ``score``, ``reasoning``, ``slop_found``, and
+    ``retort`` (the ``banned_phrases`` list is also embedded).
 
     Raises
     ------
@@ -133,8 +133,10 @@ def build_critic_prompt(
         "critique_dimensions": dimensions,
         "banned_phrases": _BANNED_PHRASES,
         "output_schema": {
-            "cartoon_retort": "string — a witty, in-character one-liner",
-            "critique_suggestions": "list[string] — actionable improvement notes",
+            "score": "integer 1-5 — coherence score scalar (debug telemetry only)",
+            "reasoning": "string — grounded technical WHY of the score",
+            "slop_found": "boolean — true if AI-slop boilerplate detected",
+            "retort": "string — a witty, in-character one-liner",
         },
     }
     return json.dumps(payload, indent=2)
