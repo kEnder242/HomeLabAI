@@ -40,12 +40,15 @@ def test_import_integrity_all_nightly_modules():
 def test_rest_quiesce_and_reignite_contracts():
     """Verify that REST quiesce and re-ignite functions target the correct Foyer endpoints."""
     with patch.object(nightly_forge.requests, "post") as mock_post, patch.object(
+        nightly_forge.requests, "get"
+    ) as mock_get, patch.object(
         nightly_forge.time, "sleep"
     ):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": "ok"}
         mock_post.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         # Test Quiesce
         quiesced = nightly_forge.quiesce_vllm()
@@ -57,6 +60,7 @@ def test_rest_quiesce_and_reignite_contracts():
         reignited = nightly_forge.re_ignite_vllm()
         assert reignited is True
         assert mock_post.call_count >= 1
+        assert mock_get.call_count >= 1
 
 
 def test_train_expert_dataset_mapper_with_live_ledger():
@@ -114,6 +118,64 @@ def test_re_ignite_vllm_connection_timeout_graceful():
         )
         result = nightly_forge.re_ignite_vllm()
         assert result is False
+
+
+def test_re_ignite_vllm_blocking_gate():
+    """[FEAT-101.8] Test re_ignite_vllm() blocking probe gate success and timeout paths."""
+    # Mock successful Foyer communication and successful v1/models probe
+    with patch.object(nightly_forge.requests, "post") as mock_post, patch.object(
+        nightly_forge.requests, "get"
+    ) as mock_get, patch.object(
+        nightly_forge.time, "sleep"
+    ), patch.object(
+        nightly_forge.time, "monotonic"
+    ) as mock_monotonic:
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"status": "ok"}
+        mock_post.return_value = mock_post_resp
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get.return_value = mock_get_resp
+
+        # Mock time.monotonic to simulate immediate success (no time elapsed)
+        mock_monotonic.side_effect = [0.0, 0.0]  # start_time, then check elapsed
+
+        result = nightly_forge.re_ignite_vllm()
+        assert result is True
+        # Should have called POST /wake and POST /status_update
+        assert mock_post.call_count == 2
+        # Should have called GET /v1/models at least once
+        assert mock_get.call_count >= 1
+
+    # Mock successful Foyer communication but v1/models probe timeout
+    with patch.object(nightly_forge.requests, "post") as mock_post, patch.object(
+        nightly_forge.requests, "get"
+    ) as mock_get, patch.object(
+        nightly_forge.time, "sleep"
+    ), patch.object(
+        nightly_forge.time, "monotonic"
+    ) as mock_monotonic:
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"status": "ok"}
+        mock_post.return_value = mock_post_resp
+
+        # Simulate timeout by making GET requests return non-200
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 503  # Service unavailable
+        mock_get.return_value = mock_get_resp
+
+        # Mock time.monotonic to simulate timeout (181 seconds elapsed)
+        mock_monotonic.side_effect = [0.0, 181.0]  # start_time, then check elapsed > timeout_total
+
+        result = nightly_forge.re_ignite_vllm()
+        assert result is False  # Should return False due to probe timeout
+        # Should have called POST /wake and POST /status_update
+        assert mock_post.call_count == 2
+        # Should have called GET /v1/models exactly once (since it times out on first check)
+        assert mock_get.call_count == 1
 
 
 def test_dream_cycle_subprocess_handling():
