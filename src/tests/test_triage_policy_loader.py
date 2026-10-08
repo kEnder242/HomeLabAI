@@ -616,7 +616,8 @@ class TestProductionConfig:
         self._prod_loader.load_policy()
 
     def test_production_has_all_nine_vibes(self) -> None:
-        """All 9 standard vibes are defined; CASUAL is defeated (Story 100.10)."""
+        """Production config defines all 9 standard vibes."""
+        active = self._prod_loader.get_active_vibes()
         expected = {
             "CASUAL",
             "SUPERVISORY",
@@ -628,8 +629,7 @@ class TestProductionConfig:
             "HISTORICAL",
             "ANALYTICAL",
         }
-        assert set(self._prod_loader._policy.get("vibes", {}).keys()) == expected
-        assert "CASUAL" not in self._prod_loader.get_active_vibes()
+        assert set(active) == expected
 
     def test_production_conversational_no_rag(self) -> None:
         """CASUAL, SUPERVISORY, META have no RAG config."""
@@ -637,8 +637,8 @@ class TestProductionConfig:
             assert self._prod_loader.get_rag_config(vibe) is None
 
     def test_production_retrieval_vibes_have_rag(self) -> None:
-        """Only WYWO and HISTORICAL carry RAG configs."""
-        for vibe in ("WYWO", "HISTORICAL"):
+        """WYWO, OPERATIONAL, FORENSIC, TECHNICAL, HISTORICAL have RAG."""
+        for vibe in ("WYWO", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL"):
             rag = self._prod_loader.get_rag_config(vibe)
             assert rag is not None, f"{vibe} missing RAG config"
 
