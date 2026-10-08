@@ -29,7 +29,7 @@
 ## 📡 Transport Layer & Systemd Service Topology (V2)
 | Unit / Protocol | Type | Scope | Port / Path | Purpose & Role |
 | :--- | :--- | :--- | :--- | :--- |
-| **`lab-attendant.service`** | Service | `system` | `:8000` / `:9999` | Acme Lab Attendant & Cognitive Hub Orchestrator (Foyer, ignition, VRAM manager). |
+| **Prometheus Exporter** | Service | `system` | `:8000` | Real-time hardware telemetry exporter (`hw_temp`, `package_power`, `cpu_load`). |
 | **`chroma-server.service`** | Service | `user` | `:8001` | Persistent ChromaDB HTTP Vector Database (5 collections). |
 | **`headroom-proxy.service`** | Service | `user` | `:8787` | Headroom Token Optimization Proxy for subagents. |
 | **`opencode.socket`** | Socket | `user` | `0.0.0.0:4096` | Public Scale-to-Zero LAN Web UI Gateway (`http://192.168.1.238:4096/`). |
@@ -40,7 +40,7 @@
 | **`field-notes-nibbler.service`** | Service | `user` | Background | Continuous load-aware note scanner and indexer. |
 | **`field-notes-nightly.timer`** | Timer | `user` | `02:00 AM` | Nightly 2:00 AM note synthesis & date aggregation sweep. |
 | **vLLM Engine** | OpenAI API | `local` | `:8088` | Unified 3B Base Model inference (`llama-3.2-3b-instruct-awq`). |
-| **Bicameral Hub** | WebSocket | `local` | `:8765` | Bicameral Dispatch & Node Coordination. |
+| **Acme Foyer & Bicameral Hub** | HTTP / WS | `system` | `:8765` | Lab Attendant Foyer (REST `/status`, `/wake`, `/hard_reset`, `/ambient_recall`) & Bicameral WebSocket Coordination. |
 
 ## 🔗 Critical Symlinks
 *   `~/Dev_Lab/models/hf_downloads` -> `/speedy/models` (In progress).
