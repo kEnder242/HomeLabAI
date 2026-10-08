@@ -66,16 +66,70 @@ def test_audit_and_emit_digest(tmp_path):
          patch("infra.standalone_accountability_watchdog.check_nightly_forge_liveness", return_value={"name": "Forge", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_lora_training", return_value={"name": "LoRA", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_subconscious_dreaming", return_value={"name": "Dreams", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}):
+         patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "OK", "swap_utilization_pct": 10.0, "swap_peak_mb": 100.0, "swap_current_mb": 10.0}):
 
         digest = audit_and_emit_digest(run_live_probe=False)
         assert digest["overall_status"] == "PASS"
-        assert digest["passed_checks"] == 7
+        assert digest["passed_checks"] == 8
         # [Story 971] Single canonical home: digest AND ledger live only under field_notes/data
         assert (out_dir / "daily_accountability_digest.json").exists()
         assert (out_dir / "accountability_ledger.jsonl").exists()
         ledger_entry = json.loads((out_dir / "accountability_ledger.jsonl").read_text().strip())
         assert ledger_entry["overall_status"] == "PASS"
-        assert ledger_entry["passed_checks"] == 7 and ledger_entry["total_checks"] == 7
+        assert ledger_entry["passed_checks"] == 8 and ledger_entry["total_checks"] == 8
         assert ledger_entry["discrepancies"] == []
         assert not (tmp_path / "www_deploy").exists()
+
+
+def test_swap_telemetry(tmp_path):
+    """[Story 101.12 / LAB-110] Test cgroup swap telemetry reading, fallback, and >80% threshold logic."""
+    from infra.standalone_accountability_watchdog import check_swap_pressure
+
+    # Case 1: Valid cgroup v2 paths
+    peak_file = tmp_path / "memory.swap.peak"
+    curr_file = tmp_path / "memory.swap.current"
+    max_file = tmp_path / "memory.swap.max"
+
+    peak_file.write_text("104857600\n")  # 100 MB in KB
+    curr_file.write_text("52428800\n")   # 50 MB in KB
+    max_file.write_text("209715200\n")   # 200 MB in KB (25% utilization)
+
+    with patch("infra.standalone_accountability_watchdog.CGROUP_SWAP_PEAK", peak_file), \
+         patch("infra.standalone_accountability_watchdog.CGROUP_SWAP_CURRENT", curr_file), \
+         patch("infra.standalone_accountability_watchdog.CGROUP_SWAP_MAX", max_file):
+        res = check_swap_pressure()
+        assert res["passed"] is True
+        assert res["swap_peak_mb"] == 102400.0
+        assert res["swap_current_mb"] == 51200.0
+        assert res["swap_utilization_pct"] == 25.0
+
+    # Case 2: Fallback to /proc/meminfo
+    meminfo_file = tmp_path / "meminfo"
+    meminfo_file.write_text("SwapTotal:       1048576 kB\nSwapFree:         524288 kB\n")
+
+    with patch("infra.standalone_accountability_watchdog.CGROUP_SWAP_PEAK", tmp_path / "missing_peak"), \
+         patch("infra.standalone_accountability_watchdog.PROC_MEMINFO", meminfo_file):
+        res = check_swap_pressure()
+        assert res["passed"] is True
+        assert res["swap_current_mb"] == 512.0
+        assert res["swap_utilization_pct"] == 50.0
+
+    # Case 3: High swap pressure (>80%) triggers warning in digest
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path / "fn_data"), \
+         patch("infra.standalone_accountability_watchdog.check_gpu_power_clamp", return_value={"name": "GPU", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_foyer_and_vram", return_value={"name": "Foyer", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_stale_locks", return_value={"name": "Locks", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_nightly_forge_liveness", return_value={"name": "Forge", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_lora_training", return_value={"name": "LoRA", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_subconscious_dreaming", return_value={"name": "Dreams", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}), \
+         patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "High swap", "swap_utilization_pct": 85.0, "swap_peak_mb": 900.0, "swap_current_mb": 850.0}), \
+         patch("infra.standalone_accountability_watchdog.logger.warning") as mock_warn:
+
+        digest = audit_and_emit_digest(run_live_probe=False)
+        assert digest["overall_status"] == "PASS"
+        assert digest["passed_checks"] == 8
+        assert mock_warn.called
+        assert "Swap utilization at %.1f%%" in mock_warn.call_args[0][0]
+        assert mock_warn.call_args[0][1] == 85.0

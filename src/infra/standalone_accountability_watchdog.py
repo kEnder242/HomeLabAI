@@ -39,6 +39,12 @@ MAINTENANCE_LOCK = RUN_DIR / "maintenance.lock"
 FORGE_LOCK = RUN_DIR / "nightly_forge.lock"
 LORA_LOCK = RUN_DIR / "nightly_lora_training.lock"
 
+# Cgroup v2 swap pressure paths [Story 101.12]
+CGROUP_SWAP_PEAK = Path("/sys/fs/cgroup/memory.swap.peak")
+CGROUP_SWAP_CURRENT = Path("/sys/fs/cgroup/memory.swap.current")
+CGROUP_SWAP_MAX = Path("/sys/fs/cgroup/memory.swap.max")
+PROC_MEMINFO = Path("/proc/meminfo")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] [ACCOUNTABILITY_WATCHDOG] %(message)s"
@@ -329,7 +335,101 @@ def check_subconscious_dreaming():
             "passed": False,
             "detail": f"Gems parse error: {e}",
             "count": 0
+         }
+
+
+def check_swap_pressure():
+    """Check 8: Cgroup Swap Pressure — monitor swap utilization and peak usage.
+    
+    Reads from cgroup v2 paths:
+      /sys/fs/cgroup/memory.swap.peak
+      /sys/fs/cgroup/memory.swap.current
+    Falls back to /proc/meminfo for total/free swap if cgroup not available.
+    Computes swap utilization percentage.
+    """
+    swap_peak = None
+    swap_current = None
+    swap_utilization_pct = 0.0
+    
+    try:
+        if CGROUP_SWAP_PEAK.exists() and CGROUP_SWAP_CURRENT.exists():
+            swap_peak_kb = int(CGROUP_SWAP_PEAK.read_text().strip())
+            swap_current_kb = int(CGROUP_SWAP_CURRENT.read_text().strip())
+            
+            # Convert to MB
+            swap_peak_mb = swap_peak_kb / 1024.0
+            swap_current_mb = swap_current_kb / 1024.0
+            
+            # Get swap total for utilization (from cgroup max or proc meminfo)
+            if CGROUP_SWAP_MAX.exists():
+                swap_max_kb = int(CGROUP_SWAP_MAX.read_text().strip())
+                swap_total_mb = swap_max_kb / 1024.0 if swap_max_kb > 0 else swap_current_mb
+            else:
+                # Fallback to /proc/meminfo for total
+                mem_total_mb, _ = _parse_proc_meminfo_swap()
+                swap_total_mb = mem_total_mb if mem_total_mb else swap_current_mb
+            
+            # Calculate utilization
+            if swap_total_mb and swap_total_mb > 0:
+                swap_utilization_pct = (swap_current_mb / swap_total_mb) * 100.0
+            
+            swap_current = swap_current_mb
+            swap_peak = swap_peak_mb
+        else:
+            raise FileNotFoundError("Cgroup swap paths missing")
+            
+    except (ValueError, FileNotFoundError, PermissionError):
+        # Fallback to /proc/meminfo
+        swap_total_mb, swap_free_mb = _parse_proc_meminfo_swap()
+        if swap_total_mb is not None and swap_free_mb is not None:
+            swap_current_mb = swap_total_mb - swap_free_mb
+            swap_peak_mb = swap_current_mb  # Approximation - no peak in proc
+            swap_utilization_pct = (swap_current_mb / swap_total_mb * 100.0) if swap_total_mb > 0 else 0.0
+            
+            swap_current = swap_current_mb
+            swap_peak = swap_peak_mb
+    
+    # If we couldn't get any data, return failure
+    if swap_current is None or swap_peak is None:
+        return {
+            "name": "Cgroup Swap Pressure Monitor",
+            "passed": False,
+            "detail": "Unable to read swap metrics from cgroup or /proc/meminfo",
+            "swap_peak_mb": None,
+            "swap_current_mb": None,
+            "swap_utilization_pct": None
         }
+    
+    return {
+        "name": "Cgroup Swap Pressure Monitor",
+        "passed": True,
+        "detail": f"Swap: {swap_current:.0f}MB/{swap_peak:.0f}MB peak ({swap_utilization_pct:.1f}%)",
+        "swap_peak_mb": round(swap_peak, 2),
+        "swap_current_mb": round(swap_current, 2),
+        "swap_utilization_pct": round(swap_utilization_pct, 2)
+    }
+
+
+def _parse_proc_meminfo_swap():
+    """Helper to parse swap totals from /proc/meminfo."""
+    try:
+        content = PROC_MEMINFO.read_text()
+        lines = content.split('\n')
+        swap_total_kb = None
+        swap_free_kb = None
+        
+        for line in lines:
+            if line.startswith('SwapTotal:'):
+                swap_total_kb = int(line.split()[1])
+            elif line.startswith('SwapFree:'):
+                swap_free_kb = int(line.split()[1])
+                
+        if swap_total_kb is not None and swap_free_kb is not None:
+            return swap_total_kb / 1024.0, swap_free_kb / 1024.0  # Convert to MB
+    except (FileNotFoundError, PermissionError, ValueError, IndexError):
+        pass
+    
+    return None, None
 
 
 def check_morning_round_table(run_live: bool = True):
@@ -444,6 +544,17 @@ def audit_and_emit_digest(run_live_probe: bool = True):
     if not c_probe["passed"]:
         discrepancies.append(c_probe["detail"])
 
+    c_swap = check_swap_pressure()
+    checks.append(c_swap)
+    if not c_swap["passed"]:
+        discrepancies.append(c_swap["detail"])
+    # [Story 101.12] Emit WARNING when swap utilization exceeds 80%
+    if c_swap["swap_utilization_pct"] > 80.0:
+        logger.warning(
+            "[SWAP_PRESSURE] Swap utilization at %.1f%% - high memory pressure detected",
+            c_swap["swap_utilization_pct"]
+        )
+
     # Determine overall status
     passed_count = sum(1 for c in checks if c["passed"])
     total_count = len(checks)
@@ -549,4 +660,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
