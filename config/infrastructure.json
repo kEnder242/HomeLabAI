@@ -3,7 +3,6 @@
     "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
     "preferred_triage_engine": "M5_AIR",
-    "voteable_sources": ["pinky", "brain", "thought", "triage", "lab"],
     "hibernation": {
         "enabled": false,
         "idle_timeout_seconds": 900

@@ -4,7 +4,7 @@
     "vibes": {
         "CASUAL": {
             "description": "Colloquial greetings and pleasantries – 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
-            "enabled": false,
+            "enabled": true,
             "default_domain": "unknown",
             "rag": null,
             "importance": 0.1,
