@@ -1343,4 +1343,60 @@ Custom monkey-patch proxies that strip chunks from response streams create opaqu
 3. **OpenCode Invariant**:
    - OpenCode mappings in `opencode.json` for `my-windows-4090` point to `http://127.0.0.1:11435/v1`.
 
+---
+
+## BKM-080: Psychological Escalation & Clean-Kill Handback Protocol (Ask-Oracle)
+**Feature Anchor:** `[FEAT-656]` / `[BKM-080]` / `[BKM-004]` / `[BKM-049]`  
+**Colloquial Alias:** "The Clean-Kill Oracle Escalation Protocol"  
+**Domain:** Agent Coordination, Multi-Tier Escalation, Fast-Halt Governance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Philosophy
+When open-weights conductor models ($L_2$ Atlas on Kender 4090) face under-specified specifications, contradictory policies, or missing schemas, leaving them without an authoritative escalation tool leads directly to hallucinated assumptions or infinite exploratory searching loops.
+The `BKM-080` protocol equips conductors with an authoritative psychological safety escape hatch: **`ask_oracle`**.
+
+### 2. Implementation & Tool Contract
+1. **The Tool (`@mcp.tool() ask_oracle`)**:
+   - Exposed via `clara_dna_mcp_server.py`.
+   - Arguments: `question` (precise missing architectural clarification), `current_hypothesis` (conductor's proposed solution), and `code_inspected` (concrete files/lines analyzed).
+   - Writes the escalation payload to `.jit_cache/oracle_request.json`.
+2. **Clean-Kill Harness Intercept**:
+   - `delegate.py` polls for `oracle_request.json` during execution.
+   - When detected, the harness halts the OpenCode process cleanly, renders a high-visibility terminal escalation banner, caches session state to `.jit_cache/paused_session.json`, and exits immediately with **exit code 3 (`ORACLE_CONSULTATION_REQUESTED`)**.
+3. **Zero-Friction Resumption (`--feedback`)**:
+   - The operator or Strategic Guardian (AGY) can provide instant guidance via `delegate.py --feedback "<guidance>"`.
+   - The harness automatically injects the directive into the paused session, re-enters the active monitoring loop, and validates verification assertions to task certification.
+
+---
+
+## BKM-081: The Sprint Append Ledger Protocol (The "Sprint Log")
+**Feature Anchor:** `[BKM-081]` / `[BKM-020]` / `[BKM-023]` / `[BKM-077]`  
+**Colloquial Alias:** "The Sprint Log / Active Plan Append Invariant"  
+**Domain:** Sprint Documentation, Real-Time Ledgers, Intent Preservation, Unified Artifacts  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Invariant Definition
+Whenever the operator or any agent says **"sprint log"**, **"log to the sprint"**, or **"update the sprint log"**, it **strictly and exclusively means appending a chronological execution ledger directly to the end of the active sprint file (`SPRINT_PLAN_SPR_*.md`)**.
+
+### 2. Single-File Ground Truth Invariant
+1. **No Fragmented Satellite Files:** Agents are **STRICTLY FORBIDDEN** from creating separate, detached `SPRINT_LOG_*.md` files when asked to update the sprint log, unless explicitly requested by exact filename. 
+2. **Unified Single Artifact:** The active sprint plan (`Portfolio_Dev/docs/sprints/active/SPRINT_PLAN_SPR_<N>_0.md`) is the **sole authoritative document** for both planning specifications AND chronological execution history. Having execution logs in a detached file leads to context fragmentation and amnesia across sessions.
+
+### 3. Real-Time Execution Ledger Structure
+Every completed story, significant architectural pivot, or triage milestone must be appended chronologically to the tail of `SPRINT_PLAN_SPR_<N>_0.md` under a dedicated top-level section:
+```markdown
+## 📜 Real-Time Execution Ledger (Sprint Log)
+
+### [YYYY-MM-DD HH:MM PDT] — Story <N>.<M>: <Title>
+- **Assigned Tier & Silicon:** `[SWARM:LOCAL]` (Kender RTX 4090 $\to$ M5 Air) / `[SWARM:CLOUD]` / `[AGY:PRIMARY]`
+- **Status:** `COMPLETED & CERTIFIED` (or `FAST-HALT BLOCKED`)
+- **Forensic Delta / Code Modified:** Target files touched, line numbers, and exact structural changes.
+- **Verification Evidence:** Literal pytest commands and output assertions (e.g. `79 passed in 0.24s`).
+- **Forensic Insights & Lessons Learned:** Epistemic reflections, caught ambiguities, and architectural decisions.
+- **Live Gate Status:** `[LIVE_GATE: PASSED]` or `[LIVE_GATE_PENDING: daemon=... probe=...]`
+```
+
+### 4. Absolute Append-Only Law (No Compression)
+Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite, or compress previous ledger entries to "save space." Technical history and empirical traces are permanent records. New events are always appended additively at the bottom.
+
 
