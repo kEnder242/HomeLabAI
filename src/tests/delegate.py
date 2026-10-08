@@ -1305,6 +1305,7 @@ def delegate(
     local_only=True,
     cloud_only=False,
     profile="auto",
+    feedback_prompt=None,
 ):
     """Dispatch a story specification to OpenAgent swarm via REST session attachment with 503 self-healing retry logic."""
     import random
@@ -1778,7 +1779,9 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
     # Invariant: Rely on OpenCode's native reasoning extraction and lean context;
     # prompt-level thinking suppression clashes with base model weights.
 
-    if agent == "atlas":
+    if feedback_prompt:
+        prompt = feedback_prompt
+    elif agent == "atlas":
         prompt = f"""[STORY DELEGATION TARGET: STORY {story_num}]
 - Title: {title}
 - Sprint Reference: {reference_file}
@@ -1933,7 +1936,40 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                                         print(f"HYPOTHESIS: {o_hypo}", flush=True)
                                     if o_code:
                                         print(f"CODE INSPECTED: {o_code}", flush=True)
+                                    print("\nTo resume with Oracle guidance, simply run:", flush=True)
+                                    print(
+                                        '  python3 HomeLabAI/src/tests/delegate.py --feedback "<guidance>"',
+                                        flush=True,
+                                    )
                                     print("=" * 80 + "\n", flush=True)
+
+                                    try:
+                                        cache_dir = os.path.expanduser("~/Dev_Lab/.jit_cache")
+                                        os.makedirs(cache_dir, exist_ok=True)
+                                        paused_file = os.path.join(cache_dir, "paused_session.json")
+                                        paused_data = {
+                                            "session_id": session_id,
+                                            "story_num": str(story_num),
+                                            "title": title,
+                                            "reference_file": reference_file,
+                                            "target_files": target_files,
+                                            "details": details,
+                                            "verification": verification,
+                                            "sprint_num": sprint_num,
+                                            "target_dir": target_dir,
+                                            "mode": mode,
+                                            "agent": agent,
+                                            "local_only": local_only,
+                                            "cloud_only": cloud_only,
+                                            "profile": profile,
+                                            "question": o_question,
+                                            "hypothesis": o_hypo,
+                                            "code_inspected": o_code,
+                                        }
+                                        with open(paused_file, "w", encoding="utf-8") as pf:
+                                            json.dump(paused_data, pf, indent=2)
+                                    except Exception:
+                                        pass
 
                                     _cleanup_active_session()
                                     sys.exit(3)
@@ -2301,7 +2337,8 @@ if __name__ == "__main__":
     _retro_mode = "--retrospective" in sys.argv
     _ledger_mode = any(arg in sys.argv for arg in ("--ledger", "--show-ledger"))
     _resume_mode = "--resume" in sys.argv
-    _need_story_args = not (_retro_mode or _ledger_mode or _resume_mode)
+    _feedback_mode = any(arg in sys.argv for arg in ("--feedback", "--answer"))
+    _need_story_args = not (_retro_mode or _ledger_mode or _resume_mode or _feedback_mode)
     parser.add_argument(
         "--sprint", required=_need_story_args, type=int, help="Sprint number"
     )
@@ -2379,7 +2416,17 @@ if __name__ == "__main__":
         "--resume",
         default=None,
         metavar="SESSION_ID",
-        help="Resume a paused interactive session (exit code 2) by sending an answer to the pending question",
+        help="Resume a paused interactive session (exit code 2 or 3) by sending feedback/guidance",
+    )
+    parser.add_argument(
+        "--feedback",
+        default=None,
+        help="[FEAT-656] Provide Oracle directive to resume the paused session and monitor to completion",
+    )
+    parser.add_argument(
+        "--answer",
+        default=None,
+        help="Answer/directive for paused interactive or oracle session",
     )
     parser.add_argument(
         "--profile",
@@ -2402,52 +2449,62 @@ if __name__ == "__main__":
         show_delegation_ledger(limit=30)
         sys.exit(0)
 
-    # [FEAT-515 / Task 69.6.1] Interactive Session Resume Handler
-    if args.resume:
-        if not args.answer:
+    # [FEAT-656 / BKM-080] Oracle & Interactive Session Resume Handler
+    feedback_text = args.feedback or args.answer
+    if feedback_text or args.resume:
+        paused_data = {}
+        paused_file = os.path.expanduser("~/Dev_Lab/.jit_cache/paused_session.json")
+        if os.path.exists(paused_file):
+            try:
+                with open(paused_file, "r", encoding="utf-8") as pf:
+                    paused_data = json.load(pf)
+            except Exception:
+                pass
+
+        resume_sid = args.resume or paused_data.get("session_id")
+        if not resume_sid:
             print(
-                "[!] --resume requires --answer <choice> to send a response to the paused session.",
-                flush=True,
+                "[!] Error: No active or paused session found. Specify --resume <SESSION_ID>.",
+                file=sys.stderr,
             )
             sys.exit(1)
-        resume_sid = args.resume
-        print(
-            f"[*] Resuming paused session {resume_sid} with answer: {args.answer}",
-            flush=True,
+
+        if not feedback_text:
+            print(
+                "[!] Error: Resuming requires feedback or answer. Pass --feedback '<guidance>' or --answer '<choice>'.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        oracle_prompt = (
+            f"🔮 [TIER 1 STRATEGIC ORACLE DIRECTIVE]\n"
+            f"{feedback_text}\n\n"
+            f"Resume execution under AGENTS_L2.md. Inspect any remaining diff points, stage the surgical blueprint via jit_stage, and dispatch Layer 3 (Sisyphus-Junior) via task()."
         )
-        try:
-            resume_payload = json.dumps(
-                {"parts": [{"type": "text", "text": args.answer}]}
-            ).encode("utf-8")
-            resume_req = urllib.request.Request(
-                f"http://127.0.0.1:{OPENCODE_REST_PORT}/session/{resume_sid}/message",
-                data=resume_payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(resume_req, timeout=600) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                parts = result.get("parts", [])
-                text_parts = [
-                    p.get("text", "")
-                    for p in parts
-                    if isinstance(p, dict) and p.get("type") == "text"
-                ]
-                full_text = "\n\n".join(t.strip() for t in text_parts if t.strip())
-                if full_text:
-                    print("\n" + "=" * 80, flush=True)
-                    print(f"[RESUME RESPONSE — SESSION {resume_sid}]", flush=True)
-                    print("=" * 80, flush=True)
-                    print(full_text, flush=True)
-                    print("=" * 80 + "\n", flush=True)
-                else:
-                    print(
-                        f"[!] Resume completed but no text returned. Check session at http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{resume_sid}",
-                        flush=True,
-                    )
-        except Exception as e:
-            print(f"[!] Resume failed: {e}", flush=True)
-            sys.exit(1)
+
+        print("\n" + "=" * 80, flush=True)
+        print(f"🔮 [RESUMING SESSION {resume_sid} WITH ORACLE DIRECTIVE]", flush=True)
+        print("=" * 80, flush=True)
+        print(f"DIRECTIVE: {feedback_text}", flush=True)
+        print("=" * 80 + "\n", flush=True)
+
+        delegate(
+            story_num=paused_data.get("story_num", args.story or "RESUME"),
+            title=paused_data.get("title", args.title or "Resumed Story Execution"),
+            reference_file=paused_data.get("reference_file", args.reference or ""),
+            details=paused_data.get("details", args.details or ""),
+            verification=paused_data.get("verification", args.verification),
+            sprint_num=paused_data.get("sprint_num", args.sprint if args.sprint is not None else 100),
+            target_dir=paused_data.get("target_dir", args.dir),
+            agent=paused_data.get("agent", "atlas"),
+            mode=paused_data.get("mode", args.mode),
+            target_files=paused_data.get("target_files"),
+            session_id=resume_sid,
+            local_only=paused_data.get("local_only", local_only),
+            cloud_only=paused_data.get("cloud_only", cloud_only),
+            profile=paused_data.get("profile", args.profile),
+            feedback_prompt=oracle_prompt,
+        )
         sys.exit(0)
 
     if args.retrospective:
