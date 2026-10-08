@@ -186,12 +186,16 @@ def _trigger_ambient_hook_telemetry(
             res = json.loads(p.stdout)
             steps = res.get("injectSteps", [])
             for step in steps:
-                text = step.get("text", "")
+                text = step.get("ephemeralMessage") or step.get("text") or ""
                 if "🧬" in text or "Grounding" in text:
                     print("\n" + "-" * 70, flush=True)
                     print(f"📡 [AMBIENT HOOK TELEMETRY] Story {story_num} Memory Reflection:", flush=True)
-                    print(text[:400], flush=True)
+                    print(text.strip(), flush=True)
                     print("-" * 70 + "\n", flush=True)
+                    try:
+                        log_step(story_num, "AMBIENT_TELEMETRY", f"Ambient Hook Reflection:\n{text.strip()[:600]}")
+                    except Exception:
+                        pass
             return {"status": "SUCCESS", "injectSteps": steps, "raw": res}
     except Exception as e:
         return {"status": "ERROR", "error": str(e)}
