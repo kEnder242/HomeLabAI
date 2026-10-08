@@ -825,7 +825,7 @@ def run_round_table_probe():
         try:
             py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run(
-                [py_bin, script], capture_output=True, text=True, timeout=60
+                [py_bin, script], capture_output=True, text=True, timeout=120
             )
             if res.returncode == 0:
                 logger.info(f"[ROUND_TABLE] Probe passed: {res.stdout.strip()}")
