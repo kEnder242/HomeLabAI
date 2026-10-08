@@ -674,7 +674,7 @@ def _probe_mcp_server() -> tuple[bool, str]:
     def _check_opencode_mcp():
         try:
             req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/mcp", headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 clara_status = data.get("clara-dna", {}).get("status")
                 return clara_status == "connected", clara_status
@@ -1175,7 +1175,6 @@ def _verify_and_sync_service_freshness(story_num):
     """[FEAT-553] Verify opencode-core.service PID was started after latest config mtime. Auto-restart if stale."""
     configs = [
         os.path.expanduser("~/Dev_Lab/opencode.json"),
-        os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json"),
         os.path.expanduser("~/.config/opencode/oh-my-openagent.json"),
     ]
     existing_configs = [c for c in configs if os.path.exists(c)]
