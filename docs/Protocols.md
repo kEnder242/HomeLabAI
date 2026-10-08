@@ -1376,27 +1376,35 @@ The `BKM-080` protocol equips conductors with an authoritative psychological saf
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Invariant Definition
-Whenever the operator or any agent says **"sprint log"**, **"log to the sprint"**, or **"update the sprint log"**, it **strictly and exclusively means appending a chronological execution ledger directly to the end of the active sprint file (`SPRINT_PLAN_SPR_*.md`)**.
+Whenever the operator or any agent says **"sprint log"**, **"log to the sprint"**, or **"update the sprint log"**, it **strictly and exclusively means appending a chronological execution narrative directly to the active sprint file (`SPRINT_PLAN_SPR_*.md`)**.
 
 ### 2. Single-File Ground Truth Invariant
 1. **No Fragmented Satellite Files:** Agents are **STRICTLY FORBIDDEN** from creating separate, detached `SPRINT_LOG_*.md` files when asked to update the sprint log, unless explicitly requested by exact filename. 
 2. **Unified Single Artifact:** The active sprint plan (`Portfolio_Dev/docs/sprints/active/SPRINT_PLAN_SPR_<N>_0.md`) is the **sole authoritative document** for both planning specifications AND chronological execution history. Having execution logs in a detached file leads to context fragmentation and amnesia across sessions.
 
-### 3. Real-Time Execution Ledger Structure
-Every completed story, significant architectural pivot, or triage milestone must be appended chronologically to the tail of `SPRINT_PLAN_SPR_<N>_0.md` under a dedicated top-level section:
-```markdown
-## 📜 Real-Time Execution Ledger (Sprint Log)
+### 3. Narrative Execution Chronicle (Not Rigid Story Duplication)
+The Sprint Log is **not** a rigid tabular dump or formal re-hash of story specifications. Its core purpose is to be a **running narrative of what we did along the way**:
+- **Capture What Falls Between the Cracks:** Epistemic reflections, friction points, harness debugging, unexpected discoveries, tool-behavior breakthroughs, and the "why" behind mid-flight deviations.
+- **Chronological Timeline Trace:** A human- and agent-readable story of the session timeline so future sessions can review work done and understand the engineering journey without reading raw tool logs.
+- **Succinct Milestones & Verification:** Include the milestone title, timestamp, tier used, and literal verification trace (e.g. pytest output / git hash), woven naturally into the narrative.
 
-### [YYYY-MM-DD HH:MM PDT] — Story <N>.<M>: <Title>
-- **Assigned Tier & Silicon:** `[SWARM:LOCAL]` (Kender RTX 4090 $\to$ M5 Air) / `[SWARM:CLOUD]` / `[AGY:PRIMARY]`
-- **Status:** `COMPLETED & CERTIFIED` (or `FAST-HALT BLOCKED`)
-- **Forensic Delta / Code Modified:** Target files touched, line numbers, and exact structural changes.
-- **Verification Evidence:** Literal pytest commands and output assertions (e.g. `79 passed in 0.24s`).
-- **Forensic Insights & Lessons Learned:** Epistemic reflections, caught ambiguities, and architectural decisions.
-- **Live Gate Status:** `[LIVE_GATE: PASSED]` or `[LIVE_GATE_PENDING: daemon=... probe=...]`
-```
+### 4. Phased Sprint Architecture Invariant (Phase ➔ Log ➔ Phase ➔ Log)
+Large sprints evolve in waves. Rather than maintaining a static monolithic plan, sprints support progressive phasing:
+1. **Appending Subsequent Phases After Logs:** A **new phase can be appended directly AFTER a sprint log section**.
+2. **Phase-Scoped Log Sections:** A **new sprint log section can be created and appended for each phase**.
+3. **Execution Pattern:**
+   ```
+   # Sprint Plan (Phase 1 Stories)
+   ## 📜 Sprint Log: Phase 1 Narrative Ledger
+      ... (narrative of what happened, friction, breakthroughs, certifications) ...
+   ## Phase 2 Stories (Refined from Phase 1 learnings)
+   ## 📜 Sprint Log: Phase 2 Narrative Ledger
+      ... (narrative of Phase 2 execution) ...
+   ```
+This guarantees that lessons learned and harness calibrations from Phase $N$ immediately inform the concrete specifications of Phase $N+1$ in a single continuous on-disk artifact.
 
-### 4. Absolute Append-Only Law (No Compression)
-Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite, or compress previous ledger entries to "save space." Technical history and empirical traces are permanent records. New events are always appended additively at the bottom.
+### 5. Absolute Append-Only Law (No Compression)
+Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite, or compress previous narrative entries to "save space." Technical history and empirical traces are permanent records. New events are always appended additively at the bottom.
+
 
 
