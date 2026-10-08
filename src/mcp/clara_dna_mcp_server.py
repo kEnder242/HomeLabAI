@@ -311,14 +311,21 @@ async def safe_patch(
 async def jit_locate(
     pattern: str,
     intent_description: str,
+    file_path: str | None = None,
     max_results: int = 15,
 ) -> dict:
     """
-    [FEAT-637 Grounding-Locate] Fast, context-clean file path locator with mandatory intent description.
-    Bypasses raw grep output bloat by returning strictly matching relative file paths (zero line bodies).
-    - pattern: Substring or glob to match file paths (e.g. "router.py", "foyer", "test_vector_pre_triage.py").
-    - intent_description: Mandatory explanation of why this file path is needed (enforces deliberate grounding).
-    - max_results: Maximum file paths to return (default 15).
+    [FEAT-637 Grounding-Locate & Anchor Boundary Resolver] Fast, context-clean locator.
+    - If file_path is provided (or pattern has format 'file_path:anchor'):
+      Acts as an Anchor Boundary Resolver. Scans file_path for anchor/symbol,
+      calculates exact semantic start_line and end_line boundaries (markdown section
+      or python function/class body), returning coordinates and a suggested jit_read call.
+    - If file_path is None:
+      Acts as a File Path Locator. Returns strictly matching relative file paths (zero line bodies).
+    - pattern: Substring, symbol, or glob to match (e.g. "router.py", "Story 100.10", "classify_vibe_and_domain").
+    - intent_description: Mandatory explanation of why this search is performed (min 8 chars).
+    - file_path: Optional target file path to locate anchor boundaries within.
+    - max_results: Maximum file paths to return when in file locator mode (default 15).
     """
     import subprocess
     import fnmatch
@@ -327,6 +334,106 @@ async def jit_locate(
         return {"error": "intent_description is required (min 8 chars) explaining why this file search is performed."}
 
     dev_lab = os.path.expanduser("~/Dev_Lab")
+
+    # Support 'file_path:anchor' syntax in pattern if file_path omitted
+    target_file = file_path
+    target_anchor = pattern
+    if not target_file and ":" in pattern and not pattern.startswith("http") and not ":/" in pattern:
+        parts = pattern.split(":", 1)
+        cand = os.path.normpath(os.path.join(dev_lab, parts[0].strip()))
+        cand_sub = os.path.normpath(os.path.join(dev_lab, "HomeLabAI", parts[0].strip()))
+        if os.path.exists(cand) or os.path.exists(cand_sub):
+            target_file = parts[0].strip()
+            target_anchor = parts[1].strip()
+
+    # --- Mode 1: Anchor Boundary Mode ---
+    if target_file:
+        full_path = target_file if os.path.isabs(target_file) else os.path.normpath(os.path.join(dev_lab, target_file))
+        if not os.path.exists(full_path):
+            sub_cand = os.path.normpath(os.path.join(dev_lab, "HomeLabAI", target_file))
+            if os.path.exists(sub_cand):
+                full_path = sub_cand
+
+        if not os.path.exists(full_path):
+            return {"error": f"Target file not found: {target_file} (resolved: {full_path})"}
+
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                raw_lines = f.readlines()
+        except Exception as e:
+            return {"error": f"Failed to read file {target_file}: {e}"}
+
+        total_lines = len(raw_lines)
+        anchor_clean = target_anchor.strip().lower()
+
+        # Priority 1: Match line starting with '#' or 'def ' or 'class ' containing target
+        found_idx = None
+        for idx, line in enumerate(raw_lines):
+            s = line.strip().lower()
+            if (s.startswith("#") or s.startswith("def ") or s.startswith("class ")) and anchor_clean in s:
+                found_idx = idx
+                break
+
+        # Priority 2: Case-insensitive substring match anywhere in line
+        if found_idx is None:
+            for idx, line in enumerate(raw_lines):
+                if anchor_clean in line.lower():
+                    found_idx = idx
+                    break
+
+        if found_idx is None:
+            return {
+                "file": target_file,
+                "anchor": target_anchor,
+                "intent": intent_description,
+                "mode": "anchor_miss",
+                "error": f"Anchor '{target_anchor}' not found in {target_file}",
+                "total_lines": total_lines,
+            }
+
+        start_line = found_idx + 1
+        first_line = raw_lines[found_idx]
+        first_stripped = first_line.lstrip()
+        end_line = min(total_lines, start_line + 100)
+
+        # Markdown section boundary calculation
+        if full_path.endswith(".md") and first_stripped.startswith("#"):
+            header_level = len(first_stripped) - len(first_stripped.lstrip("#"))
+            for j in range(found_idx + 1, min(total_lines, found_idx + 250)):
+                cur = raw_lines[j].lstrip()
+                if cur.startswith("#"):
+                    cur_lvl = len(cur) - len(cur.lstrip("#"))
+                    if cur_lvl <= header_level:
+                        end_line = j
+                        break
+                elif cur.startswith("---") and j > found_idx + 3:
+                    end_line = j
+                    break
+
+        # Python function / class body boundary calculation
+        elif full_path.endswith(".py") and (first_stripped.startswith("def ") or first_stripped.startswith("class ")):
+            base_indent = len(first_line) - len(first_stripped)
+            for j in range(found_idx + 1, min(total_lines, found_idx + 300)):
+                cur = raw_lines[j]
+                if cur.strip() and not cur.strip().startswith("#"):
+                    cur_indent = len(cur) - len(cur.lstrip())
+                    if cur_indent <= base_indent and (cur.strip().startswith("def ") or cur.strip().startswith("class ") or cur.strip().startswith("@")):
+                        end_line = j
+                        break
+
+        return {
+            "file": target_file,
+            "anchor": target_anchor,
+            "intent": intent_description,
+            "mode": "anchor_boundary",
+            "start_line": start_line,
+            "end_line": end_line,
+            "line_count": end_line - start_line + 1,
+            "heading": first_line.strip(),
+            "suggested_read": f"jit_read('{target_file}', start_line={start_line}, end_line={end_line})",
+        }
+
+    # --- Mode 2: File Path Locator Mode (Default) ---
     matches = []
 
     # 1. Fast git ls-files across submodule trees
@@ -365,6 +472,7 @@ async def jit_locate(
     return {
         "pattern": pattern,
         "intent": intent_description,
+        "mode": "file_paths",
         "count": len(matches),
         "files": matches[:max_results],
     }
