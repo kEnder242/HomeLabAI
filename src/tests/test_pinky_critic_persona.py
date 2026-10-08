@@ -286,6 +286,72 @@ class TestFormatChatDelivery:
         result = format_chat_delivery("Only retort!", "")
         assert result == "Only retort!"
 
+    def test_reasoning_blended_with_summary(self) -> None:
+        """Non-empty reasoning is appended parenthetically before the summary."""
+        result = format_chat_delivery("Narf!", "PCIe bus is stable.", reasoning="Grounded in the spec.")
+        assert result == "Narf! (Grounded in the spec.)\n\nPCIe bus is stable."
+
+    def test_reasoning_blended_without_summary(self) -> None:
+        """Reasoning attaches to the retort when there is no summary."""
+        result = format_chat_delivery("Narf!", "", reasoning="Slop detected.")
+        assert result == "Narf! (Slop detected.)"
+
+    def test_empty_reasoning_falls_back_to_plain_blend(self) -> None:
+        """Empty/whitespace reasoning leaves the legacy blend untouched."""
+        assert format_chat_delivery("Narf!", "Summary.", reasoning="") == "Narf!\n\nSummary."
+        assert format_chat_delivery("Narf!", "Summary.", reasoning="   ") == "Narf!\n\nSummary."
+        assert format_chat_delivery("Narf!", "", reasoning=None) == "Narf!"
+        assert format_chat_delivery("Narf!", "", reasoning="") == "Narf!"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3b. Story 100.12 — single-pass WHY reasoning + spoken retort scorecard
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestCriticScorecard:
+    """[STORY 100.12] Single-pass critic scorecard (reasoning + retort)."""
+
+    def test_critic_generates_grounded_reasoning_and_retort(self) -> None:  # [STORY 100.12]
+        """Scorecard payload with WHY-reasoning and retort round-trips fully."""
+        payload = json.dumps(
+            {
+                "score": 3,
+                "reasoning": "Response cited the spec but missed the lane-count caveat.",
+                "slop_found": False,
+                "retort": "Brain, you forgot the lanes. Classic.",
+            }
+        )
+        result = parse_critic_payload(payload)
+        assert result.score == 3
+        assert result.reasoning == "Response cited the spec but missed the lane-count caveat."
+        assert result.slop_found is False
+        assert result.cartoon_retort == "Brain, you forgot the lanes. Classic."
+
+    def test_prompt_schema_describes_scorecard_fields(self) -> None:
+        """build_critic_prompt advertises the scorecard output schema."""
+        data = json.loads(build_critic_prompt("What is PCIe?", "PCIe is a bus."))
+        schema = data["output_schema"]
+        assert "score" in schema
+        assert "integer (1-5)" in schema["score"]
+        assert "WHY" in schema["reasoning"]
+        assert "boolean" in schema["slop_found"]
+        assert "Brain" in schema["retort"]
+
+    def test_format_chat_delivery_blends_retort_and_reasoning(self) -> None:  # [STORY 100.12]
+        """Delivery reads retort + (reasoning) + summary as a single pass."""
+        delivery = format_chat_delivery(
+            "Brain, spot on.",
+            "The bus is stable at 16 lanes.",
+            reasoning="Grounded: the spec confirms x16 negotiation.",
+        )
+        assert delivery == (
+            "Brain, spot on. (Grounded: the spec confirms x16 negotiation.)\n\n"
+            "The bus is stable at 16 lanes."
+        )
+        assert "Grounded: the spec confirms x16 negotiation." in delivery
+        assert "Brain, spot on." in delivery
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. format_crosstalk_telemetry

@@ -1658,7 +1658,7 @@ Strictly zero internal reasoning monologues once a blocker is detected."""
         note_block = f"[NOTE] Ingest requirements and dispatch a bounded contract to Junior via task(category='{_coder_category}')."
     else:
         mandate_block = f"""[STORY {story_num}: {title}]
-The architectural plan for this task is vetted and solid. Do not perform open-ended file searches or re-plan the system. All exact implementation details, AST anchors, and patch blueprints come directly from your JITC research tool. Trust the plan, and verify the live details by running research(target_file) on Turn 1. 1) Review empirical findings from research(). 2) Apply surgical changes via safe_patch(). 3) Run verification (call failure_whisperer(traceback) on failure). 4) Call handoff_checkpoint() on pass.
+The architectural plan for this task is vetted and solid. Do not perform open-ended file searches or re-plan the system. All exact implementation details, AST anchors, and patch blueprints come directly from your JITC research tool. Trust the plan, and verify the live details by running jit_research(target_file) on Turn 1. 1) Review empirical findings from jit_research(). 2) Apply surgical changes via safe_patch(). 3) Run verification (call jit_diagnose(traceback) on failure). 4) Call jit_checkpoint() on pass.
 If ANY mandatory tool is missing or fails, FAST-HALT IMMEDIATELY ON TURN 1 (<50 tokens) with:
 [BLOCKER REPORT: TOOL UNAVAILABLE]
 Reason: <tool_name> is unavailable.

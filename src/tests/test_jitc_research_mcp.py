@@ -77,14 +77,16 @@ def test_live_mcp_tools_list(mcp_proc):
     tool_names = {t["name"] for t in tools}
 
     mandatory_tools = [
-        "read",
         "safe_patch",
-        "locate_grounding",
-        "stage_research",
-        "research",
-        "failure_whisperer",
-        "handoff_checkpoint",
-        "locate_path",
+        "jit_read",
+        "jit_locate",
+        "jit_stage",
+        "jit_research",
+        "jit_diagnose",
+        "jit_checkpoint",
+        "query_dna",
+        "get_protocol",
+        "list_collections",
     ]
     for tool_name in mandatory_tools:
         assert tool_name in tool_names, f"Mandatory tool '{tool_name}' missing from live MCP tools: {tool_names}"
@@ -111,7 +113,7 @@ def test_live_mcp_stage_and_research(mcp_proc):
         "id": 3,
         "method": "tools/call",
         "params": {
-            "name": "stage_research",
+            "name": "jit_stage",
             "arguments": {
                 "file_path": test_file,
                 "plan_content": "Live stdio JSON-RPC test plan",
@@ -122,7 +124,7 @@ def test_live_mcp_stage_and_research(mcp_proc):
         },
     }
     stage_resp = _send_rpc(mcp_proc, stage_req)
-    assert "result" in stage_resp, f"stage_research call failed: {stage_resp}"
+    assert "result" in stage_resp, f"jit_stage call failed: {stage_resp}"
 
     # 2. Recall via research tool
     research_req = {
@@ -130,12 +132,12 @@ def test_live_mcp_stage_and_research(mcp_proc):
         "id": 4,
         "method": "tools/call",
         "params": {
-            "name": "research",
+            "name": "jit_research",
             "arguments": {"file_path": test_file},
         },
     }
     research_resp = _send_rpc(mcp_proc, research_req)
-    assert "result" in research_resp, f"research call failed: {research_resp}"
+    assert "result" in research_resp, f"jit_research call failed: {research_resp}"
     content_list = research_resp["result"].get("content", [])
     assert len(content_list) > 0, "Empty content in research response"
     text = content_list[0].get("text", "")
@@ -154,12 +156,12 @@ def test_live_mcp_failure_whisperer(mcp_proc):
         "id": 5,
         "method": "tools/call",
         "params": {
-            "name": "failure_whisperer",
+            "name": "jit_diagnose",
             "arguments": {"test_output": sample_traceback},
         },
     }
     resp = _send_rpc(mcp_proc, req)
-    assert "result" in resp, f"failure_whisperer call failed: {resp}"
+    assert "result" in resp, f"jit_diagnose call failed: {resp}"
     text = resp["result"]["content"][0]["text"]
     assert "AssertionError: expected True but got False" in text
     assert "Diagnosis:" in text
@@ -172,7 +174,7 @@ def test_live_mcp_handoff_checkpoint(mcp_proc):
         "id": 6,
         "method": "tools/call",
         "params": {
-            "name": "handoff_checkpoint",
+            "name": "jit_checkpoint",
             "arguments": {
                 "status": "SUCCESS",
                 "summary": "Live stdio checkpoint test",
@@ -181,7 +183,7 @@ def test_live_mcp_handoff_checkpoint(mcp_proc):
         },
     }
     resp = _send_rpc(mcp_proc, req)
-    assert "result" in resp, f"handoff_checkpoint call failed: {resp}"
+    assert "result" in resp, f"jit_checkpoint call failed: {resp}"
 
 
 def test_live_mcp_locate_path(mcp_proc):
@@ -191,12 +193,12 @@ def test_live_mcp_locate_path(mcp_proc):
         "id": 7,
         "method": "tools/call",
         "params": {
-            "name": "locate_path",
+            "name": "jit_locate",
             "arguments": {"pattern": "cognitive_hub"},
         },
     }
     resp = _send_rpc(mcp_proc, req)
-    assert "result" in resp, f"locate_path call failed: {resp}"
+    assert "result" in resp, f"jit_locate call failed: {resp}"
 
 
 def test_live_mcp_canonical_jit_tools_flow(mcp_proc):

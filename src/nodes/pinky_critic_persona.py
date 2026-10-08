@@ -133,8 +133,10 @@ def build_critic_prompt(
         "critique_dimensions": dimensions,
         "banned_phrases": _BANNED_PHRASES,
         "output_schema": {
-            "cartoon_retort": "string — a witty, in-character one-liner",
-            "critique_suggestions": "list[string] — actionable improvement notes",
+            "score": "integer (1-5) — numerical grounding score",
+            "reasoning": "string — 1-sentence analytical critique explaining WHY the technical response succeeds or fails",
+            "slop_found": "boolean — True if canned pleasantries or robotic boilerplate detected",
+            "retort": "string — witty, in-character cartoon voice quip addressed directly to Brain as the conversational judge",
         },
     }
     return json.dumps(payload, indent=2)
@@ -294,6 +296,7 @@ def format_chat_delivery(
     technical_summary: str,
     *,
     banned_phrases: list[str] | None = None,
+    reasoning: str | None = None,
 ) -> str:
     """Blend a witty cartoon quip with the technical summary for chat delivery.
 
@@ -312,6 +315,9 @@ def format_chat_delivery(
         The agreed technical summary to append.
     banned_phrases:
         Override the default banned-phrase list.
+    reasoning:
+        Optional 1-sentence analytical critique; when non-empty it is blended
+        into the delivery parenthetically after the retort.
 
     Returns
     -------
@@ -336,12 +342,23 @@ def format_chat_delivery(
     retort = re.sub(r"\s{2,}", " ", retort).strip()
     summary = re.sub(r"\s{2,}", " ", summary).strip()
 
+    # Clean the optional analytical reasoning (same hygiene as retort/summary)
+    clean_reasoning = ""
+    if reasoning:
+        clean_reasoning = _strip_speaker_prefix(reasoning)
+        for phrase in bans:
+            clean_reasoning = re.compile(re.escape(phrase), re.IGNORECASE).sub("", clean_reasoning)
+        clean_reasoning = re.sub(r"^[\s.,;:!?\-]+", "", clean_reasoning).strip()
+        clean_reasoning = re.sub(r"\s{2,}", " ", clean_reasoning).strip()
+
     if not retort and not summary:
         return ""
     if not retort:
         return summary
     if not summary:
-        return retort
+        return f"{retort} ({clean_reasoning})" if clean_reasoning else retort
+    if clean_reasoning:
+        return f"{retort} ({clean_reasoning})\n\n{summary}"
 
     return f"{retort}\n\n{summary}"
 
