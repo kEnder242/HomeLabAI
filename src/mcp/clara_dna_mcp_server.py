@@ -834,5 +834,21 @@ async def ask_oracle(
     )
 
 
+@mcp.tool()
+async def sprint_telemetry(sprint: int = 101) -> dict:
+    """[FEAT-660] Report sprint stories, completion status, token usage, cached tokens, and wall time minutes.
+    Returns per-story metrics and simple total numbers.
+    """
+    try:
+        from infra.sprint_telemetry import get_sprint_metrics
+    except ImportError:
+        try:
+            from src.infra.sprint_telemetry import get_sprint_metrics
+        except ImportError:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from src.infra.sprint_telemetry import get_sprint_metrics
+    return get_sprint_metrics(sprint)
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
