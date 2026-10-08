@@ -168,8 +168,11 @@ class IgnitionManager:
         subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
         subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
         # Cleanly remove vllm.pid
-        if os.path.exists(pid_file):
-            os.remove(pid_file)
+        try:
+            if os.path.exists(pid_file):
+                os.remove(pid_file)
+        except OSError:
+            pass
         # Verify port 8088 is free (allow time for processes to terminate)
         import time
         time.sleep(1)  # Give processes time to terminate
