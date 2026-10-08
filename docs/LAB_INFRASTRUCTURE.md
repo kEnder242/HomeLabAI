@@ -449,7 +449,7 @@
    * **Node KENDER (Windows RTX 4090 24GB / `192.168.1.26`)**:
      * **Ollama Engine**: Port `11434` (`http://192.168.1.26:11434`) running `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL`.
      * **Headroom**: ~14.8 GB dedicated VRAM KV cache headroom.
-     * **Context & Output Limits**: 32,768 context window / 8,192 output ceiling.
+     * **Context & Output Limits**: 131,072 context window (128k) / 8,192 output ceiling.
      * **Reasoning Control**: By default, Qwen reasoning models output `<think>...</think>`. To prevent runaway thinking loops and token ceiling lockups (`finish=length`), thinking is actively suppressed for L2 conduction via lean 2-tier prompt directives or stripped Ollama Modelfile templates.
 
 2. **Inverted Role Prohibition (Hardware Asymmetry Invariant)**:
