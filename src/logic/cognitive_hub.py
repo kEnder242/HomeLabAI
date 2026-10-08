@@ -487,6 +487,9 @@ class CognitiveHub:
 
         # [FEAT-356] Foil-Aware Memory (Unified Session Ledger)
         self.round_table_memory = []
+        # [FEAT-227] Dialogue Abort & Interruption State
+        self.turn_aborted = False
+        self.abort_event = None
         # [FEAT-456] Prior Turn Context Tracking for Fourth-Wall Supervision
         self.last_user_query = ""
         self.last_triage_payload = {}
@@ -1291,6 +1294,13 @@ class CognitiveHub:
         except Exception as e:
             logging.debug(f"[TEL] Collect failed: {e}")
 
+    def abort_current_turn(self):
+        """[FEAT-227] Abort current running dialogue turn and signal interruption."""
+        self.turn_aborted = True
+        if self.abort_event is not None:
+            self.abort_event.set()
+        logging.info("[HUB] [FEAT-227] Active turn aborted via abort_current_turn().")
+
     # [FEAT-106] Async Coordination Engine
     async def process_query(
         self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None
@@ -1304,6 +1314,11 @@ class CognitiveHub:
 
         # [SPR-41_2] Reset context starvation tracker per query
         self.context_starved_nodes.clear()
+
+        # [FEAT-227] Residual Dialogue Abort Event Clearing
+        self.turn_aborted = False
+        if self.abort_event is not None:
+            self.abort_event.clear()
 
         # Initialize default vibe for Sandbox Tool Isolation
         self.current_vibe = "TECHNICAL"

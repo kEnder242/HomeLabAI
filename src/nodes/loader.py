@@ -205,9 +205,11 @@ class BicameralNode:
             self.append_to_tool_log("think", params_preview)
 
             full_response = ""
-            # [FEAT-233] Internal Waterfall: Only broadcast tokens to UI if NOT internal.
-            # Internal turns (Triage/Intuition) are overheard via the Hub's stream_ingest.
-            stream_source = self.name if not internal else None
+            # [FEAT-361] Token Transparency Mandate: Abolish silent token gagging.
+            # Route intermediate/diagnostic tokens to dedicated channels ('crosstalk', 'insight')
+            # rather than silencing them into a black hole (stream_source = None).
+            stream_source = self.name
+            channel_tag = "crosstalk" if internal else "primary"
 
             # [FEAT-307] Sanitary Filter: Redirect turn-level noise to stderr
             # This is critical to prevent logs from breaking the stdio MCP transport.
@@ -234,16 +236,23 @@ class BicameralNode:
                     if "The local engine is warming its anchors" not in token:
                         full_response += token
 
-                    if stream_source:
-                        self._broadcast_token(
-                            token, stream_source, request_id=request_id
-                        )
+                    self._broadcast_token(
+                        token,
+                        stream_source,
+                        request_id=request_id,
+                        channel=channel_tag,
+                        is_internal=internal,
+                    )
 
                 # [FEAT-233.7] Signal completion
-                if stream_source:
-                    self._broadcast_token(
-                        "", stream_source, final=True, request_id=request_id
-                    )
+                self._broadcast_token(
+                    "",
+                    stream_source,
+                    final=True,
+                    request_id=request_id,
+                    channel=channel_tag,
+                    is_internal=internal,
+                )
 
             return full_response
 
@@ -939,13 +948,23 @@ class BicameralNode:
 
         threading.Thread(target=_relay_worker, daemon=True).start()
 
-    def _broadcast_token(self, token, source_name, final=False, request_id="default"):
+    def _broadcast_token(
+        self,
+        token,
+        source_name,
+        final=False,
+        request_id="default",
+        channel="primary",
+        is_internal=False,
+    ):
         """Threaded fire-and-forget relay via persistent worker."""
         payload = {
             "text": token,
             "source": source_name,
             "final": final,
             "request_id": request_id,
+            "channel": channel,
+            "is_internal": is_internal,
         }
         self.telemetry_queue.put(payload)
 
