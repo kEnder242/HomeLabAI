@@ -8,7 +8,7 @@
 **Objective**: Restore the Agent's technical context after a session break or crash.
 
 0.  **Orientation (Bootstrap)**:
-    *   Refer to the top-level **[BOOTSTRAP.md](../../BOOTSTRAP_v4.4.md)** for the primary navigational hub and global project context.
+    *   Refer to the top-level **[BOOTSTRAP.md](../../BOOTSTRAP_v4.5.md)** for the primary navigational hub and global project context.
     *   Consult **[ENGINEERING_PEDIGREE.md](./ENGINEERING_PEDIGREE.md)** for the active architectural laws and design breadcrumbs.
     *   **Inventory Mandate**: Proactively identify existing "wheels" (tests, diagnostic scripts, and tools) in **[DIAGNOSTIC_RUNDOWN.md](./DIAGNOSTIC_RUNDOWN.md)** and **[TOOL_RUNDOWN.md](./TOOL_RUNDOWN.md)** before suggesting or implementing new code.
     *   **State Snapshot**: Read the last 5 entries in **[00_FEDERATED_STATUS.md](../../Portfolio_Dev/00_FEDERATED_STATUS.md)** to identify the current "Front Line" and active sprint.
@@ -41,7 +41,8 @@
 ## BKM-005: The Design Studio (Greenlight before Code Change)
 **Objective**: Ensure alignment on naming, architecture, and persona before committing code.
 
-1.  **The Pitch**: Agent summarizes the goal in one sentence.
+0.  **Historical Grounding Check (BKM-082)**: Before formulating pitches or proposing code changes, the Agent MUST execute a **Sprint Grounding Run (BKM-082)**, reviewing the last 5 sprints and checking CLaRa DNA to ensure options do not repeat historical anti-patterns or strip hard-won physical sentinels.
+1.  **The Pitch**: Agent summarizes the goal in one sentence, explicitly correlated with past feature lineage.
 2.  **The Options**: Agent presents 2-3 implementation paths (e.g., Simple, Robust, Experimental).
 3.  **The Naming Ceremony**: Explicit agreement on Nouns (Folders, DB Collections) and Verbs (Tool Names).
 4.  **The Contract**: User gives "Greenlight" to a specific path.
@@ -59,6 +60,7 @@
 8.  **Delegation & Owner Tag Discipline (BKM-049)**: During an autonomous Heads Down sprint, every story MUST declare an Assigned Owner (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). The orchestrating agent must dispatch stories via `delegate.py` adhering to the Tri-Loop safety contracts, diagnostic retries, and handover reflection audits before taking over or mutating state directly.
     *   **Caution Against Delegation Bypass**: Primary agents must NEVER bypass planned swarm delegation to directly write or edit code for `[SWARM:*]` stories. Skipping delegation circumvents swarm capability validation, corrupts telemetry, and denies worker models the diagnostic iterations required to improve playbook calibrations. Direct takeover (`[AGY:TAKEOVER]`) is strictly illegal without exhausted delegation attempts.
     *   **Bounded Conductor Context & Pre-Warming ([FEAT-642] / [FEAT-643] / [DISC-011])**: Conductor dispatches must pre-warm target file semantic digests into `/tmp/clara_context_cache.json`. Conductor workers operate under Bounded Reader (`clara-dna_read`), receiving structural AST blueprints and pre-warmed semantic digests in <400 tokens to eliminate multi-turn slicing loops and prevent context bloat.
+9.  **Pre-Execution Grounding Run (BKM-082)**: Before launching into autonomous code modification cycles, the Agent MUST execute a **Sprint Grounding Run (BKM-082)**. The Agent must verify that current environment symptoms are evaluated across the full multi-hour log horizon (not just the trailing 15 minutes), check the last 5 sprints for recurring failure modes, confirm that no hard-won hardware sentinels or physical pacing delays are bypassed, and document pre-flight mistakes avoided.
 
 
 
@@ -235,6 +237,13 @@ All diagnostic forensics MUST reference the canonical black box log:
     * 🧪 **Literal Test Batteries**: Are concrete test input strings, phrases, and assertions printed verbatim in the story specification (never summarized as "test edge cases")?
     * 🏛️ **Persona & Prompt Pillars**: Are shared bedrock environment prompts, interest levels, and turn-stage tags explicitly anchored in the prompt requirements?
     * 📡 **Telemetry & Routing Contracts**: Are exact WebSocket packet types, channel names, and UI console targets defined?
+6.  **Mandatory Sprint Grounding Run Pre-Flight & Phase 0 Housekeeping (BKM-082)**:
+    Before finalizing or locking any Sprint Plan, the authoring agent MUST execute a **Sprint Grounding Run (BKM-082)**:
+    * 📜 **5-Sprint Lookback**: Document review of the preceding 5 sprint plans, logs, and retrospectives to ensure no historical anti-patterns or circular fixes are repeated.
+    * 🚫 **Pre-Flight Mistake Ledger**: Explicitly enumerate 3–5 concrete mistakes that would have been made without this grounding (e.g. patching wrong scripts, altering hardware pacing delays, creating multi-home duplicates).
+    * 🧭 **Grounding Gap Declaration**: Assert zero ungrounded items or explicitly list open gaps requiring operator guidance before any code modification begins.
+    * 🛠️ **Mandatory Phase 0: Documentation Fortification & Housekeeping**: Every sprint plan MUST dedicate "Phase 0" to repairing outdated doc pointers, correcting tool argument flags, and updating `FeatureTracker.md` / `DIAGNOSTIC_SCRIPT_MAP.md` before story execution begins. This ensures future agents are pointed in the right direction and documentation debt is paid forward rather than compounded.
+
 
 ## BKM-022: The Atomic File Swap Protocol (Filesystem Safety)
 **Objective**: Ensure filesystem atomicity for all file updates and prevent race conditions.
@@ -728,8 +737,9 @@ Every story in a sprint plan MUST be authored using this exact self-contained te
   3. **Layer 3 (Junior)** reads its specific story section on disk. Everything it needs is directly at its fingertips in that section—zero search, zero tool exploration required.
 
 ### 2. Three-Layer JIT Authoring & Execution Architecture
-* **Layer 1: Strategic Guardian (AGY / Gemini)** → Guides: `[BKM-030]` & `[BKM-043]`
+* **Layer 1: Strategic Guardian (AGY / Gemini)** → Guides: `[BKM-030]`, `[BKM-043]` & `[BKM-082]`
   * Authors the Sprint Plan as the canonical on-disk "JIT Container" using clean Markdown (no ASCII art boxes).
+  * Executes the **Sprint Grounding Run (`[BKM-082]`)** across the last 5 sprints before authoring stories to ensure JIT anchors do not repeat historical anti-patterns or strip hard-won physical sentinels.
   * Bakes the 4 anchors, tool laws, and pytest commands directly into every story section.
 * **Layer 2: Tactical Router (Atlas on Windows RTX 4090 / Ollama)** → Guide: `[BKM-034]`
   * Absorbs broad sprint context (14.8 GB KV cache headroom).
@@ -1405,6 +1415,54 @@ This guarantees that lessons learned and harness calibrations from Phase $N$ imm
 
 ### 5. Absolute Append-Only Law (No Compression)
 Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite, or compress previous narrative entries to "save space." Technical history and empirical traces are permanent records. New events are always appended additively at the bottom.
+
+---
+
+## BKM-082: Sprint Grounding Run (Historical Anchoring & Horizon-Aware Pre-Flight Mandate)
+**Feature Anchor:** `[BKM-082]` / `[BKM-001]` / `[BKM-005]` / `[BKM-006]` / `[BKM-020]` / `[BKM-048]` / `[FEAT-659]`  
+**Colloquial Alias:** "The Sprint Grounding Run / Historical Horizon Pre-Flight Invariant"  
+**Domain:** Sprint Architecture, Diagnostic Horizon, Historical Invariants, Anti-Amnesia Governance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Law: Grounding Before Action
+Agents are frequently tempted to treat new user prompts as greenfield tasks or to diagnose current system states by inspecting only the trailing 10–15 minutes of logs (the "Short Horizon Trap"). Under tight resources, overnight compute cycles, and distributed multi-tier orchestration, this short-sightedness leads directly to:
+- **Circular Fixing Traps (`[INS-042]`):** Re-attempting previously failed architectural shortcuts or re-inventing broken tools.
+- **Accidental Removal of Hard-Won Sentinels:** Stripping out critical hardware pacing delays, memory sentinels, or cgroups limits because they appear to slow down execution.
+- **Diagnostic Blindness to Log Horizon Effects:** Assuming a daemon crash was an instant OOM or prompt failure when it was actually a downstream consequence of a multi-hour nightly cascade (e.g. 02:00 AM LoRA training overrun or memory profiling races).
+
+### 2. The 5 Core Invariants of the Sprint Grounding Run
+
+1. **Mandatory 5-Sprint Lookback Before ANY Research or Proposal:**
+   - Before planning a new sprint, proposing refactors, or writing code, the Agent MUST inspect documentation and the **last 5 active/archived sprint plans and logs** (`Portfolio_Dev/docs/sprints/active/SPRINT_PLAN_*.md`).
+   - Sprints are not passive human notes; they are the active forensic pedigree of the Federated Lab. Glossing over past sprint lessons or root-cause retrospectives is a protocol violation.
+
+2. **Expanded Log Horizon Diagnostic Mandate:**
+   - When the system is reported in a degraded or bad state, or when diagnosing overnight failures, the Agent is strictly forbidden from relying solely on `tail -n 50`, `journalctl -n 20`, or the last 15 minutes.
+   - The Agent MUST inspect the **full log horizon** spanning the entire operational cycle (e.g. from 02:00 AM Nightly Forge initiation through morning watchdog audits at 06:00 AM to the current hour), verifying journalctl, `dmesg`, process exit codes, and `daily_accountability_digest.json`.
+
+3. **Historical Correlation & Anti-Removal Law (The Hard-Won Code Mandate):**
+   - **Do NOT remove hard won code or features.** Every time you consider removing a feature or a step or changing the batching behavior or renaming files etc, you MUST correlate what you are doing with the most recent sprint that touched the features around that area.
+   - Use CLaRa DNA MCP tools (`query_dna`, `jit_read`, `jit_locate`) heavily to extract the original design rationale (`[FEAT-*]`, `[SCAR-*]`, `[LAB-*]`).
+   - If an operation overruns its time window (e.g., nightly adapter training running 28 minutes over its SLA), **adjust the payload percentage or step budget proportionally to fit the window**, rather than stripping features, removing pacing pauses, or deleting safety steps.
+
+4. **Mandatory "Pre-Flight Mistakes Avoided" Ledger & Dual-Delivery Reporting:**
+   - Every sprint proposal and work plan MUST include an explicit section: `## 🚫 Pre-Flight Mistake Ledger (Mistakes Avoided by Grounding)`.
+   - The Agent must list 3–5 specific errors, naive fixes, or architectural traps that *would* have been committed without this deep historical grounding (e.g. patching the wrong script, duplicating a file across directories, misattributing a race condition to an OOM).
+   - **Dual-Delivery Invariant:** The Agent MUST write the sprint plan to disk AND report the grounding findings and mistake ledger in chat text directly to the operator. Constructing this explicit friction ensures the Agent cannot gloss over past documentation.
+
+5. **Grounding Gap Declaration:**
+   - If the Agent is unable to ground any actionable item, error symptom, or code target in past sprint history or DNA records, it MUST NOT invent assumptions or execute speculative edits.
+   - The Agent must explicitly declare these items under `## 🧭 Grounding Gap Audit` and pause to request operator clarification before taking action.
+
+6. **Positive Context Guidance Mandate ("Do Y because Z context guides you to do it this way"):**
+   - When specifying sprint stories, anti-regression cautions, and subagent prompt anchors, steer away from negative prohibitions (*"Don't do X"*).
+   - Formulate all cautions as positive context guidance: ***"Do Y because Z context guides you to do it this way."*** Providing the affirmative action anchored in past historical context eliminates negative constraint inversion and guides autonomous subagents toward correct implementation without thrash.
+
+7. **Mandatory "Phase 0: Documentation Fortification & Housekeeping" Session:**
+   - Every sprint plan derived from a Sprint Grounding Run MUST include an upfront **"Phase 0: Documentation Fortification & Housekeeping"** section executed *before* code stories.
+   - Phase 0 addresses documentation drift uncovered during grounding: updating outdated script pointers, correcting tool argument flags, registering new FEAT tags, and clarifying physical constraints in `DIAGNOSTIC_SCRIPT_MAP.md` and `FeatureTracker.md`. This ensures future JITC agent invocations are always pointed in the right direction.
+
+
 
 
 
