@@ -1830,9 +1830,11 @@ class CognitiveHub:
                 lead_node = "brain"
 
         if lead_node == "brain":
-            # [FEAT-489 / FEAT-535] Two-Mice Sequential Handover & Single-Execution Gate:
-            # High-interest technical turns addressed to Brain attempt two-mice handover.
-            # If handover cannot run (low interest / missing resident), execute Brain exactly ONCE.
+            # [FEAT-635 / FEAT-489 / Sprint 100 Story 100.11] Mandatory Stage 1
+            # Brain Information Gatekeeper: 100% of brain-led technical queries
+            # route through the Sprint 96 two-mice handover (stage=1), regardless
+            # of the interest funnel gate. The legacy _run_brain_leg fallback is
+            # retired; low interest no longer skips the Stage 1 gatekeeper.
             handover_context = context
             if not handover_context or "[RAG_CONTEXT]" not in handover_context:
                 if "rag_context" in locals():
@@ -1841,41 +1843,18 @@ class CognitiveHub:
                     handover_context = context or await self._fetch_rag_context(
                         turn, t_parsed, request_id=request_id
                     )
-            if (
-                handover_context
-                and self.current_interest >= TWO_MICE_FUNNEL_INTEREST
-                and vibe != "CASUAL"
-            ):
-                handover_success = await self._run_two_mice_handover(
-                    turn,
-                    focus_context=handover_context,
-                    shutdown_event=shutdown_event,
-                    request_id=request_id,
-                )
-                if handover_success:
-                    d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
-                    d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
-                else:
-                    await self._run_brain_leg(
-                        turn,
-                        t_parsed,
-                        shutdown_event=shutdown_event,
-                        request_id=request_id,
-                        rag_context=rag_context,
-                        t_turn_start=t0_start,
-                    )
-                    t_brain_elapsed = getattr(
-                        self,
-                        "_last_t_brain_elapsed",
-                        round(time.perf_counter() - t0_start, 3),
-                    )
-                    t_oracle_elapsed = getattr(
-                        self,
-                        "_last_t_oracle_elapsed",
-                        round(time.perf_counter() - t0_start, 3),
-                    )
+            handover_success = await self._run_two_mice_handover(
+                turn,
+                focus_context=handover_context,
+                shutdown_event=shutdown_event,
+                request_id=request_id,
+            )
+            if handover_success:
+                d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
+                d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
             else:
-                # Brain leads Turn 1 (Single Execution Guarantee)
+                # Handover structurally unavailable (missing residents) ->
+                # legacy single-execution fallback.
                 await self._run_brain_leg(
                     turn,
                     t_parsed,
@@ -2296,48 +2275,6 @@ class CognitiveHub:
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
-    async def _distill_strategic_brief(self, raw_context, request_id="default"):
-        """[Task 2.2] Context Precision: Synthesize raw RAG into a dense brief."""
-        if not raw_context or "brain" not in self.residents:
-            return raw_context
-
-        # [FEAT-444] Cap raw context before it is embedded into the brief prompt
-        raw_context = self._truncate_to_tokens(
-            raw_context, doc_id=self._extract_doc_id(raw_context)
-        )
-
-        logging.info(
-            "[HUB] Context Precision: Distilling raw RAG into Strategic Brief..."
-        )
-        try:
-            prompt = (
-                "Synthesize the following raw technical artifacts into a 2-paragraph high-density 'Strategic Brief'. "
-                "Extract specific platform anchors, validation targets, and known PECI/MSR scars. "
-                "Focus strictly on high-density technical facts and grounded validation evidence."
-            )
-            # Use 'think' to generate distillation
-            res = await self.residents["brain"].call_tool(
-                "think",
-                {
-                    "query": prompt,
-                    "context": raw_context,
-                    "behavioral_guidance": "Distill for Strategic Thought.",
-                    "request_id": request_id,
-                },
-            )
-
-            brief = ""
-            if hasattr(res, "content") and len(res.content) > 0:
-                brief = res.content[0].text
-            else:
-                brief = str(res)
-
-            logging.info(f"[HUB] Distillation complete ({len(brief)} chars).")
-            return f"[STRATEGIC_BRIEF]:\n{brief}\n\n[RAW_CONTEXT_APPEND]:\n{raw_context[:1000]}..."
-        except Exception as e:
-            logging.warning(f"[HUB] Context distillation failed: {e}")
-            return raw_context
-
     async def _get_node_tools(self, node_id: str) -> list:
         """[SPR-41_1] Retrieve active tool names from a resident node's MCP server."""
         node = self.residents.get(node_id)
@@ -2638,191 +2575,34 @@ class CognitiveHub:
         rag_context=None,
         t_turn_start=None,
     ):
-        """Handles Brain (4090) leg of the waterfall."""
-        # [Task 2.2] Context Precision
-        vibe = triage.get("vibe", "").upper()
-        if vibe == "CASUAL":
-            # [FEAT-542] Casual Brevity & Zero-RAG Fast Path:
-            # Skip RAG, skip distillation, and skip remote escalation.
-            # Brain delivers a calm, strategic 1-sentence acknowledgement locally (<12 words).
-            brain_response = ""
-            guidance = (
-                "[MODE]: CONVERSATIONAL CASUAL.\n"
-                "The user is offering a casual greeting or friendly remark.\n"
-                "MANDATORY BREVITY: Reply with EXACTLY ONE short, character-faithful sentence (< 12 words), calm and strategic."
-            )
-            if "brain" in self.residents:
-                async for token in self._process_node_stream(
-                    "brain",
-                    query,
-                    "",
-                    "Brain (Local Baseline)",
-                    tools=[],
-                    temperature=0.2,
-                    request_id=request_id,
-                    behavioral_guidance=guidance,
-                    max_tokens=35,
-                ):
-                    brain_response += token
-                    if shutdown_event and shutdown_event.is_set():
-                        break
-            if t_turn_start is not None:
-                self._last_t_brain_elapsed = max(
-                    0.001, round(time.perf_counter() - t_turn_start, 3)
-                )
-            self.turn_thought_trace["brain"] = brain_response
-            return
+        """[Sprint 100 Story 100.11] Retired legacy Brain leg (minimal stub).
 
-        if vibe == "WYWO":
-            # Construct WYWO context
-            nightly_dialogue = "No recent nightly dialogue recorded."
-            dialogue_path = os.path.expanduser(
-                "~/Dev_Lab/Portfolio_Dev/field_notes/data/nightly_dialogue.json"
-            )
-            if os.path.exists(dialogue_path):
-                try:
-                    with open(dialogue_path, "r") as f:
-                        data = json.load(f)
-                        if data.get("content"):
-                            nightly_dialogue = f"Topic: {data.get('topic')}\nDialogue: {data.get('content')}"
-                except Exception as e:
-                    logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
-
-            dreams = "No long-term subconscious dreams found."
-            if "archive" in self.residents:
-                try:
-                    res = await self.residents["archive"].call_tool(
-                        "get_context",
-                        {"query": "Latest Diamond Wisdom synthesis", "n_results": 2},
-                    )
-                    if hasattr(res, "content") and len(res.content) > 0:
-                        dreams = res.content[0].text
-                except Exception as e:
-                    logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
-
-            raw_context = (
-                f"[NIGHTLY_DIALOGUE_RECORD]:\n{nightly_dialogue}\n\n"
-                f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
-            )
-        else:
-            if rag_context is None:
-                if prefetch_task:
-                    try:
-                        rag_context = await prefetch_task
-                    except Exception as ex:
-                        logging.warning(
-                            f"[HUB] Pre-fetched RAG context resolution warning, falling back: {ex}"
-                        )
-                        rag_context = await self._fetch_rag_context(query, triage)
-                else:
-                    rag_context = await self._fetch_rag_context(query, triage)
-
-            raw_context = f"Triage Situation: {triage.get('situation', '')}\nTriage Hints: {triage.get('hints', '')}"
-            if rag_context:
-                raw_context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
-            else:
-                # [FEAT-475] Zero-Context: Signal to Brain that no historical archive was retrieved.
-                raw_context += "\n\n[ZERO_CONTEXT]: No relevant historical notes found. Respond from live telemetry only."
-
-        distilled_context = await self._distill_strategic_brief(
-            raw_context, request_id=request_id
-        )
-
-        # [FEAT-470] Step 3: Local Brain-LoRA Waterfall Handoff (shadow_brain_v2 on vLLM port 8088).
-        # Stream The Brain's local technical baseline BEFORE remote escalation to Deep Thought.
+        The legacy waterfall (Sprint 32 strategic-brief distillation + local
+        Baseline + Deep Thought escalation + grounding gate) is deleted. This
+        stub preserves the single-execution contract for non-brain-lead
+        branches (both/else lead flows and sibling tests) by streaming Brain
+        exactly once. It is fully decoupled from the removed strategic-brief
+        distiller and performs no remote escalation.
+        """
         brain_response = ""
         if "brain" in self.residents:
-            brain_tools = await self._get_node_tools("brain")
             async for token in self._process_node_stream(
                 "brain",
                 query,
-                distilled_context,
+                "",
                 "Brain (Local Baseline)",
-                tools=brain_tools,
+                tools=[],
                 temperature=0.2,
                 request_id=request_id,
             ):
                 brain_response += token
                 if shutdown_event and shutdown_event.is_set():
                     break
-
-        # Record elapsed checkpoint after Brain local baseline
         if t_turn_start is not None:
             self._last_t_brain_elapsed = max(
                 0.001, round(time.perf_counter() - t_turn_start, 3)
             )
-
-        # Step 4: Remote escalation to Deep Thought (Kender), passing the query, distilled
-        # strategic brief, AND the local Brain synthesis as grounding context upstream.
-        dt_response = ""
-        thought_reachable = "thought" in self.residents
-        if thought_reachable and self.is_deep_thought_reachable:
-            try:
-                thought_reachable = await self.is_deep_thought_reachable()
-            except Exception as e:
-                logging.warning(f"[HUB] Deep Thought reachability probe failed: {e}")
-                thought_reachable = False
-        # [FEAT-486] Fast Socket Shadow Gate: Even if the reachability probe nominally
-        # passed, run a 200ms TCP socket check on Kender to hard-bypass the remote call
-        # when it is SHADOW, eliminating 60s timeout hangs in STAGE 4/5.
-        if thought_reachable and not _probe_tcp(
-            KENDER_HOST, KENDER_PORT, SOCKET_TIMEOUT_S
-        ):
-            logging.info(
-                "[FEAT-486] Kender SHADOW (socket gate). Bypassing remote Strategic Synthesis."
-            )
-            thought_reachable = False
-        self._last_thought_duration = 0.0
-        if thought_reachable:
-            t_dt_start = time.perf_counter()
-            thought_context = distilled_context
-            if brain_response:
-                thought_context += f"\n\n[LOCAL_BRAIN_BASELINE]:\n{brain_response}"
-            active_tools = await self._get_node_tools("thought")
-            async for token in self._process_node_stream(
-                "thought",
-                query,
-                thought_context,
-                "Deep Thought",
-                tools=active_tools,
-                temperature=0.2,
-                request_id=request_id,
-            ):
-                dt_response += token
-                if shutdown_event and shutdown_event.is_set():
-                    break
-            self._last_thought_duration = max(
-                0.001, round(time.perf_counter() - t_dt_start, 3)
-            )
-
-        # [SPR-41_2] Skip cascade if context starvation was detected
-        if "thought" in self.context_starved_nodes:
-            self.context_starved_nodes.discard("thought")
-            logging.info("[HUB] Brain leg cascade bypassed due to CONTEXT_STARVED.")
-            return
-
-        # [FEAT-227] The Grounding Gate: Let Pinky critique and summarize the final strategic output.
-        # [FEAT-470] Evaluate whichever strategic response the waterfall produced (Deep Thought if
-        # reachable, otherwise the local Brain baseline) against the raw grounding context.
-        strategic_response = dt_response or brain_response
-        strategic_source = "Deep Thought" if dt_response else "Brain (Local Baseline)"
-        rag_payload = raw_context if "raw_context" in locals() else ""
-        t_crit_start = time.perf_counter()
-        await self.evaluate_grounding(
-            strategic_source,
-            strategic_response,
-            interest=self.current_interest,
-            shutdown_event=shutdown_event,
-            request_id=request_id,
-            rag_context=rag_payload,
-        )
-        self._last_thought_duration += max(
-            0.001, round(time.perf_counter() - t_crit_start, 3)
-        )
-        if t_turn_start is not None:
-            self._last_t_oracle_elapsed = max(
-                0.001, round(time.perf_counter() - t_turn_start, 3)
-            )
+        self.turn_thought_trace["brain"] = brain_response
 
     async def _run_two_mice_handover(
         self,
