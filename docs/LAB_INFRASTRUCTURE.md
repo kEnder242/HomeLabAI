@@ -448,16 +448,36 @@
      * **Reasoning Profile**: Suppressed. Emits direct deterministic code, JSON, and tool calls with `'reasoning': 0`.
    * **Node KENDER (Windows RTX 4090 24GB / `192.168.1.26`)**:
      * **Ollama Engine**: Port `11434` (`http://192.168.1.26:11434`) running `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL`.
-     * **Headroom**: ~14.8 GB dedicated VRAM KV cache headroom.
+     * **Kender Thought-Stripping Proxy**: Port `11435` (`http://127.0.0.1:11435/v1`) — **Mandatory harness entrypoint on Host Linux** (`LAB-116`/`BKM-079`). Managed via systemd service `kender-proxy.service`. Intercepts `/v1/chat/completions` (SSE streaming and non-streaming) from OpenCode, strips `<think>` tokens and `reasoning`/`reasoning_content` delta payloads, and discards empty thinking chunks. Eliminates reasoning deadlocks in silicon at the proxy layer.
      * **Context & Output Limits**: 131,072 context window (128k) / 8,192 output ceiling.
-     * **Reasoning Control**: By default, Qwen reasoning models output `<think>...</think>`. To prevent runaway thinking loops and token ceiling lockups (`finish=length`), thinking is actively suppressed for L2 conduction via lean 2-tier prompt directives or stripped Ollama Modelfile templates.
+     * **Reasoning Profile**: Hardware/proxy suppressed (`reasoning: 0`). Emits clean completion text, structured JSON, and tool calls immediately without prompt-level adversarial instructions.
 
 2. **Inverted Role Prohibition (Hardware Asymmetry Invariant)**:
    * **Never Swap Kender and Air**: Kender (RTX 4090) provides fast tensor prefill and high decode throughput suited for **Layer 2 Conductor (Atlas)**. M5 Air provides massive unified memory headroom (131k context) suited for **Layer 3 Worker (Junior)** holding large multi-file ASTs.
    * Swapping them degrades L2 turnaround and risks 24GB CUDA OOM on L3 multi-file diffs.
 
 3. **OpenAgent / Harness Invariant**:
-   * All OpenAgent / OpenCode config mappings in `opencode.json` must target `http://192.168.1.46:8002/v1` (Headroom Proxy) rather than raw port 8000.
+   * All OpenAgent / OpenCode config mappings in `opencode.json` must target:
+     * **Node Brain**: `http://192.168.1.46:8002/v1` (Headroom Proxy) rather than raw port 8000.
+     * **Node KENDER**: `http://127.0.0.1:11435/v1` (Kender Thought-Stripping Proxy) rather than raw port 11434.
+
+### LAB-116: Kender Thought-Stripping Proxy & Silicon Decoupling Protocol
+**Objective**: Intercept and eliminate internal `<think>` reasoning emissions from Qwen 3.8 / local GGUF models on Node KENDER via host-resident FastAPI proxy, eliminating prompt hacks and preventing reasoning loop deadlocks.
+
+1. **Architecture & Topology**:
+   * **Host Workstation (z87-Linux)**: Port `11435` (`http://127.0.0.1:11435/v1`).
+   * **Daemon Unit**: `kender-proxy.service` (Systemd User Unit: `/home/jallred/.config/systemd/user/kender-proxy.service`).
+   * **Upstream Target**: Node KENDER Ollama (`http://192.168.1.26:11434`).
+   * **Implementation**: `HomeLabAI/src/infra/kender_proxy.py` (FastAPI / `httpx.AsyncClient` / `uvicorn`).
+
+2. **Interception & Sanitization Logic**:
+   * **SSE Streaming (`POST /v1/chat/completions`)**: Parses chunks, deletes `reasoning` and `reasoning_content` from choices deltas, and discards empty thinking chunks so OpenCode receives only real content tokens, tool calls, and finish reasons.
+   * **Non-Streaming (`POST /v1/chat/completions`)**: Deletes `reasoning` and `reasoning_content` keys from the message object before returning to client.
+   * **Passthrough**: Forwards `/v1/models` and any `/api/*` endpoints directly to Ollama.
+
+3. **Resource & Safety Limits**:
+   * Configured with `MemoryHigh=250M` and `MemoryMax=500M` to maintain negligible memory footprint (~40MB resident).
+   * Upstream timeout configured to 300s to support heavy prefill without premature client dropouts.
 
 
 
