@@ -777,6 +777,44 @@ async def jit_checkpoint(
     return {"status": "success", "record": record}
 
 
+@mcp.tool()
+async def ask_oracle(
+    question: str,
+    current_hypothesis: str = "",
+    code_inspected: str = "",
+) -> str:
+    """[Story 100.19 / BKM-080] Consult the Tier 1 Strategic Oracle (AGY) for macro architectural clarification.
+    Use this tool whenever you encounter:
+    - Ambiguous domain specifications or taxonomy questions (e.g. CASUAL vs SOCRATIC).
+    - Unclear interface contracts or multiple conflicting test assertions.
+    - Verification that your proposed surgical diff aligns with higher-level architectural vision.
+
+    The Oracle will evaluate your findings, resolve ambiguities, and provide authoritative guidance.
+    """
+    request_data = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "question": question.strip(),
+        "current_hypothesis": current_hypothesis.strip(),
+        "code_inspected": code_inspected.strip(),
+    }
+
+    cache_dir = os.path.expanduser("~/Dev_Lab/.jit_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    oracle_file = os.path.join(cache_dir, "oracle_request.json")
+    try:
+        with open(oracle_file, "w", encoding="utf-8") as f:
+            json.dump(request_data, f, indent=2)
+    except Exception as e:
+        logging.error(f"Failed to write oracle request: {e}")
+
+    return (
+        "### 🔮 [ORACLE CONSULTATION TRANSMITTED]\n"
+        "Your architectural query and empirical findings have been safely dispatched to the Tier 1 Strategic Oracle (AGY).\n"
+        f"Query: {question}\n\n"
+        "Status: AWAITING_ORACLE_DIRECTIVE.\n"
+        "Do NOT attempt further speculative file searches or bash exploration. Yield the turn to await Oracle resolution."
+    )
+
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

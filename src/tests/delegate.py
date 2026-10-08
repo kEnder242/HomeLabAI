@@ -1909,6 +1909,34 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                                 if tname == "task":
                                     cat = tinput.get("category", "")
                                     state_summary += f" category:{cat}"
+                                elif tname in ("ask_oracle", "clara-dna_ask_oracle"):
+                                    # [Story 100.19 / BKM-080] Oracle Escalation Intercept: Kill with feedback
+                                    o_input = tinput if isinstance(tinput, dict) else {}
+                                    o_question = o_input.get("question", str(tinput))
+                                    o_hypo = o_input.get("current_hypothesis", "")
+                                    o_code = o_input.get("code_inspected", "")
+
+                                    log_step(
+                                        story_num,
+                                        "ORACLE_CONSULTATION_REQUESTED",
+                                        f"Atlas escalated to Tier 1 Oracle (AGY): {o_question}",
+                                        severity="CRITICAL",
+                                    )
+                                    print("\n" + "=" * 80, flush=True)
+                                    print(
+                                        f"🔮 [ORACLE CONSULTATION — ATLAS ESCALATION ON STORY {story_num}]",
+                                        flush=True,
+                                    )
+                                    print("=" * 80, flush=True)
+                                    print(f"QUESTION: {o_question}", flush=True)
+                                    if o_hypo:
+                                        print(f"HYPOTHESIS: {o_hypo}", flush=True)
+                                    if o_code:
+                                        print(f"CODE INSPECTED: {o_code}", flush=True)
+                                    print("=" * 80 + "\n", flush=True)
+
+                                    _cleanup_active_session()
+                                    sys.exit(3)
                                 elif tname == "question":
                                     # [FEAT-515 / Task 69.6.1] Interactive Popup Breakout
                                     q_input = tinput
