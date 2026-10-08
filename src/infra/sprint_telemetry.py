@@ -113,6 +113,7 @@ def get_sprint_metrics(sprint: int = 101) -> Dict[str, Any]:
     total_out = 0
     total_cache = 0
     total_tokens = 0
+    total_l3_sub = 0
     total_duration_s = 0.0
     completed_count = 0
 
@@ -139,11 +140,15 @@ def get_sprint_metrics(sprint: int = 101) -> Dict[str, Any]:
         led_total = led_tok.get("total", 0)
         led_duration = float(led.get("duration_s", 0.0))
 
+        sub_inf = led_tok.get("sub_inference", {}) if isinstance(led_tok.get("sub_inference"), dict) else {}
+        l3_sub_tokens = sub_inf.get("total_tokens", 0)
+
         # Best metrics resolution
         inp = max(rest_in, led_in)
         out = max(rest_out, led_out)
         cache = max(rest_cache, led_cache)
-        tot = max(rest_total, led_total, inp + out)
+        cond_tot = max(rest_total, led_total, inp + out)
+        blended_tot = cond_tot + l3_sub_tokens
 
         log_data = log_records.get(st, {})
         dur_s = max(led_duration, log_data.get("duration_s", 0.0))
@@ -173,14 +178,17 @@ def get_sprint_metrics(sprint: int = 101) -> Dict[str, Any]:
             "tokens_input": inp,
             "tokens_output": out,
             "tokens_cached": cache,
-            "tokens_total": tot,
+            "tokens_conductor": cond_tot,
+            "tokens_l3_sub": l3_sub_tokens,
+            "tokens_total": blended_tot,
             "duration_minutes": dur_m,
         })
 
         total_in += inp
         total_out += out
         total_cache += cache
-        total_tokens += tot
+        total_tokens += blended_tot
+        total_l3_sub += l3_sub_tokens
         total_duration_s += dur_s
 
     return {
@@ -192,6 +200,8 @@ def get_sprint_metrics(sprint: int = 101) -> Dict[str, Any]:
             "tokens_input": total_in,
             "tokens_output": total_out,
             "tokens_cached": total_cache,
+            "tokens_conductor": total_tokens - total_l3_sub,
+            "tokens_l3_sub": total_l3_sub,
             "tokens_total": total_tokens,
             "wall_time_minutes": round(total_duration_s / 60.0, 2),
         },
@@ -205,10 +215,10 @@ def format_markdown_table(data: Dict[str, Any]) -> str:
     totals = data.get("totals", {})
 
     lines = [
-        f"### 📊 Sprint {sprint} Telemetry Report",
+        f"### 📊 Sprint {sprint} Telemetry Report (Conductor + L3 Sub-Inference)",
         "",
-        "| Story | Status | Mode | Tokens (Total) | Input / Output | Cached Tokens | Wall Time (min) |",
-        "|---|:---:|:---:|:---:|:---:|:---:|:---:|",
+        "| Story | Status | Mode | Conductor Tokens | L3 Hidden Tokens | Blended Total | Cached Tokens | Wall Time (min) |",
+        "|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|",
     ]
 
     for s in stories:
@@ -216,19 +226,21 @@ def format_markdown_table(data: Dict[str, Any]) -> str:
         status = s["status"]
         status_badge = "✅ PASS" if status == "VERIFIED" else ("🟦 DONE" if status == "COMPLETED" else ("🔄 RUN" if status == "IN_PROGRESS" else "❌ FAIL"))
         mode = s["mode"].upper()
-        tot = f"{s['tokens_total']:,}"
-        io = f"{s['tokens_input']:,} in / {s['tokens_output']:,} out"
+        cond = f"{s['tokens_conductor']:,}"
+        l3 = f"+{s['tokens_l3_sub']:,}" if s['tokens_l3_sub'] > 0 else "—"
+        tot = f"**{s['tokens_total']:,}**"
         cache = f"{s['tokens_cached']:,}"
         dur = f"{s['duration_minutes']:.2f}m"
 
-        lines.append(f"| **{st_id}** | {status_badge} | `{mode}` | {tot} | {io} | {cache} | {dur} |")
+        lines.append(f"| **{st_id}** | {status_badge} | `{mode}` | {cond} | {l3} | {tot} | {cache} | {dur} |")
 
-    lines.append("|---|:---:|:---:|:---:|:---:|:---:|:---:|")
+    lines.append("|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
+    t_cond = f"**{totals.get('tokens_conductor', 0):,}**"
+    t_l3 = f"**+{totals.get('tokens_l3_sub', 0):,}**"
     t_tot = f"**{totals.get('tokens_total', 0):,}**"
-    t_io = f"**{totals.get('tokens_input', 0):,} in / {totals.get('tokens_output', 0):,} out**"
     t_cache = f"**{totals.get('tokens_cached', 0):,}**"
     t_dur = f"**{totals.get('wall_time_minutes', 0.0):.2f}m**"
-    lines.append(f"| **TOTALS** | **{data.get('completed_stories', 0)}/{data.get('total_stories', 0)}** | — | {t_tot} | {t_io} | {t_cache} | {t_dur} |")
+    lines.append(f"| **TOTALS** | **{data.get('completed_stories', 0)}/{data.get('total_stories', 0)}** | — | {t_cond} | {t_l3} | {t_tot} | {t_cache} | {t_dur} |")
     lines.append("")
 
     return "\n".join(lines)
