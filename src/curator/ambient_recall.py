@@ -268,12 +268,28 @@ def extract_literal_ids(text: str) -> list[str]:
 
 
 def get_recent_memories(limit=4):
-    """[LAB-019] Retrieve the newest N memories sorted chronologically by creation date directly from SQLite."""
+    """[LAB-019 / BKM-082] Retrieve newest relevant memories, filtering out stale commit diffs and transient noise."""
     db_path = os.path.expanduser("~/.local/share/icm/memories.db")
     if not os.path.exists(db_path):
         return []
     try:
         import sqlite3
+        import subprocess
+
+        # Resolve current git HEAD of HomeLabAI
+        current_head = ""
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--short=7", "HEAD"],
+                capture_output=True,
+                text=True,
+                cwd="/home/jallred/Dev_Lab/HomeLabAI",
+                timeout=0.5,
+            )
+            if res.returncode == 0:
+                current_head = res.stdout.strip().lower()
+        except Exception:
+            pass
 
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.1)
         cursor = conn.cursor()
@@ -281,19 +297,36 @@ def get_recent_memories(limit=4):
             """
             SELECT topic, summary, created_at 
             FROM memories 
-            WHERE topic != 'preferences' AND summary NOT LIKE '%[REMOVED]%'
+            WHERE topic != 'preferences' AND summary NOT LIKE '%[REMOVED]%' AND summary NOT LIKE '%[SUPERSEDED]%'
             ORDER BY created_at DESC 
             LIMIT ?
             """,
-            (limit,),
+            (limit * 4,),
         )
         rows = cursor.fetchall()
         conn.close()
-        return [
-            {"topic": r[0], "summary": r[1], "created": r[2]}
-            for r in rows
-            if r and r[1]
-        ]
+
+        clean_memories = []
+        for r in rows:
+            if not r or not r[1]:
+                continue
+            topic, summary, created = r[0], r[1].strip(), r[2]
+
+            # Skip raw AST line scrapes or traceback noise
+            if re.match(r"^\d+:\s+", summary) or summary.startswith("HomeLabAI/src/") or summary.startswith("FAILED "):
+                continue
+
+            # Filter out stale commit diffs from past sessions
+            if any(term in summary.lower() for term in ["stale bytecode", "head mismatch", "different head", "daemon serves"]):
+                commit_matches = re.findall(r"\b[0-9a-f]{7,8}\b", summary.lower())
+                if commit_matches and current_head and (current_head[:7] not in commit_matches):
+                    continue
+
+            clean_memories.append({"topic": topic, "summary": summary, "created": created})
+            if len(clean_memories) >= limit:
+                break
+
+        return clean_memories
     except Exception:
         return []
 
