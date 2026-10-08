@@ -1320,3 +1320,27 @@ Layer 2 (Atlas) holds the macro plan and session trajectory. When receiving Laye
 2. **Macro Judgment:** Atlas decides whether to adopt the recommendation, synthesize an alternative architectural fix, or modify test parameters.
 3. **Pristine Retry:** If retrying, Atlas updates the blueprint via `jit_stage()` and dispatches a **fresh, zero-mileage Layer 3 worker instance** via `task()`.
 4. **Stall Declaration:** If successive pristine workers fail the same assertion without progress, Atlas halts execution and escalates to Layer 1.
+
+---
+
+## BKM-079: Kender Thought-Stripping Proxy & Silicon Decoupling Protocol
+**Feature Anchor:** `[LAB-115]` / `[LAB-116]` / `[BKM-079]`  
+**Colloquial Alias:** "Hardware-Level Reasoning Eraser"  
+**Domain:** Local Silicon Integration, Reverse Proxying, Thinking Suppression  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Law
+Prompt-level instructions ("Do NOT think" / "Do NOT output `<think>` tags") and custom Modelfile Jinja stop sequences clash with base model weights on reasoning models (such as Qwen 2.5 / 3.8), creating token probability conflicts and failure loops on large contexts.
+Thinking suppression on local silicon MUST be enforced strictly in the communications transport pipeline, never via prompt persuasion.
+
+### 2. Architecture & Service
+1. **The Daemon (`kender-proxy.service`)**:
+   - Runs on the host Linux workstation on `127.0.0.1:11435`.
+   - Reverse-proxies upstream to Node KENDER Ollama on `192.168.1.26:11434`.
+2. **Stream Sanitization**:
+   - For `/v1/chat/completions` (SSE streaming): Intercepts incoming chunks from Ollama, strips all `reasoning` and `reasoning_content` delta blocks, and suppresses chunks that contain zero content or tool calls.
+   - For `/v1/chat/completions` (non-streaming): Deletes `reasoning` and `reasoning_content` keys from the message dictionary.
+   - For all other endpoints (`/v1/models`, `/api/*`): Forwards requests and responses transparently.
+3. **OpenCode Invariant**:
+   - All OpenCode mappings in `opencode.json` for `my-windows-4090` MUST point to `http://127.0.0.1:11435/v1` instead of directly to port 11434.
+
