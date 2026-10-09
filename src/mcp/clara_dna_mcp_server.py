@@ -765,7 +765,8 @@ async def jit_diagnose(test_output: str, error_context: str = "") -> str:
 
 @mcp.tool()
 async def jit_checkpoint(
-    status: str, summary: str, artifacts_modified: list = None
+    status: str, summary: str, artifacts_modified: list = None,
+    story: str = "", sprint: int = 0,
 ) -> dict:
     """Appends a JSON record with timestamp, status, summary, and artifacts to delegation_ledger.jsonl."""
     if artifacts_modified is None:
@@ -783,6 +784,10 @@ async def jit_checkpoint(
         "summary": summary,
         "artifacts_modified": artifacts_modified,
     }
+    if story:
+        record["story"] = story
+    if sprint:
+        record["sprint"] = sprint
 
     for p in [ledger_path, fallback_ledger]:
         try:

@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 OPENCODE_REST_URL = os.environ.get("OPENCODE_REST_URL", "http://127.0.0.1:4096/session")
 HOMELAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LEDGER_PATH = os.path.join(HOMELAB_DIR, "data", "delegation_ledger.jsonl")
+STORY_RE = re.compile(r"(?:Story|STORY)\s*([0-9]{1,3}\.[0-9A-Za-z]+)")
 
 
 def fetch_rest_sessions() -> List[Dict[str, Any]]:
@@ -259,6 +260,19 @@ def export_web_telemetry(output_path: Optional[str] = None) -> Dict[str, Any]:
     total_wall_minutes = 0.0
     successful_runs = 0
 
+    authoritative_stories = set()
+    if os.path.exists(LEDGER_PATH):
+        with open(LEDGER_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    candidate = json.loads(line)
+                except Exception:
+                    continue
+                if candidate.get("story") and candidate.get("sprint"):
+                    authoritative_stories.add(str(candidate["story"]))
+
     if os.path.exists(LEDGER_PATH):
         with open(LEDGER_PATH, "r", encoding="utf-8") as f:
             for line in f:
@@ -268,6 +282,23 @@ def export_web_telemetry(output_path: Optional[str] = None) -> Dict[str, Any]:
                     item = json.loads(line)
                 except Exception:
                     continue
+
+                # [Story 101.16 req 1] Drop raw live stdio checkpoint test pings.
+                if str(item.get("summary", "")).strip() == "Live stdio checkpoint test":
+                    continue
+
+                # [Story 101.16 req 2/3] Stub records: dedup against authoritative runs, else backfill.
+                stub = not item.get("story")
+                if stub:
+                    m = STORY_RE.search(item.get("summary", ""))
+                    story_hit = m.group(1) if m else ""
+                    if story_hit and story_hit in authoritative_stories:
+                        continue
+                    if m:
+                        story = m.group(1)
+                        item["story"] = story
+                        item["sprint"] = str(story.split(".")[0])
+                        item.setdefault("title", "")
 
                 status = str(item.get("status", ""))
                 if status in success_statuses:
