@@ -2225,7 +2225,10 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             log_step(story_num, "VERIFICATION_START", f"Executing single-shot verification: {verification}")
             try:
                 monorepo_root = os.path.expanduser("~/Dev_Lab")
-                exec_cwd = target_dir if (target_dir and os.path.exists(target_dir)) else (monorepo_root if os.path.exists(monorepo_root) else os.getcwd())
+                if ("Portfolio_Dev/" in verification or "HomeLabAI/" in verification) and os.path.exists(monorepo_root):
+                    exec_cwd = monorepo_root
+                else:
+                    exec_cwd = target_dir if (target_dir and os.path.exists(target_dir)) else (monorepo_root if os.path.exists(monorepo_root) else os.getcwd())
                 v_res = subprocess.run(
                     verification,
                     shell=True,
