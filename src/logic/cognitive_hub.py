@@ -146,7 +146,8 @@ DIRECT_RAW_QUERY = "direct_raw_query"
 # [FEAT-437/459] Unified HyDE & Greeting Synthesis Prompt (JSON)
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-    '1. "is_casual": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n'
+    '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).
+\n'
     '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
     '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
     "Gate technical synthesis by the 4 domains: exp_tlm (Silicon Telemetry), exp_bkm (SRE Playbooks), exp_for (Forensic Logs), lab_history (18-Year Archive).\n"
@@ -196,7 +197,8 @@ def _load_hyde_synthesis_prompt():
         mesh_str = ", ".join(keywords)
         return (
             "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-            '1. "is_casual": boolean (true if casual greeting or non-technical chatter, false if technical query needing lab archives/telemetry).\n'
+            '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).
+\n'
             '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
             '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
             f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n"
@@ -1101,21 +1103,13 @@ class CognitiveHub:
             buf_key = f"{request_id}_{src_key}"
             self.session_buffers[buf_key] = ""
 
-            # [FEAT-523] Token Budget: Clamp casual/low-interest turns to 150 tokens to prevent runaway loops
-            token_budget = (
-                max_tokens
-                if max_tokens is not None
-                else (
-                    128
-                    if is_triage
-                    else (
-                        150
-                        if getattr(self, "current_interest", 0.5) < 0.3
-                        or getattr(self, "current_vibe", "TECHNICAL") == "CASUAL"
-                        else 1500
-                    )
-                )
-            )
+            # [FEAT-523] Token Budget: Continuous interest multiplier pacing (de-vibed)
+            pacing_cfg = getattr(self, 'config', {}).get('interest_pacing', {})
+            multiplier = pacing_cfg.get('token_multiplier', 150)
+            min_floor = pacing_cfg.get('min_token_floor', 32)
+            max_ceiling = pacing_cfg.get('max_token_ceiling', 1500)
+            current_interest = getattr(self, 'current_interest', 0.5)
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier))))
             call_task = asyncio.create_task(
                 node.call_tool(
                     "think",
@@ -1891,8 +1885,9 @@ class CognitiveHub:
         elif lead_node == "both":
             # Both speak on Turn 1 ("Hey mice!" or open casual greeting)
             full_pinky_text = ""
-            p_temp = 0.4 if vibe == "CASUAL" else 0.7
-            p_max_tokens = 35 if vibe == "CASUAL" else None
+            pinky_profile = getattr(self, 'config', {}).get('node_pacing_profiles', {}).get('pinky', {})
+            p_temp = pinky_profile.get('default_temp', 0.7)
+            p_max_tokens = pinky_profile.get('max_tokens', None)
             async for token in self._process_node_stream(
                 "pinky",
                 turn,
@@ -1927,15 +1922,16 @@ class CognitiveHub:
             brain_prefetch_task = None
             if (
                 "brain" in self.residents or "thought" in self.residents
-            ) and vibe != "CASUAL":
+            ) and len(getattr(self, "current_target_domains", [])) > 0:
                 brain_prefetch_task = asyncio.create_task(
                     self._fetch_rag_context(turn, t_parsed, request_id=request_id)
                 )
 
             # Pinky leads Turn 1 (Explicitly addressed to PINKY)
             full_pinky_text = ""
-            p_temp = 0.4 if vibe == "CASUAL" else 0.7
-            p_max_tokens = 35 if vibe == "CASUAL" else None
+            pinky_profile = getattr(self, 'config', {}).get('node_pacing_profiles', {}).get('pinky', {})
+            p_temp = pinky_profile.get('default_temp', 0.7)
+            p_max_tokens = pinky_profile.get('max_tokens', None)
             async for token in self._process_node_stream(
                 "pinky",
                 turn,
