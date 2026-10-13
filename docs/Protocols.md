@@ -845,11 +845,14 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 5. **Action on Missing Tag:** If a subagent modifies codebase logic but omits the Live Gate tag, AGY must treat the story as `LIVE_GATE_PENDING` and perform live daemon verification before committing.
 6. **Inter-Attempt Diagnostic Index:** For all failure diagnosis, prompt tuning, circular trap prevention, and playbook references, proceed immediately to **[BKM-071]**.
 
-#### 6. Bounded Conductor Context & Semantic Pre-Warming Invariant ([FEAT-642] / [FEAT-643] / [DISC-011])
-1. **The Just-In-Time Illusion (`DISC-011`):** To preserve L2 conductor agency without inducing context bloat or multi-turn slicing loops, `delegate.py` MUST pre-warm target file semantic digests (`_prewarm_target_context`) into `/tmp/clara_context_cache.json` before session execution.
-2. **First-Touch AST Blueprint & Digest:** When the conductor invokes `clara-dna_read(file_path)`, the tool serves a bounded (<400 tokens) payload containing the full class/def AST blueprint alongside the pre-warmed semantic digest.
-3. **Raw Read Denial:** Conductor personas are denied raw, unbuffered whole-file reads (`read: deny` / `grep: deny`) to enforce structural grounding and prevent 100k+ token context blowouts. Slicing is bounded to max 150 lines per call.
-
+#### 7. The Git Backchannel & Inter-Story Cleanliness Law
+1. **The Causal Why (Git as an Active Inter-Tier Channel):**
+   * The Git working tree is NOT merely passive local storage; it is an active **forensic backchannel between Layer 2 (Tactical Conductor) and Layer 3 (Leaf Worker)**. Conductor personas (Atlas on Node KENDER) continuously execute `git status` and `git diff --stat` to verify story isolation and detect rogue file modifications.
+   * **The Failure Mode:** When the primary orchestrator (AGY / L1) withholds `git commit` across stories (e.g. attempting to batch commits at phase boundaries), preceding story changes linger in the working tree as dirty uncommitted files. During the subsequent story, L2's automated scope enforcement inspects `git diff`, cannot distinguish between *prior authorized work* and *L3 scope bleed*, assumes L3 went rogue, and executes `git checkout -- <file>`. This inadvertently destroys preceding stories.
+2. **The Mandate (Immediate Per-Story Checkpoint):**
+   * The primary orchestrator (AGY / L1) MUST execute an atomic `git commit` immediately upon certifying each story, before dispatching the next story.
+3. **Prohibition of Multi-Story Dirty Trees:**
+   * Leaving uncommitted modifications in the workspace across story dispatches is strictly forbidden. Every dispatch MUST start from a clean, unambiguous Git HEAD so L2's scope-enforcement lens reflects 100% active-story changes.
 
 ---
 
