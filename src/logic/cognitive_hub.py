@@ -146,8 +146,7 @@ DIRECT_RAW_QUERY = "direct_raw_query"
 # [FEAT-437/459] Unified HyDE & Greeting Synthesis Prompt (JSON)
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-    '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).
-\n'
+    '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).\n'
     '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
     '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
     "Gate technical synthesis by the 4 domains: exp_tlm (Silicon Telemetry), exp_bkm (SRE Playbooks), exp_for (Forensic Logs), lab_history (18-Year Archive).\n"
@@ -197,8 +196,7 @@ def _load_hyde_synthesis_prompt():
         mesh_str = ", ".join(keywords)
         return (
             "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-            '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).
-\n'
+            '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).\n'
             '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
             '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
             f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n"
