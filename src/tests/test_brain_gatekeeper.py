@@ -22,9 +22,9 @@ def test_stage1_prompt_contains_gatekeeper_and_curator_instructions():
         context="[FEAT-582]: DNA Forge Studio.\n[BKM-060]: Federated DNA Taxonomy.",
         interest=0.85,
     )
-    assert "Information Gatekeeper and Subconscious Intuition node" in prompt
+    assert "Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer" in prompt
     assert "💡 Curator Note:" in prompt
-    assert "drop irrelevant/tangential items" in prompt
+    assert "prune irrelevant or tangential chunks entirely" in prompt
     assert "3-4 dense" in prompt
     assert "pure technical signal" in prompt
     assert "<historical_record>" in prompt
