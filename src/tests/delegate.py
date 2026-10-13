@@ -1057,7 +1057,7 @@ def _is_provider_reachable(provider_id: str) -> bool:
 def _run_bkm049_diagnostics(
     story_num: int, attempt: int, reason: str = "", session_id: str | None = None
 ) -> dict:
-    """[BKM-049] Mandatory Three-Tier Diagnostic Probes between execution retries.
+    """[BKM-049] Mandatory Three-Tier Diagnostic Probes between execution feedback rounds (Remediation Rounds).
     1. Server & Silicon State (Port 4097, Port 8002/8000, GPU/sockets)
     2. Session Transcripts & Messages (OpenCode REST messages, compaction loops, tool rejections)
     3. Harness & Configuration Audit
@@ -2405,7 +2405,7 @@ if __name__ == "__main__":
         "--retries",
         default=1,
         type=int,
-        help="[DEPRECATED]: delegate.py is strictly single-shot per BKM-049.",
+        help=argparse.SUPPRESS,  # [BKM-049] Blind retries forbidden; dispatches are single-shot feedback loops
     )
     # Note: --agent flag removed per BKM-049/BKM-071; mode strictly determines entrypoint agent:
     # local -> atlas, cloud -> sisyphus, oracle -> oracle.
