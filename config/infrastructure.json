@@ -3,6 +3,27 @@
     "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
     "preferred_triage_engine": "M5_AIR",
+    "interest_pacing": {
+        "enabled": true,
+        "token_multiplier": 150,
+        "min_token_floor": 32,
+        "max_token_ceiling": 1500
+    },
+    "node_pacing_profiles": {
+        "pinky": {
+            "default_temp": 0.7,
+            "terse_temp": 0.4,
+            "repetition_penalty": 1.15
+        },
+        "brain": {
+            "default_temp": 0.3,
+            "repetition_penalty": 1.12
+        },
+        "thought": {
+            "default_temp": 0.2,
+            "repetition_penalty": 1.10
+        }
+    },
     "voteable_sources": ["pinky", "brain", "thought", "triage", "lab"],
     "hibernation": {
         "enabled": false,
