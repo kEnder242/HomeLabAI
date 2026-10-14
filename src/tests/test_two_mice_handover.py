@@ -282,10 +282,10 @@ def test_handover_runs_brain_then_pinky_sequentially():
     brain_node = hub.residents["brain"]
     pinky_node = hub.residents["pinky"]
 
-    # Order: Brain's Stage 1 call strictly precedes Pinky's Stage 2 call.
-    assert len(brain_node.calls) == 1 and len(pinky_node.calls) == 1
-    brain_call, pinky_call = brain_node.calls[0], pinky_node.calls[0]
-    assert brain_call["name"] == "think" and pinky_call["name"] == "think"
+    # Order: Brain's Stage 1 call strictly precedes Pinky's Stage 2 call, followed by Stage 4 Critic.
+    assert len(brain_node.calls) == 1 and len(pinky_node.calls) == 2
+    brain_call, pinky_call, critic_call = brain_node.calls[0], pinky_node.calls[0], pinky_node.calls[1]
+    assert brain_call["name"] == "think" and pinky_call["name"] == "think" and critic_call["name"] == "think"
 
     brain_query = brain_call["arguments"].get("query", "")
     pinky_query = pinky_call["arguments"].get("query", "")
@@ -304,9 +304,6 @@ def test_handover_runs_brain_then_pinky_sequentially():
     pinky_idx = next(i for i, (_, c, s) in enumerate(order) if s == "Pinky (Voice)")
     assert brain_idx < pinky_idx, "Stage 2 streamed before Stage 1 completed!"
     assert len(packets) >= 2  # per-stage finalizer packets
-    assert (
-        packets[-1]["source"] == TWO_MICE_PINKY_SOURCE and packets[-1]["final"] is True
-    )
 
     # Handover trace recorded for the session ledger.
     assert "ESB2 server platform" in hub.turn_thought_trace["brain"]

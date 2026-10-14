@@ -1235,7 +1235,10 @@ class CognitiveHub:
                     }
                 )
 
-            self.turn_thought_trace[node_id] = full_text
+            if "Critic" in source_display:
+                self.turn_thought_trace["critique"] = full_text
+            else:
+                self.turn_thought_trace[node_id] = full_text
             if node_id == "thought":
                 # [FEAT-470] Legacy backfill: alias Deep Thought -> "brain" only when the local
                 # Brain (shadow_brain_v2) leg did not already record its own synthesis.
@@ -2204,17 +2207,18 @@ class CognitiveHub:
                 )
 
             # [FEAT-470] Broadcast internal diagnostic telemetry frame to CROSSTALK
-            telemetry_frame = format_crosstalk_telemetry(
-                source="Pinky", target=source, payload=new_eval
-            )
-            await self.broadcast(
-                {
-                    "type": "crosstalk",
-                    "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
-                    "brain_source": "System (Critic Telemetry)",
-                    "telemetry": telemetry_frame,
-                }
-            )
+            if self.broadcast:
+                telemetry_frame = format_crosstalk_telemetry(
+                    source="Pinky", target=source, payload=new_eval
+                )
+                await self.broadcast(
+                    {
+                        "type": "crosstalk",
+                        "brain": f"[CRITIC TELEMETRY] Score: {critic_res.score}/5 | Slop: {critic_res.slop_found}",
+                        "brain_source": "System (Critic Telemetry)",
+                        "telemetry": telemetry_frame,
+                    }
+                )
 
             # [FEAT-470] Blend cartoon quip + agreed summary for out-loud delivery (banning robotic boilerplate)
             chat_delivery = format_chat_delivery(
@@ -2918,6 +2922,31 @@ class CognitiveHub:
         )
         return pinky_tldr
 
+    async def step_grounding_critic(
+        self,
+        query: str,
+        strategic_source: str,
+        strategic_response: str,
+        focus_context: str,
+        interest: float,
+        shutdown_event=None,
+        request_id: str = "default",
+    ) -> str:
+        """[FEAT-227 / FEAT-470 / BKM-083] Stage 4 Pinky Grounding Critic: evaluates strategic synthesis against evidence."""
+        t_crit_start = time.perf_counter()
+        await self.evaluate_grounding(
+            strategic_source,
+            strategic_response,
+            interest=interest,
+            shutdown_event=shutdown_event,
+            request_id=request_id,
+            rag_context=focus_context,
+        )
+        self._last_thought_duration += max(
+            0.001, round(time.perf_counter() - t_crit_start, 3)
+        )
+        return self.turn_thought_trace.get("critique", "")
+
     async def _run_two_mice_handover(
         self,
         query: str,
@@ -2939,6 +2968,10 @@ class CognitiveHub:
         Stage 3 (Pinky - Left Console / TTS): Pinky receives the synthesis,
         acknowledges Brain/Deep Thought, and streams a 2-sentence conversational
         TL;DR to ``channel="pinky"`` / ``source="Pinky (Voice)"``.
+
+        Stage 4 (Pinky - Coherence Critic) [FEAT-227 / FEAT-470]: Pinky evaluates
+        the strategic synthesis against the underlying evidence and records
+        grounding scorecard.
 
         Returns ``True`` when the handover ran; ``False`` when it is not
         possible (missing brains/pinky resident, or interest below the
@@ -2974,8 +3007,22 @@ class CognitiveHub:
             query, pinky_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
+        # Stage 4: Pinky Grounding Critic [FEAT-227 / FEAT-470]
+        strategic_response = dt_synthesis or brain_bullets
+        strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
+        if strategic_response:
+            await self.step_grounding_critic(
+                query,
+                strategic_source,
+                strategic_response,
+                focus_context,
+                gate_interest,
+                shutdown_event=shutdown_event,
+                request_id=request_id,
+            )
+
         logging.info(
-            f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_bullets)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed."
+            f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_bullets)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
         )
         return True
 

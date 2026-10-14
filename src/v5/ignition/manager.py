@@ -626,6 +626,7 @@ class IgnitionManager:
                                             "HIBERNATING",
                                             "UNKNOWN",
                                             "ERROR",
+                                            "OFFLINE",
                                         ]:
                                             logging.info(
                                                 f"[IGNITION] Triggering ignition task for {event.id}..."
