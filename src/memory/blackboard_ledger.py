@@ -135,6 +135,7 @@ class BlackboardLedger:
         bullets: list[str],
         consensus: str,
         output_path: str | None = None,
+        user_prompt: str = "",
     ) -> dict[str, Any]:
         """[FEAT-529] Atomic delta export engine for live turn memory to round table delta-t bridge."""
         if output_path is None:
@@ -142,6 +143,19 @@ class BlackboardLedger:
                 "~/Dev_Lab/Portfolio_Dev/field_notes/data/round_table_deltas.json"
             )
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        records = []
+        if os.path.exists(output_path):
+            try:
+                with open(output_path, "r") as f:
+                    existing = json.load(f)
+                    if isinstance(existing, list):
+                        records = existing
+            except Exception:
+                records = []
+
+        # Monotonic turn enforcement: strictly continuous sequence across sessions
+        monotonic_turn = len(records) + 1 if (not turn or turn <= len(records)) else int(turn)
 
         # True monotonic elapsed checkpoints from turn start (t1 -> t5)
         t1_elapsed = round(float(deltas.get("triage", 0.0)), 3)
@@ -158,11 +172,12 @@ class BlackboardLedger:
         d5 = max(0.001, round(t5_elapsed - t4_elapsed, 3))
 
         turn_entry = {
-            "turn": int(turn),
+            "turn": monotonic_turn,
             "timestamp": int(time.time()),
             "time_str": time.strftime("%H:%M:%S"),
             "topic": topic or "ROUND_TABLE_DELIBERATION",
             "scope": scope or "CONTEXT_SCOPE_LONG",
+            "user_prompt": user_prompt or f"Deliberation turn {monotonic_turn} ({topic})",
             "turn_mode": "FULL_ROUND_TABLE",
             "is_full_round_table": True,
             "checkpoints_elapsed_s": {
@@ -198,16 +213,6 @@ class BlackboardLedger:
             "distillation_bullets": bullets if bullets else ["Live turn registered."],
             "consensus_1liner": consensus if consensus else "Consensus nominal.",
         }
-
-        records = []
-        if os.path.exists(output_path):
-            try:
-                with open(output_path, "r") as f:
-                    existing = json.load(f)
-                    if isinstance(existing, list):
-                        records = existing
-            except Exception:
-                records = []
 
         updated = False
         for idx, r in enumerate(records):
