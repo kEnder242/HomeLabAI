@@ -1,4 +1,6 @@
 {
+    "_doc": "HomeLabAI/docs/LAB_INFRASTRUCTURE.md",
+    "_comment": "Physical silicon laws, hardware specs, mount points, and multi-engine topology are documented in HomeLabAI/docs/LAB_INFRASTRUCTURE.md",
     "idle_eviction_enabled": false,
     "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
