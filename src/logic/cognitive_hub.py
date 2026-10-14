@@ -444,9 +444,23 @@ class CognitiveHub:
         set_active_domain=None,
         get_lab_state=None,
         is_deep_thought_reachable=None,
+        config=None,
     ):
         import subprocess
         import time
+
+        if config is not None:
+            self.config = config
+        else:
+            infra_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+            if os.path.exists(infra_path):
+                try:
+                    with open(infra_path, "r", encoding="utf-8") as f:
+                        self.config = json.load(f)
+                except Exception:
+                    self.config = {}
+            else:
+                self.config = {}
 
         # Capture boot commit from repo root
         try:
@@ -1104,11 +1118,11 @@ class CognitiveHub:
             self.session_buffers[buf_key] = ""
 
             # [FEAT-523] Token Budget: Continuous interest multiplier pacing (de-vibed)
-            pacing_cfg = getattr(self, 'config', {}).get('interest_pacing', {})
-            multiplier = pacing_cfg.get('token_multiplier', 150)
-            min_floor = pacing_cfg.get('min_token_floor', 32)
-            max_ceiling = pacing_cfg.get('max_token_ceiling', 1500)
-            current_interest = getattr(self, 'current_interest', 0.5)
+            pacing_cfg = self.config["interest_pacing"]
+            multiplier = pacing_cfg["token_multiplier"]
+            min_floor = pacing_cfg["min_token_floor"]
+            max_ceiling = pacing_cfg["max_token_ceiling"]
+            current_interest = getattr(self, "current_interest", 0.0)
             token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier))))
             call_task = asyncio.create_task(
                 node.call_tool(
@@ -2072,6 +2086,7 @@ class CognitiveHub:
                         deltas=deltas_dict,
                         bullets=bullets_list,
                         consensus=consensus_text,
+                        user_prompt=clean_user,
                     )
             except Exception as e:
                 logging.warning(

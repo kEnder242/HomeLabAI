@@ -860,6 +860,13 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 2. **Prohibition of Un-dotted and Free-form Prefixes:**
    * Passing un-dotted integers (`--story 1029`) or free-form strings (`--story "STORY 1029"`) is strictly prohibited. Un-dotted notation breaks regex deduplication in `sprint_telemetry.py`, prevents correlation between conductor `delegate.py` records and worker `jit_checkpoint` records, and pollutes public web feeds with undecorated stubs.
 
+#### 9. Primary Conductor Telemetry Mandate (`--log-agy`)
+1. **The Invariant Law:**
+   * Whenever AGY executes directly as Primary Conductor (`[AGY:PRIMARY]`), executes an emergency takeover, or certifies an architectural story that bypassed OpenCode headless delegation, AGY MUST record its actual conductor tokens and duration to `delegation_ledger.jsonl` using:
+     `HomeLabAI/.venv/bin/python3 HomeLabAI/src/tests/delegate.py --log-agy --sprint <S> --story <S.N> --title "<Title>" --tokens <T> --duration <D>`
+2. **Preventing Telemetry Blindness:**
+   * Omitting AGY logging leaves the Primary Conductor tracked at 0 tokens in public and web telemetry (`delegation_runs.json`). Conductor expenditures represent true lab development volume and must be committed alongside swarm dispatches.
+
 ---
 
 ## BKM-071: Delegation Playbook Index
@@ -1312,6 +1319,13 @@ During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug 
    - Execution proceeds under `BKM-006` and `BKM-007` with assigned owner tags (`[AGY:PRIMARY]` vs `[SWARM:LOCAL]`).
    - Every completed anchor transitions its state to `✅ DONE` in the sprint plan ledger.
 
+### 4. The 1:1 Numbered Swim Lane Invariant (Anti-Grouping Mandate)
+1. **The Invariant Law:**
+   * Numbered dialogue items ($1 \dots N$) established during design alignment ARE the canonical, immutable swim lanes.
+   * Agents are **strictly forbidden** from merging, grouping, collapsing, or bunching multiple numbered items together (e.g. headers like "1 & 2", "4, 5 & 11", or "6 & 7").
+2. **Individual Lifetime:**
+   * Every single numbered item MUST be addressed in its own discrete, separate numbered section in responses and sprint plans.
+   * Swim lanes maintain their individual numbering until they naturally achieve full consensus, are certified, and peter out.
 
 ---
 
