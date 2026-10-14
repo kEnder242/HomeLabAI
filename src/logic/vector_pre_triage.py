@@ -202,13 +202,17 @@ def probe_clara_dna_sync(
         hint = f"[VECTOR_MATCH]: Low archive semantic similarity (min_dist={best_dist:.3f} > 0.68). General conceptual or conversational inquiry."
         suggested_vibe = "SOCRATIC"
 
+    semantic_affinity = max(0.0, round(1.0 - (best_dist if best_dist < 900 else 1.0), 3))
+    matched_collections = [c for c, data in results_by_col.items() if data.get("distance", 1.0) < 0.68]
     is_casual = best_dist > 0.68
 
     return {
         "min_distance": best_dist if best_dist < 900 else 1.0,
+        "semantic_affinity": semantic_affinity,
         "best_collection": best_col,
         "best_meta": best_meta,
         "best_doc": best_doc,
+        "candidate_collections": matched_collections,
         "results_by_collection": results_by_col,
         "semantic_hint": hint,
         "suggested_vibe": suggested_vibe,

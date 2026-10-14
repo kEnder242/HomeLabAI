@@ -157,19 +157,36 @@ class BlackboardLedger:
         # Monotonic turn enforcement: strictly continuous sequence across sessions
         monotonic_turn = len(records) + 1 if (not turn or turn <= len(records)) else int(turn)
 
-        # True monotonic elapsed checkpoints from turn start (t1 -> t5)
-        t1_elapsed = round(float(deltas.get("triage", 0.0)), 3)
-        t2_elapsed = round(float(deltas.get("pinky_stance", t1_elapsed)), 3)
-        t3_elapsed = round(float(deltas.get("brain_arch", t2_elapsed)), 3)
-        t4_elapsed = round(float(deltas.get("oracle", t3_elapsed)), 3)
-        t5_elapsed = round(float(deltas.get("pinky_judgment", t4_elapsed)), 3)
+        raw_t1 = round(float(deltas.get("triage", 0.0)), 3)
+        raw_t2 = round(float(deltas.get("pinky_stance", 0.0)), 3)
+        raw_t3 = round(float(deltas.get("brain_arch", 0.0)), 3)
+        raw_t4 = round(float(deltas.get("oracle", 0.0)), 3)
+        raw_t5 = round(float(deltas.get("pinky_judgment", 0.0)), 3)
 
-        # Derived isolated stage durations from checkpoints
-        d1 = t1_elapsed
-        d2 = max(0.001, round(t2_elapsed - t1_elapsed, 3))
-        d3 = max(0.001, round(t3_elapsed - t2_elapsed, 3))
-        d4 = max(0.001, round(t4_elapsed - t3_elapsed, 3))
-        d5 = max(0.001, round(t5_elapsed - t4_elapsed, 3))
+        # Detect whether caller passed monotonic checkpoints (t1 <= t2 <= t3 <= t4 <= t5) or isolated durations
+        is_checkpoint = (raw_t5 >= raw_t4 >= raw_t3 >= raw_t2 >= raw_t1) and (raw_t5 > raw_t1)
+        if is_checkpoint:
+            t1_elapsed = raw_t1
+            t2_elapsed = raw_t2
+            t3_elapsed = raw_t3
+            t4_elapsed = raw_t4
+            t5_elapsed = raw_t5
+            d1 = t1_elapsed
+            d2 = max(0.001, round(t2_elapsed - t1_elapsed, 3))
+            d3 = max(0.001, round(t3_elapsed - t2_elapsed, 3))
+            d4 = max(0.001, round(t4_elapsed - t3_elapsed, 3))
+            d5 = max(0.001, round(t5_elapsed - t4_elapsed, 3))
+        else:
+            d1 = raw_t1
+            d2 = raw_t2
+            d3 = raw_t3
+            d4 = raw_t4
+            d5 = raw_t5
+            t1_elapsed = d1
+            t2_elapsed = round(t1_elapsed + d2, 3)
+            t3_elapsed = round(t2_elapsed + d3, 3)
+            t4_elapsed = round(t3_elapsed + d4, 3)
+            t5_elapsed = round(t4_elapsed + d5, 3)
 
         turn_entry = {
             "turn": monotonic_turn,
@@ -216,7 +233,7 @@ class BlackboardLedger:
 
         updated = False
         for idx, r in enumerate(records):
-            if r.get("timestamp") == turn_entry["timestamp"]:
+            if r.get("turn") == turn_entry["turn"]:
                 records[idx] = turn_entry
                 updated = True
                 break

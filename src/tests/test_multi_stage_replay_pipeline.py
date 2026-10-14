@@ -88,6 +88,37 @@ def test_stage2_triage_interest_calculation():
     assert calculated_interest >= 0.70, f"Interest {calculated_interest} was below 0.70!"
 
 
+def test_stage3_hyde_rag_resolution():
+    """Stage 3: HyDE RAG resolution retrieves candidate docs when target_domains has collections and search_required is True."""
+    hub = _make_test_hub()
+    triage_fixture = {
+        "inferred_intent": "Recall Aurora psys experience",
+        "addressed_to": "NONE",
+        "vibe": "HISTORICAL",
+        "domain": "work_history",
+        "search_required": True,
+        "calculated_interest": 0.84,
+        "importance": 0.8,
+        "target_domains": ["career_ledger"],
+        "hyde_vector_text": "[VALIDATION]: Aurora psys | [STRATEGY]: refresh memory | [SRE]: career ledger",
+    }
+
+    archive_mock = MagicMock()
+    archive_mock.call_tool = AsyncMock(
+        return_value=MagicMock(content=[MagicMock(text=SAMPLE_AURORA_RAG)])
+    )
+    hub.residents["archive"] = archive_mock
+
+    async def _run():
+        return await hub.step_hyde_rag(LITMUS_QUERY, triage_fixture)
+
+    clean_hyde, rag_docs = asyncio.run(_run())
+    assert len(clean_hyde) > 5
+    assert "aurora" in clean_hyde.lower()
+    assert len(rag_docs) > 0
+    assert "Aurora" in rag_docs
+
+
 def test_stage4_brain_gatekeeper_prompt_construction():
     """Stage 4: Brain Gatekeeper prompt instructs pruning and 3-4 dense bullets for Aurora."""
     prompt = build_two_mice_stage_prompt(
@@ -103,39 +134,41 @@ def test_stage4_brain_gatekeeper_prompt_construction():
     assert "pure technical signal" in prompt
 
 
-@pytest.mark.asyncio
-async def test_stage5_tri_node_relay_contract():
+def test_stage5_tri_node_relay_contract():
     """Stage 5: Tri-Node Relay verifies streaming packets across Brain, Deep Thought, and Pinky."""
     packets = []
 
-    async def mock_broadcast(pkt):
-        packets.append(pkt)
+    async def _run_test():
+        async def mock_broadcast(pkt):
+            packets.append(pkt)
 
-    hub = _make_test_hub(broadcast_fn=mock_broadcast)
-    
-    # Configure mock residents for brain, thought, pinky
-    brain_mock = MagicMock()
-    thought_mock = MagicMock()
-    pinky_mock = MagicMock()
+        hub = _make_test_hub(broadcast_fn=mock_broadcast)
+        
+        # Configure mock residents for brain, thought, pinky
+        brain_mock = MagicMock()
+        thought_mock = MagicMock()
+        pinky_mock = MagicMock()
 
-    hub.residents["brain"] = brain_mock
-    hub.residents["thought"] = thought_mock
-    hub.residents["pinky"] = pinky_mock
+        hub.residents["brain"] = brain_mock
+        hub.residents["thought"] = thought_mock
+        hub.residents["pinky"] = pinky_mock
 
-    # Verification packet structure
-    p_brain = build_two_mice_stream_packet(
-        source="Brain (Archive)", channel=TWO_MICE_BRAIN_CHANNEL, console=TWO_MICE_BRAIN_CONSOLE, token="[Anchor 1]", final=False
-    )
-    p_thought = build_two_mice_stream_packet(
-        source="Deep Thought (Strategy)", channel="insight", console="center", token="[Strategic Synthesis]", final=False
-    )
-    p_pinky = build_two_mice_stream_packet(
-        source="Pinky (Voice)", channel=TWO_MICE_PINKY_CHANNEL, console=TWO_MICE_PINKY_CONSOLE, token="Narf!", final=False
-    )
+        # Verification packet structure
+        p_brain = build_two_mice_stream_packet(
+            source="Brain (Archive)", channel=TWO_MICE_BRAIN_CHANNEL, console=TWO_MICE_BRAIN_CONSOLE, token="[Anchor 1]", final=False
+        )
+        p_thought = build_two_mice_stream_packet(
+            source="Deep Thought (Strategy)", channel="insight", console="center", token="[Strategic Synthesis]", final=False
+        )
+        p_pinky = build_two_mice_stream_packet(
+            source="Pinky (Voice)", channel=TWO_MICE_PINKY_CHANNEL, console=TWO_MICE_PINKY_CONSOLE, token="Narf!", final=False
+        )
 
-    await mock_broadcast(p_brain)
-    await mock_broadcast(p_thought)
-    await mock_broadcast(p_pinky)
+        await mock_broadcast(p_brain)
+        await mock_broadcast(p_thought)
+        await mock_broadcast(p_pinky)
+
+    asyncio.run(_run_test())
 
     assert len(packets) == 3
     sources = [p["source"] for p in packets]

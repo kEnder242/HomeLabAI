@@ -143,19 +143,19 @@ DEEP_THOUGHT_REMOTE = "deep_thought_remote"
 PINKY_LOCAL_VLLM = "pinky_local_vllm"
 DIRECT_RAW_QUERY = "direct_raw_query"
 
-# [FEAT-437/459] Unified HyDE & Greeting Synthesis Prompt (JSON)
+# [FEAT-437/459/645] Unified HyDE & Greeting Synthesis Prompt (JSON)
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-    '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).\n'
-    '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
-    '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
+    '1. "search_required": boolean (true if query requires facts from lab telemetry, career ledger, or historical archives; false only for pure chit-chat).\n'
+    '2. "greeting": string (concise 1-sentence analytical readiness quip from Deep Thought or triage summary).\n'
+    '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n'
     "Gate technical synthesis by the 4 domains: exp_tlm (Silicon Telemetry), exp_bkm (SRE Playbooks), exp_for (Forensic Logs), lab_history (18-Year Archive).\n"
     "Output ONLY valid JSON."
 )
 
 
 def _load_hyde_synthesis_prompt():
-    """[FEAT-437/438/459] Load Unified HYDE_SYNTHESIS_PROMPT dynamically from career_compass.json."""
+    """[FEAT-437/438/459/645] Load Unified HYDE_SYNTHESIS_PROMPT dynamically from career_compass.json."""
     compass_paths = [
         os.path.normpath(
             os.path.join(
@@ -196,9 +196,9 @@ def _load_hyde_synthesis_prompt():
         mesh_str = ", ".join(keywords)
         return (
             "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-            '1. "is_casual": boolean (true ONLY if query is an open conversational greeting without technical intent, false if technical query, code command, or inquiry needing lab archives/telemetry).\n'
-            '2. "greeting": string (if casual, a 1-sentence analytical readiness quip from Deep Thought; if technical, a 1-sentence triage summary).\n'
-            '3. "hyde_vector": string (if technical, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; if casual, set to "").\n'
+            '1. "search_required": boolean (true if query requires facts from lab telemetry, career ledger, or historical archives; false only for pure chit-chat).\n'
+            '2. "greeting": string (concise 1-sentence analytical readiness quip from Deep Thought or triage summary).\n'
+            '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n'
             f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n"
             "Output ONLY valid JSON."
         )
@@ -1118,10 +1118,13 @@ class CognitiveHub:
             self.session_buffers[buf_key] = ""
 
             # [FEAT-523] Token Budget: Continuous interest multiplier pacing (de-vibed)
-            pacing_cfg = self.config["interest_pacing"]
-            multiplier = pacing_cfg["token_multiplier"]
-            min_floor = pacing_cfg["min_token_floor"]
-            max_ceiling = pacing_cfg["max_token_ceiling"]
+            pacing_cfg = getattr(self, "config", {}).get(
+                "interest_pacing",
+                {"token_multiplier": 150, "min_token_floor": 32, "max_token_ceiling": 1500},
+            )
+            multiplier = pacing_cfg.get("token_multiplier", 150)
+            min_floor = pacing_cfg.get("min_token_floor", 32)
+            max_ceiling = pacing_cfg.get("max_token_ceiling", 1500)
             current_interest = getattr(self, "current_interest", 0.0)
             token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier))))
             call_task = asyncio.create_task(
@@ -1484,106 +1487,32 @@ class CognitiveHub:
             },
         }
 
-        # [FEAT-540] Multi-Collection CLaRa-DNA Vector Pre-Triage Probe
-        # Sub-20ms CPU vector similarity probe across ChromaDB port 8001 collections.
-        pre_triage_res = probe_clara_dna_sync(clean_user_query)
-        vector_hint = pre_triage_res.get("semantic_hint", "")
-        # [FEAT-541] Pre-seed candidate RAG document chunk if high-confidence vector match
-        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get(
-            "best_doc"
-        ):
-            self._last_pre_triage_doc = pre_triage_res["best_doc"]
-        else:
-            self._last_pre_triage_doc = ""
+        # [FEAT-540 / BKM-083 Stage 1] Multi-Collection CLaRa-DNA Vector Pre-Triage Probe
+        pre_triage_res = await self.step_pre_triage(clean_user_query)
 
-        triage_mode_context = (
-            "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
-            "Analyze user query and return valid JSON with strictly decoupled entity targeting, archetype, and continuous scalars:\n"
-            "• ADDRESSED_TO (Strict Explicit Entity Naming Only):\n"
-            '  - "NONE": Default when user does NOT explicitly name a character (e.g. "hi there", "status report", "how did 2018 RAPL work?").\n'
-            '  - "PINKY": User explicitly calls out Pinky by name (e.g. "Pinky, what do you think?", "Hey Pinky").\n'
-            '  - "BRAIN": User explicitly calls out Brain or Deep Thought (e.g. "Brain, analyze this", "Deep Thought").\n'
-            '  - "MICE": User explicitly addresses both/group (e.g. "Hey guys", "Mice", "Both of you", "You two", "Team").\n'
-            '  - "SYSTEM": User addresses meta/supervisor engine (e.g. "feedback: ...", "tweak scalars").\n'
-            "• 6 CORE ARCHETYPES (vibe & domain):\n"
-            # [DEFEATURED - Sprint 100 / FEAT-640]: CASUAL removed from active prompt; SOCRATIC absorbs greetings.
-            # '  1. CASUAL: Conversational pleasantries, small talk ("hi", "hello", "good morning") -> vibe="CASUAL", domain="unknown".\n'
-            '  2. WYWO: Standup briefs or overnight activity inquiries ("what did you do while I was out?", "morning briefing") -> vibe="WYWO", domain="acme_lab_history".\n'
-            '  3. META: Supervisory feedback, prompt engineering discussions, triage adjustments, tone/verbosity critiques ("feedback: ...", "Visible Consensus spam") -> vibe="META", domain="feedback" or "lab_internal".\n'
-            '  4. HISTORICAL: Questions on past career / hardware projects or specific years ("what did we do in 2018 for RAPL validation?") -> vibe="HISTORICAL", domain="work_history".\n'
-            '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures ("check GPU VRAM status and thermal levels") -> vibe="OPERATIONAL", domain="exp_tlm".\n'
-            '  6. FORENSIC: Crash dumps, stack traces, kernel panics ("show me the kernel panic traceback from last night") -> vibe="FORENSIC", domain="exp_for".\n'
-            "• SCALAR RUBRIC:\n"
-            "  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n"
-            "  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n"
-            "  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n"
-            "• INFERRED INTENT: Concise 3-6 word action phrase.\n"
-            "• TARGET DOMAINS: Array of collections to search (e.g. ['behavioral_dna'], ['feature_dna'], ['career_ledger'], ['wisdom_dna'], or [] for ZERO DNA / casual talk).\n"
-        )
-        if vector_hint:
-            triage_mode_context += f"\n{vector_hint}\n"
-
-        # Execute relay
-        winner = None
-        for attempt in range(3):
-            try:
-                t_parsed, winner = await self.triage_relay.relay(
-                    clean_user_query, triage_mode_context, triage_schema, request_id
-                )
-                if t_parsed:
-                    break
-            except Exception as e:
-                logging.warning(f"[HUB] Triage Attempt {attempt+1} failed: {e}")
-                await asyncio.sleep(2)
-
+        # [SPR-64_1 / FEAT-534 / BKM-083 Stage 2] Speculative Triage Relay
         if not t_parsed:
-            logging.error("[HUB] All triage attempts failed. Falling back to default.")
-            t_parsed = {
-                "vibe": "CASUAL",
-                "addressed_to": "NONE",
-                "importance": 0.5,
-                "domain": "unknown",
-                "casual": 0.5,
-                "intrigue": 0.5,
-                "inferred_intent": "fallback",
+            t_parsed = await self.step_triage(clean_user_query, pre_triage_res, request_id=request_id)
+            routing_source = t_parsed.get("_console_source", "Triage")
+            routing_channel = t_parsed.get("_console_channel", "insight")
+            public_triage = {
+                k: v
+                for k, v in t_parsed.items()
+                if not str(k).startswith("_")
+                and k not in ["situation", "hints", "hyde_vector_text"]
             }
-            winner = "fallback"
-
-        # [FEAT-478] Canonical schema validation & field backfilling
-        t_parsed = validate_triage_payload(t_parsed)
-
-        # Post-process triage
-        vibe_override, domain_override = classify_vibe_and_domain(
-            clean_user_query, t_parsed
-        )
-        t_parsed["vibe"] = vibe_override
-        t_parsed["domain"] = domain_override
-
-        # [SPR-64_1 / FEAT-532] Console Routing Metadata & Single Broadcast Consolidation
-        routing_meta = self.triage_relay.get_console_metadata(winner)
-        t_parsed["_console_channel"] = routing_meta["channel"]
-        t_parsed["_console_source"] = routing_meta["source"]
-        t_parsed["_console_target"] = routing_meta["console"]
-
-        # Emit single clean pretty-printed triage JSON to the winning console (Option C)
-        public_triage = {
-            k: v
-            for k, v in t_parsed.items()
-            if not str(k).startswith("_")
-            and k not in ["situation", "hints", "hyde_vector_text"]
-        }
-        triage_json_str = json.dumps(public_triage, indent=2)
-        await self.broadcast(
-            {
-                "type": "chat",
-                "brain": triage_json_str,
-                "brain_source": routing_meta["source"],
-                "channel": routing_meta["channel"],
-                "final": True,
-                "request_id": request_id,
-                "version": LAB_VERSION,
-            }
-        )
+            triage_json_str = json.dumps(public_triage, indent=2)
+            await self.broadcast(
+                {
+                    "type": "chat",
+                    "brain": triage_json_str,
+                    "brain_source": routing_source,
+                    "channel": routing_channel,
+                    "final": True,
+                    "request_id": request_id,
+                    "version": LAB_VERSION,
+                }
+            )
 
         # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
         # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
@@ -1680,9 +1609,8 @@ class CognitiveHub:
         interest_boost = springboard.get("interest_boost", 0.0)
 
         effective_importance = max(importance, importance_floor)
-        base_interest = (
-            (1.0 - (casual * 0.5)) * (intrigue + effective_importance)
-        ) / 2.0
+        # [FEAT-523 / Sprint 103 Story 103.5] Continuous Interest Multiplier (penalty-free)
+        base_interest = (intrigue * 0.4) + (effective_importance * 0.6)
         final_interest = min(1.0, max(0.0, base_interest + interest_boost))
         self.current_interest = final_interest
         t_parsed["effective_importance"] = effective_importance
@@ -1703,7 +1631,6 @@ class CognitiveHub:
         rag_context = ""
 
         if vibe == "CASUAL":
-            self.current_interest = min(self.current_interest, 0.1)
             context = ""
             behavioral_guidance = (
                 "[MODE]: CONVERSATIONAL CASUAL.\n"
@@ -1874,7 +1801,11 @@ class CognitiveHub:
             )
             if handover_success:
                 d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
+                d_thought = getattr(self, "_last_thought_duration", 0.0)
                 d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
+                t_brain_elapsed = max(0.001, round(t_triage_elapsed + d_brain, 3))
+                t_oracle_elapsed = max(0.001, round(t_brain_elapsed + d_thought, 3))
+                t_judgment_elapsed = max(0.001, round(t_oracle_elapsed + d_pinky, 3))
             else:
                 # Handover structurally unavailable (missing residents) ->
                 # legacy single-execution fallback.
@@ -2055,7 +1986,7 @@ class CognitiveHub:
 
         # [FEAT-525] Live Round Table Elapsed Time & Blackboard Telemetry Bridge
         # Invariant: Elapsed telemetry is strictly and exclusively recorded for Full Round Table deliberations.
-        if t_brain_elapsed > 0.0001 and t_oracle_elapsed > t_brain_elapsed:
+        if t_brain_elapsed > 0.0001 and t_oracle_elapsed >= t_brain_elapsed:
             try:
                 deltas_dict = {
                     "triage": t_triage_elapsed,
@@ -2411,13 +2342,32 @@ class CognitiveHub:
         domain = str(triage_result.get("domain", ""))
         vibe = str(triage_result.get("vibe", "")).upper()
         importance = float(triage_result.get("importance", 0.5))
+        target_domains = triage_result.get("target_domains", [])
+        if not isinstance(target_domains, list):
+            target_domains = [str(target_domains)] if target_domains else []
+        interest = float(triage_result.get("calculated_interest", importance))
 
-        # [FEAT-534] The True RAG Rule: If domain is 'unknown', or non-matching feedback/internal, return empty vector
-        if domain in ["unknown", "feedback", "lab_internal"] or (
-            importance < 0.3 and domain == "standard"
+        # [FEAT-534/645] Unified Retrieval Dispatch:
+        # If explicit search not required and no target domains and low interest:
+        if (
+            not triage_result.get("search_required", True)
+            and len(target_domains) == 0
+            and interest < 0.30
         ):
             logging.info(
-                "[FEAT-534] Unrecorded domain or casual turn; returning empty HyDE vector (Zero RAG Noise)"
+                "[FEAT-534/645] Search not required; returning empty HyDE vector (Zero RAG Noise)"
+            )
+            return "", DIRECT_RAW_QUERY
+
+        if domain in ["unknown", "feedback", "lab_internal"] and len(target_domains) == 0:
+            logging.info(
+                "[FEAT-534/645] Non-matching domain without target collections; returning empty HyDE vector (Zero RAG Noise)"
+            )
+            return "", DIRECT_RAW_QUERY
+
+        if importance < 0.3 and domain == "standard" and len(target_domains) == 0:
+            logging.info(
+                "[FEAT-534/645] Standard domain with low importance; returning empty HyDE vector (Zero RAG Noise)"
             )
             return "", DIRECT_RAW_QUERY
 
@@ -2498,7 +2448,10 @@ class CognitiveHub:
             if isinstance(t_parsed, dict)
             else ""
         )
-        if domain_val in ("lab_internal", "unclear", "feedback", "unknown", "standard"):
+        target_domains = t_parsed.get("target_domains", []) if isinstance(t_parsed, dict) else []
+        if domain_val in ("lab_internal", "unclear", "feedback") and not target_domains:
+            return ""
+        if domain_val in ("unknown", "standard") and not target_domains and not t_parsed.get("search_required", False):
             return ""
         hyde, hyde_tier = await self.resolve_hyde_vector(
             turn, t_parsed, request_id=request_id
@@ -2630,51 +2583,191 @@ class CognitiveHub:
             )
         self.turn_thought_trace["brain"] = brain_response
 
-    async def _run_two_mice_handover(
-        self,
-        query: str,
-        *,
-        focus_context: str = "",
-        interest: float | None = None,
-        shutdown_event=None,
-        request_id: str = "default",
-    ) -> bool:
-        """[FEAT-489] Two-Mice Sequential Streaming Handover.
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # [BKM-083 / FEAT-645] Decoupled Round Table Stage Methods
+    # ═══════════════════════════════════════════════════════════════════════════════
 
-        Stage 1 (Brain - Right Console): Brain extracts 3-4 dense technical
-        bullet points from the archive record and streams them to
-        ``channel="insight"`` / ``source="Brain (Archive)"``.
+    async def step_pre_triage(self, query: str) -> dict:
+        """[FEAT-540 / BKM-083 Stage 1] Runs sub-20ms CLaRa-DNA vector similarity probe across ChromaDB collections."""
+        clean_user_query = extract_latest_user_query(query)
+        pre_triage_res = probe_clara_dna_sync(clean_user_query)
+        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get("best_doc"):
+            self._last_pre_triage_doc = pre_triage_res["best_doc"]
+        else:
+            self._last_pre_triage_doc = ""
+        return pre_triage_res
 
-        Stage 2 (Pinky - Left Console / TTS): Pinky receives Brain's extracted
-        bullets as context, acknowledges Brain in character, and streams a
-        2-sentence conversational TL;DR to ``channel="pinky"`` /
-        ``source="Pinky (Voice)"``.
+    async def step_triage(self, query: str, pre_triage: dict, request_id: str = "default") -> dict:
+        """[FEAT-534 / BKM-083 Stage 2] Executes speculative triage relay across available fast silicon endpoints."""
+        clean_user_query = extract_latest_user_query(query)
+        vector_hint = pre_triage.get("semantic_hint", "") if pre_triage else ""
 
-        Both stages are grounded by the 3 Prompt Engineering Pillars
-        [FEAT-140/467 + FEAT-403 + FEAT-236] via :func:`build_two_mice_stage_prompt`.
+        triage_schema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "prereflection_triage_result",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "inferred_intent": {"type": "string"},
+                        "addressed_to": {
+                            "type": "string",
+                            "enum": ["NONE", "BRAIN", "PINKY", "MICE", "SYSTEM"],
+                        },
+                        "vibe": {
+                            "type": "string",
+                            "enum": [
+                                "TECHNICAL",
+                                "CASUAL",
+                                "HISTORICAL",
+                                "ANALYTICAL",
+                                "OPERATIONAL",
+                                "FORENSIC",
+                                "META",
+                                "WYWO",
+                                "SUPERVISORY",
+                            ],
+                        },
+                        "domain": {
+                            "type": "string",
+                            "enum": [
+                                "exp_tlm",
+                                "exp_bkm",
+                                "exp_for",
+                                "standard",
+                                "work_history",
+                                "acme_lab_history",
+                                "lab_history",
+                                "lab_internal",
+                                "dream_stream",
+                                "feedback",
+                                "unknown",
+                            ],
+                        },
+                        "casual": {"type": "number"},
+                        "intrigue": {"type": "number"},
+                        "importance": {"type": "number"},
+                        "target_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Target DNA domains/collections to search",
+                        },
+                    },
+                    "required": [
+                        "inferred_intent",
+                        "addressed_to",
+                        "vibe",
+                        "domain",
+                        "casual",
+                        "intrigue",
+                        "importance",
+                    ],
+                },
+            },
+        }
 
-        Returns ``True`` when the handover ran; ``False`` when it is not
-        possible (missing brains/pinky resident, or interest below the
-        Distillation Funnel gate) — the caller falls back to the legacy flow.
-        """
-        if ("brain" not in self.residents) or ("pinky" not in self.residents):
-            logging.info(
-                "[FEAT-489] Two-Mice handover unavailable (need brain + pinky residents). Falling back."
-            )
-            return False
+        triage_mode_context = (
+            "[MODE]: UNIFIED PRE-REFLECTION & TRIAGE\n"
+            "Analyze user query and return valid JSON with strictly decoupled entity targeting, archetype, and continuous scalars:\n"
+            "• ADDRESSED_TO (Strict Explicit Entity Naming Only):\n"
+            '  - "NONE": Default when user does NOT explicitly name a character.\n'
+            '  - "PINKY": User explicitly calls out Pinky by name.\n'
+            '  - "BRAIN": User explicitly calls out Brain or Deep Thought.\n'
+            '  - "MICE": User explicitly addresses both/group.\n'
+            '  - "SYSTEM": User addresses meta/supervisor engine.\n'
+            "• 6 CORE ARCHETYPES (vibe & domain):\n"
+            '  2. WYWO: Standup briefs or overnight activity inquiries -> vibe="WYWO", domain="acme_lab_history".\n'
+            '  3. META: Supervisory feedback, prompt engineering discussions -> vibe="META", domain="feedback" or "lab_internal".\n'
+            '  4. HISTORICAL: Questions on past career / hardware projects or specific years -> vibe="HISTORICAL", domain="work_history".\n'
+            '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures -> vibe="OPERATIONAL", domain="exp_tlm".\n'
+            '  6. FORENSIC: Crash dumps, stack traces, kernel panics -> vibe="FORENSIC", domain="exp_for".\n'
+            "• SCALAR RUBRIC:\n"
+            "  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n"
+            "  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n"
+            "  - importance (0.0-1.0: 0.8+ feedback/crashes/critical, 0.4-0.7 standard tech, 0.0-0.3 casual banter).\n"
+            "• INFERRED INTENT: Concise 3-6 word action phrase.\n"
+            "• TARGET DOMAINS: Array of collections to search (e.g. ['behavioral_dna'], ['feature_dna'], ['career_ledger'], ['wisdom_dna'], or [] for ZERO DNA / casual talk).\n"
+        )
+        if vector_hint:
+            triage_mode_context += f"\n{vector_hint}\n"
 
-        gate_interest = self.current_interest if interest is None else float(interest)
-        if gate_interest < TWO_MICE_FUNNEL_INTEREST:
-            logging.info(
-                f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant."
-            )
-            return False
-        self.current_interest = gate_interest  # persist an explicitly-passed gate value
+        winner = None
+        t_parsed = None
+        if hasattr(self, "triage_relay") and self.triage_relay:
+            for attempt in range(3):
+                try:
+                    t_parsed, winner = await self.triage_relay.relay(
+                        clean_user_query, triage_mode_context, triage_schema, request_id
+                    )
+                    if t_parsed:
+                        break
+                except Exception as e:
+                    logging.warning(f"[HUB] Triage Attempt {attempt+1} failed: {e}")
+                    await asyncio.sleep(2)
 
-        # --- Stage 1: Brain extracts technical bullets (Right Console) --------
+        if not t_parsed:
+            logging.error("[HUB] All triage attempts failed. Falling back to default.")
+            t_parsed = {
+                "vibe": "CASUAL",
+                "addressed_to": "NONE",
+                "importance": 0.5,
+                "domain": "unknown",
+                "casual": 0.5,
+                "intrigue": 0.5,
+                "inferred_intent": "fallback",
+            }
+            winner = "fallback"
+
+        t_parsed = validate_triage_payload(t_parsed)
+        vibe_override, domain_override = classify_vibe_and_domain(clean_user_query, t_parsed)
+        t_parsed["vibe"] = vibe_override
+        t_parsed["domain"] = domain_override
+
+        vibe = t_parsed.get("vibe", "").upper()
+        importance = float(t_parsed.get("importance", 0.5))
+        intrigue = float(t_parsed.get("intrigue", 0.5))
+
+        springboard = (
+            self.policy_loader.get_vibe_springboard(vibe)
+            if hasattr(self, "policy_loader") and self.policy_loader
+            else {"importance_floor": 0.0, "interest_boost": 0.0}
+        )
+        importance_floor = springboard.get("importance_floor", 0.0)
+        interest_boost = springboard.get("interest_boost", 0.0)
+
+        effective_importance = max(importance, importance_floor)
+        # [FEAT-523 / Sprint 103] Penalty-free continuous interest multiplier
+        base_interest = (intrigue * 0.4) + (effective_importance * 0.6)
+        final_interest = min(1.0, max(0.0, base_interest + interest_boost))
+        t_parsed["effective_importance"] = effective_importance
+        t_parsed["calculated_interest"] = final_interest
+
+        target_domains = t_parsed.get("target_domains", [])
+        if not isinstance(target_domains, list):
+            target_domains = [str(target_domains)] if target_domains else []
+        t_parsed["target_domains"] = target_domains
+
+        if hasattr(self, "triage_relay") and self.triage_relay and winner:
+            routing_meta = self.triage_relay.get_console_metadata(winner)
+            t_parsed["_console_channel"] = routing_meta.get("channel", "insight")
+            t_parsed["_console_source"] = routing_meta.get("source", "Triage")
+            t_parsed["_console_target"] = routing_meta.get("console", "right")
+
+        return t_parsed
+
+    async def step_hyde_rag(self, query: str, triage: dict, request_id: str = "default") -> tuple[str, str]:
+        """[FEAT-437 / BKM-083 Stage 3] Resolves HyDE synthesis vector and retrieves grounding documents from ChromaDB."""
+        hyde, hyde_tier = await self.resolve_hyde_vector(query, triage, request_id=request_id)
+        rag_context = await self._fetch_rag_context(query, triage, request_id=request_id)
+        return hyde, rag_context
+
+    async def step_brain_gatekeeper(
+        self, query: str, rag_context: str, interest: float, shutdown_event=None, request_id: str = "default"
+    ) -> str:
+        """[FEAT-489 / BKM-083 Stage 4] Stage 1 Brain Gatekeeper: prunes distractors, emits 3-4 dense bullets + curator notes."""
         t_tm_brain_start = time.perf_counter()
         stage1_prompt = build_two_mice_stage_prompt(
-            1, user_query=query, context=focus_context, interest=gate_interest
+            1, user_query=query, context=rag_context, interest=interest
         )
         brain_tools = await self._get_node_tools("brain")
         brain_bullets = ""
@@ -2682,7 +2775,7 @@ class CognitiveHub:
             "brain",
             stage1_prompt,
             "",
-            "Brain (Archive)",
+            TWO_MICE_BRAIN_SOURCE,
             tools=brain_tools,
             temperature=0.2,
             request_id=request_id,
@@ -2713,26 +2806,88 @@ class CognitiveHub:
         self._last_two_mice_brain_duration = max(
             0.001, round(time.perf_counter() - t_tm_brain_start, 3)
         )
+        self.turn_thought_trace["brain"] = brain_bullets
+        return brain_bullets
 
-        # --- Stage 2: Pinky acknowledges Brain + delivers TL;DR (Left Console) -
+    async def step_deep_thought(
+        self, query: str, brain_bullets: str, interest: float, shutdown_event=None, request_id: str = "default"
+    ) -> str:
+        """[FEAT-489 / BKM-083 Stage 5] Stage 2 Deep Thought: laconic architectural synthesis with FEAT-523 interest token budget."""
+        t_dt_start = time.perf_counter()
+        dt_synthesis = ""
+        thought_node = self.residents.get("thought")
+        if thought_node:
+            dt_prompt = (
+                f"[BRAIN_BEDROCK_BULLETS]:\n{brain_bullets}\n\n"
+                f"[USER_QUERY]: {query}\n\n"
+                "Synthesize the architectural reality in 1-2 laconic, high-authority engineering statements. "
+                "Ground strictly in Brain's bullets. Do not repeat raw bullet text."
+            )
+            async for token in self._process_node_stream(
+                "thought",
+                dt_prompt,
+                brain_bullets,
+                "Deep Thought (Strategy)",
+                tools=[],
+                temperature=0.2,
+                request_id=request_id,
+            ):
+                dt_synthesis += token
+                await self.broadcast(
+                    build_two_mice_stream_packet(
+                        source="Deep Thought (Strategy)",
+                        channel="insight",
+                        console="center",
+                        token=token,
+                        final=False,
+                        request_id=request_id,
+                    )
+                )
+                if shutdown_event and shutdown_event.is_set():
+                    break
+            await self.broadcast(
+                build_two_mice_stream_packet(
+                    source="Deep Thought (Strategy)",
+                    channel="insight",
+                    console="center",
+                    token="",
+                    final=True,
+                    request_id=request_id,
+                )
+            )
+            self._last_thought_duration = max(
+                0.001, round(time.perf_counter() - t_dt_start, 3)
+            )
+            if dt_synthesis:
+                self.turn_thought_trace["thought"] = dt_synthesis
+        else:
+            self._last_thought_duration = 0.0
+        return dt_synthesis
+
+    async def step_pinky_voice(
+        self, query: str, synthesis: str, interest: float, shutdown_event=None, request_id: str = "default"
+    ) -> str:
+        """[FEAT-489 / BKM-083 Stage 6] Stage 3 Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
         t_tm_pinky_start = time.perf_counter()
         stage2_prompt = build_two_mice_stage_prompt(
             2,
             user_query=query,
-            interest=gate_interest,
-            brain_bullets=brain_bullets,
+            interest=interest,
+            brain_bullets=synthesis,
         )
         pinky_stream_count = 0
+        pinky_tldr = ""
         async for token in self._process_node_stream(
             "pinky",
             stage2_prompt,
-            brain_bullets,
-            "Pinky (Voice)",
+            synthesis,
+            TWO_MICE_PINKY_SOURCE,
             tools=[],
             temperature=0.7,
             request_id=request_id,
         ):
             pinky_stream_count += 1
+            pinky_tldr += token
             await self.broadcast(
                 build_two_mice_stream_packet(
                     source=TWO_MICE_PINKY_SOURCE,
@@ -2758,13 +2913,69 @@ class CognitiveHub:
         self._last_two_mice_pinky_duration = max(
             0.001, round(time.perf_counter() - t_tm_pinky_start, 3)
         )
-
-        self.turn_thought_trace["brain"] = brain_bullets
         self.turn_thought_trace["pinky"] = (
             f"[Two-Mice TL;DR delivered to Jason ({pinky_stream_count} tokens)]"
         )
+        return pinky_tldr
+
+    async def _run_two_mice_handover(
+        self,
+        query: str,
+        *,
+        focus_context: str = "",
+        interest: float | None = None,
+        shutdown_event=None,
+        request_id: str = "default",
+    ) -> bool:
+        """[FEAT-489 / FEAT-645] Tri-Node Sequential Streaming Handover Relay.
+
+        Stage 1 (Brain - Right Console): Brain extracts 3-4 dense technical
+        bullet points from the archive record and streams them to
+        ``channel="insight"`` / ``source="Brain (Archive)"``.
+
+        Stage 2 (Deep Thought - Center Console): Deep Thought synthesizes the
+        architectural reality with FEAT-523 interest token budget.
+
+        Stage 3 (Pinky - Left Console / TTS): Pinky receives the synthesis,
+        acknowledges Brain/Deep Thought, and streams a 2-sentence conversational
+        TL;DR to ``channel="pinky"`` / ``source="Pinky (Voice)"``.
+
+        Returns ``True`` when the handover ran; ``False`` when it is not
+        possible (missing brains/pinky resident, or interest below the
+        Distillation Funnel gate) — the caller falls back to the legacy flow.
+        """
+        if ("brain" not in self.residents) or ("pinky" not in self.residents):
+            logging.info(
+                "[FEAT-489] Two-Mice handover unavailable (need brain + pinky residents). Falling back."
+            )
+            return False
+
+        gate_interest = self.current_interest if interest is None else float(interest)
+        if gate_interest < TWO_MICE_FUNNEL_INTEREST:
+            logging.info(
+                f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant."
+            )
+            return False
+        self.current_interest = gate_interest  # persist an explicitly-passed gate value
+
+        # Stage 1: Brain Gatekeeper
+        brain_bullets = await self.step_brain_gatekeeper(
+            query, focus_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+        )
+
+        # Stage 2: Deep Thought Strategic Synthesis
+        dt_synthesis = await self.step_deep_thought(
+            query, brain_bullets, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+        )
+
+        # Stage 3: Pinky Conversational TL;DR
+        pinky_context = dt_synthesis if dt_synthesis else brain_bullets
+        await self.step_pinky_voice(
+            query, pinky_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+        )
+
         logging.info(
-            f"[FEAT-489] Two-Mice handover complete: Brain {len(brain_bullets)} chars -> Pinky TL;DR streamed."
+            f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_bullets)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed."
         )
         return True
 
