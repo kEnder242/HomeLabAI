@@ -1492,6 +1492,29 @@ Agents are frequently tempted to treat new user prompts as greenfield tasks or t
    - **In-Flight Harness Friction (Never Deferred)**: Any unforeseen tool failure, harness breakdown, or subagent bypass (e.g. `clara-dna_safe_patch` falling back to custom Python scripts) discovered *during* story execution is classified as **In-Flight Harness Friction**, NOT future housekeeping.
    - **The Anti-Bypass / Harness Halt Mandate**: Per `BKM-048` (§3), when a core harness tool stumbles mid-sprint, the orchestrator MUST NOT gloss over the failure because an internal worker fallback succeeded. The incident MUST be immediately appended to the live `📜 Sprint Log` (`BKM-081`) and reported to the operator. If upcoming stories depend on that broken tool, the sprint MUST halt to fix the harness immediately rather than allowing tool debt to compound across subsequent dispatches.
 
+---
+
+## BKM-083: Decouple-and-Stitch Round Table Protocol (Live Unit Testing & Stage Isolation)
+**Feature Anchor:** `[BKM-083]` / `[FEAT-645]` / `[FEAT-489]` / `[FEAT-523]` / `[BKM-024]`  
+**Colloquial Alias:** "The Decouple-and-Stitch Stage Protocol / Unstitching the Monolith"  
+**Domain:** Cognitive Hub Orchestration, Modular Pipeline Architecture, Fast Offline Unit Testing  
+**Status:** ACTIVE / MANDATORY (Sprint 103)  
+
+### 1. The Core Law: Discrete Stage Isolation
+Monolithic cognitive loops (e.g., 3,000-line `cognitive_hub.py` files sharing mutable local variables across hundreds of lines) create severe diagnostic blindness. A prompt engineering failure in an upstream stage (such as HyDE returning an empty vector) starves downstream RAG retrieval, which starves the Information Gatekeeper, which silences Deep Thought. Diagnosing this failure via 30-second live websocket sessions burns tokens, risks timeouts, and causes thrash.
+
+Under `BKM-083`, cognitive orchestration pipelines MUST adhere to the **Decouple-and-Stitch Invariants**:
+1. **Discrete Stage Methods:** Multi-stage cognitive pipelines MUST be authored as discrete, callable `step_*` methods on the orchestrator class:
+   - `step_pre_triage(query)`: Sub-20ms vector probe emitting continuous `semantic_affinity`.
+   - `step_triage(query, pre_triage)`: Speculative triage relay emitting decoupled intent and target domains.
+   - `step_hyde_rag(query, triage)`: HyDE synthesis with `search_required: bool` and unified ChromaDB retrieval.
+   - `step_brain_gatekeeper(query, rag_context, interest)`: Stage 1 Gatekeeper emitting bedrock bullets + curator notes.
+   - `step_deep_thought(query, brain_bullets, interest)`: Stage 2 Deep Thought strategic synthesis with `FEAT-523` pacing.
+   - `step_pinky_voice(query, synthesis, interest)`: Stage 3 Pinky voice TL;DR, TTS delivery, and consensus telemetry.
+2. **Zero Execution Divergence:** The live `process_turn()` loop in production MUST delegate directly and sequentially to these `step_*` methods. Standalone divergence (separate CLI tools with duplicate logic) is strictly prohibited.
+3. **Fast Offline Unit Testing:** Pytest test suites (such as `test_multi_stage_replay_pipeline.py` / `FEAT-645`) MUST be able to execute any single `step_*` method independently using frozen input fixtures, verifying prompts and JSON parsing in $< 500\text{ms}$ without spinning up live websocket sessions.
+4. **Continuous Parameter Passing:** Stage methods pass continuous parameters (`interest: float`, `semantic_affinity: float`, `search_required: bool`) explicitly across boundaries rather than relying on mutable shared state or binary clamps (`vibe == 'CASUAL'`).
+
 
 
 

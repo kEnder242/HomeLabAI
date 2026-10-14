@@ -266,4 +266,23 @@ PYTHONPATH=src python -m pytest src/tests/test_draft_promotion_unit.py \
                                 src/tests/test_live_pre_reflection_triage.py -v
 ```
 
+---
+
+## 17. Sprint 103 Intercom Debug, Multi-Stage Replay & Stage Decoupling Diagnostics (SPR-103.0)
+Verification instruments validating `FEAT-645` Multi-Stage Replay Pipeline Harness, `BKM-083` Decouple-and-Stitch stage isolation, un-muted Deep Thought live backchannel, and pure continuous interest pacing (`FEAT-523`).
+
+| Tool | Path | V4 Status | Goal |
+| :--- | :--- | :--- | :--- |
+| **Multi-Stage Replay Pipeline Harness** | `src/tests/test_multi_stage_replay_pipeline.py` | **ACTIVE** | [FEAT-645/BKM-083] [GOLD] Standalone offline integration suite validating all 5 round table stages (Pre-Triage $\to$ Triage $\to$ HyDE/RAG $\to$ Brain Gatekeeper $\to$ Deep Thought Strategic Synthesis / Pinky Voice) with frozen litmus fixtures. |
+| **Brain Epistemic Gatekeeper & Steering** | `src/tests/test_brain_gatekeeper.py` | **ACTIVE** | [FEAT-635] Validates Stage 1 Brain gatekeeper filtering of candidate RAG chunks and sideband curator note generation. |
+| **Two-Mice Handover & Tri-Node Relay** | `src/tests/test_two_mice_handover.py` | **ACTIVE** | [FEAT-489/FEAT-645] Validates sequential multi-node streaming handover across Right, Center, and Left consoles. |
+| **HyDE Resolution & Turn Isolation** | `src/tests/test_feat437_resolve_hyde_vector.py` | **ACTIVE** | [FEAT-437/FEAT-640] Validates HyDE vector generation with single-turn isolation and `search_required: bool` gating. |
+| **Round Table Telemetry Bridge** | `src/tests/test_round_table_telemetry.py` | **ACTIVE** | [FEAT-525] Validates physical silicon stopwatch recording into `round_table_deltas.json`. |
+
+---
+**Sprint 103 Replay Pipeline Certification Runner**:
+```bash
+PYTHONPATH=. python -m pytest src/tests/test_multi_stage_replay_pipeline.py -v
+```
+
 
