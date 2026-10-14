@@ -536,6 +536,14 @@ def _log_delegation_ledger(
         except Exception:
             pass
 
+    # [FEAT-552] Auto-Live Web Feed Hook: Refresh delegation_runs.json immediately upon execution completion
+    try:
+        from infra.sprint_telemetry import export_web_telemetry
+
+        export_web_telemetry()
+    except Exception:
+        pass
+
 
 def show_delegation_ledger(limit: int = 20):
     """Display the recent delegation history ledger from delegation_ledger.jsonl."""
