@@ -985,6 +985,7 @@ def record_swarm_telemetry(
             tokens["blended_total"] = tokens.get("total", 0) + sub_inf["total_tokens"]
         try:
             from infra.cumulative_telemetry import log_telemetry_event
+            sub_duration = max(1.0, float(duration)) if duration else 1.0
             log_telemetry_event(
                 source=f"delegate.py (Sub-Inference Story {story_num})",
                 task_title=f"{title} [M5 Air Map-Reduce]",
@@ -992,7 +993,7 @@ def record_swarm_telemetry(
                 provider="mlx_headroom",
                 model="TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
                 tokens_generated=sub_inf["completion_tokens"],
-                duration_seconds=0.0,
+                duration_seconds=sub_duration,
             )
         except Exception:
             pass
@@ -1039,6 +1040,7 @@ def _log_live_usage_telemetry(
         elif "z87" in provider_id or "vllm" in provider_id:
             seat = "Linux 2080ti"
 
+        safe_dur = max(1.0, float(duration)) if duration else 1.0
         log_telemetry_event(
             source=f"delegate.py (Story {story_num})",
             task_title=title,
@@ -1046,7 +1048,7 @@ def _log_live_usage_telemetry(
             provider=provider_id,
             model=model_id,
             tokens_generated=out_tokens,
-            duration_seconds=duration,
+            duration_seconds=safe_dur,
             raw_throughput_tok_s=raw_tp,
         )
     except Exception:
