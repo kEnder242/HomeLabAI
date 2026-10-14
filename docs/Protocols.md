@@ -854,6 +854,12 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 3. **Prohibition of Multi-Story Dirty Trees:**
    * Leaving uncommitted modifications in the workspace across story dispatches is strictly forbidden. Every dispatch MUST start from a clean, unambiguous Git HEAD so L2's scope-enforcement lens reflects 100% active-story changes.
 
+#### 8. Canonical Story Argument Law (Dotted Identifier Mandate)
+1. **The Invariant Formatting Law:**
+   * All dispatch launchers (`delegate.py --story <id>`), JIT checkpoints (`clara-dna_jit_checkpoint`), and sprint telemetry analyzers MUST format the story argument in **canonical dotted notation**: `<sprint>.<story_index>` (e.g. `102.1`, `102.9`, `102.10`, `101.15`).
+2. **Prohibition of Un-dotted and Free-form Prefixes:**
+   * Passing un-dotted integers (`--story 1029`) or free-form strings (`--story "STORY 1029"`) is strictly prohibited. Un-dotted notation breaks regex deduplication in `sprint_telemetry.py`, prevents correlation between conductor `delegate.py` records and worker `jit_checkpoint` records, and pollutes public web feeds with undecorated stubs.
+
 ---
 
 ## BKM-071: Delegation Playbook Index
