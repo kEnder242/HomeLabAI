@@ -602,12 +602,9 @@ class IgnitionManager:
                                                         os.remove(MAINTENANCE_LOCK)
                                                     except Exception:
                                                         pass
-                                                if self.status.state in [
-                                                    "HIBERNATING",
-                                                    "UNKNOWN",
-                                                    "ERROR",
-                                                    "MAINTENANCE",
-                                                    "OFFLINE",
+                                                if self.status.state not in [
+                                                    "OPERATIONAL",
+                                                    "WAKING",
                                                 ]:
                                                     logging.info(
                                                         f"[IGNITION] Triggering wake task for {event.id}..."
@@ -622,11 +619,9 @@ class IgnitionManager:
                                                         f"[IGNITION] Lab already {self.status.state}. Skipping ignition."
                                                     )
                                         # Normal intents
-                                        elif self.status.state in [
-                                            "HIBERNATING",
-                                            "UNKNOWN",
-                                            "ERROR",
-                                            "OFFLINE",
+                                        elif self.status.state not in [
+                                            "OPERATIONAL",
+                                            "WAKING",
                                         ]:
                                             logging.info(
                                                 f"[IGNITION] Triggering ignition task for {event.id}..."
