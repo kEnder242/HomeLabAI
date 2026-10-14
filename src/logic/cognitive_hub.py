@@ -1235,7 +1235,7 @@ class CognitiveHub:
                     }
                 )
 
-            if "Critic" in source_display:
+            if "Critic" in source_name:
                 self.turn_thought_trace["critique"] = full_text
             else:
                 self.turn_thought_trace[node_id] = full_text
