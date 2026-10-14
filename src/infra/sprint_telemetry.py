@@ -22,7 +22,36 @@ from typing import Any, Dict, List, Optional
 OPENCODE_REST_URL = os.environ.get("OPENCODE_REST_URL", "http://127.0.0.1:4096/session")
 HOMELAB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LEDGER_PATH = os.path.join(HOMELAB_DIR, "data", "delegation_ledger.jsonl")
-STORY_RE = re.compile(r"(?:Story|STORY)\s*([0-9]{1,3}\.[0-9A-Za-z]+)")
+STORY_RE = re.compile(r"(?:Story|STORY)\s*([0-9]{2,3}(?:\.[0-9A-Za-z]+|\d+))", re.IGNORECASE)
+
+
+def normalize_story_id(raw_story: Any, sprint: Optional[Any] = None) -> str:
+    """Normalize story identifier to canonical dotted notation (e.g., '102.1', '102.10')."""
+    if not raw_story:
+        return ""
+    s = str(raw_story).strip()
+    s = re.sub(r"^(?:Story|STORY)\s*", "", s, flags=re.IGNORECASE).strip()
+    if "." in s:
+        return s
+    if sprint:
+        sp_str = str(sprint).strip()
+        if s.startswith(sp_str) and len(s) > len(sp_str):
+            return f"{sp_str}.{s[len(sp_str):]}"
+    if len(s) > 3 and s[:3].isdigit() and 100 <= int(s[:3]) <= 150:
+        return f"{s[:3]}.{s[3:]}"
+    if len(s) > 2 and s[:2].isdigit() and 70 <= int(s[:2]) <= 99:
+        return f"{s[:2]}.{s[2:]}"
+    return s
+
+
+def is_authoritative_run(item: Dict[str, Any]) -> bool:
+    """Check if ledger item is an authoritative conductor dispatch."""
+    tok = item.get("tokens", {}) if isinstance(item.get("tokens"), dict) else {}
+    total_tok = tok.get("total", 0)
+    dur = float(item.get("duration_s", 0.0))
+    mode = item.get("mode")
+    tier = item.get("tier")
+    return bool(total_tok > 0 or dur > 0 or mode or tier)
 
 
 def fetch_rest_sessions() -> List[Dict[str, Any]]:
@@ -69,12 +98,17 @@ def get_sprint_metrics(sprint: int = 101) -> Dict[str, Any]:
                     if not line.strip():
                         continue
                     item = json.loads(line)
-                    if str(item.get("sprint")) == str(sprint):
-                        st = str(item.get("story"))
-                        if not st.startswith(prefix):
-                            st = f"{sprint}.{st}"
-                        # Keep latest record for the story
-                        ledger_records[st] = item
+                    raw_sprint = str(item.get("sprint", "")).strip()
+                    raw_story = item.get("story")
+                    if not raw_story:
+                        m = STORY_RE.search(item.get("summary", ""))
+                        if m:
+                            raw_story = m.group(1)
+                    st = normalize_story_id(raw_story, raw_sprint or sprint)
+                    sp = raw_sprint or (st.split(".")[0] if "." in st else "")
+                    if str(sp) == str(sprint) and st:
+                        if st not in ledger_records or is_authoritative_run(item):
+                            ledger_records[st] = item
         except Exception:
             pass
 
@@ -270,8 +304,14 @@ def export_web_telemetry(output_path: Optional[str] = None) -> Dict[str, Any]:
                     candidate = json.loads(line)
                 except Exception:
                     continue
-                if candidate.get("story") and candidate.get("sprint"):
-                    authoritative_stories.add(str(candidate["story"]))
+                raw_story = candidate.get("story")
+                if not raw_story:
+                    m = STORY_RE.search(candidate.get("summary", ""))
+                    if m:
+                        raw_story = m.group(1)
+                norm_story = normalize_story_id(raw_story, candidate.get("sprint"))
+                if norm_story and is_authoritative_run(candidate):
+                    authoritative_stories.add(norm_story)
 
     if os.path.exists(LEDGER_PATH):
         with open(LEDGER_PATH, "r", encoding="utf-8") as f:
@@ -287,18 +327,29 @@ def export_web_telemetry(output_path: Optional[str] = None) -> Dict[str, Any]:
                 if str(item.get("summary", "")).strip() == "Live stdio checkpoint test":
                     continue
 
-                # [Story 101.16 req 2/3] Stub records: dedup against authoritative runs, else backfill.
-                stub = not item.get("story")
-                if stub:
+                raw_story = item.get("story")
+                raw_sprint = str(item.get("sprint", "")).strip() if item.get("sprint") is not None else ""
+                if not raw_story:
                     m = STORY_RE.search(item.get("summary", ""))
-                    story_hit = m.group(1) if m else ""
-                    if story_hit and story_hit in authoritative_stories:
-                        continue
                     if m:
-                        story = m.group(1)
-                        item["story"] = story
-                        item["sprint"] = str(story.split(".")[0])
-                        item.setdefault("title", "")
+                        raw_story = m.group(1)
+
+                norm_story = normalize_story_id(raw_story, raw_sprint)
+                if norm_story and not raw_sprint and "." in norm_story:
+                    raw_sprint = norm_story.split(".")[0]
+
+                # [Story 101.16 & Story 102.16] Stub detection & deduplication against authoritative runs
+                is_stub = not is_authoritative_run(item) and not item.get("title")
+                if is_stub:
+                    if norm_story and norm_story in authoritative_stories:
+                        continue
+                    item["story"] = norm_story
+                    item["sprint"] = raw_sprint
+                    if not item.get("title"):
+                        item["title"] = str(item.get("summary", ""))[:80]
+                else:
+                    item["story"] = norm_story
+                    item["sprint"] = raw_sprint or (norm_story.split(".")[0] if "." in norm_story else "")
 
                 status = str(item.get("status", ""))
                 if status in success_statuses:
