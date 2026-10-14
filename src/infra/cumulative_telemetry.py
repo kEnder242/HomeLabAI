@@ -37,9 +37,9 @@ def log_telemetry_event(
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         tokens_generated = int(tokens_generated) if tokens_generated else 0
-        duration_seconds = (
-            max(0.01, float(duration_seconds)) if duration_seconds else 0.01
-        )
+        raw_dur = float(duration_seconds) if duration_seconds else 0.0
+        # [BKM-024] Enforce >= 1.0s floor to avoid div-0 / velocity spikes that distort chart autoscaling
+        duration_seconds = max(1.0, raw_dur)
 
         # Determine Execution Tier (FEAT-504)
         p_lower = (provider or "").lower()
@@ -55,32 +55,36 @@ def log_telemetry_event(
             tier = "cloud_swarm"
             tier_display = "Cloud Swarm"
 
-        # Effective workflow velocity
+        # Effective workflow velocity with 1000 tok/s sanity limit
         workflow_velocity = round(tokens_generated / duration_seconds, 2)
-        tp = (
-            round(raw_throughput_tok_s, 2)
-            if raw_throughput_tok_s and raw_throughput_tok_s > 0
-            else workflow_velocity
-        )
+        if (
+            raw_throughput_tok_s
+            and raw_throughput_tok_s > 0
+            and raw_throughput_tok_s <= 1000.0
+        ):
+            tp = round(raw_throughput_tok_s, 2)
+        else:
+            tp = min(1000.0, workflow_velocity)
 
-        # 1. Append to live_usage_stream.jsonl
-        record = {
-            "timestamp": time.time(),
-            "date_str": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": source,
-            "task_title": task_title,
-            "seat": seat,
-            "tier": tier,
-            "tier_display": tier_display,
-            "provider": provider,
-            "model": model,
-            "tokens_generated": tokens_generated,
-            "duration_seconds": round(duration_seconds, 2),
-            "throughput_tok_s": tp,
-            "workflow_velocity_tok_s": workflow_velocity,
-        }
-        with open(STREAM_JSONL_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        # 1. Append to live_usage_stream.jsonl only if duration >= 1.0s (filter sub-second div-0 anomalies)
+        if raw_dur >= 1.0:
+            record = {
+                "timestamp": time.time(),
+                "date_str": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "source": source,
+                "task_title": task_title,
+                "seat": seat,
+                "tier": tier,
+                "tier_display": tier_display,
+                "provider": provider,
+                "model": model,
+                "tokens_generated": tokens_generated,
+                "duration_seconds": round(duration_seconds, 2),
+                "throughput_tok_s": tp,
+                "workflow_velocity_tok_s": workflow_velocity,
+            }
+            with open(STREAM_JSONL_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
 
         # 2. Update cumulative_tokens.json atomically
         _update_cumulative_totals(

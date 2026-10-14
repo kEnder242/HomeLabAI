@@ -4636,7 +4636,7 @@ class FoyerRouter:
                                 provider="local_hub",
                                 model=f"persona_{source.lower()}",
                                 tokens_generated=toks,
-                                duration_seconds=max(0.5, toks / 35.0),
+                                duration_seconds=max(1.0, toks / 35.0),
                                 raw_throughput_tok_s=35.0,
                             )
                         except Exception:
