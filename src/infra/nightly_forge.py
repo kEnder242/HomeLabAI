@@ -783,33 +783,19 @@ def run_journal_to_dna_bridge():
 
 
 def run_benchmark_sweep():
-    """[FEAT-495] Dynamic Federated Benchmark Sweep across all active hardware seats."""
-    bench_script = os.path.join(
-        LAB_ROOT, "Portfolio_Dev", "field_notes", "bench_models.py"
+    """[FEAT-496 / FEAT-570] Synthetic benchmark sweep retired.
+
+    Continuous passive telemetry supersedes the periodic bench_models.py
+    subprocess. This pass now only records the decoupling marker.
+    """
+    logger.info(
+        "[BENCHMARK] Synthetic benchmark sweep retired in favor of "
+        "continuous passive telemetry [FEAT-496] [FEAT-570]. "
+        "Skipping bench_models.py."
     )
-    if os.path.exists(bench_script):
-        try:
-            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
-            res = subprocess.run(
-                [py_bin, bench_script, "--no-serve"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if res.returncode == 0:
-                last_line = (
-                    res.stdout.strip().splitlines()[-1] if res.stdout else "Success"
-                )
-                logger.info(f"[BENCHMARK] Sweep complete: {last_line}")
-                write_step_log(
-                    "BENCHMARK_SWEEP_OK", f"Dynamic benchmarks refreshed: {last_line}"
-                )
-            else:
-                logger.warning(
-                    f"[BENCHMARK] Sweep exited with code {res.returncode}: {res.stderr}"
-                )
-        except Exception as e:
-            logger.warning(f"[BENCHMARK] Sweep execution failed: {e}")
+    write_step_log(
+        "BENCHMARK_SWEEP_OK", "Synthetic benchmark sweep decoupled; continuous live telemetry active"
+    )
 
 
 def run_round_table_probe():
