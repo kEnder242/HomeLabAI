@@ -1508,9 +1508,11 @@ Under `BKM-083`, cognitive orchestration pipelines MUST adhere to the **Decouple
    - `step_pre_triage(query)`: Sub-20ms vector probe emitting continuous `semantic_affinity`.
    - `step_triage(query, pre_triage)`: Speculative triage relay emitting decoupled intent and target domains.
    - `step_hyde_rag(query, triage)`: HyDE synthesis with `search_required: bool` and unified ChromaDB retrieval.
-   - `step_brain_gatekeeper(query, rag_context, interest)`: Stage 1 Gatekeeper emitting bedrock bullets + curator notes.
-   - `step_deep_thought(query, brain_bullets, interest)`: Stage 2 Deep Thought strategic synthesis with `FEAT-523` pacing.
-   - `step_pinky_voice(query, synthesis, interest)`: Stage 3 Pinky voice TL;DR, TTS delivery, and consensus telemetry.
+   - Macro Stage 3 Deliberation Micro-Stages:
+     - `step_brain_gatekeeper(query, rag_context, interest)`: Stage 3.1 Gatekeeper forwarding cohesive bedrock RAG + Curator Notes.
+     - `step_deep_thought(query, brain_bullets, interest)`: Stage 3.2 Deep Thought strategic synthesis with `FEAT-523` pacing.
+     - `step_pinky_voice(query, synthesis, interest)`: Stage 3.3 Pinky voice TL;DR, TTS delivery, and consensus telemetry.
+     - `step_grounding_critic(query, ...)`: Stage 3.4 Pinky Grounding Critic 4-key scorecard audit against evidence.
 2. **Zero Execution Divergence:** The live `process_turn()` loop in production MUST delegate directly and sequentially to these `step_*` methods. Standalone divergence (separate CLI tools with duplicate logic) is strictly prohibited.
 3. **Fast Offline Unit Testing:** Pytest test suites (such as `test_multi_stage_replay_pipeline.py` / `FEAT-645`) MUST be able to execute any single `step_*` method independently using frozen input fixtures, verifying prompts and JSON parsing in $< 500\text{ms}$ without spinning up live websocket sessions.
 4. **Continuous Parameter Passing:** Stage methods pass continuous parameters (`interest: float`, `semantic_affinity: float`, `search_required: bool`) explicitly across boundaries rather than relying on mutable shared state or binary clamps (`vibe == 'CASUAL'`).

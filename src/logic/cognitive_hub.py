@@ -2768,7 +2768,7 @@ class CognitiveHub:
     async def step_brain_gatekeeper(
         self, query: str, rag_context: str, interest: float, shutdown_event=None, request_id: str = "default"
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 4] Stage 1 Brain Gatekeeper: prunes distractors, emits 3-4 dense bullets + curator notes."""
+        """[FEAT-489 / BKM-083 Stage 3.1] Brain Gatekeeper: filters fluff, forwards verbatim bedrock RAG + curator notes."""
         t_tm_brain_start = time.perf_counter()
         stage1_prompt = build_two_mice_stage_prompt(
             1, user_query=query, context=rag_context, interest=interest
@@ -2816,7 +2816,7 @@ class CognitiveHub:
     async def step_deep_thought(
         self, query: str, brain_bullets: str, interest: float, shutdown_event=None, request_id: str = "default"
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 5] Stage 2 Deep Thought: laconic architectural synthesis with FEAT-523 interest token budget."""
+        """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget."""
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
         thought_node = self.residents.get("thought")
@@ -2871,7 +2871,7 @@ class CognitiveHub:
     async def step_pinky_voice(
         self, query: str, synthesis: str, interest: float, shutdown_event=None, request_id: str = "default"
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 6] Stage 3 Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
+        """[FEAT-489 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
         t_tm_pinky_start = time.perf_counter()
         stage2_prompt = build_two_mice_stage_prompt(
             2,
@@ -2932,7 +2932,7 @@ class CognitiveHub:
         shutdown_event=None,
         request_id: str = "default",
     ) -> str:
-        """[FEAT-227 / FEAT-470 / BKM-083] Stage 4 Pinky Grounding Critic: evaluates strategic synthesis against evidence."""
+        """[FEAT-227 / FEAT-470 / BKM-083 Stage 3.4] Pinky Grounding Critic: evaluates strategic synthesis against evidence."""
         t_crit_start = time.perf_counter()
         await self.evaluate_grounding(
             strategic_source,
@@ -2956,22 +2956,19 @@ class CognitiveHub:
         shutdown_event=None,
         request_id: str = "default",
     ) -> bool:
-        """[FEAT-489 / FEAT-645] Tri-Node Sequential Streaming Handover Relay.
+        """[FEAT-489 / FEAT-645] Macro Stage 3: Two-Mice Deliberation Circuit.
 
-        Stage 1 (Brain - Right Console): Brain extracts 3-4 dense technical
-        bullet points from the archive record and streams them to
-        ``channel="insight"`` / ``source="Brain (Archive)"``.
-
-        Stage 2 (Deep Thought - Center Console): Deep Thought synthesizes the
-        architectural reality with FEAT-523 interest token budget.
-
-        Stage 3 (Pinky - Left Console / TTS): Pinky receives the synthesis,
-        acknowledges Brain/Deep Thought, and streams a 2-sentence conversational
-        TL;DR to ``channel="pinky"`` / ``source="Pinky (Voice)"``.
-
-        Stage 4 (Pinky - Coherence Critic) [FEAT-227 / FEAT-470]: Pinky evaluates
-        the strategic synthesis against the underlying evidence and records
-        grounding scorecard.
+        Executes the 4-phase sequential handover relay:
+        - Stage 3.1 (Brain - Right Console): Brain evaluates candidate RAG vectors,
+          drops fluff, and forwards bedrock ground truth + Curator Notes.
+        - Stage 3.2 (Deep Thought - Center Console): Deep Thought synthesizes the
+          architectural reality with FEAT-523 interest token budget.
+        - Stage 3.3 (Pinky - Left Console / TTS): Pinky receives the synthesis,
+          acknowledges Brain/Deep Thought, and streams a 2-sentence conversational
+          TL;DR to ``channel="pinky"`` / ``source="Pinky (Voice)"``.
+        - Stage 3.4 (Pinky - Coherence Critic) [FEAT-227 / FEAT-470]: Pinky evaluates
+          the strategic synthesis against the underlying evidence and records
+          the grounding scorecard.
 
         Returns ``True`` when the handover ran; ``False`` when it is not
         possible (missing brains/pinky resident, or interest below the
@@ -2991,23 +2988,23 @@ class CognitiveHub:
             return False
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
 
-        # Stage 1: Brain Gatekeeper
+        # Stage 3.1: Brain Gatekeeper
         brain_bullets = await self.step_brain_gatekeeper(
             query, focus_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # Stage 2: Deep Thought Strategic Synthesis
+        # Stage 3.2: Deep Thought Strategic Synthesis
         dt_synthesis = await self.step_deep_thought(
             query, brain_bullets, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # Stage 3: Pinky Conversational TL;DR
+        # Stage 3.3: Pinky Conversational TL;DR
         pinky_context = dt_synthesis if dt_synthesis else brain_bullets
         await self.step_pinky_voice(
             query, pinky_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # Stage 4: Pinky Grounding Critic [FEAT-227 / FEAT-470]
+        # Stage 3.4: Pinky Grounding Critic [FEAT-227 / FEAT-470]
         strategic_response = dt_synthesis or brain_bullets
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
         if strategic_response:
