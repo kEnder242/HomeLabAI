@@ -2498,8 +2498,9 @@ class CognitiveHub:
                     triage_context,
                     "Pinky (Triage)",
                     tools=[],
-                    temperature=0.7,
+                    temperature=0.2,
                     max_tokens=250,
+                    use_lora=False,
                     response_format=PINKY_HYDE_SCHEMA,
                     scope=ContextScope.TURN,      # [FEAT-640] Mandatory single-turn isolation
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
