@@ -2074,6 +2074,7 @@ class CognitiveHub:
                     if t_parsed
                     else "STANDARD"
                 )
+                scope_name = "CONTEXT_SCOPE_LONG"
                 bullets_list = []
                 for node_key in ["lab", "pinky", "brain", "thought"]:
                     val = self.turn_thought_trace.get(node_key)
