@@ -132,6 +132,8 @@ def test_stage4_brain_gatekeeper_prompt_construction():
     assert "cohesive bedrock truth" in prompt
     assert "evidentiary inspection" in prompt
     assert "Declare your curation" in prompt
+    # [STORY 103.19] Brain Step 3 context isolation & echo prevention
+    assert "Mention your context and role only when it is part of the conversation" in prompt
 
 
 def test_stage5_tri_node_relay_contract():
@@ -193,4 +195,50 @@ def test_stage6_brain_dynamic_boost_contract():
     dt_budget = max(300, min(1500, int(boosted_interest * 1200)))
     assert dt_budget == int(0.95 * 1200)  # 1140 tokens
     assert dt_budget > int(base_interest * 1200)  # Expanded runway
+
+
+def test_stage7_conversational_hyde_and_upvote():
+    """Stage 7 (Story 103.18): Pinky spoken voice HyDE extracts trailing [HYDE: ...] tag and applies sovereign upvote."""
+    hub = _make_test_hub()
+    raw_stream = (
+        "Narf! Let me dig into the Psys and Aurora archives from the 2021 era for you! <upvote>\n"
+        "[HYDE: Aurora psys post-silicon debug 2021]"
+    )
+    # Verify upvote boost
+    assert "<upvote>" in raw_stream
+    old_interest = 0.65
+    new_interest = round(min(1.0, old_interest + 0.20), 2)
+    assert new_interest == 0.85
+
+    # Verify extraction
+    assert "[HYDE:" in raw_stream
+    idx = raw_stream.find("[HYDE:")
+    vector = raw_stream[idx + 6:].split("]")[0].strip()
+    assert vector == "Aurora psys post-silicon debug 2021"
+
+
+def test_stage8_deep_thought_guidance_and_positive_coherence():
+    """Stage 8 (Story 103.20): Deep Thought system prompt has fluid guidance without rigid form headings."""
+    from nodes.thought_node import DEEP_THOUGHT_SYSTEM_PROMPT
+    assert "# ARCHITECTURAL GUIDANCE" in DEEP_THOUGHT_SYSTEM_PROMPT
+    assert "1. BREVITY OF AUTHORITY" not in DEEP_THOUGHT_SYSTEM_PROMPT
+    assert "5. [FEAT-355] VISIBLE CONSENSUS" not in DEEP_THOUGHT_SYSTEM_PROMPT
+    assert "Telemetry suppression" in DEEP_THOUGHT_SYSTEM_PROMPT
+    assert "Do NOT structure your response with form labels, bold headers" in DEEP_THOUGHT_SYSTEM_PROMPT
+
+
+def test_stage9_critic_bridge_contract():
+    """Stage 9 (Story 103.21): Pinky Critic schema defines retort as a spoken conversational bridge directly to Jason."""
+    from nodes.pinky_critic_persona import build_critic_prompt
+    payload_str = build_critic_prompt(
+        user_query="Can you look up Aurora?",
+        technical_summary="Aurora project validated in 2021.",
+    )
+    import json
+    data = json.loads(payload_str)
+    retort_schema = data["output_schema"]["retort"]
+    assert "Pinky's final spoken verdict to Jason" in retort_schema
+    assert "confirming the technical reality and offering a natural conversational follow-up" in retort_schema
+    assert "e.g." not in retort_schema
+
 

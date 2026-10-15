@@ -136,7 +136,7 @@ def build_critic_prompt(
             "score": "integer 1-5 — coherence score scalar (debug telemetry only)",
             "reasoning": "string — grounded technical WHY of the score",
             "slop_found": "boolean — true if AI-slop boilerplate detected",
-            "retort": "string — a witty, in-character one-liner",
+            "retort": "string — Pinky's final spoken verdict to Jason, confirming the technical reality and offering a natural conversational follow-up",
         },
     }
     return json.dumps(payload, indent=2)
