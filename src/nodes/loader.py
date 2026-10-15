@@ -441,8 +441,8 @@ class BicameralNode:
             engine_type = (
                 "OMLX"  # oMLX on M5 Air uses OpenAI /v1/ API, distinct from local vLLM
             )
-            # [LAB-115] Headroom proxy on port 8002 manages KV cache & suppresses reasoning; fallback to 8000
-            port = host_cfg.get("headroom_port", host_cfg.get("mlx_port", 8002))
+            # [LAB-115] Native oMLX on port 8000 supports real-time SSE token streaming; thinking suppression is handled via stop tokens & prompt directives
+            port = host_cfg.get("mlx_port", 8000)
             base_url = f"http://{resolved_ip}:{port}"
         else:
             engine_type = "OLLAMA"
