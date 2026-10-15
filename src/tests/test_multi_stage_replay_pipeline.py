@@ -198,19 +198,49 @@ def test_stage6_brain_dynamic_boost_contract():
 
 
 def test_stage7_conversational_hyde_and_upvote():
-    """Stage 7 (Story 103.18): Pinky spoken voice HyDE extracts trailing [HYDE: ...] tag and applies sovereign upvote."""
+    """Stage 7 (Story 103.18 / 103.24): Pinky spoken voice HyDE extracts structured JSON (or trailing [HYDE: ...] tag) and applies sovereign upvote."""
+    from logic.cognitive_hub import PINKY_HYDE_SCHEMA
+    import json
+
+    # 1. Verify PINKY_HYDE_SCHEMA specification
+    schema_props = PINKY_HYDE_SCHEMA["json_schema"]["schema"]["properties"]
+    assert "spoken_take" in schema_props
+    assert "search_terms" in schema_props
+    assert "upvote" in schema_props
+
+    # 2. End-to-end mock resolution with structured JSON payload
     hub = _make_test_hub()
+    hub.residents["pinky"] = MagicMock()
+    hub.current_interest = 0.65
+    mock_payload = json.dumps({
+        "spoken_take": "Narf! Let me dig into the Psys and Aurora archives from the 2021 era for you!",
+        "search_terms": "Aurora psys power telemetry 2021 Archer City",
+        "upvote": True,
+    })
+
+    async def fake_stream(*args, **kwargs):
+        yield mock_payload
+
+    hub._process_node_stream = fake_stream
+    triage = {"inferred_intent": "find psys", "domain": "exp_tlm", "vibe": "TECHNICAL"}
+
+    async def _run_structured():
+        return await hub.resolve_hyde_vector("query", triage)
+
+    vec, tier = asyncio.run(_run_structured())
+    assert vec == "Aurora psys power telemetry 2021 Archer City"
+    assert hub._last_pinky_greeting == "Narf! Let me dig into the Psys and Aurora archives from the 2021 era for you!"
+    assert round(hub.current_interest, 2) == 0.85  # Boosted +0.20
+
+    # 3. Verify legacy tag fallback
     raw_stream = (
         "Narf! Let me dig into the Psys and Aurora archives from the 2021 era for you! <upvote>\n"
         "[HYDE: Aurora psys post-silicon debug 2021]"
     )
-    # Verify upvote boost
     assert "<upvote>" in raw_stream
     old_interest = 0.65
     new_interest = round(min(1.0, old_interest + 0.20), 2)
     assert new_interest == 0.85
-
-    # Verify extraction
     assert "[HYDE:" in raw_stream
     idx = raw_stream.find("[HYDE:")
     vector = raw_stream[idx + 6:].split("]")[0].strip()

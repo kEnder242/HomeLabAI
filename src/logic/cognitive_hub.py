@@ -143,13 +143,38 @@ DEEP_THOUGHT_REMOTE = "deep_thought_remote"
 PINKY_LOCAL_VLLM = "pinky_local_vllm"
 DIRECT_RAW_QUERY = "direct_raw_query"
 
-# [FEAT-437/459/645 / STORY 103.18] Conversational HyDE & Sovereign Voice Synthesis Prompt
+# [FEAT-437/459/645 / STORY 103.18 / STORY 103.24] Conversational HyDE & Sovereign Voice Schema
+PINKY_HYDE_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "pinky_hyde_synthesis",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "spoken_take": {
+                    "type": "string",
+                    "description": "Pinky's unconstrained, lively 1-2 sentence spoken reply directly to Jason",
+                },
+                "search_terms": {
+                    "type": "string",
+                    "description": "3-6 concise technical keywords and era anchors for ChromaDB search",
+                },
+                "upvote": {
+                    "type": "boolean",
+                    "description": "True if Jason's inquiry is intriguing or warrants deeper lab exploration, giving the lab extra thinking runway",
+                },
+            },
+            "required": ["spoken_take", "search_terms", "upvote"],
+        },
+    },
+}
+
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
-    "In 1 to 2 conversational, warm sentences, give Jason your initial spoken take and say what you're checking in the archives or telemetry.\n"
-    "If Jason's question is intriguing or important, you may include '<upvote>' or '<boost_interest>' to give the lab extra thinking runway.\n"
-    "At the very end of your response, output a lightweight search query tag formatted as:\n"
-    "[HYDE: <key search terms or era anchor>]\n"
+    "Respond with a structured JSON object containing:\n"
+    "1. 'spoken_take': 1 to 2 conversational, warm sentences giving Jason your initial spoken take and what you are checking in the archives or telemetry.\n"
+    "2. 'search_terms': 3 to 6 concise technical keywords and era anchors that pinpoint the exact historical record or telemetry event.\n"
+    "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
 
 
@@ -216,10 +241,10 @@ def _load_hyde_synthesis_prompt():
     if keywords or era_anchors:
         return (
             "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
-            "In 1 to 2 conversational, warm sentences, give Jason your initial spoken take and say what you're checking in the archives or telemetry.\n"
-            "If Jason's question is intriguing or important, you may include '<upvote>' or '<boost_interest>' to give the lab extra thinking runway.\n"
-            "At the very end of your response, output a lightweight search query tag formatted as:\n"
-            "[HYDE: <key search terms or era anchor>]\n\n"
+            "Respond with a structured JSON object containing:\n"
+            "1. 'spoken_take': 1 to 2 conversational, warm sentences giving Jason your initial spoken take and what you are checking in the archives or telemetry.\n"
+            "2. 'search_terms': 3 to 6 concise technical keywords and era anchors that pinpoint the exact historical record or telemetry event.\n"
+            "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n\n"
             f"{anchors_block}"
             f"{mesh_line}"
         )
@@ -2474,74 +2499,100 @@ class CognitiveHub:
                     "Pinky (Triage)",
                     tools=[],
                     temperature=0.7,
-                    max_tokens=150,
+                    max_tokens=250,
+                    response_format=PINKY_HYDE_SCHEMA,
                     scope=ContextScope.TURN,      # [FEAT-640] Mandatory single-turn isolation
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
                     pinky_hyde += token
-                    if self.broadcast:
-                        await self.broadcast(
-                            build_two_mice_stream_packet(
-                                source="Pinky (Triage)",
-                                channel="voice",
-                                console=TWO_MICE_PINKY_CONSOLE,
-                                token=token,
-                                final=False,
-                                request_id=request_id,
-                            )
-                        )
-                if self.broadcast:
-                    await self.broadcast(
-                        build_two_mice_stream_packet(
-                            source="Pinky (Triage)",
-                            channel="voice",
-                            console=TWO_MICE_PINKY_CONSOLE,
-                            token="",
-                            final=True,
-                            request_id=request_id,
-                        )
-                    )
 
                 raw_hyde = pinky_hyde.strip()
-                # [STORY 103.18 / FEAT-238] Detect <boost_interest> / <upvote> in Pinky's stream
+                spoken_take = ""
+                clean_vector = ""
+                should_upvote = False
+
+                # 1. Structured JSON parsing
+                if "{" in raw_hyde and "}" in raw_hyde:
+                    try:
+                        start_idx = raw_hyde.find("{")
+                        end_idx = raw_hyde.rfind("}") + 1
+                        parsed = json.loads(raw_hyde[start_idx:end_idx])
+                        spoken_take = str(
+                            parsed.get("spoken_take", "")
+                            or parsed.get("greeting", "")
+                            or ""
+                        ).strip()
+                        clean_vector = str(
+                            parsed.get("search_terms", "")
+                            or parsed.get("hyde_vector", "")
+                            or ""
+                        ).strip()
+                        should_upvote = bool(parsed.get("upvote", False))
+                    except Exception as e:
+                        logging.warning(f"[HUB] Failed to parse Pinky HyDE JSON: {e}")
+
+                # 2. Tag fallback parsing ([HYDE: ...])
+                if not clean_vector and "[HYDE:" in raw_hyde:
+                    idx = raw_hyde.find("[HYDE:")
+                    end_idx = raw_hyde.find("]", idx)
+                    clean_vector = (
+                        raw_hyde[idx + 6 : end_idx].strip()
+                        if end_idx != -1
+                        else raw_hyde[idx + 6 :].strip()
+                    )
+                    if not spoken_take:
+                        spoken_take = raw_hyde[:idx].strip()
+
+                # 3. Tag-based upvote fallback (<upvote> or <boost_interest>)
                 if "<boost_interest>" in raw_hyde or "<upvote>" in raw_hyde:
+                    should_upvote = True
+
+                # [STORY 103.18 / FEAT-238] Council of Hemispheres: Sovereign Upvote
+                if should_upvote:
                     old_int = getattr(self, "current_interest", 0.5)
                     self.current_interest = min(1.0, old_int + 0.20)
                     logging.info(
                         f"[HUB] [FEAT-238] Council of Hemispheres: Pinky boosted interest from {old_int:.2f} to {self.current_interest:.2f}"
                     )
 
-                clean_vector = ""
-                greeting = ""
-                # [STORY 103.18] Check for lightweight trailing tag [HYDE: ...] or structured JSON fallback
-                if "[HYDE:" in raw_hyde:
-                    idx = raw_hyde.find("[HYDE:")
-                    end_idx = raw_hyde.find("]", idx)
-                    clean_vector = raw_hyde[idx + 6:end_idx].strip() if end_idx != -1 else raw_hyde[idx + 6:].strip()
-                    greeting = raw_hyde[:idx].strip()
-                elif "{" in raw_hyde and "}" in raw_hyde:
-                    try:
-                        start_idx = raw_hyde.find("{")
-                        end_idx = raw_hyde.rfind("}") + 1
-                        parsed = json.loads(raw_hyde[start_idx:end_idx])
-                        greeting = str(parsed.get("greeting", "") or "").strip()
-                        extracted_vec = str(parsed.get("hyde_vector", "") or "").strip()
-                        clean_vector = extracted_vec if extracted_vec else greeting
-                    except Exception:
-                        clean_vector = raw_hyde
-                        greeting = raw_hyde
-                else:
+                # Fallback if both empty
+                if not clean_vector and not spoken_take:
                     clean_vector = raw_hyde
-                    greeting = raw_hyde
+                    spoken_take = raw_hyde
 
-                # Strip internal tags from spoken greeting and vector
+                # Strip internal tags from spoken take and vector
                 clean_vector = re.sub(r"<[^>]+>", "", clean_vector).strip()
-                greeting = re.sub(r"<[^>]+>", "", greeting).strip()
+                spoken_take = re.sub(r"<[^>]+>", "", spoken_take).strip()
                 clean_hyde = scrub_hyde_vector(clean_vector)
 
-                if greeting:
-                    self._last_pinky_greeting = greeting
-                    self.turn_thought_trace["pinky_greeting"] = greeting
+                if spoken_take:
+                    self._last_pinky_greeting = spoken_take
+                    self.turn_thought_trace["pinky_greeting"] = spoken_take
+                    # Broadcast clean spoken voice to Left Console (replacing raw JSON token stream)
+                    if self.broadcast:
+                        await self.broadcast(
+                            build_two_mice_stream_packet(
+                                source="Pinky (Triage)",
+                                channel="voice",
+                                console=TWO_MICE_PINKY_CONSOLE,
+                                token=spoken_take,
+                                final=False,
+                                request_id=request_id,
+                            )
+                        )
+                        await self.broadcast(
+                            build_two_mice_stream_packet(
+                                source="Pinky (Triage)",
+                                channel="voice",
+                                console=TWO_MICE_PINKY_CONSOLE,
+                                token="",
+                                final=True,
+                                request_id=request_id,
+                            )
+                        )
+
+                if isinstance(triage_result, dict) and clean_hyde:
+                    triage_result["hyde_vector_text"] = clean_hyde
 
                 if len(clean_hyde) > 5:
                     logging.info(
