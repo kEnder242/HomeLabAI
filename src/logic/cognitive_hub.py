@@ -1243,9 +1243,6 @@ class CognitiveHub:
                 # [FEAT-470] Legacy backfill: alias Deep Thought -> "brain" only when the local
                 # Brain (shadow_brain_v2) leg did not already record its own synthesis.
                 self.turn_thought_trace.setdefault("brain", full_text)
-            self.session_buffers[buf_key] = ""  # Clear buffer
-
-            # [FEAT-287] Activity Latch
             if node_id in ["brain", "thought"]:
                 self.last_activity = time.time()
                 if hasattr(self, "last_prime_callback") and self.last_prime_callback:
@@ -1256,6 +1253,10 @@ class CognitiveHub:
 
         except Exception as e:
             logging.error(f"[HUB] Stream from {node_id} failed: {e}")
+        finally:
+            if "call_task" in locals() and not call_task.done():
+                call_task.cancel()
+            self.session_buffers[buf_key] = ""
 
     async def execute_dispatch(
         self, text, source_name, shutdown_event=None, retry_count=0, final=False
@@ -2400,7 +2401,38 @@ class CognitiveHub:
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
                     pinky_hyde += token
-                clean_hyde = scrub_hyde_vector(pinky_hyde.strip())
+                raw_hyde = pinky_hyde.strip()
+                greeting = ""
+                # [FEAT-459] Check for structured JSON output from HyDE prompt
+                if "{" in raw_hyde and "}" in raw_hyde:
+                    try:
+                        start_idx = raw_hyde.find("{")
+                        end_idx = raw_hyde.rfind("}") + 1
+                        parsed = json.loads(raw_hyde[start_idx:end_idx])
+                        greeting = str(parsed.get("greeting", "") or "").strip()
+                        extracted_vec = str(parsed.get("hyde_vector", "") or "").strip()
+                        if extracted_vec:
+                            raw_hyde = extracted_vec
+                        elif greeting:
+                            raw_hyde = greeting
+                    except Exception:
+                        pass
+
+                clean_hyde = scrub_hyde_vector(raw_hyde)
+
+                # [FEAT-459 / FEAT-437] If Pinky synthesized a spoken greeting/preamble, broadcast it out loud!
+                if greeting and self.broadcast:
+                    await self.broadcast(
+                        build_two_mice_stream_packet(
+                            source=TWO_MICE_PINKY_SOURCE,
+                            channel=TWO_MICE_PINKY_CHANNEL,
+                            console=TWO_MICE_PINKY_CONSOLE,
+                            token=greeting,
+                            final=True,
+                            request_id=request_id,
+                        )
+                    )
+
                 if len(clean_hyde) > 5:
                     logging.info(
                         f"[FEAT-437][TIER1] Pinky LoRA (cli_voice_v1) HyDE: {clean_hyde[:80]!r}"
