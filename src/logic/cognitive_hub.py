@@ -175,11 +175,25 @@ def _load_hyde_synthesis_prompt():
     ]
 
     keywords = []
+    era_anchors = []
     for path in compass_paths:
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+
+                # [STORY 103.13] Extract High-Level Career Anchors (tier_1_anchor_map)
+                anchor_map = data.get("tier_1_anchor_map", {})
+                for era, bullets in anchor_map.items():
+                    clean_era = era.replace("era_", "").replace("_", "-")
+                    if bullets:
+                        first_line = bullets[0]
+                        if ":" in first_line:
+                            role, desc = first_line.split(":", 1)
+                            era_anchors.append(f"- {clean_era}: {role.strip()} ({desc.strip()})")
+                        else:
+                            era_anchors.append(f"- {clean_era}: {first_line.strip()}")
+
                 mesh_terms = data.get("tier_2_keyword_mesh", {}).get("keywords", [])
                 if mesh_terms:
                     keywords = mesh_terms[
@@ -188,18 +202,26 @@ def _load_hyde_synthesis_prompt():
                     logging.info(
                         f"[FEAT-438] Loaded {len(keywords)} dynamic HyDE mesh terms from career_compass.json"
                     )
+                if era_anchors:
                     break
             except Exception as e:
                 logging.warning(f"Error reading career_compass.json at {path} ({e})")
 
-    if keywords:
-        mesh_str = ", ".join(keywords)
+    anchors_block = ""
+    if era_anchors:
+        anchors_block = "High-Level Career Anchors (2005-2026 Archive):\n" + "\n".join(era_anchors) + "\n\n"
+
+    mesh_str = ", ".join(keywords) if keywords else ""
+    mesh_line = f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n" if mesh_str else ""
+
+    if keywords or era_anchors:
         return (
             "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
             '1. "search_required": boolean (true if query requires facts from lab telemetry, career ledger, or historical archives; false only for pure chit-chat).\n'
             '2. "greeting": string (concise 1-sentence analytical readiness quip from Deep Thought or triage summary).\n'
-            '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n'
-            f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n"
+            '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n\n'
+            f"{anchors_block}"
+            f"{mesh_line}"
             "Output ONLY valid JSON."
         )
 
