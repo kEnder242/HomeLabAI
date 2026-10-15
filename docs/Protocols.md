@@ -1530,8 +1530,10 @@ To prevent confusion between active work and pending reminders:
 * **Numbered Lanes ($1 \dots N$):** Reserved exclusively for active, foreground conversational swim lanes under `BKM-064` / `BKM-077`.
 * **Lettered Ledger ($A \dots Z$):** Reserved exclusively for unaddressed findings, paused ideas, or bugs uncovered under QQ (`BKM-004`) that lack active follow-up.
 
-### 2. The Anti-Hijack Invariant
-The agent MUST answer the user's current prompt first, completely, and with 100% focus. The lettered dropped threads ledger is rendered strictly as a compact tail addendum or footnote at the very end of the turn.
+### 2. The Lookback Horizon & Anti-Hijack Invariant
+1. **The Lookback Horizon:** Review the prior 2–4 turns (specifically turns $N-2$ through $N-4$). The immediate last turn ($N-1$) is active conversational context and is never treated as a dropped thread.
+2. **Never Hijack:** The agent MUST answer the user's current prompt first, completely, and with 100% focus. The lettered dropped threads ledger is rendered strictly as a compact tail addendum or footnote at the very end of the turn.
+3. **Empty Ledger Invariant:** If all items have exited or no pending items exist, omit the ledger section completely.
 
 ### 3. Persistent Letter Tracking Across Turns
 Dropped threads assigned a letter (A:, B:, ...) persist across turns with stable keys until they hit a **Valid Exit Gate**. An agent may not silently drop a lettered thread between turns.
@@ -1544,12 +1546,5 @@ A lettered item only clears from the ledger when one of four explicit gates is s
 4. **Explicitly Dismissed:** The operator explicitly commands *"dismiss A"*, *"drop B"*, or *"not doing C"*. Operator silence or conversational pivots NEVER clear the ledger.
 
 ### 5. Format Standard
-```markdown
----
-### 🧵 Pending Threads Ledger
-* A: Leaked raw JSON token stream filter on Deep Thought (stalled under QQ, Turn 8).
-* B: Active human vote (`👍`/`👎`) backpressure in Foyer (`FEAT-633`).
-* C: Review Panel UI backend endpoint connection (`field_notes/writer.html`).
-*(Commands: "Put A into #2", "Document C to backlog", "Dismiss B", or "Execute A")*
-```
+When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely.
 
