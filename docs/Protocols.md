@@ -1517,7 +1517,39 @@ Under `BKM-083`, cognitive orchestration pipelines MUST adhere to the **Decouple
 3. **Fast Offline Unit Testing:** Pytest test suites (such as `test_multi_stage_replay_pipeline.py` / `FEAT-645`) MUST be able to execute any single `step_*` method independently using frozen input fixtures, verifying prompts and JSON parsing in $< 500\text{ms}$ without spinning up live websocket sessions.
 4. **Continuous Parameter Passing:** Stage methods pass continuous parameters (`interest: float`, `semantic_affinity: float`, `search_required: bool`) explicitly across boundaries rather than relying on mutable shared state or binary clamps (`vibe == 'CASUAL'`).
 
+---
 
+## BKM-084: The Lettered Dropped Threads Protocol (ANCHOR_LETTER)
+**Feature Anchor:** `[BKM-084]` / `[BKM-004]` / `[BKM-064]` / `[BKM-077]` / `[INS-016]`  
+**Colloquial Alias:** "The Lettered Reminders Ledger"  
+**Domain:** Conversational Accountability, Thread Preservation, Anti-Abandonment  
+**Status:** ACTIVE / MANDATORY  
 
+### 1. The Dual-Namespace Architecture
+To prevent confusion between active work and pending reminders:
+* **Numbered Lanes ($1 \dots N$):** Reserved exclusively for active, foreground conversational swim lanes under `BKM-064` / `BKM-077`.
+* **Lettered Ledger ($A \dots Z$):** Reserved exclusively for unaddressed findings, paused ideas, or bugs uncovered under QQ (`BKM-004`) that lack active follow-up.
 
+### 2. The Anti-Hijack Invariant
+The agent MUST answer the user's current prompt first, completely, and with 100% focus. The lettered dropped threads ledger is rendered strictly as a compact tail addendum or footnote at the very end of the turn.
+
+### 3. Persistent Letter Tracking Across Turns
+Dropped threads assigned a letter (A:, B:, ...) persist across turns with stable keys until they hit a **Valid Exit Gate**. An agent may not silently drop a lettered thread between turns.
+
+### 4. Valid Exit Gates (Silence is Never an Exit)
+A lettered item only clears from the ledger when one of four explicit gates is satisfied:
+1. **Addressed:** The item is actively implemented in the current turn or verified resolved in code/tests.
+2. **Documented:** The item is formally recorded into a sprint backlog (`SPRINT_PLAN_*.md`), general project backlog, feature tracker (`FeatureTracker.md`), or DNA card.
+3. **Integrated:** The operator directs the item into an active numbered topic (e.g., *"Put A–C into #3"* $\rightarrow$ absorbed into Topic 3's scope).
+4. **Explicitly Dismissed:** The operator explicitly commands *"dismiss A"*, *"drop B"*, or *"not doing C"*. Operator silence or conversational pivots NEVER clear the ledger.
+
+### 5. Format Standard
+```markdown
+---
+### 🧵 Pending Threads Ledger
+* A: Leaked raw JSON token stream filter on Deep Thought (stalled under QQ, Turn 8).
+* B: Active human vote (`👍`/`👎`) backpressure in Foyer (`FEAT-633`).
+* C: Review Panel UI backend endpoint connection (`field_notes/writer.html`).
+*(Commands: "Put A into #2", "Document C to backlog", "Dismiss B", or "Execute A")*
+```
 
