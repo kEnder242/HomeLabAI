@@ -129,9 +129,9 @@ def test_stage4_brain_gatekeeper_prompt_construction():
     )
     assert "STAGE 1" in prompt
     assert "<historical_record>" in prompt
-    assert "Aurora" in prompt
-    assert "forward the cohesive bedrock" in prompt
-    assert "pure technical signal" in prompt
+    assert "cohesive bedrock truth" in prompt
+    assert "evidentiary inspection" in prompt
+    assert "Declare your curation" in prompt
 
 
 def test_stage5_tri_node_relay_contract():

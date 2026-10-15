@@ -347,6 +347,7 @@ def build_two_mice_stage_prompt(
     interest: float = 0.8,
     brain_grounding: str | None = None,
     brain_bullets: str = "",
+    pinky_take: str = "",
 ) -> str:
     """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
@@ -372,6 +373,8 @@ def build_two_mice_stage_prompt(
         legacy ``brain_bullets`` keyword argument).
     brain_bullets:
         Legacy parameter alias for ``brain_grounding``.
+    pinky_take:
+        Pinky's initial stance or greeting (Stage 1 contextual anchor).
 
     Returns
     -------
@@ -395,17 +398,22 @@ def build_two_mice_stage_prompt(
             if context
             else "[ZERO_CONTEXT]: No archive record retrieved."
         )
+        pinky_block = f"[PINKY_STANCE]: {pinky_take.strip()}\n" if pinky_take and pinky_take.strip() else ""
         return (
             section
-            + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer. "
-            "Jason asked a technical question. Inspect the candidate vectors in <historical_record> and prune irrelevant or tangential chunks entirely, "
-            "steering the narrative focus toward the concrete technical reality of the user query. "
-            "From the surviving, verified candidates, forward the cohesive bedrock DNA text verbatim without distilling or lossy summarization. "
-            "Append high-leverage '💡 Curator Note:' annotations to explain why these candidates connect with the query and highlight synergistic architectural scars. "
-            "Your sideband rationale is a high-density curator note that explains why these candidates have merit, without stalling the pipeline or downvoting the turn. "
-            "Provide pure technical signal for Deep Thought — no narrative preamble, no filler, no conversational framing, no lossy paraphrasing. "
-            "Single-Turn Boundary: Speak strictly for your own active turn. Deliver the verified bedrock evidence and curator notes directly, then yield the floor.\n"
+            + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper and Subconscious Curator.\n"
+            "Jason talked to the lab. Pinky has provided an initial stance.\n"
+            "Your task is strictly evidentiary inspection:\n\n"
+            "1. Review the candidate chunks in <historical_record>.\n"
+            "2. Discern which chunks are cohesive bedrock truth versus irrelevant noise or cross-domain bleed.\n"
+            "3. Respond to Jason's query and Pinky's response in a concise manner, cynical if deserved.\n"
+            "4. Declare your curation:\n"
+            "   - Identify the specific anchored records that directly bear on Jason's query.\n"
+            "   - Note what technical reality is coherent from the data, and flag any ungrounded assumptions.\n"
+            "   - Signal which records you are passing to Deep Thought and why.\n\n"
+            "Leave synthesis and final architectural conclusion to Deep Thought. Provide clean, decisive curation, then yield the floor.\n\n"
             f"[USER_QUERY]: {user_query.strip()}\n"
+            f"{pinky_block}"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
 
@@ -2863,16 +2871,22 @@ class CognitiveHub:
         return hyde, rag_context
 
     async def step_brain_gatekeeper(
-        self, query: str, rag_context: str, interest: float, shutdown_event=None, request_id: str = "default"
+        self,
+        query: str,
+        rag_context: str,
+        interest: float,
+        pinky_take: str = "",
+        shutdown_event=None,
+        request_id: str = "default",
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 3.1] Brain Gatekeeper: filters fluff, forwards verbatim bedrock RAG + curator notes."""
+        """[FEAT-489 / BKM-083 Stage 3.1 / VIBE-006] Brain Gatekeeper: inspects chunks, declares curation, and passes verified anchors."""
         t_tm_brain_start = time.perf_counter()
         stage1_prompt = build_two_mice_stage_prompt(
-            1, user_query=query, context=rag_context, interest=interest
+            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
-        brain_budget = max(400, int(interest * 500))
+        brain_budget = min(250, max(150, int(interest * 250)))
         async for token in self._process_node_stream(
             "brain",
             stage1_prompt,
