@@ -2959,8 +2959,11 @@ class CognitiveHub:
             self._last_thought_duration = max(
                 0.001, round(time.perf_counter() - t_dt_start, 3)
             )
-            if dt_synthesis:
-                self.turn_thought_trace["thought"] = dt_synthesis
+            # [STORY 103.12] Strip <thought>...</thought> tags for clean downstream prose.
+            clean_dt_prose = re.sub(r'<thought>.*?</thought>', '', dt_synthesis, flags=re.DOTALL).strip()
+            if clean_dt_prose:
+                self.turn_thought_trace["thought"] = clean_dt_prose
+                dt_synthesis = clean_dt_prose
         else:
             self._last_thought_duration = 0.0
         return dt_synthesis
