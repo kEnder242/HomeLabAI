@@ -22,6 +22,7 @@ class BlackboardLedger:
         self.max_turns = max_turns
         self.bullets: list[dict[str, Any]] = []
         self.consensus_1liners: list[dict[str, Any]] = []
+        self.round_table_records: list[dict[str, Any]] = []
         self.archived_bullets: list[dict[str, Any]] = []
         self.archived_consensus: list[dict[str, Any]] = []
 
@@ -243,6 +244,8 @@ class BlackboardLedger:
         if len(records) > 50:
             records = records[-50:]
 
+        self.round_table_records = records
+
         tmp_path = f"{output_path}.tmp_{os.getpid()}"
         try:
             with open(tmp_path, "w") as f:
@@ -254,18 +257,49 @@ class BlackboardLedger:
                     os.remove(tmp_path)
                 except Exception:
                     pass
+
+        # [STORY 103.22] Non-blocking commit to ChromaDB
+        try:
+            self.commit_to_chroma()
+        except Exception:
+            pass
+
         return turn_entry
 
     def commit_to_chroma(
         self, client=None, collection_name: str = "blackboard_ledger_dna"
     ):
-        """Non-fatal commit of blackboard events to ChromaDB."""
+        """[FEAT-444 / STORY 103.22] Non-fatal commit of structured turn records to ChromaDB."""
         try:
             if client is None:
                 import chromadb
 
                 client = chromadb.HttpClient(host="127.0.0.1", port=8001)
             col = client.get_or_create_collection(name=collection_name)
+            # Embed structured turn summaries
+            for r in getattr(self, "round_table_records", []):
+                turn_num = r.get("turn", 0)
+                ts = r.get("timestamp", int(time.time()))
+                doc_id = f"bb_turn_{turn_num}_{ts}"
+                prompt = r.get("user_prompt", "")
+                bullets_joined = "\n".join(r.get("distillation_bullets", []))
+                consensus = r.get("consensus_1liner", "")
+                doc_text = (
+                    f"Turn {turn_num} | Topic: {r.get('topic')}\n"
+                    f"User Prompt: {prompt}\n"
+                    f"Distillation Bullets:\n{bullets_joined}\n"
+                    f"Consensus: {consensus}"
+                )
+                col.upsert(
+                    ids=[doc_id],
+                    documents=[doc_text],
+                    metadatas=[{
+                        "turn": turn_num,
+                        "ts": ts,
+                        "topic": str(r.get("topic", "STANDARD")),
+                        "type": "turn_summary",
+                    }],
+                )
             for idx, c in enumerate(self.consensus_1liners):
                 doc_id = f"bb_consensus_{c['turn']}_{int(c['ts'])}_{idx}"
                 col.upsert(

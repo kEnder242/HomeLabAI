@@ -143,14 +143,13 @@ DEEP_THOUGHT_REMOTE = "deep_thought_remote"
 PINKY_LOCAL_VLLM = "pinky_local_vllm"
 DIRECT_RAW_QUERY = "direct_raw_query"
 
-# [FEAT-437/459/645] Unified HyDE & Greeting Synthesis Prompt (JSON)
+# [FEAT-437/459/645 / STORY 103.18] Conversational HyDE & Sovereign Voice Synthesis Prompt
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
-    "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-    '1. "search_required": boolean (true if query requires facts from lab telemetry, career ledger, or historical archives; false only for pure chit-chat).\n'
-    '2. "greeting": string (concise 1-sentence analytical readiness quip from Deep Thought or triage summary).\n'
-    '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n'
-    "Gate technical synthesis by the 4 domains: exp_tlm (Silicon Telemetry), exp_bkm (SRE Playbooks), exp_for (Forensic Logs), lab_history (18-Year Archive).\n"
-    "Output ONLY valid JSON."
+    "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
+    "In 1 to 2 conversational, warm sentences, give Jason your initial spoken take and say what you're checking in the archives or telemetry.\n"
+    "If Jason's question is intriguing or important, you may include '<upvote>' or '<boost_interest>' to give the lab extra thinking runway.\n"
+    "At the very end of your response, output a lightweight search query tag formatted as:\n"
+    "[HYDE: <key search terms or era anchor>]\n"
 )
 
 
@@ -216,13 +215,13 @@ def _load_hyde_synthesis_prompt():
 
     if keywords or era_anchors:
         return (
-            "Analyze the user query and output a single JSON object with EXACTLY three fields:\n"
-            '1. "search_required": boolean (true if query requires facts from lab telemetry, career ledger, or historical archives; false only for pure chit-chat).\n'
-            '2. "greeting": string (concise 1-sentence analytical readiness quip from Deep Thought or triage summary).\n'
-            '3. "hyde_vector": string (if search_required, a 3-part Composite HyDE Vector formatted EXACTLY as \'[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\'; else "").\n\n'
+            "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
+            "In 1 to 2 conversational, warm sentences, give Jason your initial spoken take and say what you're checking in the archives or telemetry.\n"
+            "If Jason's question is intriguing or important, you may include '<upvote>' or '<boost_interest>' to give the lab extra thinking runway.\n"
+            "At the very end of your response, output a lightweight search query tag formatted as:\n"
+            "[HYDE: <key search terms or era anchor>]\n\n"
             f"{anchors_block}"
             f"{mesh_line}"
-            "Output ONLY valid JSON."
         )
 
     return _HYDE_SYNTHESIS_PROMPT_DEFAULT
@@ -406,7 +405,7 @@ def build_two_mice_stage_prompt(
             "Your task is strictly evidentiary inspection:\n\n"
             "1. Review the candidate chunks in <historical_record>.\n"
             "2. Discern which chunks are cohesive bedrock truth versus irrelevant noise or cross-domain bleed.\n"
-            "3. Respond to Jason's query and Pinky's response in a concise manner, cynical if deserved.\n"
+            "3. Respond to Jason's query and Pinky's response in a focused and concise manner, cynical if deserved. Mention your context and role only when it is part of the conversation.\n"
             "4. Declare your curation:\n"
             "   - Identify the specific anchored records that directly bear on Jason's query.\n"
             "   - Note what technical reality is coherent from the data, and flag any ungrounded assumptions.\n"
@@ -2075,15 +2074,22 @@ class CognitiveHub:
                     if t_parsed
                     else "STANDARD"
                 )
-                scope_name = "CONTEXT_SCOPE_LONG"
-                bullets_list = [
-                    f"{k.upper()}: {str(v)[:150]}"
-                    for k, v in self.turn_thought_trace.items()
-                    if v
-                ]
-                consensus_text = (
-                    str(critique_res)[:200] if critique_res else "Consensus nominal."
-                )
+                bullets_list = []
+                for node_key in ["lab", "pinky", "brain", "thought"]:
+                    val = self.turn_thought_trace.get(node_key)
+                    if val:
+                        clean_val = str(val).strip()
+                        bullets_list.append(f"{node_key.upper()}: {clean_val}")
+
+                # [STORY 103.22] Consensus 1-liner captures Critic score and retort exclusively
+                consensus_text = "Consensus nominal."
+                if critique_res:
+                    if isinstance(critique_res, dict):
+                        score = critique_res.get("score", 5)
+                        retort = critique_res.get("retort", "")
+                        consensus_text = f"Score {score}/5 — {retort}".strip(" —")
+                    else:
+                        consensus_text = str(critique_res).strip()
                 if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                     self.blackboard_ledger.append_round_table_delta(
                         turn=turn_num,
@@ -2235,9 +2241,9 @@ class CognitiveHub:
                 response_format=eval_schema,
                 request_id=request_id,
                 behavioral_guidance=(
-                    f"You are Pinky. Brain has just given the technical stance above. "
-                    f"Respond directly to Brain in your authentic witty peer voice, reviewing the technical truth, "
-                    f"scars, and giving consensus. Never speak about yourself in the third person. {vibe_tone}"
+                    f"You are Pinky. Brain and Deep Thought have established the technical stance above. "
+                    f"Deliver your final spoken verdict directly to Jason in your authentic lively voice, "
+                    f"confirming the technical reality and offering a natural conversational follow-up. Never speak about yourself in the third person. {vibe_tone}"
                 ),
             ):
                 eval_text += token
@@ -2464,47 +2470,77 @@ class CognitiveHub:
                     "pinky",
                     HYDE_SYNTHESIS_PROMPT,
                     triage_context,
-                    "Pinky (HyDE)",
+                    "Pinky (Triage)",
                     tools=[],
-                    temperature=0.2,
+                    temperature=0.7,
                     max_tokens=150,
                     scope=ContextScope.TURN,      # [FEAT-640] Mandatory single-turn isolation
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
                     pinky_hyde += token
+                    if self.broadcast:
+                        await self.broadcast(
+                            build_two_mice_stream_packet(
+                                source="Pinky (Triage)",
+                                channel="voice",
+                                console=TWO_MICE_PINKY_CONSOLE,
+                                token=token,
+                                final=False,
+                                request_id=request_id,
+                            )
+                        )
+                if self.broadcast:
+                    await self.broadcast(
+                        build_two_mice_stream_packet(
+                            source="Pinky (Triage)",
+                            channel="voice",
+                            console=TWO_MICE_PINKY_CONSOLE,
+                            token="",
+                            final=True,
+                            request_id=request_id,
+                        )
+                    )
+
                 raw_hyde = pinky_hyde.strip()
+                # [STORY 103.18 / FEAT-238] Detect <boost_interest> / <upvote> in Pinky's stream
+                if "<boost_interest>" in raw_hyde or "<upvote>" in raw_hyde:
+                    old_int = getattr(self, "current_interest", 0.5)
+                    self.current_interest = min(1.0, old_int + 0.20)
+                    logging.info(
+                        f"[HUB] [FEAT-238] Council of Hemispheres: Pinky boosted interest from {old_int:.2f} to {self.current_interest:.2f}"
+                    )
+
+                clean_vector = ""
                 greeting = ""
-                # [FEAT-459] Check for structured JSON output from HyDE prompt
-                if "{" in raw_hyde and "}" in raw_hyde:
+                # [STORY 103.18] Check for lightweight trailing tag [HYDE: ...] or structured JSON fallback
+                if "[HYDE:" in raw_hyde:
+                    idx = raw_hyde.find("[HYDE:")
+                    end_idx = raw_hyde.find("]", idx)
+                    clean_vector = raw_hyde[idx + 6:end_idx].strip() if end_idx != -1 else raw_hyde[idx + 6:].strip()
+                    greeting = raw_hyde[:idx].strip()
+                elif "{" in raw_hyde and "}" in raw_hyde:
                     try:
                         start_idx = raw_hyde.find("{")
                         end_idx = raw_hyde.rfind("}") + 1
                         parsed = json.loads(raw_hyde[start_idx:end_idx])
                         greeting = str(parsed.get("greeting", "") or "").strip()
                         extracted_vec = str(parsed.get("hyde_vector", "") or "").strip()
-                        if extracted_vec:
-                            raw_hyde = extracted_vec
-                        elif greeting:
-                            raw_hyde = greeting
+                        clean_vector = extracted_vec if extracted_vec else greeting
                     except Exception:
-                        pass
+                        clean_vector = raw_hyde
+                        greeting = raw_hyde
+                else:
+                    clean_vector = raw_hyde
+                    greeting = raw_hyde
 
-                clean_hyde = scrub_hyde_vector(raw_hyde)
+                # Strip internal tags from spoken greeting and vector
+                clean_vector = re.sub(r"<[^>]+>", "", clean_vector).strip()
+                greeting = re.sub(r"<[^>]+>", "", greeting).strip()
+                clean_hyde = scrub_hyde_vector(clean_vector)
 
-                # [FEAT-459 / FEAT-437] If Pinky synthesized a spoken greeting/preamble, record and broadcast out loud!
-                if greeting and self.broadcast:
+                if greeting:
                     self._last_pinky_greeting = greeting
                     self.turn_thought_trace["pinky_greeting"] = greeting
-                    await self.broadcast(
-                        {
-                            "type": "chat",
-                            "brain": greeting,
-                            "brain_source": TWO_MICE_PINKY_SOURCE,
-                            "channel": TWO_MICE_PINKY_CHANNEL,
-                            "console": TWO_MICE_PINKY_CONSOLE,
-                            "request_id": request_id,
-                        }
-                    )
 
                 if len(clean_hyde) > 5:
                     logging.info(
@@ -2956,8 +2992,9 @@ class CognitiveHub:
                 prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
 
             prompt_parts.append(
-                "Synthesize the architectural reality in 1-2 laconic, high-authority engineering statements. "
-                "Ground strictly in the provided evidence. Weigh against Pinky's take. Do not repeat raw text verbatim."
+                "Synthesize the architectural reality in high-authority engineering prose. "
+                "Find things consistent with Jason's query and the consensus of the lab mice. "
+                "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
             dt_budget = max(300, min(1500, int(interest * 1200)))
