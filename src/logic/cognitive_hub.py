@@ -2960,6 +2960,7 @@ class CognitiveHub:
                 "Ground strictly in the provided evidence. Weigh against Pinky's take. Do not repeat raw text verbatim."
             )
             dt_prompt = "\n\n".join(prompt_parts)
+            dt_budget = max(300, min(1500, int(interest * 1200)))
             async for token in self._process_node_stream(
                 "thought",
                 dt_prompt,
@@ -2968,6 +2969,7 @@ class CognitiveHub:
                 tools=[],
                 temperature=0.2,
                 request_id=request_id,
+                max_tokens=dt_budget,
             ):
                 dt_synthesis += token
                 await self.broadcast(
@@ -3125,16 +3127,24 @@ class CognitiveHub:
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
 
         # Stage 3.1: Brain Gatekeeper
+        pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")
         brain_grounding = await self.step_brain_gatekeeper(
-            query, focus_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+            query, focus_context, gate_interest, pinky_take=pinky_take, shutdown_event=shutdown_event, request_id=request_id
         )
 
+        # [STORY 103.15 / FEAT-238] Dynamic Boost Check confined to Brain's turn
+        boosted_interest = gate_interest
+        if "<boost_interest>" in brain_grounding or "<upvote>" in brain_grounding:
+            boosted_interest = min(1.0, gate_interest + 0.20)
+            logging.info(
+                f"[HUB] [FEAT-238] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}"
+            )
+
         # Stage 3.2: Deep Thought Strategic Synthesis
-        pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")
         dt_synthesis = await self.step_deep_thought(
             query,
             brain_grounding=brain_grounding,
-            interest=gate_interest,
+            interest=boosted_interest,
             pinky_take=pinky_take,
             rag_context=focus_context,
             shutdown_event=shutdown_event,
