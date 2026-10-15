@@ -705,6 +705,59 @@ def resolve_rdna_hyde_exemplar(query: str, client=None, distance_floor: float = 
     return query, {}
 
 
+def purge_candidate_exemplar(query: str, request_id: str = "", client=None) -> bool:
+    """[FEAT-634] Human Downvote Signal: Purge synthetic HyDE anchor from RDNA collection."""
+    if not query or len(query.strip()) < 5:
+        return False
+    try:
+        if client is None:
+            import chromadb
+            client = chromadb.HttpClient(host="localhost", port=8001)
+        col = client.get_collection("rdna")
+        res = col.query(query_texts=[query[:300]], n_results=1)
+        dists = res.get("distances", [[]])[0]
+        ids = res.get("ids", [[]])[0]
+        if dists and ids and dists[0] <= 0.45:
+            doc_id = ids[0]
+            col.delete(ids=[doc_id])
+            logging.info(
+                f"[ARCHIVE] [FEAT-634] Purged RDNA candidate exemplar {doc_id} for query: {query[:60]!r}"
+            )
+            return True
+    except Exception as e:
+        logging.warning(f"[ARCHIVE] [FEAT-634] Failed to purge RDNA exemplar ({e})")
+    return False
+
+
+def evaluate_rdna_promotion_candidate(query: str, response: str, request_id: str = "", client=None) -> dict:
+    """[FEAT-633] Human Upvote Signal: Promote verified query/response pair to permanent canonical RDNA."""
+    if not query or not response or len(query.strip()) < 5:
+        return {"promoted": False, "reason": "empty_payload"}
+    try:
+        if client is None:
+            import chromadb
+            client = chromadb.HttpClient(host="localhost", port=8001)
+        col = client.get_or_create_collection("rdna")
+        doc_id = f"rdna_upvote_{int(time.time())}_{request_id[-6:] if request_id else 'user'}"
+        meta = {
+            "query": query[:300],
+            "title": query[:100],
+            "promoted_by": "human_upvote",
+            "timestamp": time.time(),
+            "request_id": request_id,
+        }
+        col.add(
+            ids=[doc_id],
+            documents=[f"Query: {query}\nResponse: {response[:1000]}"],
+            metadatas=[meta],
+        )
+        logging.info(f"[ARCHIVE] [FEAT-633] Promoted verified anchor to RDNA: {doc_id}")
+        return {"promoted": True, "id": doc_id}
+    except Exception as e:
+        logging.warning(f"[ARCHIVE] [FEAT-633] Failed to promote RDNA candidate ({e})")
+        return {"promoted": False, "error": str(e)}
+
+
 def select_vector_query(query: str, hyde_vector_text: str, enable_rdna: bool = True) -> str:
     """[FEAT-437 / FEAT-630] Choose the ChromaDB vector query:
     1. If explicit substantial hyde_vector_text provided, parse multi-voice composite.

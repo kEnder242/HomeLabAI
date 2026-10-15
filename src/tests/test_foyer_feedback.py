@@ -162,3 +162,35 @@ async def test_invalid_rating_rejected(test_app):
         data = await response.json()
         assert data["status"] == "ERROR"
         assert "rating' must be UP or DOWN" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_feedback_invokes_archive_node_purge_and_promote(test_app, monkeypatch):
+    """[FEAT-633/634] Verify that feedback endpoint triggers archive node hooks."""
+    purge_called = []
+    promote_called = []
+
+    def mock_purge(q, r_id):
+        purge_called.append((q, r_id))
+        return True
+
+    def mock_promote(q, resp, r_id):
+        promote_called.append((q, resp, r_id))
+        return {"promoted": True}
+
+    import nodes.archive_node
+    monkeypatch.setattr(nodes.archive_node, "purge_candidate_exemplar", mock_purge)
+    monkeypatch.setattr(nodes.archive_node, "evaluate_rdna_promotion_candidate", mock_promote)
+
+    async with TestClient(TestServer(test_app)) as client:
+        # Test UP
+        resp_up = await client.post("/feedback", json={"rating": "UP", "query": "q_up", "request_id": "r_up", "response": "resp_ok"})
+        assert resp_up.status == 200
+        assert len(promote_called) == 1
+        assert promote_called[0][0] == "q_up"
+
+        # Test DOWN
+        resp_down = await client.post("/feedback", json={"rating": "DOWN", "query": "q_down", "request_id": "r_down", "response": "resp_bad"})
+        assert resp_down.status == 200
+        assert len(purge_called) == 1
+        assert purge_called[0][0] == "q_down"

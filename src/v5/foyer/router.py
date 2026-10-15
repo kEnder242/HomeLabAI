@@ -1456,6 +1456,17 @@ class FoyerRouter:
                         "note": record["user_note"],
                     }
                 )
+                try:
+                    from nodes.archive_node import purge_candidate_exemplar
+                    purge_candidate_exemplar(record["query"], record["request_id"])
+                except Exception as ex:
+                    logger.warning(f"[FOYER] [FEAT-634] Purge candidate exemplar warning: {ex}")
+            elif rating == "UP":
+                try:
+                    from nodes.archive_node import evaluate_rdna_promotion_candidate
+                    evaluate_rdna_promotion_candidate(record["query"], record["response_snippet"], record["request_id"])
+                except Exception as ex:
+                    logger.warning(f"[FOYER] [FEAT-633] Evaluate RDNA promotion warning: {ex}")
             return web.json_response(
                 {
                     "status": "success",
