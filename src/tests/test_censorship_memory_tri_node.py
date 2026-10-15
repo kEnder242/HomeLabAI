@@ -83,7 +83,7 @@ async def test_step_deep_thought_receives_pinky_take_and_rag_context():
     prompt = captured_prompts[0]
     assert f"[USER_QUERY]: {query}" in prompt
     assert f"[PINKY_TAKE]:\n{pinky_take}" in prompt
-    assert f"[BRAIN_BEDROCK_BULLETS]:\n{brain_bullets}" in prompt
+    assert f"[BRAIN_GROUNDING]:\n{brain_bullets}" in prompt
     assert "Weigh against Pinky's take" in prompt
     assert "Architecturally sound" in synthesis
 

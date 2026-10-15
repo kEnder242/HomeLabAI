@@ -274,9 +274,9 @@ def sanitize_stream_chunk(text: str) -> str:
 # Brain and Pinky no longer run as uncoordinated parallel competitors over the
 # same raw RAG dump. On high-interest technical turns the hub runs a strict
 # two-stage funnel:
-#   Stage 1 (Brain - Right Console): extract 3-4 dense technical bullet points
+#   Stage 1 (Brain - Right Console): evaluates RAG and forwards bedrock truth
 #     from <historical_record> -> channel="insight", source="Brain (Archive)".
-#   Stage 2 (Pinky - Left Console / TTS): receives Brain's bullets as context,
+#   Stage 2 (Pinky - Left Console / TTS): receives Brain's grounding as context,
 #     acknowledges Brain in character, delivers a 2-sentence conversational
 #     TL;DR directly to Jason -> channel="pinky", source="Pinky (Voice)".
 #
@@ -323,9 +323,10 @@ def build_two_mice_stage_prompt(
     user_query: str,
     context: str = "",
     interest: float = 0.8,
+    brain_grounding: str | None = None,
     brain_bullets: str = "",
 ) -> str:
-    """[FEAT-489] Build the system-role prompt for one stage of the Two-Mice funnel.
+    """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
     Composes the 3 Prompt Engineering Pillars:
       1. Shared Bedrock Lab Foundation [FEAT-140/467]
@@ -335,8 +336,8 @@ def build_two_mice_stage_prompt(
     Parameters
     ----------
     stage:
-        ``1`` (Brain extracts technical bullets) or ``2`` (Pinky acknowledges
-        Brain and delivers a conversational TL;DR).
+        ``1`` (Brain evaluates RAG and forwards bedrock truth) or ``2`` (Pinky
+        acknowledges Brain and delivers a conversational TL;DR).
     user_query:
         Jason's original technical question.
     context:
@@ -344,8 +345,11 @@ def build_two_mice_stage_prompt(
         ``<historical_record>`` tags inside the prompt.
     interest:
         Current interest scalar used to select the FEAT-403 loop band.
+    brain_grounding:
+        Stage 1 output handed to Pinky as Stage 2 grounding (also accepts
+        legacy ``brain_bullets`` keyword argument).
     brain_bullets:
-        Stage 1 output handed to Pinky as Stage 2 grounding.
+        Legacy parameter alias for ``brain_grounding``.
 
     Returns
     -------
@@ -376,23 +380,25 @@ def build_two_mice_stage_prompt(
             "steering the narrative focus toward the concrete technical reality of the user query. "
             "From the surviving, verified candidates, forward the cohesive bedrock DNA text verbatim without distilling or lossy summarization. "
             "Append high-leverage '💡 Curator Note:' annotations to explain why these candidates connect with the query and highlight synergistic architectural scars. "
-            "Provide pure technical signal for Deep Thought — no narrative preamble, no conversational filler, no lossy paraphrasing. "
+            "Your sideband rationale is a high-density curator note that explains why these candidates have merit, without stalling the pipeline or downvoting the turn. "
+            "Provide pure technical signal for Deep Thought — no narrative preamble, no filler, no conversational framing, no lossy paraphrasing. "
             "Single-Turn Boundary: Speak strictly for your own active turn. Deliver the verified bedrock evidence and curator notes directly, then yield the floor.\n"
             f"[USER_QUERY]: {user_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
 
-    if not brain_bullets.strip():
-        brain_bullets = "(Brain returned no extraction for this turn.)"
+    extracted_evidence = brain_grounding if brain_grounding is not None else brain_bullets
+    if not extracted_evidence.strip():
+        extracted_evidence = "(Brain returned no extraction for this turn.)"
     return (
         section
-        + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and extracted: "
-        f"{brain_bullets}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
+        + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and grounded this technical reality: "
+        f"{extracted_evidence}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
         "and deliver a 2-sentence conversational TL;DR directly to Jason. Keep it warm, concise, and "
-        "human — do not dump bullets or raw RAG references. "
+        "human — do not recite raw RAG passages or technical serial numbers. "
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 2-sentence conversational "
         "TL;DR directly to Jason, then yield the floor.\n"
-        f"[BRAIN_EXTRACTED_BULLETS]:\n{brain_bullets.strip()}\n"
+        f"[BRAIN_GROUNDING]:\n{extracted_evidence.strip()}\n"
         f"[USER_QUERY]: {user_query.strip()}"
     )
 
@@ -409,7 +415,7 @@ def build_two_mice_stream_packet(
     """[FEAT-489] Build a dual-console WebSocket thought_stream packet.
 
     Encapsulates the Dual-Console Routing Contract so the Foyer/Intercom UI can
-    place Brain's bullet stream on the Right Console (channel ``"insight"``) and
+    place Brain's grounding stream on the Right Console (channel ``"insight"``) and
     Pinky's TL;DR on the Left Console (channel ``"pinky"``).
     """
     return {
@@ -2843,7 +2849,7 @@ class CognitiveHub:
             1, user_query=query, context=rag_context, interest=interest
         )
         brain_tools = await self._get_node_tools("brain")
-        brain_bullets = ""
+        brain_grounding = ""
         brain_budget = max(400, int(interest * 500))
         async for token in self._process_node_stream(
             "brain",
@@ -2855,7 +2861,7 @@ class CognitiveHub:
             request_id=request_id,
             max_tokens=brain_budget,
         ):
-            brain_bullets += token
+            brain_grounding += token
             await self.broadcast(
                 build_two_mice_stream_packet(
                     source=TWO_MICE_BRAIN_SOURCE,
@@ -2881,45 +2887,47 @@ class CognitiveHub:
         self._last_two_mice_brain_duration = max(
             0.001, round(time.perf_counter() - t_tm_brain_start, 3)
         )
-        self.turn_thought_trace["brain"] = brain_bullets
-        return brain_bullets
+        self.turn_thought_trace["brain"] = brain_grounding
+        return brain_grounding
 
     async def step_deep_thought(
         self,
         query: str,
-        brain_bullets: str,
-        interest: float,
+        brain_grounding: str = "",
+        interest: float = 0.8,
         pinky_take: str = "",
         rag_context: str = "",
         shutdown_event=None,
         request_id: str = "default",
+        brain_bullets: str = "",
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget.
 
         As documented in CONTEXT_MEMORY_FLOW_MAP.md, Deep Thought receives the full Current Turn Package:
-        User query + Pinky take/greeting + Brain bedrock bullets + RAG context when available.
+        User query + Pinky take/greeting + Brain bedrock grounding + RAG context when available.
         """
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
         thought_node = self.residents.get("thought")
+        effective_grounding = brain_grounding or brain_bullets
         if thought_node:
             prompt_parts = [f"[USER_QUERY]: {query}"]
             if pinky_take:
                 prompt_parts.append(f"[PINKY_TAKE]:\n{pinky_take}")
-            if brain_bullets:
-                prompt_parts.append(f"[BRAIN_BEDROCK_BULLETS]:\n{brain_bullets}")
+            if effective_grounding:
+                prompt_parts.append(f"[BRAIN_GROUNDING]:\n{effective_grounding}")
             elif rag_context:
                 prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
 
             prompt_parts.append(
                 "Synthesize the architectural reality in 1-2 laconic, high-authority engineering statements. "
-                "Ground strictly in the provided evidence. Weigh against Pinky's take. Do not repeat raw bullet text."
+                "Ground strictly in the provided evidence. Weigh against Pinky's take. Do not repeat raw text verbatim."
             )
             dt_prompt = "\n\n".join(prompt_parts)
             async for token in self._process_node_stream(
                 "thought",
                 dt_prompt,
-                brain_bullets or rag_context,
+                effective_grounding or rag_context,
                 "Deep Thought (Strategy)",
                 tools=[],
                 temperature=0.2,
@@ -2966,7 +2974,7 @@ class CognitiveHub:
             2,
             user_query=query,
             interest=interest,
-            brain_bullets=synthesis,
+            brain_grounding=synthesis,
         )
         pinky_stream_count = 0
         pinky_tldr = ""
@@ -3078,7 +3086,7 @@ class CognitiveHub:
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
 
         # Stage 3.1: Brain Gatekeeper
-        brain_bullets = await self.step_brain_gatekeeper(
+        brain_grounding = await self.step_brain_gatekeeper(
             query, focus_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
@@ -3086,8 +3094,8 @@ class CognitiveHub:
         pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")
         dt_synthesis = await self.step_deep_thought(
             query,
-            brain_bullets,
-            gate_interest,
+            brain_grounding=brain_grounding,
+            interest=gate_interest,
             pinky_take=pinky_take,
             rag_context=focus_context,
             shutdown_event=shutdown_event,
@@ -3095,13 +3103,13 @@ class CognitiveHub:
         )
 
         # Stage 3.3: Pinky Conversational TL;DR
-        pinky_context = dt_synthesis if dt_synthesis else brain_bullets
+        pinky_context = dt_synthesis if dt_synthesis else brain_grounding
         await self.step_pinky_voice(
             query, pinky_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
         # Stage 3.4: Pinky Grounding Critic [FEAT-227 / FEAT-470]
-        strategic_response = dt_synthesis or brain_bullets
+        strategic_response = dt_synthesis or brain_grounding
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
         if strategic_response:
             await self.step_grounding_critic(
@@ -3115,7 +3123,7 @@ class CognitiveHub:
             )
 
         logging.info(
-            f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_bullets)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
+            f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_grounding)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
         )
         return True
 
