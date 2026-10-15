@@ -25,7 +25,7 @@ def test_stage1_prompt_contains_gatekeeper_and_curator_instructions():
     assert "Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer" in prompt
     assert "💡 Curator Note:" in prompt
     assert "prune irrelevant or tangential chunks entirely" in prompt
-    assert "3-4 dense" in prompt
+    assert "forward the cohesive bedrock" in prompt
     assert "pure technical signal" in prompt
     assert "<historical_record>" in prompt
 

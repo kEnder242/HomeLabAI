@@ -806,9 +806,7 @@ class BicameralNode:
                     "\n---\n\n**Visible Consensus**",
                     "\n\n**Visible Consensus**:",
                     "Conversation has concluded",
-                    "</thought>",
-                    "</think>",
-                ],
+                ] + (["</thought>", "</think>"] if self.name.lower() == "thought" else []),
                 "extra_body": {
                     "reasoning_effort": "low",
                     "reasoning": 0,

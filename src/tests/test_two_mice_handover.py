@@ -65,7 +65,7 @@ def test_stage1_prompt_grounds_three_pillars_and_historical_record():
     # Grounding: user query + historical record wrapped in tags.
     assert "ESB2 server" in prompt
     assert "<historical_record>" in prompt and "</historical_record>" in prompt
-    assert "3-4 dense" in prompt and "pure technical signal" in prompt
+    assert "forward the cohesive bedrock" in prompt and "pure technical signal" in prompt
 
 
 def test_stage2_prompt_embeds_brain_bullets_and_tldr_instructions():

@@ -373,13 +373,11 @@ def build_two_mice_stage_prompt(
             section
             + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer. "
             "Jason asked a technical question. Inspect the candidate vectors in <historical_record> and prune irrelevant or tangential chunks entirely, "
-            "steering the narrative focus toward the concrete technical reality of the user query. From the surviving, verified candidates, extract the "
-            "exact technical ground truth (platforms, firmware, tools, scars, bedrock invariants) in 3-4 dense bullet points, and append high-leverage "
-            "'💡 Curator Note: [ID] connects with [ID]' annotations when synergistic connections exist. Your sideband rationale is a high-density "
-            "curator note that explains why these candidates have merit, without stalling the pipeline or downvoting the turn. Provide pure technical "
-            "signal for Pinky — no narrative preamble, no filler, no conversational framing. "
-            "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 3-4 dense technical "
-            "bullet points directly, then yield the floor.\n"
+            "steering the narrative focus toward the concrete technical reality of the user query. "
+            "From the surviving, verified candidates, forward the cohesive bedrock DNA text verbatim without distilling or lossy summarization. "
+            "Append high-leverage '💡 Curator Note:' annotations to explain why these candidates connect with the query and highlight synergistic architectural scars. "
+            "Provide pure technical signal for Deep Thought — no narrative preamble, no conversational filler, no lossy paraphrasing. "
+            "Single-Turn Boundary: Speak strictly for your own active turn. Deliver the verified bedrock evidence and curator notes directly, then yield the floor.\n"
             f"[USER_QUERY]: {user_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
@@ -2807,6 +2805,7 @@ class CognitiveHub:
         )
         brain_tools = await self._get_node_tools("brain")
         brain_bullets = ""
+        brain_budget = max(400, int(interest * 500))
         async for token in self._process_node_stream(
             "brain",
             stage1_prompt,
@@ -2815,6 +2814,7 @@ class CognitiveHub:
             tools=brain_tools,
             temperature=0.2,
             request_id=request_id,
+            max_tokens=brain_budget,
         ):
             brain_bullets += token
             await self.broadcast(
