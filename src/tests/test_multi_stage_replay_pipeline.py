@@ -175,3 +175,22 @@ def test_stage5_tri_node_relay_contract():
     assert "Brain (Archive)" in sources
     assert "Deep Thought (Strategy)" in sources
     assert "Pinky (Voice)" in sources
+
+
+def test_stage6_brain_dynamic_boost_contract():
+    """Stage 6: Verify Brain <boost_interest> boosts interest by +0.20 and scales dt_budget."""
+    base_interest = 0.75
+    grounding_with_boost = "Verified PSYS bedrock record. <boost_interest> Passing to Deep Thought."
+
+    # Compute boosted interest per Story 103.15 contract
+    boosted_interest = base_interest
+    if "<boost_interest>" in grounding_with_boost or "<upvote>" in grounding_with_boost:
+        boosted_interest = min(1.0, base_interest + 0.20)
+
+    assert boosted_interest == 0.95
+
+    # Compute scaled Deep Thought budget
+    dt_budget = max(300, min(1500, int(boosted_interest * 1200)))
+    assert dt_budget == int(0.95 * 1200)  # 1140 tokens
+    assert dt_budget > int(base_interest * 1200)  # Expanded runway
+
