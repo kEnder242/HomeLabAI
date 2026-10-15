@@ -441,9 +441,8 @@ class BicameralNode:
             engine_type = (
                 "OMLX"  # oMLX on M5 Air uses OpenAI /v1/ API, distinct from local vLLM
             )
-            # mlx_port (default 8000) = native oMLX inference endpoint (/v1/models, /v1/chat/completions)
-            # headroom_port (default 8002) = Headroom compression proxy (use for /compress, /thinking, etc.)
-            port = host_cfg.get("mlx_port", 8000)
+            # [LAB-115] Headroom proxy on port 8002 manages KV cache & suppresses reasoning; fallback to 8000
+            port = host_cfg.get("headroom_port", host_cfg.get("mlx_port", 8002))
             base_url = f"http://{resolved_ip}:{port}"
         else:
             engine_type = "OLLAMA"
@@ -807,7 +806,14 @@ class BicameralNode:
                     "\n---\n\n**Visible Consensus**",
                     "\n\n**Visible Consensus**:",
                     "Conversation has concluded",
+                    "</thought>",
+                    "</think>",
                 ],
+                "extra_body": {
+                    "reasoning_effort": "low",
+                    "reasoning": 0,
+                    "enable_thinking": False,
+                },
             }
             # [BKM-015] Active LoRA: role token override takes priority over static config
             active_lora = self.lora_name
@@ -857,10 +863,12 @@ class BicameralNode:
                     {"role": "user", "content": query},
                 ],
                 "stream": True,
+                "think": False,
                 "options": {
                     "temperature": temperature,
                     "num_predict": max_tokens,
                     "repeat_penalty": repetition_penalty,
+                    "enable_thinking": False,
                     "stop": [
                         "\nUser:",
                         "\nPinky:",
@@ -871,6 +879,8 @@ class BicameralNode:
                         "\n---\n\n**Visible Consensus**",
                         "\n\n**Visible Consensus**:",
                         "Conversation has concluded",
+                        "</thought>",
+                        "</think>",
                     ],
                 },
             }
