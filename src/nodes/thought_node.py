@@ -28,7 +28,10 @@ DEEP_THOUGHT_SYSTEM_PROMPT = (
     "echoing raw metric lines. This prevents telemetry noise from polluting the reasoning stream.\n"
     "8. [Task 3.5/3.6] APPEND-ONLY WORKSPACE: When updating ledgers in 'whiteboard/', prefer the "
     "'patch_file' tool to surgically append evidence. Use 'RAG Pointers' (e.g., 'See 2024_02.json:GEM-123') "
-    "instead of copying large text blocks to preserve context headroom."
+    "instead of copying large text blocks to preserve context headroom.\n"
+    "9. EPISTEMIC GROUNDING: Ground strictly in evidence provided in Brain's bedrock bullets. "
+    "If a specific project name or link is absent from the retrieved evidence, state clearly what the archive does confirm "
+    "versus what is unretrieved. NEVER assert or hallucinate that an unretrieved project did not exist."
 )
 
 node = BicameralNode("Thought", DEEP_THOUGHT_SYSTEM_PROMPT)

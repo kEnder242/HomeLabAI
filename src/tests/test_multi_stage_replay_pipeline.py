@@ -120,7 +120,7 @@ def test_stage3_hyde_rag_resolution():
 
 
 def test_stage4_brain_gatekeeper_prompt_construction():
-    """Stage 4: Brain Gatekeeper prompt instructs pruning and 3-4 dense bullets for Aurora."""
+    """Stage 4: Brain Gatekeeper prompt instructs pruning and forwarding cohesive bedrock for Aurora."""
     prompt = build_two_mice_stage_prompt(
         1,
         user_query=LITMUS_QUERY,
@@ -130,7 +130,7 @@ def test_stage4_brain_gatekeeper_prompt_construction():
     assert "STAGE 1" in prompt
     assert "<historical_record>" in prompt
     assert "Aurora" in prompt
-    assert "3-4 dense" in prompt
+    assert "forward the cohesive bedrock" in prompt
     assert "pure technical signal" in prompt
 
 
