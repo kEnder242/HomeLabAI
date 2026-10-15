@@ -417,8 +417,8 @@ class FoyerRouter:
             message_dict = await self.broadcast_queue.get()
             try:
                 m_type = message_dict.get("type", "chat")
-                m_content = message_dict.get("brain", message_dict.get("message", ""))
-                m_source = message_dict.get("brain_source", "System")
+                m_content = message_dict.get("brain", message_dict.get("message", message_dict.get("token", "")))
+                m_source = message_dict.get("brain_source", message_dict.get("source", "System"))
 
                 # ... Forensic Ledger ...
                 try:

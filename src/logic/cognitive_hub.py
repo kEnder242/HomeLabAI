@@ -415,6 +415,8 @@ def build_two_mice_stream_packet(
     return {
         "type": "thought_stream",
         "token": token,
+        "brain": token,
+        "brain_source": source,
         "source": source,
         "channel": channel,
         "console": console,
@@ -1036,11 +1038,19 @@ class CognitiveHub:
                 if bb_summary and "[BLACKBOARD_LEDGER]" not in query:
                     query += f"\n\n[BLACKBOARD_LEDGER]:\n{bb_summary}"
             if hasattr(self, "round_table_memory") and self.round_table_memory:
-                debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(
-                    self.round_table_memory
-                )
-                if "[PREVIOUS_DEBATE]" not in query:
-                    query += debate_context
+                # [FEAT-539 / FEAT-455] 15-Minute Window Filter: Exclude stale turns older than 900s
+                now_ts = time.time()
+                recent_turns = []
+                for entry in self.round_table_memory:
+                    if isinstance(entry, dict):
+                        if now_ts - entry.get("ts", now_ts) <= 900.0:
+                            recent_turns.append(str(entry.get("text", "")))
+                    elif isinstance(entry, str):
+                        recent_turns.append(entry)
+                if recent_turns:
+                    debate_context = "\n\n[PREVIOUS_DEBATE]:\n" + "\n".join(recent_turns)
+                    if "[PREVIOUS_DEBATE]" not in query:
+                        query += debate_context
 
         if node_id not in self.residents:
             return
@@ -1353,6 +1363,27 @@ class CognitiveHub:
             await self._run_triggered_task(task)
             return
 
+        # [FEAT-539 / Sprint 38 Story 2] /topic or /reset intent handler
+        clean_turn_cmd = turn.strip().lower()
+        if clean_turn_cmd.startswith("/topic") or clean_turn_cmd == "/reset":
+            self.round_table_memory = []
+            if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
+                self.blackboard_ledger.bullets = []
+                self.blackboard_ledger.consensus_1liners = []
+            logging.info("[HUB] [FEAT-539] Active conversation context cleared via command.")
+            if self.broadcast:
+                await self.broadcast(
+                    {
+                        "type": "chat",
+                        "brain": "Narf! Active conversation memory reset.",
+                        "brain_source": TWO_MICE_PINKY_SOURCE,
+                        "channel": TWO_MICE_PINKY_CHANNEL,
+                        "console": TWO_MICE_PINKY_CONSOLE,
+                        "request_id": request_id,
+                    }
+                )
+            return
+
         # [Goal 5/FEAT-145] Override Detection: Scan for override indicators (matching GEM-xxxx / BKM-xxx)
         is_override, gem_id = is_override_query(turn)
         if is_override and gem_id:
@@ -1565,7 +1596,7 @@ class CognitiveHub:
                 }
             )
             turn_ledger = f"User (Feedback): {turn}"
-            self.round_table_memory.append(turn_ledger)
+            self.round_table_memory.append({"text": turn_ledger, "ts": time.time()})
             return
 
         # [FEAT-529] Physical Stopwatch: Record Stage 1 Triage Elapsed Checkpoint
@@ -1978,12 +2009,18 @@ class CognitiveHub:
                 turn_ledger += f"\nPinky Summary: {clean_critique[:200]}"
             if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
                 self.blackboard_ledger.record_consensus(turn_num, clean_critique[:200])
-        self.round_table_memory.append(turn_ledger)
+        now_ts = time.time()
+        self.round_table_memory.append({"text": turn_ledger, "ts": now_ts})
         self.last_user_query = turn
         self.last_triage_payload = dict(t_parsed) if isinstance(t_parsed, dict) else {}
         self.last_full_turn_text = turn_ledger
-        if len(self.round_table_memory) > 10:
-            self.round_table_memory.pop(0)
+        # [FEAT-539 / FEAT-455] 15-Minute Window Filter & 15-Turn Cap
+        self.round_table_memory = [
+            m for m in self.round_table_memory
+            if not isinstance(m, dict) or (now_ts - m.get("ts", now_ts) <= 900.0)
+        ]
+        if len(self.round_table_memory) > 15:
+            self.round_table_memory = self.round_table_memory[-15:]
         t_judgment_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
 
         # [FEAT-525] Live Round Table Elapsed Time & Blackboard Telemetry Bridge
@@ -2418,17 +2455,19 @@ class CognitiveHub:
 
                 clean_hyde = scrub_hyde_vector(raw_hyde)
 
-                # [FEAT-459 / FEAT-437] If Pinky synthesized a spoken greeting/preamble, broadcast it out loud!
+                # [FEAT-459 / FEAT-437] If Pinky synthesized a spoken greeting/preamble, record and broadcast out loud!
                 if greeting and self.broadcast:
+                    self._last_pinky_greeting = greeting
+                    self.turn_thought_trace["pinky_greeting"] = greeting
                     await self.broadcast(
-                        build_two_mice_stream_packet(
-                            source=TWO_MICE_PINKY_SOURCE,
-                            channel=TWO_MICE_PINKY_CHANNEL,
-                            console=TWO_MICE_PINKY_CONSOLE,
-                            token=greeting,
-                            final=True,
-                            request_id=request_id,
-                        )
+                        {
+                            "type": "chat",
+                            "brain": greeting,
+                            "brain_source": TWO_MICE_PINKY_SOURCE,
+                            "channel": TWO_MICE_PINKY_CHANNEL,
+                            "console": TWO_MICE_PINKY_CONSOLE,
+                            "request_id": request_id,
+                        }
                     )
 
                 if len(clean_hyde) > 5:
@@ -2846,23 +2885,41 @@ class CognitiveHub:
         return brain_bullets
 
     async def step_deep_thought(
-        self, query: str, brain_bullets: str, interest: float, shutdown_event=None, request_id: str = "default"
+        self,
+        query: str,
+        brain_bullets: str,
+        interest: float,
+        pinky_take: str = "",
+        rag_context: str = "",
+        shutdown_event=None,
+        request_id: str = "default",
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget."""
+        """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget.
+
+        As documented in CONTEXT_MEMORY_FLOW_MAP.md, Deep Thought receives the full Current Turn Package:
+        User query + Pinky take/greeting + Brain bedrock bullets + RAG context when available.
+        """
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
         thought_node = self.residents.get("thought")
         if thought_node:
-            dt_prompt = (
-                f"[BRAIN_BEDROCK_BULLETS]:\n{brain_bullets}\n\n"
-                f"[USER_QUERY]: {query}\n\n"
+            prompt_parts = [f"[USER_QUERY]: {query}"]
+            if pinky_take:
+                prompt_parts.append(f"[PINKY_TAKE]:\n{pinky_take}")
+            if brain_bullets:
+                prompt_parts.append(f"[BRAIN_BEDROCK_BULLETS]:\n{brain_bullets}")
+            elif rag_context:
+                prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
+
+            prompt_parts.append(
                 "Synthesize the architectural reality in 1-2 laconic, high-authority engineering statements. "
-                "Ground strictly in Brain's bullets. Do not repeat raw bullet text."
+                "Ground strictly in the provided evidence. Weigh against Pinky's take. Do not repeat raw bullet text."
             )
+            dt_prompt = "\n\n".join(prompt_parts)
             async for token in self._process_node_stream(
                 "thought",
                 dt_prompt,
-                brain_bullets,
+                brain_bullets or rag_context,
                 "Deep Thought (Strategy)",
                 tools=[],
                 temperature=0.2,
@@ -3026,8 +3083,15 @@ class CognitiveHub:
         )
 
         # Stage 3.2: Deep Thought Strategic Synthesis
+        pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")
         dt_synthesis = await self.step_deep_thought(
-            query, brain_bullets, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+            query,
+            brain_bullets,
+            gate_interest,
+            pinky_take=pinky_take,
+            rag_context=focus_context,
+            shutdown_event=shutdown_event,
+            request_id=request_id,
         )
 
         # Stage 3.3: Pinky Conversational TL;DR
