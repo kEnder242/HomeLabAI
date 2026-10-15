@@ -324,6 +324,23 @@ All diagnostic forensics MUST reference the canonical black box log:
 *   **Validation**: Every edit must be followed by `ruff check` to ensure code quality.
 *   **Conductor Delegation**: For complex or high-volume tasks, the Agent should use the Conductor track to delegate work to sub-agents, preserving the primary context window for strategic orchestration.
 
+### 5. Story ID Sequencing & Uniqueness Invariant
+*   **Strict Monotonic IDs:** Story numbers within a sprint document MUST be strictly monotonic across all phases (e.g., if Phase 5 ends at Story 103.10, Phase 6 must start at 103.11). Re-using or shadowing an existing Story ID within the same sprint plan is strictly prohibited.
+*   **Pre-Authoring ID Scan:** Before writing any new phase, the authoring agent MUST grep `^#+.*Story` across the active sprint plan to discover the maximum existing story ID and increment from there.
+
+### 6. Mandatory Story Markdown Template
+Every story section MUST adhere to this explicit structure:
+```markdown
+#### Story XX.X: <Title>
+* **Status:** 📋 PLANNED | 🔄 IN_PROGRESS | ✅ COMPLETED
+* **DNA / Feature Tag:** `[FEAT-xxx]` / `[BKM-xxx]`
+* **Assigned Owner:** `[SWARM:LOCAL]` | `[SWARM:CLOUD]` | `[AGY:PRIMARY]`
+* **Context & Objective (The Why):** Technical rationale and architectural necessity.
+* **Symbol Anchors & Touchpoints (The Where):** Absolute markdown file links with target functions and line numbers.
+* **Implementation Contract (The What):** Verbatim code diff blocks, function signatures, or prompt strings.
+* **Verification & Test Command (The How):** Single-line bash/pytest command. Zero manual testing.
+```
+
 
 ## BKM-028: High-Fidelity State Machine Debugging
 **Objective**: Rapidly validate Hub logic (Lobby -> Ready -> Hibernate) without physical VRAM overhead.
