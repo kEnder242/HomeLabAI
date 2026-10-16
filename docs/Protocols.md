@@ -1565,3 +1565,37 @@ A lettered item only clears from the ledger when one of four explicit gates is s
 ### 5. Format Standard
 When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely.
 
+---
+
+## BKM-085: Historical Pre-Regression Correlation Protocol (ANCHOR_PROVENANCE)
+**Feature Anchor:** `[BKM-085]` / `[BKM-020]` / `[BKM-024]` / `[BKM-082]` / `[INS-047]`  
+**Colloquial Alias:** "The Pre-Regression Archaeology & Intent Triangulation Standard"  
+**Domain:** Defect Investigation, Architectural Root-Cause Analysis, Anti-Regression Engineering  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Law: Pre-Regression Excavation Before Surgery
+Agents frequently suffer from "recency bias": when encountering a routing defect, execution bypass, or unintended failure mode, agents hyper-focus on the immediate code in front of them and patch symptoms in place. This creates circular regressions where an ad-hoc patch undoes a prior architectural fix.
+
+Under `BKM-085`, before modifying any control-plane routing, gate, or subsystem contract, an agent MUST perform a structured 3-phase investigation across **Sprint History**, **Pre-Regression Git State**, and **DNA Intent**.
+
+### 2. The 3-Phase Correlation Methodology
+
+#### Phase 1: Sprint Discovery (The Intent / "Why")
+1. **Query Sprint DNA & Archives:** Query `sprint_dna` and search active/archived sprint plans for the feature ID, subsystem name, or problem domain.
+2. **Excavate the Original Pressures:** Identify the exact technical or operational requirement that prompted the original change. Determine what problem the author was solving.
+3. **Capture the Valid Invariant:** Record the underlying invariant that must be preserved. A regression fix is invalid if it re-opens the original issue that the historical sprint solved.
+
+#### Phase 2: Git Archaeology (The Code / "What")
+1. **Locate the Pre-Regression Code:** Use `git log -S` and `git blame` to find the exact commit that introduced the divergent behavior.
+2. **Inspect Pre-Regression Baseline:** Check out or inspect the commit immediately *prior* to the divergence (`HEAD~1` relative to the commit). Establish what was already in place, how data flowed, and what baseline contracts were functioning cleanly before the change.
+3. **Evaluate the Regressing Commit With Merit:** Inspect the commit that introduced the divergence. Do not dismiss it as a mere mistake—recognize the constraints, missing subsystems, or temporary scaffolding that existed at that specific moment in the project's evolution. Understand the big picture of why the author chose that specific mechanism at that time.
+
+#### Phase 3: DNA Correlation (The Alignment / "How")
+1. **Compare Grounded Intent Against Code Reality:** Cross-reference the Phase 1 Intent and Phase 2 Git diff with current DNA (`FeatureTracker.md`, `Protocols.md`, `wisdom_data.json`).
+2. **Isolate the Architectural Gap:** Formulate the gap explicitly: identify how current architectural capabilities (e.g., modern shared registries, continuous scalars, unified pipelines) can now satisfy the Phase 1 requirement cleanly, rendering the Phase 2 compromise or bypass obsolete.
+3. **Formulate the Pre-Flight Specification:** Define unambiguous contracts (4-Anchor Standard per `BKM-043`) that restore baseline functionality while upholding the original design intent.
+
+### 3. Execution & Silicon Verification
+Once the 3-phase correlation is complete and documented, implementation proceeds under Heads-Down delegation (`BKM-029`). Final certification mandates verifying against physical running silicon (`BKM-024` / `INS-047` *Live is King*).
+
+
