@@ -98,6 +98,19 @@ class TestIgnitionManagerKillGuardrail:
                 mock_kill.assert_called_once()
                 manager._release_vram_lock.assert_called_once()
 
+    def test_zombie_operational_state_recovers_to_ignition(self, manager):
+        """[FEAT-125 / Story 104.18] Verify that if status is OPERATIONAL but port 8088 is dead, start_lab does not silently return True."""
+        manager.status.state = "OPERATIONAL"
+        async def run_test():
+            with patch('urllib.request.urlopen', side_effect=Exception("Connection refused")), \
+                 patch.object(manager, '_acquire_vram_lock', return_value=False):
+                # When port 8088 is dead, start_lab must NOT return True early;
+                # it should detect zombie state, reset state to COLD, and attempt lock acquisition.
+                result = await manager.start_lab(reason="TEST_ZOMBIE")
+                assert result is False  # Lock was mocked to False, meaning it attempted acquisition rather than early True
+                assert manager.status.state == "COLD"
+                assert manager.status.engine_up is False
+
         asyncio.run(run_test())
 
 
