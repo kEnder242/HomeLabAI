@@ -5,7 +5,7 @@
         "CASUAL": {
             "description": "Colloquial greetings and pleasantries – 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
             "enabled": true,
-            "default_domain": "unknown",
+            "default_domain": "social",
             "rag": null,
             "importance": 0.1,
             "importance_floor": 0.1,
