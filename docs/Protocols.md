@@ -1640,6 +1640,11 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 - **Offline Harness Gate:** Unit and replay test suites (`FEAT-645`) must pass 100% green without mocks masking live behavior.
 - **LIVE IS KING (`BKM-024` / `INS-047`):** Final story and sprint certification mandates testing against the physical running daemon (`lab-attendant.service` matching Git HEAD) and live reachable silicon endpoints via synthetic probe injection. Sandbox unit tests alone are never sufficient for sprint closure.
 
+### 1.1 Checklist & Artifact Currency Standard (The Idempotency & Level-of-Entry Rule)
+`BKM-086` can be treated as an operational checklist:
+- **Idempotent Execution**: Paved paths do not need to be followed twice **ONLY WHEN** the BKM flow has **ALREADY** been followed and the corresponding artifacts (grounding, 4-anchor plans, delegation targets, and test harnesses) are **CURRENT**.
+- **Level-of-Entry Flow-Down**: Any additions, scope changes, or newly introduced stories **MUST** trigger a new path flow at the exact level they were added (e.g., introducing a new story mandates Grounding $\to$ 4-Anchor Specification $\to$ Delegation/Verification, rather than jumping directly to execution or skipping preceding BKM gates).
+
 ### 2. Operational Trigger & Protocol Loop
 When commanded to run an **AFK Sprint** or **Paved Sprint**:
 1. Check out an isolated sprint branch (`sprint-<ID>`).
