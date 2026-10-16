@@ -325,7 +325,7 @@ def test_handover_refuses_missing_resident_and_low_interest():
         loop.close()
     assert ran is False
 
-    # Restore; low interest gates the funnel dormant.
+    # Restore; [FEAT-657] Low interest does NOT abort the council; it runs with continuous pacing
     hub.residents["pinky"] = _FakeResident(hub, "pinky", PINKY_TLDR_TEXT)
     hub.current_interest = 0.3
     loop = asyncio.new_event_loop()
@@ -335,9 +335,8 @@ def test_handover_refuses_missing_resident_and_low_interest():
         )
     finally:
         loop.close()
-    assert ran is False
-    assert hub.residents["brain"].calls == []  # funnel did not run
-    assert hub.current_interest == 0.3  # gate value unchanged below threshold
+    assert ran is True  # [FEAT-657] Council runs for all interest levels
+    assert len(hub.residents["brain"].calls) > 0  # Brain ran with paced brevity
 
 
 def test_module_level_alias_is_bound():
