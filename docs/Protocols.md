@@ -1659,6 +1659,37 @@ When commanded to run an **AFK Sprint** or **Paved Sprint**:
 3. Maintain the Dropped Threads Ledger (`BKM-084`) and Conversational Continuity (`Law 9`) on all interim updates.
 4. Fast-forward merge back to `main` only after full regression verification and physical daemon certification.
 
+---
+
+## BKM-087: The Primer Protocol (Catalytic Stimulus & Single-Voice Evidentiary Pacing)
+**Feature Anchor:** `[BKM-087]` / `[FEAT-523]` / `[FEAT-657]` / `[FEAT-658]` / `[FEAT-659]` / `[BKM-015]` / `[BKM-082]` / `[BKM-085]`  
+**Colloquial Aliases:** "The Primer Protocol", "Orienting Stimulus Vibe", "Continuous Fuel Pacing"  
+**Tags:** `#primer_protocol`, `#primer_vibe`, `#prompt_driven_pacing`, `#single_voice_brain`, `#context_fencing`  
+**Domain:** Conversational Catalysis, Two-Mice Dynamics, Token Budgeting, Evidentiary Resonance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Principle: The Primer Concept
+In the Federated Lab, turns are not presumed to be interrogative questions from an operator (*"Jason's question"* or `user_query`). An input is a **Primer**—an orienting stimulus, catalyst, or situational prompt presented to the lab collective.
+1. **The Primer as Catalyst:** A primer may be a casual greeting, a forensic error trace, a philosophical inquiry, or an ambient event. It primes the council's bicameral attention.
+2. **The "PRIMER" Vibe Archetype:** Formally registered in `config/triage_policy.json` as a first-class declarative vibe (`enabled: true`, `default_domain: "social"`, `importance: 0.4`, `importance_floor: 0.3`).
+3. **Lexicon & Variable Plumbing:** Prompts, schemas (`PINKY_HYDE_SCHEMA`), and stage builders use `[PRIMER]` / `primer` alongside backward-compatible `user_query` aliases.
+
+### 2. Bicameral Persona Invariants Under the Primer
+The lab's two mice respond to primers under strict behavioral boundaries:
+1. **Pinky Always Speaks:** Pinky is the intuitive, left-hemisphere voice of the lab. On greetings and low-interest banter, Pinky provides her authentic conversational take. She never adaptively yields or stays silent on an active turn unless explicitly instructed.
+2. **Pinky Context Fencing:** Pinky's directive is simple and invariant: *"Stay relevant to the primer and the actors before you."* Pinky does not unroll background laboratory telemetry, silicon specs, or tool checklists unless explicitly prompted.
+3. **The Brain as Evidentiary Gatekeeper:** The Brain maintains his cynical, high-standard persona as **The Brain** (never generic "curator"). He inspects `<historical_record>`, evaluates bedrock truth, and passes curated signals to Deep Thought.
+4. **Single-Voice & Escape Route (Anti-Scripting Invariant):**
+   - The Brain speaks strictly in a single voice. The model must never generate multi-actor theatrical scripts (`[PINKY'S RESPONSE] ... [BRAIN'S RESPONSE]`).
+   - If Pinky is silent, Brain's Stage 1 prompt provides an explicit escape route: note Pinky's silence in character and evaluate the primer and evidence directly as The Brain.
+
+### 3. Continuous Fuel Pacing vs Hardcoded Bloat Floors
+Token expenditure and node activation are governed purely by continuous evidential fuel (`interest: 0.0 ... 1.0`):
+1. **Prompt-Driven Pacing (`calculate_pacing_range`):** Injected into system prompts as a fuzzy target guideline (`[PACING]: Target ~low to high tokens.`) to relax model verbosity. Pacing is prompt-driven, NOT a vLLM hard truncation or guillotine chop.
+2. **Continuous Physical Budgets:** Physical token budgets (`max_tokens`) scale smoothly with interest (`int(interest * multiplier)`). Arbitrary hardcoded floors (`max(250, ...)`, `max(500, ...)`, `+ 200`) are strictly forbidden; they defeat natural fuel exhaustion and bloat zero-context banter.
+3. **Low-Interest Quiescence:** On casual greetings or zero-context primers ($interest < 0.30$), Deep Thought remains completely dormant (0 tokens, 0ms latency), and Brain operates with tight brevity (~40 tokens) or dormancy, allowing conversational fuel to exhaust naturally.
+
+
 
 
 
