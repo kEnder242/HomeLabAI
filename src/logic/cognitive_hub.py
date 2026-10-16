@@ -2575,14 +2575,13 @@ class CognitiveHub:
             else ""
         )
         target_domains = t_parsed.get("target_domains", []) if isinstance(t_parsed, dict) else []
-        search_required = bool(t_parsed.get("search_required", False)) if isinstance(t_parsed, dict) else False
+        hyde, hyde_tier = await self.resolve_hyde_vector(
+            turn, t_parsed, request_id=request_id
+        )
         if domain_val in ("lab_internal", "unclear", "feedback", "social") and not target_domains:
             return ""
         if domain_val in ("unknown", "standard") and not target_domains and not search_required:
             return ""
-        hyde, hyde_tier = await self.resolve_hyde_vector(
-            turn, t_parsed, request_id=request_id
-        )
         # BKM-015: If judge-driven HyDE evaluated to empty string (casual / non-match), bypass ChromaDB
         if not hyde:
             return ""
@@ -3051,12 +3050,14 @@ class CognitiveHub:
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
         t_tm_pinky_start = time.perf_counter()
+        clean_synthesis = re.sub(r"<thought>.*?</thought>", "", str(synthesis), flags=re.DOTALL | re.IGNORECASE)
+        clean_synthesis = re.sub(r"</?thought[^>]*>", "", clean_synthesis, flags=re.IGNORECASE).strip()
         stage2_prompt = build_two_mice_stage_prompt(
             2,
             primer=query,
             user_query=query,
             interest=interest,
-            brain_grounding=synthesis,
+            brain_grounding=clean_synthesis,
         )
         _, pinky_high = calculate_pacing_range("pinky", interest)
         pinky_budget = pinky_high
@@ -3065,7 +3066,7 @@ class CognitiveHub:
         async for token in self._process_node_stream(
             "pinky",
             stage2_prompt,
-            synthesis,
+            clean_synthesis,
             TWO_MICE_PINKY_SOURCE,
             tools=[],
             temperature=0.7,
