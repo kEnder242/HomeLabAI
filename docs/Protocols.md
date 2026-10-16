@@ -1562,8 +1562,15 @@ A lettered item only clears from the ledger when one of four explicit gates is s
 3. **Integrated:** The operator directs the item into an active numbered topic (e.g., *"Put A–C into #3"* $\rightarrow$ absorbed into Topic 3's scope).
 4. **Explicitly Dismissed:** The operator explicitly commands *"dismiss A"*, *"drop B"*, or *"not doing C"*. Operator silence or conversational pivots NEVER clear the ledger.
 
+### 4.1 The Zero-Tombstone Pruning Law (No Completed Badges)
+1. **Strictly an Unresolved Queue:** The lettered ledger is exclusively for pending, unaddressed friction. It is NOT a completion changelog or tombstone ledger. Sprints track completions; the ledger tracks unaddressed omissions.
+2. **Immediate Eviction:** The moment an item satisfies an Exit Gate (Addressed, Documented, Integrated, or Dismissed), its letter is released and it is immediately pruned from the turn footer.
+3. **Forbidden Tombstone Badges:** Agents are strictly forbidden from rendering exited items in the footer with badges like `- **A:** ... — *Addressed*` or `— *Certified*`. Any narrative reporting of completed threads belongs exclusively in the response body.
+4. **Instant Integration Dissolution:** When the operator commands *"Put A into #1"* (or an item is absorbed into an active lane), the letter dissolves immediately and must not appear in the ledger footer on that turn.
+5. **Strict Header Omission:** When 0 unresolved threads exist, omit the `### Dropped Threads Ledger` header completely. Never render placeholder text (e.g., `*(None)*`), as placeholder headers trigger prompt-continuation mimicry across turns.
+
 ### 5. Format Standard
-When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely.
+When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely (do not print the header or placeholder text).
 
 ---
 
