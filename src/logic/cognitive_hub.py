@@ -1603,6 +1603,7 @@ class CognitiveHub:
                                 "lab_internal",
                                 "dream_stream",
                                 "feedback",
+                                "social",
                                 "unknown",
                             ],
                         },
@@ -2549,7 +2550,7 @@ class CognitiveHub:
         )
         target_domains = t_parsed.get("target_domains", []) if isinstance(t_parsed, dict) else []
         search_required = bool(t_parsed.get("search_required", False)) if isinstance(t_parsed, dict) else False
-        if domain_val in ("lab_internal", "unclear", "feedback") and not target_domains:
+        if domain_val in ("lab_internal", "unclear", "feedback", "social") and not target_domains:
             return ""
         if domain_val in ("unknown", "standard") and not target_domains and not search_required:
             return ""
@@ -2749,6 +2750,7 @@ class CognitiveHub:
                                 "lab_internal",
                                 "dream_stream",
                                 "feedback",
+                                "social",
                                 "unknown",
                             ],
                         },
