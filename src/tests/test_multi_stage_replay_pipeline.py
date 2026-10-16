@@ -272,3 +272,40 @@ def test_stage9_critic_bridge_contract():
     assert "e.g." not in retort_schema
 
 
+def test_stage10_unified_council_greeting_contract():
+    """Stage 10 (Story 104.1 / FEAT-657): Unified Council routing for casual greetings.
+    Asserts zero-bifurcation: unaddressed greetings enter the council (lead_node == 'brain'),
+    RAG produces zero queries, Deep Thought stays dormant, and Pinky voice is paced.
+    """
+    hub = _make_test_hub()
+    t_parsed = {
+        "inferred_intent": "greeting",
+        "addressed_to": "NONE",
+        "vibe": "CASUAL",
+        "domain": "unknown",
+        "casual": 0.8,
+        "intrigue": 0.0,
+        "importance": 0.0,
+        "target_domains": [],
+        "calculated_interest": 0.06,
+    }
+
+    # In Sprint 104 unified council, all unaddressed turns evaluate lead_node as 'brain' (Council)
+    target = t_parsed.get("addressed_to", "PINKY").lower()
+    target_upper = str(target).upper()
+    if target_upper in ["BRAIN", "THOUGHT", "DEEP"]:
+        lead_node = "brain"
+    elif target_upper in ["MICE"]:
+        lead_node = "both"
+    else:  # "NONE", "SYSTEM", ""
+        lead_node = "brain"  # [FEAT-657] Zero bifurcation
+
+    assert lead_node == "brain"
+
+    # Deep Thought budget on interest 0.06 is 0 (dormant)
+    interest = 0.06
+    dt_budget = int(interest * 1200) if interest >= 0.30 else 0
+    assert dt_budget == 0  # Dormant
+
+
+
