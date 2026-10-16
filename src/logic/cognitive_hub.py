@@ -363,6 +363,39 @@ def _two_mice_interest_band(interest: float) -> str:
     return "MEDIUM (Mixed loop: brief Brain grounding, conversational Pinky delivery)"
 
 
+def calculate_pacing_range(node_name: str, interest: float) -> tuple[int, int]:
+    """[FEAT-523 / BKM-015] Calculate target token pacing range ~X to Y based on internal interest.
+
+    Keeps prompts clean by replacing raw float variables with concise token expectations.
+    """
+    interest_val = max(0.0, min(1.0, float(interest)))
+    norm_name = str(node_name).lower()
+    if "thought" in norm_name or "deep" in norm_name:
+        # Strategy synthesis: scales from ~150-250 at low interest up to ~400-800 at high interest
+        low = int(150 + interest_val * 250)
+        high = int(300 + interest_val * 500)
+        return (low, high)
+    elif "critic" in norm_name:
+        # Structured critic JSON: stable ~50 to 100 tokens
+        return (50, 100)
+    elif "brain" in norm_name:
+        # Evidentiary inspection / curation / banter: ~40-80 at low interest, up to ~150-250 at high
+        low = int(40 + interest_val * 110)
+        high = int(80 + interest_val * 170)
+        return (low, high)
+    else:  # pinky / voice / default
+        # Spoken banter / TL;DR: ~30-60 at low interest (casual greeting), up to ~100-200 at high
+        low = int(30 + interest_val * 70)
+        high = int(60 + interest_val * 140)
+        return (low, high)
+
+
+def format_pacing_line(node_name: str, interest: float) -> str:
+    """Format single concise pacing directive for prompt injection."""
+    low, high = calculate_pacing_range(node_name, interest)
+    return f"[PACING]: Target ~{low} to {high} tokens."
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -407,11 +440,12 @@ def build_two_mice_stage_prompt(
     if stage not in (1, 2):
         raise ValueError("stage must be 1 (Brain extract) or 2 (Pinky distill)")
 
+    node_key = "brain" if stage == 1 else "pinky"
+    pacing_line = format_pacing_line(node_key, interest)
     section = (
         "[PILLAR_1_RECORD]: SHARED BEDROCK LAB FOUNDATION\n"
         f"{TWO_MICE_BEDROCK_FOUNDATION}\n\n"
-        "[PILLAR_2_RECORD]: INTEREST LOOP AWARENESS\n"
-        f"Current interest: {interest:.2f}. Loop band: {_two_mice_interest_band(interest)}.\n\n"
+        f"{pacing_line}\n\n"
         "[PILLAR_3_RECORD]: TURN SEQUENCE STAGE\n"
         f"You are executing STAGE {stage} of the Two-Mice sequential handover.\n"
     )
@@ -674,38 +708,46 @@ class CognitiveHub:
                 underlying._on_telemetry = self._collect_telemetry
 
     async def _dispatch_kender_triage(self, query, context, triage_schema, request_id):
-        """[SPR-64_1] Dispatch triage to Remote Kender (Deep Thought)."""
-        t_text = ""
-        async for token in self._process_node_stream(
-            "thought",
-            query,
-            "",
-            "Deep Thought (Triage)",
-            tools=[],
-            behavioral_guidance=context,
-            temperature=0.2,
-            response_format=triage_schema,
-            request_id=request_id,
-        ):
-            t_text += token
-        return self.bridge_signal_clean(t_text)
+        """[SPR-64_1] Dispatch triage directly to Remote Kender (Deep Thought)."""
+        node = self.residents.get("thought")
+        if not node:
+            return None
+        res = await node.call_tool(
+            "think",
+            arguments={
+                "query": query,
+                "context": "",
+                "behavioral_guidance": context,
+                "temperature": 0.2,
+                "response_format": triage_schema,
+                "request_id": request_id,
+                "max_tokens": 128,
+                "internal": False,
+            },
+        )
+        text = res.content[0].text if hasattr(res, "content") and res.content else str(res)
+        return self.bridge_signal_clean(text)
 
     async def _dispatch_vllm_triage(self, query, context, triage_schema, request_id):
-        """[SPR-64_1] Dispatch triage to Local vLLM (Lab)."""
-        t_text = ""
-        async for token in self._process_node_stream(
-            "lab",
-            query,
-            "",
-            "Lab (Triage)",
-            tools=[],
-            behavioral_guidance=context,
-            temperature=0.0,
-            response_format=triage_schema,
-            request_id=request_id,
-        ):
-            t_text += token
-        return self.bridge_signal_clean(t_text)
+        """[SPR-64_1] Dispatch triage directly to Local vLLM (Lab)."""
+        node = self.residents.get("lab")
+        if not node:
+            return None
+        res = await node.call_tool(
+            "think",
+            arguments={
+                "query": query,
+                "context": "",
+                "behavioral_guidance": context,
+                "temperature": 0.0,
+                "response_format": triage_schema,
+                "request_id": request_id,
+                "max_tokens": 128,
+                "internal": False,
+            },
+        )
+        text = res.content[0].text if hasattr(res, "content") and res.content else str(res)
+        return self.bridge_signal_clean(text)
 
     def get_status(self):
         """Return current system status including boot info."""
@@ -1188,13 +1230,13 @@ class CognitiveHub:
             # [FEAT-523] Token Budget: Continuous interest multiplier pacing (de-vibed)
             pacing_cfg = getattr(self, "config", {}).get(
                 "interest_pacing",
-                {"token_multiplier": 150, "min_token_floor": 32, "max_token_ceiling": 1500},
+                {"token_multiplier": 150, "min_token_floor": 200, "max_token_ceiling": 1500},
             )
             multiplier = pacing_cfg.get("token_multiplier", 150)
-            min_floor = pacing_cfg.get("min_token_floor", 32)
+            min_floor = pacing_cfg.get("min_token_floor", 200)
             max_ceiling = pacing_cfg.get("max_token_ceiling", 1500)
             current_interest = getattr(self, "current_interest", 0.0)
-            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier))))
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier) + 200)))
             call_task = asyncio.create_task(
                 node.call_tool(
                     "think",
@@ -1216,34 +1258,40 @@ class CognitiveHub:
 
             full_text = ""
             last_len = 0
-            while not call_task.done():
-                await asyncio.sleep(0.05)
-                curr_buffer = self.session_buffers[buf_key]
-                if len(curr_buffer) > last_len:
-                    new_tokens = curr_buffer[last_len:]
-                    full_text += new_tokens
+            try:
+                while not call_task.done():
+                    await asyncio.sleep(0.05)
+                    curr_buffer = self.session_buffers[buf_key]
+                    if len(curr_buffer) > last_len:
+                        new_tokens = curr_buffer[last_len:]
+                        full_text += new_tokens
 
-                    # Check for peer-vote interest boosting signals [FEAT-238]
-                    if (
-                        "<boost_interest>" in full_text or "<upvote>" in full_text
-                    ) and not self._boosted_interest:
-                        self._boosted_interest = True
-                        old_interest = self.current_interest
-                        self.current_interest = min(1.0, self.current_interest + 0.3)
-                        logging.info(
-                            f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
-                        )
+                        # Check for peer-vote interest boosting signals [FEAT-238]
+                        if (
+                            "<boost_interest>" in full_text or "<upvote>" in full_text
+                        ) and not self._boosted_interest:
+                            self._boosted_interest = True
+                            old_interest = self.current_interest
+                            self.current_interest = min(1.0, self.current_interest + 0.3)
+                            logging.info(
+                                f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
+                            )
 
-                    yield new_tokens
-                    last_len = len(curr_buffer)
+                        yield new_tokens
+                        last_len = len(curr_buffer)
 
-                    # [FEAT-404] Context Starvation check: abort immediately if starvation detected
-                    if "[ERROR: CONTEXT_STARVED]" in full_text:
-                        logging.warning(
-                            f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting."
-                        )
-                        call_task.cancel()
-                        break
+                        # [FEAT-404] Context Starvation check: abort immediately if starvation detected
+                        if "[ERROR: CONTEXT_STARVED]" in full_text:
+                            logging.warning(
+                                f"[HUB] Context starvation detected mid-stream for {node_id}. Aborting."
+                            )
+                            call_task.cancel()
+                            break
+            finally:
+                if not call_task.done():
+                    call_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await call_task
 
             # Get the final result and any remaining buffer
             try:
@@ -1586,26 +1634,6 @@ class CognitiveHub:
         # [SPR-64_1 / FEAT-534 / BKM-083 Stage 2] Speculative Triage Relay
         if not t_parsed:
             t_parsed = await self.step_triage(clean_user_query, pre_triage_res, request_id=request_id)
-            routing_source = t_parsed.get("_console_source", "Triage")
-            routing_channel = t_parsed.get("_console_channel", "insight")
-            public_triage = {
-                k: v
-                for k, v in t_parsed.items()
-                if not str(k).startswith("_")
-                and k not in ["situation", "hints", "hyde_vector_text"]
-            }
-            triage_json_str = json.dumps(public_triage, indent=2)
-            await self.broadcast(
-                {
-                    "type": "chat",
-                    "brain": triage_json_str,
-                    "brain_source": routing_source,
-                    "channel": routing_channel,
-                    "final": True,
-                    "request_id": request_id,
-                    "version": LAB_VERSION,
-                }
-            )
 
         # [FEAT-487 / BKM-035] Semantic Meta-Triage Feedback Interceptor
         # Fast Control-Plane Intercept: when model-driven triage classifies the turn as
@@ -1725,10 +1753,12 @@ class CognitiveHub:
 
         if vibe == "CASUAL":
             context = ""
+            pinky_pacing = format_pacing_line("pinky", self.current_interest)
             behavioral_guidance = (
                 "[MODE]: CONVERSATIONAL CASUAL.\n"
                 "The user is offering a friendly greeting or casual remark.\n"
-                "MANDATORY BREVITY: Reply with EXACTLY ONE short, character-faithful sentence (< 12 words). "
+                f"{pinky_pacing}\n"
+                "Reply with an authentic, character-faithful remark. "
                 "Do NOT list tasks, system status, or floating candidates unless explicitly asked."
             )
         elif vibe == "WYWO":
@@ -2256,6 +2286,7 @@ class CognitiveHub:
                 vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
             # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
+            critic_pacing = format_pacing_line("critic", interest)
             eval_text = ""
             async for token in self._process_node_stream(
                 "pinky",
@@ -2266,7 +2297,9 @@ class CognitiveHub:
                 temperature=0.2,
                 response_format=eval_schema,
                 request_id=request_id,
+                max_tokens=300,
                 behavioral_guidance=(
+                    f"{critic_pacing}\n"
                     f"You are Pinky. Brain and Deep Thought have established the technical stance above. "
                     f"Deliver your final spoken verdict directly to Jason in your authentic lively voice, "
                     f"confirming the technical reality and offering a natural conversational follow-up. Never speak about yourself in the third person. {vibe_tone}"
@@ -2762,6 +2795,11 @@ class CognitiveHub:
         distiller and performs no remote escalation.
         """
         brain_response = ""
+        brain_pacing = format_pacing_line("brain", getattr(self, "current_interest", 0.5))
+        brain_guidance = (
+            f"[MODE]: CASUAL_GROUNDING.\n{brain_pacing}\n"
+            "Respond in character as The Brain. Keep your acknowledgment concise and dry."
+        )
         if "brain" in self.residents:
             async for token in self._process_node_stream(
                 "brain",
@@ -2771,6 +2809,8 @@ class CognitiveHub:
                 tools=[],
                 temperature=0.2,
                 request_id=request_id,
+                behavioral_guidance=brain_guidance,
+                max_tokens=250,
             ):
                 brain_response += token
                 if shutdown_event and shutdown_event.is_set():
@@ -2975,7 +3015,7 @@ class CognitiveHub:
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
-        brain_budget = min(250, max(150, int(interest * 250)))
+        brain_budget = max(250, min(500, int(interest * 250) + 150))
         async for token in self._process_node_stream(
             "brain",
             stage1_prompt,
@@ -3044,13 +3084,15 @@ class CognitiveHub:
             elif rag_context:
                 prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
 
+            dt_pacing = format_pacing_line("thought", interest)
             prompt_parts.append(
+                f"{dt_pacing}\n"
                 "Synthesize the architectural reality in high-authority engineering prose. "
                 "Find things consistent with Jason's query and the consensus of the lab mice. "
                 "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
-            dt_budget = max(300, min(1500, int(interest * 1200)))
+            dt_budget = max(500, min(1500, int(interest * 1200) + 200))
             async for token in self._process_node_stream(
                 "thought",
                 dt_prompt,

@@ -411,6 +411,8 @@ class SpeculativeTriageRelay:
                         for r in runners:
                             if not r.done():
                                 r.cancel()
+                        if runners:
+                            await asyncio.gather(*runners, return_exceptions=True)
 
                         winner = racer_name if task is racer_task else lead_name
                         win_estimator = self._estimators.setdefault(
