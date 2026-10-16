@@ -1601,36 +1601,52 @@ Once the 3-phase correlation is complete and documented, implementation proceeds
 ---
 
 ## BKM-086: The Paved-Path Sprint Protocol (AFK / Sovereign Execution)
-**Feature Anchor:** `[BKM-086]` / `[BKM-082]` / `[BKM-085]` / `[BKM-030]` / `[BKM-043]` / `[BKM-049]` / `[BKM-006]` / `[BKM-007]` / `[BKM-024]`  
+**Feature Anchor:** `[BKM-086]` / `[BKM-082]` / `[BKM-085]` / `[BKM-030]` / `[BKM-043]` / `[BKM-049]` / `[BKM-006]` / `[BKM-007]` / `[BKM-024]` / `[BKM-084]` / `[Law-9]`  
 **Colloquial Aliases:** "AFK Sprint", "Paved Sprint", "The Grounded Sprint", "Sovereign Execution Pipeline"  
+**Tags:** `#afk_sprint`, `#paved_sprint`, `#grounded_sprint`, `#autonomous_execution`, `#bkm_049_anti_bypass`, `#tri_anchor`  
 **Domain:** Autonomous Agentic Sprints, Long-Running Hands-Off Workflows, Multi-Agent Swarm Orchestration  
 **Status:** ACTIVE / MANDATORY  
 
 ### 1. The Core Law: Autonomy Through Paved Trust
-When an operator issues an **"AFK Sprint"**, **"Paved Sprint"**, or **"Grounded Sprint"** command, the agent is granted full autonomous momentum to plan, delegate, execute, and certify a sprint without stopping for turn-by-turn permission.
+When an operator commands an **"AFK Sprint"**, **"Paved Sprint"**, or **"Grounded Sprint"** (used interchangeably), the agent is granted full autonomous momentum to plan, delegate, execute, and certify a sprint without stopping for turn-by-turn conversational permission.
 
-This autonomy is not unconstrained liberty—it is strictly bound by the **Four Pillars of Paved Trust**:
-1. **Grounding Horizon (`BKM-082` + `BKM-085`)**:
-   - Zero speculative hallucination or guessing.
-   - The agent MUST excavate past sprint intent and pre-regression git diffs before modifying routing gates or legacy contracts.
-2. **Deterministic Planning (`BKM-030` + `BKM-043`)**:
-   - Every story MUST be fully specified with the 4-Anchor Standard (Target Files, Verification Commands, Verbatim Code Specs, DNA Links).
-   - Pre-Flight Mistakes Avoided ledgers (`BKM-081`) must be completed before execution begins.
-3. **Structured Delegation (`BKM-049` + `BKM-006`)**:
-   - Conscious avoidance of the self-promotion trap:
-     - `[SWARM:LOCAL]` on RTX 4090 / Ollama is preferred for targeted code surgery, unit test assertions, and local harness runs.
-     - `[SWARM:CLOUD]` is reserved for deep architectural synthesis and multi-file refactoring.
-     - `[AGY:PRIMARY]` strictly governs git boundaries, branch management, and daemon hot-reloading.
-4. **Adversarial Certification (`BKM-007` + `BKM-024`)**:
-   - Offline unit test suites must pass 100% green without mocks masking live state.
-   - Final task certification mandates testing physical running daemons matching Git HEAD and reachable silicon endpoints (`INS-047` *Live is King*).
+This autonomy is NOT unconstrained liberty—it is earned and maintained strictly through the **Four Invariant Pillars of Paved Trust**:
+
+#### Pillar 1: Explicit Grounding & Pre-Regression Archaeology (`BKM-082` + `BKM-085`)
+- **Zero Speculative Editing:** The agent MUST NOT guess or invent requirements. 
+- **The 3-Phase Excavation Mandate:**
+  1. *Phase 1 (Sprint Intent)*: Query `sprint_dna` to discover the original technical/business pressures before touching code.
+  2. *Phase 2 (Git Baseline & Post-Commit Merit)*: Check out `HEAD~1` to inspect what worked cleanly before the divergence. Simultaneously, evaluate the regressing commit with merit to understand the historical constraints and temporary scaffolding that existed at that time.
+  3. *Phase 3 (DNA Invariant Alignment)*: Compare intent against `FeatureTracker.md` and `Protocols.md` to solve the original requirement using modern shared capabilities rather than ad-hoc bypasses.
+
+#### Pillar 2: Deterministic 4-Anchor Planning & Mistake Prevention (`BKM-030` + `BKM-043` + `BKM-081`)
+- **The 4-Anchor Standard is Mandatory on Every Story:**
+  1. *Anchor 1 (Target Files & Line Numbers)*: Explicit file paths and exact line ranges.
+  2. *Anchor 2 (Verification Command)*: Concrete, executable test commands (e.g. `pytest ... -v`).
+  3. *Anchor 3 (Verbatim Code Specs)*: Exact function signatures, parameter names, and dictionary keys.
+  4. *Anchor 4 (DNA Links)*: Concrete `[FEAT-xxx]` and `[BKM-xxx]` tags.
+- **Pre-Flight Mistakes Avoided Ledger (`BKM-081`)**: Explicitly record what traps must be avoided based on past sprint retrospectives before authoring code.
+
+#### Pillar 3: Structured Delegation & The Strict Anti-Bypass Guard (`BKM-049` + `BKM-006`)
+- **Conscious Avoidance of the Self-Promotion Trap:**
+  - `[SWARM:LOCAL]` (Atlas on RTX 4090 via port 4097): Preferred for targeted code surgery, parameter plumbing, and unit test assertions.
+  - `[SWARM:CLOUD]` (Sisyphus / Nemotron / DeepSeek): Reserved for heavy cross-subsystem architectural refactoring.
+  - `[AGY:PRIMARY]`: Strictly restricted to orchestrating git boundaries, hot-reloading daemons, and running live verification probes.
+- **THE ANTI-BYPASS INVARIANT (Strictly Enforced):**
+  When a story is tagged `[SWARM:LOCAL]` or `[SWARM:CLOUD]`, AGY:PRIMARY is **STRICTLY FORBIDDEN from directly modifying the story's target codebase files using file-editing tools**. Dispatch MUST execute through the delegation harness (`HomeLabAI/src/tests/delegate.py`). Direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier has executed, failed its required diagnostic remediation rounds, and logged a diagnostic post-mortem.
+
+#### Pillar 4: Adversarial Audit & Physical Silicon Certification (`BKM-007` + `BKM-024` + `INS-047`)
+- **Pre-Flight Adversarial Review:** Run Cloud Oracle audit on the sprint plan (`ask_oracle` / `ORACLE_REVIEW_SPRINT_*.md`) to challenge assumptions and expose blind spots before code dispatch.
+- **Offline Harness Gate:** Unit and replay test suites (`FEAT-645`) must pass 100% green without mocks masking live behavior.
+- **LIVE IS KING (`BKM-024` / `INS-047`):** Final story and sprint certification mandates testing against the physical running daemon (`lab-attendant.service` matching Git HEAD) and live reachable silicon endpoints via synthetic probe injection. Sandbox unit tests alone are never sufficient for sprint closure.
 
 ### 2. Operational Trigger & Protocol Loop
 When commanded to run an **AFK Sprint** or **Paved Sprint**:
 1. Check out an isolated sprint branch (`sprint-<ID>`).
 2. Execute the 4-Pillar Pipeline continuously until all stories are certified or an unresolvable grounding gap is reached.
-3. Maintain the Dropped Threads Ledger (`BKM-084`) and Conversational Continuity (`Law 9`).
-4. Re-verify full regression suites before merging back to `main`.
+3. Maintain the Dropped Threads Ledger (`BKM-084`) and Conversational Continuity (`Law 9`) on all interim updates.
+4. Fast-forward merge back to `main` only after full regression verification and physical daemon certification.
+
 
 
 
