@@ -193,10 +193,11 @@ class IgnitionManager:
 
     async def start_lab(self, reason="INTENT"):
         """[FEAT-265.8] Ignition sequence."""
-        if self.status.state in ["WAKING", "OPERATIONAL"]:
+        # [Task 1.4] Concurrency guard: Do not double-boot while an ignition is actively in-flight
+        if self.status.state == "WAKING":
             return True
 
-        # [FEAT-125] Smart-Reuse Protocol (Warm Start)
+        # [FEAT-125] Smart-Reuse Protocol (Warm Start): Probe physical port 8088 before trusting in-memory state
         try:
             req = urllib.request.Request("http://localhost:8088/v1/models")
             with urllib.request.urlopen(req, timeout=1) as resp:
@@ -213,6 +214,14 @@ class IgnitionManager:
                     return True
         except Exception:
             pass
+
+        # [FEAT-125] Zombie Operational Guard: If status was OPERATIONAL but vLLM port 8088 is dead, re-initiate physical ignition
+        if self.status.state == "OPERATIONAL":
+            logging.warning(
+                "[IGNITION] [FEAT-125] Status was OPERATIONAL but vLLM port 8088 is unreachable. Resetting to COLD for physical ignition."
+            )
+            self.status.state = "COLD"
+            self.status.engine_up = False
 
         # [FEAT-302] Adaptive Cooldown Tracking
         now = time.time()
