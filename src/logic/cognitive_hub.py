@@ -2575,6 +2575,7 @@ class CognitiveHub:
             else ""
         )
         target_domains = t_parsed.get("target_domains", []) if isinstance(t_parsed, dict) else []
+        search_required = bool(t_parsed.get("search_required", False)) if isinstance(t_parsed, dict) else False
         hyde, hyde_tier = await self.resolve_hyde_vector(
             turn, t_parsed, request_id=request_id
         )
