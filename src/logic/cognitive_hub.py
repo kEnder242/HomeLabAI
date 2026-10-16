@@ -2548,9 +2548,10 @@ class CognitiveHub:
             else ""
         )
         target_domains = t_parsed.get("target_domains", []) if isinstance(t_parsed, dict) else []
+        search_required = bool(t_parsed.get("search_required", False)) if isinstance(t_parsed, dict) else False
         if domain_val in ("lab_internal", "unclear", "feedback") and not target_domains:
             return ""
-        if domain_val in ("unknown", "standard") and not target_domains and not t_parsed.get("search_required", False):
+        if domain_val in ("unknown", "standard") and not target_domains and not search_required:
             return ""
         hyde, hyde_tier = await self.resolve_hyde_vector(
             turn, t_parsed, request_id=request_id
@@ -2587,6 +2588,7 @@ class CognitiveHub:
                         "n_results": n_results,
                         "vibe": vibe_val,
                         "domain": domain_val,
+                        "target_domains": target_domains,
                     },
                 )
                 if hasattr(res, "content") and len(res.content) > 0:

@@ -910,6 +910,8 @@ async def get_context(
     domain: str = None,
     hyde_vector_text: str = None,
     vibe: str = None,
+    target_domains: list[str] | None = None,
+    collections: list[str] | None = None,
 ) -> str:
     """
     [FEAT-116/117/437/442/447/469] Context Retrieval Engine: Searches wisdom, stream, and keyword stores.
@@ -968,10 +970,24 @@ async def get_context(
             )
 
         # [Story-3 / FEAT-469 / FEAT-467] Multi-Collection & Traversal Dispatcher
-        if resolve_collection_scope:
+        if collections is not None:
+            multi_collection_names = collections
+        elif target_domains:
+            multi_collection_names = resolve_collection_scope(
+                vibe=vibe, target_domains_or_domain=target_domains, domain_or_mode=domain
+            )
+        elif resolve_collection_scope:
             multi_collection_names = resolve_collection_scope(vibe, domain)
         else:
             multi_collection_names = get_collection_priorities(vibe, domain)
+
+        if not multi_collection_names:
+            return json.dumps({
+                "found": False,
+                "context": "",
+                "reason": "Empty resolved collection scope; ChromaDB query skipped.",
+                "sources": [],
+            })
 
         async def _query_one_collection(session, name, query_text, limit):
             url = f"http://127.0.0.1:8001/api/v1/collections/{name}/query"
