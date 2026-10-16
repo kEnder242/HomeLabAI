@@ -3063,6 +3063,7 @@ class CognitiveHub:
         """
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
+        self._last_thought_duration = 0.0
         thought_node = self.residents.get("thought")
         if interest < 0.30:
             logging.info(
@@ -3214,7 +3215,8 @@ class CognitiveHub:
             request_id=request_id,
             rag_context=focus_context,
         )
-        self._last_thought_duration += max(
+        curr_dt = getattr(self, "_last_thought_duration", 0.0)
+        self._last_thought_duration = curr_dt + max(
             0.001, round(time.perf_counter() - t_crit_start, 3)
         )
         return self.turn_thought_trace.get("critique", "")
