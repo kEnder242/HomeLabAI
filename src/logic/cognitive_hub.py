@@ -1892,15 +1892,9 @@ class CognitiveHub:
             lead_node = "brain"
         elif target_upper == "PINKY":
             lead_node = "pinky"
-        elif target_upper in ["MICE", "BOTH"]:
-            lead_node = "both"
-        else:  # "NONE", "SYSTEM", ""
-            if vibe == "CASUAL":
-                # Open room greeting / casual remark -> Both mice acknowledge with character brevity
-                lead_node = "both"
-            else:
-                # Open technical / historical / operational / forensic / WYWO inquiry -> Lead with Brain
-                lead_node = "brain"
+        else:  # "NONE", "SYSTEM", "MICE", "BOTH", ""
+            # [FEAT-657] Zero-Bifurcation: 100% of turns enter the Unified Council of Hemispheres
+            lead_node = "brain"
 
         if lead_node == "brain":
             # [FEAT-635 / FEAT-489 / Sprint 100 Story 100.11] Mandatory Stage 1
@@ -2488,29 +2482,8 @@ class CognitiveHub:
             target_domains = [str(target_domains)] if target_domains else []
         interest = float(triage_result.get("calculated_interest", importance))
 
-        # [FEAT-534/645] Unified Retrieval Dispatch:
-        # If explicit search not required and no target domains and low interest:
-        if (
-            not triage_result.get("search_required", True)
-            and len(target_domains) == 0
-            and interest < 0.30
-        ):
-            logging.info(
-                "[FEAT-534/645] Search not required; returning empty HyDE vector (Zero RAG Noise)"
-            )
-            return "", DIRECT_RAW_QUERY
-
-        if domain in ["unknown", "feedback", "lab_internal"] and len(target_domains) == 0:
-            logging.info(
-                "[FEAT-534/645] Non-matching domain without target collections; returning empty HyDE vector (Zero RAG Noise)"
-            )
-            return "", DIRECT_RAW_QUERY
-
-        if importance < 0.3 and domain == "standard" and len(target_domains) == 0:
-            logging.info(
-                "[FEAT-534/645] Standard domain with low importance; returning empty HyDE vector (Zero RAG Noise)"
-            )
-            return "", DIRECT_RAW_QUERY
+        # [FEAT-657] Zero-Bifurcation: Pinky always speaks her opening take in Stage 2.
+        # RAG retrieval is evaluated after search terms and collections are extracted.
 
         # If triage result already contains a valid HyDE vector from Pinky cli_voice_v1:
         hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
@@ -2524,6 +2497,13 @@ class CognitiveHub:
         if "pinky" in self.residents or "lab" in self.residents:
             try:
                 triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
+                pinky_pacing = format_pacing_line("pinky", interest)
+                pinky_guidance = (
+                    f"{pinky_pacing}\n"
+                    "Deliver your initial lively spoken take directly to Jason in your authentic voice, "
+                    "identifying what you are checking in the archives or telemetry."
+                )
+                pinky_budget = max(120, min(300, int(interest * 150) + 120))
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
                     "pinky",
@@ -2532,9 +2512,10 @@ class CognitiveHub:
                     "Pinky (Triage)",
                     tools=[],
                     temperature=0.2,
-                    max_tokens=250,
+                    max_tokens=pinky_budget,
                     use_lora=False,
                     response_format=PINKY_HYDE_SCHEMA,
+                    behavioral_guidance=pinky_guidance,
                     scope=ContextScope.TURN,      # [FEAT-640] Mandatory single-turn isolation
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
@@ -2629,10 +2610,19 @@ class CognitiveHub:
                     triage_result["hyde_vector_text"] = clean_hyde
 
                 if len(clean_hyde) > 5:
-                    logging.info(
-                        f"[FEAT-437][TIER1] Pinky LoRA (cli_voice_v1) HyDE: {clean_hyde[:80]!r}"
-                    )
-                    return clean_hyde, PINKY_LOCAL_VLLM
+                    if len(target_domains) > 0 or triage_result.get("search_required", True):
+                        logging.info(
+                            f"[FEAT-437][TIER1] Pinky HyDE Vector: {clean_hyde[:80]!r}"
+                        )
+                        return clean_hyde, PINKY_LOCAL_VLLM
+                    else:
+                        logging.info(
+                            "[FEAT-657] Zero RAG: search not required / zero target domains. Returning empty vector."
+                        )
+                        return "", DIRECT_RAW_QUERY
+                else:
+                    logging.info("[FEAT-657] Zero RAG: empty search terms. Returning empty vector.")
+                    return "", DIRECT_RAW_QUERY
             except Exception as e:
                 logging.warning(
                     f"[FEAT-437][TIER1] Pinky local LoRA synthesis failed ({e}), falling back to Tier 2..."
@@ -3074,6 +3064,12 @@ class CognitiveHub:
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
         thought_node = self.residents.get("thought")
+        if interest < 0.30:
+            logging.info(
+                f"[FEAT-657] Deep Thought dormant for low-interest turn ({interest:.2f} < 0.30). Zero latency."
+            )
+            return ""
+
         effective_grounding = brain_grounding or brain_bullets
         if thought_node:
             prompt_parts = [f"[USER_QUERY]: {query}"]
@@ -3142,6 +3138,12 @@ class CognitiveHub:
         self, query: str, synthesis: str, interest: float, shutdown_event=None, request_id: str = "default"
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
+        if interest < 0.25 and bool(getattr(self, "_last_pinky_greeting", "") or ""):
+            logging.info(
+                f"[FEAT-657] step_pinky_voice adaptively yields on low-interest greeting turn ({interest:.2f} < 0.25)."
+            )
+            return ""
+
         t_tm_pinky_start = time.perf_counter()
         stage2_prompt = build_two_mice_stage_prompt(
             2,
@@ -3251,11 +3253,6 @@ class CognitiveHub:
             return False
 
         gate_interest = self.current_interest if interest is None else float(interest)
-        if gate_interest < TWO_MICE_FUNNEL_INTEREST:
-            logging.info(
-                f"[FEAT-489] Interest {gate_interest:.2f} < {TWO_MICE_FUNNEL_INTEREST}. Funnel dormant."
-            )
-            return False
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
 
         # Stage 3.1: Brain Gatekeeper
