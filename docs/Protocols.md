@@ -1598,4 +1598,39 @@ Under `BKM-085`, before modifying any control-plane routing, gate, or subsystem 
 ### 3. Execution & Silicon Verification
 Once the 3-phase correlation is complete and documented, implementation proceeds under Heads-Down delegation (`BKM-029`). Final certification mandates verifying against physical running silicon (`BKM-024` / `INS-047` *Live is King*).
 
+---
+
+## BKM-086: The Paved-Path Sprint Protocol (AFK / Sovereign Execution)
+**Feature Anchor:** `[BKM-086]` / `[BKM-082]` / `[BKM-085]` / `[BKM-030]` / `[BKM-043]` / `[BKM-049]` / `[BKM-006]` / `[BKM-007]` / `[BKM-024]`  
+**Colloquial Aliases:** "AFK Sprint", "Paved Sprint", "The Grounded Sprint", "Sovereign Execution Pipeline"  
+**Domain:** Autonomous Agentic Sprints, Long-Running Hands-Off Workflows, Multi-Agent Swarm Orchestration  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Law: Autonomy Through Paved Trust
+When an operator issues an **"AFK Sprint"**, **"Paved Sprint"**, or **"Grounded Sprint"** command, the agent is granted full autonomous momentum to plan, delegate, execute, and certify a sprint without stopping for turn-by-turn permission.
+
+This autonomy is not unconstrained liberty—it is strictly bound by the **Four Pillars of Paved Trust**:
+1. **Grounding Horizon (`BKM-082` + `BKM-085`)**:
+   - Zero speculative hallucination or guessing.
+   - The agent MUST excavate past sprint intent and pre-regression git diffs before modifying routing gates or legacy contracts.
+2. **Deterministic Planning (`BKM-030` + `BKM-043`)**:
+   - Every story MUST be fully specified with the 4-Anchor Standard (Target Files, Verification Commands, Verbatim Code Specs, DNA Links).
+   - Pre-Flight Mistakes Avoided ledgers (`BKM-081`) must be completed before execution begins.
+3. **Structured Delegation (`BKM-049` + `BKM-006`)**:
+   - Conscious avoidance of the self-promotion trap:
+     - `[SWARM:LOCAL]` on RTX 4090 / Ollama is preferred for targeted code surgery, unit test assertions, and local harness runs.
+     - `[SWARM:CLOUD]` is reserved for deep architectural synthesis and multi-file refactoring.
+     - `[AGY:PRIMARY]` strictly governs git boundaries, branch management, and daemon hot-reloading.
+4. **Adversarial Certification (`BKM-007` + `BKM-024`)**:
+   - Offline unit test suites must pass 100% green without mocks masking live state.
+   - Final task certification mandates testing physical running daemons matching Git HEAD and reachable silicon endpoints (`INS-047` *Live is King*).
+
+### 2. Operational Trigger & Protocol Loop
+When commanded to run an **AFK Sprint** or **Paved Sprint**:
+1. Check out an isolated sprint branch (`sprint-<ID>`).
+2. Execute the 4-Pillar Pipeline continuously until all stories are certified or an unresolvable grounding gap is reached.
+3. Maintain the Dropped Threads Ledger (`BKM-084`) and Conversational Continuity (`Law 9`).
+4. Re-verify full regression suites before merging back to `main`.
+
+
 
