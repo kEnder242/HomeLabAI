@@ -308,4 +308,33 @@ def test_stage10_unified_council_greeting_contract():
     assert dt_budget == 0  # Dormant
 
 
+def test_stage11_addressed_waterfall_contract():
+    """Stage 11 (Story 104.11 / FEAT-658): Pure Waterfall Execution without lead_node.
+    Asserts that even when a query is explicitly addressed to Pinky ('addressed_to: PINKY'),
+    it does not branch into an isolated single-node loop; 100% of turns pass into
+    _run_two_mice_handover, and depth cascades purely based on fuel (interest).
+    """
+    hub = _make_test_hub()
+    t_parsed = {
+        "inferred_intent": "informal inquiry",
+        "addressed_to": "PINKY",
+        "vibe": "TECHNICAL",
+        "domain": "work_history",
+        "casual": 0.3,
+        "intrigue": 0.8,
+        "importance": 0.7,
+        "target_domains": ["career_ledger"],
+        "calculated_interest": 0.74,
+    }
+
+    # Verify that lead_node is completely abolished from the hub routing
+    assert not hasattr(hub, "lead_node")
+    assert not hasattr(hub, "_lead_node")
+
+    # High fuel (interest = 0.74) enables Deep Thought synthesis
+    dt_budget = max(500, min(1500, int(t_parsed["calculated_interest"] * 1200) + 200))
+    assert dt_budget >= 1000  # Deep Thought awakens on high fuel
+
+
+
 

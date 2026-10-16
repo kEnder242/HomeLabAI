@@ -1886,173 +1886,51 @@ class CognitiveHub:
                     "Respond purely from live telemetry or explicitly acknowledge unrecorded state."
                 )
 
-        # [FEAT-418] Decoupled Entity Target & Archetype Lead Node Routing
-        target_upper = str(target).upper()
-        if target_upper in ["BRAIN", "THOUGHT", "DEEP"]:
-            lead_node = "brain"
-        elif target_upper == "PINKY":
-            lead_node = "pinky"
-        else:  # "NONE", "SYSTEM", "MICE", "BOTH", ""
-            # [FEAT-657] Zero-Bifurcation: 100% of turns enter the Unified Council of Hemispheres
-            lead_node = "brain"
-
-        if lead_node == "brain":
-            # [FEAT-635 / FEAT-489 / Sprint 100 Story 100.11] Mandatory Stage 1
-            # Brain Information Gatekeeper: 100% of brain-led technical queries
-            # route through the Sprint 96 two-mice handover (stage=1), regardless
-            # of the interest funnel gate. The legacy _run_brain_leg fallback is
-            # retired; low interest no longer skips the Stage 1 gatekeeper.
-            handover_context = context
-            if not handover_context or "[RAG_CONTEXT]" not in handover_context:
-                if "rag_context" in locals():
-                    handover_context = context if context else rag_context
-                else:
-                    handover_context = context or await self._fetch_rag_context(
-                        turn, t_parsed, request_id=request_id
-                    )
-            handover_success = await self._run_two_mice_handover(
-                turn,
-                focus_context=handover_context,
-                shutdown_event=shutdown_event,
-                request_id=request_id,
-            )
-            if handover_success:
-                d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
-                d_thought = getattr(self, "_last_thought_duration", 0.0)
-                d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
-                t_brain_elapsed = max(0.001, round(t_triage_elapsed + d_brain, 3))
-                t_oracle_elapsed = max(0.001, round(t_brain_elapsed + d_thought, 3))
-                t_judgment_elapsed = max(0.001, round(t_oracle_elapsed + d_pinky, 3))
+        # [FEAT-658 / FEAT-233] Pure Waterfall Execution: Total Abolition of lead_node
+        # 100% of turns pass into the Council of Hemispheres (The Waterfall).
+        # Deliberation depth is governed purely by continuous fluid fuel (interest).
+        handover_context = context
+        if not handover_context or "[RAG_CONTEXT]" not in handover_context:
+            if "rag_context" in locals() and rag_context:
+                handover_context = rag_context
             else:
-                # Handover structurally unavailable (missing residents) ->
-                # legacy single-execution fallback.
-                await self._run_brain_leg(
-                    turn,
-                    t_parsed,
-                    shutdown_event=shutdown_event,
-                    request_id=request_id,
-                    rag_context=rag_context,
-                    t_turn_start=t0_start,
+                handover_context = context or await self._fetch_rag_context(
+                    turn, t_parsed, request_id=request_id
                 )
-                t_brain_elapsed = getattr(
-                    self,
-                    "_last_t_brain_elapsed",
-                    round(time.perf_counter() - t0_start, 3),
-                )
-                t_oracle_elapsed = getattr(
-                    self,
-                    "_last_t_oracle_elapsed",
-                    round(time.perf_counter() - t0_start, 3),
-                )
-        elif lead_node == "both":
-            # Both speak on Turn 1 ("Hey mice!" or open casual greeting)
-            full_pinky_text = ""
-            pinky_profile = getattr(self, 'config', {}).get('node_pacing_profiles', {}).get('pinky', {})
-            p_temp = pinky_profile.get('default_temp', 0.7)
-            p_max_tokens = pinky_profile.get('max_tokens', None)
-            async for token in self._process_node_stream(
-                "pinky",
-                turn,
-                context,
-                "Pinky (Response)",
-                tools=[],
-                temperature=p_temp,
-                request_id=request_id,
-                behavioral_guidance=behavioral_guidance,
-                max_tokens=p_max_tokens,
-            ):
-                full_pinky_text += token
-                if shutdown_event and shutdown_event.is_set():
-                    break
-            t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
+
+        handover_success = await self._run_two_mice_handover(
+            turn,
+            focus_context=handover_context,
+            shutdown_event=shutdown_event,
+            request_id=request_id,
+        )
+        if handover_success:
+            d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
+            d_thought = getattr(self, "_last_thought_duration", 0.0)
+            d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
+            t_brain_elapsed = max(0.001, round(t_triage_elapsed + d_brain, 3))
+            t_oracle_elapsed = max(0.001, round(t_brain_elapsed + d_thought, 3))
+            t_judgment_elapsed = max(0.001, round(t_oracle_elapsed + d_pinky, 3))
+        else:
+            # Fallback if residents unavailable
             await self._run_brain_leg(
                 turn,
                 t_parsed,
                 shutdown_event=shutdown_event,
                 request_id=request_id,
+                rag_context=rag_context if "rag_context" in locals() else "",
                 t_turn_start=t0_start,
             )
             t_brain_elapsed = getattr(
-                self, "_last_t_brain_elapsed", round(time.perf_counter() - t0_start, 3)
+                self,
+                "_last_t_brain_elapsed",
+                round(time.perf_counter() - t0_start, 3),
             )
             t_oracle_elapsed = getattr(
-                self, "_last_t_oracle_elapsed", round(time.perf_counter() - t0_start, 3)
+                self,
+                "_last_t_oracle_elapsed",
+                round(time.perf_counter() - t0_start, 3),
             )
-        else:
-            # [FEAT-457] Single-Layer Speculative Context Pre-fetch:
-            # Launch Brain's RAG context retrieval immediately in the background while Pinky speaks.
-            brain_prefetch_task = None
-            if (
-                "brain" in self.residents or "thought" in self.residents
-            ) and len(getattr(self, "current_target_domains", [])) > 0:
-                brain_prefetch_task = asyncio.create_task(
-                    self._fetch_rag_context(turn, t_parsed, request_id=request_id)
-                )
-
-            # Pinky leads Turn 1 (Explicitly addressed to PINKY)
-            full_pinky_text = ""
-            pinky_profile = getattr(self, 'config', {}).get('node_pacing_profiles', {}).get('pinky', {})
-            p_temp = pinky_profile.get('default_temp', 0.7)
-            p_max_tokens = pinky_profile.get('max_tokens', None)
-            async for token in self._process_node_stream(
-                "pinky",
-                turn,
-                context,
-                "Pinky (Response)",
-                tools=[],
-                temperature=p_temp,
-                request_id=request_id,
-                behavioral_guidance=behavioral_guidance,
-                max_tokens=p_max_tokens,
-            ):
-                full_pinky_text += token
-                if shutdown_event and shutdown_event.is_set():
-                    break
-            t_pinky_elapsed = max(0.001, round(time.perf_counter() - t0_start, 3))
-
-            # Intercept morning briefing tool call from Pinky's response
-            if "trigger_morning_briefing" in full_pinky_text:
-                if brain_prefetch_task and not brain_prefetch_task.done():
-                    brain_prefetch_task.cancel()
-                logging.info(
-                    "[HUB] Intercepted trigger_morning_briefing tool call from Pinky's response."
-                )
-                if trigger_briefing_callback:
-                    await trigger_briefing_callback()
-                else:
-                    await self.trigger_morning_briefing(request_id=request_id)
-                return
-
-            # Turn 2: Brain interjects if interest is high
-            if self.current_interest > 0.5:
-                logging.info(
-                    f"[HUB] [FEAT-457] Interest high ({self.current_interest:.2f} > 0.5): Triggering Brain interjection with pre-fetched context."
-                )
-                await self._run_brain_leg(
-                    turn,
-                    t_parsed,
-                    shutdown_event=shutdown_event,
-                    request_id=request_id,
-                    prefetch_task=brain_prefetch_task,
-                    t_turn_start=t0_start,
-                )
-                t_brain_elapsed = getattr(
-                    self,
-                    "_last_t_brain_elapsed",
-                    round(time.perf_counter() - t0_start, 3),
-                )
-                t_oracle_elapsed = getattr(
-                    self,
-                    "_last_t_oracle_elapsed",
-                    round(time.perf_counter() - t0_start, 3),
-                )
-            else:
-                # Preemption: Interest is low, cleanly cancel/discard speculative pre-fetch without penalty
-                if brain_prefetch_task and not brain_prefetch_task.done():
-                    brain_prefetch_task.cancel()
-                    logging.info(
-                        f"[HUB] [FEAT-457] Preempted Brain pre-fetch: Interest low ({self.current_interest:.2f} <= 0.5). Discarded background context."
-                    )
 
         # [FEAT-356 / FEAT-558] Unified Session Ledger: Record turn summary (Sanitized for Auto-Regressive Health)
         clean_user = sanitize_spoken_dialogue(turn)
