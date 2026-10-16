@@ -26,6 +26,7 @@ from logic.cognitive_hub import (
     build_two_mice_stage_prompt,
     build_two_mice_stream_packet,
 )
+from logic.traversal_dispatcher import resolve_collection_scope
 from logic.vector_pre_triage import probe_clara_dna_sync
 
 LITMUS_QUERY = (
@@ -334,6 +335,26 @@ def test_stage11_addressed_waterfall_contract():
     # High fuel (interest = 0.74) enables Deep Thought synthesis
     dt_budget = max(500, min(1500, int(t_parsed["calculated_interest"] * 1200) + 200))
     assert dt_budget >= 1000  # Deep Thought awakens on high fuel
+
+
+def test_stage12_multi_domain_dna_resolution_contract():
+    """Stage 12: Multi-domain DNA resolution contract via resolve_collection_scope."""
+    # Empty target_domains yields empty collection list immediately.
+    assert resolve_collection_scope(
+        vibe="TECHNICAL", target_domains_or_domain=[]
+    ) == []
+    # Single bkm domain maps to behavioral_dna.
+    assert resolve_collection_scope(
+        vibe="TECHNICAL", target_domains_or_domain=["bkm"]
+    ) == ["behavioral_dna"]
+    # Multi-domain TECHNICAL: ordered by TECHNICAL vibe priority (behavioral_dna before feature_dna).
+    assert resolve_collection_scope(
+        vibe="TECHNICAL", target_domains_or_domain=["bkm", "feature"]
+    ) == ["behavioral_dna", "feature_dna"]
+    # Multi-domain HISTORICAL: ordered by HISTORICAL vibe priority (career_ledger before sprint_dna).
+    assert resolve_collection_scope(
+        vibe="HISTORICAL", target_domains_or_domain=["sprint", "career"]
+    ) == ["career_ledger", "sprint_dna"]
 
 
 
