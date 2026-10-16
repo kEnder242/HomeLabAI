@@ -2408,11 +2408,18 @@ class CognitiveHub:
                     "Deliver your initial lively spoken take directly to the user in your authentic voice, "
                     "staying relevant to the primer and the actors before you."
                 )
-                pinky_budget = pinky_high
+                pinky_budget = max(150, pinky_high)
+                is_greeting = (
+                    triage_result.get("inferred_intent") == "greeting"
+                    or vibe in ("CASUAL", "PRIMER")
+                    or domain in ("social", "standard")
+                    or (len(target_domains) == 0 and not triage_result.get("search_required", False))
+                )
+                active_hyde_prompt = _HYDE_SYNTHESIS_PROMPT_DEFAULT if is_greeting else HYDE_SYNTHESIS_PROMPT
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
                     "pinky",
-                    HYDE_SYNTHESIS_PROMPT,
+                    active_hyde_prompt,
                     triage_context,
                     "Pinky (Triage)",
                     tools=[],
@@ -2432,24 +2439,33 @@ class CognitiveHub:
                 should_upvote = False
 
                 # 1. Structured JSON parsing
-                if "{" in raw_hyde and "}" in raw_hyde:
+                if "{" in raw_hyde:
                     try:
                         start_idx = raw_hyde.find("{")
                         end_idx = raw_hyde.rfind("}") + 1
-                        parsed = json.loads(raw_hyde[start_idx:end_idx])
-                        spoken_take = str(
-                            parsed.get("spoken_take", "")
-                            or parsed.get("greeting", "")
-                            or ""
-                        ).strip()
-                        clean_vector = str(
-                            parsed.get("search_terms", "")
-                            or parsed.get("hyde_vector", "")
-                            or ""
-                        ).strip()
-                        should_upvote = bool(parsed.get("upvote", False))
+                        if end_idx > start_idx:
+                            parsed = json.loads(raw_hyde[start_idx:end_idx])
+                            spoken_take = str(
+                                parsed.get("spoken_take", "")
+                                or parsed.get("greeting", "")
+                                or ""
+                            ).strip()
+                            clean_vector = str(
+                                parsed.get("search_terms", "")
+                                or parsed.get("hyde_vector", "")
+                                or ""
+                            ).strip()
+                            should_upvote = bool(parsed.get("upvote", False))
                     except Exception as e:
                         logging.warning(f"[HUB] Failed to parse Pinky HyDE JSON: {e}")
+
+                if not spoken_take:
+                    m_spoken = re.search(r'"(?:spoken_take|greeting)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', raw_hyde)
+                    if m_spoken:
+                        try:
+                            spoken_take = m_spoken.group(1).encode().decode('unicode_escape', 'ignore').strip()
+                        except Exception:
+                            spoken_take = m_spoken.group(1).strip()
 
                 # 2. Tag fallback parsing ([HYDE: ...])
                 if not clean_vector and "[HYDE:" in raw_hyde:
@@ -2477,8 +2493,8 @@ class CognitiveHub:
 
                 # Fallback if both empty
                 if not clean_vector and not spoken_take:
-                    clean_vector = raw_hyde
-                    spoken_take = raw_hyde
+                    if not raw_hyde.startswith("{"):
+                        spoken_take = raw_hyde
 
                 # Strip internal tags from spoken take and vector
                 clean_vector = re.sub(r"<[^>]+>", "", clean_vector).strip()
