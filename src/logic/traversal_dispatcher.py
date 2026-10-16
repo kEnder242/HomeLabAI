@@ -65,6 +65,38 @@ _ERA_PATTERN = re.compile(
 # ─── Temporal Extraction ────────────────────────────────────────────────────
 
 
+# [FEAT-659] Semantic domain token to ChromaDB collection mapping.
+_DOMAIN_COLLECTION_MAP: dict[str, list[str]] = {
+    "bkm": ["behavioral_dna"],
+    "protocol": ["behavioral_dna"],
+    "feat": ["feature_dna"],
+    "feature": ["feature_dna"],
+    "sprint": ["sprint_dna"],
+    "history": ["sprint_dna"],
+    "wisdom": ["wisdom_dna", "philosophy_dna"],
+    "philosophy": ["philosophy_dna", "wisdom_dna"],
+    "infra": ["lab_infrastructure", "lab_journal"],
+    "lab": ["lab_journal", "lab_infrastructure"],
+    "career": ["career_ledger"],
+}
+
+
+# [FEAT-659] Sprint 61/64 vibe priority ordering.
+_VIBE_PRIORITY: dict[str, list[str]] = {
+    "HISTORICAL": ["career_ledger", "sprint_dna", "artifact_vault", "wisdom_dna", "philosophy_dna", "behavioral_dna", "feature_dna", "lab_infrastructure", "lab_journal"],
+    "TECHNICAL": ["behavioral_dna", "feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
+    "META": ["feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "behavioral_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
+    "DEFAULT": ["feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "behavioral_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
+}
+
+
+def _order_collections_by_vibe(collections: list[str], vibe: str) -> list[str]:
+    """[FEAT-659] Order candidate collections by Sprint 61/64 vibe priority."""
+    priority = _VIBE_PRIORITY.get(vibe.upper() if vibe else "", _VIBE_PRIORITY["DEFAULT"])
+    rank = {coll: idx for idx, coll in enumerate(priority)}
+    return sorted(collections, key=lambda c: rank.get(c, len(priority)))
+
+
 def extract_temporal_anchors(query: str) -> dict[str, Any]:
     """
     Extract temporal year anchors, sprint references, and era markers from query.
@@ -303,24 +335,66 @@ def format_traversal_query(
 
 def resolve_collection_scope(
     vibe: str,
-    domain: str | None = None,
+    target_domains_or_domain: list[str] | str | None = None,
+    domain_or_mode: str | TraversalMode | None = None,
     traversal_mode: str | TraversalMode = TraversalMode.TOPIC_FIRST,
 ) -> list[str]:
     """
-    Resolve the target collection scope based on vibe, domain, and traversal mode.
+    Resolve the target collection scope based on vibe, target_domains, domain,
+    and traversal mode. [FEAT-659]
 
-    Determines which ChromaDB collections should be queried based on the
-    combination of vibe classification, domain, and traversal mode.
+    Backward-compatible signature: legacy positional callers passing a string
+    as the second argument are interpreted as the legacy domain hint. New
+    callers pass target_domains as the second argument (a list of semantic
+    tokens) and optionally domain as the third argument.
 
     Args:
-        vibe: The classified vibe (e.g. "TECHNICAL", "HISTORICAL", "CASUAL").
-        domain: Optional domain hint (e.g. "exp_tlm", "exp_bkm", "lab_history").
+        vibe: The classified vibe (e.g. "TECHNICAL", "HISTORICAL").
+        target_domains_or_domain: target_domains (list[str]) or legacy domain (str).
+        domain_or_mode: Legacy traversal_mode when second arg is domain, or
+            None/ignored when second arg is target_domains.
         traversal_mode: The traversal mode to resolve collections for.
 
     Returns:
         List of collection name strings to query.
     """
-    # Normalize traversal mode
+    # [BACKWARD-COMPAT] Detect legacy positional domain string.
+    target_domains: list[str] | None = None
+    domain: str | None = None
+    if isinstance(target_domains_or_domain, str):
+        # Legacy: resolve_collection_scope(vibe, domain, mode)
+        domain = target_domains_or_domain
+        if domain_or_mode is not None:
+            traversal_mode = domain_or_mode
+    elif isinstance(target_domains_or_domain, list):
+        # New: resolve_collection_scope(vibe, target_domains, domain, mode)
+        target_domains = target_domains_or_domain
+        if domain_or_mode is not None:
+            domain = domain_or_mode
+    elif target_domains_or_domain is None:
+        # resolve_collection_scope(vibe, mode) - no domain
+        if domain_or_mode is not None:
+            traversal_mode = domain_or_mode
+    else:
+        raise TypeError(
+            "target_domains_or_domain must be list[str], str, or None"
+        )
+
+    # [FEAT-659] Primary path: explicit target_domains from Triage.
+    if target_domains is not None:
+        if not target_domains:
+            return []
+        candidate_set: set[str] = set()
+        for token in target_domains:
+            token_lower = token.lower().strip()
+            mapped = _DOMAIN_COLLECTION_MAP.get(token_lower)
+            if mapped:
+                candidate_set.update(mapped)
+        if not candidate_set:
+            return []
+        return _order_collections_by_vibe(list(candidate_set), vibe)
+
+    # [LEGACY] Fallback path: preserve exact legacy behavior.
     if isinstance(traversal_mode, str):
         try:
             mode = TraversalMode(traversal_mode)
@@ -329,31 +403,23 @@ def resolve_collection_scope(
     else:
         mode = traversal_mode
 
-    # Base collections from mode
     base_collections = list(_MODE_COLLECTIONS.get(mode, ["artifact_vault"]))
-
-    # Vibe-based overrides
     vibe_lower = vibe.upper() if vibe else ""
 
-    # CASUAL/SUPERVISORY vibes skip heavy collections
     if vibe_lower in ("CASUAL", "SUPERVISORY", "META"):
         return ["short_term_stream"]
 
-    # STREAM_REPLAY always targets short-term only
     if mode == TraversalMode.STREAM_REPLAY:
         return ["short_term_stream"]
 
-    # HISTORICAL vibe boosts career_ledger
     if vibe_lower == "HISTORICAL":
         if "career_ledger" not in base_collections:
             base_collections.append("career_ledger")
 
-    # TECHNICAL vibe boosts behavioral_dna
     if vibe_lower == "TECHNICAL":
         if "behavioral_dna" not in base_collections:
             base_collections.append("behavioral_dna")
 
-    # Domain-based collection routing
     if domain:
         domain_lower = domain.lower()
         if domain_lower in ("exp_tlm", "silicon"):
@@ -366,7 +432,6 @@ def resolve_collection_scope(
             if "career_ledger" not in base_collections:
                 base_collections.append("career_ledger")
 
-    # Preserve order, deduplicate
     seen: set[str] = set()
     result: list[str] = []
     for coll in base_collections:
