@@ -1658,6 +1658,7 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 
 ### 1.1 Checklist & Artifact Currency Standard (The Idempotency & Level-of-Entry Rule)
 `BKM-086` can be treated as an operational checklist:
+- **Digital Checkbox Paper Trail**: The AFK checklist lives directly inside the active sprint plan (`SPRINT_PLAN_*.md`) as an interactive markdown checklist (`- [ ] / - [x]`). Avoid standalone scratch files; digitally checking each box forces deliberate verification and creates a durable paper trail that prevents glossing over pre-flight gates.
 - **Idempotent Execution**: Paved paths do not need to be followed twice **ONLY WHEN** the BKM flow has **ALREADY** been followed and the corresponding artifacts (grounding, 4-anchor plans, delegation targets, and test harnesses) are **CURRENT**.
 - **Level-of-Entry Flow-Down**: Any additions, scope changes, or newly introduced stories **MUST** trigger a new path flow at the exact level they were added (e.g., introducing a new story mandates Grounding $\to$ 4-Anchor Specification $\to$ Delegation/Verification, rather than jumping directly to execution or skipping preceding BKM gates).
 
