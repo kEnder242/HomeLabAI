@@ -325,7 +325,7 @@ def test_handover_refuses_missing_resident_and_low_interest():
         loop.close()
     assert ran is False
 
-    # Restore; [FEAT-657] Low interest does NOT abort the council; it runs with continuous pacing
+    # Restore; [FEAT-658 / BKM-039] Low interest (< 0.35) exhausts fuel: Brain remains dormant.
     hub.residents["pinky"] = _FakeResident(hub, "pinky", PINKY_TLDR_TEXT)
     hub.current_interest = 0.3
     loop = asyncio.new_event_loop()
@@ -335,8 +335,8 @@ def test_handover_refuses_missing_resident_and_low_interest():
         )
     finally:
         loop.close()
-    assert ran is True  # [FEAT-657] Council runs for all interest levels
-    assert len(hub.residents["brain"].calls) > 0  # Brain ran with paced brevity
+    assert ran is True  # Waterfall handled cleanly
+    assert len(hub.residents["brain"].calls) == 0  # Brain stays dormant on low fuel (< 0.35)
 
 
 def test_module_level_alias_is_bound():

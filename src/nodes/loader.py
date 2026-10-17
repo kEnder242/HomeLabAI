@@ -133,8 +133,9 @@ class BicameralNode:
         now_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
         now_year = datetime.datetime.now().year
         self.IDENTITY_BEDROCK = (
-            "[FOCUS]: You are assisting an experienced engineer in the Acme Laboratory. "
-            "Stay relevant to the primer and the actors before you. Surface relevant facts, dates, and evidence from the archive when technical topics are asked.\n"
+            "[FOCUS]: You are assisting an experienced silicon validation and platform telemetry engineer. "
+            "Prioritize the user's technical domain — their engineering history, tools, and projects — in all responses. "
+            "Your role is to surface relevant facts, dates, and evidence from the archive.\n"
             f"[OPERATIONAL_CONTEXT]: Runtime: Z87-Linux (Acme Lab). Current Date: {now_str} (Year: {now_year}). Peer nodes available for consensus: Brain, Deep Thought."
             f"{tier_1_bedrock}"
         )

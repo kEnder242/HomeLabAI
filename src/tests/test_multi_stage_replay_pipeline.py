@@ -291,22 +291,15 @@ def test_stage10_unified_council_greeting_contract():
         "calculated_interest": 0.06,
     }
 
-    # In Sprint 104 unified council, all unaddressed turns evaluate lead_node as 'brain' (Council)
-    target = t_parsed.get("addressed_to", "PINKY").lower()
-    target_upper = str(target).upper()
-    if target_upper in ["BRAIN", "THOUGHT", "DEEP"]:
-        lead_node = "brain"
-    elif target_upper in ["MICE"]:
-        lead_node = "both"
-    else:  # "NONE", "SYSTEM", ""
-        lead_node = "brain"  # [FEAT-657] Zero bifurcation
+    # In pure Waterfall (FEAT-658), lead_node is abolished; depth cascades purely by fuel
+    assert not hasattr(hub, "lead_node")
+    assert not hasattr(hub, "_lead_node")
 
-    assert lead_node == "brain"
-
-    # Deep Thought budget on interest 0.06 is 0 (dormant)
+    # Low fuel (interest = 0.06) exhausts after Pinky's opening take; Brain & Deep Thought dormant
     interest = 0.06
+    assert interest < 0.35  # Brain remains dormant
     dt_budget = int(interest * 1200) if interest >= 0.30 else 0
-    assert dt_budget == 0  # Dormant
+    assert dt_budget == 0  # Deep Thought remains dormant
 
 
 def test_stage11_addressed_waterfall_contract():
