@@ -8,6 +8,7 @@ import pytest
 from infra.standalone_accountability_watchdog import (
     audit_and_emit_digest,
     check_foyer_and_vram,
+    check_subconscious_dreaming,
     check_gpu_power_clamp,
     check_nightly_forge_liveness,
     check_stale_locks,
@@ -133,3 +134,32 @@ def test_swap_telemetry(tmp_path):
         assert mock_warn.called
         assert "Swap utilization at %.1f%%" in mock_warn.call_args[0][0]
         assert mock_warn.call_args[0][1] == 85.0
+
+
+def test_subconscious_dreaming_freshness(tmp_path):
+    """STORY 105.8: stale gems (>30h) fail, fresh gems (<30h) pass, empty gems fail."""
+    import time
+
+    gems_path = tmp_path / "latest_synthesis_gems.json"
+
+    # Case 1: Fresh gems (<30h, default mtime=now) -> pass
+    gems_path.write_text(json.dumps({"gems": [{"id": "g1"}, {"id": "g2"}]}))
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
+        res = check_subconscious_dreaming()
+        assert res["passed"] is True
+        assert res["count"] == 2
+
+    # Case 2: Stale gems (>30h) -> fail
+    old = time.time() - 110000  # ~30.5h ago
+    os.utime(gems_path, (old, old))
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
+        res = check_subconscious_dreaming()
+        assert res["passed"] is False
+        assert "Stale" in res["detail"]
+
+    # Case 3: Empty gems -> fail
+    gems_path.write_text(json.dumps({"gems": []}))
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
+        res = check_subconscious_dreaming()
+        assert res["passed"] is False
+        assert res["count"] == 0
