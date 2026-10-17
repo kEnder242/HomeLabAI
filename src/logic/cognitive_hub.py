@@ -6,6 +6,7 @@ import os
 import random
 import re
 import time
+import fcntl
 
 from logic.feedback_interceptor import record_feedback
 from logic.override_parser import (
@@ -73,6 +74,72 @@ _QPR_NOISE_PATTERNS = [
         "",
     ),
 ]
+
+
+# [STORY 105.10] Post-Waterfall Learning Target Queue
+# Atomic, flock-protected JSON queue for learning targets the waterfall
+# could not ground in the moment (scarce synthesis / no historical record).
+POST_WATERFALL_QUEUE_PATH = os.path.expanduser(
+    "~/Dev_Lab/Portfolio_Dev/field_notes/data/queue.json"
+)
+
+
+def _queue_key(query: str, entities: list[str]) -> str:
+    """[STORY 105.10] Stable dedup key: normalized query + sorted entities."""
+    norm = re.sub(r"\s+", " ", query.strip().lower())
+    ents = "|".join(sorted(set(e.lower() for e in entities)))
+    return hashlib.sha256(f"{norm}::{ents}".encode("utf-8")).hexdigest()
+
+
+def queue_post_waterfall_learning_target(query: str, entities: list[str]) -> bool:
+    """[STORY 105.10] Atomically append a learning target to the post-waterfall queue.
+
+    Uses fcntl.flock on a sidecar lockfile for mutual exclusion and
+    a tempfile + os.replace rename for the write so concurrent readers
+    never observe a torn queue.json. Returns False (and logs) when the
+    exact (query, entities) pair is already queued; True otherwise.
+    """
+    key = _queue_key(query, entities)
+    try:
+        _path = POST_WATERFALL_QUEUE_PATH
+        os.makedirs(os.path.dirname(_path), exist_ok=True)
+        lock_path = _path + ".lock"
+        with open(lock_path, "a") as lock_f:
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            try:
+                existing: list[dict] = []
+                if os.path.exists(_path):
+                    with open(_path, "r") as f:
+                        loaded = json.load(f)
+                        if isinstance(loaded, list):
+                            existing = loaded
+                if any(item.get("key") == key for item in existing):
+                    logging.info(
+                        f"[STORY 105.10] Queue dedup: target already queued ({key[:12]}...)"
+                    )
+                    return False
+                existing.append(
+                    {
+                        "key": key,
+                        "query": query,
+                        "entities": sorted(set(entities)),
+                        "queued_at": int(time.time()),
+                        "status": "pending",
+                    }
+                )
+                tmp_path = _path + ".tmp"
+                with open(tmp_path, "w") as f:
+                    json.dump(existing, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, _path)
+                logging.info(
+                    f"[STORY 105.10] Learning target queued: {key[:12]}... ({len(existing)} total)"
+                )
+                return True
+            finally:
+                fcntl.flock(lock_f, fcntl.LOCK_UN)
+    except Exception as e:
+        logging.error(f"[STORY 105.10] Post-waterfall queue write failed: {e}")
+        return False
 
 
 def sanitize_spoken_dialogue(text: str) -> str:
@@ -3191,9 +3258,11 @@ class CognitiveHub:
             if hasattr(self, "current_vibe") and self.current_vibe
             else "CASUAL"
         )
+        # [STORY 105.10] Hardware entity set for the post-waterfall learning
+        # target queue (also drives the RAG-First expansion branch below).
+        hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
         if vibe_now in ("HISTORICAL", "TECHNICAL"):
             effective_grounding = brain_grounding or ""
-            hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
             if len(effective_grounding) < 100 or hardware_entities:
                 try:
                     from nodes.archive_node import execute_grep_search_pivot
@@ -3223,6 +3292,18 @@ class CognitiveHub:
             shutdown_event=shutdown_event,
             request_id=request_id,
         )
+
+        # [STORY 105.10] Post-Waterfall Learning Target Queueing: when the
+        # waterfall ran but produced scarce synthesis or explicitly lacked a
+        # historical record, queue the target for later field-note curation.
+        if (
+            vibe_now in ("HISTORICAL", "TECHNICAL")
+            and (
+                "scarce" in (dt_synthesis or "").lower()
+                or "without a historical record" in (brain_grounding or "").lower()
+            )
+        ):
+            queue_post_waterfall_learning_target(query, entities=hardware_entities)
 
         # Stage 3.3: Pinky Conversational TL;DR
         pinky_context = dt_synthesis if dt_synthesis else brain_grounding
