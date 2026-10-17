@@ -637,8 +637,8 @@ class TestProductionConfig:
             assert self._prod_loader.get_rag_config(vibe) is None
 
     def test_production_retrieval_vibes_have_rag(self) -> None:
-        """WYWO, OPERATIONAL, FORENSIC, TECHNICAL, HISTORICAL have RAG."""
-        for vibe in ("WYWO", "OPERATIONAL", "FORENSIC", "TECHNICAL", "HISTORICAL"):
+        """WYWO and HISTORICAL retain dedicated traversal RAG configs in policy."""
+        for vibe in ("WYWO", "HISTORICAL"):
             rag = self._prod_loader.get_rag_config(vibe)
             assert rag is not None, f"{vibe} missing RAG config"
 

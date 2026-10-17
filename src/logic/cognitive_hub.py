@@ -153,7 +153,7 @@ PINKY_HYDE_SCHEMA = {
             "properties": {
                 "spoken_take": {
                     "type": "string",
-                    "description": "Pinky's unconstrained, lively 1-2 sentence spoken reply staying relevant to the primer and the actors before you",
+                    "description": "Pinky's unconstrained, lively 1-2 sentence spoken reply directly to Jason",
                 },
                 "search_terms": {
                     "type": "string",
@@ -161,7 +161,7 @@ PINKY_HYDE_SCHEMA = {
                 },
                 "upvote": {
                     "type": "boolean",
-                    "description": "True if the primer is intriguing or warrants deeper lab exploration, giving the lab extra thinking runway",
+                    "description": "True if Jason's inquiry is intriguing or warrants deeper lab exploration, giving the lab extra thinking runway",
                 },
             },
             "required": ["spoken_take", "search_terms", "upvote"],
@@ -170,11 +170,11 @@ PINKY_HYDE_SCHEMA = {
 }
 
 _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
-    "You are Pinky, the intuitive and lively lab mouse. A new primer has been presented to the lab.\n"
+    "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
     "Respond with a structured JSON object containing:\n"
-    "1. 'spoken_take': 1 to 2 conversational, warm sentences giving your initial spoken take directly to the user, staying relevant to the primer and the actors before you.\n"
+    "1. 'spoken_take': 1 to 2 conversational, warm sentences giving Jason your initial spoken take and what you are checking in the archives or telemetry.\n"
     "2. 'search_terms': 3 to 6 concise technical keywords and era anchors that pinpoint the exact historical record or telemetry event.\n"
-    "3. 'upvote': boolean (true if the primer is intriguing, high-value, or warrants deeper lab exploration).\n"
+    "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
 
 
@@ -240,11 +240,11 @@ def _load_hyde_synthesis_prompt():
 
     if keywords or era_anchors:
         return (
-            "You are Pinky, the intuitive and lively lab mouse. A new primer has been presented to the lab.\n"
+            "You are Pinky, the intuitive and lively lab mouse. Jason just asked a question.\n"
             "Respond with a structured JSON object containing:\n"
-            "1. 'spoken_take': 1 to 2 conversational, warm sentences giving your initial spoken take directly to the user, staying relevant to the primer and the actors before you.\n"
+            "1. 'spoken_take': 1 to 2 conversational, warm sentences giving Jason your initial spoken take and what you are checking in the archives or telemetry.\n"
             "2. 'search_terms': 3 to 6 concise technical keywords and era anchors that pinpoint the exact historical record or telemetry event.\n"
-            "3. 'upvote': boolean (true if the primer is intriguing, high-value, or warrants deeper lab exploration).\n\n"
+            "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n\n"
             f"{anchors_block}"
             f"{mesh_line}"
         )
@@ -443,7 +443,7 @@ def build_two_mice_stage_prompt(
     if stage not in (1, 2):
         raise ValueError("stage must be 1 (Brain extract) or 2 (Pinky distill)")
 
-    effective_primer = primer or user_query
+    effective_query = user_query or primer
     node_key = "brain" if stage == 1 else "pinky"
     pacing_line = format_pacing_line(node_key, interest)
     section = (
@@ -460,29 +460,19 @@ def build_two_mice_stage_prompt(
             if context
             else "[ZERO_CONTEXT]: No archive record retrieved."
         )
-        if pinky_take and pinky_take.strip():
-            pinky_block = (
-                f"[PINKY_STANCE]: {pinky_take.strip()}\n"
-                "Pinky has provided an initial stance. Evaluate the candidate chunks in <historical_record> in light of Pinky's take and the primer.\n"
-            )
-        else:
-            pinky_block = (
-                "[PINKY_STANCE]: (Silent)\n"
-                "Pinky is silent. Note Pinky's silence in character, and evaluate the primer and <historical_record> directly as The Brain.\n"
-            )
+        pinky_block = f"[PINKY_STANCE]: {pinky_take.strip()}\n" if pinky_take and pinky_take.strip() else ""
 
         return (
             section
             + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer.\n"
-            "A primer has been presented to the lab.\n"
+            "Jason talked to the lab.\n"
             f"{pinky_block}"
             "Your task is strictly evidentiary inspection as The Brain in a single voice:\n\n"
             "1. Review candidate chunks in <historical_record> and prune irrelevant or tangential chunks entirely, steering focus to cohesive bedrock truth.\n"
-            "2. From surviving verified candidates, forward the cohesive bedrock DNA text verbatim and append high-leverage '💡 Curator Note:' annotations to explain why candidates connect with the primer and highlight synergistic architectural scars.\n"
-            "3. Respond to the primer and Pinky's stance in a focused, cynical, and concise manner as The Brain in a single voice. Do not roleplay Pinky or generate a multi-actor script. Mention your context and role only when it is part of the conversation.\n"
+            "2. From surviving verified candidates, forward the cohesive bedrock DNA text verbatim and append high-leverage '💡 Curator Note:' annotations to explain why candidates connect with Jason's query and highlight synergistic architectural scars.\n"
+            "3. Respond to Jason's query and Pinky's stance in a focused, cynical, and concise manner as The Brain in a single voice. Do not roleplay Pinky or generate a multi-actor script. Mention your context and role only when it is part of the conversation.\n"
             "4. Declare your curation: Signal which records you are passing to Deep Thought to provide pure technical signal, then yield the floor.\n\n"
-            f"[PRIMER]: {effective_primer.strip()}\n"
-            f"[USER_QUERY]: {effective_primer.strip()}\n"
+            f"[USER_QUERY]: {effective_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
 
@@ -495,11 +485,10 @@ def build_two_mice_stage_prompt(
         f"{extracted_evidence}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
         "and deliver a 2-sentence conversational TL;DR directly to Jason. Keep it warm, concise, and "
         "human — do not recite raw RAG passages or technical serial numbers. "
-        "Single-Turn Boundary: Speak strictly for your own active turn, staying relevant to the primer and the actors before you. "
-        "Deliver your 2-sentence conversational TL;DR directly to Jason, then yield the floor.\n"
+        "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 2-sentence conversational "
+        "TL;DR directly to Jason, then yield the floor.\n"
         f"[BRAIN_GROUNDING]:\n{extracted_evidence.strip()}\n"
-        f"[PRIMER]: {effective_primer.strip()}\n"
-        f"[USER_QUERY]: {effective_primer.strip()}"
+        f"[USER_QUERY]: {effective_query.strip()}"
     )
 
 
@@ -1593,7 +1582,6 @@ class CognitiveHub:
                             "enum": [
                                 "TECHNICAL",
                                 "CASUAL",
-                                "PRIMER",
                                 "HISTORICAL",
                                 "ANALYTICAL",
                                 "OPERATIONAL",
@@ -1775,16 +1763,6 @@ class CognitiveHub:
                 f"{pinky_pacing}\n"
                 "Reply with an authentic, character-faithful remark. "
                 "Do NOT list tasks, system status, or floating candidates unless explicitly asked."
-            )
-        elif vibe == "PRIMER":
-            context = ""
-            pinky_pacing = format_pacing_line("pinky", self.current_interest)
-            behavioral_guidance = (
-                "[MODE]: CONVERSATIONAL PRIMER.\n"
-                "A catalyst or orienting stimulus has been presented to the lab.\n"
-                f"{pinky_pacing}\n"
-                "Respond authentically to the primer and the actors before you. "
-                "Keep it warm, engaging, and character-faithful."
             )
         elif vibe == "WYWO":
             # [FEAT-409] WYWO Retrieval: Pull nightly dialogue and subconscious dreams
@@ -2199,8 +2177,8 @@ class CognitiveHub:
                 behavioral_guidance=(
                     f"{critic_pacing}\n"
                     f"You are Pinky. Brain and Deep Thought have established the technical stance above. "
-                    f"Deliver your final spoken verdict directly to the user in your authentic lively voice, "
-                    f"staying relevant to the primer and the actors before you. Never speak about yourself in the third person. {vibe_tone}"
+                    f"Deliver your final spoken verdict directly to Jason in your authentic lively voice, "
+                    f"confirming the technical reality and offering a natural conversational follow-up. Never speak about yourself in the third person. {vibe_tone}"
                 ),
             ):
                 eval_text += token
@@ -2400,22 +2378,20 @@ class CognitiveHub:
         # Tier 1: Dispatch to Pinky with cli_voice_v1 LoRA in parallel
         if "pinky" in self.residents or "lab" in self.residents:
             try:
-                triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[PRIMER]: {query}\n[QUERY]: {query}"
+                triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
                 pinky_pacing = format_pacing_line("pinky", interest)
                 _, pinky_high = calculate_pacing_range("pinky", interest)
                 pinky_guidance = (
                     f"{pinky_pacing}\n"
-                    "Deliver your initial lively spoken take directly to the user in your authentic voice, "
-                    "staying relevant to the primer and the actors before you."
+                    "Deliver your initial lively spoken take directly to Jason in your authentic voice."
                 )
-                pinky_budget = max(150, pinky_high)
-                is_greeting = (
-                    triage_result.get("inferred_intent") == "greeting"
-                    or vibe in ("CASUAL", "PRIMER")
-                    or domain in ("social", "standard")
-                    or (len(target_domains) == 0 and not triage_result.get("search_required", False))
+                pinky_budget = pinky_high
+                is_historical = (
+                    vibe == "HISTORICAL"
+                    or "historical" in domain
+                    or "career" in domain
                 )
-                active_hyde_prompt = _HYDE_SYNTHESIS_PROMPT_DEFAULT if is_greeting else HYDE_SYNTHESIS_PROMPT
+                active_hyde_prompt = HYDE_SYNTHESIS_PROMPT if is_historical else _HYDE_SYNTHESIS_PROMPT_DEFAULT
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
                     "pinky",
@@ -2770,7 +2746,6 @@ class CognitiveHub:
                             "enum": [
                                 "TECHNICAL",
                                 "CASUAL",
-                                "PRIMER",
                                 "HISTORICAL",
                                 "ANALYTICAL",
                                 "OPERATIONAL",
@@ -2999,7 +2974,7 @@ class CognitiveHub:
 
         effective_grounding = brain_grounding or brain_bullets
         if thought_node:
-            prompt_parts = [f"[PRIMER]: {query}", f"[USER_QUERY]: {query}"]
+            prompt_parts = [f"[USER_QUERY]: {query}"]
             if pinky_take:
                 prompt_parts.append(f"[PINKY_TAKE]:\n{pinky_take}")
             if effective_grounding:
@@ -3011,7 +2986,7 @@ class CognitiveHub:
             prompt_parts.append(
                 f"{dt_pacing}\n"
                 "Synthesize the architectural reality in high-authority engineering prose. "
-                "Find things consistent with the primer and the consensus of the lab mice. "
+                "Find things consistent with Jason's query and the consensus of the lab mice. "
                 "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
@@ -3183,6 +3158,16 @@ class CognitiveHub:
 
         gate_interest = self.current_interest if interest is None else float(interest)
         self.current_interest = gate_interest  # persist an explicitly-passed gate value
+
+        # [FEAT-658 / BKM-039] Continuous Waterfall Interest Gating:
+        # If fuel is low (e.g. casual greeting / banter with interest < 0.35),
+        # Pinky already delivered her initial spoken take in Tier 1 HyDE.
+        # Fuel is exhausted: Brain and Deep Thought remain dormant, and turn concludes cleanly.
+        if gate_interest < 0.35:
+            logging.info(
+                f"[WATERFALL] Turn concluded naturally by Pinky; interest {gate_interest:.2f} < 0.35 threshold. Brain dormant."
+            )
+            return True
 
         # Stage 3.1: Brain Gatekeeper (continuous fuel pacing)
         pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")

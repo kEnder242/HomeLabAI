@@ -19,15 +19,6 @@
                 "hi"
             ]
         },
-        "PRIMER": {
-            "description": "Catalyst or orienting stimulus initiating a conversation lane – an open remark, observation, prompt, or external trigger setting direction without necessarily asking a direct question.",
-            "enabled": true,
-            "default_domain": "social",
-            "rag": null,
-            "importance": 0.4,
-            "importance_floor": 0.3,
-            "interest_boost": 0.05
-        },
         "SUPERVISORY": {
             "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
             "enabled": true,
