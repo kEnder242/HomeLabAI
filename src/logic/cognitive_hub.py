@@ -3183,6 +3183,36 @@ class CognitiveHub:
                 f"[HUB] [FEAT-238] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}"
             )
 
+        # [STORY 105.6] RAG-First Ripgrep Expansion: for HISTORICAL/TECHNICAL vibes
+        # with sparse grounding or explicit hardware entities, fire the Agentic-R
+        # pivot to backfill exact-match field-note evidence before Deep Thought.
+        vibe_now = (
+            self.current_vibe.upper()
+            if hasattr(self, "current_vibe") and self.current_vibe
+            else "CASUAL"
+        )
+        if vibe_now in ("HISTORICAL", "TECHNICAL"):
+            effective_grounding = brain_grounding or ""
+            hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
+            if len(effective_grounding) < 100 or hardware_entities:
+                try:
+                    from nodes.archive_node import execute_grep_search_pivot
+                except ImportError:
+                    from archive_node import execute_grep_search_pivot
+                expansion = await asyncio.to_thread(
+                    execute_grep_search_pivot, query, 5, hardware_entities or None
+                )
+                if expansion:
+                    brain_grounding = (
+                        f"{brain_grounding}\n[EXPANDED_NOTES]:\n{expansion}"
+                        if brain_grounding
+                        else f"[EXPANDED_NOTES]:\n{expansion}"
+                    )
+                    logging.info(
+                        f"[STORY 105.6] RAG-first expansion fired for {vibe_now} turn: "
+                        f"anchors={hardware_entities or 'query-derived'}, added {len(expansion)} chars."
+                    )
+
         # Stage 3.2: Deep Thought Strategic Synthesis
         dt_synthesis = await self.step_deep_thought(
             query,

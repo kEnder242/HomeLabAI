@@ -63,3 +63,19 @@ def test_execute_grep_search_pivot_empty_on_generic_query():
     query = "hello there how are you today"
     result = execute_grep_search_pivot(query)
     assert result == ""
+
+
+def test_execute_grep_search_pivot_curated_anchors():
+    """[Story 105.6] Verify Brain can pass curated hardware anchors directly."""
+    result = execute_grep_search_pivot("hello there how are you today", max_matches=5, curated_anchors=["Aurora"])
+    # "Aurora" bypasses stop-word filtering; result is either empty (no hits) or
+    # structured pivot evidence tagged with the curated anchor.
+    assert isinstance(result, str)
+    if result:
+        assert "[AGENTIC_R_GREP_PIVOT]" in result
+        assert "Aurora" in result
+
+
+def test_execute_grep_search_pivot_curated_anchors_empty_list():
+    """[Story 105.6] Verify an empty curated_anchors list returns empty string."""
+    assert execute_grep_search_pivot("hello there how are you today", curated_anchors=[]) == ""

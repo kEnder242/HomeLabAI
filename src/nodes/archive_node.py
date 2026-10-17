@@ -821,42 +821,56 @@ def compute_mmr_ranking(
     return selected
 
 
-def execute_grep_search_pivot(query: str, max_matches: int = 5) -> str:
+def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors: list[str] | None = None) -> str:
     """[FEAT-451 / Story 58.2] Autonomous Search Pivot Loop via fast Ripgrep.
     ArXiv: 2601.11888 (Agentic-R).
     Fires when ChromaDB vector distance is weak (>0.50) or returns 0 matches.
-    Hunts for exact hardware anchors across field_notes/data/ and raw notes."""
+    Hunts for exact hardware anchors across field_notes/data/ and raw notes.
+    [Story 105.6] Optional curated_anchors lets Brain pass explicit hardware
+    entities (e.g. ["Aurora"]) to bypass stop-word/regex extraction."""
     import re
 
-    tokens = re.findall(
-        r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query
-    )
-    stop_words = {
-        "THE",
-        "AND",
-        "FOR",
-        "WITH",
-        "THAT",
-        "WHAT",
-        "HOW",
-        "WHEN",
-        "WHERE",
-        "WHY",
-        "DID",
-        "JASON",
-        "ARE",
-        "YOU",
-    }
-    anchors = [t for t in tokens if t.upper() not in stop_words and len(t) > 2]
-    if not anchors:
-        anchors = [
-            w
-            for w in query.split()
-            if len(w) > 4 and w.lower() not in {"about", "there", "where", "which"}
-        ]
-
-    if not anchors:
-        return ""
+    if curated_anchors:
+        anchors = [a for a in curated_anchors if a and len(a) > 2]
+        if not anchors:
+            return ""
+    else:
+        tokens = re.findall(
+            r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query
+        )
+        stop_words = {
+            "THE",
+            "AND",
+            "FOR",
+            "WITH",
+            "THAT",
+            "WHAT",
+            "HOW",
+            "WHEN",
+            "WHERE",
+            "WHY",
+            "DID",
+            "JASON",
+            "ARE",
+            "YOU",
+            "HELLO",
+            "TODAY",
+            "THANKS",
+            "PLEASE",
+            "THINGS",
+            "DOING",
+        }
+        anchors = [t for t in tokens if t.upper() not in stop_words and len(t) > 2]
+        if not anchors:
+            anchors = [
+                w
+                for w in query.split()
+                if len(w) > 4
+                and w.lower()
+                not in {"about", "there", "where", "which", "hello", "today", "thanks", "please", "things", "doing"}
+            ]
+        if not anchors:
+            return ""
 
     data_dirs = [
         os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
