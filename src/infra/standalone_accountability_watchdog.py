@@ -322,11 +322,21 @@ def check_subconscious_dreaming():
     try:
         data = json.loads(gems_path.read_text(encoding="utf-8"))
         gems = data if isinstance(data, list) else data.get("gems", [])
-        passed = len(gems) > 0
+        age = time.time() - gems_path.stat().st_mtime
+        STALE_WINDOW_SEC = 108000  # 30 hours
+        if len(gems) == 0:
+            passed = False
+            detail = "Gems empty"
+        elif age > STALE_WINDOW_SEC:
+            passed = False
+            detail = f"Stale: {age/3600:.1f}h (>30.0h stale window), {len(gems)} gems"
+        else:
+            passed = True
+            detail = f"Fresh: {age/3600:.1f}h, Active Gems: {len(gems)}"
         return {
             "name": "Accountable Subconscious Dreaming",
             "passed": passed,
-            "detail": f"Active Gems: {len(gems)}",
+            "detail": detail,
             "count": len(gems)
         }
     except Exception as e:
