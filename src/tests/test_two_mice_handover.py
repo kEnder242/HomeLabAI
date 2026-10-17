@@ -56,8 +56,8 @@ def test_stage1_prompt_grounds_three_pillars_and_historical_record():
     # Pillar 1 [FEAT-140/467]: Shared bedrock — physical lab foundation.
     assert "SHARED BEDROCK LAB FOUNDATION" in prompt
     assert "z87-Linux" in prompt and "RTX 2080 Ti" in prompt
-    # Pillar 2 [BKM-015 / FEAT-523]: Prompt-driven token pacing.
-    assert "[PACING]: Target ~" in prompt
+    # Pillar 2 [BKM-015 / FEAT-523 / Story 105.11]: Prompt-driven token ceiling headroom.
+    assert "[BUDGET]: Headroom ceiling is" in prompt
     # Pillar 3 [FEAT-236]: Stage numbering.
     assert "STAGE 1" in prompt
     assert "STAGE_1_INSTRUCTIONS" in prompt
