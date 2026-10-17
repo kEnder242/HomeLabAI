@@ -430,37 +430,37 @@ def _two_mice_interest_band(interest: float) -> str:
     return "MEDIUM (Mixed loop: brief Brain grounding, conversational Pinky delivery)"
 
 
-def calculate_pacing_range(node_name: str, interest: float) -> tuple[int, int]:
-    """[FEAT-523 / BKM-015] Calculate target token pacing range ~X to Y based on internal interest.
+def calculate_pacing_ceiling(node_name: str, interest: float) -> int:
+    """[FEAT-523 / BKM-015] Calculate headroom ceiling token budget based on internal interest.
 
-    Keeps prompts clean by replacing raw float variables with concise token expectations.
+    Returns a single ceiling int - the maximum tokens to use. No floor.
     """
     interest_val = max(0.0, min(1.0, float(interest)))
     norm_name = str(node_name).lower()
     if "thought" in norm_name or "deep" in norm_name:
-        # Strategy synthesis: scales from ~150-250 at low interest up to ~400-800 at high interest
-        low = int(150 + interest_val * 250)
-        high = int(300 + interest_val * 500)
-        return (low, high)
+        # Strategy synthesis: ceiling scales from ~300 at low interest up to ~800 at high interest
+        return int(300 + interest_val * 500)
     elif "critic" in norm_name:
-        # Structured critic JSON: stable ~50 to 100 tokens
-        return (50, 100)
+        # Structured critic JSON: stable ceiling of 100 tokens
+        return 100
     elif "brain" in norm_name:
-        # Evidentiary inspection / curation / banter: ~40-80 at low interest, up to ~150-250 at high
-        low = int(40 + interest_val * 110)
-        high = int(80 + interest_val * 170)
-        return (low, high)
+        # Evidentiary inspection / curation / banter: ceiling from ~80 at low interest up to ~250 at high
+        return int(80 + interest_val * 170)
     else:  # pinky / voice / default
-        # Spoken banter / TL;DR: ~30-60 at low interest (casual greeting), up to ~100-200 at high
-        low = int(30 + interest_val * 70)
-        high = int(60 + interest_val * 140)
-        return (low, high)
+        # Spoken banter / TL;DR: ceiling from ~60 at low interest up to ~200 at high
+        return int(60 + interest_val * 140)
+
+
+def calculate_pacing_range(node_name: str, interest: float) -> tuple[int, int]:
+    """[FEAT-523 / BKM-015] Legacy backward-compat: returns (0, ceiling). Use calculate_pacing_ceiling for new code."""
+    ceiling = calculate_pacing_ceiling(node_name, interest)
+    return (0, ceiling)
 
 
 def format_pacing_line(node_name: str, interest: float) -> str:
     """Format single concise pacing directive for prompt injection."""
-    low, high = calculate_pacing_range(node_name, interest)
-    return f"[PACING]: Target ~{low} to {high} tokens."
+    ceiling = calculate_pacing_ceiling(node_name, interest)
+    return f"[BUDGET]: Headroom ceiling is {ceiling} tokens. Answer concisely within this budget; do not add conversational fluff or filler."
 
 
 def build_two_mice_stage_prompt(
@@ -1298,13 +1298,12 @@ class CognitiveHub:
             # [FEAT-523] Token Budget: Continuous interest multiplier pacing (de-vibed)
             pacing_cfg = getattr(self, "config", {}).get(
                 "interest_pacing",
-                {"token_multiplier": 100, "min_token_floor": 32, "max_token_ceiling": 1500},
+                {"token_multiplier": 100, "max_token_ceiling": 1500},
             )
             multiplier = pacing_cfg.get("token_multiplier", 100)
-            min_floor = pacing_cfg.get("min_token_floor", 32)
             max_ceiling = pacing_cfg.get("max_token_ceiling", 1500)
             current_interest = getattr(self, "current_interest", 0.0)
-            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max(min_floor, min(max_ceiling, int(current_interest * multiplier))))
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else min(max_ceiling, int(current_interest * multiplier)))
             call_task = asyncio.create_task(
                 node.call_tool(
                     "think",
@@ -2229,7 +2228,7 @@ class CognitiveHub:
 
             # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
             critic_pacing = format_pacing_line("critic", interest)
-            _, critic_high = calculate_pacing_range("critic", interest)
+            critic_high = calculate_pacing_ceiling("critic", interest)
             eval_text = ""
             async for token in self._process_node_stream(
                 "pinky",
@@ -2447,7 +2446,7 @@ class CognitiveHub:
             try:
                 triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
                 pinky_pacing = format_pacing_line("pinky", interest)
-                _, pinky_high = calculate_pacing_range("pinky", interest)
+                pinky_high = calculate_pacing_ceiling("pinky", interest)
                 pinky_guidance = (
                     f"{pinky_pacing}\n"
                     "Deliver your initial lively spoken take directly to Jason in your authentic voice."
@@ -2972,7 +2971,7 @@ class CognitiveHub:
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
-        _, brain_high = calculate_pacing_range("brain", interest)
+        brain_high = calculate_pacing_ceiling("brain", interest)
         brain_budget = brain_high
         async for token in self._process_node_stream(
             "brain",
@@ -3057,7 +3056,7 @@ class CognitiveHub:
                 "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
-            _, dt_high = calculate_pacing_range("thought", interest)
+            dt_high = calculate_pacing_ceiling("thought", interest)
             dt_budget = dt_high
             async for token in self._process_node_stream(
                 "thought",
@@ -3118,7 +3117,7 @@ class CognitiveHub:
             interest=interest,
             brain_grounding=clean_synthesis,
         )
-        _, pinky_high = calculate_pacing_range("pinky", interest)
+        pinky_high = calculate_pacing_ceiling("pinky", interest)
         pinky_budget = pinky_high
         pinky_stream_count = 0
         pinky_tldr = ""

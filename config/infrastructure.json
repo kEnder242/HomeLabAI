@@ -8,7 +8,6 @@
     "interest_pacing": {
         "enabled": true,
         "token_multiplier": 150,
-        "min_token_floor": 32,
         "max_token_ceiling": 1500
     },
     "node_pacing_profiles": {
