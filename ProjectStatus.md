@@ -25,6 +25,7 @@
 | **OpenCode Core** | ✅ ONLINE | REST port 4097 gated with 2.5G/3.0G systemd cgroup limits |
 
 ## Recent Completed Sprints
+*   **SPR-105.0 "Pure Waterfall Restoration & Decoupled Tri-Anchor Alignment"** (`FEAT-658`, `FEAT-451`, `FEAT-330`, `FEAT-619`, `FEAT-523`, `BKM-082`, `BKM-086`): Restored pure decoupled waterfall cognitive flow, excised artificial min token floor to enforce concise ceiling headroom, excised 7-week watchdog green lie with 30h mtime sentinel, unblocked Nibbler intake pipeline with Foyer session auth, and certified end-to-end on live silicon.
 *   **SPR-91.0 "Decoupled Accountability Watchdog & Dead PID Sentry"** (`FEAT-619`, `BKM-066`): Decoupled morning accountability grading from batch execution into an independent out-of-band systemd timer.
 *   **SPR-90.0 "Applied Writer Studio & AST Backflow"** (`FEAT-614`–`FEAT-618`, `BKM-064`, `BKM-065`, `INS-036`): Unified projection toolbar, review panel dialogue, and polymorphic `PHL` $\to$ `INS` mutations.
 *   **SPR-88.0 "Nightly Accountability Digest & Dashboard Integration"** (`FEAT-607`, `FEAT-608`): Multi-stage health evaluation matrix, expandable digest cards in `status.html`, and synthetic morning round table probes.
