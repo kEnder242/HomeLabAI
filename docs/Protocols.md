@@ -1470,6 +1470,15 @@ Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite,
 **Domain:** Sprint Architecture, Diagnostic Horizon, Historical Invariants, Anti-Amnesia Governance  
 **Status:** ACTIVE / MANDATORY  
 
+> [!IMPORTANT]
+> ### 🛑 PRE-FLIGHT CHECKLIST GATE (Mandatory Digital Paper Trail)
+> Before writing code or dispatching tools, the Agent MUST embed and check off this paper trail directly in the active sprint plan (`SPRINT_PLAN_SPR_*.md`):
+> - [ ] **1. 5-Sprint Lookback**: Reviewed last 5 sprints for traps, anti-patterns, and sentinels (`BKM-082 §2.1`).
+> - [ ] **2. Mistakes-Avoided Ledger**: Enumerate $\ge$ 3 concrete historical mistakes avoided (`BKM-082 §2.4`).
+> - [ ] **3. Oracle Review**: Adversarial audit completed and appended (`BKM-007` / `BKM-080`).
+> - [ ] **4. Delegation Justification**: Evaluated `LOCAL`/`CLOUD` first; documented rationale for any story assigned to `AGY:PRIMARY` (`Invariant 7` / `BKM-049`).
+> *An agent MUST NOT mark these `[x]` without citing the corresponding section in the plan. Any unchecked box halts execution.*
+
 ### 1. The Core Law: Grounding Before Action
 Agents are frequently tempted to treat new user prompts as greenfield tasks or to diagnose current system states by inspecting only the trailing 10–15 minutes of logs (the "Short Horizon Trap"). Under tight resources, overnight compute cycles, and distributed multi-tier orchestration, this short-sightedness leads directly to:
 - **Circular Fixing Traps (`[INS-042]`):** Re-attempting previously failed architectural shortcuts or re-inventing broken tools.
