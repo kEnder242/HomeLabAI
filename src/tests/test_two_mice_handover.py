@@ -345,3 +345,89 @@ def test_module_level_alias_is_bound():
 
     assert callable(run_two_mice_handover)
     assert run_two_mice_handover is CognitiveHub._run_two_mice_handover
+
+
+def test_brain_damp_interest_skips_deep_thought():
+    """[Story 105.15 / FEAT-238 / FEAT-658] Brain emits <damp_interest>, fuel drops < 0.35, Deep Thought stays dormant."""
+    hub, packets = _build_test_hub()
+    hub.current_interest = 0.50
+    dt_called = []
+
+    async def fake_step_deep_thought(*args, **kwargs):
+        dt_called.append(True)
+        return "Deep Thought synthesized architectural meta-analysis."
+
+    hub.step_deep_thought = fake_step_deep_thought
+    # Brain damps interest
+    hub.residents["brain"] = _FakeResident(
+        hub, "brain", "Nothing relevant in archives. <damp_interest>"
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover(
+                "How are you and Brain?",
+                focus_context="[ZERO_CONTEXT]: No archive record retrieved.",
+                request_id="damp1",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert ran is True
+    # Damped from 0.50 - 0.25 = 0.25
+    assert hub.current_interest == 0.25
+    # Deep Thought should be completely skipped
+    assert len(dt_called) == 0
+
+
+def test_brain_boost_interest_elevates_fuel():
+    """[Story 105.15 / FEAT-238] Brain emits <boost_interest>, elevating fuel by +0.20."""
+    hub, packets = _build_test_hub()
+    hub.current_interest = 0.50
+    hub.residents["brain"] = _FakeResident(
+        hub, "brain", "Bedrock truth found! <boost_interest>"
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover(
+                "ESB2 firmware?",
+                focus_context="Platform: ESB2 server, firmware v2.1.",
+                request_id="boost1",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert ran is True
+    # Boosted from 0.50 + 0.20 = 0.70
+    assert hub.current_interest == 0.70
+
+
+def test_zero_rag_casual_evidential_damping():
+    """[Story 105.15 / FEAT-659] Zero RAG context on CASUAL turn applies evidential damping."""
+    hub, packets = _build_test_hub()
+    hub.current_vibe = "CASUAL"
+    hub.current_interest = 0.50
+    hub.residents["brain"] = _FakeResident(
+        hub, "brain", "No records passed."
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover(
+                "just checking in",
+                focus_context="",
+                request_id="evid1",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert ran is True
+    # Damped from 0.50 - 0.15 = 0.35
+    assert hub.current_interest == 0.35

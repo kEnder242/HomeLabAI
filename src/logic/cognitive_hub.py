@@ -535,7 +535,8 @@ def build_two_mice_stage_prompt(
             "1. Review candidate chunks in <historical_record> and prune irrelevant or tangential chunks entirely, steering focus to cohesive bedrock truth.\n"
             "2. From surviving verified candidates, forward the cohesive bedrock DNA text verbatim and append high-leverage '💡 Curator Note:' annotations to explain why candidates connect with Jason's query and highlight synergistic architectural scars.\n"
             "3. Respond to Jason's query and Pinky's stance in a focused, cynical, and concise manner as The Brain in a single voice. Do not roleplay Pinky or generate a multi-actor script. Mention your context and role only when it is part of the conversation.\n"
-            "4. Declare your curation: Signal which records you are passing to Deep Thought to provide pure technical signal, then yield the floor.\n\n"
+            "4. Declare your curation: Signal which records you are passing to Deep Thought to provide pure technical signal, then yield the floor.\n"
+            "5. Modulate council interest [FEAT-238]: If candidate evidence warrants deeper council deliberation, emit '<boost_interest>'. If evidence is thin, irrelevant, or the turn is casual banter, emit '<damp_interest>' to conserve fuel.\n\n"
             f"[USER_QUERY]: {effective_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
@@ -3238,13 +3239,31 @@ class CognitiveHub:
             query, focus_context, gate_interest, pinky_take=pinky_take, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # [STORY 103.15 / FEAT-238] Dynamic Boost Check confined to Brain's turn
+        # [STORY 105.15 / FEAT-238 / FEAT-659] Dynamic Boost / Damp Check & Dual-Channel Evidential Accounting
         boosted_interest = gate_interest
         if "<boost_interest>" in brain_grounding or "<upvote>" in brain_grounding:
             boosted_interest = min(1.0, gate_interest + 0.20)
             logging.info(
                 f"[HUB] [FEAT-238] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}"
             )
+        elif "<damp_interest>" in brain_grounding or "<downvote>" in brain_grounding:
+            boosted_interest = max(0.0, gate_interest - 0.25)
+            logging.info(
+                f"[HUB] [FEAT-238] Council of Hemispheres: Brain damped interest from {gate_interest:.2f} to {boosted_interest:.2f}"
+            )
+        elif not focus_context.strip() or "[ZERO_CONTEXT]" in (brain_grounding or ""):
+            vibe_check = (
+                self.current_vibe.upper()
+                if hasattr(self, "current_vibe") and self.current_vibe
+                else "CASUAL"
+            )
+            if gate_interest > 0.40 and vibe_check == "CASUAL":
+                boosted_interest = max(0.0, gate_interest - 0.15)
+                logging.info(
+                    f"[HUB] [FEAT-659] Evidential Accounting: Zero RAG context on CASUAL turn damped interest from {gate_interest:.2f} to {boosted_interest:.2f}"
+                )
+
+        self.current_interest = boosted_interest
 
         # [STORY 105.6] RAG-First Ripgrep Expansion: for HISTORICAL/TECHNICAL vibes
         # with sparse grounding or explicit hardware entities, fire the Agentic-R
@@ -3257,7 +3276,7 @@ class CognitiveHub:
         # [STORY 105.10] Hardware entity set for the post-waterfall learning
         # target queue (also drives the RAG-First expansion branch below).
         hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
-        if vibe_now in ("HISTORICAL", "TECHNICAL"):
+        if vibe_now in ("HISTORICAL", "TECHNICAL") and boosted_interest >= 0.35:
             effective_grounding = brain_grounding or ""
             if len(effective_grounding) < 100 or hardware_entities:
                 try:
@@ -3278,16 +3297,22 @@ class CognitiveHub:
                         f"anchors={hardware_entities or 'query-derived'}, added {len(expansion)} chars."
                     )
 
-        # Stage 3.2: Deep Thought Strategic Synthesis
-        dt_synthesis = await self.step_deep_thought(
-            query,
-            brain_grounding=brain_grounding,
-            interest=boosted_interest,
-            pinky_take=pinky_take,
-            rag_context=focus_context,
-            shutdown_event=shutdown_event,
-            request_id=request_id,
-        )
+        # Stage 3.2: Deep Thought Strategic Synthesis [FEAT-658 / Story 105.15 Quiescence Gating]
+        if boosted_interest < 0.35:
+            logging.info(
+                f"[WATERFALL] Turn concluded after Brain curation; damped interest {boosted_interest:.2f} < 0.35 threshold. Deep Thought dormant."
+            )
+            dt_synthesis = ""
+        else:
+            dt_synthesis = await self.step_deep_thought(
+                query,
+                brain_grounding=brain_grounding,
+                interest=boosted_interest,
+                pinky_take=pinky_take,
+                rag_context=focus_context,
+                shutdown_event=shutdown_event,
+                request_id=request_id,
+            )
 
         # [STORY 105.10] Post-Waterfall Learning Target Queueing: when the
         # waterfall ran but produced scarce synthesis or explicitly lacked a
@@ -3301,22 +3326,22 @@ class CognitiveHub:
         ):
             queue_post_waterfall_learning_target(query, entities=hardware_entities)
 
-        # Stage 3.3: Pinky Conversational TL;DR
+        # Stage 3.3: Pinky Conversational TL;DR (paced by updated boosted_interest)
         pinky_context = dt_synthesis if dt_synthesis else brain_grounding
         await self.step_pinky_voice(
-            query, pinky_context, gate_interest, shutdown_event=shutdown_event, request_id=request_id
+            query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # Stage 3.4: Pinky Grounding Critic [FEAT-227 / FEAT-470]
+        # Stage 3.4: Pinky Grounding Critic [FEAT-227 / FEAT-470 / Story 105.15]
         strategic_response = dt_synthesis or brain_grounding
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
-        if strategic_response:
+        if strategic_response and boosted_interest >= 0.35:
             await self.step_grounding_critic(
                 query,
                 strategic_source,
                 strategic_response,
                 focus_context,
-                gate_interest,
+                boosted_interest,
                 shutdown_event=shutdown_event,
                 request_id=request_id,
             )
