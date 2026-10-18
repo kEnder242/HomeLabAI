@@ -70,3 +70,16 @@ def test_bkm015_anti_hardcoding_intent_routing():
         assert q in prompt
         assert "Information Gatekeeper" in prompt
 
+
+def test_stage1_prompt_contains_interest_modulation_instructions():
+    """[Story 105.15 / FEAT-238 / FEAT-659] Verify Stage 1 instructs Brain on interest modulation tags."""
+    prompt = build_two_mice_stage_prompt(
+        1,
+        user_query="How are you and Brain?",
+        context="[ZERO_CONTEXT]: No archive record retrieved.",
+        interest=0.50,
+    )
+    assert "Modulate council interest" in prompt
+    assert "<boost_interest>" in prompt
+    assert "<damp_interest>" in prompt
+
