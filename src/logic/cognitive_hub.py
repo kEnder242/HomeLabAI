@@ -244,6 +244,16 @@ _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
 
+# [FEAT-660] Overhearing prompt: When Jason addresses Brain, Pinky alerts Brain rather than answering on his behalf
+_HYDE_OVERHEARING_PROMPT = (
+    "You are Pinky, the intuitive and lively lab mouse. Jason just asked The Brain a question.\n"
+    "Respond with a structured JSON object containing:\n"
+    "1. 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him (e.g. \"Narf! Brain, Jason is asking for you!\").\n"
+    "2. 'search_terms': \"\" (empty string; no archive search needed for a greeting).\n"
+    "3. 'upvote': false\n"
+)
+
+
 
 def _load_hyde_synthesis_prompt():
     """[FEAT-437/438/459/645] Load Unified HYDE_SYNTHESIS_PROMPT dynamically from career_compass.json."""
@@ -535,7 +545,7 @@ def build_two_mice_stage_prompt(
             "1. Review candidate chunks in <historical_record> and prune irrelevant or tangential chunks entirely, steering focus to cohesive bedrock truth.\n"
             "2. From surviving verified candidates, forward the cohesive bedrock DNA text verbatim and append high-leverage '💡 Curator Note:' annotations to explain why candidates connect with Jason's query and highlight synergistic architectural scars.\n"
             "3. Respond to Jason's query and Pinky's stance in a focused, cynical, and concise manner as The Brain in a single voice. Do not roleplay Pinky or generate a multi-actor script. Mention your context and role only when it is part of the conversation.\n"
-            "4. Declare your curation: Signal which records you are passing to Deep Thought to provide pure technical signal, then yield the floor.\n"
+            "4. Declare your curation: When technical records are verified, signal which records you are passing to Deep Thought to provide pure technical signal. For casual banter or greetings with no technical records, do NOT pass records to Deep Thought; simply reply directly to Jason in character and emit '<damp_interest>' to conserve fuel.\n"
             "5. Modulate council interest [FEAT-238]: If candidate evidence warrants deeper council deliberation, emit '<boost_interest>'. If evidence is thin, irrelevant, or the turn is casual banter, emit '<damp_interest>' to conserve fuel.\n\n"
             f"[USER_QUERY]: {effective_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
@@ -1816,14 +1826,6 @@ class CognitiveHub:
             target_domains = [str(target_domains)] if target_domains else []
         self.current_target_domains = target_domains
 
-        # [FEAT-660] Overhearing Fuel Calibration: When explicitly addressed to Brain,
-        # elevate gate fuel to Brain's activation threshold (0.40 >= 0.35) so Brain's
-        # gatekeeper stage runs and he can respond directly.
-        if target == "brain" and final_interest < 0.40:
-            final_interest = 0.40
-            self.current_interest = final_interest
-            t_parsed["calculated_interest"] = final_interest
-
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
 
@@ -2481,7 +2483,12 @@ class CognitiveHub:
                     or "historical" in domain
                     or "career" in domain
                 )
-                active_hyde_prompt = HYDE_SYNTHESIS_PROMPT if is_historical else _HYDE_SYNTHESIS_PROMPT_DEFAULT
+                if target == "BRAIN":
+                    active_hyde_prompt = _HYDE_OVERHEARING_PROMPT
+                elif is_historical:
+                    active_hyde_prompt = HYDE_SYNTHESIS_PROMPT
+                else:
+                    active_hyde_prompt = _HYDE_SYNTHESIS_PROMPT_DEFAULT
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
                     "pinky",
@@ -3253,7 +3260,10 @@ class CognitiveHub:
         # If fuel is low (e.g. casual greeting / banter with interest < 0.35),
         # Pinky already delivered her initial spoken take in Tier 1 HyDE.
         # Fuel is exhausted: Brain and Deep Thought remain dormant, and turn concludes cleanly.
-        if gate_interest < 0.35:
+        # [FEAT-660] Triage Target Bypass: When query is explicitly addressed to Brain,
+        # bypass this check so Brain takes his turn directly without mucking with interest.
+        target = getattr(self, "current_target", "pinky")
+        if gate_interest < 0.35 and target != "brain":
             logging.info(
                 f"[WATERFALL] Turn concluded naturally by Pinky; interest {gate_interest:.2f} < 0.35 threshold. Brain dormant."
             )
