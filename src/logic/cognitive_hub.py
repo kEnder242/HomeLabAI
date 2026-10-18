@@ -1804,11 +1804,25 @@ class CognitiveHub:
         t_parsed["calculated_interest"] = final_interest
 
         target = t_parsed.get("addressed_to", "PINKY").lower()
+        # [FEAT-660 / BKM-083] Vocative Overhearing Fallback:
+        # If triage marked NONE/PINKY or defaulted, but the query explicitly addresses Brain by vocative name:
+        if target in ("none", "pinky") and re.search(r"\b(brain|the brain)\b", clean_user_query.lower()):
+            target = "brain"
+            t_parsed["addressed_to"] = "BRAIN"
+
         self.current_target = target
         target_domains = t_parsed.get("target_domains", [])
         if not isinstance(target_domains, list):
             target_domains = [str(target_domains)] if target_domains else []
         self.current_target_domains = target_domains
+
+        # [FEAT-660] Overhearing Fuel Calibration: When explicitly addressed to Brain,
+        # elevate gate fuel to Brain's activation threshold (0.40 >= 0.35) so Brain's
+        # gatekeeper stage runs and he can respond directly.
+        if target == "brain" and final_interest < 0.40:
+            final_interest = 0.40
+            self.current_interest = final_interest
+            t_parsed["calculated_interest"] = final_interest
 
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
@@ -2442,13 +2456,25 @@ class CognitiveHub:
         # Tier 1: Dispatch to Pinky with cli_voice_v1 LoRA in parallel
         if "pinky" in self.residents or "lab" in self.residents:
             try:
-                triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
+                target = str(triage_result.get("addressed_to", "")).upper()
                 pinky_pacing = format_pacing_line("pinky", interest)
                 pinky_high = calculate_pacing_ceiling("pinky", interest)
-                pinky_guidance = (
-                    f"{pinky_pacing}\n"
-                    "Deliver your initial lively spoken take directly to Jason in your authentic voice."
-                )
+                if target == "BRAIN":
+                    pinky_guidance = (
+                        f"{pinky_pacing}\n"
+                        "[OVERHEARING]: Jason's question is addressed directly to Brain, not you. You overheard it! "
+                        "React in character as Pinky by alerting Brain or poking him that Jason is speaking to him (e.g., 'Narf! Brain, Jason is asking for you!'). Do not answer the question on Brain's behalf."
+                    )
+                    triage_context = (
+                        f"[OVERHEARING_ALERT]: Jason is addressing The Brain directly.\n"
+                        f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
+                    )
+                else:
+                    pinky_guidance = (
+                        f"{pinky_pacing}\n"
+                        "Deliver your initial lively spoken take directly to Jason in your authentic voice."
+                    )
+                    triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
                 pinky_budget = pinky_high
                 is_historical = (
                     vibe == "HISTORICAL"
@@ -3303,6 +3329,9 @@ class CognitiveHub:
                 f"[WATERFALL] Turn concluded after Brain curation; damped interest {boosted_interest:.2f} < 0.35 threshold. Deep Thought dormant."
             )
             dt_synthesis = ""
+            current_target = getattr(self, "current_target", "pinky")
+            if current_target == "brain":
+                return True
         else:
             dt_synthesis = await self.step_deep_thought(
                 query,

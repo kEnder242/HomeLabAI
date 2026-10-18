@@ -431,3 +431,53 @@ def test_zero_rag_casual_evidential_damping():
     assert ran is True
     # Damped from 0.50 - 0.15 = 0.35
     assert hub.current_interest == 0.35
+
+
+def test_vocative_overhearing_brain_turn():
+    """[FEAT-660 / BKM-083] Explicit vocative to Brain: Pinky overhears, Brain answers, DT is dormant."""
+    hub, packets = _build_test_hub()
+    hub.current_target = "brain"
+    hub.current_vibe = "CASUAL"
+    hub.current_interest = 0.40
+
+    dt_called = []
+
+    async def fake_step_deep_thought(*args, **kwargs):
+        dt_called.append(True)
+        return "Deep Thought answered."
+
+    pinky_voice_called = []
+
+    async def fake_step_pinky_voice(*args, **kwargs):
+        pinky_voice_called.append(True)
+        return "Pinky spoke."
+
+    hub.step_deep_thought = fake_step_deep_thought
+    hub.step_pinky_voice = fake_step_pinky_voice
+
+    # Brain damps interest on casual turn
+    hub.residents["brain"] = _FakeResident(
+        hub, "brain", "I am functioning within normal parameters. Pinky, cease your noise. <damp_interest>"
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover(
+                "How are you, Brain?",
+                focus_context="[ZERO_CONTEXT]: No archive record retrieved.",
+                interest=0.40,
+                request_id="overhear1",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert ran is True
+    # Damped from 0.40 - 0.25 = 0.15
+    assert round(hub.current_interest, 2) == 0.15
+    # Deep Thought should be 100% dormant
+    assert len(dt_called) == 0
+    # Pinky voice should NOT speak a second time after Brain's direct answer
+    assert len(pinky_voice_called) == 0
+
