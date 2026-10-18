@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import threading
 from enum import Enum
 from typing import Any
 
@@ -258,16 +259,23 @@ class BlackboardLedger:
                 except Exception:
                     pass
 
-        # [STORY 103.22] Non-blocking commit to ChromaDB
+        # [STORY 103.22 / FEAT-444] Non-blocking commit of single turn to ChromaDB
         try:
-            self.commit_to_chroma()
-        except Exception:
-            pass
+            threading.Thread(
+                target=self.commit_to_chroma,
+                args=(turn_entry,),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            logging.warning(f"[BLACKBOARD] Background ChromaDB thread spawn failed: {e}")
 
         return turn_entry
 
     def commit_to_chroma(
-        self, client=None, collection_name: str = "blackboard_ledger_dna"
+        self,
+        single_record: dict | None = None,
+        client=None,
+        collection_name: str = "blackboard_ledger_dna",
     ):
         """[FEAT-444 / STORY 103.22] Non-fatal commit of structured turn records to ChromaDB."""
         try:
@@ -276,8 +284,17 @@ class BlackboardLedger:
 
                 client = chromadb.HttpClient(host="127.0.0.1", port=8001)
             col = client.get_or_create_collection(name=collection_name)
-            # Embed structured turn summaries
-            for r in getattr(self, "round_table_records", []):
+            
+            # Embed structured turn summaries in a single batch
+            records_to_sync = (
+                [single_record]
+                if single_record
+                else getattr(self, "round_table_records", [])
+            )
+            ids, docs, metas = [], [], []
+            for r in records_to_sync:
+                if not r:
+                    continue
                 turn_num = r.get("turn", 0)
                 ts = r.get("timestamp", int(time.time()))
                 doc_id = f"bb_turn_{turn_num}_{ts}"
@@ -290,23 +307,25 @@ class BlackboardLedger:
                     f"Distillation Bullets:\n{bullets_joined}\n"
                     f"Consensus: {consensus}"
                 )
-                col.upsert(
-                    ids=[doc_id],
-                    documents=[doc_text],
-                    metadatas=[{
-                        "turn": turn_num,
-                        "ts": ts,
-                        "topic": str(r.get("topic", "STANDARD")),
-                        "type": "turn_summary",
-                    }],
-                )
-            for idx, c in enumerate(self.consensus_1liners):
-                doc_id = f"bb_consensus_{c['turn']}_{int(c['ts'])}_{idx}"
-                col.upsert(
-                    ids=[doc_id],
-                    documents=[c["consensus"]],
-                    metadatas=[{"turn": c["turn"], "ts": c["ts"], "type": "consensus"}],
-                )
+                ids.append(doc_id)
+                docs.append(doc_text)
+                metas.append({
+                    "turn": turn_num,
+                    "ts": ts,
+                    "topic": str(r.get("topic", "STANDARD")),
+                    "type": "turn_summary",
+                })
+            if ids:
+                col.upsert(ids=ids, documents=docs, metadatas=metas)
+
+            if not single_record:
+                c_ids, c_docs, c_metas = [], [], []
+                for idx, c in enumerate(self.consensus_1liners):
+                    c_ids.append(f"bb_consensus_{c['turn']}_{int(c['ts'])}_{idx}")
+                    c_docs.append(c["consensus"])
+                    c_metas.append({"turn": c["turn"], "ts": c["ts"], "type": "consensus"})
+                if c_ids:
+                    col.upsert(ids=c_ids, documents=c_docs, metadatas=c_metas)
         except Exception as e:
             logging.warning(f"[BLACKBOARD] Non-fatal ChromaDB sync failed: {e}")
 
