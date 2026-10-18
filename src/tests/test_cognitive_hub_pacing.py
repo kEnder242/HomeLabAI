@@ -18,48 +18,38 @@ from logic.cognitive_hub import (
 
 
 class TestCalculatePacingCeiling(unittest.TestCase):
-    """Ceiling-only headroom math for each node type."""
+    """[FEAT-523] Continuous headroom ceiling math purely shaped by interest."""
 
-    def test_thought_ceiling_at_low_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("thought", 0.0), 300)
+    def test_ceiling_at_zero_interest(self):
+        # When fuel is completely exhausted (interest 0.0), ceiling is 0
+        self.assertEqual(calculate_pacing_ceiling("thought", 0.0), 0)
+        self.assertEqual(calculate_pacing_ceiling("brain", 0.0), 0)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 0.0), 0)
 
-    def test_thought_ceiling_at_high_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("thought", 1.0), 800)
+    def test_ceiling_at_high_interest(self):
+        # At max interest 1.0, ceiling is 1000 tokens across all personas
+        self.assertEqual(calculate_pacing_ceiling("thought", 1.0), 1000)
+        self.assertEqual(calculate_pacing_ceiling("deep_thought", 1.0), 1000)
+        self.assertEqual(calculate_pacing_ceiling("brain", 1.0), 1000)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 1.0), 1000)
 
-    def test_thought_ceiling_at_mid_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("thought", 0.5), 550)
+    def test_ceiling_at_mid_interest(self):
+        # At mid interest 0.5, all personas receive identical 500 token ceiling
+        self.assertEqual(calculate_pacing_ceiling("thought", 0.5), 500)
+        self.assertEqual(calculate_pacing_ceiling("brain", 0.5), 500)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 0.5), 500)
 
-    def test_deep_alias_maps_to_thought(self):
-        self.assertEqual(calculate_pacing_ceiling("deep_thought", 1.0), 800)
-
-    def test_critic_ceiling_is_stable(self):
-        self.assertEqual(calculate_pacing_ceiling("critic", 0.0), 100)
-        self.assertEqual(calculate_pacing_ceiling("critic", 0.5), 100)
-        self.assertEqual(calculate_pacing_ceiling("critic", 1.0), 100)
-
-    def test_brain_ceiling_at_low_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("brain", 0.0), 80)
-
-    def test_brain_ceiling_at_high_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("brain", 1.0), 250)
-
-    def test_brain_ceiling_at_mid_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("brain", 0.5), 165)
-
-    def test_pinky_ceiling_at_low_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("pinky", 0.0), 60)
-
-    def test_pinky_ceiling_at_high_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("pinky", 1.0), 200)
-
-    def test_default_ceiling_at_low_interest(self):
-        self.assertEqual(calculate_pacing_ceiling("unknown_node", 0.0), 60)
+    def test_ceiling_at_low_interest(self):
+        # At interest 0.1, ceiling is 100 tokens
+        self.assertEqual(calculate_pacing_ceiling("thought", 0.1), 100)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 0.1), 100)
 
     def test_interest_clamping_above_1(self):
-        self.assertEqual(calculate_pacing_ceiling("pinky", 1.5), 200)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 1.5), 1000)
 
     def test_interest_clamping_below_0(self):
-        self.assertEqual(calculate_pacing_ceiling("pinky", -0.5), 60)
+        self.assertEqual(calculate_pacing_ceiling("pinky", -0.5), 0)
+
 
 
 class TestCalculatePacingRangeBackwardCompat(unittest.TestCase):
@@ -73,7 +63,7 @@ class TestCalculatePacingRangeBackwardCompat(unittest.TestCase):
     def test_critic_range(self):
         low, high = calculate_pacing_range("critic", 0.5)
         self.assertEqual(low, 0)
-        self.assertEqual(high, 100)
+        self.assertEqual(high, calculate_pacing_ceiling("critic", 0.5))
 
     def test_brain_range(self):
         low, high = calculate_pacing_range("brain", 0.5)
