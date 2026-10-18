@@ -174,6 +174,12 @@ class BicameralNode:
         # Identity
         node_cfg = self.infra.get("nodes", {}).get(self.name, {})
         self.primary_host = node_cfg.get("primary", "localhost")
+        self.fallback_host = node_cfg.get("fallback")
+        self.local_fallback = node_cfg.get("local_fallback")
+        self.candidate_hosts = [
+            h for h in [self.primary_host, self.fallback_host, self.local_fallback] if h
+        ]
+        self.active_host = self.primary_host
         self.lora_name = node_cfg.get("lora_name")
 
         # [Task 6.1] Physics: Single Telemetry Relay Thread
@@ -393,46 +399,34 @@ class BicameralNode:
 
         return "llama3.2:3b"
 
-    def _resolve_primary_host(self):
+    def _resolve_host(self, host_name: str) -> str:
         """[FEAT-255.7] Dynamic Resolution with [FEAT-265] Discovery."""
-        if self.primary_host in ["localhost", "127.0.0.1", "z87-Linux"]:
+        if not host_name or host_name in ["localhost", "127.0.0.1", "z87-Linux"]:
             target = "127.0.0.1"
-            logging.info(f"[{self.name}] Resolved primary host to local: {target}")
             return target
 
-        # [Task 6.5] Dynamic Discovery for Architect IP
-        host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
+        # [Task 6.5] Dynamic Discovery for Host IP
+        host_cfg = self.infra.get("hosts", {}).get(host_name, {})
         ip_hint = host_cfg.get("ip_hint")
         if ip_hint:
-            logging.info(
-                f"[{self.name}] Using dynamic IP hint for {self.primary_host}: {ip_hint}"
-            )
             return ip_hint
 
         try:
             # Try dynamic DNS resolution
-            res = socket.gethostbyname(self.primary_host)
-            logging.info(f"[{self.name}] Resolved {self.primary_host} to: {res}")
+            res = socket.gethostbyname(host_name)
             return res
         except Exception:
             return "127.0.0.1"
 
-    async def ping_engine(self, force=False):
-        """[FEAT-192] Checks if the backend engine is responsive with TTL throttling."""
-        if not force and self._engine_cache:
-            ttl = (
-                self._probe_ttl_failure
-                if self._engine_cache.get("type") == "NONE"
-                else self._probe_ttl_success
-            )
-            if time.time() - self._last_probe < ttl:
-                return True, "Cached"
+    def _resolve_primary_host(self):
+        """[FEAT-255.7] Dynamic Resolution with [FEAT-265] Discovery."""
+        return self._resolve_host(self.primary_host)
 
-        # [FEAT-255.1] Dynamic Registry: Sync engine type with status.json
-        resolved_ip = self._resolve_primary_host()
-
-        host_cfg = self.infra.get("hosts", {}).get(self.primary_host, {})
-        if self.primary_host == "localhost":
+    async def _probe_single_host(self, target_host: str, session: aiohttp.ClientSession):
+        """[FEAT-582] Probes an individual host endpoint and returns (success, cache_dict, message)."""
+        resolved_ip = self._resolve_host(target_host)
+        host_cfg = self.infra.get("hosts", {}).get(target_host, {})
+        if target_host in ["localhost", "127.0.0.1", "z87-Linux"]:
             engine_type = os.environ.get("LAB_MODE", "VLLM")
             status_path = os.path.join(LAB_DIR, "status.json")
             if os.path.exists(status_path):
@@ -445,11 +439,8 @@ class BicameralNode:
 
             port = 8088 if engine_type == "VLLM" else 11434
             base_url = f"http://{resolved_ip}:{port}"
-        elif self.primary_host == "M5_AIR":
-            engine_type = (
-                "OMLX"  # oMLX on M5 Air uses OpenAI /v1/ API, distinct from local vLLM
-            )
-            # [LAB-115] Native oMLX on port 8000 supports real-time SSE token streaming; thinking suppression is handled via stop tokens & prompt directives
+        elif target_host == "M5_AIR":
+            engine_type = "OMLX"
             port = host_cfg.get("mlx_port", 8000)
             base_url = f"http://{resolved_ip}:{port}"
         else:
@@ -464,191 +455,169 @@ class BicameralNode:
         )
 
         try:
-            # [FEAT-415] Asynchronous Non-Blocking Engine Health Gate
-            async with aiohttp.ClientSession() as session:
-                async with session.get(models_url, timeout=5) as r:
-                    if r.status != 200:
-                        self._engine_cache = {"type": "NONE"}
-                        self._last_probe = time.time()
-                        err_msg = f"{engine_type} Engine Error ({r.status}): Unreachable models endpoint"
-                        trigger_pager(err_msg, source=engine_type, severity="ERROR")
-                        return (
-                            False,
-                            f"Engine {engine_type} unreachable (Status {r.status})",
-                        )
-                    data = await r.json()
+            async with session.get(models_url, timeout=4) as r:
+                if r.status != 200:
+                    return False, None, f"Engine {engine_type} on {target_host} unreachable (Status {r.status})"
+                data = await r.json()
 
-                    available = []
-                    max_model_len = 16384
-                    if engine_type == "VLLM":
-                        model_objs = data.get("data", [])
-                        available = [m["id"] for m in model_objs]
-                        if model_objs and "max_model_len" in model_objs[0]:
-                            max_model_len = model_objs[0]["max_model_len"]
-                        # [BKM] Vocal Probe Enforcement for local vLLM:
-                        # local-unified-base is STRICTLY and ONLY for local 2080 Ti vLLM residency.
-                        probe_url = f"{base_url}/v1/chat/completions"
-                        probe_model = (
-                            "local-unified-base"
-                            if "local-unified-base" in available
-                            else "unified-base"
-                        )
-                        probe_payload = {
-                            "model": probe_model,
-                            "messages": [
-                                {"role": "user", "content": "Respond with SUCCESS."}
-                            ],
-                            "max_tokens": 10,
-                        }
-                        try:
-                            async with session.post(
-                                probe_url, json=probe_payload, timeout=5
-                            ) as pr:
-                                if pr.status != 200:
-                                    pr_err = await pr.text()
-                                    self._engine_cache = {"type": "NONE"}
-                                    self._last_probe = time.time()
-                                    err_msg = (
-                                        f"vLLM Engine Error ({pr.status}): {pr_err}"
-                                    )
-                                    trigger_pager(
-                                        err_msg, source="VLLM", severity="ERROR"
-                                    )
-                                    return False, f"Engine VLLM not vocal: {pr_err}"
-                        except Exception as pe:
-                            self._engine_cache = {"type": "NONE"}
-                            self._last_probe = time.time()
-                            err_msg = f"vLLM Vocal Probe Failed: {pe}"
-                            trigger_pager(err_msg, source="VLLM", severity="ERROR")
-                            return False, f"Engine VLLM vocal probe failed: {pe}"
-                    elif engine_type == "OMLX":
-                        model_objs = data.get("data", [])
-                        available = [m["id"] for m in model_objs]
-                        max_model_len = 262144
-                        # oMLX on M5 Air hosts its own distinct models (e.g. Qwen3.8-27B); never unified-base
-                        probe_model = host_cfg.get(
-                            "default_model",
-                            (
-                                available[0]
-                                if available
-                                else "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"
-                            ),
-                        )
-                        probe_url = f"{base_url}/v1/chat/completions"
-                        probe_payload = {
-                            "model": probe_model,
-                            "messages": [
-                                {"role": "user", "content": "Respond with SUCCESS."}
-                            ],
-                            "max_tokens": 10,
-                        }
-                        try:
-                            async with session.post(
-                                probe_url, json=probe_payload, timeout=5
-                            ) as pr:
-                                if pr.status != 200:
-                                    pr_err = await pr.text()
-                                    self._engine_cache = {"type": "NONE"}
-                                    self._last_probe = time.time()
-                                    err_msg = (
-                                        f"oMLX Engine Error ({pr.status}): {pr_err}"
-                                    )
-                                    trigger_pager(
-                                        err_msg, source="OMLX", severity="ERROR"
-                                    )
-                                    return False, f"Engine oMLX not vocal: {pr_err}"
-                        except Exception as pe:
-                            self._engine_cache = {"type": "NONE"}
-                            self._last_probe = time.time()
-                            err_msg = f"oMLX Vocal Probe Failed: {pe}"
-                            trigger_pager(err_msg, source="OMLX", severity="ERROR")
-                            return False, f"Engine oMLX vocal probe failed: {pe}"
-                    else:
-                        available = [m["name"] for m in data.get("models", [])]
-                        max_model_len = 32768
-
-                    # [FEAT-320] Adaptive Model Selection: Check what's actually running
-                    running_model = None
-                    if engine_type == "OLLAMA" and self.primary_host != "localhost":
-                        try:
-                            ps_url = f"{base_url}/api/ps"
-                            async with session.get(ps_url, timeout=2) as ps_r:
-                                if ps_r.status == 200:
-                                    ps_data = await ps_r.json()
-                                    models = ps_data.get("models", [])
-                                    if models:
-                                        running_model = models[0].get("name")
-                                        logging.info(
-                                            f"[{self.name}] Adaptive Link: Adopting active model '{running_model}' on {self.primary_host}"
-                                        )
-                        except Exception:
-                            pass
-
-                    target = self._resolve_best_model(
-                        available, engine_type, running_model=running_model
+                available = []
+                max_model_len = 16384
+                if engine_type == "VLLM":
+                    model_objs = data.get("data", [])
+                    available = [m["id"] for m in model_objs]
+                    if model_objs and "max_model_len" in model_objs[0]:
+                        max_model_len = model_objs[0]["max_model_len"]
+                    probe_url = f"{base_url}/v1/chat/completions"
+                    probe_model = (
+                        "local-unified-base"
+                        if "local-unified-base" in available
+                        else "unified-base"
                     )
-
-                    # [FEAT-339] Model Alias Resolution: Map paths to short IDs
-                    if target.startswith("/") and available:
-                        if target in available:
-                            pass
-                        else:
-                            for am in available:
-                                if am == "unified-base" or am in target:
-                                    logging.info(
-                                        f"[{self.name}] Alias Resolved: {target} -> {am}"
-                                    )
-                                    target = am
-                                    break
-
-                    self._engine_cache = {
-                        "url": (
-                            f"{base_url}/v1/chat/completions"
-                            if engine_type in ("VLLM", "OMLX")
-                            else f"{base_url}/api/chat"
-                        ),
-                        "model": target,
-                        "type": engine_type,
-                        "available": available,
-                        "max_model_len": max_model_len,
+                    probe_payload = {
+                        "model": probe_model,
+                        "messages": [
+                            {"role": "user", "content": "Respond with SUCCESS."}
+                        ],
+                        "max_tokens": 10,
                     }
-                    self._last_probe = time.time()
-                    return True, f"Online: {target} ({engine_type})"
-        except Exception as e:
-            # [FEAT-255.3] Handshake Resilience: Tolerate ZMQ/Transfer/Connection errors during boot
-            err_msg = str(e).lower()
-            if any(
-                k in err_msg
-                for k in [
-                    "transfer",
-                    "reset",
-                    "disconnected",
-                    "incomplete",
-                    "refused",
-                    "eof",
-                    "connect call failed",
-                    "cannot connect",
-                    "clientconnectorerror",
-                ]
-            ):
-                # [FEAT-255.6] Exponential Backoff: Give the larynx time to clear its throat
-                wait_time = getattr(self, "_handshake_backoff", 2)
-                logging.warning(
-                    f"[{self.name}] Larynx is warming... (Retrying in {wait_time}s: {e})"
+                    try:
+                        async with session.post(probe_url, json=probe_payload, timeout=4) as pr:
+                            if pr.status != 200:
+                                pr_err = await pr.text()
+                                return False, None, f"Engine VLLM on {target_host} not vocal: {pr_err}"
+                    except Exception as pe:
+                        return False, None, f"Engine VLLM vocal probe failed: {pe}"
+                elif engine_type == "OMLX":
+                    model_objs = data.get("data", [])
+                    available = [m["id"] for m in model_objs]
+                    max_model_len = 262144
+                    probe_model = host_cfg.get(
+                        "default_model",
+                        available[0] if available else "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+                    )
+                    probe_url = f"{base_url}/v1/chat/completions"
+                    probe_payload = {
+                        "model": probe_model,
+                        "messages": [
+                            {"role": "user", "content": "Respond with SUCCESS."}
+                        ],
+                        "max_tokens": 10,
+                    }
+                    try:
+                        async with session.post(probe_url, json=probe_payload, timeout=4) as pr:
+                            if pr.status != 200:
+                                pr_err = await pr.text()
+                                return False, None, f"Engine oMLX on {target_host} not vocal: {pr_err}"
+                    except Exception as pe:
+                        return False, None, f"Engine oMLX vocal probe failed: {pe}"
+                else:
+                    available = [m["name"] for m in data.get("models", [])]
+                    max_model_len = 32768
+
+                running_model = None
+                if engine_type == "OLLAMA" and target_host != "localhost":
+                    try:
+                        ps_url = f"{base_url}/api/ps"
+                        async with session.get(ps_url, timeout=2) as ps_r:
+                            if ps_r.status == 200:
+                                ps_data = await ps_r.json()
+                                models = ps_data.get("models", [])
+                                if models:
+                                    running_model = models[0].get("name")
+                                    logging.info(
+                                        f"[{self.name}] Adaptive Link: Adopting active model '{running_model}' on {target_host}"
+                                    )
+                    except Exception:
+                        pass
+
+                target = self._resolve_best_model(
+                    available, engine_type, running_model=running_model
                 )
-                await asyncio.sleep(wait_time)
-                self._handshake_backoff = min(wait_time * 2, 10)  # Cap at 10s
-                return False, "WARMING"
 
-            self._handshake_backoff = 2  # Reset on fatal error
+                if target.startswith("/") and available:
+                    if target not in available:
+                        for am in available:
+                            if am == "unified-base" or am in target:
+                                target = am
+                                break
 
-            # [FEAT-255.4] Reactive Discovery: Flush session and cache on error
-            self._engine_cache = None
-            self._last_probe = 0
-            if hasattr(self, "_session") and self._session:
-                await self._session.close()
-                self._session = None
-            return False, f"Connection failed: {e}"
+                cache_entry = {
+                    "url": (
+                        f"{base_url}/v1/chat/completions"
+                        if engine_type in ("VLLM", "OMLX")
+                        else f"{base_url}/api/chat"
+                    ),
+                    "model": target,
+                    "type": engine_type,
+                    "available": available,
+                    "max_model_len": max_model_len,
+                    "host": target_host,
+                }
+                return True, cache_entry, f"Online: {target} ({engine_type}) on {target_host}"
+        except Exception as e:
+            return False, None, str(e)
+
+    async def ping_engine(self, force=False):
+        """[FEAT-192 / FEAT-582] Checks if backend engines are responsive with tiered candidate fallback."""
+        if not force and self._engine_cache:
+            ttl = (
+                self._probe_ttl_failure
+                if self._engine_cache.get("type") == "NONE"
+                else self._probe_ttl_success
+            )
+            if time.time() - self._last_probe < ttl:
+                return True, "Cached"
+
+        last_error = "No candidates configured"
+        try:
+            async with aiohttp.ClientSession() as session:
+                for candidate in self.candidate_hosts:
+                    ok, cache_dict, msg = await self._probe_single_host(candidate, session)
+                    if ok and cache_dict:
+                        self._engine_cache = cache_dict
+                        self.active_host = candidate
+                        self._last_probe = time.time()
+                        logging.info(f"[{self.name}] [FEAT-582] Active engine established on {candidate}: {msg}")
+                        return True, msg
+                    last_error = msg
+                    logging.warning(
+                        f"[{self.name}] [FEAT-582] Host '{candidate}' unreachable: {msg}. Trying next candidate..."
+                    )
+        except Exception as e:
+            last_error = str(e)
+            logging.error(f"[{self.name}] ping_engine probe loop exception: {e}")
+
+        # Check if error is transient warming
+        err_msg = last_error.lower()
+        if any(
+            k in err_msg
+            for k in [
+                "transfer",
+                "reset",
+                "disconnected",
+                "incomplete",
+                "refused",
+                "eof",
+                "connect call failed",
+                "cannot connect",
+                "clientconnectorerror",
+            ]
+        ):
+            wait_time = getattr(self, "_handshake_backoff", 2)
+            logging.warning(
+                f"[{self.name}] Larynx warming across candidates... (Retrying in {wait_time}s: {last_error})"
+            )
+            await asyncio.sleep(wait_time)
+            self._handshake_backoff = min(wait_time * 2, 10)
+            return False, "WARMING"
+
+        self._handshake_backoff = 2
+        self._engine_cache = {"type": "NONE"}
+        self._last_probe = time.time()
+        fail_msg = f"All candidate engines unreachable for {self.name} ({self.candidate_hosts}): {last_error}"
+        trigger_pager(fail_msg, source=self.name, severity="ERROR")
+        return False, fail_msg
+
 
     async def generate_response(
         self,
