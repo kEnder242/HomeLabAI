@@ -1439,6 +1439,7 @@ class FoyerRouter:
             "request_id": payload.get("request_id", ""),
             "query": payload.get("query", ""),
             "response_snippet": str(payload.get("response", ""))[:500],
+            "interest": payload.get("interest"),
             "source": payload.get("source", "UI"),
             "user_note": payload.get("note", ""),
         }
