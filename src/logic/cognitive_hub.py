@@ -2467,8 +2467,12 @@ class CognitiveHub:
         if "pinky" in self.residents or "lab" in self.residents:
             try:
                 target = str(triage_result.get("addressed_to", "")).upper()
-                pinky_pacing = format_pacing_line("pinky", interest)
                 pinky_high = calculate_pacing_ceiling("pinky", interest)
+                # [FEAT-470 / FEAT-523 / FEAT-657] Decouple structured schema budget from conversational fuel starvation:
+                # Pinky triage outputs a 3-field JSON schema (spoken_take, search_terms, upvote) that requires
+                # a minimum functional floor (250 tokens) to avoid mid-string truncation on low-interest turns.
+                pinky_budget = max(pinky_high, 250)
+                pinky_pacing = f"[BUDGET]: Headroom ceiling is {pinky_budget} tokens. Output valid JSON within budget."
                 if target == "BRAIN":
                     pinky_guidance = (
                         f"{pinky_pacing}\n"
@@ -2485,7 +2489,6 @@ class CognitiveHub:
                         "Deliver your initial lively spoken take directly to Jason in your authentic voice."
                     )
                     triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
-                pinky_budget = pinky_high
                 is_historical = (
                     vibe == "HISTORICAL"
                     or "historical" in domain
