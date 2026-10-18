@@ -2238,8 +2238,12 @@ class CognitiveHub:
                 vibe_tone = "Tone guidance: Systematic, comparative, weighting trade-offs with high objectivity."
 
             # [FEAT-406/470] Coherence Judge Evaluation: Stream Pinky's critique directly to Brain
-            critic_pacing = format_pacing_line("critic", interest)
+            # [FEAT-470 / FEAT-523] Decouple diagnostic judge budget from conversational fuel starvation:
+            # While conversational personas scale with interest, schema-bound evaluators require a
+            # functional floor (300 tokens minimum) to emit complete JSON without mid-field truncation.
             critic_high = calculate_pacing_ceiling("critic", interest)
+            critic_budget = max(critic_high, 300)
+            critic_pacing = f"[BUDGET]: Headroom ceiling is {critic_budget} tokens. Answer concisely within this budget; do not add conversational fluff or filler."
             eval_text = ""
             async for token in self._process_node_stream(
                 "pinky",
@@ -2250,7 +2254,7 @@ class CognitiveHub:
                 temperature=0.2,
                 response_format=eval_schema,
                 request_id=request_id,
-                max_tokens=critic_high,
+                max_tokens=critic_budget,
                 behavioral_guidance=(
                     f"{critic_pacing}\n"
                     f"You are Pinky. Brain and Deep Thought have established the technical stance above. "
