@@ -438,7 +438,7 @@ def test_vocative_overhearing_brain_turn():
     hub, packets = _build_test_hub()
     hub.current_target = "brain"
     hub.current_vibe = "CASUAL"
-    hub.current_interest = 0.40
+    hub.current_interest = 0.10
 
     dt_called = []
 
@@ -466,7 +466,7 @@ def test_vocative_overhearing_brain_turn():
             hub._run_two_mice_handover(
                 "How are you, Brain?",
                 focus_context="[ZERO_CONTEXT]: No archive record retrieved.",
-                interest=0.40,
+                interest=0.10,
                 request_id="overhear1",
             )
         )
@@ -474,8 +474,8 @@ def test_vocative_overhearing_brain_turn():
         loop.close()
 
     assert ran is True
-    # Damped from 0.40 - 0.25 = 0.15
-    assert round(hub.current_interest, 2) == 0.15
+    # Damped from 0.10 - 0.25 = 0.0 (clamped at 0.0)
+    assert round(hub.current_interest, 2) == 0.0
     # Deep Thought should be 100% dormant
     assert len(dt_called) == 0
     # Pinky voice should NOT speak a second time after Brain's direct answer
