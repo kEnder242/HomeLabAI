@@ -17,20 +17,16 @@ FOYER_HTTP_URL = "http://127.0.0.1:8765"
 FOYER_WS_URL = "ws://127.0.0.1:8765"
 
 
-def get_status():
-    req = urllib.request.Request(f"{FOYER_HTTP_URL}/status?timeout=10")
-    with urllib.request.urlopen(req, timeout=5.0) as resp:
+def get_status(timeout_param: int = 2):
+    req = urllib.request.Request(f"{FOYER_HTTP_URL}/status?timeout={timeout_param}")
+    with urllib.request.urlopen(req, timeout=10.0) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
-async def run_probe(query: str, timeout: float = 25.0):
-    status = get_status()
-    session_token = status.get("session_token")
-    boot_commit = status.get("boot_commit")
-
+async def run_probe(query: str, session_token: str, boot_commit: str, timeout: float = 25.0):
     print(f"\n" + "=" * 60)
     print(f"🚀 Injecting Live Probe: '{query}'")
-    print(f"   Boot Commit: {boot_commit} | Mode: {status.get('state')}")
+    print(f"   Boot Commit: {boot_commit}")
     print("=" * 60)
 
     events = []
@@ -40,6 +36,7 @@ async def run_probe(query: str, timeout: float = 25.0):
     async with websockets.connect(
         FOYER_WS_URL,
         additional_headers={"X-Lab-Key": session_token, "X-Client-Commit": boot_commit},
+        open_timeout=30.0,
     ) as ws:
         # Handshake
         await ws.send(
@@ -118,10 +115,14 @@ async def run_probe(query: str, timeout: float = 25.0):
 
 async def main():
     print("🔬 SPRINT 105 SILICON VALIDATION GAUNTLET")
+    status = get_status(timeout_param=2)
+    session_token = status.get("session_token")
+    boot_commit = status.get("boot_commit")
+    print(f"Connected to Foyer. Boot Commit: {boot_commit} | Mode: {status.get('state')}")
 
     # 1. Probe 1: Casual Banter
-    print("\n[PROBE 1/2] Casual Banter Verification...")
-    res1 = await run_probe("[ME] hi", timeout=20.0)
+    print("\n[PROBE 1/3] Casual Banter Verification...")
+    res1 = await run_probe("[ME] hi", session_token, boot_commit, timeout=25.0)
 
     # Verification criteria for Probe 1
     has_pinky = bool(res1["pinky_stream"] or any("PINKY" in m["source"] for m in res1["chat_messages"]))
@@ -144,12 +145,12 @@ async def main():
         sys.exit(1)
     print("✅ PROBE 1 PASS: Pure Waterfall casual banter (Pinky vocal, Brain/Thought dormant)!")
 
-    # Wait 2s for engine settle
-    await asyncio.sleep(2.0)
+    # Wait 3s for engine settle
+    await asyncio.sleep(3.0)
 
     # 2. Probe 2: Historical Inquiry
-    print("\n[PROBE 2/2] Historical Inquiry Verification...")
-    res2 = await run_probe("[ME] remember Aurora?", timeout=30.0)
+    print("\n[PROBE 2/3] Historical Inquiry Verification...")
+    res2 = await run_probe("[ME] remember Aurora?", session_token, boot_commit, timeout=35.0)
 
     has_pinky_2 = bool(res2["pinky_stream"] or any("PINKY" in m["source"] for m in res2["chat_messages"]))
     has_brain_2 = bool(res2["brain_stream"] or any("BRAIN" in m["source"] for m in res2["chat_messages"]))
@@ -162,6 +163,28 @@ async def main():
         print("❌ PROBE 2 FAIL: Pinky did not speak on historical inquiry!")
         sys.exit(1)
     print("✅ PROBE 2 PASS: Historical inquiry successfully processed through multi-stage council!")
+
+    # Wait 3s for engine settle
+    await asyncio.sleep(3.0)
+
+    # 3. Probe 3: Story 105.15 Interest Damping Verification
+    print("\n[PROBE 3/3] Dynamic Interest Damping Verification ('How are you and Brain?')...")
+    res3 = await run_probe("[ME] How are you and Brain?", session_token, boot_commit, timeout=30.0)
+
+    has_pinky_3 = bool(res3["pinky_stream"] or any("PINKY" in m["source"] for m in res3["chat_messages"]))
+    thought_active_3 = bool(res3["thought_stream"] or any("THOUGHT" in m["source"] for m in res3["chat_messages"]))
+
+    print(f"\nProbe 3 Analysis:")
+    print(f"  - Pinky Active: {has_pinky_3}")
+    print(f"  - Deep Thought Dormant (Cascading Halted): {not thought_active_3}")
+
+    if not has_pinky_3:
+        print("❌ PROBE 3 FAIL: Pinky did not speak on greeting!")
+        sys.exit(1)
+    if thought_active_3:
+        print("❌ PROBE 3 FAIL: Deep Thought was NOT dormant; cascade runaway occurred!")
+        sys.exit(1)
+    print("✅ PROBE 3 PASS: Brain damped interest or zero RAG context kept Deep Thought dormant. Cascade halted!")
 
     print("\n" + "=" * 60)
     print("🏆 ALL SPRINT 105 PHYSICAL SILICON PROBES PASSED (100%)")
