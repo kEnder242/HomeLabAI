@@ -431,24 +431,21 @@ def _two_mice_interest_band(interest: float) -> str:
 
 
 def calculate_pacing_ceiling(node_name: str, interest: float) -> int:
-    """[FEAT-523 / BKM-015] Calculate headroom ceiling token budget based on internal interest.
+    """[FEAT-523 / BKM-015] Calculate headroom ceiling token budget purely from interest.
 
-    Returns a single ceiling int - the maximum tokens to use. No floor.
+    Under [FEAT-523], interest is the sole shape of the turn. Arbitrary per-node base
+    floors (legacy 300/80/60 offsets) are excised so fuel naturally tapers to 0 when
+    interest is exhausted. Across all sovereign personas, budget is strictly proportional:
+        ceiling = max(0, int(interest * max_token_ceiling))
     """
     interest_val = max(0.0, min(1.0, float(interest)))
-    norm_name = str(node_name).lower()
-    if "thought" in norm_name or "deep" in norm_name:
-        # Strategy synthesis: ceiling scales from ~300 at low interest up to ~800 at high interest
-        return int(300 + interest_val * 500)
-    elif "critic" in norm_name:
-        # Structured critic JSON: stable ceiling of 100 tokens
-        return 100
-    elif "brain" in norm_name:
-        # Evidentiary inspection / curation / banter: ceiling from ~80 at low interest up to ~250 at high
-        return int(80 + interest_val * 170)
-    else:  # pinky / voice / default
-        # Spoken banter / TL;DR: ceiling from ~60 at low interest up to ~200 at high
-        return int(60 + interest_val * 140)
+    if interest_val <= 0.0:
+        return 0
+
+    # [FEAT-523] Default max token ceiling across sovereign lab personas
+    max_token_ceiling = 1000
+    return max(16, int(round(interest_val * max_token_ceiling)))
+
 
 
 def calculate_pacing_range(node_name: str, interest: float) -> tuple[int, int]:
