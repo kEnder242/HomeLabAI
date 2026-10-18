@@ -572,14 +572,16 @@ def build_two_mice_stream_packet(
     token: str,
     final: bool = False,
     request_id: str = "default",
+    interest: float | None = None,
 ) -> dict:
-    """[FEAT-489] Build a dual-console WebSocket thought_stream packet.
+    """[FEAT-489 / FEAT-661] Build a dual-console WebSocket thought_stream packet.
 
     Encapsulates the Dual-Console Routing Contract so the Foyer/Intercom UI can
     place Brain's grounding stream on the Right Console (channel ``"insight"``) and
-    Pinky's TL;DR on the Left Console (channel ``"pinky"``).
+    Pinky's TL;DR on the Left Console (channel ``"pinky"``), embedding interest fuel
+    [FEAT-661] for in-line micro-telemetry.
     """
-    return {
+    packet = {
         "type": "thought_stream",
         "token": token,
         "brain": token,
@@ -590,6 +592,9 @@ def build_two_mice_stream_packet(
         "final": final,
         "request_id": request_id,
     }
+    if interest is not None:
+        packet["interest"] = round(float(interest), 2)
+    return packet
 
 
 # [Task 4.2] V5 Cognitive Hub: The Logical Core
@@ -1455,12 +1460,14 @@ class CognitiveHub:
             if hasattr(self, "speaker_registry")
             else text
         )
+        cur_int = getattr(self, "current_interest", 0.0)
         await self.broadcast(
             {
                 "type": "chat",
                 "brain": clean_text,
                 "brain_source": source_name,
                 "final": final,
+                "interest": round(float(cur_int), 2) if cur_int is not None else 0.0,
             }
         )
 
@@ -2588,6 +2595,7 @@ class CognitiveHub:
                                 token=spoken_take,
                                 final=False,
                                 request_id=request_id,
+                                interest=self.current_interest,
                             )
                         )
                         await self.broadcast(
@@ -2598,6 +2606,7 @@ class CognitiveHub:
                                 token="",
                                 final=True,
                                 request_id=request_id,
+                                interest=self.current_interest,
                             )
                         )
 
@@ -3025,6 +3034,7 @@ class CognitiveHub:
                     token=token,
                     final=False,
                     request_id=request_id,
+                    interest=self.current_interest,
                 )
             )
             if shutdown_event and shutdown_event.is_set():
@@ -3037,6 +3047,7 @@ class CognitiveHub:
                 token="",
                 final=True,
                 request_id=request_id,
+                interest=self.current_interest,
             )
         )
         self._last_two_mice_brain_duration = max(
@@ -3110,6 +3121,7 @@ class CognitiveHub:
                         token=token,
                         final=False,
                         request_id=request_id,
+                        interest=self.current_interest,
                     )
                 )
                 if shutdown_event and shutdown_event.is_set():
@@ -3122,6 +3134,7 @@ class CognitiveHub:
                     token="",
                     final=True,
                     request_id=request_id,
+                    interest=self.current_interest,
                 )
             )
             self._last_thought_duration = max(
@@ -3174,6 +3187,7 @@ class CognitiveHub:
                     token=token,
                     final=False,
                     request_id=request_id,
+                    interest=self.current_interest,
                 )
             )
             if shutdown_event and shutdown_event.is_set():
@@ -3186,6 +3200,7 @@ class CognitiveHub:
                 token="",
                 final=True,
                 request_id=request_id,
+                interest=self.current_interest,
             )
         )
         self._last_two_mice_pinky_duration = max(
