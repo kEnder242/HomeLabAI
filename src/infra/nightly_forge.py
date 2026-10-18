@@ -943,19 +943,24 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
             "Dream cycle completed with zero synthesized turns and zero refined items (Green Lie)."
         )
 
-    # Check 6: Round Table Accountability Probe
+    # Check 6: Round Table Accountability Probe [FEAT-619 / BKM-066]
     probe_telemetry = telemetry_dict.get("round_table_probe", {})
     probe_status = probe_telemetry.get("status", "FAIL")
     critic_score = float(probe_telemetry.get("critic_score", 0.0))
     min_critic = float(
         thresholds.get("round_table_probe", {}).get("min_critic_score", 0.70)
     )
-    probe_ok = (probe_status == "PASS") and (critic_score >= min_critic)
+    probe_decoupled = (probe_status == "DECOUPLED")
+    probe_ok = probe_decoupled or ((probe_status == "PASS") and (critic_score >= min_critic))
     checks.append(
         {
             "name": "Synthetic Morning Round Table Probe",
             "passed": probe_ok,
-            "detail": f"Greeting Latency: {probe_telemetry.get('greeting_latency_ms', 0)}ms, Critic Score: {critic_score:.2f}, Status: {probe_status}",
+            "detail": (
+                "Decoupled to 06:00 AM standalone watchdog [FEAT-619]"
+                if probe_decoupled
+                else f"Greeting Latency: {probe_telemetry.get('greeting_latency_ms', 0)}ms, Critic Score: {critic_score:.2f}, Status: {probe_status}"
+            ),
         }
     )
     if not probe_ok:
@@ -1238,24 +1243,21 @@ def main():
         except Exception as be:
             logger.error(f"[NIGHTLY STEP 6] Dynamic benchmark sweep error: {be}")
 
-        # Settling Cooldown 3: 60s socket draining and silicon quiescence window before Round Table Probe (BKM-044)
+        # =========================================================================
+        # STEP 6b: SYNTHETIC MORNING ROUND TABLE PROBE [DECOUPLED / FEAT-619 / BKM-066]
+        # =========================================================================
+        # Probe execution decoupled from batch execution to prevent 02:39 AM collision.
+        # Executed out-of-band at 06:00 AM post-quiescence by standalone_accountability_watchdog.py.
         logger.info(
-            "[NIGHTLY COOLDOWN 3] Settling 60s for socket draining & silicon stabilization before Round Table Probe..."
+            "[NIGHTLY STEP 6b - DECOUPLED] Round Table Probe decoupled to 06:00 AM standalone watchdog [FEAT-619]."
         )
-        time.sleep(60)
-
-        # =========================================================================
-        # STEP 6b: SYNTHETIC MORNING ROUND TABLE PROBE [FEAT-608 / Story 88.3]
-        # =========================================================================
-        probe_result = {"status": "FAIL", "error": "Not run"}
-        try:
-            logger.info(
-                "[NIGHTLY STEP 6b - ROUND TABLE] Executing Synthetic Morning Round Table Accountability Probe..."
-            )
-            probe_result = run_round_table_probe()
-        except Exception as pe:
-            logger.error(f"[NIGHTLY STEP 6b] Round table probe error: {pe}")
-            probe_result = {"status": "FAIL", "error": str(pe)}
+        write_step_log(
+            "ROUND_TABLE_PROBE_DECOUPLED", "Delegated to 06:00 AM standalone_accountability_watchdog.py"
+        )
+        probe_result = {
+            "status": "DECOUPLED",
+            "detail": "Delegated to 06:00 AM standalone_accountability_watchdog.py",
+        }
 
         # =========================================================================
         # STEP 6c: AUTHORITATIVE ACCOUNTABILITY DIGEST [FEAT-607 / Story 88.4]
