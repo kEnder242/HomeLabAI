@@ -43,6 +43,14 @@ def get_unified_base_model():
     return "llama-3.2-3b-awq"
 
 
+# [FEAT-660] Universal Bicameral Context Fencing (Anti-Unrolling Invariant)
+UNIVERSAL_CONTEXT_FENCE = (
+    "CONTEXT FENCING: Stay relevant to the primer and the actors before you. "
+    "Limit topics you talk about to topics in the conversation. "
+    "Do not inject unprompted background history or meta-explanations of your persona."
+)
+
+
 # [FEAT-435] Evergreen Career Compass Memory Ledger
 class BicameralNode:
     """
