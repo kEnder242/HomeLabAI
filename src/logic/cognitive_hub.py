@@ -247,10 +247,7 @@ _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
 # [FEAT-660] Overhearing prompt: When Jason addresses Brain, Pinky alerts Brain rather than answering on his behalf
 _HYDE_OVERHEARING_PROMPT = (
     "You are Pinky, the intuitive and lively lab mouse. Jason just asked The Brain a question.\n"
-    "Respond with a structured JSON object containing:\n"
-    "1. 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him (e.g. \"Narf! Brain, Jason is asking for you!\").\n"
-    "2. 'search_terms': \"\" (empty string; no archive search needed for a greeting).\n"
-    "3. 'upvote': false\n"
+    "Respond with a structured JSON object containing 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him.\n"
 )
 
 
@@ -3003,7 +3000,8 @@ class CognitiveHub:
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
         brain_high = calculate_pacing_ceiling("brain", interest)
-        brain_budget = brain_high
+        # [FEAT-660] Headroom floor for conversational turns bypassed to Brain:
+        brain_budget = max(brain_high, 100) if interest < 0.35 else brain_high
         async for token in self._process_node_stream(
             "brain",
             stage1_prompt,
