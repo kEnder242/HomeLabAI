@@ -156,14 +156,29 @@ class DreamManager:
                 else:
                     error_message = "Zero chaotic turns synthesized and zero archive items refined (BKM-062 Zero-Work Exit Invariant)"
             except Exception as e:
-                error_message = f"Refinement Dreaming Error: {e}"
-                logging.error(error_message)
+        # [FEAT-619 / Story 106.3] Check archive gem freshness on disk
+        archive_fresh = False
+        gems_file = os.path.join(
+            BASE_DIR, "../Portfolio_Dev/field_notes/data/latest_synthesis_gems.json"
+        )
+        if os.path.exists(gems_file):
+            try:
+                g_age = time.time() - os.path.getmtime(gems_file)
+                with open(gems_file, "r") as gf:
+                    gdata = json.load(gf)
+                glist = gdata if isinstance(gdata, list) else gdata.get("gems", [])
+                archive_fresh = (len(glist) > 0) and (g_age <= 108000)  # 30 hours
+            except Exception:
+                archive_fresh = False
 
         duration_seconds = time.time() - start_time
         timestamp = datetime.now().isoformat()
 
         if turns_synthesized > 0 or items_refined > 0:
             status = "PASS"
+        elif archive_fresh and (error_message is None or "BKM-062" in error_message):
+            status = "SATURATED"
+            error_message = None
         else:
             status = "FAIL"
 
@@ -171,6 +186,7 @@ class DreamManager:
             "status": status,
             "turns_synthesized": turns_synthesized,
             "items_refined": items_refined,
+            "archive_fresh": archive_fresh,
             "duration_seconds": duration_seconds,
             "timestamp": timestamp,
             "error": error_message,
@@ -180,15 +196,24 @@ class DreamManager:
         """[FEAT-127.1] Recursive Refinement: Upgrade Tier 2 artifacts to Tier 1."""
         logging.info("💎 Initiating Deep Refinement of the 18-year archive...")
         try:
-            cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
-            raw_files = (
-                cabinet_res.content[0].text
-                if (cabinet_res and cabinet_res.content)
-                else "[]"
-            )
+            # [FEAT-067 / Story 106.1] Target raw archive tables directly rather than UI filing cabinet
+            try:
+                table_res = await self.archive.call_tool("list_archive_tables", arguments={})
+            except Exception:
+                table_res = None
+
+            if table_res and table_res.content:
+                raw_files = table_res.content[0].text
+            else:
+                cabinet_res = await self.archive.call_tool("list_cabinet", arguments={})
+                raw_files = (
+                    cabinet_res.content[0].text
+                    if (cabinet_res and cabinet_res.content)
+                    else "[]"
+                )
             files = json.loads(raw_files) if raw_files else []
         except Exception as e:
-            logging.warning(f"[DREAM] Could not list archive cabinet: {e}")
+            logging.warning(f"[DREAM] Could not list archive tables: {e}")
             return False
 
         if not files:
@@ -197,33 +222,42 @@ class DreamManager:
         target_files = [f for f in files if f.endswith(".json")]
         if not target_files:
             return False
-        target_file = random.choice(target_files)
+
+        random.shuffle(target_files)
+        target_file = None
+        target_item = None
+
+        # Scan candidate files to find an un-saturated gem
+        for candidate_file in target_files:
+            try:
+                doc_res = await self.archive.call_tool(
+                    "read_document", arguments={"filename": candidate_file}
+                )
+                raw_doc = doc_res.content[0].text if (doc_res and doc_res.content) else "[]"
+                content = json.loads(raw_doc) if raw_doc else []
+            except Exception as e:
+                logging.warning(f"[DREAM] Could not read document {candidate_file}: {e}")
+                continue
+
+            if not isinstance(content, list) or not content:
+                continue
+
+            candidates = [
+                i
+                for i in content
+                if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
+            ]
+            if candidates:
+                target_file = candidate_file
+                target_item = random.choice(candidates)
+                break
+
+        if not target_item or not target_file:
+            logging.info("✨ All scanned archive sectors are optimized. Quiescent saturation reached.")
+            return False
+
         logging.info(f"📂 Selected target for refinement: {target_file}")
-
-        try:
-            doc_res = await self.archive.call_tool(
-                "read_document", arguments={"filename": target_file}
-            )
-            raw_doc = doc_res.content[0].text if (doc_res and doc_res.content) else "[]"
-            content = json.loads(raw_doc) if raw_doc else []
-        except Exception as e:
-            logging.warning(f"[DREAM] Could not read document {target_file}: {e}")
-            return False
-
-        if not isinstance(content, list) or not content:
-            return False
-
-        candidates = [
-            i
-            for i in content
-            if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
-        ]
-        if not candidates:
-            logging.info("✨ This sector is already optimized. Returning to sleep.")
-            return False
-
-        target_item = random.choice(candidates)
-        logging.info(f"🎯 Refining artifact: {target_item.get('summary')[:50]}...")
+        logging.info(f"🎯 Refining artifact: {target_item.get('summary', '')[:50]}...")
 
         prompt = (
             f"Refine the following technical artifact from {target_file} into a high-density 'Diamond' gem. "

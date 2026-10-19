@@ -264,7 +264,8 @@ def check_nightly_forge_liveness():
         last_ts = state.get("last_completed_timestamp", 0)
         age_hours = (time.time() - last_ts) / 3600.0 if last_ts else 999.0
         
-        passed = (status == "COMPLETED") and (age_hours < 26.0)
+        # [FEAT-619 / Story 106.2] Allow completed DEGRADED forge run to pass liveness check
+        passed = (status in ("COMPLETED", "DEGRADED")) and (age_hours < 26.0)
         return {
             "name": "Nightly Forge Orchestration",
             "passed": passed,
@@ -569,8 +570,12 @@ def audit_and_emit_digest(run_live_probe: bool = True):
     passed_count = sum(1 for c in checks if c["passed"])
     total_count = len(checks)
     critical_failed = (not c_forge["passed"]) or (not c_lora["passed"]) or (not c_vram["passed"])
+    has_degradation = (c_forge.get("status") == "DEGRADED")
 
-    if passed_count == total_count:
+    if c_forge.get("status") == "DEGRADED" and not any("DEGRADED" in d for d in discrepancies):
+        discrepancies.append(f"Nightly Forge completed with degraded status ({c_forge['detail']})")
+
+    if passed_count == total_count and not has_degradation:
         overall_status = "PASS"
     elif critical_failed:
         overall_status = "FAIL"

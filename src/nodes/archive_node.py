@@ -231,6 +231,18 @@ async def list_cabinet() -> str:
 
 
 @mcp.tool()
+async def list_archive_tables() -> str:
+    """[FEAT-067 / FEAT-127] Lists raw database monthly and artifact JSON tables for synthesis engines."""
+    try:
+        data_files = glob.glob(os.path.join(DATA_DIR, "20*.json")) + glob.glob(
+            os.path.join(DATA_DIR, "artifacts_20*.json")
+        )
+        return json.dumps([os.path.basename(f) for f in sorted(data_files)])
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 async def read_document(filename: str) -> str:
     """Reads content from workspace, drafts, whiteboard, or data folders."""
     # [FIX] Handle directory-prefixed filenames from UI

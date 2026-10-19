@@ -305,9 +305,46 @@ def _load_hyde_synthesis_prompt():
             except Exception as e:
                 logging.warning(f"Error reading career_compass.json at {path} ({e})")
 
+    # [Story 106.10 / FEAT-614-618] Load Curated Focal Bedrock Gems (Impact >= 3)
+    focal_paths = [
+        os.path.normpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "..",
+                "Portfolio_Dev",
+                "field_notes",
+                "data",
+                "focal_ledger.json",
+            )
+        ),
+        os.path.expanduser(
+            "~/Dev_Lab/Portfolio_Dev/field_notes/data/focal_ledger.json"
+        ),
+    ]
+    focal_anchors = []
+    for fpath in focal_paths:
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    fdata = json.load(f)
+                gems = fdata.get("focal_gems", [])
+                for g in gems:
+                    era = g.get("event_era") or g.get("date", "")
+                    summary = g.get("summary", "")
+                    evidence = g.get("evidence", "")
+                    focal_anchors.append(f"- [{era}] {summary} ({evidence[:120]})")
+                if focal_anchors:
+                    break
+            except Exception as e:
+                logging.warning(f"Error reading focal_ledger.json at {fpath} ({e})")
+
     anchors_block = ""
     if era_anchors:
         anchors_block = "High-Level Career Anchors (2005-2026 Archive):\n" + "\n".join(era_anchors) + "\n\n"
+    if focal_anchors:
+        anchors_block += "Focal Technical Bedrock Milestones & Errata:\n" + "\n".join(focal_anchors[:6]) + "\n\n"
 
     mesh_str = ", ".join(keywords) if keywords else ""
     mesh_line = f"Dynamic Keyword Mesh (FEAT-438): {mesh_str}\n" if mesh_str else ""
