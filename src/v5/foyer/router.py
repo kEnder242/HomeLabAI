@@ -7,6 +7,7 @@ import os
 import re
 import time
 import uuid
+from pathlib import Path
 
 # [STORY-5] Cold-start wake thread caps: bound BLAS/ML worker threads to 2
 os.environ["OMP_NUM_THREADS"] = "2"
@@ -938,6 +939,14 @@ class FoyerRouter:
                 web.post("/attendant/paper/archive", self.handle_paper_archive),
                 web.post("/paper/synthesize", self.handle_paper_synthesize),
                 web.post("/attendant/paper/synthesize", self.handle_paper_synthesize),
+                web.post("/paper/save_to_dna", self.handle_paper_save_to_dna),
+                web.post("/attendant/paper/save_to_dna", self.handle_paper_save_to_dna),
+                web.post("/paper/snapshot_tag", self.handle_paper_snapshot_tag),
+                web.post("/attendant/paper/snapshot_tag", self.handle_paper_snapshot_tag),
+                web.post("/paper/publish_release", self.handle_paper_publish_release),
+                web.post("/attendant/paper/publish_release", self.handle_paper_publish_release),
+                web.get("/paper/multi_corpus_search", self.handle_paper_multi_corpus_search),
+                web.get("/attendant/paper/multi_corpus_search", self.handle_paper_multi_corpus_search),
                 web.post(
                     "/paper/review_consistency", self.handle_paper_review_consistency
                 ),
@@ -2986,6 +2995,229 @@ class FoyerRouter:
             )
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-606] handle_paper_cite_selection failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_save_to_dna(self, request):
+        """[FEAT-662] POST /paper/save_to_dna — back-propagates certified card text to Kabal JSON."""
+        try:
+            payload = await request.json()
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            slug = (payload.get("slug") or payload.get("paper_id") or "resume").lower().strip()
+            card_id = payload.get("card_id")
+            text = payload.get("text", "").strip()
+
+            if not card_id or not text:
+                return web.json_response({"status": "error", "message": "Missing card_id or text"}, status=400)
+
+            kabal_path = Path(dev_lab_root) / "Portfolio_Dev" / "papers" / slug / f"{slug}_kabal.json"
+            if not kabal_path.exists():
+                return web.json_response({"status": "error", "message": f"Kabal file not found: {kabal_path}"}, status=404)
+
+            with open(kabal_path, "r", encoding="utf-8") as f:
+                kdata = json.load(f)
+
+            found = False
+            for card in kdata.get("cards", []):
+                if card.get("id") == card_id:
+                    if "origin" not in card:
+                        card["origin"] = {}
+                    if "synthesis" not in card:
+                        card["synthesis"] = {}
+                    if "metadata" not in card:
+                        card["metadata"] = {}
+                    card["origin"]["raw_text"] = text
+                    card["synthesis"]["summary"] = text
+                    card["metadata"]["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    found = True
+                    break
+
+            if not found:
+                return web.json_response({"status": "error", "message": f"Card {card_id} not found in {slug}_kabal.json"}, status=404)
+
+            kdata["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            atomic_write_json(kabal_path, kdata)
+            logger.info(f"[FOYER] [FEAT-662] Saved certified card {card_id} to {kabal_path}")
+
+            return web.json_response({
+                "status": "success",
+                "card_id": card_id,
+                "slug": slug,
+                "message": f"Saved {card_id} to {slug}_kabal.json"
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-662] handle_paper_save_to_dna failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_snapshot_tag(self, request):
+        """[FEAT-663] POST /paper/snapshot_tag — records a named snapshot tag into the spine manifest."""
+        try:
+            payload = await request.json()
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            slug = (payload.get("slug") or "resume").lower().strip()
+            tag = payload.get("tag", "").strip()
+            description = payload.get("description", "Snapshot tag")
+
+            if not tag:
+                return web.json_response({"status": "error", "message": "Missing tag name"}, status=400)
+            if not tag.startswith("@"):
+                tag = f"@{tag}"
+
+            spine_path = Path(dev_lab_root) / "Portfolio_Dev" / "papers" / slug / f"{slug}_spine.json"
+            if not spine_path.exists():
+                return web.json_response({"status": "error", "message": f"Spine file not found: {spine_path}"}, status=404)
+
+            with open(spine_path, "r", encoding="utf-8") as f:
+                sdata = json.load(f)
+
+            node_ids = payload.get("node_ids") or [n["id"] for n in sdata.get("nodes", [])]
+            ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            if "tags" not in sdata:
+                sdata["tags"] = {}
+
+            sdata["tags"][tag] = {
+                "name": tag,
+                "description": description,
+                "created_at": ts,
+                "node_ids": node_ids,
+            }
+            sdata["active_tag"] = tag
+            sdata["updated_at"] = ts
+            atomic_write_json(spine_path, sdata)
+            logger.info(f"[FOYER] [FEAT-663] Recorded snapshot tag {tag} ({len(node_ids)} nodes) in {spine_path}")
+
+            return web.json_response({
+                "status": "success",
+                "slug": slug,
+                "tag": tag,
+                "node_count": len(node_ids),
+                "message": f"Recorded tag {tag} into {slug}_spine.json"
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-663] handle_paper_snapshot_tag failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_publish_release(self, request):
+        """[FEAT-663 / VIBE-017] POST /paper/publish_release — freezes an offline AST named release."""
+        try:
+            payload = await request.json()
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            slug = (payload.get("slug") or "resume").lower().strip()
+            release_name = payload.get("release_name", "").strip().lower()
+
+            if not release_name or release_name in ("v1", "default", "paper", "release"):
+                return web.json_response({
+                    "status": "error",
+                    "message": "Explicit release name required (default fallbacks like 'v1' are barred per VIBE-017)"
+                }, status=400)
+
+            clean_release = re.sub(r"[^a-z0-9_-]", "_", release_name)
+            if not clean_release.startswith(f"{slug}_"):
+                release_file_name = f"{slug}_{clean_release}.json"
+            else:
+                release_file_name = f"{clean_release}.json"
+
+            bundle_dir = Path(dev_lab_root) / "Portfolio_Dev" / "papers" / slug
+            target_path = bundle_dir / release_file_name
+
+            spine_path = bundle_dir / f"{slug}_spine.json"
+            kabal_path = bundle_dir / f"{slug}_kabal.json"
+
+            if not spine_path.exists() or not kabal_path.exists():
+                return web.json_response({"status": "error", "message": "Spine or Kabal missing"}, status=404)
+
+            with open(spine_path, "r", encoding="utf-8") as sf:
+                sdata = json.load(sf)
+            with open(kabal_path, "r", encoding="utf-8") as kf:
+                kdata = json.load(kf)
+
+            cards_dict = {c["id"]: c for c in kdata.get("cards", [])}
+            tag = payload.get("tag") or sdata.get("active_tag", "@master")
+            tag_info = sdata.get("tags", {}).get(tag, {})
+            node_ids = tag_info.get("node_ids", [n["id"] for n in sdata.get("nodes", [])])
+
+            frozen_ast = {
+                "slug": slug,
+                "release_name": release_file_name.replace(".json", ""),
+                "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "tag_source": tag,
+                "variable_prefix": kdata.get("variable_prefix", slug.upper()),
+                "title": kdata.get("title"),
+                "nodes": [cards_dict[nid] for nid in node_ids if nid in cards_dict],
+            }
+
+            atomic_write_json(target_path, frozen_ast)
+            logger.info(f"[FOYER] [FEAT-663] Published frozen release {release_file_name} ({len(frozen_ast['nodes'])} nodes)")
+
+            return web.json_response({
+                "status": "success",
+                "release_name": release_file_name,
+                "target_path": str(target_path),
+                "nodes_published": len(frozen_ast["nodes"]),
+                "message": f"Successfully published frozen release to {release_file_name}"
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-663] handle_paper_publish_release failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+    async def handle_paper_multi_corpus_search(self, request):
+        """[FEAT-664] GET /paper/multi_corpus_search?q=... — retrieves cards across Wisdom, Features, Philosophy, Gems, Kabals."""
+        try:
+            dev_lab_root = os.path.expanduser("~/Dev_Lab")
+            q = request.query.get("q", "").strip().lower()
+            limit = int(request.query.get("limit", "10"))
+            results = []
+
+            dna_dir = Path(dev_lab_root) / "Portfolio_Dev" / "dna"
+            for fname, domain in [("wisdom_data.json", "WIS"), ("inspiration_data.json", "INS"), ("vibe_data.json", "VIBE")]:
+                fpath = dna_dir / fname
+                if fpath.exists():
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for item in data:
+                            cid = item.get("id", "")
+                            txt = (cid + " " + str(item.get("synthesis", "")) + " " + str(item.get("origin", ""))).lower()
+                            if not q or q in txt:
+                                results.append({
+                                    "id": cid,
+                                    "domain": domain,
+                                    "title": (item.get("synthesis") or {}).get("title") or item.get("theme") or cid,
+                                    "summary": ((item.get("synthesis") or {}).get("narrative_context") or (item.get("origin") or {}).get("text", ""))[:140],
+                                })
+                                if len(results) >= limit * 2:
+                                    break
+                    except Exception:
+                        pass
+
+            papers_dir = Path(dev_lab_root) / "Portfolio_Dev" / "papers"
+            for kpath in papers_dir.glob("*/*_kabal.json"):
+                try:
+                    with open(kpath, "r", encoding="utf-8") as f:
+                        kdata = json.load(f)
+                    for card in kdata.get("cards", []):
+                        cid = card.get("id", "")
+                        txt = (cid + " " + str(card.get("synthesis", "")) + " " + str(card.get("origin", ""))).lower()
+                        if not q or q in txt:
+                            results.append({
+                                "id": cid,
+                                "domain": "KABAL",
+                                "title": (card.get("synthesis") or {}).get("title") or cid,
+                                "summary": ((card.get("synthesis") or {}).get("summary") or (card.get("origin") or {}).get("raw_text", ""))[:140],
+                            })
+                            if len(results) >= limit * 3:
+                                break
+                except Exception:
+                    pass
+
+            return web.json_response({
+                "status": "success",
+                "query": q,
+                "count": min(len(results), limit),
+                "results": results[:limit]
+            })
+        except Exception as e:
+            logger.error(f"[FOYER] [FEAT-664] handle_paper_multi_corpus_search failed: {e}")
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def handle_dna_decompose_draft(self, request):
