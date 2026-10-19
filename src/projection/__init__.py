@@ -31,7 +31,14 @@ retrieval). Hermetic by default -- no filesystem, network or LLM dependency in
 the core import path.
 """
 
-from .bones import DocumentAST, DocumentNode, extract_bones, reconcile_diff
+from .ast_reconciliation import (
+    DocumentAST,
+    DocumentNode,
+    SpineManager,
+    extract_bones,
+    normalize_ast,
+    reconcile_diff,
+)
 from .engine import ProjectionEngine
 from .lenses import POWER_VERBS, WEAK_OPENINGS, craft_lens, validate_lens_schema
 from .recommender import RecommendationRouter, TopicAlignmentMatrix

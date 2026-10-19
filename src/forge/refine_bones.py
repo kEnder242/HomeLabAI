@@ -3,6 +3,7 @@
 """
 Deep-Connect Epoch v2 (Stage 2: Surgical Refinement)
 [FEAT-202] Decoupled Extraction Pipeline
+[DEPRECATED - SPR-107.0] Superseded by kabal decomposed extraction and projection.ast_reconciliation.
 
 This script performs the "Refinement" phase:
 1. Reading `expertise/raw_stage_1.jsonl`.

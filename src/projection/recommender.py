@@ -37,7 +37,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from .bones import extract_bones
+from .ast_reconciliation import extract_bones
 
 __all__ = [
     "BLEND_ROUTE_PATH",
