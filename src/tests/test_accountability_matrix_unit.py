@@ -73,3 +73,34 @@ def test_evaluate_nightly_accountability_empty_payload_fails_fast():
     assert digest["total_checks"] == 6
     assert len(digest["discrepancies"]) >= 4
 
+
+def test_evaluate_nightly_accountability_quiescent_saturation_pass():
+    """[Story 106.3] Verify that a quiescent night on saturated fresh archives passes cleanly."""
+    telemetry = {
+        "gpu_power_clamped": True,
+        "vram_quiesced": True,
+        "lora_status": "COMPLETED",
+        "adapters_trained": [
+            "cli_voice_v1",
+            "lab_history_v1",
+            "triage_v1",
+            "reviewer_v1",
+        ],
+        "re_ignited": True,
+        "dream_telemetry": {
+            "status": "SATURATED",
+            "turns_synthesized": 0,
+            "items_refined": 0,
+            "archive_fresh": True,
+        },
+        "round_table_probe": {
+            "status": "DECOUPLED",
+        },
+    }
+
+    digest = evaluate_nightly_accountability(telemetry, write_to_disk=False)
+    assert digest["overall_status"] == "PASS"
+    assert digest["passed_checks"] == digest["total_checks"]
+    assert len(digest["discrepancies"]) == 0
+
+

@@ -30,7 +30,10 @@ import subprocess
 import sys
 import time
 
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
 import requests
 
 logging.basicConfig(
@@ -302,7 +305,7 @@ def record_nightly_completion(lock_fd, status="COMPLETED"):
                     "status": status,
                     "winner_pid": os.getpid(),
                     "last_completed_timestamp": (
-                        time.time() if status == "COMPLETED" else 0
+                        time.time() if status in ("COMPLETED", "DEGRADED") else 0
                     ),
                     "completed_iso": datetime.datetime.now(
                         datetime.timezone.utc
@@ -925,17 +928,20 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
     if not reignited:
         discrepancies.append("Foyer failed to return to OPERATIONAL after training.")
 
-    # Check 5: Accountable Dreaming (BKM-062 Zero-Work Guard)
+    # Check 5: Accountable Dreaming (BKM-062 Zero-Work Guard / Story 106.3)
     dream_telemetry = telemetry_dict.get("dream_telemetry", {})
     dream_status = dream_telemetry.get("status", "FAIL")
     dream_turns = dream_telemetry.get("turns_synthesized", 0)
     dream_refined = dream_telemetry.get("items_refined", 0)
-    dream_ok = (dream_status == "PASS") and (dream_turns > 0 or dream_refined > 0)
+    archive_fresh = bool(dream_telemetry.get("archive_fresh", False))
+    dream_ok = (dream_status in ("PASS", "SATURATED")) and (
+        (dream_turns > 0 or dream_refined > 0) or archive_fresh
+    )
     checks.append(
         {
             "name": "Accountable Subconscious Dreaming",
             "passed": dream_ok,
-            "detail": f"Turns: {dream_turns}, Refined: {dream_refined}, Status: {dream_status}",
+            "detail": f"Turns: {dream_turns}, Refined: {dream_refined}, Status: {dream_status}" + (", Archive Fresh" if archive_fresh else ""),
         }
     )
     if not dream_ok:

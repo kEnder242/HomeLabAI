@@ -486,10 +486,69 @@ def build_master_curriculum(
     return dest_path
 
 
+def build_curated_gems_dataset() -> int:
+    """
+    [Story 106.11 / FEAT-160]
+    Extracts high-impact (impact_level >= 3) and saturated (refinement_level >= 2) gems
+    from focal_ledger.json and latest_synthesis_gems.json into training_data.jsonl.
+    """
+    field_notes_data = Path("/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data")
+    gem_records = []
+
+    # 1. Curated Bedrock Gems from Focal Ledger
+    focal_file = field_notes_data / "focal_ledger.json"
+    if focal_file.exists():
+        try:
+            with open(focal_file, "r", encoding="utf-8") as f:
+                fdata = json.load(f)
+            for g in fdata.get("focal_gems", []):
+                summary = g.get("summary", "")
+                evidence = g.get("evidence", "")
+                era = g.get("event_era") or g.get("date", "Archive")
+                gem_records.append({
+                    "instruction": f"Recall historical technical milestones and validation errata for {era}: {summary}",
+                    "input": "",
+                    "output": f"Incident Era: {era}\nTechnical Summary: {summary}\nValidation Evidence: {evidence}",
+                })
+        except Exception as e:
+            print(f"Error reading focal_ledger: {e}")
+
+    # 2. Latest Synthesis Gems (Impact >= 3 or Rank >= 4)
+    latest_file = field_notes_data / "latest_synthesis_gems.json"
+    if latest_file.exists():
+        try:
+            with open(latest_file, "r", encoding="utf-8") as f:
+                ldata = json.load(f)
+            raw_gems = ldata.get("gems", []) if isinstance(ldata, dict) else ldata
+            for g in raw_gems:
+                imp = g.get("impact_level", 1) or 1
+                ref = g.get("refinement_level", 0) or 0
+                rank = g.get("rank", 1) or 1
+                if imp >= 3 or rank >= 4:
+                    summary = g.get("summary", "")
+                    evidence = g.get("evidence", "")
+                    era = g.get("event_era") or g.get("date", "Archive")
+                    gem_records.append({
+                        "instruction": f"Explain platform errata and subsystem behavior for {era}: {summary}",
+                        "input": "",
+                        "output": f"Platform Era: {era}\nBehavior: {summary}\nEvidence: {evidence}",
+                    })
+        except Exception as e:
+            print(f"Error reading latest_synthesis_gems: {e}")
+
+    if gem_records:
+        GEMS_OUT.parent.mkdir(parents=True, exist_ok=True)
+        with open(GEMS_OUT, "w", encoding="utf-8") as f:
+            f.writelines(json.dumps(r) + "\n" for r in gem_records)
+        print(f"✅ Curated Gems Forge Ready: {len(gem_records)} pairs -> {GEMS_OUT}")
+    return len(gem_records)
+
+
 if __name__ == "__main__":
     EXPERTISE_DIR.mkdir(parents=True, exist_ok=True)
     build_history_dataset()
     build_voice_dataset()
     build_sentinel_dataset()
     build_dna_polymorphic_dataset()
+    build_curated_gems_dataset()
     build_master_curriculum(target_size=1000)
