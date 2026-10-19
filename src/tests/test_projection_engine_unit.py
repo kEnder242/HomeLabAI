@@ -1274,3 +1274,15 @@ class TestEndToEnd:
         closing = reconcile_diff({"bones": result["bones"]}, {"bones": result["candidate_bones"]})
         assert closing["is_reconciled"] is False
         assert closing["flags_added_total"] == result["total_review_flags"]
+
+    def test_ast_reconciliation_module_parity(self, legacy_ast):
+        """[SPR-107.0] Verify ast_reconciliation canonical exports match legacy bones alias."""
+        import projection.ast_reconciliation as ar
+        import projection.bones as pb
+
+        assert ar.BONE_SCHEMA_VERSION == pb.BONE_SCHEMA_VERSION
+        assert ar.DocumentAST is pb.DocumentAST
+        assert ar.extract_bones is pb.extract_bones
+        assert ar.reconcile_diff is pb.reconcile_diff
+        assert ar.normalize_ast is pb.normalize_ast
+

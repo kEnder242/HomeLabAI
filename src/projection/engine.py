@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .bones import DocumentAST, extract_bones, normalize_ast, reconcile_diff
+from .ast_reconciliation import DocumentAST, extract_bones, normalize_ast, reconcile_diff
 from .lenses import (
     DEFAULT_DETECTOR_BUDGET,
     POWER_VERBS,
