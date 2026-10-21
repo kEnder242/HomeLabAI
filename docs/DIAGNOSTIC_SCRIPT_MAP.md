@@ -21,6 +21,7 @@ These tools provide modern out-of-band accountability grading, synthetic round t
 | **RAG Multi-Stage** | `src/test_rag_logic.py` | **ACTIVE** | Verifies Discovery (ChromaDB) -> Acquisition (Filesystem) path. |
 | **Visibility Truth** | `src/tests/test_visibility_truth.py`| **ACTIVE** | Playwright auditor verifying 100% transparency of `<thought>` tags in DOM. |
 | **Uber 5x5 Hand-Crank**| `src/debug/uber_5x5_hand_crank.py`| **STRESS** | **ULTIMATE.** 75-min gauntlet testing H2->Operational natural drift. |
+| **Empirical Step Harness** | `src/debug/test_empirical_step_harness.py` | **ACTIVE** | [FEAT-668 / BKM-088] Isolated deterministic micro-harness for empirical prompt shootouts. |
 
 ---
 
