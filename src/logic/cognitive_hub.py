@@ -2398,7 +2398,8 @@ class CognitiveHub:
                 technical_summary=critic_res.reasoning,
             )
             if chat_delivery:
-                self.turn_thought_trace["critique"] = chat_delivery
+                self.turn_thought_trace["audit"] = chat_delivery  # [STORY 108.2] Primary entailment-audit key
+                self.turn_thought_trace["critique"] = chat_delivery  # [STORY 108.2] Backward-compatible alias
                 await self.execute_dispatch(
                     chat_delivery,
                     "Pinky (Coherence Critic)",
@@ -3271,7 +3272,7 @@ class CognitiveHub:
         )
         return pinky_tldr
 
-    async def step_grounding_critic(
+    async def step_entailment_audit(
         self,
         query: str,
         strategic_source: str,
@@ -3281,7 +3282,7 @@ class CognitiveHub:
         shutdown_event=None,
         request_id: str = "default",
     ) -> str:
-        """[FEAT-227 / FEAT-470 / BKM-083 Stage 3.4] Pinky Grounding Critic: evaluates strategic synthesis against evidence."""
+        """[FEAT-227 / FEAT-470 / BKM-083 Stage 3.4] Pinky Entailment Audit: evaluates strategic synthesis against evidence."""
         t_crit_start = time.perf_counter()
         await self.evaluate_grounding(
             strategic_source,
@@ -3295,7 +3296,10 @@ class CognitiveHub:
         self._last_thought_duration = curr_dt + max(
             0.001, round(time.perf_counter() - t_crit_start, 3)
         )
-        return self.turn_thought_trace.get("critique", "")
+        return self.turn_thought_trace.get("audit") or self.turn_thought_trace.get("critique", "")  # [STORY 108.2]
+
+    # [STORY 108.2] Backward-compatible alias: step_grounding_critic points to step_entailment_audit.
+    step_grounding_critic = step_entailment_audit
 
     async def _run_two_mice_handover(
         self,
@@ -3316,9 +3320,10 @@ class CognitiveHub:
         - Stage 3.3 (Pinky - Left Console / TTS): Pinky receives the synthesis,
           acknowledges Brain/Deep Thought, and streams a 2-sentence conversational
           TL;DR to ``channel="pinky"`` / ``source="Pinky (Voice)"``.
-        - Stage 3.4 (Pinky - Coherence Critic) [FEAT-227 / FEAT-470]: Pinky evaluates
-          the strategic synthesis against the underlying evidence and records
-          the grounding scorecard.
+        - Stage 3.4 (Pinky - Out-of-Band Entailment Audit) [FEAT-227 / FEAT-470 / STORY 108.2]: Pinky evaluates
+          the strategic synthesis against the underlying evidence via a non-blocking
+          asyncio.create_task so her conversational delivery to Jason is never gated
+          on the audit completing.
 
         Returns ``True`` when the handover ran; ``False`` when it is not
         possible (missing brains/pinky resident, or interest below the
@@ -3455,19 +3460,26 @@ class CognitiveHub:
             query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # Stage 3.4: Pinky Grounding Critic [FEAT-227 / FEAT-470 / Story 105.15]
+        # [STORY 108.2] Decoupled Out-of-Band Entailment Audit: schedule step_entailment_audit
+        # on Deep Thought as a non-blocking asyncio.create_task so Pinky streams her
+        # conversational delivery to Jason immediately without waiting for the audit.
         strategic_response = dt_synthesis or brain_grounding
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
         if strategic_response and boosted_interest >= 0.35:
-            await self.step_grounding_critic(
-                query,
-                strategic_source,
-                strategic_response,
-                focus_context,
-                boosted_interest,
-                shutdown_event=shutdown_event,
-                request_id=request_id,
-            )
+            try:
+                asyncio.create_task(
+                    self.step_entailment_audit(
+                        query,
+                        strategic_source,
+                        strategic_response,
+                        focus_context,
+                        boosted_interest,
+                        shutdown_event=shutdown_event,
+                        request_id=request_id,
+                    )
+                )
+            except Exception as e:
+                logging.error(f"[HUB] Failed to schedule out-of-band entailment audit: {e}")
 
         logging.info(
             f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_grounding)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
