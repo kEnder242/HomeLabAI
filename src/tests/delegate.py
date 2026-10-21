@@ -247,8 +247,84 @@ def _sig_term_handler(signum, frame):
     sys.exit(1)
 
 
+_CURRENT_DISPATCH_CONTEXT = {}
+
+
+def _sig_oracle_handler(signum, frame):
+    """[FEAT-656 / BKM-080] Immediate synchronous clean-kill on Atlas ask_oracle escalation."""
+    cache_dir = os.path.expanduser("~/Dev_Lab/.jit_cache")
+    req_file = os.path.join(cache_dir, "oracle_request.json")
+    paused_file = os.path.join(cache_dir, "paused_session.json")
+
+    o_question = "Architectural guidance requested"
+    o_hypo = ""
+    o_code = ""
+    if os.path.exists(req_file):
+        try:
+            with open(req_file, "r", encoding="utf-8") as f:
+                rdata = json.load(f)
+                o_question = rdata.get("question", o_question)
+                o_hypo = rdata.get("current_hypothesis", "")
+                o_code = rdata.get("code_inspected", "")
+        except Exception:
+            pass
+
+    global _ACTIVE_SESSION_ID, _CURRENT_DISPATCH_CONTEXT
+    ctx = _CURRENT_DISPATCH_CONTEXT or {}
+    paused_data = {
+        "session_id": _ACTIVE_SESSION_ID,
+        "story_num": ctx.get("story_num", "ORACLE"),
+        "title": ctx.get("title", ""),
+        "reference_file": ctx.get("reference_file", ""),
+        "target_files": ctx.get("target_files", ""),
+        "details": ctx.get("details", ""),
+        "verification": ctx.get("verification", ""),
+        "sprint_num": ctx.get("sprint_num", 108),
+        "target_dir": ctx.get("target_dir"),
+        "mode": ctx.get("mode", "local"),
+        "agent": ctx.get("agent", "atlas"),
+        "local_only": ctx.get("local_only", True),
+        "cloud_only": ctx.get("cloud_only", False),
+        "profile": ctx.get("profile", "auto"),
+        "question": o_question,
+        "hypothesis": o_hypo,
+        "code_inspected": o_code,
+    }
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(paused_file, "w", encoding="utf-8") as pf:
+            json.dump(paused_data, pf, indent=2)
+    except Exception:
+        pass
+
+    log_step(
+        paused_data.get("story_num", "ORACLE"),
+        "ORACLE_CONSULTATION_REQUESTED",
+        f"Atlas escalated to Tier 1 Oracle (AGY): {o_question}",
+        severity="CRITICAL",
+    )
+    print("\n" + "=" * 80, flush=True)
+    print(
+        f"🔮 [ORACLE CONSULTATION — DIRECT ATLAS ESCALATION ON STORY {paused_data.get('story_num', '')}]",
+        flush=True,
+    )
+    print("=" * 80, flush=True)
+    print(f"QUESTION: {o_question}", flush=True)
+    if o_hypo:
+        print(f"HYPOTHESIS: {o_hypo}", flush=True)
+    if o_code:
+        print(f"CODE INSPECTED: {o_code}", flush=True)
+    print("\nTo resume with Oracle guidance, simply run:", flush=True)
+    print('  python3 HomeLabAI/src/tests/delegate.py --feedback "<guidance>"', flush=True)
+    print("=" * 80 + "\n", flush=True)
+
+    _cleanup_active_session()
+    sys.exit(3)
+
+
 signal.signal(signal.SIGINT, _sig_term_handler)
 signal.signal(signal.SIGTERM, _sig_term_handler)
+signal.signal(signal.SIGUSR1, _sig_oracle_handler)
 atexit.register(_cleanup_active_session)
 
 # Automatic startup orphan sweep on port 4097
@@ -1443,6 +1519,22 @@ def delegate(
     _target_display = target_files if target_files else reference_file
     live_gate_status = "UNSPECIFIED"
     live_gate_details = ""
+    global _CURRENT_DISPATCH_CONTEXT
+    _CURRENT_DISPATCH_CONTEXT = {
+        "story_num": str(story_num),
+        "title": title,
+        "reference_file": reference_file,
+        "target_files": target_files,
+        "details": details,
+        "verification": verification,
+        "sprint_num": sprint_num,
+        "target_dir": target_dir,
+        "mode": mode,
+        "agent": agent,
+        "local_only": local_only,
+        "cloud_only": cloud_only,
+        "profile": profile,
+    }
     log_step(
         story_num,
         "START",
@@ -1887,6 +1979,15 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             hb_tick += 1
             elapsed = int(time.time() - start_time)
 
+            # [FEAT-656 / BKM-080 Fallback] Immediate clean-kill if oracle_request.json appeared on disk
+            oracle_file = os.path.expanduser("~/Dev_Lab/.jit_cache/oracle_request.json")
+            if os.path.exists(oracle_file):
+                try:
+                    if time.time() - os.path.getmtime(oracle_file) < 120:
+                        _sig_oracle_handler(signal.SIGUSR1, None)
+                except Exception:
+                    pass
+
             # [FEAT-512 / BKM-047] Smart Heartbeat Polling & Live Telemetry Inspector
             try:
                 poll_req = urllib.request.Request(
@@ -2171,8 +2272,15 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             _cleanup_active_session()
             sys.exit(1)
 
+        raw_tp = None
+        if isinstance(post_result, dict):
+            timing = post_result.get("info", {}).get("timing") or post_result.get("info", {}).get("time") or {}
+            gen_s = timing.get("generation") or timing.get("eval_duration") or timing.get("eval_time")
+            if gen_s and float(gen_s) > 0 and isinstance(tokens, dict) and tokens.get("output", 0) > 0:
+                raw_tp = round(float(tokens["output"]) / float(gen_s), 2)
+
         record_swarm_telemetry(
-            story_num, sprint_num, title, model_obj, duration, tokens, len(full_text), start_time=start_time
+            story_num, sprint_num, title, model_obj, duration, tokens, len(full_text), start_time=start_time, raw_tp=raw_tp
         )
 
         reflection_text = ""
@@ -2522,6 +2630,14 @@ if __name__ == "__main__":
     # [FEAT-656 / BKM-080] Oracle & Interactive Session Resume Handler
     feedback_text = args.feedback or args.answer
     if feedback_text or args.resume:
+        # Clean up consumed oracle request file so it does not re-trigger kill
+        old_oracle_req = os.path.expanduser("~/Dev_Lab/.jit_cache/oracle_request.json")
+        if os.path.exists(old_oracle_req):
+            try:
+                os.remove(old_oracle_req)
+            except Exception:
+                pass
+
         paused_data = {}
         paused_file = os.path.expanduser("~/Dev_Lab/.jit_cache/paused_session.json")
         if os.path.exists(paused_file):

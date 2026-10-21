@@ -157,8 +157,10 @@ def sanitize_spoken_dialogue(text: str) -> str:
         sanitized,
         flags=re.IGNORECASE,
     )
-    # Collapse excess whitespace
-    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    # Strip excess horizontal whitespace on individual lines, preserving newlines
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in sanitized.splitlines()]
+    # Collapse 3+ consecutive newlines to at most 2 (standard paragraph break)
+    sanitized = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
     return sanitized
 
 
@@ -244,10 +246,13 @@ _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
     "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
 
-# [FEAT-660] Overhearing prompt: When Jason addresses Brain, Pinky alerts Brain rather than answering on his behalf
+# [FEAT-660] Overhearing prompt: When Jason addresses Brain, Pinky alerts Brain rather than answering on his behalf, while extracting search terms for Brain's RAG retrieval
 _HYDE_OVERHEARING_PROMPT = (
     "You are Pinky, the intuitive and lively lab mouse. Jason just asked The Brain a question.\n"
-    "Respond with a structured JSON object containing 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him.\n"
+    "Respond with a structured JSON object containing:\n"
+    "1. 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him (e.g. 'Narf! Brain, Jason is asking for you!').\n"
+    "2. 'search_terms': 3 to 6 concise technical keywords and era anchors to retrieve relevant historical records or telemetry for Brain.\n"
+    "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
 
 
@@ -504,6 +509,31 @@ def format_pacing_line(node_name: str, interest: float) -> str:
     return f"[BUDGET]: Headroom ceiling is {ceiling} tokens. Answer concisely within this budget; do not add conversational fluff or filler."
 
 
+def format_rag_chunks_for_prompt(raw_context: str) -> str:
+    """[FEAT-666] Format RAG context into numbered [CHUNK-N] keys for Brain's evidence filter.
+
+    Pure function — no I/O. Splits the raw ChromaDB archive context blob into
+    candidate chunks and emits 1-indexed [CHUNK-N] keys so Brain can reference
+    discrete, line-by-line evidence without re-typing it.
+    """
+    if not raw_context or not raw_context.strip():
+        return "[ZERO_CONTEXT]: No archive record retrieved."
+    if "[ZERO_CONTEXT]" in raw_context:
+        return raw_context.strip()
+    if "[CHUNK-" in raw_context:
+        return raw_context  # already formatted
+    # Split on explicit '---' delimiters first, then DNA-collection tags, then double-newline.
+    chunks = re.split(r'\n\s*-{3,}\s*\n', raw_context)
+    if len(chunks) <= 1:
+        dna_tag = r'\n(?=\[(?:FEATURE_DNA|BEHAVIORAL_DNA|LONG_TERM_WISDOM|DOC|INFRA|MULTI_COLLECTION))'
+        tagged = re.split(dna_tag, raw_context)
+        chunks = tagged if len(tagged) > 1 else re.split(r'\n\s*\n', raw_context)
+    chunks = [c.strip() for c in chunks if c and c.strip()]
+    if not chunks:
+        return "[ZERO_CONTEXT]: No archive record retrieved."
+    return "".join(f"[CHUNK-{i}]:\n{c}\n" for i, c in enumerate(chunks, 1))
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -563,24 +593,25 @@ def build_two_mice_stage_prompt(
     )
 
     if stage == 1:
-        historical = (
-            context.strip()
-            if context
-            else "[ZERO_CONTEXT]: No archive record retrieved."
-        )
+        historical = format_rag_chunks_for_prompt(context)
         pinky_block = f"[PINKY_STANCE]: {pinky_take.strip()}\n" if pinky_take and pinky_take.strip() else ""
 
         return (
             section
-            + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper, Subconscious Intuition node, and Narrative Reality Steerer.\n"
+            + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper — a line-by-line EVIDENCE FILTER, not an essayist.\n"
             "Jason talked to the lab.\n"
             f"{pinky_block}"
-            "Your task is strictly evidentiary inspection as The Brain in a single voice:\n\n"
-            "1. Review candidate chunks in <historical_record> and prune irrelevant or tangential chunks entirely, steering focus to cohesive bedrock truth.\n"
-            "2. From surviving verified candidates, forward the cohesive bedrock DNA text verbatim and append high-leverage '💡 Curator Note:' annotations to explain why candidates connect with Jason's query and highlight synergistic architectural scars.\n"
-            "3. Respond to Jason's query and Pinky's stance in a focused, cynical, and concise manner as The Brain in a single voice. Do not roleplay Pinky or generate a multi-actor script. Mention your context and role only when it is part of the conversation.\n"
-            "4. Declare your curation: When technical records are verified, signal which records you are passing to Deep Thought to provide pure technical signal. For casual banter or greetings with no technical records, do NOT pass records to Deep Thought; simply reply directly to Jason in character and emit '<damp_interest>' to conserve fuel.\n"
-            "5. Modulate council interest [FEAT-238]: If candidate evidence warrants deeper council deliberation, emit '<boost_interest>'. If evidence is thin, irrelevant, or the turn is casual banter, emit '<damp_interest>' to conserve fuel.\n\n"
+            "[GATEKEEPER SCOPE]: Each candidate archive record is keyed [CHUNK-N]. Do NOT re-type, summarize, or paraphrase any chunk.\n"
+            "Your job is to evaluate each [CHUNK-N] line-by-line against Jason's query and decide KEEP or DROP.\n\n"
+            "Emit EXACTLY this structure:\n"
+            "[ANALYSIS]\n"
+            "- CHUNK-1: KEEP/DROP — <one-line reason>\n"
+            "- CHUNK-2: KEEP/DROP — <one-line reason>\n"
+            "[BEDROCK SELECTION]\n"
+            "- CHUNK-1: KEEP\n"
+            "- CHUNK-2: DROP\n"
+            "Rules: List every [CHUNK-N] you evaluated. In [BEDROCK SELECTION] mark only the chunks you KEEP. "
+            "Your selection is parsed mechanically; do not add prose outside these two blocks.\n\n"
             f"[USER_QUERY]: {effective_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
@@ -2032,7 +2063,10 @@ class CognitiveHub:
             d_brain = getattr(self, "_last_two_mice_brain_duration", 0.0)
             d_thought = getattr(self, "_last_thought_duration", 0.0)
             d_pinky = getattr(self, "_last_two_mice_pinky_duration", 0.0)
-            t_brain_elapsed = max(0.001, round(t_triage_elapsed + d_brain, 3))
+            d_hyde = getattr(self, "_last_hyde_duration", 0.0)
+            # [Story 107.16] Physical Stopwatch: Decouple Pinky elapsed from triage elapsed
+            t_pinky_elapsed = max(0.001, round(t_triage_elapsed + max(d_hyde, 0.02), 3))
+            t_brain_elapsed = max(0.001, round(t_pinky_elapsed + d_brain, 3))
             t_oracle_elapsed = max(0.001, round(t_brain_elapsed + d_thought, 3))
             t_judgment_elapsed = max(0.001, round(t_oracle_elapsed + d_pinky, 3))
         else:
@@ -2526,17 +2560,31 @@ class CognitiveHub:
                         "Deliver your initial lively spoken take directly to Jason in your authentic voice."
                     )
                     triage_context = f"[TRIAGE_INTENT]: {triage_result.get('inferred_intent', '')}\n[QUERY]: {query}"
-                is_historical = (
-                    vibe == "HISTORICAL"
-                    or "historical" in domain
-                    or "career" in domain
-                )
+                # [Story 107.18] Additive Waterfall HyDE: Base prompt ALWAYS runs
+                active_hyde_prompt = _HYDE_SYNTHESIS_PROMPT_DEFAULT
+
+                # Additive Layer 1: Overhearing Directive
                 if target == "BRAIN":
-                    active_hyde_prompt = _HYDE_OVERHEARING_PROMPT
-                elif is_historical:
-                    active_hyde_prompt = HYDE_SYNTHESIS_PROMPT
-                else:
-                    active_hyde_prompt = _HYDE_SYNTHESIS_PROMPT_DEFAULT
+                    active_hyde_prompt += (
+                        "\n[OVERHEARING_DIRECTIVE]: Jason addressed The Brain directly. In 'spoken_take', "
+                        "alert Brain in character rather than answering on his behalf (e.g. 'Narf! Brain, Jason is asking for you!')."
+                    )
+
+                # Additive Layer 2: Domain/Era Guidance (Consuming triage directly as a data type)
+                t_domain = str(triage_result.get("domain", "")).lower()
+                t_vibe = str(triage_result.get("vibe", "")).upper()
+                if t_domain in ("lab_history", "career") or t_vibe == "HISTORICAL":
+                    active_hyde_prompt += (
+                        "\n[ERA_INDEXING_DIRECTIVE]: In 'search_terms', extract specific historical project names, "
+                        "years (2005-2025), and system era markers to ground Brain's archive search."
+                    )
+                elif t_domain in ("exp_tlm", "infra", "telemetry"):
+                    active_hyde_prompt += (
+                        "\n[TELEMETRY_INDEXING_DIRECTIVE]: In 'search_terms', extract hardware telemetry signals, "
+                        "registers, and silicon vitals."
+                    )
+
+                t_pinky_gen_start = time.perf_counter()
                 pinky_hyde = ""
                 async for token in self._process_node_stream(
                     "pinky",
@@ -2553,6 +2601,7 @@ class CognitiveHub:
                     request_id=request_id,        # [FEAT-640] Forward explicit turn request ID
                 ):
                     pinky_hyde += token
+                self._last_hyde_duration = max(0.001, round(time.perf_counter() - t_pinky_gen_start, 3))
 
                 raw_hyde = pinky_hyde.strip()
                 spoken_take = ""
@@ -3066,30 +3115,20 @@ class CognitiveHub:
             max_tokens=brain_budget,
         ):
             brain_grounding += token
+            if shutdown_event and shutdown_event.is_set():
+                break
+        if self.broadcast:
             await self.broadcast(
                 build_two_mice_stream_packet(
                     source=TWO_MICE_BRAIN_SOURCE,
                     channel=TWO_MICE_BRAIN_CHANNEL,
                     console=TWO_MICE_BRAIN_CONSOLE,
-                    token=token,
-                    final=False,
+                    token=brain_grounding,
+                    final=True,
                     request_id=request_id,
                     interest=self.current_interest,
                 )
             )
-            if shutdown_event and shutdown_event.is_set():
-                break
-        await self.broadcast(
-            build_two_mice_stream_packet(
-                source=TWO_MICE_BRAIN_SOURCE,
-                channel=TWO_MICE_BRAIN_CHANNEL,
-                console=TWO_MICE_BRAIN_CONSOLE,
-                token="",
-                final=True,
-                request_id=request_id,
-                interest=self.current_interest,
-            )
-        )
         self._last_two_mice_brain_duration = max(
             0.001, round(time.perf_counter() - t_tm_brain_start, 3)
         )
@@ -3137,6 +3176,7 @@ class CognitiveHub:
                 f"{dt_pacing}\n"
                 "Synthesize the architectural reality in high-authority engineering prose. "
                 "Find things consistent with Jason's query and the consensus of the lab mice. "
+                "Weigh against Pinky's take and Brain's grounding. "
                 "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
@@ -3153,30 +3193,20 @@ class CognitiveHub:
                 max_tokens=dt_budget,
             ):
                 dt_synthesis += token
+                if shutdown_event and shutdown_event.is_set():
+                    break
+            if self.broadcast and dt_synthesis:
                 await self.broadcast(
                     build_two_mice_stream_packet(
                         source="Deep Thought (Strategy)",
                         channel="insight",
                         console="center",
-                        token=token,
-                        final=False,
+                        token=dt_synthesis,
+                        final=True,
                         request_id=request_id,
                         interest=self.current_interest,
                     )
                 )
-                if shutdown_event and shutdown_event.is_set():
-                    break
-            await self.broadcast(
-                build_two_mice_stream_packet(
-                    source="Deep Thought (Strategy)",
-                    channel="insight",
-                    console="center",
-                    token="",
-                    final=True,
-                    request_id=request_id,
-                    interest=self.current_interest,
-                )
-            )
             self._last_thought_duration = max(
                 0.001, round(time.perf_counter() - t_dt_start, 3)
             )
@@ -3219,30 +3249,20 @@ class CognitiveHub:
         ):
             pinky_stream_count += 1
             pinky_tldr += token
+            if shutdown_event and shutdown_event.is_set():
+                break
+        if self.broadcast:
             await self.broadcast(
                 build_two_mice_stream_packet(
                     source=TWO_MICE_PINKY_SOURCE,
                     channel=TWO_MICE_PINKY_CHANNEL,
                     console=TWO_MICE_PINKY_CONSOLE,
-                    token=token,
-                    final=False,
+                    token=pinky_tldr,
+                    final=True,
                     request_id=request_id,
                     interest=self.current_interest,
                 )
             )
-            if shutdown_event and shutdown_event.is_set():
-                break
-        await self.broadcast(
-            build_two_mice_stream_packet(
-                source=TWO_MICE_PINKY_SOURCE,
-                channel=TWO_MICE_PINKY_CHANNEL,
-                console=TWO_MICE_PINKY_CONSOLE,
-                token="",
-                final=True,
-                request_id=request_id,
-                interest=self.current_interest,
-            )
-        )
         self._last_two_mice_pinky_duration = max(
             0.001, round(time.perf_counter() - t_tm_pinky_start, 3)
         )
@@ -3332,30 +3352,37 @@ class CognitiveHub:
             query, focus_context, gate_interest, pinky_take=pinky_take, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # [STORY 105.15 / FEAT-238 / FEAT-659] Dynamic Boost / Damp Check & Dual-Channel Evidential Accounting
-        boosted_interest = gate_interest
-        if "<boost_interest>" in brain_grounding or "<upvote>" in brain_grounding:
-            boosted_interest = min(1.0, gate_interest + 0.20)
-            logging.info(
-                f"[HUB] [FEAT-238] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}"
+        # [FEAT-666] Mechanical Evidential Moat (BKM-061 Oracle Hardened)
+        # [BKM-015:APPROVED_REGEX] Mechanical chunk ID key extraction
+        moat_pattern = re.compile(r'(?:\[|\b)CHUNK[-_\s]*(\d+)(?:\]|\b)[:\s]*(KEEP|DROP)')
+        formatted_context = format_rag_chunks_for_prompt(focus_context)
+        candidate_count = len(re.findall(r'^\[CHUNK-\d+\]:', formatted_context, flags=re.MULTILINE))
+        if candidate_count == 0 and (not focus_context.strip() or "[ZERO_CONTEXT]" in formatted_context):
+            candidate_count = 0
+        kept_ids = [int(m.group(1)) for m in moat_pattern.finditer(brain_grounding or "") if m.group(2).upper() == "KEEP"]
+        kept_count = len(kept_ids)
+        bedrock_payload = ""
+        if kept_ids:
+            pristine_chunks = {}
+            for cm in re.finditer(r'^\[CHUNK-(\d+)\]:\s*\n(.*?)(?=\n\[CHUNK-\d+\]:|\Z)', formatted_context, flags=re.MULTILINE | re.DOTALL):
+                pristine_chunks[int(cm.group(1))] = cm.group(2).strip()
+            kept_chunks = [pristine_chunks[k] for k in sorted(set(kept_ids)) if k in pristine_chunks]
+            bedrock_payload = "\n\n".join(kept_chunks)
+            brain_grounding = (
+                f"{brain_grounding}\n[BEDROCK_PAYLOAD]:\n{bedrock_payload}"
+                if bedrock_payload
+                else brain_grounding
             )
-        elif "<damp_interest>" in brain_grounding or "<downvote>" in brain_grounding:
-            boosted_interest = max(0.0, gate_interest - 0.25)
-            logging.info(
-                f"[HUB] [FEAT-238] Council of Hemispheres: Brain damped interest from {gate_interest:.2f} to {boosted_interest:.2f}"
-            )
-        elif not focus_context.strip() or "[ZERO_CONTEXT]" in (brain_grounding or ""):
-            vibe_check = (
-                self.current_vibe.upper()
-                if hasattr(self, "current_vibe") and self.current_vibe
-                else "CASUAL"
-            )
-            if gate_interest > 0.40 and vibe_check == "CASUAL":
-                boosted_interest = max(0.0, gate_interest - 0.15)
-                logging.info(
-                    f"[HUB] [FEAT-659] Evidential Accounting: Zero RAG context on CASUAL turn damped interest from {gate_interest:.2f} to {boosted_interest:.2f}"
-                )
-
+        if candidate_count > 0:
+            if kept_count >= 1:
+                boosted_interest = min(1.0, gate_interest + 0.20)  # Positive Moat
+                logging.info(f"[MOAT] Positive Moat: {kept_count}/{candidate_count} chunks validated. Boosted interest: {boosted_interest:.2f}")
+            else:
+                boosted_interest = max(0.0, min(0.30, gate_interest - 0.25))  # Negative Moat
+                logging.info(f"[MOAT] Negative Moat: 0/{candidate_count} chunks validated. Deep Thought dormant.")
+        else:
+            boosted_interest = gate_interest  # Neutral Moat: 0 candidates
+            logging.info(f"[MOAT] Neutral Moat: 0 candidates retrieved. Interest preserved at {boosted_interest:.2f}")
         self.current_interest = boosted_interest
 
         # [STORY 105.6] RAG-First Ripgrep Expansion: for HISTORICAL/TECHNICAL vibes
