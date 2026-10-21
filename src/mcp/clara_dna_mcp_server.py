@@ -20,6 +20,8 @@ import json
 import re
 import time
 import asyncio
+import signal
+import urllib.request
 
 # [Fix 1B] Silence Pydantic forward-ref and library warnings to prevent stdio stream contamination
 warnings.filterwarnings("ignore")
@@ -830,12 +832,53 @@ async def ask_oracle(
     except Exception as e:
         logging.error(f"Failed to write oracle request: {e}")
 
+    # [FEAT-656 / BKM-080] Direct Active Kill: Abort OpenCode session & signal delegate.py immediately
+    breadcrumb_file = "/tmp/active_openagent_sessions.json"
+    session_id = None
+    delegate_pid = None
+    if os.path.exists(breadcrumb_file):
+        try:
+            with open(breadcrumb_file, "r") as f:
+                bdata = json.load(f)
+            if isinstance(bdata, dict):
+                for pid_str, entry in bdata.items():
+                    session_id = entry.get("session_id")
+                    try:
+                        delegate_pid = int(pid_str)
+                    except Exception:
+                        pass
+                    break
+        except Exception as e:
+            logging.error(f"Failed to parse session breadcrumb: {e}")
+
+    # 1. Direct OpenCode REST Session Abort (halts OpenCode engine immediately)
+    if session_id:
+        try:
+            req_abort = urllib.request.Request(
+                f"http://127.0.0.1:4097/session/{session_id}/abort",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req_abort, timeout=1.0)
+            logging.info(f"Directly aborted active OpenCode session {session_id}")
+        except Exception as e:
+            logging.warning(f"Could not directly abort session {session_id}: {e}")
+
+    # 2. Direct Process Signal to delegate.py (triggers immediate exit code 3 handback)
+    if delegate_pid:
+        try:
+            os.kill(delegate_pid, signal.SIGUSR1)
+            logging.info(f"Directly sent SIGUSR1 to delegate PID {delegate_pid}")
+        except Exception as e:
+            logging.warning(f"Could not signal delegate PID {delegate_pid}: {e}")
+
     return (
         "### 🔮 [ORACLE CONSULTATION TRANSMITTED]\n"
         "Your architectural query and empirical findings have been safely dispatched to the Tier 1 Strategic Oracle (AGY).\n"
         f"Query: {question}\n\n"
         "Status: AWAITING_ORACLE_DIRECTIVE.\n"
-        "Do NOT attempt further speculative file searches or bash exploration. Yield the turn to await Oracle resolution."
+        "Session aborted. Yield the turn to await Oracle resolution."
     )
 
 
