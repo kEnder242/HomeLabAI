@@ -534,6 +534,24 @@ def format_rag_chunks_for_prompt(raw_context: str) -> str:
     return "".join(f"[CHUNK-{i}]:\n{c}\n" for i, c in enumerate(chunks, 1))
 
 
+def format_situational_payload_as_chunks(domain: str, payload: dict) -> str:
+    """[STORY 108.6] Universal [CHUNK-N] situational payload serializer.
+
+    Pure function — no I/O. Serializes a keyed dict of situational files into
+    the universal [CHUNK-N] format (one chunk per key, ordered by insertion)
+    with a `Source: <key>` header per chunk, so Brain's evidential moat
+    (MOAT_PATTERN KEEP/DROP) can address each source file by chunk ID.
+    Empty payloads collapse to a [ZERO_CONTEXT] line for the domain.
+    """
+    if not payload:
+        return "[ZERO_CONTEXT]: No situational payload recorded."
+    parts = []
+    for i, (key, value) in enumerate(payload.items(), 1):
+        body = value if isinstance(value, str) else json.dumps(value, indent=2)
+        parts.append(f"[CHUNK-{i}]:\nSource: {key}\n{body.strip()}\n")
+    return "".join(parts)
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -1981,12 +1999,15 @@ class CognitiveHub:
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
 
-            context = (
-                f"[NIGHTLY_DIALOGUE_RECORD]:\n{nightly_dialogue}\n\n"
-                f"[RECRUITER_REPORT]:\n{recruiter_report}\n\n"
-                f"[SYSTEM_STATUS]:\n{system_status}\n\n"
-                f"[PAGER_ACTIVITY]:\n{pager_activity}\n\n"
-                f"[SUBCONSCIOUS_DREAM_WISDOM]:\n{dreams}"
+            context = format_situational_payload_as_chunks(
+                "dream_stream",
+                {
+                    "nightly_dialogue.json": nightly_dialogue,
+                    "recruiter_report.json": recruiter_report,
+                    "status.json": system_status,
+                    "pager_activity.json": pager_activity,
+                    "subconscious_dream_wisdom": dreams,
+                },
             )
             # [FEAT-444] Cap transient file-drop context before prompt embedding
             context = self._truncate_to_tokens(

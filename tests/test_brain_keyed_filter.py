@@ -9,6 +9,7 @@ import re
 from logic.cognitive_hub import (
     build_two_mice_stage_prompt,
     format_rag_chunks_for_prompt,
+    format_situational_payload_as_chunks,
 )
 
 
@@ -61,6 +62,22 @@ def test_format_splits_on_dashes():
 def test_format_zero_context_passthrough():
     zc = "[ZERO_CONTEXT]: No archive record retrieved."
     assert format_rag_chunks_for_prompt(zc) == zc
+
+
+def test_format_situational_payload_as_chunks():
+    payload = {
+        "nightly_dialogue.json": "Topic: firmware\nDialogue: we shipped it",
+        "status.json": {"status": "green", "details": "all nodes nominal"},
+    }
+    out = format_situational_payload_as_chunks("dream_stream", payload)
+    assert "[CHUNK-1]:\nSource: nightly_dialogue.json\nTopic: firmware" in out
+    assert "[CHUNK-2]:\nSource: status.json\n" in out
+    assert out.count("]:\n") == 2
+    # MOAT_PATTERN must be able to KEEP/DROP generated chunk IDs.
+    keep = out.replace("[CHUNK-1]:", "[CHUNK-1]: KEEP ").replace("[CHUNK-2]:", "[CHUNK-2]: DROP ")
+    matches = MOAT_PATTERN.findall(keep)
+    assert matches == [("1", "KEEP"), ("2", "DROP")]
+    assert format_situational_payload_as_chunks("meta", {}) == "[ZERO_CONTEXT]: No situational payload recorded."
 
 
 # ===========================================================================
