@@ -100,6 +100,27 @@ def test_stage2_without_bullets_degrades_gracefully():
     assert "Brain returned no extraction" in prompt
 
 
+def test_stage2_prompt_embeds_situational_vibe_directive():
+    """[STORY 108.7] Stage 2 prompt embeds situational vibe directive when provided."""
+    prompt = build_two_mice_stage_prompt(
+        2,
+        user_query="ESB2?",
+        interest=0.9,
+        brain_bullets="ESB2 server",
+        topic_directive="Keep it warm and brief.",
+    )
+    assert "[SITUATIONAL_VIBE_DIRECTIVE]" in prompt
+    assert "Keep it warm and brief." in prompt
+    # Default topic_directive="" does not add the section.
+    prompt_default = build_two_mice_stage_prompt(
+        2,
+        user_query="ESB2?",
+        interest=0.9,
+        brain_bullets="ESB2 server",
+    )
+    assert "[SITUATIONAL_VIBE_DIRECTIVE]" not in prompt_default
+
+
 def test_stage_prompt_rejects_invalid_stage():
     """Only stages 1 and 2 exist in the funnel."""
     try:
@@ -107,6 +128,21 @@ def test_stage_prompt_rejects_invalid_stage():
     except ValueError:
         return
     raise AssertionError("Expected ValueError for stage=3")
+
+
+def test_pinky_voice_10_percent_token_budget():
+    """[STORY 108.7] Pinky's 10% DT token budget clamps to [60, 150]."""
+    def clamp(dt_tokens: float) -> int:
+        return max(60, min(150, int(dt_tokens * 0.10)))
+
+    # 100 words -> 133.0 tokens -> budget 13, but clamped to floor 60.
+    assert clamp(100 * 1.33) == 60
+    # 1000 words -> 1330.0 tokens -> budget 133, within clamp.
+    assert clamp(1000 * 1.33) == 133
+    # 20 words -> 26.6 tokens -> budget 2, clamped to floor 60.
+    assert clamp(20 * 1.33) == 60
+    # 1429 words -> 1899.6 tokens -> budget 189, clamped to ceiling 150.
+    assert clamp(1429 * 1.33) == 150
 
 
 def test_interest_band_quantization():

@@ -562,6 +562,7 @@ def build_two_mice_stage_prompt(
     brain_grounding: str | None = None,
     brain_bullets: str = "",
     pinky_take: str = "",
+    topic_directive: str = "",
 ) -> str:
     """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
@@ -591,6 +592,9 @@ def build_two_mice_stage_prompt(
         Legacy parameter alias for ``brain_grounding``.
     pinky_take:
         Pinky's initial stance or greeting (Stage 1 contextual anchor).
+    topic_directive:
+        Optional situational directive appended to the Stage 2 prompt as a
+        ``[SITUATIONAL_VIBE_DIRECTIVE]`` block when non-empty.
 
     Returns
     -------
@@ -637,6 +641,11 @@ def build_two_mice_stage_prompt(
     extracted_evidence = brain_grounding if brain_grounding is not None else brain_bullets
     if not extracted_evidence.strip():
         extracted_evidence = "(Brain returned no extraction for this turn.)"
+    vibe_block = (
+        f"\n[SITUATIONAL_VIBE_DIRECTIVE]:\n{topic_directive.strip()}\n"
+        if topic_directive and topic_directive.strip()
+        else ""
+    )
     return (
         section
         + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and grounded this technical reality: "
@@ -646,7 +655,7 @@ def build_two_mice_stage_prompt(
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 2-sentence conversational "
         "TL;DR directly to Jason, then yield the floor.\n"
         f"[BRAIN_GROUNDING]:\n{extracted_evidence.strip()}\n"
-        f"[USER_QUERY]: {effective_query.strip()}"
+        f"[USER_QUERY]: {effective_query.strip()}{vibe_block}"
     )
 
 
@@ -3242,7 +3251,10 @@ class CognitiveHub:
         return dt_synthesis
 
     async def step_pinky_voice(
-        self, query: str, synthesis: str, interest: float, shutdown_event=None, request_id: str = "default"
+        self, query: str, synthesis: str, interest: float, shutdown_event=None, request_id: str = "default",
+        *,
+        vibe: str = "CASUAL",
+        topic_directive: str = "",
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
         t_tm_pinky_start = time.perf_counter()
@@ -3254,9 +3266,10 @@ class CognitiveHub:
             user_query=query,
             interest=interest,
             brain_grounding=clean_synthesis,
+            topic_directive=topic_directive,
         )
-        pinky_high = calculate_pacing_ceiling("pinky", interest)
-        pinky_budget = pinky_high
+        dt_tokens = len(clean_synthesis.split()) * 1.33
+        pinky_budget = max(60, min(150, int(dt_tokens * 0.10))) if dt_tokens > 0 else calculate_pacing_ceiling("pinky", interest)
         pinky_stream_count = 0
         pinky_tldr = ""
         async for token in self._process_node_stream(
@@ -3330,6 +3343,8 @@ class CognitiveHub:
         interest: float | None = None,
         shutdown_event=None,
         request_id: str = "default",
+        vibe: str = "CASUAL",
+        topic_directive: str = "",
     ) -> bool:
         """[FEAT-489 / FEAT-645] Macro Stage 3: Two-Mice Deliberation Circuit.
 
@@ -3478,7 +3493,8 @@ class CognitiveHub:
         # Stage 3.3: Pinky Conversational TL;DR (paced by updated boosted_interest)
         pinky_context = dt_synthesis if dt_synthesis else brain_grounding
         await self.step_pinky_voice(
-            query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id
+            query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id,
+            vibe=vibe, topic_directive=topic_directive,
         )
 
         # [STORY 108.2] Decoupled Out-of-Band Entailment Audit: schedule step_entailment_audit
