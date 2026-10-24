@@ -164,9 +164,15 @@ All diagnostic forensics MUST reference the canonical black box log:
 2.  **The Vibe-First Mandate**: Every `CognitiveHub` dispatch or intent-routing check must perform a semantic "Vibe Check" (Vector or LLM classifier) before selecting tools, adapters, or cognitive loadouts.
 3.  **DNA-First Verification**: A feature is only certified `[COMPLETE]` if its implementation matches the "Mechanism" described in `FeatureTracker.md`. If the mechanism specifies "Sentinel Pass" and the code uses "List-Matching," the status is `[PARTIAL/STALE]`.
 4.  **The Symbolic Complement vs. Cognitive Substitution Boundary**:
-    *   **Permitted (Symbolic Complement)**: Regex and deterministic string operations are fully permitted to enforce physical boundaries, exact text anchoring, and mechanical retrieval. Examples: surgical patch anchoring in `safe_patch`, file path resolution in `locate_path`, badge ID token normalization in `get_protocol` (`BKM-\d+`), and deterministic syntax linting (`ruff`/`bash -n`).
+    *   **Permitted (Symbolic Complement)**: Regex and deterministic string operations are fully permitted to enforce physical boundaries, exact text anchoring, mechanical retrieval, and structural data validation. Examples: surgical patch anchoring in `safe_patch`, file path resolution in `locate_path`, badge ID token normalization in `get_protocol` (`BKM-\d+`), Markdown/HTML tag sanitization (e.g. stripping `<thought>` tags in `clean_synthesis`), query parameter hash replacement in `build_site.py`, and deterministic syntax linting (`ruff`/`bash -n`).
     *   **Prohibited (Cognitive Substitution)**: Regex or hardcoded string heuristics must NEVER replace LLM cognitive synthesis, diagnostic reasoning, traceback comprehension, or intent classification. Exposing a regex pattern as an intelligent tool (e.g. `failure_whisperer` matching `E\s+(.*)` to simulate diagnostic insight) violates this protocol by creating the illusion of an external oracle while wasting inference turns and context.
 5.  **Physical Retrieval Exception**: Hardcoded regex (e.g. 4-digit year extraction for `YYYY.json` file loading) is permitted strictly for physical disk retrieval *after* semantic intent has been established. It must never be used to gate intent or replace semantic classification.
+6.  **Human-Approved Regex Exemption Tag (`# [BKM-015:APPROVED_REGEX]`)**:
+    *   When an intentional regex pattern is validated by human operator review to enforce high-speed mechanical boundaries, tag the declaration directly with:
+        ```python
+        # [BKM-015:APPROVED_REGEX] <Operator rationale explaining mechanical boundary enforcement>
+        ```
+    *   **Automated Audit Invariant**: Automated code linters, refactoring agents, and static analyzers MUST respect this tag and NEVER strip, flag, or alter human-approved regex blocks marked with `[BKM-015:APPROVED_REGEX]`.
 
 ## BKM-016: The Montana Protocol (Logger Control)
 **Objective**: Prevent external library logger hijacking and ensure forensic traceability.
@@ -308,6 +314,7 @@ All diagnostic forensics MUST reference the canonical black box log:
       * **Anchor 2 (Verification Command)**: Verbatim CLI/pytest command and exact return/exit criteria.
       * **Anchor 3 (Verbatim Code Anchors & Injection Specs)**: **MANDATORY EXECUTABLE CODE SNIPPETS**. Must contain the exact before/after code blocks, function signatures, class stubs, and complete companion pytest test fixtures. Descriptive summaries or omitting Anchor 3 code blocks is strictly forbidden.
       * **Anchor 4 (Silicon Invariants & DNA Links)**: Memory caps, latency budgets, and BKM/FEAT anchors.
+      * **BKM-015 Compliance Check**: Explicit assertion that proposed mechanisms avoid brittle ghost-keywords, regex pseudo-oracles, or static string matching, referencing semantic vectors or tagged `# [BKM-015:APPROVED_REGEX]` mechanical boundaries.
 *   **Pointers**: Conductor-level plans (`conductor/tracks/<track_id>/plan.md`) must contain explicit pointers to the Master Sprint Plan and any relevant forensic audits or BKMs.
 
 ### 2. The Planning Phase (The "Greenlight" Gate)
@@ -1477,6 +1484,7 @@ Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite,
 > - [ ] **2. Mistakes-Avoided Ledger**: Enumerate $\ge$ 3 concrete historical mistakes avoided (`BKM-082 §2.4`).
 > - [ ] **3. Oracle Review**: Adversarial audit completed and appended (`BKM-007` / `BKM-080`).
 > - [ ] **4. Delegation Justification**: Evaluated `LOCAL`/`CLOUD` first; documented rationale for any story assigned to `AGY:PRIMARY` (`Invariant 7` / `BKM-049`).
+> - [ ] **5. Risk Assessment**: Evaluated `LOCAL` tasks for promotion to `CLOUD` based on blast radius, file scale, or refactoring complexity.
 > *An agent MUST NOT mark these `[x]` without citing the corresponding section in the plan. Any unchecked box halts execution.*
 
 ### 1. The Core Law: Grounding Before Action
@@ -1698,6 +1706,132 @@ Token expenditure and node activation are governed purely by continuous evidenti
 1. **Prompt-Driven Pacing (`calculate_pacing_range`):** Injected into system prompts as a fuzzy target guideline (`[PACING]: Target ~low to high tokens.`) to relax model verbosity. Pacing is prompt-driven, NOT a vLLM hard truncation or guillotine chop.
 2. **Continuous Physical Budgets:** Physical token budgets (`max_tokens`) scale smoothly with interest (`int(interest * multiplier)`). Arbitrary hardcoded floors (`max(250, ...)`, `max(500, ...)`, `+ 200`) are strictly forbidden; they defeat natural fuel exhaustion and bloat zero-context banter.
 3. **Low-Interest Quiescence:** On casual greetings or zero-context primers ($interest < 0.30$), Deep Thought remains completely dormant (0 tokens, 0ms latency), and Brain operates with tight brevity (~40 tokens) or dormancy, allowing conversational fuel to exhaust naturally.
+
+---
+
+## BKM-088: The Empirical Pipeline Step Judgment Protocol (Micro-Harness & Co-Pilot Loop)
+**Feature Anchor:** `[BKM-088]` / `[FEAT-668]` / `[BKM-083]` / `[BKM-086]`  
+**Colloquial Alias:** "The Empirical Step Micro-Harness & Co-Pilot Calibration Protocol"  
+**Tags:** `#empirical_harness`, `#step_judgment`, `#copilot_loop`, `#micro_harness`, `#bkm_088`  
+**Domain:** Empirical Step Calibration, Physical Node Benchmarking, Co-Pilot Interactivity  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Law: Sub-Pipeline Empirical Verification
+Under `BKM-088`, tuning prompts, token ceilings, or stage schemas must NEVER be done via full end-to-end multi-minute conversational turn execution. Full-turn testing introduces too many confounding variables (ChromaDB latency, network jitter, multi-node scheduling).
+Instead, developers must use the standalone empirical step micro-harness (`src/debug/test_empirical_step_harness.py`):
+1. **Isolated Stage Invocation**: Target a single discrete pipeline stage (`--stage=filter`, `--stage=pinky`, `--stage=synthesis`) using frozen or synthetic input fixtures.
+2. **Physical Node Execution**: Execute tests against live physical daemons (vLLM `:8088`, Ollama `:11434` / `:11435`) rather than mocks, measuring true time-to-first-token (TTFT), tokens/sec, and physical memory footprint.
+3. **Structured Metrics Capture**: Persist empirical telemetry (`ttft_ms`, `total_ms`, `tokens_emitted`, `parse_success`, `score`) into structured benchmark records (`field_notes/data/sprint_108_benchmarks.json`).
+
+### 2. The 2-Question Co-Pilot Calibration Loop
+When human judgment is required to evaluate quality, brevity, or persona tone:
+1. **Question 1 (Objective Benchmark Selection)**: Present the quantitative results across 2–3 variants (latency, token count, parse reliability) and select the empirical baseline.
+2. **Question 2 (Subjective Tone Calibration)**: Present the qualitative outputs with focused directional suggestions for operator alignment.
+
+---
+
+## BKM-089: Prompt MO & Evaluation Asymmetry Protocol (Frugal Prompts, Rich Rubrics & Semantic Evaluation)
+**Feature Anchor:** `[BKM-089]` / `[BKM-015]` / `[BKM-032]` / `[BKM-087]` / `[BKM-088]`  
+**Colloquial Alias:** "Prompt Context: Prompt MO and Test Success Criteria" / "The Frugal Prompting & Evaluation Asymmetry Standard"  
+**Tags:** `#prompt_mo`, `#test_success_criteria`, `#eval_asymmetry`, `#frugal_prompting`, `#anti_regex`, `#bkm_015_boundary`, `#llm_in_the_loop`, `#semantic_judge`  
+**Domain:** Prompt Engineering, Evaluation Asymmetry, LLM-in-the-Loop Testing, Anti-Regex Verification  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Law: Prompt Frugality vs. Evaluator Richness (Asymmetry Law)
+
+> **The Golden Law of Prompt Asymmetry**:  
+> **Prompts explain HOW. Prompt MO explains WHY.**
+
+There is a fundamental asymmetry between **runtime generation prompts** and **out-of-band evaluation rubrics**:
+
+1. **Prompts Explain HOW (Runtime Frugality)**:
+   * Prompts injected into running LLMs must be minimalist, operational, and lean. They dictate **HOW** the model behaves (format boundaries, tone, sentence ceiling, roleplay channel, acknowledging peers).
+   * **Anti-Instruction-Bleeding**: Never cram the "WHY" (underlying rationale, design justifications, negative edge-case rules, or test criteria) into the runtime prompt. Over-specifying why a prompt exists inside the prompt itself causes "instruction bleeding" (the model parrots the meta-motives instead of acting naturally) and wastes precious KV cache.
+2. **Prompt MO Explains WHY (Out-of-Band Context & Evaluator Richness)**:
+   * The **Modus Operandi (MO)** explains **WHY** we are prompting: the situational trigger, the epistemic motive, the problem being solved (e.g., *"Deep Thought's assumption conflicted with Jason's local setup, so Pinky must interject to defend Jason's intent before bad code is written"*).
+   * The MO lives in the **Prompt Catalog, Architecture Docs, and Test Harness**. While the prompt itself is kept strictly frugal, the test harness evaluating the output must possess **extensive, rich, multi-dimensional details** derived from the MO to determine whether the prompt actually succeeded.
+
+### 2. The BKM-015 Anti-Regex Boundary: Semantic Testing via LLM-in-the-Loop
+Under `BKM-015` ("Prohibition of Hardcoding / Ghost Keywords"), attempting to verify tone, natural continuation, or relational stance using brittle regex string matching (e.g., `assert "But" in text`, `assert "Brain" in text`) is **strictly forbidden**. Regex turns fluid semantic evaluation into a brittle keyword chase and promotes gaming the metric.
+
+#### The Rigid Partition:
+1. **Approved for Regex (`[BKM-015:APPROVED_REGEX]`)**:
+   * Pure mechanical and physical boundaries:
+     * Token length caps and sentence boundaries (`len(text.split()) <= max_budget`).
+     * JSON structural validity and schema compliance.
+     * Hermetic Context Fencing: 0 occurrences of forbidden backend scaffolding or leak tokens (`[CHUNK-N]`, `<thought>`, `[BEDROCK]`, `rag_context`, `JSON schema`).
+2. **Mandatory for LLM-in-the-Loop (`#llm_in_the_loop` / `#semantic_judge`)**:
+   * All qualitative, relational, and semantic criteria MUST be evaluated by an **LLM-in-the-Loop** judge (e.g., a fast Qwen 2.5 3B or Llama 3.2 3B evaluator with an explicit rubric) or frozen embedding similarity probe:
+     * **Conversational Flow**: Does the interjection read as a natural continuation of the prior turn?
+     * **Contrastive Posture**: Does the response challenge the technical assumption without hostility or robotic boilerplate?
+     * **Relational Triangulation**: Does the speaker defend the user's authentic intent against the peer's technical assumption while remaining grounded in the subject context?
+
+### 3. Canonical Application: The Intercom Adversarial Continuation Rubric
+When Pinky generates an asynchronous Intercom append following an out-of-band entailment catch:
+* **Prompt MO (Out-of-Band Context — Explains WHY)**:
+  *Why*: Deep Thought's synthesis misattributed Jason's hardware question to a distant corporate lab rather than the local testbed. Pinky must interject immediately to prevent Jason from receiving flawed context, defending Jason's true intent to Brain while preserving turn harmony.
+* **Runtime Prompt (Frugal — Explains HOW)**:
+  `[MODE]: ADVERSARIAL_CONTINUATION. Interject naturally as an immediate continuation to Jason and Brain. Challenge Brain's assumption and clarify Jason's intent in 1 to 2 conversational sentences.`
+* **Test Evaluation Rubric (Rich Out-of-Band LLM Judge)**:
+  1. *Fencing (Regex)*: 0 forbidden meta-tokens present (`rag`, `chunk`, `score`, `system`, `prompt`).
+  2. *Continuation (LLM Judge)*: Output flows as an immediate, seamless conversational continuation of the active turn.
+  3. *Conjunctive Pivot (LLM Judge)*: Output features a natural contrastive transition (e.g. challenging the premise) rather than passive agreement.
+  4. *Tripartite Triangulation (LLM Judge)*: Brain, Jason, and the specific technical subject matter are appropriately referenced in context.
+
+---
+
+## BKM-090: The Deferred Probe Protocol (Verdictless Empirical Telemetry & Asymmetric Evaluation)
+**Feature Anchor:** `[BKM-090]` / `[BKM-089]` / `[BKM-088]` / `[BKM-032]` / `[BKM-062]` / `[BKM-015]`  
+**Colloquial Alias:** "The Deferred Probe" / "Verdictless Test Protocol"  
+**Tags:** `#deferred_probe`, `#verdictless_test`, `#eval_asymmetry`, `#empirical_telemetry`, `#anti_green_lie`, `#bkm_090`  
+**Domain:** Testing Methodology, Empirical Probing, Semantic Evaluation Architecture, Asymmetric Verification  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Law: Prohibition of Self-Declaration (No Code for Pass/Fail)
+When an empirical test exercises generative LLM components where an external intelligence (e.g. Layer 1 AGY or the Lead Engineer) acts as the judge:
+> **The Probe Script is STRICTLY FORBIDDEN from containing code that attempts to calculate, assert, or declare a semantic PASS/FAIL verdict.**
+
+Attempting to compute a pass/fail verdict inside the probe script forces developers into brittle keyword regexes, arbitrary token heuristics, or naive scoring—directly violating `BKM-015` and committing **The Green Lie (`BKM-062`)** (giving the illusion of test certification when zero true semantic evaluation occurred).
+
+### 2. The Architectural Taxonomy: Unit Test vs. Deferred Probe
+The lab strictly bifurcates testing into two distinct classes:
+1. **Unit Tests (`test_*.py` via pytest)**:
+   * **Domain**: Deterministic software mechanics, schemas, pure functions, state machines.
+   * **Mechanism**: Direct assertion (`assert packet["channel"] == "pinky"`).
+   * **Output**: Instant binary `PASS` or `FAIL` exit code.
+2. **Deferred Probes (`probe_*.py` or `--stage` micro-harness)**:
+   * **Domain**: Prompt tuning, model generation, conversational posture, behavioral alignment.
+   * **Mechanism**: Dispatches prompts to live physical silicon (:11435 / :8088), measures empirical telemetry (TTFT, latency, tokens), packages output with Prompt MO (WHY) and Rubric.
+   * **Output**: An unopinionated **Evidentiary Forensic Trace**. The probe exits cleanly *before* any verdict exists.
+
+### 3. The Exit & Evidence Contract
+1. **Process Exit Invariant**:
+   * The Deferred Probe exits immediately upon data capture in $< 1.5\text{s}$.
+   * **Exit Code 0**: Means purely *"Execution and evidence capture completed without physical timeout or daemon crash."*
+   * **Exit Code 1**: Means purely physical failure (daemon unreachable, network connection refused, memory panic).
+2. **The Evidentiary Payload (Stdout / JSON Artifact)**:
+   The probe returns pure **evidence and context**, never a verdict:
+   ```json
+   {
+     "stage": "pinky",
+     "execution": {"status": "SUCCESS", "ttft_ms": 312, "tokens": 42},
+     "prompt_mo": "Why: Pinky must interject to defend Jason's local setup against Brain's corporate lab assumption.",
+     "candidate_output": "Wait Brain, wasn't Jason's question about our local Kender rig and not Intel?",
+     "rubric_battery": [
+       "Does this flow naturally as an immediate continuation?",
+       "Does Pinky defend Jason's actual hardware intent?",
+       "Is the output free of internal backend scaffolding?"
+     ]
+   }
+   ```
+
+### 4. The Outer Evaluation Loop (AGY as Evaluator)
+The pass/fail determination is **deferred** out-of-process to the Layer 1 Orchestrator (AGY):
+1. The probe emits the evidentiary trace to stdout.
+2. AGY consumes the trace, reads the Prompt MO, and evaluates the candidate output using the rich rubric questions.
+3. AGY issues the formal `PASS` / `FAIL` verdict and records the telemetry into the project benchmark ledger (`field_notes/data/sprint_108_benchmarks.json`).
+
+
 
 
 

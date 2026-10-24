@@ -205,6 +205,9 @@ _META_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+_WYWO_RE = re.compile(r"what did i miss|standup|morning update|what happened while", re.I)
+
+
 def is_meta_lexicon(query: str) -> bool:
     """Identify live system component keywords in *query*.
 
@@ -305,6 +308,10 @@ def classify_vibe_and_domain(
       2. Hardcoded meta-lexicon detection (is_meta_lexicon).
       3. Validated declarative policy from TriagePolicyLoader (FEAT-467).
     """
+    clean_q = query.strip()
+    if _WYWO_RE.search(clean_q):
+        return "WYWO", "dream_stream"
+
     inc = incubator or _DEFAULT_INCUBATOR
     loader = policy_loader or _DEFAULT_POLICY_LOADER
 
@@ -505,6 +512,7 @@ class TriageEngine:
             "  * Red-Teaming / Disagreement Trapping / Stress Testing -> domain: \"standard\", vibe: \"PROVOCATIVE\".\n"
             "  * Document Spine Curation / Memory Pruning / Refining DNA -> domain: \"standard\", vibe: \"METABOLIC\".\n"
             '  * Ambiguous / Underspecified -> domain: "unclear", hyde_vector_text: "" (Pinky Speculative Foil).\n'
+            '  * Standup Briefing / Absence Catchup (\'what did i miss\', \'standup\', \'morning update\') -> domain: "dream_stream", vibe: "WYWO".\n'
             "HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n"
             "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
             "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs.\n"
