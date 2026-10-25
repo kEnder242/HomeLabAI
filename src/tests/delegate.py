@@ -865,7 +865,7 @@ def wake_web_ui():
         with urllib.request.urlopen(req, timeout=10):
             pass
         print(
-            f"[+] Web UI live at http://192.168.1.238:{OPENCODE_WEB_PORT}/", flush=True
+            f"[+] Web UI live at http://192.168.1.240:{OPENCODE_WEB_PORT}/ (Ethernet) | http://192.168.1.238:{OPENCODE_WEB_PORT}/ (Wi-Fi)", flush=True
         )
     except Exception as e:
         print(f"[~] Web UI touch attempted (may need a moment): {e}", flush=True)
@@ -1714,7 +1714,7 @@ def delegate(
     log_step(
         story_num,
         "WEB_UI_LINK",
-        f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+        f"Direct Web UI Link: http://192.168.1.240:{OPENCODE_WEB_PORT}/#/session/{session_id} | http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
     )
 
     # Build dynamic prompt blueprint based on mode
@@ -2154,6 +2154,33 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             except Exception:
                 pass
 
+            # [BKM-049 / BKM-060] Inspect child subagent sessions (e.g. Sisyphus-Junior on M5 Air)
+            try:
+                cs_req = urllib.request.Request(f"http://127.0.0.1:{OPENCODE_REST_PORT}/session")
+                with urllib.request.urlopen(cs_req, timeout=1.5) as cs_resp:
+                    all_sessions = json.loads(cs_resp.read().decode("utf-8"))
+                    for s_info in all_sessions:
+                        if s_info.get("parentID") == session_id:
+                            s_updated = s_info.get("time", {}).get("updated", 0) / 1000.0
+                            if (time.time() - s_updated) < 90.0:
+                                child_agent = s_info.get("agent", "subagent")
+                                child_model = s_info.get("model", {}).get("providerID", "unknown")
+                                child_title = s_info.get("title", "child task")
+                                child_state = f"{child_agent} ({child_model}): {child_title[:50]}"
+                                if child_state != last_inspected_state:
+                                    last_inspected_state = child_state
+                                    last_activity_time = time.time()
+                                    log_step(
+                                        story_num,
+                                        "LIVE_SWARM_STATE",
+                                        f"Child task active: [{child_state}]",
+                                    )
+                                else:
+                                    last_activity_time = time.time()
+                                break
+            except Exception:
+                pass
+
             # [BKM-060] Dead-Air Inactivity Watchdog (300s stall detector for local silicon, 180s for cloud)
             dead_air_threshold = 300.0 if local_only else 180.0
             dead_air_seconds = time.time() - last_activity_time
@@ -2255,7 +2282,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
         log_step(
             story_num,
             "WEB_UI_LINK",
-            f"Direct Web UI Link: http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
+            f"Direct Web UI Link: http://192.168.1.240:{OPENCODE_WEB_PORT}/#/session/{session_id} | http://192.168.1.238:{OPENCODE_WEB_PORT}/#/session/{session_id}",
         )
 
         parts = post_result.get("parts", []) if isinstance(post_result, dict) else []
