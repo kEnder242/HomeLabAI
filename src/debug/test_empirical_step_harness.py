@@ -191,7 +191,7 @@ def build_probe_prompt(stage: str, vibe_cfg: dict, query_override: str | None = 
                 primer=query,
                 user_query=query,
                 interest=0.85,
-                historical=synthesis,
+                context=synthesis,
             )
     except Exception as e:
         # Fallback if imports fail
@@ -258,6 +258,10 @@ def main(argv=None) -> int:
     query = args.query or vibe_cfg["query"]
     prompt = build_probe_prompt(args.stage, vibe_cfg, query)
 
+    model = args.model
+    if args.stage == "filter" and model == "cli_voice_v1":
+        model = "local-unified-base"
+
     if args.dry_run:
         telemetry = {
             "status": "DRY_RUN",
@@ -269,7 +273,7 @@ def main(argv=None) -> int:
             "model": "MOCK",
         }
     else:
-        telemetry = execute_live_probe(args.endpoint, args.model, prompt)
+        telemetry = execute_live_probe(args.endpoint, model, prompt)
 
     # [BKM-090] Construct Verdictless Evidentiary Trace
     trace = {
