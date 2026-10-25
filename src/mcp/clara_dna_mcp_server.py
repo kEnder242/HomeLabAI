@@ -176,20 +176,52 @@ async def get_protocol(bkm_id: str) -> dict:
 @mcp.tool()
 async def safe_patch(
     file_path: str,
-    old_pattern: str,
-    new_pattern: str,
+    old_pattern: str = "",
+    new_pattern: str = "",
     multi: bool = False,
+    description: str = "",
+    replacement: str = "",
 ) -> dict:
     r"""
     [FEAT-198 Safe-Scalpel] Apply an atomic, regex-tolerant patch to a file with automated syntax linting.
-    - file_path: Absolute or Dev_Lab-relative path to target file.
-    - old_pattern: Exact substring or regex pattern to match (e.g. r"def foo\(.*?\):").
-    - new_pattern: Replacement content.
-    - multi: If True, replaces all occurrences; default is False (replaces first match).
+
+    MANDATORY PARAMETERS:
+    - file_path: (str) Absolute or Dev_Lab-relative path to target file (e.g. "src/tests/test_foo.py").
+    - old_pattern: (str) Exact text substring to match in the file. Must match existing text.
+    - new_pattern: (str) Exact replacement text content.
+
+    OPTIONAL PARAMETERS:
+    - multi: (bool) If True, replaces all occurrences; default is False (replaces first match).
+
+    EXAMPLE CALL:
+    safe_patch(
+        file_path="src/tests/test_foo.py",
+        old_pattern="def test_bar():\n    assert True",
+        new_pattern="def test_bar():\n    assert True\n    assert 1 == 1"
+    )
+
+    DO NOT omit 'new_pattern'. Both 'old_pattern' and 'new_pattern' are required.
     Returns success status, match count, and linter validation output.
     """
     import re
     import subprocess
+
+    if not new_pattern and replacement:
+        new_pattern = replacement
+
+    if not old_pattern:
+        return {
+            "success": False,
+            "error": "safe_patch requires 'old_pattern' (exact text to match) and 'new_pattern' (replacement text).",
+            "hint": "Usage: safe_patch(file_path='...', old_pattern='<exact old text>', new_pattern='<replacement text>')",
+        }
+
+    if not new_pattern:
+        return {
+            "success": False,
+            "error": "safe_patch missing required parameter 'new_pattern'. You must provide the replacement content.",
+            "hint": "Usage: safe_patch(file_path='...', old_pattern='...', new_pattern='<replacement text>')",
+        }
 
     if not file_path.startswith("/"):
         cand = os.path.join(os.path.expanduser("~/Dev_Lab"), file_path)
@@ -702,8 +734,10 @@ def _load_agents_l3_rules() -> str:
 @mcp.tool()
 async def jit_research(file_path: str, query: str = "") -> str:
     """[Story 98.6 / FEAT-647] JITC Research tool. Recalls pre-computed L2 conductor blueprints or loads AGENTS_L3.md rules as fresh empirical findings.
-    - file_path: Target file path, basename, or 'AGENTS_L3.md' to load operational rules.
-    - query: Optional search query.
+
+    MANDATORY USAGE:
+    - Turn 1: Call jit_research(file_path="AGENTS_L3.md") to load operational rules.
+    - Turn 2: Call jit_research(file_path="<target_file>") to load the staged patch blueprint.
     """
     # 1. Direct AGENTS_L3.md rule ingestion
     if file_path.strip().lower() in ("agents_l3.md", "agents_l3", "agents-l3.md", "agents-l3") or file_path.endswith("AGENTS_L3.md"):
@@ -739,6 +773,11 @@ async def jit_research(file_path: str, query: str = "") -> str:
             output_lines.append(f"Diff Directives: {diff_directives}")
         if plan_content and patch_blueprint:
             output_lines.append(f"Plan Notes:\n{plan_content}")
+        output_lines.append(
+            f"\n💡 Tool Invocation Guide:\n"
+            f"To apply this patch, invoke:\n"
+            f"safe_patch(file_path='{matched_key}', old_pattern=..., new_pattern=...)"
+        )
         return "\n\n".join(output_lines)
 
     # 3. Fallback to physical disk read + AST outline
@@ -759,7 +798,15 @@ async def jit_research(file_path: str, query: str = "") -> str:
 
 @mcp.tool()
 async def jit_diagnose(test_output: str, error_context: str = "") -> str:
-    """Scans the test output / traceback, isolates the failing assertion / error line, and returns an atomic 2-line diagnosis."""
+    """[Story 98.6 / FEAT-647] JITC Diagnostic tool. Scans test output / pytest traceback, isolates the failing assertion / error line, and returns an atomic 2-line diagnosis.
+
+    PARAMETERS:
+    - test_output: Raw terminal output, failure traceback, or assertion error from pytest / bash.
+    - error_context: Optional description of what was expected.
+
+    EXAMPLE:
+    jit_diagnose(test_output=traceback_text)
+    """
     match = re.search(r"E\s+(.*)", test_output)
     failing_line = match.group(1) if match else "Unknown error"
     return f"Diagnosis: Failed assertion '{failing_line}'.\nCheck logical conditions, types, or fixture paths."
@@ -770,7 +817,18 @@ async def jit_checkpoint(
     status: str, summary: str, artifacts_modified: list = None,
     story: str = "", sprint: int = 0,
 ) -> dict:
-    """Appends a JSON record with timestamp, status, summary, and artifacts to delegation_ledger.jsonl."""
+    """[Story 98.6 / FEAT-647] JITC Checkpoint tool. Records milestone audit logs to delegation_ledger.jsonl upon passing verification.
+
+    PARAMETERS:
+    - status: 'SUCCESS' on passing verification; 'FAILURE' or 'BLOCKED' on terminal blockers.
+    - summary: 1-2 sentence description of completed work or milestone.
+    - artifacts_modified: List of file paths modified during this execution.
+    - story: Story identifier (e.g. 'LIVE_M5').
+    - sprint: Sprint number (e.g. 108).
+
+    EXAMPLE:
+    jit_checkpoint(status="SUCCESS", summary="Appended verification line to test file", artifacts_modified=["test.txt"])
+    """
     if artifacts_modified is None:
         artifacts_modified = []
     ledger_path = os.path.expanduser(
