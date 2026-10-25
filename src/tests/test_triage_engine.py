@@ -777,3 +777,24 @@ class TestWYWOClassification:
         )
         assert result["vibe"] == "WYWO"
         assert result["domain"] == "dream_stream"
+
+def test_continuation_schema_and_validation():
+    """[STORY 108.11] Verify is_continuation schema and fallback defaults."""
+    from logic.triage_engine import validate_triage_payload, _TRIAGE_SCHEMA
+    
+    # Check schema
+    props = _TRIAGE_SCHEMA["json_schema"]["schema"]["properties"]
+    assert "is_continuation" in props
+    assert props["is_continuation"]["type"] == "boolean"
+
+    # Default fallback
+    res = validate_triage_payload({})
+    assert res["is_continuation"] is False
+
+    # Explicit boolean pass-through
+    res_true = validate_triage_payload({"is_continuation": True})
+    assert res_true["is_continuation"] is True
+
+    # Non-boolean sanitized to False
+    res_invalid = validate_triage_payload({"is_continuation": "not_a_bool"})
+    assert res_invalid["is_continuation"] is False
