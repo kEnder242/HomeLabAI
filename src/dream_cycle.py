@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 from datetime import datetime
 import json
@@ -5,6 +6,7 @@ import logging
 import os
 import random
 import sys
+import time
 
 import aiohttp
 import requests
@@ -305,6 +307,21 @@ class DreamManager:
 
 
 async def main():
+    parser = argparse.ArgumentParser(description="Diamond Dream Cycle")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="Number of refinement cycles to run (default: 1)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=None,
+        help="Max duration in seconds to run refinement cycles",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(level=logging.INFO, format="[DREAM] %(message)s")
     logging.info("🌙 Starting the Diamond Dream Cycle (V5)...")
 
@@ -337,8 +354,61 @@ async def main():
             async with ClientSession(ar, aw) as archive:
                 await archive.initialize()
                 manager = DreamManager(archive)
-                telemetry = await manager.run_cycle()
-                print(json.dumps(telemetry))
+
+                start_time = time.time()
+                total_synthesized = 0
+                total_refined = 0
+                completed_cycles = 0
+                last_telemetry = None
+
+                while True:
+                    now = time.time()
+                    if args.duration and (now - start_time) >= args.duration:
+                        logging.info(
+                            f"⏱️ Reached duration limit ({args.duration}s). Completed {completed_cycles} cycles."
+                        )
+                        break
+                    if not args.duration and completed_cycles >= args.count:
+                        break
+
+                    logging.info(
+                        f"💎 Running refinement cycle #{completed_cycles + 1} (elapsed: {int(now - start_time)}s)..."
+                    )
+                    telemetry = await manager.run_cycle()
+                    last_telemetry = telemetry
+                    completed_cycles += 1
+                    total_synthesized += telemetry.get("turns_synthesized", 0)
+                    total_refined += telemetry.get("items_refined", 0)
+
+                    if telemetry.get("status") == "FAIL":
+                        logging.warning(
+                            f"⚠️ Cycle #{completed_cycles} reported FAIL: {telemetry.get('error')}"
+                        )
+
+                    # Polite yield between iterations
+                    has_more = (
+                        (args.duration and (time.time() - start_time) < args.duration)
+                        or (not args.duration and completed_cycles < args.count)
+                    )
+                    if has_more:
+                        await asyncio.sleep(1)
+
+                elapsed = time.time() - start_time
+                overall_telemetry = {
+                    "status": "PASS"
+                    if (total_synthesized > 0 or total_refined > 0)
+                    else (last_telemetry.get("status") if last_telemetry else "PASS"),
+                    "cycles_completed": completed_cycles,
+                    "turns_synthesized": total_synthesized,
+                    "items_refined": total_refined,
+                    "archive_fresh": last_telemetry.get("archive_fresh", True)
+                    if last_telemetry
+                    else True,
+                    "duration_seconds": elapsed,
+                    "timestamp": datetime.now().isoformat(),
+                    "error": None,
+                }
+                print(json.dumps(overall_telemetry))
 
     except Exception as e:
         logging.error(f"❌ Dream Cycle Crashed: {e}")
