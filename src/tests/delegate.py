@@ -2161,23 +2161,19 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                     all_sessions = json.loads(cs_resp.read().decode("utf-8"))
                     for s_info in all_sessions:
                         if s_info.get("parentID") == session_id:
-                            s_updated = s_info.get("time", {}).get("updated", 0) / 1000.0
-                            if (time.time() - s_updated) < 90.0:
-                                child_agent = s_info.get("agent", "subagent")
-                                child_model = s_info.get("model", {}).get("providerID", "unknown")
-                                child_title = s_info.get("title", "child task")
-                                child_state = f"{child_agent} ({child_model}): {child_title[:50]}"
-                                if child_state != last_inspected_state:
-                                    last_inspected_state = child_state
-                                    last_activity_time = time.time()
-                                    log_step(
-                                        story_num,
-                                        "LIVE_SWARM_STATE",
-                                        f"Child task active: [{child_state}]",
-                                    )
-                                else:
-                                    last_activity_time = time.time()
-                                break
+                            child_agent = s_info.get("agent", "subagent")
+                            child_model = s_info.get("model", {}).get("providerID", "unknown")
+                            child_title = s_info.get("title", "child task")
+                            child_state = f"{child_agent} ({child_model}): {child_title[:50]}"
+                            if child_state != last_inspected_state:
+                                last_inspected_state = child_state
+                                log_step(
+                                    story_num,
+                                    "LIVE_SWARM_STATE",
+                                    f"Child task active: [{child_state}]",
+                                )
+                            last_activity_time = time.time()
+                            break
             except Exception:
                 pass
 
@@ -2185,19 +2181,32 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
             dead_air_threshold = 300.0 if local_only else 180.0
             dead_air_seconds = time.time() - last_activity_time
             if dead_air_seconds > dead_air_threshold:
-                kender_active = False
+                silicon_active = False
                 if local_only:
+                    # Check KENDER (RTX 4090)
                     try:
                         k_req = urllib.request.Request("http://192.168.1.26:11434/api/ps")
                         with urllib.request.urlopen(k_req, timeout=1.5) as k_resp:
                             k_data = json.loads(k_resp.read().decode("utf-8"))
                             models = k_data.get("models", [])
-                            if models and dead_air_seconds < 420.0:
-                                kender_active = True
+                            if models and dead_air_seconds < 600.0:
+                                silicon_active = True
                     except Exception:
                         pass
 
-                if not kender_active:
+                    # Check Node Brain M5 Air (port 8002 / 8000)
+                    try:
+                        import subprocess
+                        ss_res = subprocess.run(
+                            ["ss", "-t", "-H", "(", "dport", "=", ":8002", "or", "dport", "=", ":8000", ")"],
+                            capture_output=True, text=True, timeout=1.0
+                        )
+                        if "ESTAB" in ss_res.stdout and dead_air_seconds < 600.0:
+                            silicon_active = True
+                    except Exception:
+                        pass
+
+                if not silicon_active:
                     log_step(
                         story_num,
                         "DEAD_AIR_TIMEOUT",
