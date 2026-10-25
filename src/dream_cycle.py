@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import json
 import logging
 import os
@@ -40,7 +41,7 @@ async def ensure_engine_ready():
     """[FEAT-067.2] Attendant-Aware Ignition for Dreaming."""
     try:
         # 1. Check Status
-        r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=5)
+        r = requests.get(f"{ATTENDANT_URL}/status?timeout=5", headers=HEADERS, timeout=5)
         status = r.json()
 
         # [FEAT-235] Operational Shortcut (Direct Execution)
@@ -60,7 +61,7 @@ async def ensure_engine_ready():
 
         # 3. Wait for Readiness
         for i in range(30):
-            r = requests.get(f"{ATTENDANT_URL}/status", headers=HEADERS, timeout=2)
+            r = requests.get(f"{ATTENDANT_URL}/status?timeout=2", headers=HEADERS, timeout=2)
             if r.status_code == 200:
                 data = r.json()
                 if data.get("vocal"):
@@ -271,16 +272,36 @@ class DreamManager:
         await remote_brain_think(prompt, json.dumps(target_item))
 
         # Storage (Mark the intent in the Behavioral DNA)
+        summary_text = str(target_item.get("summary") or target_item.get("description") or "")
         await self.archive.call_tool(
             "retrospective_audit",
             arguments={
-                "interaction_log": f"Recursive Refinement: {target_item.get('summary')[:100]}",
+                "interaction_log": f"Recursive Refinement: {summary_text[:100]}",
                 "domain": "refinement",
                 "adapter": "exp_for",
                 "vibe": "TECHNICAL",
             },
         )
         logging.info("✅ Refinement request dispatched.")
+
+        # Update latest_synthesis_gems.json timestamp to record active refinement
+        gems_file = os.path.join(
+            BASE_DIR, "../Portfolio_Dev/field_notes/data/latest_synthesis_gems.json"
+        )
+        try:
+            if os.path.exists(gems_file):
+                with open(gems_file, "r", encoding="utf-8") as gf:
+                    gdata = json.load(gf)
+                if isinstance(gdata, dict) and "gems" in gdata:
+                    gdata["last_refined"] = datetime.now().isoformat()
+                    with open(gems_file, "w", encoding="utf-8") as gf:
+                        json.dump(gdata, gf, indent=2)
+            else:
+                os.utime(gems_file, None)
+        except Exception as e:
+            logging.warning(f"[DREAM] Failed to update gems file: {e}")
+
+        return True
 
 
 async def main():
