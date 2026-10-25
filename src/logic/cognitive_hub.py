@@ -552,6 +552,47 @@ def format_situational_payload_as_chunks(domain: str, payload: dict) -> str:
     return "".join(parts)
 
 
+def filter_wywo_synthesis_gems(raw_gems: list) -> list:
+    """[FEAT-658 / Story 108.12C] Authoritative criteria gate for WYWO standup inclusion.
+
+    Filters out operational exhaust tickets and ensures that only gems with Impact Level >= 3
+    surface in standup context with structured headline tags:
+      - [FOCAL] for Impact 4 (Strategic Trunk)
+      - [PLATFORM] for Impact 3 (Platform Branch)
+    Pure function — operates on raw dictionary records.
+    """
+    surfaced = []
+    if not isinstance(raw_gems, list):
+        return surfaced
+
+    for g in raw_gems:
+        if not isinstance(g, dict):
+            continue
+        imp = g.get("impact_level")
+        if imp is None:
+            imp = (
+                4
+                if g.get("rank") == 5 or "[strategic_anchor]" in str(g.get("summary", "")).lower()
+                else (3 if g.get("rank") == 4 else 1)
+            )
+        try:
+            imp_int = int(imp)
+        except (ValueError, TypeError):
+            imp_int = 1
+
+        if imp_int >= 3:
+            headline_tag = "[FOCAL]" if imp_int >= 4 else "[PLATFORM]"
+            summary = str(g.get("summary") or g.get("description") or "").strip()
+            surfaced.append({
+                "tag": headline_tag,
+                "summary": summary,
+                "formatted": f"{headline_tag} {summary}",
+                "impact_level": imp_int,
+                "refinement_level": g.get("refinement_level", 2),
+            })
+    return surfaced
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -2008,6 +2049,22 @@ class CognitiveHub:
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
 
+            # [FEAT-658 / Story 108.12C] WYWO Standup Candidate Scorer & High-Impact Surfacing Gate
+            synthesis_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/latest_synthesis_gems.json"
+            )
+            synthesis_gems_text = "No recent high-impact synthesis gems found."
+            if os.path.exists(synthesis_path):
+                try:
+                    with open(synthesis_path, "r") as f:
+                        s_data = json.load(f)
+                        raw_gems = s_data.get("gems", [])
+                        filtered = filter_wywo_synthesis_gems(raw_gems)
+                        if filtered:
+                            synthesis_gems_text = "\n".join(f"- {item['formatted']}" for item in filtered)
+                except Exception as se:
+                    logging.error(f"[HUB] Failed to load latest synthesis gems for WYWO: {se}")
+
             context = format_situational_payload_as_chunks(
                 "dream_stream",
                 {
@@ -2015,6 +2072,7 @@ class CognitiveHub:
                     "recruiter_report.json": recruiter_report,
                     "status.json": system_status,
                     "pager_activity.json": pager_activity,
+                    "latest_synthesis_gems.json": synthesis_gems_text,
                     "subconscious_dream_wisdom": dreams,
                 },
             )
@@ -2023,13 +2081,13 @@ class CognitiveHub:
                 context,
                 doc_id="|".join(
                     os.path.basename(p)
-                    for p in (dialogue_path, recruiter_path, status_path, pager_path)
+                    for p in (dialogue_path, recruiter_path, status_path, pager_path, synthesis_path)
                 ),
             )
             behavioral_guidance = (
                 "[MODE]: STANDUP (Synthesize a high-density, professional summary of recent nightly dialogues "
-                "and subconscious dreams consolidated during nightly runs. Explain what nodes debated, "
-                "the key decisions or validation wisdom stored, and any resulting system changes.)"
+                "and high-impact subconscious gems ([PLATFORM] and [FOCAL]). Explain what nodes debated, "
+                "the key architectural decisions or validation wisdom stored, and any resulting system changes.)"
             )
         elif t_parsed.get("domain") == "unclear":
             # [FEAT-559] Pinky as the Speculative Domain Foil for Ambiguous Queries
