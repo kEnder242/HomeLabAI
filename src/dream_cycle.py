@@ -156,6 +156,8 @@ class DreamManager:
                 else:
                     error_message = "Zero chaotic turns synthesized and zero archive items refined (BKM-062 Zero-Work Exit Invariant)"
             except Exception as e:
+                error_message = f"Refinement Dreaming Error: {e}"
+                logging.error(error_message)
         # [FEAT-619 / Story 106.3] Check archive gem freshness on disk
         archive_fresh = False
         gems_file = os.path.join(
