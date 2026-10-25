@@ -665,7 +665,7 @@ def run_dream_cycle() -> dict:
         try:
             py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
             res = subprocess.run(
-                [py_bin, dream_script],
+                [py_bin, dream_script, "--count", "5", "--delay", "5.0"],
                 capture_output=True,
                 text=True,
                 timeout=900,
@@ -783,6 +783,58 @@ def run_journal_to_dna_bridge():
         logger.info(
             "[JOURNAL_DNA_BRIDGE] journal_to_dna_bridge.py not found; skipping bridge pass."
         )
+
+
+def run_epistemic_refinement(epochs: int = 5, batch_size: int = 5) -> dict:
+    """[LOOP-004 / Story 108.12A] Automated Epistemic Batch Sweeper & Impact Stamping Driver."""
+    logger.info(
+        f"[EPISTEMIC_REFINE] Initiating Multi-Epoch Epistemic Refinement ({epochs} epochs, batch_size={batch_size})..."
+    )
+    write_step_log("EPISTEMIC_REFINE_START", f"epochs={epochs}, batch_size={batch_size}")
+    script = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "refine_gem.py")
+    if os.path.exists(script):
+        try:
+            py_bin = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+            res = subprocess.run(
+                [
+                    py_bin,
+                    script,
+                    "--epochs",
+                    str(epochs),
+                    "--batch-size",
+                    str(batch_size),
+                    "--delay",
+                    "5.0",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            logger.info(
+                f"[EPISTEMIC_REFINE] Epistemic refinement completed with return code {res.returncode}"
+            )
+            write_step_log(
+                "EPISTEMIC_REFINE_COMPLETE", f"returncode={res.returncode}"
+            )
+            for line in reversed(res.stdout.strip().splitlines()):
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        return json.loads(line)
+                    except Exception:
+                        pass
+            return {
+                "status": "PASS" if res.returncode == 0 else "FAIL",
+                "epochs_run": epochs,
+                "raw_stdout": res.stdout.strip()[:200],
+            }
+        except Exception as e:
+            logger.warning(f"[EPISTEMIC_REFINE] Epistemic refinement warning: {e}")
+            write_step_log("EPISTEMIC_REFINE_ERROR", str(e))
+            return {"status": "FAIL", "error": str(e)}
+    else:
+        logger.info("[EPISTEMIC_REFINE] refine_gem.py not found; skipping refinement pass.")
+        return {"status": "FAIL", "error": "refine_gem.py not found"}
 
 
 def run_benchmark_sweep():
@@ -1236,6 +1288,15 @@ def main():
             run_sprint_dna_sync()
         except Exception as se:
             logger.error(f"[NIGHTLY SPRINT_DNA] Sprint DNA sync error: {se}")
+
+        # 5d. Automated Epistemic Batch Sweeper & Impact Stamping Driver [LOOP-004 / Story 108.12A]
+        try:
+            logger.info(
+                "[NIGHTLY EPISTEMIC_REFINE] Initiating Automated Epistemic Batch Sweeper [LOOP-004]..."
+            )
+            run_epistemic_refinement(epochs=5, batch_size=5)
+        except Exception as ee:
+            logger.error(f"[NIGHTLY EPISTEMIC_REFINE] Epistemic refinement error: {ee}")
 
         # =========================================================================
         # STEP 6: DYNAMIC FEDERATED BENCHMARK SWEEP [FEAT-495] (~2m budget)

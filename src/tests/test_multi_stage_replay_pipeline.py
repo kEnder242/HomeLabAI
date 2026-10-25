@@ -351,12 +351,14 @@ def test_stage12_multi_domain_dna_resolution_contract():
 
 
 def test_stage13_wywo_standup_fastpath_contract():
-    """Stage 13 (Story 108.5 & 108.6): WYWO standup fast-path routing and situational chunking contract.
-    Asserts deterministic classification of standup inquiry into ('WYWO', 'dream_stream') and
-    universal serialization into keyed [CHUNK-N] blocks for Brain's evidential filter.
+    """Stage 13 (Story 108.5, 108.6, 108.12C): WYWO standup fast-path routing, situational chunking contract,
+    and authoritative impact-gated gem surfacing.
+    Asserts deterministic classification of standup inquiry into ('WYWO', 'dream_stream'),
+    universal serialization into keyed [CHUNK-N] blocks for Brain's evidential filter,
+    and strict filtering of synthesis gems to Impact Level >= 3 with [PLATFORM] and [FOCAL] tags.
     """
     from logic.triage_engine import classify_vibe_and_domain
-    from logic.cognitive_hub import format_situational_payload_as_chunks
+    from logic.cognitive_hub import format_situational_payload_as_chunks, filter_wywo_synthesis_gems
 
     vibe, domain = classify_vibe_and_domain("what did you do while i was out?", {})
     assert vibe == "WYWO"
@@ -371,6 +373,20 @@ def test_stage13_wywo_standup_fastpath_contract():
     assert "Source: nightly_dialogue.json" in chunked
     assert "[CHUNK-2]:" in chunked
     assert "Source: status.json" in chunked
+
+    # [FEAT-658 / Story 108.12C] Validate Impact-Gated WYWO Standup Scorer
+    mock_gems = [
+        {"id": "G1", "impact_level": 1, "summary": "Atomic log tail rotate", "rank": 2},
+        {"id": "G2", "impact_level": 2, "summary": "Local cron delay workaround", "rank": 3},
+        {"id": "G3", "impact_level": 3, "summary": "Cross-subsystem PECI/EGS DRAM architecture", "rank": 4},
+        {"id": "G4", "impact_level": 4, "summary": "Integrated Kayak and Montana platforms", "rank": 5},
+    ]
+    surfaced = filter_wywo_synthesis_gems(mock_gems)
+    assert len(surfaced) == 2
+    assert surfaced[0]["tag"] == "[PLATFORM]"
+    assert "Cross-subsystem PECI/EGS" in surfaced[0]["summary"]
+    assert surfaced[1]["tag"] == "[FOCAL]"
+    assert "Integrated Kayak and Montana" in surfaced[1]["summary"]
 
 
 def test_stage14_unclear_foil_quiescence_contract():

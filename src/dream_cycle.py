@@ -247,14 +247,38 @@ class DreamManager:
             if not isinstance(content, list) or not content:
                 continue
 
+            # Prioritize high-impact gems (impact_level >= 3) that are un-saturated (refinement_level < 3)
             candidates = [
                 i
                 for i in content
-                if i.get("rank", 0) < 4 and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
+                if (
+                    (i.get("impact_level") in (3, 4, "3", "4") or i.get("rank", 0) >= 4)
+                    and i.get("refinement_level", 0) < 3
+                    and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
+                )
             ]
+            # Fallback: if no high-impact gems found in this file, check for legacy rank < 4 or any unrefined gem
+            if not candidates:
+                candidates = [
+                    i
+                    for i in content
+                    if (
+                        i.get("refinement_level", 0) < 3
+                        or i.get("rank", 0) < 4
+                    )
+                    and "[STRATEGIC_ANCHOR]" not in i.get("summary", "")
+                ]
             if candidates:
+                # Prefer highest impact first
+                candidates.sort(
+                    key=lambda x: (
+                        int(x.get("impact_level", 1) if str(x.get("impact_level", 1)).isdigit() else 1),
+                        int(x.get("rank", 0) if str(x.get("rank", 0)).isdigit() else 0),
+                    ),
+                    reverse=True,
+                )
                 target_file = candidate_file
-                target_item = random.choice(candidates)
+                target_item = candidates[0]
                 break
 
         if not target_item or not target_file:
