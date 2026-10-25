@@ -27,7 +27,7 @@ Every turn in the Federated Lab cascades down a single invariant sequential Wate
 
 ---
 
-### Section 2: Post-Triage Vibe $\to$ Situational Micro-Prompt Mapping
+### Section 2: Post-Triage Vibe $\to$ Situational Contextual-Prompt Mapping
 
 | Pipeline Component / Target | Status (Prompt & Substrate) | Prompt MO (The Epistemic WHY) | Deferred Probe Status ([`BKM-090`](file:///home/jallred/Dev_Lab/HomeLabAI/docs/Protocols.md#L1783)) |
 | :--- | :--- | :--- | :--- |
@@ -92,5 +92,5 @@ Every turn in the Federated Lab cascades down a single invariant sequential Wate
 
 | Pipeline Component / Target | Status (Prompt & Substrate) | Prompt MO (The Epistemic WHY) | Deferred Probe Status ([`BKM-090`](file:///home/jallred/Dev_Lab/HomeLabAI/docs/Protocols.md#L1783)) |
 | :--- | :--- | :--- | :--- |
-| **Pinky's Spoken Voice** ([`step_pinky_voice`](file:///home/jallred/Dev_Lab/HomeLabAI/src/logic/cognitive_hub.py#L3223)) | 🟡 **Prompt Needs Refinement**: Prompt at [`cognitive_hub.py:623`](file:///home/jallred/Dev_Lab/HomeLabAI/src/logic/cognitive_hub.py#L623); needs micro-prompt layering + 10% pacing rule. | Deliver compressed conversational TL;DR / standup directly to Jason on Left Console. Translates Brain's synthesis into action in $\le 10\%$ of Deep Thought's length. | 🟢 **Scaffolded**: Live test rig active in [`test_empirical_step_harness.py --stage=pinky`](file:///home/jallred/Dev_Lab/HomeLabAI/src/debug/test_empirical_step_harness.py); ready for shootout. |
+| **Pinky's Spoken Voice** ([`step_pinky_voice`](file:///home/jallred/Dev_Lab/HomeLabAI/src/logic/cognitive_hub.py#L3223)) | 🟡 **Prompt Needs Refinement**: Prompt at [`cognitive_hub.py:623`](file:///home/jallred/Dev_Lab/HomeLabAI/src/logic/cognitive_hub.py#L623); needs contextual-prompt layering + 10% pacing rule. | Deliver compressed conversational TL;DR / standup directly to Jason on Left Console. Translates Brain's synthesis into action in $\le 10\%$ of Deep Thought's length. | 🟢 **Scaffolded**: Live test rig active in [`test_empirical_step_harness.py --stage=pinky`](file:///home/jallred/Dev_Lab/HomeLabAI/src/debug/test_empirical_step_harness.py); ready for shootout. |
 | **Adversarial Intercom Append** ([`step_entailment_audit`](file:///home/jallred/Dev_Lab/HomeLabAI/src/logic/cognitive_hub.py#L3275)) | 🟡 **Concept Locked**: Core decoupled in `Story 108.2`; append prompt and Intercom card pending in `Story 108.7`. | Out-of-band audit caught an inconsistency or misattribution in Deep Thought's synthesis. Interject as an immediate continuation to Jason and Brain, defending Jason's intent. | 📋 **Declared**: `--stage=audit` declared in harness; probe must emit trace capturing continuation flow and contrastive pivot. |

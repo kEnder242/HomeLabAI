@@ -52,7 +52,7 @@ def test_step_grounding_critic_is_backward_compatible_alias():
 def test_entailment_audit_returns_audit_key_when_present():
     hub = _make_hub()
     hub.turn_thought_trace = {"audit": "audited delivery text"}
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         hub.step_entailment_audit(
             "q", "Deep Thought", "resp", "ctx", 0.8
         )
@@ -63,7 +63,7 @@ def test_entailment_audit_returns_audit_key_when_present():
 def test_entailment_audit_falls_back_to_critique_key():
     hub = _make_hub()
     hub.turn_thought_trace = {"critique": "critique delivery text"}
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         hub.step_entailment_audit(
             "q", "Deep Thought", "resp", "ctx", 0.8
         )
@@ -74,7 +74,7 @@ def test_entailment_audit_falls_back_to_critique_key():
 def test_entailment_audit_returns_empty_string_when_no_keys():
     hub = _make_hub()
     hub.turn_thought_trace = {}
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         hub.step_entailment_audit(
             "q", "Deep Thought", "resp", "ctx", 0.8
         )
