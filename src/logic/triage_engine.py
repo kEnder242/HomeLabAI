@@ -418,6 +418,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                 "hyde_vector_text": {"type": "string"},
                 "situation": {"type": "string"},
                 "hints": {"type": "string"},
+            "is_continuation": {"type": "boolean"},
             },
             "required": [
                 "inferred_intent",
@@ -511,6 +512,7 @@ class TriageEngine:
             + _BRAIN_PERSONA_SPEC
             + "\n"
             "Translate user intent (I think the user is trying to say...).\n"
+            "  * is_continuation: true if the query relies on anaphora, deixis, ellipsis, or conversational correction; otherwise false.\n"
             "Grammatical Tense & Temporal Horizon Rules:\n"
             "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
             "  * Conceptual Inquiries / Philosophical Exploration / General Greeting ('hello', 'how does this work?', 'why') -> domain: \"lab_internal\", vibe: \"SOCRATIC\" (Sliding multi-turn memory, Zero Archive RAG).\n"
@@ -690,6 +692,7 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
         "intrigue": 0.5,
         "inferred_intent": "general_interaction",
         "hyde_vector_text": "",
+        "is_continuation": False,
     }
 
     validated: dict[str, Any] = {}
@@ -698,6 +701,9 @@ def validate_triage_payload(payload: dict[str, Any] | Any) -> dict[str, Any]:
         if val is None:
             val = default_val
         validated[k] = val
+
+    if not isinstance(validated.get("is_continuation"), bool):
+        validated["is_continuation"] = False
 
     # Preserve any additional dynamic keys (e.g. overrides, latency stats)
     for k, v in payload.items():
