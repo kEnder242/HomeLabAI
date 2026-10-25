@@ -100,9 +100,9 @@
         "HISTORICAL": {
             "description": "18-year career archive \u2013 timeline queries, era lookups, project retrospectives, historical engineering decisions.",
             "enabled": true,
-            "default_domain": "lab_history",
+            "default_domain": "work_history",
             "rag": {
-                "target_domain": "lab_history",
+                "target_domain": "work_history",
                 "traversal": "TIME_FIRST",
                 "allowed_collections": [
                     "career_ledger",
@@ -152,9 +152,9 @@
         "CHRONICLE": {
             "description": "18-year career archive and historical engineering perspective \u2013 major epochs, hardware retrospectives, and decision rationale.",
             "enabled": true,
-            "default_domain": "lab_history",
+            "default_domain": "work_history",
             "rag": {
-                "target_domain": "lab_history",
+                "target_domain": "work_history",
                 "traversal": "TIME_FIRST",
                 "allowed_collections": [
                     "career_ledger",
@@ -167,6 +167,17 @@
             "interest_boost": 0.15,
             "prompt_mo": "Historical career archive lookup; recount past hardware epochs with authentic engineering perspective and scars.",
             "contextual_prompt": "Recount this past hardware epoch with authentic engineering perspective and scars in 2 sentences."
+        },
+        "UNCLEAR": {
+            "description": "Ambiguous, underspecified, or quiescence-triggering turns that cannot be confidently mapped to a domain — waterfall fuel floor so the turn naturally exhausts interest below the 0.35 gate instead of burning heavy compute.",
+            "enabled": true,
+            "default_domain": "unclear",
+            "rag": null,
+            "importance": 0.20,
+            "importance_floor": 0.15,
+            "interest_boost": 0.05,
+            "contextual_prompt": "Ask Jason playfully which specific node, test, or topic he wants checked in 1 short sentence.",
+            "prompt_mo": "Intent is ambiguous; deliver an inquisitive, playful 1-sentence foil presenting likely options rather than guessing."
         }
     }
 }

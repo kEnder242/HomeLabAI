@@ -266,7 +266,7 @@ def is_control_plane_feedback(t_parsed: dict[str, Any]) -> bool:
     feedback ONLY when the triage model resolved it to ``vibe == "META"`` with a
     feedback/standard domain, OR explicitly addressed it to ``SYSTEM`` with domain
     ``feedback``. Conversational vibes (``CASUAL``, ``HISTORICAL``, ``TECHNICAL``)
-    and retrieval domains (``exp_*`` / ``lab_history``) are never treated as feedback.
+    and retrieval domains (``exp_*`` / ``work_history``) are never treated as feedback.
     """
     if not isinstance(t_parsed, dict):
         return False
@@ -341,6 +341,16 @@ def classify_vibe_and_domain(
     vibe = str(parsed_json.get("vibe", "CASUAL")).upper()
     domain = str(parsed_json.get("domain", "standard"))
 
+    # [Story 108.10 / FEAT-673] First-class UNCLEAR quiescence fallback: ambiguous /
+    # underspecified intent resolves to vibe UNCLEAR + domain unclear (low fuel,
+    # importance 0.20 < 0.35 gate) instead of a CASUAL/standard guess.
+    if domain == "standard" and str(parsed_json.get("inferred_intent", "")).strip() in {
+        "",
+        "ambiguous",
+        "unknown",
+    }:
+        return "UNCLEAR", "unclear"
+
     # 4. Check declarative policy loader
     if loader:
         rule = loader.get_vibe_rule(vibe)
@@ -385,6 +395,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                         "WYWO",
                         "SUPERVISORY",
                         "CASUAL",
+                        "UNCLEAR",
                     ],
                 },
                 "domain": {
@@ -394,7 +405,7 @@ _TRIAGE_SCHEMA: dict[str, Any] = {
                         "exp_bkm",
                         "exp_for",
                         "standard",
-                        "lab_history",
+                        "work_history",
                         "lab_internal",
                         "dream_stream",
                         "feedback",
@@ -504,7 +515,7 @@ class TriageEngine:
             "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
             "  * Conceptual Inquiries / Philosophical Exploration / General Greeting ('hello', 'how does this work?', 'why') -> domain: \"lab_internal\", vibe: \"SOCRATIC\" (Sliding multi-turn memory, Zero Archive RAG).\n"
             "  * Crash Logs / Stack Trace / Dead PIDs / Kernel Panics -> domain: \"exp_for\", vibe: \"FORENSIC\".\n"
-            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"lab_history\" or \"exp_tlm\", vibe: \"CHRONICLE\" (ChromaDB RAG).\n"
+            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"work_history\" or \"exp_tlm\", vibe: \"CHRONICLE\" (ChromaDB RAG).\n"
             "  * Recent Lab Sprints / Yesterday's Debugging / Active Session Progress -> domain: \"lab_internal\", vibe: \"RETROSPECTIVE\".\n"
             "  * Architectural Design / Interfaces / Complexity Conservation (INS-038) -> domain: \"standard\", vibe: \"ARCHITECTURAL\".\n"
             "  * Concrete Code Edits / Fixes / Verification / Tests -> domain: \"standard\", vibe: \"TACTICAL\".\n"
@@ -517,8 +528,8 @@ class TriageEngine:
             "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
             "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs.\n"
             "  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs.\n"
-            "  4. lab_history (18-Year Archive): historical project notes (2005-2025).\n"
-            "If the intent maps to an archival domain (exp_*, lab_history), synthesize a 3-part Composite HyDE Vector:\n"
+            "  4. work_history (18-Year Archive): historical project notes (2005-2025).\n"
+            "If the intent maps to an archival domain (exp_*, work_history), synthesize a 3-part Composite HyDE Vector:\n"
             "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\n"
             'If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: "" and vibe: SOCRATIC.'
         )
