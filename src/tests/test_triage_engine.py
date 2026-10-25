@@ -23,6 +23,7 @@ from src.logic.triage_engine import (
     classify_vibe_and_domain,
     extract_latest_user_query,
     format_speaker_history,
+    is_control_plane_feedback,
     is_meta_lexicon,
     scrub_hyde_vector,
 )
@@ -421,16 +422,17 @@ class TestClassifyVibeAndDomain:
         assert domain == "dream_stream"
 
     def test_empty_parsed_defaults(self) -> None:
-        """Empty parsed_json falls back to CASUAL/standard for non-matching query."""
+        """[Story 108.10] Empty parsed_json (no inferred_intent) with standard domain
+        now resolves to the first-class UNCLEAR quiescence fallback."""
         vibe, domain = classify_vibe_and_domain("some random text", {})
-        assert vibe == "CASUAL"
-        assert domain == "standard"
+        assert vibe == "UNCLEAR"
+        assert domain == "unclear"
 
     def test_meta_with_vllm(self) -> None:
         """vllm keyword overrides even when parsed says HISTORICAL."""
         vibe, domain = classify_vibe_and_domain(
             "The vllm model swap failed",
-            {"vibe": "HISTORICAL", "domain": "lab_history"},
+            {"vibe": "HISTORICAL", "domain": "work_history"},
         )
         assert vibe == "META"
         assert domain == "lab_internal"
@@ -461,6 +463,41 @@ class TestClassifyVibeAndDomain:
         )
         assert vibe == "OPERATIONAL"
         assert domain == "exp_bkm"
+
+
+class TestUnclearQuiescenceFallback:
+    """[Story 108.10 / FEAT-673] First-class UNCLEAR ambiguous-intent fallback."""
+
+    def test_empty_intent_falls_back_to_unclear(self) -> None:
+        """Empty/missing inferred_intent with standard domain -> UNCLEAR/unclear."""
+        vibe, domain = classify_vibe_and_domain(
+            "wait, check that again",
+            {"vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "UNCLEAR"
+        assert domain == "unclear"
+
+    def test_ambiguous_intent_falls_back_to_unclear(self) -> None:
+        """Explicit 'ambiguous' inferred_intent with standard domain -> UNCLEAR/unclear."""
+        vibe, domain = classify_vibe_and_domain(
+            "hmm, one of those things",
+            {"inferred_intent": "ambiguous", "vibe": "CASUAL", "domain": "standard"},
+        )
+        assert vibe == "UNCLEAR"
+        assert domain == "unclear"
+
+    def test_genuine_standard_intent_not_unclear(self) -> None:
+        """A real inferred_intent on standard domain must NOT collapse to UNCLEAR."""
+        vibe, domain = classify_vibe_and_domain(
+            "what does the memory look like?",
+            {"inferred_intent": "memory status", "vibe": "OPERATIONAL", "domain": "standard"},
+        )
+        assert vibe == "OPERATIONAL"
+        assert domain != "unclear"
+
+    def test_unclear_vibe_is_not_control_plane_feedback(self) -> None:
+        """UNCLEAR quiescence turns are never swallowed as supervisory feedback."""
+        assert is_control_plane_feedback({"vibe": "UNCLEAR", "domain": "unclear"}) is False
 
 
 # ===========================================================================

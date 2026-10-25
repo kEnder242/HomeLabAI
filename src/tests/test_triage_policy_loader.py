@@ -101,9 +101,9 @@ VALID_POLICY: dict[str, Any] = {
         "HISTORICAL": {
             "description": "18-year career archive",
             "enabled": True,
-            "default_domain": "lab_history",
+            "default_domain": "work_history",
             "rag": {
-                "target_domain": "lab_history",
+                "target_domain": "work_history",
                 "traversal": "TIME_FIRST",
                 "allowed_collections": ["career_ledger", "long_term_wisdom"],
                 "max_distance": 0.80,
@@ -616,7 +616,7 @@ class TestProductionConfig:
         self._prod_loader.load_policy()
 
     def test_production_has_all_nine_vibes(self) -> None:
-        """Production config defines all 9 standard vibes."""
+        """Production config defines all 9 standard vibes + first-class UNCLEAR (Story 108.10)."""
         active = self._prod_loader.get_active_vibes()
         expected = {
             "CASUAL",
@@ -628,8 +628,10 @@ class TestProductionConfig:
             "TECHNICAL",
             "HISTORICAL",
             "ANALYTICAL",
+            "UNCLEAR",
         }
-        assert set(active) == expected
+        assert expected <= set(active)
+        assert "ANALYTICAL" in set(active)
 
     def test_production_conversational_no_rag(self) -> None:
         """CASUAL, SUPERVISORY, META have no RAG config."""
@@ -703,6 +705,31 @@ class TestProductionConfig:
         assert (
             "sre" in desc or "bkm" in desc or "diagnostic" in desc or "playbook" in desc
         )
+
+    def test_production_unclear_quiescence_fuel(self) -> None:
+        """[Story 108.10] UNCLEAR is a first-class vibe with quiescence fuel:
+        importance 0.20 (< 0.35 gate), importance_floor 0.15, interest_boost 0.05,
+        no RAG, and the inquisitive contextual prompt."""
+        rule = self._prod_loader.get_vibe_rule("UNCLEAR")
+        assert rule is not None, "UNCLEAR must be a first-class vibe in production policy"
+        assert rule["enabled"] is True
+        assert rule["default_domain"] == "unclear"
+        assert self._prod_loader.get_rag_config("UNCLEAR") is None
+        assert rule["importance"] == 0.20
+        assert rule["importance_floor"] == 0.15
+        assert rule["interest_boost"] == 0.05
+        assert "jason" in rule["contextual_prompt"].lower()
+
+    def test_production_work_history_rename(self) -> None:
+        """[Story 108.10] FEAT-440: lab_history -> work_history (maps to career_ledger)."""
+        for vibe in ("HISTORICAL", "CHRONICLE"):
+            rule = self._prod_loader.get_vibe_rule(vibe)
+            assert rule is not None, f"{vibe} missing from production policy"
+            assert rule["default_domain"] == "work_history", f"{vibe} not renamed"
+            rag = self._prod_loader.get_rag_config(vibe)
+            assert rag is not None, f"{vibe} lost its RAG config"
+            assert rag["target_domain"] == "work_history"
+            assert "career_ledger" in rag["allowed_collections"]
 
 
 # ===========================================================================

@@ -2604,7 +2604,7 @@ class CognitiveHub:
                 # Additive Layer 2: Domain/Era Guidance (Consuming triage directly as a data type)
                 t_domain = str(triage_result.get("domain", "")).lower()
                 t_vibe = str(triage_result.get("vibe", "")).upper()
-                if t_domain in ("lab_history", "career") or t_vibe == "HISTORICAL":
+                if t_domain in ("work_history", "lab_history", "career") or t_vibe == "HISTORICAL":
                     active_hyde_prompt += (
                         "\n[ERA_INDEXING_DIRECTIVE]: In 'search_terms', extract specific historical project names, "
                         "years (2005-2025), and system era markers to ground Brain's archive search."
