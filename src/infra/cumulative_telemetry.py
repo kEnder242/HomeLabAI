@@ -57,14 +57,16 @@ def log_telemetry_event(
 
         # Effective workflow velocity with 1000 tok/s sanity limit
         workflow_velocity = round(tokens_generated / duration_seconds, 2)
+        # [Metric 1 Standard] Hardware generation throughput must reflect pure LLM decode speed.
+        # If raw_throughput_tok_s is not explicitly provided, store None (N/A) rather than falling back to macro task velocity!
         if (
-            raw_throughput_tok_s
+            raw_throughput_tok_s is not None
             and raw_throughput_tok_s > 0
             and raw_throughput_tok_s <= 1000.0
         ):
             tp = round(raw_throughput_tok_s, 2)
         else:
-            tp = min(1000.0, workflow_velocity)
+            tp = None
 
         # 1. Append to live_usage_stream.jsonl only if duration >= 1.0s (filter sub-second div-0 anomalies)
         if raw_dur >= 1.0:

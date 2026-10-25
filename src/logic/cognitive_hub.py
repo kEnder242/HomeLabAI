@@ -3381,7 +3381,12 @@ class CognitiveHub:
         # [FEAT-660] Triage Target Bypass: When query is explicitly addressed to Brain,
         # bypass this check so Brain takes his turn directly without mucking with interest.
         target = getattr(self, "current_target", "pinky")
-        if gate_interest < 0.35 and target != "brain":
+        if target == "brain":
+            # [FEAT-660] Triage Target Bypass: Brain explicitly called, bypass interest quiescence gate
+            logging.info(
+                f"[WATERFALL] Target is Brain; bypassing interest quiescence gate (interest={gate_interest:.2f})."
+            )
+        elif gate_interest < 0.35:
             logging.info(
                 f"[WATERFALL] Turn concluded naturally by Pinky; interest {gate_interest:.2f} < 0.35 threshold. Brain dormant."
             )

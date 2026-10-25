@@ -1744,8 +1744,8 @@ When human judgment is required to evaluate quality, brevity, or persona tone:
 
 There is a fundamental asymmetry between **runtime generation prompts** and **out-of-band evaluation rubrics**:
 
-1. **Prompts Explain HOW (Runtime Frugality)**:
-   * Prompts injected into running LLMs must be minimalist, operational, and lean. They dictate **HOW** the model behaves (format boundaries, tone, sentence ceiling, roleplay channel, acknowledging peers).
+1. **Prompts Explain HOW (Runtime Frugality & Contextual-Prompts)**:
+   * Prompts injected into running LLMs must be minimalist, operational, and lean. Formally designated **Contextual-Prompts** (formerly micro-prompts), they attach additively to base personas to dictate **HOW** the model behaves for the active turn (format boundaries, tone, sentence ceiling, roleplay channel, acknowledging peers).
    * **Anti-Instruction-Bleeding**: Never cram the "WHY" (underlying rationale, design justifications, negative edge-case rules, or test criteria) into the runtime prompt. Over-specifying why a prompt exists inside the prompt itself causes "instruction bleeding" (the model parrots the meta-motives instead of acting naturally) and wastes precious KV cache.
 2. **Prompt MO Explains WHY (Out-of-Band Context & Evaluator Richness)**:
    * The **Modus Operandi (MO)** explains **WHY** we are prompting: the situational trigger, the epistemic motive, the problem being solved (e.g., *"Deep Thought's assumption conflicted with Jason's local setup, so Pinky must interject to defend Jason's intent before bad code is written"*).

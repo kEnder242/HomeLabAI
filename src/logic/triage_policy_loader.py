@@ -45,6 +45,8 @@ _OPTIONAL_VIBE_FIELDS: frozenset[str] = frozenset(
         "importance_floor",
         "interest_boost",
         "examples",
+        "contextual_prompt",
+        "prompt_mo",
     }
 )
 

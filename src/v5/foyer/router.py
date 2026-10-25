@@ -4681,25 +4681,73 @@ class FoyerRouter:
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
 
     async def handle_telemetry_ingest(self, request):
-        """[FEAT-T20.3] Ingests metrics from decoupled resident nodes and appends to ledger."""
+        """[FEAT-T20.3 / FEAT-498] Ingests ground-truth generation metrics from resident nodes and appends to ledgers."""
         try:
             data = await request.json()
+            node_name = str(data.get("node", ""))
+            total_tokens = int(data.get("total_tokens", 0))
+            duration_s = float(data.get("duration_s", 0.0))
+            ttft_ms = float(data.get("ttft_ms", 0.0))
+            engine_type = str(data.get("engine_type", "local_hub"))
+            model = str(data.get("model", f"persona_{node_name.lower()}"))
+            request_id = data.get("request_id", "default")
+
             if self.cognitive and self.cognitive._tel_collector:
                 # Scrape raw GPU info from DCGM first to enrich
                 sample = self.cognitive._tel_collector.snapshot(
-                    node=data.get("node", ""),
-                    request_id=data.get("request_id", "default"),
+                    node=node_name,
+                    request_id=request_id,
                 )
-                sample.ttft_ms = data.get("ttft_ms", 0.0)
-                sample.total_tokens = data.get("total_tokens", 0)
-                sample.duration_s = data.get("duration_s", 0.0)
-                sample.engine_type = data.get("engine_type", "")
-                sample.model = data.get("model", "")
+                sample.ttft_ms = ttft_ms
+                sample.total_tokens = total_tokens
+                sample.duration_s = duration_s
+                sample.engine_type = engine_type
+                sample.model = model
                 sample.enrich_economics()
                 self.cognitive._tel_collector.write_ledger(sample)
                 logger.info(
                     f"[TEL INGEST] Logged telemetry for {sample.node} | TTFT={sample.ttft_ms}ms"
                 )
+
+            # [Story 107.20 / FEAT-498] Log ground-truth physical telemetry to live_usage_stream.jsonl
+            if total_tokens > 0 and duration_s > 0:
+                try:
+                    from infra.cumulative_telemetry import log_telemetry_event
+
+                    node_lower = node_name.lower()
+                    if "brain" in node_lower:
+                        seat = "Windows 4090RTX"
+                        display_name = "Brain (Archive)"
+                    elif "thought" in node_lower:
+                        seat = "Windows 4090RTX"
+                        display_name = "Deep Thought"
+                    elif "pinky" in node_lower:
+                        seat = "Linux 2080ti"
+                        display_name = "Pinky (Response)"
+                    elif "lab" in node_lower:
+                        seat = "Linux 2080ti"
+                        display_name = "Lab (Triage)"
+                    elif "architect" in node_lower:
+                        seat = "Apple M5 Air"
+                        display_name = "Architect"
+                    else:
+                        seat = "Linux 2080ti"
+                        display_name = node_name or "Resident Node"
+
+                    raw_tp = round(total_tokens / duration_s, 2)
+                    log_telemetry_event(
+                        source=f"Web Intercom ({display_name})",
+                        task_title=f"Mice Turn: {display_name}",
+                        seat=seat,
+                        provider=engine_type,
+                        model=model,
+                        tokens_generated=total_tokens,
+                        duration_seconds=duration_s,
+                        raw_throughput_tok_s=raw_tp,
+                    )
+                except Exception as tel_err:
+                    logger.debug(f"[TEL INGEST] cumulative_telemetry logging failed: {tel_err}")
+
             return web.Response(status=200)
         except Exception as e:
             logger.error(f"Telemetry ingest error: {e}")
@@ -4849,42 +4897,26 @@ class FoyerRouter:
                         if "brain" in s_lower or "thought" in s_lower:
                             channel = "insight"
 
-                        await self.broadcast(
-                            {
-                                "type": "chat",
-                                "brain": content,
-                                "brain_source": source,
-                                "final": True,
-                                "channel": channel,
-                                "request_id": request_id,
-                            }
+                        # [Story 107.17] Single Delivery Authority:
+                        # Two-mice handover stages broadcast their finalized paragraph pop directly upon completion.
+                        # Silence duplicate broadcast here to eliminate dual-bubble printing, while preserving telemetry logging.
+                        is_handover_persona = any(
+                            k in s_lower for k in ("brain (archive)", "pinky (voice)", "deep thought", "pinky (triage)")
                         )
-
-                        # [FEAT-498] Cumulative Sovereign Telemetry Tap for Intercom & Mice Debate
-                        try:
-                            from infra.cumulative_telemetry import log_telemetry_event
-
-                            toks = max(1, int(len(content) / 3.8))
-                            seat_map = {
-                                "pinky": "Linux 2080ti",
-                                "brain": "Windows 4090RTX",
-                                "deep thought": "Windows 4090RTX",
-                                "architect": "Apple M5 Air",
-                                "librarian": "Linux 2080ti",
-                            }
-                            s_seat = seat_map.get(source.lower(), "Linux 2080ti")
-                            log_telemetry_event(
-                                source=f"Web Intercom ({source})",
-                                task_title=f"Mice Turn: {source}",
-                                seat=s_seat,
-                                provider="local_hub",
-                                model=f"persona_{source.lower()}",
-                                tokens_generated=toks,
-                                duration_seconds=max(1.0, toks / 35.0),
-                                raw_throughput_tok_s=35.0,
+                        if not is_handover_persona:
+                            await self.broadcast(
+                                {
+                                    "type": "chat",
+                                    "brain": content,
+                                    "brain_source": source,
+                                    "final": True,
+                                    "channel": channel,
+                                    "request_id": request_id,
+                                }
                             )
-                        except Exception:
-                            pass
+
+                        # [Story 107.20 / FEAT-498] Telemetry is logged directly via handle_telemetry_ingest
+                        # from physical node execution receipts in loader.py (zero synthetic 35 tok/s estimation).
 
                         # [SPR-52.0 / Task 52.3] Stage 5: contract completion (idempotent)
                         if (

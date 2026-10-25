@@ -50,3 +50,18 @@ To integrate local (2080 Ti) and remote (4090 Ti) hardware using a memory-first 
 | **LightMem-Ego** | 2607.11487 | Lightweight episodic personal memory condensation. | Reference Anchor: Edge-optimized lifelong assistance timeline compression. | N/A | **Reference Anchor** |
 | **HOLA** | Comp-Delta | Hippocampal Linear Attention (semi-parametric recurrent state). | Tabled Anchor: Requires custom non-transformer Triton kernel training. | N/A | **Tabled** |
 
+---
+
+## 🏛️ Prior Art & Academic Precedence (What Acme Lab Built First)
+
+A comparative audit matching recent 2025/2026 academic publications to prior art already engineered and running in the Federated Lab across earlier sprints:
+
+| Research Framework | Publication Era | Academic Thesis | Acme Lab Prior Art & Implementation | Sprint Origin | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Test-Time Compute Scaling (TTCS)** *(Snell et al.)* | Aug 2024 / Jan 2026 (2601.22628) | Scaling test-time reasoning loops (Synthesize $\to$ Solve) outperforms model retraining. | **`[FEAT-114]` TTCS Reasoning Engine**: Implemented iterative deliberation loop in `ai_engine_v2.py`. | **Phase 9 / SPR-47** | **100% Certified** |
+| **Agent-as-a-Judge** *(Zhu et al.)* | Jun 2024 (2410.10934) | Decoupling agent generation from evaluation rubrics to eliminate self-grading bias. | **`[FEAT-454]` / `[FEAT-470]` Cynical Curator & Coherence Judge**: Decoupled rubric validation in `pinky_critic_persona.py`. | **SPR-58 / SPR-59** | **100% Certified** |
+| **Dynamic Tool Permission Profiling** *(Pillitteri et al.)* | Early 2026 | Eliminating context bloat and tool confusion by scoping tools dynamically to agent roles. | **`[FEAT-645]` / `[FEAT-655]` Multi-Tier JITC Tool Matrix**: Atlas ($L_2$) and Junior ($L_3$) restricted via `oh-my-openagent.json` (`jit_read`, `jit_stage`, `safe_patch`). | **SPR-96 / SPR-100** | **100% Certified** |
+| **Agentic File System (Agentic FS)** *(Various)* | Feb 2026 (2602.20478) | Treating external repository code and notes directly as structured long-term memory. | **`[FEAT-073]` / `[FEAT-080]` ArchiveMemory & Static Synthesis**: Ingesting 18-year notes as memory banks via `mass_scan.py` and `nibble.py`. | **SPR-11 / SPR-39** | **100% Certified** |
+| **Multi-Agent Deliberation (Internal Debate)** *(Various)* | Mar 2026 (2603.00142) | Heterogeneous multi-agent consensus loops outperform monolithic prompting. | **`[FEAT-071]` Internal Debate & `[FEAT-489]` Two-Mice Handover**: Council of Hemispheres (Brain $\to$ Deep Thought $\to$ Pinky) in `cognitive_hub.py`. | **SPR-52 / SPR-76** | **100% Certified** |
+
+
