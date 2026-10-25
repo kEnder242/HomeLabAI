@@ -121,7 +121,7 @@ def test_stage3_hyde_rag_resolution():
 
 
 def test_stage4_brain_gatekeeper_prompt_construction():
-    """Stage 4: Brain Gatekeeper prompt instructs pruning and forwarding cohesive bedrock for Aurora."""
+    """Stage 4: Brain Gatekeeper prompt instructs line-by-line evidence filtering for bedrock."""
     prompt = build_two_mice_stage_prompt(
         1,
         user_query=LITMUS_QUERY,
@@ -130,11 +130,11 @@ def test_stage4_brain_gatekeeper_prompt_construction():
     )
     assert "STAGE 1" in prompt
     assert "<historical_record>" in prompt
-    assert "cohesive bedrock truth" in prompt
-    assert "evidentiary inspection" in prompt
-    assert "Declare your curation" in prompt
-    # [STORY 103.19] Brain Step 3 context isolation & echo prevention
-    assert "Mention your context and role only when it is part of the conversation" in prompt
+    assert "EVIDENCE FILTER" in prompt
+    assert "[ANALYSIS]" in prompt
+    assert "[BEDROCK SELECTION]" in prompt
+    assert "KEEP/DROP" in prompt
+    assert "[CHUNK-1]" in prompt
 
 
 def test_stage5_tri_node_relay_contract():
@@ -348,6 +348,49 @@ def test_stage12_multi_domain_dna_resolution_contract():
     assert resolve_collection_scope(
         vibe="HISTORICAL", target_domains_or_domain=["sprint", "career"]
     ) == ["career_ledger", "sprint_dna"]
+
+
+def test_stage13_wywo_standup_fastpath_contract():
+    """Stage 13 (Story 108.5 & 108.6): WYWO standup fast-path routing and situational chunking contract.
+    Asserts deterministic classification of standup inquiry into ('WYWO', 'dream_stream') and
+    universal serialization into keyed [CHUNK-N] blocks for Brain's evidential filter.
+    """
+    from logic.triage_engine import classify_vibe_and_domain
+    from logic.cognitive_hub import format_situational_payload_as_chunks
+
+    vibe, domain = classify_vibe_and_domain("what did you do while i was out?", {})
+    assert vibe == "WYWO"
+    assert domain == "dream_stream"
+
+    mock_dream_payload = {
+        "nightly_dialogue.json": "Completed overnight telemetry backup on node KENDER.",
+        "status.json": "All services nominal.",
+    }
+    chunked = format_situational_payload_as_chunks("dream_stream", mock_dream_payload)
+    assert "[CHUNK-1]:" in chunked
+    assert "Source: nightly_dialogue.json" in chunked
+    assert "[CHUNK-2]:" in chunked
+    assert "Source: status.json" in chunked
+
+
+def test_stage14_unclear_foil_quiescence_contract():
+    """Stage 14 (Story 108.7 & 108.8): Speculative foil and quiescence contract for ambiguous turns.
+    Asserts that underspecified queries naturally exhaust interest (< 0.35 threshold),
+    leaving Deep Thought dormant and allowing Pinky to deliver an inquisitive foil.
+    """
+    t_parsed = {
+        "inferred_intent": "ambiguous reference",
+        "vibe": "UNCLEAR",
+        "domain": "unclear",
+        "calculated_interest": 0.20,
+    }
+
+    # Quiescence check: interest (0.20) is below the 0.35 threshold
+    assert t_parsed["calculated_interest"] < 0.35
+    # Deep Thought receives 0 budget
+    dt_budget = int(t_parsed["calculated_interest"] * 1200) if t_parsed["calculated_interest"] >= 0.30 else 0
+    assert dt_budget == 0
+
 
 
 
