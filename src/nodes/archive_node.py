@@ -691,8 +691,7 @@ def resolve_rdna_hyde_exemplar(query: str, client=None, distance_floor: float = 
         return query, {}
     try:
         if client is None:
-            import chromadb
-            client = chromadb.HttpClient(host="localhost", port=8001)
+            client = chroma_client
         col = client.get_collection("rdna")
         res = col.query(query_texts=[query[:300]], n_results=1)
         dists = res.get("distances", [[]])[0]
@@ -723,8 +722,7 @@ def purge_candidate_exemplar(query: str, request_id: str = "", client=None) -> b
         return False
     try:
         if client is None:
-            import chromadb
-            client = chromadb.HttpClient(host="localhost", port=8001)
+            client = chroma_client
         col = client.get_collection("rdna")
         res = col.query(query_texts=[query[:300]], n_results=1)
         dists = res.get("distances", [[]])[0]
@@ -747,8 +745,7 @@ def evaluate_rdna_promotion_candidate(query: str, response: str, request_id: str
         return {"promoted": False, "reason": "empty_payload"}
     try:
         if client is None:
-            import chromadb
-            client = chromadb.HttpClient(host="localhost", port=8001)
+            client = chroma_client
         col = client.get_or_create_collection("rdna")
         doc_id = f"rdna_upvote_{int(time.time())}_{request_id[-6:] if request_id else 'user'}"
         meta = {

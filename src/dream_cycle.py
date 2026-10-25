@@ -320,6 +320,12 @@ async def main():
         default=None,
         help="Max duration in seconds to run refinement cycles",
     )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=5.0,
+        help="Polite cooldown delay between refinement cycles in seconds (default: 5.0)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="[DREAM] %(message)s")
@@ -385,13 +391,22 @@ async def main():
                             f"⚠️ Cycle #{completed_cycles} reported FAIL: {telemetry.get('error')}"
                         )
 
-                    # Polite yield between iterations
+                    # Polite cooldown & settling interval (FEAT-428 / FEAT-101)
                     has_more = (
                         (args.duration and (time.time() - start_time) < args.duration)
                         or (not args.duration and completed_cycles < args.count)
                     )
                     if has_more:
-                        await asyncio.sleep(1)
+                        # Periodic socket & memory settling window every 20 cycles
+                        if completed_cycles % 20 == 0:
+                            logging.info(
+                                f"💤 [COOLDOWN] Periodic socket & GC settling window (15s) at cycle #{completed_cycles}..."
+                            )
+                            import gc
+                            gc.collect()
+                            await asyncio.sleep(15)
+                        else:
+                            await asyncio.sleep(args.delay)
 
                 elapsed = time.time() - start_time
                 overall_telemetry = {
