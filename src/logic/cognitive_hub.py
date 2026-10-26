@@ -747,8 +747,8 @@ def build_two_mice_stage_prompt(
         "STRICT FORMATTING: Plain conversational speech only. Output NO markdown headers, NO bold section tags, and NO bullet points. Exactly 1 to 2 spoken sentences directly to Jason, then stop.\n"
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 1-2 sentence conversational "
         "TL;DR directly to Jason, then yield the floor.\n\n"
-        f"[USER_QUERY]: Jason asked: {effective_query.strip()}\n"
-        f"[BRAIN_NOTES]: Brain noted: {extracted_evidence.strip()}{vibe_block}"
+        f"[USER_QUERY]: {effective_query.strip()}\n"
+        f"[BRAIN_NOTES]: {extracted_evidence.strip()}{vibe_block}"
     )
 
 
@@ -1445,8 +1445,8 @@ class CognitiveHub:
             await self.broadcast(
                 {
                     "type": "crosstalk",
-                    "brain": f"Initiating {source_name} intuition...",
-                    "brain_source": source_name,
+                    "brain": f"[INIT] Initiating {source_name} intuition...",
+                    "brain_source": "System",
                     "final": False,
                     "channel": channel,
                 }
@@ -2553,12 +2553,14 @@ class CognitiveHub:
             if chat_delivery:
                 self.turn_thought_trace["audit"] = chat_delivery  # [STORY 108.2] Primary entailment-audit key
                 self.turn_thought_trace["critique"] = chat_delivery  # [STORY 108.2] Backward-compatible alias
-                await self.execute_dispatch(
-                    chat_delivery,
-                    "Pinky (Coherence Critic)",
-                    shutdown_event=shutdown_event,
-                    final=True,
-                )
+                # [BKM-094 / BACKLOG-CRITIC-EXCISION] Silent on PASS: Only dispatch chat on critical mismatch
+                if critic_res.slop_found or critic_res.score < 3:
+                    await self.execute_dispatch(
+                        chat_delivery,
+                        "Pinky (Coherence Critic)",
+                        shutdown_event=shutdown_event,
+                        final=True,
+                    )
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
@@ -3634,15 +3636,10 @@ class CognitiveHub:
             queue_post_waterfall_learning_target(query, entities=hardware_entities)
 
         # Stage 3.3: Pinky Conversational TL;DR (paced by updated boosted_interest)
-        # [Story 108.14B / AR-10] Clean Zero-Context sentinel on Negative Moat
+        # [AR-108-18] Natural Zero-Context via Interest Collapse (no synthetic vibe)
         if candidate_count > 0 and (kept_ids or drop_ids) and kept_count == 0:
-            pinky_context = "[ZERO_CONTEXT]: No matching records found for this query in the archives."
-            vibe = "ZERO_CONTEXT"
-            topic_directive = (
-                self.policy_loader.get_vibe_rule("ZERO_CONTEXT").get("contextual_prompt", "")
-                if hasattr(self, "policy_loader") and self.policy_loader
-                else "Inform Jason playfully that no matching lab notes were found on this specific topic, and offer 2 plausible lab directions in 2 sentences."
-            )
+            boosted_interest = 0.0
+            pinky_context = "[ZERO_EVIDENCE]: Lab archives contain no matching records for Jason's specific query. State this boundary honestly and concisely in your natural voice."
         else:
             pinky_context = dt_synthesis if dt_synthesis else (bedrock_payload or brain_grounding)
 

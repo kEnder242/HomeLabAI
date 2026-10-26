@@ -1834,6 +1834,82 @@ The pass/fail determination is **deferred** out-of-process to the Layer 1 Orches
 2. AGY consumes the trace, reads the Prompt MO, and evaluates the candidate output using the rich rubric questions.
 3. AGY issues the formal `PASS` / `FAIL` verdict and records the telemetry into the project benchmark ledger (`field_notes/data/sprint_108_benchmarks.json`).
 
+---
+
+## BKM-091: Causal Evidence-Before-Verdict Token Order Inversion
+**Feature Anchor:** `[BKM-091]` / `[FEAT-671]` / `[BKM-089]`  
+**Colloquial Alias:** "Evidence-First Invariant" / "Anti-Commitment Ordering"  
+**Tags:** `#causal_ordering`, `#llm_epistemics`, `#gatekeeping`, `#evidence_before_verdict`  
+**Domain:** Prompt Engineering, Gatekeeping, Epistemic Filtering  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Invariant
+In causal autoregressive language models, prompt generation instructions for classification, filtering, and gatekeeping tasks must **never place the decision token at the start of the output line**.
+* **Forbidden (Verdict-First)**: `- CHUNK-N: KEEP/DROP — <reason>`
+* **Mandatory (Evidence-Before-Verdict)**: `- CHUNK-N: Anchor Match: <terms>; Anchor Missing: <terms> => KEEP|DROP`
+
+### 2. The Causal Failure Mode
+Autoregressive token generation generates left-to-right. When the model emits `KEEP` as its first token (often due to optimistic attention affinity with query keywords), the model's future attention is conditioned on that commitment. To maintain linguistic consistency, the model post-hoc confabulates supporting evidence (e.g. inventing that a chunk mentions Kubernetes when it does not).
+
+### 3. Strict Conjunction Evaluation
+By requiring the model to explicitly evaluate and emit the matching anchor facts and missing anchor facts *before* generating the verdict token, the model's attention attends over the absence of facts. If any primary query requirement is listed under `Anchor Missing:`, the attention head naturally routes to `=> DROP`, achieving deterministic 100% conjunction compliance on small edge models ($3\text{B}$).
+
+---
+
+## BKM-092: Temporal Frame Disentanglement (Excavated Memory vs. Runtime State)
+**Feature Anchor:** `[BKM-092]` / `[VIBE-019]` / `[FEAT-671]`  
+**Colloquial Alias:** "Temporal Provenance Grounding" / "Anti-Time-Travel Invariant"  
+**Tags:** `#temporal_grounding`, `#wywo`, `#epistemic_disentanglement`, `#archive_vs_runtime`  
+**Domain:** RAG Assembly, Standup Synthesis, Temporal Reasoning  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Invariant
+When historical archives or past career memories are injected into conversational turns alongside live runtime metrics (e.g. `WYWO` standups, retrospective digests), prompt payloads must **explicitly label the temporal provenance of the facts**.
+* Historical memories must be explicitly framed as: `[BEDROCK_PAYLOAD]: Overnight Dream Excavation (from <year> archive)`.
+* Runtime state must be explicitly framed as: `[BEDROCK_PAYLOAD]: Live Lab Runtime (2026)`.
+
+### 2. Failure Prevention
+Without explicit temporal framing:
+* High-reasoning sovereign models ($27\text{B}+$) detect chronological contradiction (e.g., a 2021 platform milestone in an "overnight" query) and abstain or refuse to answer.
+* Small edge models ($3\text{B}$) confabulate time-travel scenarios, asserting that the engineering team integrated 2021 hardware yesterday.
+Explicit labeling enables the model to properly attribute the work to past history while accurately reporting the present runtime telemetry.
+
+---
+
+## BKM-093: Anti-Quotation Invariant for Small Model Prompts
+**Feature Anchor:** `[BKM-093]` / `[BKM-089]`  
+**Colloquial Alias:** "Zero-Example-Quotes Rule"  
+**Tags:** `#prompt_engineering`, `#small_models`, `#anti_parroting`, `#frugal_prompts`  
+**Domain:** Prompt Engineering, Edge Inference ($3\text{B}\text{--}8\text{B}$)  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Invariant
+System prompts and operational instructions for small ($3\text{B}$) and quantized models must **never contain quoted illustrative phrases or canned opener examples**.
+* **Forbidden**: `"Start with a conversational phrase (like 'Hold on, Jason—') and set the record straight."`
+* **Mandatory**: `"Jump straight in with a natural, varied conversational catch and set the record straight in 1 to 2 brisk sentences."`
+
+### 2. The Behavioral Failure Mode
+Small models treat illustrative quotes as mandatory verbatim prefixes, emitting the exact quoted example in 100% of generations regardless of context. Concrete examples belong exclusively in out-of-band Prompt Modus Operandi (MO) specifications evaluated by Layer 1 orchestrators.
+
+---
+
+## BKM-094: Sovereign Decoupled Entailment Auditing
+**Feature Anchor:** `[BKM-094]` / `[FEAT-058]` / `[BKM-089]`  
+**Colloquial Alias:** "Silent 27B Entailment Gate"  
+**Tags:** `#heterogeneous_silicon`, `#entailment_audit`, `#silent_pass`, `#m5_air`, `#kender`  
+**Domain:** Multi-Node Silicon Allocation, Verification Architecture  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Silicon Allocation Boundary
+* **Edge Inference ($3\text{B}$)**: Dedicated exclusively to low-latency conversational delivery and local fast-path filtering. Small models must **never** be tasked with out-of-band entailment verification of their own output.
+* **Sovereign Silicon ($27\text{B}+$)**: Dedicated to deep architectural synthesis and out-of-band entailment auditing.
+
+### 2. The Silent-Pass Contract
+When an out-of-band Entailment Audit executes:
+* If the generation is entailed (`VERDICT: PASS`), the audit completes in **100% absolute silence**—no UI messages, no tokens pushed to chat streams, no user interruption.
+* If a contradiction or cross-attribution is detected (`VERDICT: MISMATCH`), the system triggers Pinky's Intercom continuation (`CONT_SYS_V3`) to set the record straight conversationally.
+* If Sovereign silicon is offline or asleep, the entailment audit is skipped entirely; local $3\text{B}$ models must never substitute as judges ($0\%$ specificity).
+
 
 
 

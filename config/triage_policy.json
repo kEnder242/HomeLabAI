@@ -161,17 +161,6 @@
             "prompt_mo": "Conceptual inquiry; explore architectural trade-offs and complexity conservation without jumping to code.",
             "contextual_prompt": "Explore the architectural trade-off and complexity conservation behind this design in 2 grounded sentences without reciting code."
         },
-        "ZERO_CONTEXT": {
-            "description": "Post-moat fallback state when zero candidate chunks match the query. Deterministic mid-waterfall transition (never a Stage 1 output).",
-            "enabled": true,
-            "default_domain": "unclear",
-            "rag": null,
-            "importance": 0.20,
-            "importance_floor": 0.15,
-            "interest_boost": 0.05,
-            "prompt_mo": "Negative moat triggered (0/N chunks kept); admit lack of grounded lab context gracefully and invite Jason to clarify or pivot without fabricating technical claims.",
-            "contextual_prompt": "Inform Jason playfully that no matching lab notes were found on this specific topic, and offer 2 plausible lab directions in 2 sentences."
-        },
         "SUPERVISORY": {
             "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
             "enabled": true,
