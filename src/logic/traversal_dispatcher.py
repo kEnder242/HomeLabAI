@@ -82,10 +82,11 @@ _DOMAIN_COLLECTION_MAP: dict[str, list[str]] = {
 
 
 # [FEAT-659] Sprint 61/64 vibe priority ordering.
+# [FEAT-469] META vibe prioritizes live-ops collections, suppressing behavioral_dna and career_ledger.
 _VIBE_PRIORITY: dict[str, list[str]] = {
     "HISTORICAL": ["career_ledger", "sprint_dna", "artifact_vault", "wisdom_dna", "philosophy_dna", "behavioral_dna", "feature_dna", "lab_infrastructure", "lab_journal"],
     "TECHNICAL": ["behavioral_dna", "feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
-    "META": ["feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "behavioral_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
+    "META": ["feature_dna", "lab_infrastructure", "lab_journal"],
     "DEFAULT": ["feature_dna", "lab_infrastructure", "lab_journal", "sprint_dna", "behavioral_dna", "wisdom_dna", "philosophy_dna", "career_ledger", "artifact_vault"],
 }
 

@@ -51,7 +51,9 @@ async def test_triage_strips_round_table_memory():
     captured_args.clear()
 
     async def run_standard():
-        async for t in hub._process_node_stream("lab", "Hello test", "", "Pinky"):
+        async for t in hub._process_node_stream(
+            "lab", "Hello test", "", "Pinky", max_tokens=1500
+        ):
             tokens.append(t)
 
     try:

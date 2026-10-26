@@ -310,6 +310,8 @@ def test_handover_runs_brain_then_pinky_sequentially():
                 request_id="tm1",
             )
         )
+        if hasattr(hub, "_last_audit_task") and hub._last_audit_task:
+            loop.run_until_complete(hub._last_audit_task)
     finally:
         loop.close()
     assert ran is True
@@ -435,6 +437,8 @@ def test_brain_boost_interest_elevates_fuel():
                 request_id="boost1",
             )
         )
+        if hasattr(hub, "_last_audit_task") and hub._last_audit_task:
+            loop.run_until_complete(hub._last_audit_task)
     finally:
         loop.close()
 

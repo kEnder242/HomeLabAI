@@ -65,8 +65,8 @@ _EXPECTED_VIBE_MAP: dict[str, tuple[str, str]] = {
     "VAL-01": ("TECHNICAL", "exp_tlm"),
     "VAL-02": ("TECHNICAL", "exp_tlm"),
     "VAL-03": ("TECHNICAL", "exp_tlm"),
-    # silicon_validation – historical engineering → HISTORICAL (lab_history)
-    "VAL-04": ("HISTORICAL", "lab_history"),
+    # silicon_validation – historical engineering → HISTORICAL (work_history)
+    "VAL-04": ("HISTORICAL", "work_history"),
     # platform_telemetry anchors → TECHNICAL (exp_tlm)
     "VAL-05": ("TECHNICAL", "exp_tlm"),
     "VAL-06": ("TECHNICAL", "exp_tlm"),

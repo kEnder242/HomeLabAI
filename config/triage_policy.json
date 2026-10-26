@@ -1,9 +1,9 @@
 {
     "_schema_version": "1.0.0",
-    "_description": "Declarative Triage Policy Engine \u2013 production vibe-to-domain routing rules. Conversational/supervisory vibes omit RAG fields. Retrieval vibes define target_domain, traversal, allowed_collections, and max_distance.",
+    "_description": "Declarative Triage Policy Engine – production vibe-to-domain routing rules. Conversational/supervisory vibes omit RAG fields. Retrieval vibes define target_domain, traversal, allowed_collections, and max_distance.",
     "vibes": {
         "CASUAL": {
-            "description": "Colloquial greetings and pleasantries \u2013 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
+            "description": "Colloquial greetings and pleasantries – 'how are things?', 'how are you?', 'what's up?', 'hello', 'good morning', 'hi'. Social lubrication that requires no lab context.",
             "enabled": true,
             "default_domain": "social",
             "rag": null,
@@ -21,19 +21,19 @@
             "prompt_mo": "Jason offered pleasantry; deliver a warm, laconic in-character greeting without dumping unprompted vitals or tasks.",
             "contextual_prompt": "Give Jason a quick, cheerful 1-sentence hello in character. No vitals or technical reports."
         },
-        "SUPERVISORY": {
-            "description": "Supervisory feedback loop \u2013 user corrections, tone adjustments, preference nudges, persona tuning requests.",
+        "UNCLEAR": {
+            "description": "Ambiguous, underspecified, or quiescence-triggering turns that cannot be confidently mapped to a domain — waterfall fuel floor so the turn naturally exhausts interest below the 0.35 gate instead of burning heavy compute.",
             "enabled": true,
-            "default_domain": "feedback",
+            "default_domain": "unclear",
             "rag": null,
-            "importance": 0.6,
-            "importance_floor": 0.5,
-            "interest_boost": 0.1,
-            "prompt_mo": "Supervisory feedback received; confirm behavioral alignment without defensive excuses.",
-            "contextual_prompt": "Acknowledge the supervisory correction directly and confirm how future turns will adapt in 1-2 sentences."
+            "importance": 0.20,
+            "importance_floor": 0.15,
+            "interest_boost": 0.05,
+            "prompt_mo": "Fragment or ambiguous turn; engage playfully without hallucinating facts, and ask for specific guidance.",
+            "contextual_prompt": "Playfully riff on Jason's ambiguous remark in character and ask what specific lab topic or test he wants checked in 1-2 sentences."
         },
         "WYWO": {
-            "description": "'While You Were Out' Standup Briefing \u2013 briefing the user on lab activity, engineering events, and subconscious dream synthesis during user absence.",
+            "description": "'While You Were Out' Standup Briefing – briefing the user on lab activity, engineering events, and subconscious dream synthesis during user absence.",
             "enabled": true,
             "default_domain": "dream_stream",
             "rag": {
@@ -48,57 +48,11 @@
             "importance": 0.85,
             "importance_floor": 0.8,
             "interest_boost": 0.15,
-            "prompt_mo": "Jason was away; summarize overnight node debates, stored DNA wisdom, and system health so Jason can set priorities.",
-            "contextual_prompt": "Catch Jason up on what Brain and the lab got into overnight, and let him know system vitals are green in 2 sentences. Start with 'Narf!'."
-        },
-        "META": {
-            "description": "User is giving supervisory feedback, pointing out bugs/regressions, correcting factual errors, requesting tone/verbosity adjustments, or issuing Fourth-Wall operational commands.",
-            "domain": "feedback",
-            "addressed_to": "SYSTEM",
-            "enabled": true,
-            "default_domain": "feedback",
-            "rag": null,
-            "importance": 0.0,
-            "importance_floor": 0.0,
-            "interest_boost": 0.0,
-            "prompt_mo": "Operational Fourth-Wall directive; acknowledge state transition directly.",
-            "contextual_prompt": "Acknowledge the Fourth-Wall correction directly and confirm operational state adjustment in 1-2 sentences."
-        },
-        "OPERATIONAL": {
-            "description": "Operational SRE queries \u2013 diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
-            "enabled": true,
-            "default_domain": "unknown",
-            "rag": null,
-            "importance": 0.85,
-            "importance_floor": 0.75,
-            "interest_boost": 0.15,
-            "prompt_mo": "Urgent system telemetry requested; deliver high-urgency, compact summary of GPU thermals, power caps, and vitals.",
-            "contextual_prompt": "Deliver an alert, compact 2-sentence summary of our live GPU thermals, power caps, and system load."
-        },
-        "FORENSIC": {
-            "description": "Forensic log analysis \u2013 crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
-            "enabled": true,
-            "default_domain": "unknown",
-            "rag": null,
-            "importance": 0.95,
-            "importance_floor": 0.85,
-            "interest_boost": 0.15,
-            "prompt_mo": "System fault detected; highlight faulting kernel module, panic trace signature, and diagnostic playbook.",
-            "contextual_prompt": "Highlight the faulting kernel module or crash signature directly and name the next diagnostic command in 2 sentences."
-        },
-        "TECHNICAL": {
-            "description": "Technical deep-dive \u2013 silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
-            "enabled": true,
-            "default_domain": "unknown",
-            "rag": null,
-            "importance": 0.9,
-            "importance_floor": 0.75,
-            "interest_boost": 0.15,
-            "prompt_mo": "Ground discussion in engineering reality; deliver a crisp 2-sentence conversational TL;DR directly to Jason.",
-            "contextual_prompt": "Translate Brain's technical analysis into a crisp 2-sentence conversational TL;DR directly to Jason."
+            "prompt_mo": "Jason was away; summarize overnight dream excavation over past engineering archives, stored DNA wisdom, and confirm system vitals so Jason can set priorities. Strictly maintain temporal distinction between past archive study and present system state.",
+            "contextual_prompt": "Catch Jason up on what was read and indexed from past lab records during last night's dream cycle, and confirm system status in 2 sentences."
         },
         "HISTORICAL": {
-            "description": "18-year career archive \u2013 timeline queries, era lookups, project retrospectives, historical engineering decisions.",
+            "description": "18-year career archive – timeline queries, era lookups, project retrospectives, historical engineering decisions.",
             "enabled": true,
             "default_domain": "work_history",
             "rag": {
@@ -106,6 +60,7 @@
                 "traversal": "TIME_FIRST",
                 "allowed_collections": [
                     "career_ledger",
+                    "artifact_vault",
                     "long_term_wisdom"
                 ],
                 "max_distance": 0.65
@@ -116,11 +71,131 @@
             "prompt_mo": "Historical career inquiry; recount past hardware epochs with authentic engineering perspective and scars.",
             "contextual_prompt": "Recount this past hardware epoch with authentic engineering perspective and scars in 2 sentences."
         },
+        "OPERATIONAL": {
+            "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
+            "enabled": true,
+            "default_domain": "exp_bkm",
+            "rag": {
+                "target_domain": "exp_bkm",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": [
+                    "behavioral_dna",
+                    "lab_infrastructure"
+                ],
+                "max_distance": 0.85
+            },
+            "importance": 0.85,
+            "importance_floor": 0.75,
+            "interest_boost": 0.15,
+            "prompt_mo": "Urgent system telemetry requested; deliver high-urgency, compact summary of GPU thermals, power caps, and vitals.",
+            "contextual_prompt": "Deliver an alert, compact 2-sentence summary of our live GPU thermals, power caps, and system load."
+        },
+        "FORENSIC": {
+            "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
+            "enabled": true,
+            "default_domain": "exp_for",
+            "rag": {
+                "target_domain": "exp_for",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": [
+                    "behavioral_dna",
+                    "lab_infrastructure"
+                ],
+                "max_distance": 0.85
+            },
+            "importance": 0.95,
+            "importance_floor": 0.85,
+            "interest_boost": 0.15,
+            "prompt_mo": "System fault detected; highlight faulting kernel module, panic trace signature, and diagnostic playbook.",
+            "contextual_prompt": "Highlight the faulting kernel module or crash signature directly and name the next diagnostic command in 2 sentences."
+        },
+        "META": {
+            "description": "User is giving supervisory feedback, pointing out bugs/regressions, correcting factual errors, requesting tone/verbosity adjustments, or issuing Fourth-Wall operational commands.",
+            "domain": "feedback",
+            "addressed_to": "SYSTEM",
+            "enabled": true,
+            "default_domain": "feedback",
+            "rag": null,
+            "importance": 0.60,
+            "importance_floor": 0.50,
+            "interest_boost": 0.10,
+            "prompt_mo": "System architecture or Fourth-Wall command; address CLaRa DNA, repo architecture, or operational state adjustment directly without excuses.",
+            "contextual_prompt": "Acknowledge the Fourth-Wall directive or architectural query directly and summarize system state in 1-2 sentences."
+        },
+        "TECHNICAL": {
+            "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
+            "enabled": true,
+            "default_domain": "exp_tlm",
+            "rag": {
+                "target_domain": "exp_tlm",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": [
+                    "artifact_vault",
+                    "behavioral_dna"
+                ],
+                "max_distance": 0.85
+            },
+            "importance": 0.9,
+            "importance_floor": 0.75,
+            "interest_boost": 0.15,
+            "prompt_mo": "Ground discussion in engineering reality; deliver a crisp 2-sentence conversational TL;DR directly to Jason.",
+            "contextual_prompt": "Translate Brain's technical analysis into a crisp 2-sentence conversational TL;DR directly to Jason."
+        },
+        "SOCRATIC": {
+            "description": "Architectural and design dialectics – exploring trade-offs, constraints, and complexity conservation across system layers.",
+            "enabled": true,
+            "default_domain": "standard",
+            "rag": {
+                "target_domain": "standard",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": [
+                    "philosophy_dna",
+                    "wisdom_dna",
+                    "feature_dna"
+                ],
+                "max_distance": 0.75
+            },
+            "importance": 0.7,
+            "importance_floor": 0.65,
+            "interest_boost": 0.1,
+            "prompt_mo": "Conceptual inquiry; explore architectural trade-offs and complexity conservation without jumping to code.",
+            "contextual_prompt": "Explore the architectural trade-off and complexity conservation behind this design in 2 grounded sentences without reciting code."
+        },
+        "ZERO_CONTEXT": {
+            "description": "Post-moat fallback state when zero candidate chunks match the query. Deterministic mid-waterfall transition (never a Stage 1 output).",
+            "enabled": true,
+            "default_domain": "unclear",
+            "rag": null,
+            "importance": 0.20,
+            "importance_floor": 0.15,
+            "interest_boost": 0.05,
+            "prompt_mo": "Negative moat triggered (0/N chunks kept); admit lack of grounded lab context gracefully and invite Jason to clarify or pivot without fabricating technical claims.",
+            "contextual_prompt": "Inform Jason playfully that no matching lab notes were found on this specific topic, and offer 2 plausible lab directions in 2 sentences."
+        },
+        "SUPERVISORY": {
+            "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
+            "enabled": true,
+            "default_domain": "feedback",
+            "rag": null,
+            "importance": 0.6,
+            "importance_floor": 0.5,
+            "interest_boost": 0.1,
+            "prompt_mo": "Supervisory feedback received; confirm behavioral alignment without defensive excuses.",
+            "contextual_prompt": "Acknowledge the supervisory correction directly and confirm how future turns will adapt in 1-2 sentences."
+        },
         "ANALYTICAL": {
             "description": "Comparative, trade-off, architectural analysis with high objectivity.",
             "enabled": true,
-            "default_domain": "unknown",
-            "rag": null,
+            "default_domain": "exp_tlm",
+            "rag": {
+                "target_domain": "exp_tlm",
+                "traversal": "TOPIC_FIRST",
+                "allowed_collections": [
+                    "artifact_vault",
+                    "behavioral_dna"
+                ],
+                "max_distance": 0.85
+            },
             "importance": 0.7,
             "importance_floor": 0.65,
             "interest_boost": 0.1,
@@ -128,7 +203,7 @@
             "contextual_prompt": "Deliver a rigorous 2-sentence synthesis weighing empirical metrics and operational trade-offs."
         },
         "METABOLIC": {
-            "description": "DNA curation and memory optimization \u2013 spine refinement, deduplication, and pruning trade-offs for persistent memory management.",
+            "description": "DNA curation and memory optimization – spine refinement, deduplication, and pruning trade-offs for persistent memory management.",
             "enabled": true,
             "default_domain": "feedback",
             "rag": null,
@@ -138,19 +213,8 @@
             "prompt_mo": "Curation requested; focus on DNA spine refinement, memory pruning, and deduplication trade-offs.",
             "contextual_prompt": "Summarize the DNA spine curation and memory pruning statistics in 2 sentences."
         },
-        "SOCRATIC": {
-            "description": "Architectural and design dialectics \u2013 exploring trade-offs, constraints, and complexity conservation across system layers.",
-            "enabled": true,
-            "default_domain": "unknown",
-            "rag": null,
-            "importance": 0.7,
-            "importance_floor": 0.65,
-            "interest_boost": 0.1,
-            "prompt_mo": "Conceptual inquiry; explore architectural trade-offs and complexity conservation without jumping to code.",
-            "contextual_prompt": "Explore the architectural trade-off and complexity conservation behind this design in 2 grounded sentences without reciting code."
-        },
         "CHRONICLE": {
-            "description": "18-year career archive and historical engineering perspective \u2013 major epochs, hardware retrospectives, and decision rationale.",
+            "description": "18-year career archive and historical engineering perspective – major epochs, hardware retrospectives, and decision rationale.",
             "enabled": true,
             "default_domain": "work_history",
             "rag": {
@@ -158,6 +222,7 @@
                 "traversal": "TIME_FIRST",
                 "allowed_collections": [
                     "career_ledger",
+                    "artifact_vault",
                     "long_term_wisdom"
                 ],
                 "max_distance": 0.65
@@ -167,17 +232,6 @@
             "interest_boost": 0.15,
             "prompt_mo": "Historical career archive lookup; recount past hardware epochs with authentic engineering perspective and scars.",
             "contextual_prompt": "Recount this past hardware epoch with authentic engineering perspective and scars in 2 sentences."
-        },
-        "UNCLEAR": {
-            "description": "Ambiguous, underspecified, or quiescence-triggering turns that cannot be confidently mapped to a domain — waterfall fuel floor so the turn naturally exhausts interest below the 0.35 gate instead of burning heavy compute.",
-            "enabled": true,
-            "default_domain": "unclear",
-            "rag": null,
-            "importance": 0.20,
-            "importance_floor": 0.15,
-            "interest_boost": 0.05,
-            "contextual_prompt": "Ask Jason playfully which specific node, test, or topic he wants checked in 1 short sentence.",
-            "prompt_mo": "Intent is ambiguous; deliver an inquisitive, playful 1-sentence foil presenting likely options rather than guessing."
         }
     }
 }

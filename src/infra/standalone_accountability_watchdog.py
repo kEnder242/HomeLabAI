@@ -612,9 +612,10 @@ def audit_and_emit_digest(run_live_probe: bool = True):
     # [Story 971] Append this audit run to the single-home interleaved JSONL ledger consumed by status.html
     append_accountability_ledger(digest)
 
-    # [FEAT-607 / BKM-066] Stamp failure into nightly_dialogue.json so interleaved log is never dark/silent on abort
+    # [FEAT-607 / BKM-066 / Story 108.15B AR-3] Stamp watchdog failure into watchdog_status.json
+    # Only populate nightly_dialogue.json if missing/empty so real dream debates are never erased!
     if overall_status != "PASS":
-        dialogue_path = OUTPUT_DIR / "nightly_dialogue.json"
+        watchdog_status_path = OUTPUT_DIR / "watchdog_status.json"
         try:
             discrepancy_str = "; ".join(discrepancies) if discrepancies else "Unspecified pipeline failure"
             dialogue_payload = {
@@ -622,15 +623,25 @@ def audit_and_emit_digest(run_live_probe: bool = True):
                 "topic": "Nightly Accountability Sentinel (Watchdog)",
                 "content": f"🚨 **[ACCOUNTABILITY AUDIT: {overall_status}]**\n\n**Checks Passed:** {passed_count}/{total_count}\n**Discrepancies:** {discrepancy_str}\n\n_Detected by Standalone Morning Accountability Watchdog (FEAT-619)._"
             }
-            tmp_dialogue = OUTPUT_DIR / "nightly_dialogue.json.tmp"
-            with open(tmp_dialogue, "w", encoding="utf-8") as df:
+            tmp_watchdog = OUTPUT_DIR / "watchdog_status.json.tmp"
+            with open(tmp_watchdog, "w", encoding="utf-8") as df:
                 json.dump(dialogue_payload, df, indent=4)
                 df.flush()
                 os.fsync(df.fileno())
-            os.replace(tmp_dialogue, dialogue_path)
-            logger.info(f"✅ Stamped watchdog failure notice into {dialogue_path}")
+            os.replace(tmp_watchdog, watchdog_status_path)
+            logger.info(f"✅ Stamped watchdog failure notice into {watchdog_status_path}")
+
+            dialogue_path = OUTPUT_DIR / "nightly_dialogue.json"
+            if not dialogue_path.exists() or dialogue_path.stat().st_size == 0:
+                tmp_dialogue = OUTPUT_DIR / "nightly_dialogue.json.tmp"
+                with open(tmp_dialogue, "w", encoding="utf-8") as df:
+                    json.dump(dialogue_payload, df, indent=4)
+                    df.flush()
+                    os.fsync(df.fileno())
+                os.replace(tmp_dialogue, dialogue_path)
+                logger.info(f"✅ Populated missing nightly_dialogue fallback from watchdog")
         except Exception as de:
-            logger.warning(f"Failed to stamp watchdog failure notice into dialogue: {de}")
+            logger.warning(f"Failed to stamp watchdog failure notice: {de}")
 
     # Broadcast Neural Pager / Alert
     if overall_status != "PASS":
