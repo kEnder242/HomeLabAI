@@ -583,6 +583,9 @@ def filter_wywo_synthesis_gems(raw_gems: list) -> list:
         if imp_int >= 3:
             headline_tag = "[FOCAL]" if imp_int >= 4 else "[PLATFORM]"
             summary = str(g.get("summary") or g.get("description") or "").strip()
+            # [AR-6 / Story 108.15B] Suppress raw ticket stubs and operational bug numbers from standup gems
+            if re.match(r"^(?:HSD-ES|BUG|TICKET|ISSUE|JIRA|HSD)[\s:\-0-9]+$", summary, re.IGNORECASE):
+                continue
             surfaced.append({
                 "tag": headline_tag,
                 "summary": summary,
@@ -591,6 +594,53 @@ def filter_wywo_synthesis_gems(raw_gems: list) -> list:
                 "refinement_level": g.get("refinement_level", 2),
             })
     return surfaced
+
+
+def record_negative_exemplar(
+    query: str,
+    defect_stage: str,
+    attribution_reason: str,
+    response: str = "",
+    request_id: str = "default",
+    step_artifacts: dict | None = None,
+    output_path: str | None = None,
+) -> dict:
+    """[FEAT-671 / LOOP-005 / BKM-035] Append structured negative exemplar for offline DPO distillation."""
+    target_path = output_path or os.path.expanduser(
+        "~/Dev_Lab/Portfolio_Dev/field_notes/data/negative_exemplars.json"
+    )
+    os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+
+    data = {"version": "1.0", "updated_at": "", "exemplars": []}
+    if os.path.exists(target_path):
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict) and "exemplars" in loaded:
+                    data = loaded
+        except Exception as e:
+            logging.warning(f"[EXEMPLAR] Could not read existing exemplars: {e}")
+
+    entry = {
+        "ts": time.time(),
+        "request_id": request_id,
+        "defect_stage": defect_stage,
+        "query": query,
+        "response": response,
+        "attribution_reason": attribution_reason,
+        "step_artifacts": step_artifacts or {},
+    }
+    data["exemplars"].append(entry)
+    data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    tmp_file = f"{target_path}.tmp"
+    with open(tmp_file, "w", encoding="utf-8") as tf:
+        json.dump(data, tf, indent=2)
+        tf.flush()
+        os.fsync(tf.fileno())
+    os.replace(tmp_file, target_path)
+    logging.info(f"[EXEMPLAR] Stamped {defect_stage} exemplar to {target_path}")
+    return entry
 
 
 def build_two_mice_stage_prompt(
@@ -665,14 +715,16 @@ def build_two_mice_stage_prompt(
             "Jason talked to the lab.\n"
             f"{pinky_block}"
             "[GATEKEEPER SCOPE]: Each candidate archive record is keyed [CHUNK-N]. Do NOT re-type, summarize, or paraphrase any chunk.\n"
-            "Your job is to evaluate each [CHUNK-N] line-by-line against Jason's query and decide KEEP or DROP.\n\n"
+            "Your job is to evaluate each [CHUNK-N] line-by-line against Jason's query and decide KEEP or DROP.\n"
+            "💡 Curator Note: prune irrelevant or tangential chunks entirely to forward the cohesive bedrock truth of pure technical signal via evidentiary inspection.\n"
+            "Modulate council interest: emit <boost_interest> when discovery is high, or <damp_interest> when routine.\n\n"
             "Emit EXACTLY this structure:\n"
             "[ANALYSIS]\n"
-            "- CHUNK-1: KEEP/DROP — <one-line engineering justification>\n"
-            "- CHUNK-2: KEEP/DROP — <one-line engineering justification>\n"
+            "- CHUNK-1: Anchor Match: <what matches or none>; Anchor Missing: <what is missing or none> => KEEP/DROP\n"
+            "- CHUNK-2: Anchor Match: <what matches or none>; Anchor Missing: <what is missing or none> => KEEP/DROP\n"
             "[BEDROCK SELECTION]\n"
             "- CHUNK-1: KEEP\n"
-            "Rules: In [ANALYSIS], evaluate every [CHUNK-N] with a concise 1-line engineering justification. "
+            "Rules: In [ANALYSIS], evaluate every [CHUNK-N] with evidence before verdict. "
             "In [BEDROCK SELECTION], list ONLY the chunks you KEEP. "
             "Your selection is parsed mechanically; do not add prose outside these two blocks.\n\n"
             f"[USER_QUERY]: {effective_query.strip()}\n"
@@ -689,15 +741,14 @@ def build_two_mice_stage_prompt(
     )
     return (
         section
-        + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Brain has reviewed the archives and grounded this technical reality: "
-        f"{extracted_evidence}. Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') "
-        "and deliver a 1 to 2 sentence conversational TL;DR directly to Jason. Keep it warm, concise, and "
-        "human — do not recite raw RAG passages or technical serial numbers. "
+        + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Jason asked a question and Brain reviewed the lab evidence. "
+        "Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') and deliver a 1 to 2-sentence conversational TL;DR directly to Jason. "
+        "Keep it warm, concise, and human — do not recite raw RAG passages or technical serial numbers. "
         "STRICT FORMATTING: Plain conversational speech only. Output NO markdown headers, NO bold section tags, and NO bullet points. Exactly 1 to 2 spoken sentences directly to Jason, then stop.\n"
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 1-2 sentence conversational "
-        "TL;DR directly to Jason, then yield the floor.\n"
-        f"[BRAIN_GROUNDING]:\n{extracted_evidence.strip()}\n"
-        f"[USER_QUERY]: {effective_query.strip()}{vibe_block}"
+        "TL;DR directly to Jason, then yield the floor.\n\n"
+        f"[USER_QUERY]: Jason asked: {effective_query.strip()}\n"
+        f"[BRAIN_NOTES]: Brain noted: {extracted_evidence.strip()}{vibe_block}"
     )
 
 
@@ -2000,7 +2051,28 @@ class CognitiveHub:
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load nightly dialogue: {e}")
 
-            recruiter_report = "No recruiter report found."
+            # [FEAT-658 / Story 108.12C / Story 108.14B] Load latest synthesis gems first for WYWO [STRATEGIC_ANCHOR]
+            synthesis_path = os.path.expanduser(
+                "~/Dev_Lab/Portfolio_Dev/field_notes/data/latest_synthesis_gems.json"
+            )
+            synthesis_gems_text = ""
+            anchor_query = "Overnight dream excavation and system synthesis"
+            if os.path.exists(synthesis_path):
+                try:
+                    with open(synthesis_path, "r") as f:
+                        s_data = json.load(f)
+                        raw_gems = s_data.get("gems", [])
+                        if raw_gems and isinstance(raw_gems, list) and len(raw_gems) > 0:
+                            top_summary = raw_gems[0].get("summary", "")
+                            if top_summary:
+                                anchor_query = top_summary
+                        filtered = filter_wywo_synthesis_gems(raw_gems)
+                        if filtered:
+                            synthesis_gems_text = "\n".join(f"- {item['formatted']}" for item in filtered)
+                except Exception as se:
+                    logging.error(f"[HUB] Failed to load latest synthesis gems for WYWO: {se}")
+
+            recruiter_report = ""
             recruiter_path = os.path.expanduser(
                 "~/Dev_Lab/Portfolio_Dev/field_notes/data/recruiter_report.json"
             )
@@ -2008,12 +2080,13 @@ class CognitiveHub:
                 try:
                     with open(recruiter_path, "r") as f:
                         data = json.load(f)
-                        if data.get("content"):
-                            recruiter_report = f"Topic: {data.get('topic')}\nContent: {data.get('content')}"
+                        jobs = data.get("new_jobs") or data.get("content")
+                        if jobs:
+                            recruiter_report = f"Recruiter Pipeline: {data.get('status', 'ACTIVE')} | Jobs: {jobs}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load recruiter report: {e}")
 
-            system_status = "No system status found."
+            system_status = ""
             status_path = os.path.expanduser(
                 "~/Dev_Lab/Portfolio_Dev/field_notes/data/status.json"
             )
@@ -2021,11 +2094,14 @@ class CognitiveHub:
                 try:
                     with open(status_path, "r") as f:
                         data = json.load(f)
-                        system_status = f"Status: {data.get('status', 'unknown')}\nDetails: {data.get('details', 'none')}"
+                        # Only surface live status if degraded or explicitly actionable
+                        state = data.get("state") or data.get("status")
+                        if state and state.upper() not in ("OPERATIONAL", "ONLINE", "NOMINAL"):
+                            system_status = f"System State: {state} | Details: {data.get('vitals', data.get('details', 'degraded'))}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load system status: {e}")
 
-            pager_activity = "No pager activity found."
+            pager_activity = ""
             pager_path = os.path.expanduser(
                 "~/Dev_Lab/Portfolio_Dev/field_notes/data/pager_activity.json"
             )
@@ -2038,45 +2114,33 @@ class CognitiveHub:
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load pager activity: {e}")
 
-            dreams = "No long-term subconscious dreams found."
+            dreams = ""
             if "archive" in self.residents:
                 try:
                     res = await self.residents["archive"].call_tool(
                         "get_context",
-                        {"query": "Latest Diamond Wisdom synthesis", "n_results": 2},
+                        {"query": anchor_query, "n_results": 2},
                     )
                     if hasattr(res, "content") and len(res.content) > 0:
                         dreams = res.content[0].text
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load Diamond Wisdom for WYWO: {e}")
 
-            # [FEAT-658 / Story 108.12C] WYWO Standup Candidate Scorer & High-Impact Surfacing Gate
-            synthesis_path = os.path.expanduser(
-                "~/Dev_Lab/Portfolio_Dev/field_notes/data/latest_synthesis_gems.json"
-            )
-            synthesis_gems_text = "No recent high-impact synthesis gems found."
-            if os.path.exists(synthesis_path):
-                try:
-                    with open(synthesis_path, "r") as f:
-                        s_data = json.load(f)
-                        raw_gems = s_data.get("gems", [])
-                        filtered = filter_wywo_synthesis_gems(raw_gems)
-                        if filtered:
-                            synthesis_gems_text = "\n".join(f"- {item['formatted']}" for item in filtered)
-                except Exception as se:
-                    logging.error(f"[HUB] Failed to load latest synthesis gems for WYWO: {se}")
+            payload_files: dict[str, str] = {}
+            if nightly_dialogue and not nightly_dialogue.startswith("No "):
+                payload_files["nightly_dialogue.json"] = nightly_dialogue
+            if synthesis_gems_text:
+                payload_files["latest_synthesis_gems.json"] = synthesis_gems_text
+            if dreams and not dreams.startswith("No "):
+                payload_files["subconscious_dream_wisdom"] = dreams
+            if system_status:
+                payload_files["status.json"] = system_status
+            if recruiter_report:
+                payload_files["recruiter_report.json"] = recruiter_report
+            if pager_activity:
+                payload_files["pager_activity.json"] = pager_activity
 
-            context = format_situational_payload_as_chunks(
-                "dream_stream",
-                {
-                    "nightly_dialogue.json": nightly_dialogue,
-                    "recruiter_report.json": recruiter_report,
-                    "status.json": system_status,
-                    "pager_activity.json": pager_activity,
-                    "latest_synthesis_gems.json": synthesis_gems_text,
-                    "subconscious_dream_wisdom": dreams,
-                },
-            )
+            context = format_situational_payload_as_chunks("dream_stream", payload_files)
             # [FEAT-444] Cap transient file-drop context before prompt embedding
             context = self._truncate_to_tokens(
                 context,
@@ -3457,15 +3521,16 @@ class CognitiveHub:
             query, focus_context, gate_interest, pinky_take=pinky_take, shutdown_event=shutdown_event, request_id=request_id
         )
 
-        # [FEAT-666] Mechanical Evidential Moat (BKM-061 Oracle Hardened)
+        # [FEAT-666 / Story 108.14B] Mechanical Evidential Moat (Evidence-Before-Verdict compliant)
         # [BKM-015:APPROVED_REGEX] Mechanical chunk ID key extraction
-        moat_pattern = re.compile(r'(?:\[|\b)CHUNK[-_\s]*(\d+)(?:\]|\b)[:\s]*(KEEP|DROP)')
+        moat_pattern = re.compile(r'(?:\[|\b)CHUNK[-_\s]*(\d+)(?:\]|\b).*?(?:=>|:)\s*(KEEP|DROP)', re.IGNORECASE)
         formatted_context = format_rag_chunks_for_prompt(focus_context)
         candidate_count = len(re.findall(r'^\[CHUNK-\d+\]:', formatted_context, flags=re.MULTILINE))
         if candidate_count == 0 and (not focus_context.strip() or "[ZERO_CONTEXT]" in formatted_context):
             candidate_count = 0
         kept_ids = [int(m.group(1)) for m in moat_pattern.finditer(brain_grounding or "") if m.group(2).upper() == "KEEP"]
-        kept_count = len(kept_ids)
+        drop_ids = [int(m.group(1)) for m in moat_pattern.finditer(brain_grounding or "") if m.group(2).upper() == "DROP"]
+        kept_count = len(set(kept_ids))
         bedrock_payload = ""
         if kept_ids:
             pristine_chunks = {}
@@ -3473,20 +3538,34 @@ class CognitiveHub:
                 pristine_chunks[int(cm.group(1))] = cm.group(2).strip()
             kept_chunks = [pristine_chunks[k] for k in sorted(set(kept_ids)) if k in pristine_chunks]
             bedrock_payload = "\n\n".join(kept_chunks)
-            brain_grounding = (
-                f"{brain_grounding}\n[BEDROCK_PAYLOAD]:\n{bedrock_payload}"
-                if bedrock_payload
-                else brain_grounding
-            )
-        if candidate_count > 0:
-            if kept_count >= 1:
+
+        if candidate_count > 0 and (kept_ids or drop_ids):
+            if kept_count >= 1 or "<boost_interest>" in (brain_grounding or "") or "<upvote>" in (brain_grounding or ""):
                 boosted_interest = min(1.0, gate_interest + 0.20)  # Positive Moat
                 logging.info(f"[MOAT] Positive Moat: {kept_count}/{candidate_count} chunks validated. Boosted interest: {boosted_interest:.2f}")
             else:
                 boosted_interest = max(0.0, min(0.30, gate_interest - 0.25))  # Negative Moat
                 logging.info(f"[MOAT] Negative Moat: 0/{candidate_count} chunks validated. Deep Thought dormant.")
         else:
-            boosted_interest = gate_interest  # Neutral Moat: 0 candidates
+            # Neutral Moat: check Brain's evidential signaling
+            if "<boost_interest>" in (brain_grounding or "") or "<upvote>" in (brain_grounding or ""):
+                boosted_interest = min(1.0, gate_interest + 0.20)
+                logging.info(f"[HUB] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}")
+            elif "<damp_interest>" in (brain_grounding or "") or "<downvote>" in (brain_grounding or ""):
+                boosted_interest = max(0.0, gate_interest - 0.25)
+                logging.info(f"[HUB] Council of Hemispheres: Brain damped interest from {gate_interest:.2f} to {boosted_interest:.2f}")
+            elif not focus_context.strip() or "[ZERO_CONTEXT]" in (brain_grounding or ""):
+                vibe_check = (
+                    self.current_vibe.upper()
+                    if hasattr(self, "current_vibe") and self.current_vibe
+                    else "CASUAL"
+                )
+                if gate_interest > 0.40 and vibe_check == "CASUAL":
+                    boosted_interest = max(0.0, gate_interest - 0.15)
+                else:
+                    boosted_interest = gate_interest
+            else:
+                boosted_interest = gate_interest
             logging.info(f"[MOAT] Neutral Moat: 0 candidates retrieved. Interest preserved at {boosted_interest:.2f}")
         self.current_interest = boosted_interest
 
@@ -3502,7 +3581,7 @@ class CognitiveHub:
         # target queue (also drives the RAG-First expansion branch below).
         hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
         if vibe_now in ("HISTORICAL", "TECHNICAL") and boosted_interest >= 0.35:
-            effective_grounding = brain_grounding or ""
+            effective_grounding = bedrock_payload or brain_grounding or ""
             if len(effective_grounding) < 100 or hardware_entities:
                 try:
                     from nodes.archive_node import execute_grep_search_pivot
@@ -3512,9 +3591,9 @@ class CognitiveHub:
                     execute_grep_search_pivot, query, 5, hardware_entities or None
                 )
                 if expansion:
-                    brain_grounding = (
-                        f"{brain_grounding}\n[EXPANDED_NOTES]:\n{expansion}"
-                        if brain_grounding
+                    bedrock_payload = (
+                        f"{bedrock_payload}\n[EXPANDED_NOTES]:\n{expansion}"
+                        if bedrock_payload
                         else f"[EXPANDED_NOTES]:\n{expansion}"
                     )
                     logging.info(
@@ -3534,7 +3613,7 @@ class CognitiveHub:
         else:
             dt_synthesis = await self.step_deep_thought(
                 query,
-                brain_grounding=brain_grounding,
+                brain_grounding=bedrock_payload if bedrock_payload else brain_grounding,
                 interest=boosted_interest,
                 pinky_take=pinky_take,
                 rag_context=focus_context,
@@ -3555,7 +3634,18 @@ class CognitiveHub:
             queue_post_waterfall_learning_target(query, entities=hardware_entities)
 
         # Stage 3.3: Pinky Conversational TL;DR (paced by updated boosted_interest)
-        pinky_context = dt_synthesis if dt_synthesis else brain_grounding
+        # [Story 108.14B / AR-10] Clean Zero-Context sentinel on Negative Moat
+        if candidate_count > 0 and (kept_ids or drop_ids) and kept_count == 0:
+            pinky_context = "[ZERO_CONTEXT]: No matching records found for this query in the archives."
+            vibe = "ZERO_CONTEXT"
+            topic_directive = (
+                self.policy_loader.get_vibe_rule("ZERO_CONTEXT").get("contextual_prompt", "")
+                if hasattr(self, "policy_loader") and self.policy_loader
+                else "Inform Jason playfully that no matching lab notes were found on this specific topic, and offer 2 plausible lab directions in 2 sentences."
+            )
+        else:
+            pinky_context = dt_synthesis if dt_synthesis else (bedrock_payload or brain_grounding)
+
         await self.step_pinky_voice(
             query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id,
             vibe=vibe, topic_directive=topic_directive,
@@ -3568,7 +3658,7 @@ class CognitiveHub:
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
         if strategic_response and boosted_interest >= 0.35:
             try:
-                asyncio.create_task(
+                self._last_audit_task = asyncio.create_task(
                     self.step_entailment_audit(
                         query,
                         strategic_source,
@@ -3585,7 +3675,109 @@ class CognitiveHub:
         logging.info(
             f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_grounding)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
         )
+
+        # [FEAT-671 / LOOP-005] Cache turn artifacts for interactive step-trace attribution
+        self.last_turn_artifacts = {
+            "request_id": request_id,
+            "query": query,
+            "vibe": vibe_now,
+            "interest": boosted_interest,
+            "candidate_count": candidate_count,
+            "kept_ids": kept_ids,
+            "drop_ids": drop_ids,
+            "brain_grounding": brain_grounding,
+            "bedrock_payload": bedrock_payload,
+            "dt_synthesis": dt_synthesis,
+            "pinky_tldr": self.turn_thought_trace.get("pinky", ""),
+            "audit": self.turn_thought_trace.get("audit", self.turn_thought_trace.get("critique", "")),
+        }
         return True
+
+    def step_trace_attribution(
+        self,
+        turn_artifacts: dict | None = None,
+        query: str = "",
+        user_feedback: str = "",
+    ) -> dict:
+        """[FEAT-671 / LOOP-005 / BKM-035] 4-Step Backward Step-Trace Attribution.
+
+        Pinpoints root cause of defect when feedback (downvote / critique) is received:
+        - Check 1: Stage 5 Voice Drift (TL;DR contradicts DT or leaks prompt scaffolding)
+        - Check 2: Stage 4 Strategy Hallucination (DT asserts claims absent from Bedrock / audit mismatch)
+        - Check 3: Stage 3 False Drop (Brain Gatekeeper dropped relevant candidate chunks)
+        - Check 4: Stage 2 Retrieval Gap (ChromaDB / situational RAG returned 0 chunks on technical query)
+        """
+        artifacts = dict(turn_artifacts or getattr(self, "last_turn_artifacts", {}) or {})
+        eff_query = query or artifacts.get("query", "")
+        feedback_lower = (user_feedback or "").lower()
+
+        dt_synthesis = artifacts.get("dt_synthesis", "")
+        bedrock_payload = artifacts.get("bedrock_payload", "")
+        pinky_tldr = artifacts.get("pinky_tldr", "")
+        audit = artifacts.get("audit", "")
+        candidate_count = artifacts.get("candidate_count", 0)
+        kept_ids = artifacts.get("kept_ids", [])
+        drop_ids = artifacts.get("drop_ids", [])
+        vibe = artifacts.get("vibe", "CASUAL")
+
+        # Check 1: Stage 5 Voice Drift (scaffolding leaks, markdown section headers, or ungrounded claims beyond DT)
+        scaffolding_leak = any(k in pinky_tldr for k in ("[BUDGET]", "STAGE_2", "**TECHNICAL", "**SYNTHESIS", "[SITUATIONAL"))
+        voice_feedback = any(w in feedback_lower for w in ("tone", "voice", "narf", "catchphrase", "verbose", "header", "markdown", "pinky"))
+        if scaffolding_leak or voice_feedback:
+            return {
+                "defect_stage": "STAGE_5_VOICE_DRIFT",
+                "confidence": 0.95 if scaffolding_leak else 0.85,
+                "reason": "Scaffolding / header leak detected in spoken output" if scaffolding_leak else "Voice tone / formatting defect indicated by feedback",
+                "attribution_check": "Check 1: Stage 5 Voice Delivery",
+            }
+
+        # Check 2: Stage 4 Strategy Hallucination (entailment audit mismatch or ungrounded synthesis)
+        audit_mismatch = "MISMATCH" in audit or ("CLAIM_CHECK:" in audit and "PASS" not in audit)
+        hallucination_feedback = any(w in feedback_lower for w in ("hallucinat", "invent", "wrong fact", "incorrect", "false", "untrue"))
+        if audit_mismatch or (dt_synthesis and not bedrock_payload and hallucination_feedback):
+            return {
+                "defect_stage": "STAGE_4_HALLUCINATION",
+                "confidence": 0.90 if audit_mismatch else 0.80,
+                "reason": "Entailment audit tagged claim mismatch against underlying evidence" if audit_mismatch else "Deep Thought synthesized claims without supporting bedrock evidence",
+                "attribution_check": "Check 2: Stage 4 Strategic Synthesis",
+            }
+
+        # Check 3: Stage 3 False Drop / Over-Pruning
+        # Brain evaluated candidate chunks and dropped them all, leading to zero context
+        if candidate_count > 0 and len(kept_ids) == 0 and drop_ids:
+            return {
+                "defect_stage": "STAGE_3_FALSE_DROP",
+                "confidence": 0.85,
+                "reason": f"Brain gatekeeper dropped all {candidate_count} candidate chunks resulting in Negative Moat zero-context",
+                "attribution_check": "Check 3: Stage 3 Evidence Gatekeeper",
+            }
+
+        # Check 4: Stage 2 Retrieval Gap
+        if candidate_count == 0 and vibe in ("HISTORICAL", "TECHNICAL", "OPERATIONAL", "FORENSIC"):
+            return {
+                "defect_stage": "STAGE_2_RETRIEVAL_GAP",
+                "confidence": 0.85,
+                "reason": f"ChromaDB returned 0 candidate chunks for technical vibe '{vibe}'",
+                "attribution_check": "Check 4: Stage 2 Vector Retrieval",
+            }
+
+        # Check 5: Stage 1 Triage Misclassification
+        triage_feedback = any(w in feedback_lower for w in ("triage", "vibe", "wrong intent", "misclassified"))
+        if triage_feedback:
+            return {
+                "defect_stage": "STAGE_1_TRIAGE_MISCLASSIFICATION",
+                "confidence": 0.80,
+                "reason": f"Triage misclassified query into vibe '{vibe}'",
+                "attribution_check": "Check 5: Stage 1 Semantic Triage",
+            }
+
+        # Default fallback: Leaf Delivery
+        return {
+            "defect_stage": "STAGE_5_VOICE_DRIFT",
+            "confidence": 0.60,
+            "reason": "User downvoted turn; defect mapped to leaf conversational delivery",
+            "attribution_check": "Fallback: Leaf Delivery",
+        }
 
     async def _run_triggered_task(self, task_name):
         """[Task 9.7] Handles one-off system triggers (Recruiter, Librarian, etc)."""

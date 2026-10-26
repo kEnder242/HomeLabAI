@@ -1466,6 +1466,31 @@ class FoyerRouter:
                         "note": record["user_note"],
                     }
                 )
+                # [FEAT-671 / LOOP-005] Step-Trace Root Cause Attribution & Negative Exemplar
+                try:
+                    turn_artifacts = payload.get("turn_artifacts")
+                    if not turn_artifacts and hasattr(self, "cognitive"):
+                        turn_artifacts = getattr(self.cognitive, "last_turn_artifacts", {})
+
+                    attribution = {}
+                    if hasattr(self, "cognitive") and hasattr(self.cognitive, "step_trace_attribution"):
+                        attribution = self.cognitive.step_trace_attribution(
+                            turn_artifacts, query=record["query"], user_feedback=record["user_note"]
+                        )
+
+                    from logic.cognitive_hub import record_negative_exemplar
+                    record_negative_exemplar(
+                        query=record["query"],
+                        defect_stage=attribution.get("defect_stage", "STAGE_5_VOICE_DRIFT"),
+                        attribution_reason=attribution.get("reason", "UI downvote registered"),
+                        response=record["response_snippet"],
+                        request_id=record["request_id"],
+                        step_artifacts=turn_artifacts or {},
+                    )
+                    record["attribution"] = attribution
+                except Exception as ex_attr:
+                    logger.warning(f"[FOYER] [FEAT-671] Step-trace attribution failed: {ex_attr}")
+
                 try:
                     from nodes.archive_node import purge_candidate_exemplar
                     purge_candidate_exemplar(record["query"], record["request_id"])

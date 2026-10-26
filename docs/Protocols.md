@@ -1767,16 +1767,19 @@ Under `BKM-015` ("Prohibition of Hardcoding / Ghost Keywords"), attempting to ve
      * **Relational Triangulation**: Does the speaker defend the user's authentic intent against the peer's technical assumption while remaining grounded in the subject context?
 
 ### 3. Canonical Application: The Intercom Adversarial Continuation Rubric
-When Pinky generates an asynchronous Intercom append following an out-of-band entailment catch:
-* **Prompt MO (Out-of-Band Context — Explains WHY)**:
-  *Why*: Deep Thought's synthesis misattributed Jason's hardware question to a distant corporate lab rather than the local testbed. Pinky must interject immediately to prevent Jason from receiving flawed context, defending Jason's true intent to Brain while preserving turn harmony.
-* **Runtime Prompt (Frugal — Explains HOW)**:
-  `[MODE]: ADVERSARIAL_CONTINUATION. Interject naturally as an immediate continuation to Jason and Brain. Challenge Brain's assumption and clarify Jason's intent in 1 to 2 conversational sentences.`
+When an out-of-band Entailment Audit runs after Pinky's initial spoken delivery:
+* **Half A — Silent Entailment Gate (Sovereign `27B` Only)**:
+  * Runs causal Evidence-Before-Verdict (`CLAIM_CHECK:` $\to$ `VERDICT: PASS|MISMATCH`) strictly on a warm `27B` Sovereign seat (`M5_AIR` / `KENDER`); skips silently if only local `3B` is online (`0%` `3B` specificity). When `VERDICT: PASS`, Stage 6 stays **100% silent** (zero redundant chat messages).
+* **Prompt MO for Half B (Out-of-Band Context — Explains WHY)**:
+  * *Why*: Sovereign `27B` caught a factual contradiction or cross-attribution in the synthesis (e.g., blaming a distant corporate SAN rack instead of local `z87-Linux`, or swapping `2080 Ti` latency onto `M5 Air`). Pinky must chime back in immediately after her own prior turn to set the record straight for Jason without blaming Jason or leaking backend audit labels.
+* **Runtime Prompt for Half B (`CONT_SYS_V3` — Frugal HOW, Zero Bracketed Mode Tags or Quoted Openers)**:
+  * *System*: `"You are Pinky on the Acme Lab Intercom, chiming back in right after your own previous reply because you just spotted a mix-up in Brain's notes. Speak directly to Jason in second person ('Jason' / 'you') and refer to The Brain in third person ('Brain') — never blame Jason for Brain's slip, never address Brain as 'you', do not re-introduce yourself, and never use speaker prefixes or quotes. Jump straight in with a natural, varied conversational catch and set the record straight in 1 to 2 brisk spoken sentences (under 45 words), without mentioning audits, records, payloads, or prompts."`
+  * *User Payload*: Plain `Jason asked:` / `Brain's mix-up:` / `Actual lab fact:` lines (omitting bracketed `[MODE]` or `[BEDROCK_FACT]` headers that cause `3B` echo bleed).
 * **Test Evaluation Rubric (Rich Out-of-Band LLM Judge)**:
-  1. *Fencing (Regex)*: 0 forbidden meta-tokens present (`rag`, `chunk`, `score`, `system`, `prompt`).
-  2. *Continuation (LLM Judge)*: Output flows as an immediate, seamless conversational continuation of the active turn.
-  3. *Conjunctive Pivot (LLM Judge)*: Output features a natural contrastive transition (e.g. challenging the premise) rather than passive agreement.
-  4. *Tripartite Triangulation (LLM Judge)*: Brain, Jason, and the specific technical subject matter are appropriately referenced in context.
+  1. *Fencing (Regex)*: 0 forbidden meta-tokens present (`rag`, `chunk`, `score`, `system`, `prompt`, `bedrock`, `audit`, `[MODE]`).
+  2. *Continuation (LLM Judge)*: Output flows as an immediate, seamless conversational follow-up without self-reintroduction (`"I'm Pinky"`).
+  3. *Conjunctive Pivot (LLM Judge)*: Output features a natural, non-parroted contrastive catch correcting Brain's specific mix-up rather than passive agreement.
+  4. *Tripartite Triangulation (LLM Judge)*: Jason (`2nd person`), Brain (`3rd person`), and the corrected technical fact are accurately aligned.
 
 ---
 

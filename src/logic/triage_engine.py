@@ -505,35 +505,32 @@ class TriageEngine:
 
     @staticmethod
     def _build_triage_mode_context() -> str:
-        """Build the system context block sent alongside the triage prompt."""
+        """Build the system context block sent alongside the triage prompt with 2026 temporal precedence."""
         now_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
         return (
             f"[MODE]: UNIFIED PRE-REFLECTION & TRIAGE (Runtime: Acme Lab, Date: {now_str}, Current Year: 2026)\n"
             + _BRAIN_PERSONA_SPEC
             + "\n"
-            "Translate user intent (I think the user is trying to say...).\n"
-            "  * is_continuation: true if the query relies on anaphora, deixis, ellipsis, or conversational correction; otherwise false.\n"
-            "Grammatical Tense & Temporal Horizon Rules:\n"
-            "  * Present Tense / Live Vitals / Imperative ('what is the memory?', 'show status', 'gpu load', 'how is the lab?') -> domain: \"lab_internal\", vibe: \"OPERATIONAL\" (Zero Archive RAG).\n"
-            "  * Conceptual Inquiries / Philosophical Exploration / General Greeting ('hello', 'how does this work?', 'why') -> domain: \"lab_internal\", vibe: \"SOCRATIC\" (Sliding multi-turn memory, Zero Archive RAG).\n"
-            "  * Crash Logs / Stack Trace / Dead PIDs / Kernel Panics -> domain: \"exp_for\", vibe: \"FORENSIC\".\n"
-            "  * Distant Historical Eras + Explicit Epoch Markers ('what was the RAPL cap in 2018?', '2014 bringup notes') -> domain: \"work_history\" or \"exp_tlm\", vibe: \"CHRONICLE\" (ChromaDB RAG).\n"
-            "  * Recent Lab Sprints / Yesterday's Debugging / Active Session Progress -> domain: \"lab_internal\", vibe: \"RETROSPECTIVE\".\n"
-            "  * Architectural Design / Interfaces / Complexity Conservation (INS-038) -> domain: \"standard\", vibe: \"ARCHITECTURAL\".\n"
-            "  * Concrete Code Edits / Fixes / Verification / Tests -> domain: \"standard\", vibe: \"TACTICAL\".\n"
-            "  * Portfolio Vision / Executive Synthesis / Leadership Notes -> domain: \"standard\", vibe: \"STRATEGIC\".\n"
-            "  * Red-Teaming / Disagreement Trapping / Stress Testing -> domain: \"standard\", vibe: \"PROVOCATIVE\".\n"
-            "  * Document Spine Curation / Memory Pruning / Refining DNA -> domain: \"standard\", vibe: \"METABOLIC\".\n"
-            '  * Ambiguous / Underspecified -> domain: "unclear", hyde_vector_text: "" (Pinky Speculative Foil).\n'
-            '  * Standup Briefing / Absence Catchup (\'what did i miss\', \'standup\', \'morning update\') -> domain: "dream_stream", vibe: "WYWO".\n'
-            "HyDE synthesis is gated by the 4-Domain HyDE Map Contract:\n"
-            "  1. exp_tlm (Silicon Telemetry): PCIe error bursts, RAPL power/thermal caps.\n"
-            "  2. exp_bkm (SRE playbooks): Point-of-failure playbooks, diagnostic shell BKMs.\n"
-            "  3. exp_for (Forensic Logs): Kernel panic tracebacks, OOM crash logs.\n"
-            "  4. work_history (18-Year Archive): historical project notes (2005-2025).\n"
-            "If the intent maps to an archival domain (exp_*, work_history), synthesize a 3-part Composite HyDE Vector:\n"
-            "[VALIDATION]: <term> | [STRATEGY]: <goal> | [SRE]: <bkm>\n"
-            'If NOT mapped or domain is lab_internal/unclear/standard/feedback, set hyde_vector_text: "" and vibe: SOCRATIC.'
+            "Translate user primer into vibe, domain, addressed_to, is_continuation, and continuous interest scalars (casual, intrigue, importance) purely via semantic understanding.\n"
+            "• Temporal Precedence Invariant: Explicit past years (2005-2025) and historical silicon platforms strictly take precedence over telemetry nouns -> vibe: 'HISTORICAL', domain: 'work_history'.\n"
+            "• Present Tense Invariant: Live host/GPU sensor status, active daemons, thermals, and VRAM right now -> vibe: 'OPERATIONAL', domain: 'exp_tlm'.\n\n"
+            "Canonical 9 Vibes:\n"
+            "  * CASUAL: Non-interrogative salutation or low-complexity social pleasantry -> domain: 'social' (Zero RAG).\n"
+            "  * UNCLEAR: Vague command or underspecified fragment lacking a resolvable object -> domain: 'unclear' (Zero RAG).\n"
+            "  * WYWO: Interrogative about recent past, overnight activity, standup, or wellbeing of the mice -> domain: 'dream_stream'.\n"
+            "  * HISTORICAL: Past career project, silicon platform, or dated year (2005-2025) -> domain: 'work_history'.\n"
+            "  * OPERATIONAL: Live right-now status check on current 2026 lab machines, daemons, load, VRAM, temps, or power draw -> domain: 'exp_tlm'.\n"
+            "  * FORENSIC: Crash dump, timeout failure, stack trace, kernel panic, OOM event, or error post-mortem -> domain: 'exp_for'.\n"
+            "  * META: Behavioral critique, coaching, or Fourth-Wall supervision about the mice's own prompts, personas, or turn behavior -> domain: 'feedback' or 'lab_internal'.\n"
+            "  * TECHNICAL: How-it-works question or metric/benchmark comparison on silicon mechanics, protocols, algorithms, or code -> domain: 'exp_tlm' or 'exp_bkm'.\n"
+            "  * SOCRATIC: Conceptual 'why' or 'should we' design-philosophy and architectural trade-off inquiry -> domain: 'standard'.\n\n"
+            "ADDRESSED_TO Rules (Explicit Entity Naming Only):\n"
+            "  * 'NONE': Default when user does NOT explicitly name a character.\n"
+            "  * 'PINKY': User explicitly addresses Pinky by name.\n"
+            "  * 'BRAIN': User explicitly addresses Brain or Deep Thought.\n"
+            "  * 'MICE': User explicitly addresses both/group.\n"
+            "  * 'SYSTEM': User addresses meta/supervisor engine.\n"
+            "is_continuation: true if the query relies on anaphora, deixis, ellipsis, or conversational correction; otherwise false.\n"
         )
 
     @staticmethod

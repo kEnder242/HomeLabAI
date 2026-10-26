@@ -156,27 +156,90 @@ def parse_args(argv=None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+# Primer generators using evicted regex patterns as offline context generators [Story 108.14C / AR-2.2]
+def generate_greeting_primers() -> list[str]:
+    """Generate realistic casual greeting primers."""
+    return [
+        "Good morning Pinky!",
+        "Hey Brain, how are you doing?",
+        "Hello mice, are you awake?",
+        "Morning lab, how's it going today?",
+        "Yo Pinky, what's up?",
+    ]
+
+
+def generate_wywo_primers() -> list[str]:
+    """Generate realistic standup WYWO interrogative primers."""
+    return [
+        "What did you do while I was out?",
+        "What were you guys working on overnight?",
+        "Give me the standup status from the night run.",
+        "What did you two debate while I was away?",
+        "What was accomplished during the subconscious dream cycle?",
+    ]
+
+
 def build_probe_prompt(stage: str, vibe_cfg: dict, query_override: str | None = None) -> str:
-    """Construct stage-specific prompt using production logic."""
+    """Construct stage-specific prompt using production logic across all 6 pipeline stages."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    query = query_override or vibe_cfg["query"]
+    synthesis = vibe_cfg["synthesis"]
+    policy_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../config/triage_policy.json"))
+    directive = vibe_cfg["directive"]
+    if os.path.exists(policy_path):
+        try:
+            with open(policy_path, "r") as pf:
+                p_data = json.load(pf)
+                p_rule = p_data.get("vibes", {}).get(vibe_cfg["vibe"], {})
+                if p_rule.get("contextual_prompt"):
+                    directive = p_rule["contextual_prompt"]
+                elif p_rule.get("micro_prompt"):
+                    directive = p_rule["micro_prompt"]
+        except Exception:
+            pass
+
     try:
-        from logic.cognitive_hub import build_two_mice_stage_prompt
-        query = query_override or vibe_cfg["query"]
-        synthesis = vibe_cfg["synthesis"]
-        policy_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../config/triage_policy.json"))
-        directive = vibe_cfg["directive"]
-        if os.path.exists(policy_path):
-            try:
-                with open(policy_path, "r") as pf:
-                    p_data = json.load(pf)
-                    p_rule = p_data.get("vibes", {}).get(vibe_cfg["vibe"], {})
-                    if p_rule.get("contextual_prompt"):
-                        directive = p_rule["contextual_prompt"]
-                    elif p_rule.get("micro_prompt"):
-                        directive = p_rule["micro_prompt"]
-            except Exception:
-                pass
-        if stage == "pinky":
+        if stage == "triage":
+            from logic.triage_engine import _build_triage_mode_context
+            ctx = _build_triage_mode_context(triage_mode=True, current_date="2026-10-26")
+            return (
+                f"{ctx}\n\n"
+                "[SYSTEM_INSTRUCTION]: Triage the following user message. Respond ONLY with valid JSON "
+                'conforming to: {"vibe": "<one of the 9 canonical vibes>", "interest": <0.0 to 1.0>, '
+                '"addressed_to": "brain"|"pinky"|"both", "domain": "..."}.\n\n'
+                f"[USER_MESSAGE]: {query}"
+            )
+        elif stage == "rag":
+            return (
+                f"[HYDE_EXPANSION_QUERY]: Formulate a dense technical search query for the Acme Lab ChromaDB "
+                f"knowledge base regarding:\n{query}"
+            )
+        elif stage == "filter":
+            from logic.cognitive_hub import build_two_mice_stage_prompt
+            formatted_chunks = synthesis
+            if "[CHUNK-" not in formatted_chunks:
+                formatted_chunks = f"[CHUNK-1]:\n{synthesis}\n\n[CHUNK-2]:\nTelemetry alert: NVMe drive sector remap count 0 on storage node."
+            return build_two_mice_stage_prompt(
+                1,
+                primer=query,
+                user_query=query,
+                interest=0.85,
+                context=formatted_chunks,
+            )
+        elif stage == "dt":
+            from nodes.thought_node import DEEP_THOUGHT_SYSTEM_PROMPT
+            return (
+                f"{DEEP_THOUGHT_SYSTEM_PROMPT}\n\n"
+                f"[USER_QUERY]: {query}\n"
+                f"[BRAIN_GROUNDING]:\n{synthesis}\n\n"
+                "[BUDGET]: Headroom ceiling is 600 tokens. Answer concisely within this budget; do not add conversational fluff or filler.\n"
+                "Synthesize the architectural reality in high-authority engineering prose. "
+                "Ground strictly in evidence provided in Brain's bedrock bullets. "
+                "Maintain clear distinction between past historical engineering archives (2005-2025) and present 2026 lab telemetry. "
+                "Deliver cohesive engineering prose without echoing headings or section titles."
+            )
+        elif stage == "pinky":
+            from logic.cognitive_hub import build_two_mice_stage_prompt
             return build_two_mice_stage_prompt(
                 2,
                 primer=query,
@@ -185,17 +248,16 @@ def build_probe_prompt(stage: str, vibe_cfg: dict, query_override: str | None = 
                 brain_grounding=synthesis,
                 topic_directive=directive,
             )
-        elif stage == "filter":
-            return build_two_mice_stage_prompt(
-                1,
-                primer=query,
-                user_query=query,
-                interest=0.85,
-                context=synthesis,
+        elif stage == "audit":
+            return (
+                "[INSTRUCTION]: You are the Sovereign Lab Entailment Auditor. "
+                "Evaluate whether the strategic claim strictly entails from the underlying evidence.\n"
+                "Output CLAIM_CHECK: <terse reason> followed by VERDICT: PASS or VERDICT: MISMATCH.\n\n"
+                f"Strategic Claim: {synthesis}\n"
+                f"Underlying Evidence: {query}"
             )
     except Exception as e:
-        # Fallback if imports fail
-        return f"[PROMPT FALLBACK]: {vibe_cfg['directive']}\n\nEvidence: {vibe_cfg['synthesis']}\nUser: {query_override or vibe_cfg['query']}"
+        return f"[PROMPT FALLBACK: stage={stage}]: {directive}\n\nEvidence: {synthesis}\nUser: {query}"
     return f"Stage {stage} probe prompt"
 
 
@@ -259,8 +321,15 @@ def main(argv=None) -> int:
     prompt = build_probe_prompt(args.stage, vibe_cfg, query)
 
     model = args.model
-    if args.stage == "filter" and model == "cli_voice_v1":
-        model = "local-unified-base"
+    endpoint = args.endpoint
+    if args.model == "cli_voice_v1":
+        if args.stage in ("filter", "dt"):
+            model = "local-unified-base"
+        elif args.stage == "triage":
+            model = "triage_v1"
+        elif args.stage == "audit":
+            model = "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"
+            endpoint = "http://192.168.1.46:8000/v1/chat/completions"
 
     if args.dry_run:
         telemetry = {
@@ -272,8 +341,37 @@ def main(argv=None) -> int:
             "endpoint": "MOCK",
             "model": "MOCK",
         }
+    elif args.stage == "rag":
+        # Live ChromaDB RAG probe
+        try:
+            import urllib.request
+            rag_req = urllib.request.Request(
+                "http://127.0.0.1:8001/api/v2/heartbeat",
+                headers={"Content-Type": "application/json"},
+            )
+            t0 = time.perf_counter()
+            with urllib.request.urlopen(rag_req, timeout=3) as resp:
+                status = resp.status
+            tot_ms = round((time.perf_counter() - t0) * 1000, 2)
+            telemetry = {
+                "status": "SUCCESS" if status == 200 else "RAG_UNHEALTHY",
+                "ttft_ms": tot_ms,
+                "total_latency_ms": tot_ms,
+                "output_tokens": 1,
+                "raw_output": f"ChromaDB daemon heartbeat OK (status {status})",
+                "endpoint": "http://127.0.0.1:8001",
+                "model": "chromadb-server",
+            }
+        except Exception as e:
+            telemetry = {
+                "status": "PHYSICAL_FAILURE",
+                "error": str(e),
+                "endpoint": "http://127.0.0.1:8001",
+                "model": "chromadb-server",
+                "raw_output": "",
+            }
     else:
-        telemetry = execute_live_probe(args.endpoint, model, prompt)
+        telemetry = execute_live_probe(endpoint, model, prompt)
 
     # [BKM-090] Construct Verdictless Evidentiary Trace
     trace = {

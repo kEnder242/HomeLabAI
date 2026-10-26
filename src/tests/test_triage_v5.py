@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 
+import pytest
 import requests
 import websockets
 
@@ -9,6 +10,7 @@ WS_URL = "ws://localhost:8765"
 STATUS_URL = "http://localhost:8765/status"
 
 
+@pytest.mark.asyncio
 async def test_triage_casual_with_priming():
     print(
         "Testing CASUAL vibe triage with Early Priming via WebSocket (Attendant-Aware)..."
