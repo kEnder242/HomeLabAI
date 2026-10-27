@@ -219,11 +219,12 @@ class BicameralNode:
             self.append_to_tool_log("think", params_preview)
 
             full_response = ""
-            # [FEAT-361] Token Transparency Mandate: Abolish silent token gagging.
+            # [FEAT-361 / BKM-095 / Story 108.20] Token Transparency Mandate & UI Zero-Streaming:
             # Route intermediate/diagnostic tokens to dedicated channels ('crosstalk', 'insight')
-            # rather than silencing them into a black hole (stream_source = None).
+            # rather than user chat channels. Structured schemas are strictly internal scratchpads.
             stream_source = self.name
-            channel_tag = "crosstalk" if internal else "primary"
+            is_internal_stream = internal or bool(response_format)
+            channel_tag = "crosstalk" if is_internal_stream else "primary"
 
             # [FEAT-307] Sanitary Filter: Redirect turn-level noise to stderr
             # This is critical to prevent logs from breaking the stdio MCP transport.
@@ -255,7 +256,7 @@ class BicameralNode:
                         stream_source,
                         request_id=request_id,
                         channel=channel_tag,
-                        is_internal=internal,
+                        is_internal=is_internal_stream,
                     )
 
                 # [FEAT-233.7] Signal completion
@@ -265,7 +266,7 @@ class BicameralNode:
                     final=True,
                     request_id=request_id,
                     channel=channel_tag,
-                    is_internal=internal,
+                    is_internal=is_internal_stream,
                 )
 
             return full_response

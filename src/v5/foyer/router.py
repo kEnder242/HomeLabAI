@@ -4692,6 +4692,8 @@ class FoyerRouter:
                     "brain_source": data.get("source", "Unknown"),
                     "final": data.get("final", False),
                     "request_id": data.get("request_id", "default"),
+                    "internal": data.get("is_internal", data.get("internal", False)),
+                    "channel": data.get("channel", "primary"),
                 }
             )
             # [SPR-52.0 / Task 52.3] Stage 2-4 hooks: deduce progress from node streams
@@ -4922,11 +4924,19 @@ class FoyerRouter:
                         if "brain" in s_lower or "thought" in s_lower:
                             channel = "insight"
 
-                        # [Story 107.17] Single Delivery Authority:
+                        # [Story 107.17 / Story 108.20 / BKM-095] Single Delivery Authority:
                         # Two-mice handover stages broadcast their finalized paragraph pop directly upon completion.
                         # Silence duplicate broadcast here to eliminate dual-bubble printing, while preserving telemetry logging.
                         is_handover_persona = any(
-                            k in s_lower for k in ("brain (archive)", "pinky (voice)", "deep thought", "pinky (triage)")
+                            k in s_lower for k in (
+                                "brain (archive)",
+                                "pinky (voice)",
+                                "deep thought",
+                                "pinky (triage)",
+                                "pinky (response)",
+                                "pinky (coherence critic)",
+                                "pinky",
+                            )
                         )
                         if not is_handover_persona:
                             await self.broadcast(
