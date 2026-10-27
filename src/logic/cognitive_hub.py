@@ -1199,9 +1199,12 @@ class CognitiveHub:
         buf_key = f"{request_id}_{raw_source}"
 
         # [NEW] Push to waterfall queue for real-time UI delivery
-        # [FEAT-361] 100% Transparency: No masking of inter-node whispers (internal triage suppressed from chat).
+        # [FEAT-361 / BKM-095] Zero UX Streaming Guardrail:
+        # Structured JSON schemas, internal turns, and triage are strictly suppressed from the UI waterfall queue.
         if hasattr(self, "waterfall_queue") and self.waterfall_queue:
-            if not data.get("internal", False) and "triage" not in raw_source.lower():
+            token_str = str(token).strip()
+            is_json_structured = token_str.startswith("{") or token_str.startswith('"spoken_take"')
+            if not data.get("internal", False) and "triage" not in raw_source.lower() and not is_json_structured:
                 await self.waterfall_queue.put(data)
 
         if token:
@@ -1516,7 +1519,7 @@ class CognitiveHub:
                         "response_format": response_format,
                         "request_id": request_id,
                         "max_tokens": token_budget,
-                        "internal": is_triage,
+                        "internal": is_triage or bool(response_format),
                     },
                 )
             )
@@ -2821,6 +2824,7 @@ class CognitiveHub:
                 if not clean_vector and not spoken_take:
                     if not raw_hyde.startswith("{"):
                         spoken_take = raw_hyde
+                        clean_vector = raw_hyde
 
                 # Strip internal tags from spoken take and vector
                 clean_vector = re.sub(r"<[^>]+>", "", clean_vector).strip()
@@ -2951,16 +2955,18 @@ class CognitiveHub:
             try:
                 vibe_val = str(t_parsed.get("vibe", ""))
                 domain_val = str(t_parsed.get("domain", ""))
+                get_context_params = {
+                    "query": turn,
+                    "hyde_vector_text": hyde,
+                    "n_results": n_results,
+                    "vibe": vibe_val,
+                    "domain": domain_val,
+                }
+                if target_domains:
+                    get_context_params["target_domains"] = target_domains
                 res = await self.residents["archive"].call_tool(
                     "get_context",
-                    {
-                        "query": turn,
-                        "hyde_vector_text": hyde,
-                        "n_results": n_results,
-                        "vibe": vibe_val,
-                        "domain": domain_val,
-                        "target_domains": target_domains,
-                    },
+                    get_context_params,
                 )
                 if hasattr(res, "content") and len(res.content) > 0:
                     result_text = res.content[0].text
@@ -3005,6 +3011,8 @@ class CognitiveHub:
                             "hyde": hyde,
                             "tier": str(hyde_tier),
                             "doc_id": doc_id,
+                            "channel": "chat",
+                            "brain_source": "Pinky (Scout)",
                             "snippet": result_text[:400]
                             + ("..." if len(result_text) > 400 else ""),
                             "full_context": result_text,

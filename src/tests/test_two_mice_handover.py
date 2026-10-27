@@ -521,3 +521,40 @@ def test_vocative_overhearing_brain_turn():
     # Pinky voice should NOT speak a second time after Brain's direct answer
     assert len(pinky_voice_called) == 0
 
+
+def test_zero_ui_streaming_and_no_raw_json_echo():
+    """[Story 108.20 / FEAT-233 / FEAT-361 / BKM-095] Zero UI streaming & no verbatim JSON echo in voice bubbles."""
+    hub, packets = _build_test_hub()
+    hub.current_vibe = "HISTORICAL"
+    hub.current_interest = 0.60
+
+    loop = asyncio.new_event_loop()
+    try:
+        ran = loop.run_until_complete(
+            hub._run_two_mice_handover(
+                "What was my work like in 2019?",
+                focus_context="[CHUNK-1] Manageability Test Content Lead (2019-2024)",
+                interest=0.60,
+                request_id="audit_echo_turn",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert ran is True
+
+    # 1. Assert ZERO live streaming token packets were sent
+    token_packets = [p for p in packets if p.get("type") == "token"]
+    assert len(token_packets) == 0, f"Expected 0 token-streaming packets, found {len(token_packets)}"
+
+    # 2. Inspect conversational voice packets: must never be raw JSON schemas
+    voice_packets = [
+        p for p in packets
+        if p.get("channel") in ("voice", "chat", "pinky") and p.get("type") in ("thought_stream", "chat")
+    ]
+    for vp in voice_packets:
+        token_body = (vp.get("token") or vp.get("brain") or "").strip()
+        assert not token_body.startswith("{"), f"Raw JSON schema leaked to conversational channel: {token_body[:60]}"
+        assert '"spoken_take"' not in token_body, f"Raw 'spoken_take' key leaked to conversational bubble: {token_body[:60]}"
+
+
