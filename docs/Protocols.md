@@ -1910,6 +1910,23 @@ When an out-of-band Entailment Audit executes:
 * If a contradiction or cross-attribution is detected (`VERDICT: MISMATCH`), the system triggers Pinky's Intercom continuation (`CONT_SYS_V3`) to set the record straight conversationally.
 * If Sovereign silicon is offline or asleep, the entailment audit is skipped entirely; local $3\text{B}$ models must never substitute as judges ($0\%$ specificity).
 
+---
+
+## BKM-095: UI Atomic Turn Dispatch & Zero-Streaming Invariant
+**Feature Anchor:** `[BKM-095]` / `[FEAT-233]` / `[FEAT-361]` / `[FEAT-672]`  
+**Colloquial Alias:** "Zero UI Streaming Invariant"  
+**Tags:** `#zero_streaming`, `#atomic_turns`, `#anti_pop`, `#clean_chat`, `#ui_hygiene`  
+**Domain:** Frontend/Backend Interface, UI Orchestration  
+**Status:** ACTIVE / MANDATORY (Sprint 108)  
+
+### 1. The Core Invariant
+* **UI Chat Bubbles Consume Only Completed, Atomic Payload Dispatches**: Streaming partial tokens or typewriter effects to user-facing chat channels (`channel="pinky"` / `channel="chat"`) is strictly forbidden (`UI_STREAMING_PROHIBITED`).
+* **Inter-Node Token Waterfalls Are Internal Only**: Waterfall token streaming (`FEAT-233`) exists exclusively between backend processing nodes. Tokens must never leak mid-flight to public UI websockets.
+* **Discrete Diagnostic Delivery**: Triage classification, Brain retrieval/grounding telemetry, and Critic evaluation records must be dispatched strictly as complete, discrete, raw JSON payload cards to Left Console diagnostic channels (`channel="lab"` / `channel="diagnostic"`).
+* **Single Spoken Delivery**: Persona conversational text is extracted and dispatched **once** to Right Console chat channels as clean, human-readable prose. Unparsed intermediate JSON schemas or raw extraction dictionaries must never be routed to conversational bubbles.
+* **100% Transparency Without Duplication**: All thoughts, steps, and diagnostics remain completely visible to the operator across the two consoles without verbatim echoes or duplicate dispatches.
+
+
 
 
 
