@@ -1445,8 +1445,8 @@ class CognitiveHub:
             await self.broadcast(
                 {
                     "type": "crosstalk",
-                    "brain": f"[INIT] Initiating {source_name} intuition...",
-                    "brain_source": "System",
+                    "brain": f"Initiating {source_name} intuition...",
+                    "brain_source": source_name,
                     "final": False,
                     "channel": channel,
                 }
