@@ -1339,6 +1339,7 @@ During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug 
    - Topics remain conversational anchors until verbally aligned and captured into a unified tabular ledger.
 2. **SPRINT CRYSTALLIZATION (The Planning Stage):**
    - Once verbal consensus is reached, the anchors are mapped to sprint stories (`Story <N>.1`, `Story <N>.2`, ...).
+   - The roll-up from conversational dialogue into sprint stories is governed by `BKM-097` (Roll-Up Audit Protocol).
    - The sprint plan MUST include the verbatim ANCHOR_TRACK ledger table reflecting the exact state (`DONE`, `STAGED`, `DROPPED`, `DEFERRED`).
 3. **HEADS DOWN EXECUTION (The Delivery Stage):**
    - Execution proceeds under `BKM-006` and `BKM-007` with assigned owner tags (`[AGY:PRIMARY]` vs `[SWARM:LOCAL]`).
@@ -1565,7 +1566,7 @@ Under `BKM-083`, cognitive orchestration pipelines MUST adhere to the **Decouple
 To prevent confusion between active work and pending reminders:
 * **Numbered Lanes ($1 \dots N$):** Reserved exclusively for active, foreground conversational swim lanes under `BKM-064` / `BKM-077`.
 * **Lettered Ledger ($A \dots Z$):** Reserved exclusively for out-of-band, incidental stray findings or unprompted bugs uncovered during read-only lookups (`BKM-004`) that lack active follow-up.
-* **Active Scope Paved Path:** Items actively tracked in current conversational lanes, work orders, or sprint plan phases are natively owned by those structures. Such items flow forward naturally through conversation roll-ups and sprint backlogs, keeping the Lettered Ledger dedicated solely to out-of-band discoveries.
+* **Active Scope Paved Path:** Items actively tracked in current conversational lanes, work orders, or sprint plan phases are natively owned by those structures. Such items flow forward naturally through conversation roll-ups (`BKM-097`) and sprint backlogs, keeping the Lettered Ledger dedicated solely to out-of-band discoveries.
 
 ### 2. The Lookback Horizon & Anti-Hijack Invariant
 1. **The Lookback Horizon:** Review the prior 2–4 turns (specifically turns $N-2$ through $N-4$). The immediate last turn ($N-1$) is active conversational context and is never treated as a dropped thread.
@@ -1945,6 +1946,27 @@ When a behavioral protocol tension, rule slip, or process violation occurs, the 
 2. **Root Cause Identification**: Locate the exact paragraph, sentence, or ambiguity in `docs/Protocols.md` where the directive broke down, conflicted with another mandate, or failed to anticipate operational reality.
 3. **Positive Guidance Construction**: Draft the replacement rule using positive framing ("Do X because context Y guides this behavior"). Direct the agent toward a concrete operational pipeline rather than describing what not to do.
 4. **Surgical Diff Presentation**: Present the minimal, contiguous `git diff` against `docs/Protocols.md` for explicit operator review and confirmation before committing locally per `BKM-040`.
+
+---
+
+## BKM-097: Roll-Up Audit Protocol (ROLLUP_AUDIT)
+**Feature Anchor:** `[BKM-097]` / `[BKM-077]` / `[BKM-084]` / `[BKM-096]`  
+**Colloquial Alias:** "The Roll-Up Audit Protocol"  
+**Tags:** `#roll_up`, `#audit`, `#reconciliation`, `#anchor_track`, `#anti_drift`, `#ambient_hooks`  
+**Domain:** Conversational Accountability, Sprint Reconciliation, Task Governance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Operational Imperative
+A "Roll-Up" is an active reconciliation audit, not a passive conversation summary. When a tracked conversation concludes or transitions into planning, the operator or agent triggers a roll-up to bridge conversational swim lanes (`BKM-077`) into the active sprint plan, satisfying the Active Scope Paved Path (`BKM-084 §1`) so no active topics degrade into ambiguous dropped threads.
+
+### 2. Ambient Hook Dynamic Guidance
+When the operator requests a "roll up", ambient hooks inject dynamic, context-specific execution directives directly into the session prompt. The agent must consume and strictly adhere to these injected hook instructions for the active turn.
+
+### 3. Core Audit Requirements
+1. **Adversarial Transcript Reconciliation**: The agent reviews the conversational dialogue history against the target sprint plan artifact line-by-line.
+2. **Gap & Drift Identification**: The audit surfaces any unrepresented user requirements, dropped sub-points, bunched stories (violating `BKM-077 §4.1`), mislabeled feature tags, or accidental regressions in intent.
+3. **1:1 Story Parity**: The sprint plan stories are updated to reflect the full fidelity of aligned dialogue decisions.
+4. **Authoritative ANCHOR_TRACK Generation**: The sprint plan MUST receive an updated, verbatim `ANCHOR_TRACK` reconciliation table (`BKM-077 §2`) documenting origin prompts, agreed technical architecture, mapped sprint stories, and tracking status (`DONE`, `STAGED`, `DROPPED`, `DEFERRED`).
 
 
 
