@@ -1347,10 +1347,11 @@ During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug 
 ### 4. The 1:1 Numbered Swim Lane Invariant (Anti-Grouping Mandate)
 1. **The Invariant Law:**
    * Numbered dialogue items ($1 \dots N$) established during design alignment ARE the canonical, immutable swim lanes.
-   * Agents are **strictly forbidden** from merging, grouping, collapsing, or bunching multiple numbered items together (e.g. headers like "1 & 2", "4, 5 & 11", or "6 & 7").
+   * **Sub-Point Continuity:** Sub-indexed items (e.g. `1.1`, `1.2`, `2.3`) inherit the identical 1:1 immutable swim lane invariant. Agents must maintain discrete sub-lane headings without merging, grouping, collapsing, or bunching them together into compound headers (e.g., forbidding headers like "1.1 & 1.2" or "2.1-2.3").
+   * **Integer Roll-Up Summaries:** Parent integer headings (e.g., `### 2) Top-Level Topic`) are explicitly encouraged as high-level architectural syntheses, provided all active sub-points descend cleanly beneath them as individual headings.
 2. **Individual Lifetime:**
-   * Every single numbered item MUST be addressed in its own discrete, separate numbered section in responses and sprint plans.
-   * Swim lanes maintain their individual numbering until they naturally achieve full consensus, are certified, and peter out.
+   * Every single numbered and sub-pointed item MUST be addressed in its own discrete section in responses and sprint plans.
+   * **Operator-Only Drop Authority:** Only the human operator has the authority to drop, dismiss, or merge items. Agents must carry every sub-point forward until explicitly closed.
 
 ---
 
@@ -1563,7 +1564,8 @@ Under `BKM-083`, cognitive orchestration pipelines MUST adhere to the **Decouple
 ### 1. The Dual-Namespace Architecture
 To prevent confusion between active work and pending reminders:
 * **Numbered Lanes ($1 \dots N$):** Reserved exclusively for active, foreground conversational swim lanes under `BKM-064` / `BKM-077`.
-* **Lettered Ledger ($A \dots Z$):** Reserved exclusively for unaddressed findings, paused ideas, or bugs uncovered under QQ (`BKM-004`) that lack active follow-up.
+* **Lettered Ledger ($A \dots Z$):** Reserved exclusively for out-of-band, incidental stray findings or unprompted bugs uncovered during read-only lookups (`BKM-004`) that lack active follow-up.
+* **Active Scope Paved Path:** Items actively tracked in current conversational lanes, work orders, or sprint plan phases are natively owned by those structures. Such items flow forward naturally through conversation roll-ups and sprint backlogs, keeping the Lettered Ledger dedicated solely to out-of-band discoveries.
 
 ### 2. The Lookback Horizon & Anti-Hijack Invariant
 1. **The Lookback Horizon:** Review the prior 2–4 turns (specifically turns $N-2$ through $N-4$). The immediate last turn ($N-1$) is active conversational context and is never treated as a dropped thread.
@@ -1926,6 +1928,23 @@ When an out-of-band Entailment Audit executes:
 * **Discrete Diagnostic Delivery**: Triage classification, Brain retrieval/grounding telemetry, and Critic evaluation records must be dispatched strictly as complete, discrete, raw JSON payload cards to Left Console diagnostic channels (`channel="lab"` / `channel="diagnostic"`).
 * **Single Spoken Delivery**: Persona conversational text is extracted and dispatched **once** to Right Console chat channels as clean, human-readable prose. Unparsed intermediate JSON schemas or raw extraction dictionaries must never be routed to conversational bubbles.
 * **100% Transparency Without Duplication**: All thoughts, steps, and diagnostics remain completely visible to the operator across the two consoles without verbatim echoes or duplicate dispatches.
+
+---
+
+## BKM-096: Root-Surgical Protocol Editing (Anti-Apology Standard)
+**Feature Anchor:** `[BKM-096]` / `[BKM-004]` / `[BKM-040]` / `[INS-047]`  
+**Colloquial Alias:** "The Anti-Apology Root Surgical BKM Standard"  
+**Tags:** `#protocol_hygiene`, `#anti_apology`, `#root_cause`, `#positive_guidance`, `#surgical_edits`  
+**Domain:** Protocol Governance, Meta-Engineering, Agent Behavioral Contracts  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Operational Invariant
+When a behavioral protocol tension, rule slip, or process violation occurs, the agent is strictly prohibited from offering hollow apologies or defensive justifications. The agent must immediately pivot to root-cause diagnosis and execute an explicit 4-step surgical improvement cycle:
+
+1. **Anti-Apology Pivot**: Acknowledge the empirical reality directly without self-flagellating boilerplate. Treat the friction as an objective protocol calibration opportunity.
+2. **Root Cause Identification**: Locate the exact paragraph, sentence, or ambiguity in `docs/Protocols.md` where the directive broke down, conflicted with another mandate, or failed to anticipate operational reality.
+3. **Positive Guidance Construction**: Draft the replacement rule using positive framing ("Do X because context Y guides this behavior"). Direct the agent toward a concrete operational pipeline rather than describing what not to do.
+4. **Surgical Diff Presentation**: Present the minimal, contiguous `git diff` against `docs/Protocols.md` for explicit operator review and confirmation before committing locally per `BKM-040`.
 
 
 
