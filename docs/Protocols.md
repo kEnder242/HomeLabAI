@@ -1897,22 +1897,15 @@ Small models treat illustrative quotes as mandatory verbatim prefixes, emitting 
 
 ---
 
-## BKM-094: Sovereign Decoupled Entailment Auditing
-**Feature Anchor:** `[BKM-094]` / `[FEAT-058]` / `[BKM-089]`  
-**Colloquial Alias:** "Silent 27B Entailment Gate"  
-**Tags:** `#heterogeneous_silicon`, `#entailment_audit`, `#silent_pass`, `#m5_air`, `#kender`  
+## BKM-094: [DEPRECATED / PURGED] Rogue Silent-Pass Contract
+**Feature Anchor:** `[BKM-094]` / `[FEAT-058]` / `[BKM-097]`  
+**Colloquial Alias:** "Purged Silent-Pass Contract"  
+**Tags:** `#deprecated`, `#purged`, `#anti_silent_pass`, `#critic_visibility`  
 **Domain:** Multi-Node Silicon Allocation, Verification Architecture  
-**Status:** ACTIVE / MANDATORY (Sprint 108)  
+**Status:** DEPRECATED / PURGED (Sprint 108 Phase 7)  
 
-### 1. The Silicon Allocation Boundary
-* **Edge Inference ($3\text{B}$)**: Dedicated exclusively to low-latency conversational delivery and local fast-path filtering. Small models must **never** be tasked with out-of-band entailment verification of their own output.
-* **Sovereign Silicon ($27\text{B}+$)**: Dedicated to deep architectural synthesis and out-of-band entailment auditing.
-
-### 2. The Silent-Pass Contract
-When an out-of-band Entailment Audit executes:
-* If the generation is entailed (`VERDICT: PASS`), the audit completes in **100% absolute silence**—no UI messages, no tokens pushed to chat streams, no user interruption.
-* If a contradiction or cross-attribution is detected (`VERDICT: MISMATCH`), the system triggers Pinky's Intercom continuation (`CONT_SYS_V3`) to set the record straight conversationally.
-* If Sovereign silicon is offline or asleep, the entailment audit is skipped entirely; local $3\text{B}$ models must never substitute as judges ($0\%$ specificity).
+### 1. Deprecation & Purge Invariant
+The "Silent-Pass Contract" originally introduced in commit `115a5df` silenced 5/5 non-slop Coherence Critic telemetry from the UI. Under Sprint 108 Story 108.27, this rogue suppression rule is permanently abolished. Critic evaluations and telemetry cards are mandatory diagnostic artifacts that MUST ALWAYS emit visibly to Left Console diagnostic channels and Crosstalk. Silent suppression on pass is strictly forbidden.
 
 ---
 
