@@ -27,6 +27,7 @@ Contract assertions (mirroring SPR-65 Story 65.4 verification clauses):
 
 import asyncio
 import json
+import unittest
 from collections import defaultdict
 
 from logic.cognitive_hub import (
@@ -39,6 +40,7 @@ from logic.cognitive_hub import (
     CognitiveHub,
     build_two_mice_stage_prompt,
     build_two_mice_stream_packet,
+    calculate_pacing_ceiling,
 )
 from nodes.pinky_critic_persona import CriticResult, parse_critic_payload
 
@@ -556,5 +558,62 @@ def test_zero_ui_streaming_and_no_raw_json_echo():
         token_body = (vp.get("token") or vp.get("brain") or "").strip()
         assert not token_body.startswith("{"), f"Raw JSON schema leaked to conversational channel: {token_body[:60]}"
         assert '"spoken_take"' not in token_body, f"Raw 'spoken_take' key leaked to conversational bubble: {token_body[:60]}"
+
+
+def test_pinky_turn_cohesion_and_generous_budget():
+    """[Story 108.23 / Story 108.24 / FEAT-677 / FEAT-523] Pinky receives opening take in prompt and budget has generous headroom."""
+    hub, packets = _build_test_hub()
+    hub._last_pinky_greeting = "Let me check our RAPL records, Jason!"
+
+    prompt = build_two_mice_stage_prompt(
+        2,
+        primer="When did I start with RAPL?",
+        brain_grounding="RAPL started May 11, 2020.",
+        pinky_take=hub._last_pinky_greeting,
+        interest=0.5,
+    )
+    assert "[CONVERSATIONAL_TURN_HISTORY]:" in prompt
+    assert "Let me check our RAPL records, Jason!" in prompt
+    assert "Seamlessly continue" in prompt
+    assert "Do NOT introduce yourself, re-greet Jason" in prompt
+
+    # Verify generous headroom (> 200 tokens)
+    budget = max(200, calculate_pacing_ceiling("pinky", 0.5))
+    assert budget >= 200, f"Expected budget >= 200, got {budget}"
+
+
+def test_critic_telemetry_unswallowed_on_pass():
+    """[Story 108.26 / Story 108.27 / FEAT-058] Critic dispatches delivery even on perfect 5/5 score."""
+    hub, packets = _build_test_hub()
+    dispatches = []
+
+    async def mock_execute_dispatch(text, persona, shutdown_event=None, final=True):
+        dispatches.append((text, persona))
+
+    hub.execute_dispatch = mock_execute_dispatch
+
+    critic_json = json.dumps({
+        "score": 5,
+        "reasoning": "High fidelity technical grounding.",
+        "slop_found": False,
+        "retort": "Narf! Brain got the RAPL timeline spot on!"
+    })
+
+    resident = hub.residents["pinky"]
+    resident.call_tool = unittest.mock.AsyncMock(return_value=unittest.mock.MagicMock(content=[unittest.mock.MagicMock(text=critic_json)]))
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            hub.evaluate_grounding("Brain", "Historical RAPL logs May 2020", interest=0.8)
+        )
+    finally:
+        loop.close()
+
+    assert len(dispatches) == 1, "Critic dispatch was swallowed on 5/5 score!"
+    text, persona = dispatches[0]
+    assert "Narf!" in text
+    assert persona == "Pinky (Coherence Critic)"
+
 
 

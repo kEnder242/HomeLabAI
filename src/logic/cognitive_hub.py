@@ -720,11 +720,11 @@ def build_two_mice_stage_prompt(
             "Modulate council interest: emit <boost_interest> when discovery is high, or <damp_interest> when routine.\n\n"
             "Emit EXACTLY this structure:\n"
             "[ANALYSIS]\n"
-            "- CHUNK-1: Anchor Match: <what matches or none>; Anchor Missing: <what is missing or none> => KEEP/DROP\n"
-            "- CHUNK-2: Anchor Match: <what matches or none>; Anchor Missing: <what is missing or none> => KEEP/DROP\n"
+            "- CHUNK-1: <rich engineering justification and anchor citations> => KEEP/DROP\n"
+            "- CHUNK-2: <rich engineering justification and anchor citations> => KEEP/DROP\n"
             "[BEDROCK SELECTION]\n"
             "- CHUNK-1: KEEP\n"
-            "Rules: In [ANALYSIS], evaluate every [CHUNK-N] with evidence before verdict. "
+            "Rules: In [ANALYSIS], evaluate every [CHUNK-N] with thorough evidentiary reasoning and quotes before verdict. "
             "In [BEDROCK SELECTION], list ONLY the chunks you KEEP. "
             "Your selection is parsed mechanically; do not add prose outside these two blocks.\n\n"
             f"[USER_QUERY]: {effective_query.strip()}\n"
@@ -739,6 +739,16 @@ def build_two_mice_stage_prompt(
         if topic_directive and topic_directive.strip()
         else ""
     )
+    pinky_turn_history = ""
+    if pinky_take and pinky_take.strip():
+        pinky_turn_history = (
+            f"\n[CONVERSATIONAL_TURN_HISTORY]:\n"
+            f"- User (Jason): \"{effective_query.strip()}\"\n"
+            f"- You (Pinky's Opening Take): \"{pinky_take.strip()}\"\n"
+            f"Directive: Seamlessly continue from what you already said to Jason above. "
+            f"Do NOT introduce yourself, re-greet Jason, or restart the conversation topic with phrases like 'Jason, let's dive into...'. "
+            f"Deliver your conversational findings naturally following your opening take.\n"
+        )
     return (
         section
         + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Jason asked a question and Brain reviewed the lab evidence. "
@@ -746,9 +756,12 @@ def build_two_mice_stage_prompt(
         "Keep it warm, concise, and human — do not recite raw RAG passages or technical serial numbers. "
         "STRICT FORMATTING: Plain conversational speech only. Output NO markdown headers, NO bold section tags, and NO bullet points. Exactly 1 to 2 spoken sentences directly to Jason, then stop.\n"
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 1-2 sentence conversational "
-        "TL;DR directly to Jason, then yield the floor.\n\n"
+        "TL;DR directly to Jason, then yield the floor. "
+        "Conclude naturally with complete terminal sentences and standard punctuation. Never stop mid-thought or mid-sentence.\n\n"
         f"[USER_QUERY]: {effective_query.strip()}\n"
-        f"[BRAIN_NOTES]: {extracted_evidence.strip()}{vibe_block}"
+        f"[BRAIN_NOTES]: {extracted_evidence.strip()}"
+        f"{pinky_turn_history}"
+        f"{vibe_block}"
     )
 
 
@@ -2594,14 +2607,13 @@ class CognitiveHub:
             if chat_delivery:
                 self.turn_thought_trace["audit"] = chat_delivery  # [STORY 108.2] Primary entailment-audit key
                 self.turn_thought_trace["critique"] = chat_delivery  # [STORY 108.2] Backward-compatible alias
-                # [BKM-094 / BACKLOG-CRITIC-EXCISION] Silent on PASS: Only dispatch chat on critical mismatch
-                if critic_res.slop_found or critic_res.score < 3:
-                    await self.execute_dispatch(
-                        chat_delivery,
-                        "Pinky (Coherence Critic)",
-                        shutdown_event=shutdown_event,
-                        final=True,
-                    )
+                # [Story 108.27 / BKM-094 Nuked] Always dispatch Coherence Critic delivery
+                await self.execute_dispatch(
+                    chat_delivery,
+                    "Pinky (Coherence Critic)",
+                    shutdown_event=shutdown_event,
+                    final=True,
+                )
         except Exception as e:
             logging.error(f"[HUB] Coherence critique failed: {e}")
 
@@ -3450,21 +3462,23 @@ class CognitiveHub:
         *,
         vibe: str = "CASUAL",
         topic_directive: str = "",
+        pinky_take: str = "",
     ) -> str:
-        """[FEAT-489 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
+        """[FEAT-489 / FEAT-677 / BKM-083 Stage 3.3] Pinky Voice: delivers spoken TL;DR to left console and broadcasts TTS."""
         t_tm_pinky_start = time.perf_counter()
         clean_synthesis = re.sub(r"<thought>.*?</thought>", "", str(synthesis), flags=re.DOTALL | re.IGNORECASE)
         clean_synthesis = re.sub(r"</?thought[^>]*>", "", clean_synthesis, flags=re.IGNORECASE).strip()
+        effective_pinky_take = pinky_take or getattr(self, "_last_pinky_greeting", "")
         stage2_prompt = build_two_mice_stage_prompt(
             2,
             primer=query,
             user_query=query,
             interest=interest,
             brain_grounding=clean_synthesis,
+            pinky_take=effective_pinky_take,
             topic_directive=topic_directive,
         )
-        dt_tokens = len(clean_synthesis.split()) * 1.33
-        pinky_budget = max(60, min(150, int(dt_tokens * 0.10))) if dt_tokens > 0 else calculate_pacing_ceiling("pinky", interest)
+        pinky_budget = max(200, calculate_pacing_ceiling("pinky", interest))
         pinky_stream_count = 0
         pinky_tldr = ""
         async for token in self._process_node_stream(
@@ -3716,6 +3730,7 @@ class CognitiveHub:
         await self.step_pinky_voice(
             query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id,
             vibe=vibe, topic_directive=topic_directive,
+            pinky_take=getattr(self, "_last_pinky_greeting", ""),
         )
 
         # [STORY 108.2] Decoupled Out-of-Band Entailment Audit: schedule step_entailment_audit
