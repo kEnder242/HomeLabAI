@@ -4551,18 +4551,34 @@ class FoyerRouter:
                         )
                         break
                     elif m_type == "text_input":
-                        query = data.get("content")
+                        query = data.get("content") or ""
                         req_id = data.get("request_id")
-                        # [FEAT-455] Zero-Latency Un-blocked Async Preamble: the receive
-                        # loop must return instantly — never await file I/O or the
-                        # broadcast inline. The Deep Thought preamble + enqueue run as
-                        # an un-gated background task (no boot/wake/VRAM gating here;
-                        # queue_drainer owns those gates).
-                        asyncio.create_task(
-                            self._spawn_deep_thought_preamble(
-                                query, source=f"WS_{socket_id}", request_id=req_id
-                            )
+                        is_internal = (
+                            data.get("internal", False)
+                            or (isinstance(query, str) and (
+                                query.startswith("[INTERNAL]")
+                                or query.startswith("[REFINE]")
+                                or query.startswith("[DREAM_PASS]")
+                            ))
                         )
+                        if is_internal:
+                            # [Story 108.28 / FEAT-455] Internal Maintenance / Refine Intent Queue Isolation:
+                            # Out-of-band asynchronous execution bypassing foyer_queue.jsonl,
+                            # preserving real-time visibility on channel='lab' without conversational voice loop.
+                            asyncio.create_task(
+                                self.handle_internal_pass(data, socket_id=socket_id, ws=ws)
+                            )
+                        else:
+                            # [FEAT-455] Zero-Latency Un-blocked Async Preamble: the receive
+                            # loop must return instantly — never await file I/O or the
+                            # broadcast inline. The Deep Thought preamble + enqueue run as
+                            # an un-gated background task (no boot/wake/VRAM gating here;
+                            # queue_drainer owns those gates).
+                            asyncio.create_task(
+                                self._spawn_deep_thought_preamble(
+                                    query, source=f"WS_{socket_id}", request_id=req_id
+                                )
+                            )
                     elif m_type == "workspace_save":
                         fn = data.get("filename")
                         content = data.get("content")
@@ -4779,6 +4795,90 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"Telemetry ingest error: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=400)
+
+    async def handle_internal_pass(self, payload: dict, socket_id: str = None, ws = None):
+        """[Story 108.28 / FEAT-455] Internal Maintenance / Refine Intent Queue Isolation.
+
+        Isolates background refinement and dream passes ([INTERNAL] [REFINE], [DREAM_PASS])
+        from the interactive conversational queue (QUEUE_FILE), preventing recurring vocal loops,
+        while streaming live telemetry to channel='lab' for operator inspection.
+        """
+        query = payload.get("content", "")
+        context = payload.get("context", "")
+        req_id = payload.get("request_id") or uuid.uuid4().hex[:8]
+
+        # Strip internal tags for clean operator visibility
+        display_query = re.sub(r"^\[INTERNAL\]\s*(\[REFINE\]:\s*)?", "", query).strip()
+        short_preview = display_query[:60] + "..." if len(display_query) > 60 else display_query
+
+        logger.info(f"[FOYER] [FEAT-455] Executing out-of-band internal pass: {short_preview}")
+
+        # Stream real-time initiation telemetry to Crosstalk (channel="lab")
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"[INTERNAL MAINTENANCE] Refinement pass initiated: {short_preview}",
+                "brain_source": "Refine Worker",
+                "final": False,
+                "channel": "lab",
+            }
+        )
+
+        result_text = ""
+        target_node = (
+            self.residents.get_node("thought")
+            or self.residents.get_node("lab")
+            or self.residents.get_node("brain")
+        )
+        if target_node:
+            try:
+                res = await target_node.call_tool(
+                    "think",
+                    arguments={
+                        "query": query,
+                        "context": context,
+                        "internal": True,
+                        "request_id": req_id,
+                        "max_tokens": 500,
+                    },
+                )
+                if hasattr(res, "content") and len(res.content) > 0:
+                    result_text = res.content[0].text
+                else:
+                    result_text = str(res)
+            except Exception as e:
+                logger.error(f"[FOYER] Internal pass execution error: {e}")
+                result_text = f"[ERROR: Internal execution failed: {e}]"
+        else:
+            logger.warning("[FOYER] No resident node available for internal pass; generating fallback acknowledgement.")
+            result_text = f"[INTERNAL REFINE ACKNOWLEDGED: {short_preview}]"
+
+        # Dispatch completed result back to the requesting WebSocket client
+        resp_packet = {
+            "type": "crosstalk",
+            "brain": result_text,
+            "brain_source": "The Brain",
+            "final": True,
+            "channel": "lab",
+            "request_id": req_id,
+        }
+        if ws and not ws.closed:
+            try:
+                await ws.send_str(json.dumps(resp_packet))
+            except Exception as send_err:
+                logger.warning(f"[FOYER] Failed to return internal pass response to WS: {send_err}")
+
+        # Stream real-time completion telemetry to Crosstalk (channel="lab")
+        await self.broadcast(
+            {
+                "type": "crosstalk",
+                "brain": f"[INTERNAL MAINTENANCE] Refinement pass completed: {short_preview}",
+                "brain_source": "Refine Worker",
+                "final": False,
+                "channel": "lab",
+            }
+        )
+        return result_text
 
     async def enqueue_intent(self, query, source, request_id=None):
         event = IntentEvent(query=query, source=source)
@@ -5296,6 +5396,18 @@ class FoyerRouter:
                                             elif event.query == "[OPERATIONAL] SLEEP":
                                                 logger.info("[FOYER] Draining OPERATIONAL SLEEP signal -> triggering in-process sleep...")
                                                 asyncio.create_task(self.ignition.stop_lab(reason="QUEUE_SLEEP"))
+                                            self.processed_ids.append(event.id)
+                                            continue
+
+                                        # [Story 108.28 / FEAT-455] Filter out internal maintenance/refinement/dream signals from voice waterfall
+                                        if (
+                                            event.query.startswith("[INTERNAL]")
+                                            or event.query.startswith("[REFINE]")
+                                            or event.query.startswith("[DREAM_PASS]")
+                                        ):
+                                            logger.info(
+                                                f"[FOYER] [FEAT-455] Draining and bypassing internal pass from queue: {event.id}"
+                                            )
                                             self.processed_ids.append(event.id)
                                             continue
 
