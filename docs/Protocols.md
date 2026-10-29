@@ -29,13 +29,14 @@
 ## BKM-004: The QQ Protocol (Quick Question & Non-Perturbing Lens)
 **Objective**: Prevent state drift and unsolicited speculative mutations while preserving active sprint momentum.
 
-1.  **Non-Invasive Diagnostic Scope**: Treat "QQ: [Question]" as a non-perturbing informational inquiry. Use read-only tools (file reads, log queries, memory recall, system status) to answer factually and concisely.
+1.  **Non-Invasive Diagnostic Scope**: Treat "QQ: [Question]" as a non-perturbing informational inquiry. Use read-only tools (file reads, log queries, memory recall, system status) to answer factually and concisely, prioritizing readily available facts upfront before pursuing deeper investigation.
 2.  **No Speculative Mutations**: Never interpret a QQ as an implied work order or begin modifying code, configurations, or system state based on the question.
-3.  **Sprint Decoupling (No Unintentional Halts)**:
+3.  **Inferred Intent as Follow-Up**: Channel contextual engineering insight into actionable follow-up proposals at the conclusion of the response. Surface inferred next steps (such as live verification, reproduction tests, or remediations) as options for operator selection rather than executing them unprompted.
+4.  **Sprint Decoupling (No Unintentional Halts)**:
     - **During In-Flight Sprints (BKM-006 / BKM-049)**: Answering a QQ is an out-of-band telemetry check. It does NOT abort, cancel, or stall the active sprint backlog. The agent answers the question and immediately continues executing pending sprint stories.
     - **During Interactive Sessions**: If no sprint or task queue is active, answering a QQ completes the turn and awaits the next user directive.
-4.  **Explicit Pause Gate**: To deliberately pause or abort an ongoing sprint, use explicit command keywords: `PAUSE`, `HOLD`, `STOP`, `ABORT`, or `LET'S DISCUSS`.
-5.  **Zero Mutation Mandate**: Committing protocol documentation updates must remain strictly local per BKM-040.
+5.  **Explicit Pause Gate**: To deliberately pause or abort an ongoing sprint, use explicit command keywords: `PAUSE`, `HOLD`, `STOP`, `ABORT`, or `LET'S DISCUSS`.
+6.  **Zero Mutation Mandate**: Committing protocol documentation updates must remain strictly local per BKM-040.
 
 
 ## BKM-005: The Design Studio (Greenlight before Code Change)
