@@ -2024,6 +2024,12 @@ class CognitiveHub:
         if self.set_active_domain:
             self.set_active_domain(t_parsed.get("domain", "standard"))
 
+        # [Stage 2 / FEAT-437 / FEAT-657] Zero-Bifurcation: Pinky Stage 2 Opening Take
+        # Generates initial spoken take and extracts HyDE search terms before situational branching
+        hyde_vector, hyde_tier = await self.resolve_hyde_vector(
+            turn, t_parsed, request_id=request_id
+        )
+
         # [Task 15.1] Conversational Grace Override & [FEAT-458] Floating Validation Oracle
         behavioral_guidance = ""
         context = ""
@@ -2112,7 +2118,16 @@ class CognitiveHub:
                 try:
                     with open(pager_path, "r") as f:
                         data = json.load(f)
-                        if data.get("activity"):
+                        if isinstance(data, list):
+                            recent_crit = [
+                                item.get("message")
+                                for item in data
+                                if isinstance(item, dict)
+                                and item.get("severity") in ("WARNING", "CRITICAL")
+                            ]
+                            if recent_crit:
+                                pager_activity = f"Pager Activity: {recent_crit[-1]}"
+                        elif isinstance(data, dict) and data.get("activity"):
                             pager_activity = f"Activity: {data.get('activity')}"
                 except Exception as e:
                     logging.error(f"[HUB] Failed to load pager activity: {e}")
@@ -2152,6 +2167,29 @@ class CognitiveHub:
                     for p in (dialogue_path, recruiter_path, status_path, pager_path, synthesis_path)
                 ),
             )
+
+            # [FEAT-454 / Story 108.21] Broadcast WYWO Situational Context to Pinky Left Console Accordion
+            if context and self.broadcast:
+                try:
+                    await self.broadcast(
+                        {
+                            "type": "rag_eval",
+                            "query": turn,
+                            "hyde": hyde_vector,
+                            "tier": str(hyde_tier),
+                            "doc_id": "dream_stream",
+                            "channel": "chat",
+                            "brain_source": "Pinky (Scout)",
+                            "snippet": context[:400]
+                            + ("..." if len(context) > 400 else ""),
+                            "full_context": context,
+                            "time": time.strftime("%H:%M:%S"),
+                            "vibe": "WYWO",
+                            "domain": "dream_stream",
+                        }
+                    )
+                except Exception as ex:
+                    logging.warning(f"[FEAT-454] WYWO RAG eval broadcast warning: {ex}")
             behavioral_guidance = (
                 "[MODE]: STANDUP (Synthesize a high-density, professional summary of recent nightly dialogues "
                 "and high-impact subconscious gems ([PLATFORM] and [FOCAL]). Explain what nodes debated, "
@@ -2685,6 +2723,9 @@ class CognitiveHub:
         # [FEAT-657] Zero-Bifurcation: Pinky always speaks her opening take in Stage 2.
         # RAG retrieval is evaluated after search terms and collections are extracted.
 
+        if isinstance(triage_result, dict) and triage_result.get("_hyde_resolved"):
+            return str(triage_result.get("hyde_vector_text", "")), triage_result.get("_hyde_tier", DIRECT_RAW_QUERY)
+
         # If triage result already contains a valid HyDE vector from Pinky cli_voice_v1:
         hyde_text = str(triage_result.get("hyde_vector_text", "") or "")
         if len(hyde_text.strip()) > 5:
@@ -2859,22 +2900,30 @@ class CognitiveHub:
                             )
                         )
 
-                if isinstance(triage_result, dict) and clean_hyde:
-                    triage_result["hyde_vector_text"] = clean_hyde
+                if isinstance(triage_result, dict):
+                    triage_result["_hyde_resolved"] = True
+                    if clean_hyde:
+                        triage_result["hyde_vector_text"] = clean_hyde
 
                 if len(clean_hyde) > 5:
                     if len(target_domains) > 0 or triage_result.get("search_required", True):
                         logging.info(
                             f"[FEAT-437][TIER1] Pinky HyDE Vector: {clean_hyde[:80]!r}"
                         )
+                        if isinstance(triage_result, dict):
+                            triage_result["_hyde_tier"] = PINKY_LOCAL_VLLM
                         return clean_hyde, PINKY_LOCAL_VLLM
                     else:
                         logging.info(
                             "[FEAT-657] Zero RAG: search not required / zero target domains. Returning empty vector."
                         )
+                        if isinstance(triage_result, dict):
+                            triage_result["_hyde_tier"] = DIRECT_RAW_QUERY
                         return "", DIRECT_RAW_QUERY
                 else:
                     logging.info("[FEAT-657] Zero RAG: empty search terms. Returning empty vector.")
+                    if isinstance(triage_result, dict):
+                        triage_result["_hyde_tier"] = DIRECT_RAW_QUERY
                     return "", DIRECT_RAW_QUERY
             except Exception as e:
                 logging.warning(
@@ -2897,6 +2946,10 @@ class CognitiveHub:
                         logging.info(
                             f"[FEAT-437][TIER2] Deep Thought Fallback HyDE: {clean_dt[:80]!r}"
                         )
+                        if isinstance(triage_result, dict):
+                            triage_result["_hyde_resolved"] = True
+                            triage_result["_hyde_tier"] = DEEP_THOUGHT_REMOTE
+                            triage_result["hyde_vector_text"] = clean_dt
                         return clean_dt, DEEP_THOUGHT_REMOTE
             except asyncio.TimeoutError:
                 logging.warning(
@@ -2909,6 +2962,9 @@ class CognitiveHub:
         logging.info(
             "[FEAT-437][TIER3] Non-matching domain / casual turn; returning empty HyDE vector (BKM-015)"
         )
+        if isinstance(triage_result, dict):
+            triage_result["_hyde_resolved"] = True
+            triage_result["_hyde_tier"] = DIRECT_RAW_QUERY
         return "", DIRECT_RAW_QUERY
 
     async def _fetch_rag_context(self, turn, t_parsed, n_results=3, request_id: str = "default"):
@@ -3346,19 +3402,25 @@ class CognitiveHub:
             dt_prompt = "\n\n".join(prompt_parts)
             dt_high = calculate_pacing_ceiling("thought", interest)
             dt_budget = dt_high
-            async for token in self._process_node_stream(
-                "thought",
-                dt_prompt,
-                effective_grounding or rag_context,
-                "Deep Thought (Strategy)",
-                tools=[],
-                temperature=0.2,
-                request_id=request_id,
-                max_tokens=dt_budget,
-            ):
-                dt_synthesis += token
-                if shutdown_event and shutdown_event.is_set():
-                    break
+            try:
+                async with asyncio.timeout(20.0):
+                    async for token in self._process_node_stream(
+                        "thought",
+                        dt_prompt,
+                        effective_grounding or rag_context,
+                        "Deep Thought (Strategy)",
+                        tools=[],
+                        temperature=0.2,
+                        request_id=request_id,
+                        max_tokens=dt_budget,
+                    ):
+                        dt_synthesis += token
+                        if shutdown_event and shutdown_event.is_set():
+                            break
+            except (asyncio.TimeoutError, TimeoutError):
+                logging.warning(
+                    f"[FEAT-582] Deep Thought remote synthesis timed out (>20.0s). Preserving available synthesis."
+                )
             if self.broadcast and dt_synthesis:
                 await self.broadcast(
                     build_two_mice_stream_packet(
