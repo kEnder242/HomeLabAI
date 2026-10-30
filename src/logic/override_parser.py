@@ -94,7 +94,7 @@ async def parse_override_with_resident(
 
     try:
         if hasattr(resident_caller, "think") and callable(resident_caller.think):
-            raw = await resident_caller.think(prompt, internal=True)
+            raw = await resident_caller.think(prompt, stream_channel="crosstalk")
         elif hasattr(resident_caller, "call_tool") and callable(
             resident_caller.call_tool
         ):

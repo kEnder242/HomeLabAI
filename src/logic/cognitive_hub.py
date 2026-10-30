@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -2221,6 +2222,33 @@ class CognitiveHub:
                 "Deliver a playful, in-character 1-sentence quip that poses the likely options, "
                 "e.g., 'Are we checking our live GPU vitals right now, or looking back at old test logs?')"
             )
+        elif t_parsed.get("vibe") == "OPERATIONAL" or t_parsed.get("domain") in ("exp_tlm", "telemetry"):
+            # [FEAT-679 / Story 108.33] Live MCP Operational Sensory Tool Hook
+            self.current_interest = max(self.current_interest, 0.75)
+            live_telemetry_chunk = "[TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED]"
+            try:
+                import pynvml
+                pynvml.nvmlInit()
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+                pynvml.nvmlShutdown()
+                live_telemetry_chunk = (
+                    f"[LIVE_SENSORY_TELEMETRY]:\n"
+                    f"- GPU 0 (RTX 2080 Ti): Temp: {temp}°C | VRAM: {mem.used / (1024**2):.0f}MB / {mem.total / (1024**2):.0f}MB | Power: {power:.1f}W\n"
+                    f"- Status: Active Daemon OPERATIONAL"
+                )
+            except Exception as e:
+                logging.info(f"[HUB] Live sensory probe unavailable ({e}). Emitting structured scarcity envelope.")
+                live_telemetry_chunk = "[TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED]"
+
+            context = live_telemetry_chunk
+            behavioral_guidance = (
+                "[MODE]: SENSORY_REPORT (Report live system vitals directly from the provided [LIVE_SENSORY_TELEMETRY]. "
+                "If [TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED] is present, state honestly in character that live hardware sensor access via MCP "
+                "is currently unlinked or offline in this conversational channel. Strictly DO NOT fabricate or hallucinate temperatures, wattage, or load.)"
+            )
         else:
             # If it's not casual, ensure Pinky synthesizes the RAG hints rather than just dumping them.
             behavioral_guidance = "[MODE]: SYNTHESIS (Do not raw-dump tags or RAG refs. Speak conversationally, using the provided context as background knowledge.)"
@@ -3923,7 +3951,7 @@ class CognitiveHub:
 
         if node:
             try:
-                response_str = await node.think(prompt, internal=True)
+                response_str = await node.think(prompt, stream_channel="crosstalk")
                 import json
                 import re
 

@@ -75,19 +75,11 @@
             "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
             "enabled": true,
             "default_domain": "exp_bkm",
-            "rag": {
-                "target_domain": "exp_bkm",
-                "traversal": "TOPIC_FIRST",
-                "allowed_collections": [
-                    "behavioral_dna",
-                    "lab_infrastructure"
-                ],
-                "max_distance": 0.85
-            },
+            "rag": null,
             "importance": 0.85,
             "importance_floor": 0.75,
             "interest_boost": 0.15,
-            "prompt_mo": "Urgent system telemetry requested; deliver high-urgency, compact summary of GPU thermals, power caps, and vitals.",
+            "prompt_mo": "Urgent system telemetry requested; query live hardware state via MCP probes or report telemetry sensor scarcity. Do not retrieve historical archive documentation.",
             "contextual_prompt": "Deliver an alert, compact 2-sentence summary of our live GPU thermals, power caps, and system load."
         },
         "FORENSIC": {

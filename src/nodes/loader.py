@@ -193,6 +193,7 @@ class BicameralNode:
             tools: list = None,
             behavioral_guidance: str = "",
             internal: bool = False,
+            stream_channel: str = None,
             temperature: float = 0.0,
             repetition_penalty: float = 1.1,
             use_lora: bool = True,
@@ -219,12 +220,19 @@ class BicameralNode:
             self.append_to_tool_log("think", params_preview)
 
             full_response = ""
-            # [FEAT-361 / BKM-095 / Story 108.20] Token Transparency Mandate & UI Zero-Streaming:
-            # Route intermediate/diagnostic tokens to dedicated channels ('crosstalk', 'insight')
-            # rather than user chat channels. Structured schemas are strictly internal scratchpads.
+            # [FEAT-361 / BKM-098 / FEAT-678] Universal Emission-to-Presentation Mapping:
+            # Deterministically route tokens to explicit external presentation channels.
+            # Structured schemas and scratchpads route to 'crosstalk'.
             stream_source = self.name
-            is_internal_stream = internal or bool(response_format)
-            channel_tag = "crosstalk" if is_internal_stream else "primary"
+            if stream_channel:
+                channel_tag = stream_channel
+                is_internal_stream = (stream_channel != "voice" and stream_channel != "primary")
+            elif internal or bool(response_format):
+                channel_tag = "crosstalk"
+                is_internal_stream = True
+            else:
+                channel_tag = "primary"
+                is_internal_stream = False
 
             # [FEAT-307] Sanitary Filter: Redirect turn-level noise to stderr
             # This is critical to prevent logs from breaking the stdio MCP transport.

@@ -133,8 +133,8 @@ def build_critic_prompt(
         "critique_dimensions": dimensions,
         "banned_phrases": _BANNED_PHRASES,
         "output_schema": {
-            "score": "integer 1-5 — coherence score scalar (debug telemetry only)",
             "reasoning": "string — grounded technical WHY of the score",
+            "score": "integer 1-5 — coherence score scalar (debug telemetry only)",
             "slop_found": "boolean — true if AI-slop boilerplate detected",
             "retort": "string — Pinky's final spoken verdict to Jason, confirming the technical reality and offering a natural conversational follow-up",
         },

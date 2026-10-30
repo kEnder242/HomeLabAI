@@ -45,3 +45,14 @@ async def test_loader_internal_tokens_broadcast_with_channel_tag():
         assert kwargs.get("channel") == "crosstalk"
         assert kwargs.get("is_internal") is True
         assert call.args[1] == "brain"  # source_name is NOT None!
+
+    # Execute think with explicit stream_channel="crosstalk" (FEAT-678 / BKM-098)
+    node._broadcast_token.reset_mock()
+    res2 = await think_fn("test query 2", stream_channel="crosstalk")
+    assert res2 == "token1token2"
+    assert node._broadcast_token.call_count >= 2
+    for call in node._broadcast_token.call_args_list:
+        kwargs = call.kwargs
+        assert kwargs.get("channel") == "crosstalk"
+        assert kwargs.get("is_internal") is True
+        assert call.args[1] == "brain"
