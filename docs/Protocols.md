@@ -75,7 +75,10 @@
     *   Implications: Impact on VRAM, latency, and security.
     *   **BKM-061 Adversarial Oracle Audit Findings**: Document the findings from the post-sprint oracle sweep, including any glaring architectural, failure-mode, or side-effect deficiencies uncovered and their resolutions.
     *   Rollback Plan: Steps to revert changes if the system becomes unstable.
-4.  **Verification**: Re-verify all services (Ollama, vLLM, Intercom) and run the full test suite before handing back control.
+4.  **Verification & Live Deployment Verification**:
+    *   Re-verify all services (Ollama, vLLM, Intercom) and run the full test suite before handing back control.
+    *   **Daemon Lifecycle & Boot Commit**: If backend server files (`router.py`, `acme_lab.py`, ignition, or resident loaders) were modified, explicitly state whether `systemctl restart lab-attendant.service` was executed, and report the live running PID, boot commit, and `/status` state.
+    *   **Static Site Compilation (`build_site.py`)**: If any frontend code, styles, HTML, or DNA documentation were touched (`.js`, `.css`, `.html`, `.md`), explicitly execute and report the status of `build_site.py`, including asset cache-busting hashes and public airlock (`www_deploy`) sync.
 
 ## BKM-009: Local Git Checkpoint & Session Continuity Protocol (Save State)
 **Objective**: Ensure 100% state persistence for session continuity via local Git commits without remote exposure.
