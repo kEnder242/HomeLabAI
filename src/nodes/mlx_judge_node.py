@@ -96,13 +96,22 @@ class MLXAsyncJudge:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are Node 3 M5 Air MLX Sanity Judge. Evaluate the turn trace for factual accuracy and persona consistency.",
+                    "content": (
+                        "You are Node 3 M5 Air MLX Sanity Judge. Evaluate the turn trace for factual accuracy and conversational coherence.\n"
+                        "Emit strictly valid JSON matching this schema:\n"
+                        "{\n"
+                        '  "critique": "string — factual accuracy and grounding reasoning",\n'
+                        '  "score": 0.0 to 1.0 — floating point score based directly on reasoning,\n'
+                        '  "retort": "string — concise verdict"\n'
+                        "}"
+                    ),
                 },
                 {
                     "role": "user",
                     "content": f"TURN_TRACE:\n{turn_trace}\n\nCONTEXT:\n{context_window}",
                 },
             ],
+            "response_format": {"type": "json_object"},
             "max_tokens": 256,
             "temperature": 0.1,
         }
@@ -124,19 +133,46 @@ class MLXAsyncJudge:
                             .get("message", {})
                             .get("content", "")
                         )
-                        score = 0.95
-                        m = re.search(r'"score":\s*([\d\.]+)', content)
-                        if m:
+                        score = 0.0
+                        status = "UNPARSED_REFUSAL"
+                        score_source = "ERROR_FALLBACK"
+
+                        # Parse structured JSON first
+                        parsed_json = None
+                        try:
+                            parsed_json = json.loads(content)
+                        except Exception:
+                            m_json = re.search(r"\{.*\}", content, re.DOTALL)
+                            if m_json:
+                                try:
+                                    parsed_json = json.loads(m_json.group(0))
+                                except Exception:
+                                    pass
+
+                        if parsed_json and isinstance(parsed_json, dict) and "score" in parsed_json:
                             try:
-                                raw_score = float(m.group(1))
+                                raw_score = float(parsed_json["score"])
                                 score = raw_score / 5.0 if raw_score > 1.0 else raw_score
+                                status = "ONLINE_EVALUATED"
+                                score_source = "ONLINE_LLM_JUDGE"
                             except Exception:
                                 pass
+                        else:
+                            m = re.search(r'"score":\s*([\d\.]+)', content)
+                            if m:
+                                try:
+                                    raw_score = float(m.group(1))
+                                    score = raw_score / 5.0 if raw_score > 1.0 else raw_score
+                                    status = "ONLINE_EVALUATED"
+                                    score_source = "ONLINE_LLM_JUDGE"
+                                except Exception:
+                                    pass
+
                         return {
                             "node_id": "NODE_3_M5_AIR_MLX",
-                            "status": "ONLINE_EVALUATED",
+                            "status": status,
                             "score": score,
-                            "score_source": "ONLINE_LLM_JUDGE",
+                            "score_source": score_source,
                             "active_model": self.model_name,
                             "context_eval_length": eval_length,
                             "critique": content,

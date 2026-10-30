@@ -1964,6 +1964,28 @@ When the operator requests a "roll up", ambient hooks inject dynamic, context-sp
 3. **1:1 Story Parity**: The sprint plan stories are updated to reflect the full fidelity of aligned dialogue decisions.
 4. **Authoritative ANCHOR_TRACK Generation**: The sprint plan MUST receive an updated, verbatim `ANCHOR_TRACK` reconciliation table (`BKM-077 §2`) documenting origin prompts, agreed technical architecture, mapped sprint stories, and tracking status (`DONE`, `STAGED`, `DROPPED`, `DEFERRED`).
 
+---
+
+## BKM-098: Deterministic LLM Emission-to-Presentation Mapping (Zero Internal Whispering)
+**Feature Anchor:** `[BKM-098]` / `[FEAT-361]` / `[FEAT-678]` / `[BKM-095]` / `[BKM-096]`  
+**Colloquial Alias:** "The Zero-Whispering Invariant"  
+**Tags:** `#zero_whispering`, `#presentation_mapping`, `#channel_routing`, `#no_internal`, `#anti_censorship`  
+**Domain:** LLM Token Dispatch, Multi-Channel UI Streaming, Observability & Telemetry  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. Diagnostic (What Failed)
+Introducing `internal: bool` or `is_internal: bool` flags historically created the "hidden text trap" (`[FEAT-361]`). It conflated **channel multiplexing** (keeping raw machine JSON off the human voice bubble) with **silencing** (`stream_source = None`), causing nodes to vanish into an unobservable black hole whenever routing logic suffered regressions.
+
+### 2. Positive Guidance (The Mandate)
+1. **No Token Silencing:** Every byte and token emitted by any LLM MUST map deterministically to an externally observable presentation channel.
+2. **Explicit Channels:** Abolish all `internal: bool` parameter flags in function signatures (`think()`, `_process_node_stream()`, `_broadcast_token()`, `handle_stream_chunk()`). Replace with explicit `stream_channel: PresentationChannel`:
+   - `channel="voice"` / `"pinky"`: Human conversational voice delivery.
+   - `channel="lab"`: Technical synthesis, bedrock evidence, and rich RAG chunks.
+   - `channel="crosstalk"`: Real-time intermediate machine JSON scratchpads, HyDE query vectors, and Critic scorecards.
+   - `channel="maintenance"`: Background refinement and autonomous dream cycles.
+3. **Fail-Loud Mapping:** The UI and Foyer router render each channel in its designated viewport. No channel is silently dropped; unmapped token emissions fail loudly as an `UNMAPPED_EMISSION_ERROR`.
+
+
 
 
 
