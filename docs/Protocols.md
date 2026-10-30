@@ -1596,6 +1596,9 @@ A lettered item only clears from the ledger when one of four explicit gates is s
 ### 5. Format Standard
 When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely (do not print the header or placeholder text).
 
+### 6. The Quick-Query (Qq) Invariant
+When the operator prefaces an inquiry with `Qq:`, answer directly from existing context in prose before taking any action.
+
 ---
 
 ## BKM-085: Historical Pre-Regression Correlation Protocol (ANCHOR_PROVENANCE)
