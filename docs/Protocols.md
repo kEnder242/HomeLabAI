@@ -56,7 +56,7 @@
 3.  **Detailed Reasoning**: The agent must provide clear reasoning and explanations for each step during autonomous work. High visibility and verbosity is the standard for intent preservation and review.
 4.  **Efficiency**: The agent should complete as much of the plan as possible. If blocked by hardware or permissions, skip the item and maintain momentum on the next available task.
 5.  **Linting Mandate**: The Agent MUST use a linter (e.g., `ruff check`) or the **Atomic Patcher** for all code modifications during a Heads Down sprint to prevent "Zero-Visibility" regressions like `NameError`.
-6.  **Conclusion**: Once the backlog is exhausted or the sprint goal is achieved, exit heads down mode and provide the verbose **BKM-007** "Heads Up" report.
+6.  **Conclusion & Mandatory Exit Gate (BKM-007)**: Once the backlog is exhausted or the sprint goal is achieved, the Agent MUST formally exit Heads Down mode by delivering the structured **BKM-007: The Heads-Up Protocol & Work Completion Report**. Ad-hoc conversational prose, informal summaries, or test-suite tables are strictly illegal as exit artifacts. The exit transition requires executing the **Mandatory Live Silicon Probe Gate (`BKM-024` / `INS-010`)** before relinquishing control.
 7.  **Mid-Flight Guidance Capture (Recommended Practice)**: When the operator provides last-minute guidance, constraints, or preference hints within an "AFK" / "Heads Down" prompt, the agent is strongly encouraged to jot down these instructions into the active sprint plan (`SPRINT_PLAN_*.md`) or session notes under a dedicated `## 📝 Operator Directives & Mid-Flight Guidance` section. This acts as a reliable reminder so critical guidance is never forgotten during deep autonomous focus or context compaction.
 8.  **Delegation & Owner Tag Discipline (BKM-049)**: During an autonomous Heads Down sprint, every story MUST declare an Assigned Owner (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, or `[AGY:PRIMARY]`). The orchestrating agent must dispatch stories via `delegate.py` adhering to the Tri-Loop safety contracts, diagnostic retries, and handover reflection audits before taking over or mutating state directly.
     *   **Caution Against Delegation Bypass**: Primary agents must NEVER bypass planned swarm delegation to directly write or edit code for `[SWARM:*]` stories. Skipping delegation circumvents swarm capability validation, corrupts telemetry, and denies worker models the diagnostic iterations required to improve playbook calibrations. Direct takeover (`[AGY:TAKEOVER]`) is strictly illegal without exhausted delegation attempts.
@@ -65,20 +65,24 @@
 
 
 
-## BKM-007: Work Completion Report
-**Objective**: Restore technical context after a deep work cycle.
+## BKM-007: The Heads-Up Protocol & Work Completion Report
+**Objective**: Restore technical context after a deep autonomous work cycle and certify execution on physical running silicon.  
+**Colloquial Aliases**: "Heads Up Report", "Heads Up", "Work Completion Report", "Post-AFK Handover"
 
-1.  **Trigger**: Conclusion of a "Heads Down" sprint.
-2.  **Detail**: The report must be comprehensive and clear.
+1.  **Trigger**: Conclusion of a "Heads Down" sprint or AFK block (`BKM-006` / `BKM-086`). Exiting Heads Down is strictly invalid without presenting this report.
+2.  **Detail**: The report must be comprehensive, unambiguous, and formatted under standard Heads-Up headings.
 3.  **Content**:
-    *   Summary of all completed items with assigned vs completed owner breakdown.
-    *   Implications: Impact on VRAM, latency, and security.
-    *   **BKM-061 Adversarial Oracle Audit Findings**: Document the findings from the post-sprint oracle sweep, including any glaring architectural, failure-mode, or side-effect deficiencies uncovered and their resolutions.
-    *   Rollback Plan: Steps to revert changes if the system becomes unstable.
-4.  **Verification & Live Deployment Verification**:
-    *   Re-verify all services (Ollama, vLLM, Intercom) and run the full test suite before handing back control.
-    *   **Daemon Lifecycle & Boot Commit**: If backend server files (`router.py`, `acme_lab.py`, ignition, or resident loaders) were modified, explicitly state whether `systemctl restart lab-attendant.service` was executed, and report the live running PID, boot commit, and `/status` state.
-    *   **Static Site Compilation (`build_site.py`)**: If any frontend code, styles, HTML, or DNA documentation were touched (`.js`, `.css`, `.html`, `.md`), explicitly execute and report the status of `build_site.py`, including asset cache-busting hashes and public airlock (`www_deploy`) sync.
+    *   **Completed Items & Ownership Breakdown**: Summary of all completed items with assigned vs completed owner breakdown (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`, `[AGY:PRIMARY]`, or `[AGY:TAKEOVER]`).
+    *   **Implications & Operational Thresholds**: Physical impact on VRAM allocations, token limits, inference latency, and memory ceilings (e.g. M5 Air Metal limits, KENDER token headroom).
+    *   **BKM-061 Adversarial Oracle Audit Findings**: Document findings from the post-sprint oracle sweep, including any glaring architectural, failure-mode, or side-effect deficiencies uncovered and their resolutions.
+    *   **Side-Effects & Backlog Ledger**: Explicitly log any newly uncovered friction points, physical thresholds, or secondary bugs as tracked sprint stories in the active sprint plan rather than letting them vanish into conversational ether.
+    *   **Rollback Plan**: Exact commands to revert changes if the live system becomes unstable.
+4.  **Mandatory Live Deployment & Silicon Probe Gate (BKM-024 / INS-010 / INS-047)**:
+    *   *Anti-Escape Invariant*: Unit test suites (e.g. `pytest`) and mocks verify logic in isolation, but are **STRICTLY INSUFFICIENT** to close Heads Down or satisfy BKM-007.
+    *   *Daemon Lifecycle & Boot Commit*: If backend server files (`router.py`, `acme_lab.py`, ignition, or resident loaders) were modified, `systemctl restart lab-attendant.service` MUST be executed. The Heads-Up report must state the live running PID, Git boot commit, and verify `GET /status` returns `state: OPERATIONAL`, `vocal: True`, and `engine_up: True`.
+    *   *Mandatory Live Probe Injection*: The Agent MUST execute a live synthetic probe against the running daemon on Port 8765 (e.g. `standalone_accountability_watchdog.py` or synthetic round table probe).
+    *   *Live Silicon Telemetry*: Explicitly report the end-to-end latency, evaluator score, and the exact physical silicon hardware trace executed (RTX 4090, KENDER port 11434, M5 Air port 8002).
+    *   *Static Site Compilation (`build_site.py`)*: If any frontend code, styles, HTML, or DNA documentation were touched (`.js`, `.css`, `.html`, `.md`), explicitly execute and report the status of `build_site.py`, including asset cache-busting hashes and public airlock (`www_deploy`) sync.
 
 ## BKM-009: Local Git Checkpoint & Session Continuity Protocol (Save State)
 **Objective**: Ensure 100% state persistence for session continuity via local Git commits without remote exposure.
@@ -1686,6 +1690,7 @@ When commanded to run an **AFK Sprint** or **Paved Sprint**:
 2. Execute the 4-Pillar Pipeline continuously until all stories are certified or an unresolvable grounding gap is reached.
 3. Maintain the Dropped Threads Ledger (`BKM-084`) and Conversational Continuity (`Law 9`) on all interim updates.
 4. Fast-forward merge back to `main` only after full regression verification and physical daemon certification.
+5. **Handover via BKM-007 (The Heads-Up Protocol)**: Formally exit the autonomous cycle by delivering the full **BKM-007 Heads-Up Report**. Exiting Heads Down is strictly invalid without passing the **Mandatory Live Silicon Probe Gate (`BKM-024` / `INS-010` / `INS-047`)**. Offline unit test passes alone NEVER permit closing an AFK / Heads Down cycle.
 
 ---
 
