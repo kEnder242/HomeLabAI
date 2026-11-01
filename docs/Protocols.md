@@ -1415,6 +1415,8 @@ Custom monkey-patch proxies that strip chunks from response streams create opaqu
    - Retains full, uncensored response transparency: tool calls, thought streams, and conversational text pass transparently to OpenCode.
 3. **OpenCode Invariant**:
    - OpenCode mappings in `opencode.json` for `my-windows-4090` point to `http://127.0.0.1:11435/v1`.
+4. **Internal Node & Sovereign Judge Invariant**:
+   - All internal Python clients, cognitive nodes, and evaluators (such as `mlx_judge_node.py` and `judge_evaluator.py`) querying Node KENDER for deterministic JSON completions MUST route to `http://127.0.0.1:11435` (LiteLLM Gateway) rather than raw port 11434, OR supply native root `"think": False` in the payload per `loader.py:850`. Direct calls to raw Ollama port 11434 via `/v1/chat/completions` without gateway translation are strictly prohibited, as raw `/v1/` ignores prompt instructions and exhausts completion token budgets on internal reasoning traces.
 
 ---
 
@@ -1993,6 +1995,31 @@ Introducing `internal: bool` or `is_internal: bool` flags historically created t
    - `channel="crosstalk"`: Real-time intermediate machine JSON scratchpads, HyDE query vectors, and Critic scorecards.
    - `channel="maintenance"`: Background refinement and autonomous dream cycles.
 3. **Fail-Loud Mapping:** The UI and Foyer router render each channel in its designated viewport. No channel is silently dropped; unmapped token emissions fail loudly as an `UNMAPPED_EMISSION_ERROR`.
+
+---
+
+## BKM-099: The Zero-Concurrency Conveyor-Belt Invariant (Schedule Over Locks)
+**Feature Anchor:** `[BKM-099]` / `[INS-051]` / `[FEAT-416]` / `[FEAT-629]` / `[FEAT-681]` / `[LAB-117]`  
+**Colloquial Alias:** "Schedule Over Locks", "The Zero-Concurrency Mandate"  
+**Tags:** `#conveyor_belt`, `#schedule_over_locks`, `#zero_concurrency`, `#daemon_boundary`, `#nightly_maintenance`  
+**Domain:** Nightly Maintenance Scheduling, File Concurrency, Daemon Process Boundaries  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Philosophy
+Mucking with multi-process file locks, flock timeouts, and in-place truncation recovery is a tactical concession to unintended concurrency. In a sovereign lab running discrete offline maintenance tasks, file race conditions MUST be solved by architectural serialization and schedule boundaries, never by adding locks to concurrent background tasks.
+
+### 2. The Nightly Maintenance Conveyor Belt
+Nightly operations execute strictly in sequential phases within dedicated time windows:
+1. **02:00 – 02:30 AM (LoRA Forge)**: Quiesce VRAM, fine-tune discrete adapters on clean GPU memory, and re-ignite vLLM.
+2. **02:30 – 03:00 AM (Post-Ignition Synthesis & Dreaming)**: Await 30s settling barrier; Subconscious Dreaming consumes the *prior night's* refined gems in a conveyor belt.
+3. **03:00 – 05:00 AM (Tail Mop-up Refinement per FEAT-416)**: Historical Journal Bridge and single-epoch `mass_scan.py` run bounded execution, refining candidate gems for the *next night's* dream cycle.
+4. **05:00 – 06:00 AM (Quiescent Buffer)**: All background jobs yield; zero background CPU/disk operations.
+5. **06:00 AM (Decoupled Accountability Watchdog per FEAT-608)**: Standalone watchdog executes the synthetic morning probe and audits overnight health.
+
+### 3. Invariant Operational Directives
+1. **Zero 24/7 Background Workers**: Persistent continuous scanning services (`field-notes-nibbler.service`) are strictly barred. Mass scan runs exclusively as Step 7 inside `nightly_forge.py` with an enforced 05:00 AM hard cutoff gate.
+2. **Strict Daemon Process Boundaries**: External batch maintenance scripts must NEVER directly truncate or mutate files actively open and tailed by running daemons (e.g. `foyer_queue.jsonl` under `lab-attendant.service`). Foyer must manage its own queue compaction in-process during idle periods.
+3. **In-Pipeline Serialization**: Tasks within `nightly_forge.py` execute synchronously in a single process thread; dreaming and gem refinement never execute concurrently.
 
 
 
