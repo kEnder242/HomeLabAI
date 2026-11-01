@@ -280,21 +280,25 @@ class IgnitionManager:
                 except Exception:
                     pass
 
-                # Ping KENDER with qwen3:14b to force VRAM load
+                # Ping KENDER with qwen3.8:nothink to force VRAM load [FEAT-582 / FEAT-586]
                 payload = {
-                    "model": "qwen3:14b",
+                    "model": "qwen3.8:nothink",
                     "prompt": "ping",
                     "stream": False,
                     "options": {"num_predict": 1},
                 }
                 async with aiohttp.ClientSession() as session:
+                    t_prime_start = time.perf_counter()
                     async with session.post(
                         f"http://{kender_ip}:11434/api/generate",
                         json=payload,
                         timeout=30,
                     ) as r:
+                        t_prime_elapsed = round((time.perf_counter() - t_prime_start) * 1000, 1)
                         if r.status == 200:
-                            logging.info("[IGNITION] KENDER Parallel Warmup SUCCESS.")
+                            logging.info(
+                                f"[IGNITION] KENDER Parallel Warmup SUCCESS (model=qwen3.8:nothink, latency={t_prime_elapsed}ms)."
+                            )
                         else:
                             logging.info(
                                 f"[IGNITION] KENDER offline/unreachable (status {r.status}). Routing local fallback to http://127.0.0.1:8088/v1 ({get_unified_base_model()})."

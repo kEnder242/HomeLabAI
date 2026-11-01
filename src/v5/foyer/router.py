@@ -61,6 +61,7 @@ PORT = 8765
 WORKSPACE_DIR = os.path.expanduser("~/Dev_Lab/Portfolio_Dev")
 DATA_DIR = os.path.join(WORKSPACE_DIR, "field_notes/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "foyer_queue.jsonl")
+QUEUE_ARCHIVE_FILE = os.path.join(DATA_DIR, "foyer_queue.archive.jsonl")
 STATUS_JSON = os.path.join(DATA_DIR, "status.json")
 JUDGE_BACKPRESSURE_PATH = os.path.join(
     DATA_DIR, "judge_backpressure.jsonl"
@@ -68,6 +69,62 @@ JUDGE_BACKPRESSURE_PATH = os.path.join(
 INFRA_CONFIG = os.path.join(
     LAB_DIR, "config", "infrastructure.json"
 )  # [FEAT-028] Deep Thought topology
+
+
+def compact_foyer_queue(
+    queue_path: str = QUEUE_FILE,
+    archive_path: str = QUEUE_ARCHIVE_FILE,
+    max_age_sec: float = 7200.0,
+) -> dict:
+    """[FEAT-283 / Story 108.38] Atomically compact foyer_queue.jsonl by archiving stale/completed entries."""
+    if not os.path.exists(queue_path):
+        return {"compacted": 0, "archived": 0, "retained": 0}
+
+    now = time.time()
+    archived_lines = []
+    retained_lines = []
+
+    try:
+        with open(queue_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                    ts = float(record.get("timestamp", 0))
+                    status = record.get("status", "PENDING")
+                    # Archive if older than max_age_sec or not PENDING
+                    if (now - ts > max_age_sec) or (status != "PENDING"):
+                        archived_lines.append(line if line.endswith("\n") else line + "\n")
+                    else:
+                        retained_lines.append(line if line.endswith("\n") else line + "\n")
+                except Exception:
+                    archived_lines.append(line if line.endswith("\n") else line + "\n")
+
+        if archived_lines:
+            os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+            with open(archive_path, "a", encoding="utf-8") as af:
+                af.writelines(archived_lines)
+
+        tmp_queue = queue_path + ".tmp"
+        with open(tmp_queue, "w", encoding="utf-8") as qf:
+            if retained_lines:
+                qf.writelines(retained_lines)
+
+        os.replace(tmp_queue, queue_path)
+
+        logger.info(
+            f"[FOYER] [FEAT-283] Queue compaction complete: {len(archived_lines)} archived, {len(retained_lines)} retained."
+        )
+        return {
+            "compacted": len(archived_lines) + len(retained_lines),
+            "archived": len(archived_lines),
+            "retained": len(retained_lines),
+        }
+    except Exception as e:
+        logger.error(f"[FOYER] [FEAT-283] Queue compaction failed: {e}", exc_info=True)
+        return {"error": str(e)}
 
 # [SPR-52.0 / SPR-67.0 / FEAT-500] 5-Stage Division of Labor Orchestration
 DIVISION_OF_LABOR_STAGES = (
@@ -5359,6 +5416,11 @@ class FoyerRouter:
     async def queue_drainer(self):
         """[Task 4.3] Neural Queue Drainer."""
         logger.info(f"Queue drainer active (Token: {self.session_token}).")
+        # [FEAT-283 / Story 108.38] Startup queue compaction: purge historical stale/completed records
+        try:
+            compact_foyer_queue()
+        except Exception as e:
+            logger.warning(f"[FOYER] [FEAT-283] Initial queue compaction failed: {e}")
         last_pos = 0
         if os.path.exists(QUEUE_FILE):
             last_pos = os.path.getsize(QUEUE_FILE)

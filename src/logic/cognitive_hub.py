@@ -3538,9 +3538,8 @@ class CognitiveHub:
         self._last_two_mice_pinky_duration = max(
             0.001, round(time.perf_counter() - t_tm_pinky_start, 3)
         )
-        self.turn_thought_trace["pinky"] = (
-            f"[Two-Mice TL;DR delivered to Jason ({pinky_stream_count} tokens)]"
-        )
+        # [FEAT-441 / FEAT-356 / Story 108.37] Save authentic spoken text in turn trace for journal ledger
+        self.turn_thought_trace["pinky"] = pinky_tldr
         return pinky_tldr
 
     async def step_entailment_audit(

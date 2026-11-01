@@ -473,6 +473,58 @@ def _v1_models_blocking_probe(
     return False
 
 
+def compact_foyer_queue(max_age_sec: float = 7200.0) -> dict:
+    """[FEAT-283 / Story 108.38] Atomically compact foyer_queue.jsonl during VRAM Quiesce maintenance."""
+    queue_path = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data", "foyer_queue.jsonl")
+    archive_path = os.path.join(LAB_ROOT, "Portfolio_Dev", "field_notes", "data", "foyer_queue.archive.jsonl")
+    if not os.path.exists(queue_path):
+        return {"compacted": 0, "archived": 0, "retained": 0}
+
+    now = time.time()
+    archived_lines = []
+    retained_lines = []
+
+    try:
+        with open(queue_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                    ts = float(record.get("timestamp", 0))
+                    status = record.get("status", "PENDING")
+                    if (now - ts > max_age_sec) or (status != "PENDING"):
+                        archived_lines.append(line if line.endswith("\n") else line + "\n")
+                    else:
+                        retained_lines.append(line if line.endswith("\n") else line + "\n")
+                except Exception:
+                    archived_lines.append(line if line.endswith("\n") else line + "\n")
+
+        if archived_lines:
+            os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+            with open(archive_path, "a", encoding="utf-8") as af:
+                af.writelines(archived_lines)
+
+        tmp_queue = queue_path + ".tmp"
+        with open(tmp_queue, "w", encoding="utf-8") as qf:
+            if retained_lines:
+                qf.writelines(retained_lines)
+
+        os.replace(tmp_queue, queue_path)
+        logger.info(
+            f"[NIGHTLY FORGE] [FEAT-283] Queue compaction complete: {len(archived_lines)} archived, {len(retained_lines)} retained."
+        )
+        return {
+            "compacted": len(archived_lines) + len(retained_lines),
+            "archived": len(archived_lines),
+            "retained": len(retained_lines),
+        }
+    except Exception as e:
+        logger.warning(f"[NIGHTLY FORGE] [FEAT-283] Queue compaction error: {e}")
+        return {"error": str(e)}
+
+
 def run_mass_scan():
     """[FEAT-416 / SPR-52.0] Run note ingestion loop with strict 05:00 AM cutoff & 3.5-hour max budget.
 
@@ -1195,6 +1247,12 @@ def main():
             # Settling Cooldown 1: 15s post-quiesce VRAM drain
             logger.info("[NIGHTLY COOLDOWN 1] Settling 15s post-VRAM Quiesce...")
             write_step_log("QUIESCE_SETTLING", "Sleeping 15s")
+            # [Story 108.38 / FEAT-283] Atomically compact foyer_queue.jsonl during VRAM quiesce
+            try:
+                compaction_stats = compact_foyer_queue()
+                logger.info(f"[NIGHTLY STEP 2] Queue compaction stats: {compaction_stats}")
+            except Exception as e:
+                logger.warning(f"[NIGHTLY STEP 2] Queue compaction error: {e}")
             time.sleep(15)
 
             # =========================================================================
@@ -1245,6 +1303,39 @@ def main():
             )
             record_nightly_completion(lock_fd, status="COMPLETED" if training_ok else "DEGRADED")
             return
+
+        # =========================================================================
+        # [FEAT-136 / Story 108.39] Post-Reignition Settling Barrier & Vocal Readiness Gate
+        # =========================================================================
+        logger.info(
+            "[NIGHTLY SETTLING] Awaiting post-reignition socket stabilization and vocal readiness (30s barrier)..."
+        )
+        write_step_log("POST_REIGNITION_SETTLING", "Sleeping 30s for Foyer socket stabilization")
+        time.sleep(30)
+
+        # Readiness poll: verify Foyer reports OPERATIONAL and vocal
+        foyer_vocal = False
+        try:
+            import urllib.request
+            t_poll_start = time.perf_counter()
+            while time.perf_counter() - t_poll_start < 45.0:
+                try:
+                    req = urllib.request.Request("http://127.0.0.1:8765/status?timeout=2")
+                    with urllib.request.urlopen(req, timeout=3) as resp:
+                        if resp.status == 200:
+                            sdata = json.loads(resp.read().decode("utf-8"))
+                            if sdata.get("state") == "OPERATIONAL" and sdata.get("vocal"):
+                                foyer_vocal = True
+                                logger.info("[NIGHTLY SETTLING] Foyer is vocal and OPERATIONAL.")
+                                break
+                except Exception:
+                    pass
+                time.sleep(2)
+        except Exception as se:
+            logger.warning(f"[NIGHTLY SETTLING] Readiness poll warning: {se}")
+
+        if not foyer_vocal:
+            logger.warning("[NIGHTLY SETTLING] Foyer did not reach vocal state within 45s; proceeding cautiously.")
 
         # =========================================================================
         # STEP 5: POST-TRAINING SYNTHESIS & REFINEMENT (~5-10m budget)

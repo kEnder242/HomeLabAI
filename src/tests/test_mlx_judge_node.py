@@ -26,10 +26,45 @@ async def test_mlx_judge_256k_evaluation():
     context_window = "2018 Datacenter PAE Intel Federal 100-node cluster debug BIOS microcode Optane AEP"
 
     res = await judge_driver.evaluate_256k_context(turn_trace, context_window)
-    assert res["node_id"] == "NODE_3_M5_AIR_MLX"
+    assert res["node_id"] in ["NODE_3_M5_AIR_MLX", "NODE_2_KENDER_4090"]
     assert res["status"] in ["VERIFIED_PASS", "ONLINE", "ONLINE_EVALUATED", "STANDBY_STUB"]
     assert res["context_eval_length"] == len(turn_trace) + len(context_window)
     assert "route_feedback" in res
+
+
+@pytest.mark.asyncio
+async def test_mlx_judge_multi_seat_kender_fallback():
+    """[FEAT-439 / FEAT-582 / Story 108.36] Test that when M5 Air is offline, judge seamlessly falls back
+    to KENDER (RTX 4090 / Ollama) on live silicon rather than stubbing out."""
+    from nodes.mlx_judge_node import MLXAsyncJudge
+
+    # Custom judge driver with candidate 1 simulated offline
+    offline_m5_candidates = [
+        {
+            "name": "M5_AIR_OFFLINE_SIM",
+            "url": "http://192.168.1.46:8999",  # Unreachable port
+            "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            "node_id": "NODE_3_M5_AIR_MLX",
+        },
+        {
+            "name": "KENDER",
+            "url": "http://192.168.1.26:11434",
+            "model": "qwen3.8:nothink",
+            "node_id": "NODE_2_KENDER_4090",
+        },
+    ]
+    fallback_driver = MLXAsyncJudge(candidates=offline_m5_candidates)
+
+    turn_trace = "USER: Validate PECI thermal thresholds.\nPINKY: PECI margins verified on Aurora."
+    context_window = "Aurora supercomputer PECI thermal telemetry logs 2024"
+
+    res = await fallback_driver.evaluate_256k_context(turn_trace, context_window)
+    assert res["status"] == "ONLINE_EVALUATED"
+    assert res["node_id"] == "NODE_2_KENDER_4090"
+    assert res["active_seat"] == "KENDER"
+    assert res["active_model"] == "qwen3.8:nothink"
+    assert res["score_source"] == "ONLINE_LLM_JUDGE"
+    assert isinstance(res["score"], float)
 
 
 @pytest.mark.asyncio

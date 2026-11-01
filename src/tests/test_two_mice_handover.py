@@ -344,9 +344,10 @@ def test_handover_runs_brain_then_pinky_sequentially():
     assert brain_idx < pinky_idx, "Stage 2 streamed before Stage 1 completed!"
     assert len(packets) >= 2  # per-stage finalizer packets
 
-    # Handover trace recorded for the session ledger.
+    # Handover trace recorded for the session ledger [Story 108.37: authentic spoken prose].
     assert "ESB2 server platform" in hub.turn_thought_trace["brain"]
-    assert "Two-Mice TL;DR" in hub.turn_thought_trace["pinky"]
+    assert "Firmware v2.1" in hub.turn_thought_trace["pinky"]
+    assert "[Two-Mice TL;DR" not in hub.turn_thought_trace["pinky"]
 
 
 def test_handover_refuses_missing_resident_and_low_interest():
@@ -614,6 +615,32 @@ def test_critic_telemetry_unswallowed_on_pass():
     text, persona = dispatches[0]
     assert "Narf!" in text
     assert persona == "Pinky (Coherence Critic)"
+
+
+def test_journal_ledger_fidelity_preserves_authentic_prose():
+    """[FEAT-441 / FEAT-356 / Story 108.37] Verify that authentic spoken prose is saved in turn_thought_trace['pinky']
+    instead of token-count placeholder strings."""
+    hub, packets = _build_test_hub()
+    test_pinky_prose = "Egad Brain! The thermal margins on node 42 are nominal!"
+    hub.residents["pinky"] = _FakeResident(hub, "pinky", test_pinky_prose)
+
+    loop = asyncio.new_event_loop()
+    try:
+        tldr = loop.run_until_complete(
+            hub.step_pinky_voice(
+                query="Check node 42 thermals",
+                synthesis="- Node 42 running at 54C\n- PECI margin safe",
+                interest=0.5,
+                request_id="jl_fidelity_test",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert tldr == test_pinky_prose
+    # The crucial assertion: turn_thought_trace['pinky'] MUST contain actual prose, not "[Two-Mice TL;DR...]"
+    assert hub.turn_thought_trace["pinky"] == test_pinky_prose
+    assert "[Two-Mice TL;DR delivered to Jason" not in hub.turn_thought_trace["pinky"]
 
 
 
