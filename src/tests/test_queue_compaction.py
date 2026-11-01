@@ -166,3 +166,42 @@ def test_queue_tailing_recovers_on_file_truncation():
         assert len(lines) == 1
         assert lines[0]["id"] == "compacted_1"
 
+
+def test_queue_tailing_recovers_on_inode_rotation():
+    """[Story 108.44 / BKM-099] Verify that when a queue file is swapped/rotated to a new inode,
+    inode tracking detects the rotation, resets tailing offset to 0, and drains subsequent writes."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        q_path = os.path.join(tmpdir, "foyer_queue.jsonl")
+
+        # Step 1: Initial file with old inode
+        with open(q_path, "w") as f:
+            for i in range(5):
+                f.write(json.dumps({"id": f"old_inode_{i}", "status": "PENDING"}) + "\n")
+
+        initial_stat = os.stat(q_path)
+        last_pos = initial_stat.st_size
+        current_inode = initial_stat.st_ino
+
+        # Step 2: Atomic file replacement (new inode)
+        new_q_path = os.path.join(tmpdir, "foyer_queue_new.jsonl")
+        with open(new_q_path, "w") as f:
+            f.write(json.dumps({"id": "rotated_fresh_1", "status": "PENDING"}) + "\n")
+
+        os.replace(new_q_path, q_path)
+        new_stat = os.stat(q_path)
+        new_inode = new_stat.st_ino
+        assert new_inode != current_inode
+
+        # Step 3: Tailing logic detects inode rotation and resets last_pos
+        if current_inode is not None and new_inode != current_inode:
+            last_pos = 0
+            current_inode = new_inode
+
+        with open(q_path, "r") as f:
+            f.seek(last_pos)
+            lines = [json.loads(l) for l in f if l.strip()]
+
+        assert len(lines) == 1
+        assert lines[0]["id"] == "rotated_fresh_1"
+        assert current_inode == new_inode
+

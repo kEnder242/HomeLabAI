@@ -5422,14 +5422,36 @@ class FoyerRouter:
         except Exception as e:
             logger.warning(f"[FOYER] [FEAT-283] Initial queue compaction failed: {e}")
         last_pos = 0
+        current_inode = None
         if os.path.exists(QUEUE_FILE):
             last_pos = os.path.getsize(QUEUE_FILE)
+            try:
+                current_inode = os.stat(QUEUE_FILE).st_ino
+            except OSError:
+                current_inode = None
 
         while True:
             try:
                 # [FEAT-DECOUPLED] Check for queue changes immediately even if not vocal
                 if os.path.exists(QUEUE_FILE):
-                    size = os.path.getsize(QUEUE_FILE)
+                    try:
+                        stat_res = os.stat(QUEUE_FILE)
+                        size = stat_res.st_size
+                        new_inode = stat_res.st_ino
+                    except OSError:
+                        size = 0
+                        new_inode = current_inode
+
+                    # [Story 108.44 / BKM-099] Detect inode rotation / external file swap
+                    if current_inode is not None and new_inode != current_inode:
+                        logger.info(
+                            f"[FOYER] [FEAT-283] Queue inode rotation detected ({current_inode} -> {new_inode}). Resetting tailing offset to 0."
+                        )
+                        last_pos = 0
+                        current_inode = new_inode
+                    elif current_inode is None:
+                        current_inode = new_inode
+
                     # [Story 108.38b / BKM-090] Detect file truncation / compaction and reset tailing offset
                     if size < last_pos:
                         logger.info(
