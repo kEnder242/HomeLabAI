@@ -39,7 +39,7 @@ mcp = node.mcp
 
 # [FEAT-439] M5 Air MLX Offloading & Async Sanity Judge Protocol
 class MLXAsyncJudge:
-    """[LAB-010] Driver for Node 3 (M5 Air MLX Unified Memory Node & Async Judge)."""
+    """[LAB-010 / FEAT-439 / FEAT-582] Multi-Seat Sovereign Judge Driver (M5 Air MLX with KENDER Fallback)."""
 
     # [FEAT-443] PAR-Eval refusal triggers — premise mismatch detection keywords
     REFUSAL_TRIGGERS = [
@@ -51,42 +51,64 @@ class MLXAsyncJudge:
         "refusal payload",
     ]
 
+    DEFAULT_CANDIDATES = [
+        {
+            "name": "M5_AIR",
+            "url": "http://192.168.1.46:8002",
+            "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
+            "node_id": "NODE_3_M5_AIR_MLX",
+        },
+        {
+            "name": "KENDER",
+            "url": "http://192.168.1.26:11434",
+            "model": "qwen3.8:nothink",
+            "node_id": "NODE_2_KENDER_4090",
+        },
+    ]
+
     def __init__(
-        self, endpoint_url: str = MLX_DEFAULT_HOST, model_name: str = MLX_MODEL
+        self,
+        endpoint_url: str = MLX_DEFAULT_HOST,
+        model_name: str = MLX_MODEL,
+        candidates: list[dict[str, Any]] | None = None,
     ):
         self.endpoint_url = endpoint_url.rstrip("/")
         self.model_name = model_name
+        self.candidates = candidates if candidates is not None else [dict(c) for c in self.DEFAULT_CANDIDATES]
 
     async def ping_node(self) -> dict[str, Any]:
-        """Check liveness of the M5 Air MLX OpenAI API server on port 8000."""
-        target_url = f"{self.endpoint_url}/v1/models"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(target_url, timeout=2.0) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return {
-                            "status": "ONLINE",
-                            "endpoint": self.endpoint_url,
-                            "active_model": self.model_name,
-                            "models": data,
-                        }
-        except Exception as e:
-            logging.warning(
-                f"M5 Air MLX Node offline ({e}). Using local failover stub."
-            )
+        """Check liveness across sovereign judge candidate seats (M5 Air -> KENDER)."""
+        for cand in self.candidates:
+            target_url = f"{cand['url'].rstrip('/')}/v1/models"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(target_url, timeout=2.0) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            return {
+                                "status": "ONLINE",
+                                "endpoint": cand["url"],
+                                "active_seat": cand["name"],
+                                "node_id": cand.get("node_id", "NODE_3_M5_AIR_MLX"),
+                                "active_model": cand["model"],
+                                "models": data,
+                            }
+            except Exception as e:
+                logging.warning(
+                    f"[MLX_JUDGE] Sovereign seat '{cand['name']}' offline ({e}). Probing next seat..."
+                )
 
         return {
             "status": "OFFLINE_STUB",
             "endpoint": self.endpoint_url,
             "active_model": self.model_name,
-            "message": "Node 3 M5 Air MLX offline. Falling back to local verification stub.",
+            "message": "All sovereign judge seats offline. Falling back to local verification stub.",
         }
 
     async def evaluate_256k_context(
         self, turn_trace: str, context_window: str = "", metadata: dict | None = None
     ) -> dict[str, Any]:
-        """Asynchronously evaluates turn trace against 256K context via OpenAI-compatible REST API on port 8000."""
+        """Asynchronously evaluates turn trace across sovereign candidate seats (M5 Air -> KENDER fallback)."""
         # [FEAT-443] PAR-Eval refusal interception: detect premise mismatch triggers
         turn_lower = turn_trace.lower()
         if any(trigger in turn_lower for trigger in self.REFUSAL_TRIGGERS):
@@ -97,7 +119,7 @@ class MLXAsyncJudge:
                 {
                     "role": "system",
                     "content": (
-                        "You are Node 3 M5 Air MLX Sanity Judge. Evaluate the turn trace for factual accuracy and conversational coherence.\n"
+                        "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for factual accuracy and conversational coherence.\n"
                         "Emit strictly valid JSON matching this schema:\n"
                         "{\n"
                         '  "critique": "string — factual accuracy and grounding reasoning",\n'
@@ -112,81 +134,89 @@ class MLXAsyncJudge:
                 },
             ],
             "response_format": {"type": "json_object"},
-            "max_tokens": 256,
+            "max_tokens": 512,
             "temperature": 0.1,
         }
 
         eval_length = len(turn_trace) + len(context_window)
-        target_url = f"{self.endpoint_url}/v1/chat/completions"
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    target_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=MLX_TIMEOUT_SEC),
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        content = (
-                            data.get("choices", [{}])[0]
-                            .get("message", {})
-                            .get("content", "")
-                        )
-                        score = 0.0
-                        status = "UNPARSED_REFUSAL"
-                        score_source = "ERROR_FALLBACK"
+        for cand in self.candidates:
+            c_url = cand["url"].rstrip("/")
+            c_model = cand["model"]
+            c_node_id = cand.get("node_id", "NODE_3_M5_AIR_MLX")
+            target_url = f"{c_url}/v1/chat/completions"
+            cand_payload = dict(payload)
+            cand_payload["model"] = c_model
 
-                        # Parse structured JSON first
-                        parsed_json = None
-                        try:
-                            parsed_json = json.loads(content)
-                        except Exception:
-                            m_json = re.search(r"\{.*\}", content, re.DOTALL)
-                            if m_json:
-                                try:
-                                    parsed_json = json.loads(m_json.group(0))
-                                except Exception:
-                                    pass
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        target_url,
+                        json=cand_payload,
+                        timeout=aiohttp.ClientTimeout(total=MLX_TIMEOUT_SEC),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            content = (
+                                data.get("choices", [{}])[0]
+                                .get("message", {})
+                                .get("content", "")
+                            )
+                            score = 0.0
+                            status = "UNPARSED_REFUSAL"
+                            score_source = "ERROR_FALLBACK"
 
-                        if parsed_json and isinstance(parsed_json, dict) and "score" in parsed_json:
+                            # Parse structured JSON first
+                            parsed_json = None
                             try:
-                                raw_score = float(parsed_json["score"])
-                                score = raw_score / 5.0 if raw_score > 1.0 else raw_score
-                                status = "ONLINE_EVALUATED"
-                                score_source = "ONLINE_LLM_JUDGE"
+                                parsed_json = json.loads(content)
                             except Exception:
-                                pass
-                        else:
-                            m = re.search(r'"score":\s*([\d\.]+)', content)
-                            if m:
+                                m_json = re.search(r"\{.*\}", content, re.DOTALL)
+                                if m_json:
+                                    try:
+                                        parsed_json = json.loads(m_json.group(0))
+                                    except Exception:
+                                        pass
+
+                            if parsed_json and isinstance(parsed_json, dict) and "score" in parsed_json:
                                 try:
-                                    raw_score = float(m.group(1))
+                                    raw_score = float(parsed_json["score"])
                                     score = raw_score / 5.0 if raw_score > 1.0 else raw_score
                                     status = "ONLINE_EVALUATED"
                                     score_source = "ONLINE_LLM_JUDGE"
                                 except Exception:
                                     pass
+                            else:
+                                m = re.search(r'"score":\s*([\d\.]+)', content)
+                                if m:
+                                    try:
+                                        raw_score = float(m.group(1))
+                                        score = raw_score / 5.0 if raw_score > 1.0 else raw_score
+                                        status = "ONLINE_EVALUATED"
+                                        score_source = "ONLINE_LLM_JUDGE"
+                                    except Exception:
+                                        pass
 
-                        return {
-                            "node_id": "NODE_3_M5_AIR_MLX",
-                            "status": status,
-                            "score": score,
-                            "score_source": score_source,
-                            "active_model": self.model_name,
-                            "context_eval_length": eval_length,
-                            "critique": content,
-                            "route_feedback": {
-                                "factual_target": "CHROMADB_PORT_8001",
-                                "persona_target": "CLI_VOICE_V1_LORA",
-                            },
-                        }
-        except Exception as e:
-            logging.info(
-                f"[MLX_JUDGE] Remote endpoint offline ({e}). Executing local async evaluation stub."
-            )
+                            return {
+                                "node_id": c_node_id,
+                                "status": status,
+                                "score": score,
+                                "score_source": score_source,
+                                "active_seat": cand["name"],
+                                "active_model": c_model,
+                                "context_eval_length": eval_length,
+                                "critique": content,
+                                "route_feedback": {
+                                    "factual_target": "CHROMADB_PORT_8001",
+                                    "persona_target": "CLI_VOICE_V1_LORA",
+                                },
+                            }
+            except Exception as e:
+                logging.info(
+                    f"[MLX_JUDGE] Sovereign seat '{cand['name']}' ({c_url}) offline: {e}. Trying fallback seat..."
+                )
 
-        # Local Stand-in / Failover evaluation (Explicitly tagged as STUB)
+        # All sovereign seats unreachable: Local Stand-in / Failover evaluation
         return {
             "node_id": "NODE_3_M5_AIR_MLX",
             "status": "STANDBY_STUB",
@@ -195,7 +225,7 @@ class MLXAsyncJudge:
             "active_model": self.model_name,
             "context_eval_length": eval_length,
             "factual_drift_detected": False,
-            "style_critique": "Local failover stub active; remote M5 Air judge offline.",
+            "style_critique": "Local failover stub active; all sovereign judge seats offline.",
             "route_feedback": {
                 "factual_target": "CHROMADB_PORT_8001",
                 "persona_target": "CLI_VOICE_V1_LORA",
