@@ -59,7 +59,13 @@ class MLXAsyncJudge:
             "node_id": "NODE_3_M5_AIR_MLX",
         },
         {
-            "name": "KENDER",
+            "name": "KENDER_GATEWAY",
+            "url": "http://127.0.0.1:11435",
+            "model": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
+            "node_id": "NODE_2_KENDER_4090",
+        },
+        {
+            "name": "KENDER_RAW",
             "url": "http://192.168.1.26:11434",
             "model": "qwen3.8:nothink",
             "node_id": "NODE_2_KENDER_4090",
@@ -147,6 +153,9 @@ class MLXAsyncJudge:
             target_url = f"{c_url}/v1/chat/completions"
             cand_payload = dict(payload)
             cand_payload["model"] = c_model
+            # [FEAT-680 / BKM-079] Gateway and native hardware reasoning lever
+            cand_payload["think"] = False
+            cand_payload["extra_body"] = {"options": {"enable_thinking": False}, "think": False}
 
             try:
                 async with aiohttp.ClientSession() as session:

@@ -101,7 +101,9 @@ async def probe_greeting_latency(
 
 def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[float, Optional[str]]:
     """
-    Extracts authoritative evaluation score from judge_backpressure.jsonl for the given request ID.
+    [FEAT-608] Extracts authoritative evaluation score from judge_backpressure.jsonl for the given request ID.
+    Enforces Multi-Stage Evaluator Vector Schema: prioritizes terminal Stage 5 delivered response
+    ('Pinky (Response)'), then Stage 4 ('Deep Thought'), over intermediate Stage 1 Archive Interest.
     Rejects local failover stubs to prevent fake score leaks.
     Returns (score_normalized, critique_summary).
     """
@@ -125,12 +127,32 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
                 except Exception:
                     continue
 
-        if matched_entries:
-            latest = matched_entries[-1]
-            score = float(latest.get("score", 0.0))
-            critique = latest.get("style_critique") or latest.get("critique") or latest.get("status", "VERIFIED")
-            return score, critique
-        return 0.0, f"No genuine online judge record found for event {event_id}"
+        if not matched_entries:
+            return 0.0, f"No genuine online judge record found for event {event_id}"
+
+        # Multi-stage prioritization per [FEAT-608]:
+        # 1. Prefer terminal Stage 5 delivered response
+        pinky_entries = [e for e in matched_entries if "pinky" in e.get("source", "").lower()]
+        if pinky_entries:
+            target = pinky_entries[-1]
+            score = float(target.get("score", 0.0))
+            critique = target.get("style_critique") or target.get("critique") or target.get("status", "VERIFIED")
+            return score, f"[STAGE_5_PINKY] {critique}"
+
+        # 2. Prefer Deep Thought synthesis
+        dt_entries = [e for e in matched_entries if "thought" in e.get("source", "").lower()]
+        if dt_entries:
+            target = dt_entries[-1]
+            score = float(target.get("score", 0.0))
+            critique = target.get("style_critique") or target.get("critique") or target.get("status", "VERIFIED")
+            return score, f"[STAGE_4_DEEP_THOUGHT] {critique}"
+
+        # 3. Fallback to latest non-stub entry
+        latest = matched_entries[-1]
+        score = float(latest.get("score", 0.0))
+        critique = latest.get("style_critique") or latest.get("critique") or latest.get("status", "VERIFIED")
+        source = latest.get("source", "UNKNOWN")
+        return score, f"[{source}] {critique}"
     except Exception as e:
         return 0.0, f"Judge extraction error: {e}"
 
@@ -197,10 +219,13 @@ async def probe_deliberation_circuit(
 
             # Check judge backpressure ledger for final evaluation score
             score, critique = extract_judge_score(event_id)
-            if score > 0.0:
+            if score > 0.0 and "[STAGE_5_PINKY]" in str(critique):
                 judge_score = score
                 judge_critique = critique
                 break
+            elif score > 0.0:
+                judge_score = score
+                judge_critique = critique
 
             await asyncio.sleep(0.5)
 

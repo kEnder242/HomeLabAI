@@ -47,9 +47,9 @@ async def test_mlx_judge_multi_seat_kender_fallback():
             "node_id": "NODE_3_M5_AIR_MLX",
         },
         {
-            "name": "KENDER",
-            "url": "http://192.168.1.26:11434",
-            "model": "qwen3.8:nothink",
+            "name": "KENDER_GATEWAY",
+            "url": "http://127.0.0.1:11435",
+            "model": "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL",
             "node_id": "NODE_2_KENDER_4090",
         },
     ]
@@ -61,8 +61,8 @@ async def test_mlx_judge_multi_seat_kender_fallback():
     res = await fallback_driver.evaluate_256k_context(turn_trace, context_window)
     assert res["status"] == "ONLINE_EVALUATED"
     assert res["node_id"] == "NODE_2_KENDER_4090"
-    assert res["active_seat"] == "KENDER"
-    assert res["active_model"] == "qwen3.8:nothink"
+    assert res["active_seat"] == "KENDER_GATEWAY"
+    assert res["active_model"] == "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL"
     assert res["score_source"] == "ONLINE_LLM_JUDGE"
     assert isinstance(res["score"], float)
 
