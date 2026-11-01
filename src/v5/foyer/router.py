@@ -5430,6 +5430,13 @@ class FoyerRouter:
                 # [FEAT-DECOUPLED] Check for queue changes immediately even if not vocal
                 if os.path.exists(QUEUE_FILE):
                     size = os.path.getsize(QUEUE_FILE)
+                    # [Story 108.38b / BKM-090] Detect file truncation / compaction and reset tailing offset
+                    if size < last_pos:
+                        logger.info(
+                            f"[FOYER] [FEAT-283] Queue truncation/compaction detected ({size} < {last_pos}). Resetting tailing offset to 0."
+                        )
+                        last_pos = 0
+
                     if size > last_pos:
                         # [FEAT-283] Neural Buffer: Cache pre-wake intents received during cold-boot
                         is_cold_boot = not self.residents.booted

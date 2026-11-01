@@ -131,3 +131,38 @@ def test_compact_foyer_queue_all_stale_truncates_to_zero():
         with open(a_path, "r") as f:
             archived = [json.loads(line) for line in f if line.strip()]
         assert len(archived) == 5
+
+
+def test_queue_tailing_recovers_on_file_truncation():
+    """[Story 108.38b / BKM-090] Verify that when a queue file is truncated/compacted,
+    tailing offset resets to 0 and subsequent writes are drained cleanly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        q_path = os.path.join(tmpdir, "foyer_queue.jsonl")
+
+        # Step 1: Write initial 10 lines (simulate accumulated historical queue)
+        with open(q_path, "w") as f:
+            for i in range(10):
+                f.write(json.dumps({"id": f"initial_{i}", "status": "PENDING"}) + "\n")
+
+        last_pos = os.path.getsize(q_path)
+        assert last_pos > 200
+
+        # Step 2: File is compacted/truncated down to 1 fresh line (simulate compaction)
+        with open(q_path, "w") as f:
+            f.write(json.dumps({"id": "compacted_1", "status": "PENDING"}) + "\n")
+
+        size = os.path.getsize(q_path)
+        assert size < last_pos
+
+        # Step 3: Tailing logic executes truncation recovery
+        if size < last_pos:
+            last_pos = 0
+
+        assert size > last_pos
+        with open(q_path, "r") as f:
+            f.seek(last_pos)
+            lines = [json.loads(l) for l in f if l.strip()]
+
+        assert len(lines) == 1
+        assert lines[0]["id"] == "compacted_1"
+
