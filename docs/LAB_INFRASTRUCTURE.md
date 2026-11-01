@@ -442,38 +442,52 @@
 
 1. **Silicon Node Port Map & Endpoints**:
    * **Node Brain (Apple M5 Air / `192.168.1.46`)**:
-     * **Raw oMLX Daemon**: Port `8000` (`http://192.168.1.46:8000/v1`) — Raw OpenAI-compatible inference engine running `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp`.
-     * **Headroom Proxy**: Port `8002` (`http://192.168.1.46:8002/v1`) — **Mandatory harness entrypoint** (`BKM-047`/`BKM-051`). Manages prompt prefill buffers and dynamic TurboQuant 4-bit KV quantization, strictly guarding macOS Metal from breaching the `iogpu.wired_limit_mb` 24.46 GB allocation ceiling.
+     * **Raw oMLX Daemon**: Port `8000` (`http://192.168.1.46:8000/v1`) — Raw OpenAI-compatible inference engine running `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` in PQ2_0 ternary format (~7.2 GB RAM).
+     * **Headroom Proxy**: Port `8002` (`http://192.168.1.46:8002/v1`) — **Mandatory harness entrypoint** (`BKM-047`/`BKM-051`). Manages prompt prefill buffers via `headroom.compress()`, `--initial-cache-blocks 2048`, `--hot-cache-max-size 2GB`, and dynamic TurboQuant 4-bit KV quantization under macOS Metal `--memory-guard-gb 28` with NVMe SSD prefix offloading.
      * **Context & Output Limits**: 131,072 context window / 8,192 output ceiling.
-     * **Reasoning Profile**: Suppressed. Emits direct deterministic code, JSON, and tool calls with `'reasoning': 0`.
+     * **Reasoning Profile**: Suppressed. Emits direct deterministic code, JSON, and tool calls via `extra_body: {"enable_thinking": False}` or `POST /thinking`.
    * **Node KENDER (Windows RTX 4090 24GB / `192.168.1.26`)**:
-     * **Ollama Engine**: Port `11434` (`http://192.168.1.26:11434`) running `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL`.
-     * **Kender Thought-Stripping Proxy**: Port `11435` (`http://127.0.0.1:11435/v1`) — **Mandatory harness entrypoint on Host Linux** (`LAB-116`/`BKM-079`). Managed via systemd service `kender-proxy.service`. Intercepts `/v1/chat/completions` (SSE streaming and non-streaming) from OpenCode, strips `<think>` tokens and `reasoning`/`reasoning_content` delta payloads, and discards empty thinking chunks. Eliminates reasoning deadlocks in silicon at the proxy layer.
+     * **Ollama Engine**: Port `11434` (`http://192.168.1.26:11434`) running `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL` or `qwen3.8:nothink`.
+     * **LiteLLM Kender Gateway**: Port `11435` (`http://127.0.0.1:11435/v1`) — **Mandatory harness entrypoint on Host Linux** (`LAB-116`/`BKM-079`). Managed via systemd service `litellm-kender.service` using `/home/jallred/Dev_Lab/HomeLabAI/config/litellm_kender.yaml`. Translates OpenAI `/v1/chat/completions` directly to Ollama's native `/api/chat` with `extra_body.options.enable_thinking: false` and root `"think": false`. Eliminates reasoning deadlocks and JSON payload truncation at the gateway layer.
      * **Context & Output Limits**: 131,072 context window (128k) / 8,192 output ceiling.
-     * **Reasoning Profile**: Hardware/proxy suppressed (`reasoning: 0`). Emits clean completion text, structured JSON, and tool calls immediately without prompt-level adversarial instructions.
+     * **Reasoning Profile**: Hardware/gateway suppressed (`think: false`). Emits clean completion text, structured JSON, and tool calls immediately without prompt-level adversarial instructions.
 
 2. **Inverted Role Prohibition (Hardware Asymmetry Invariant)**:
-   * **Never Swap Kender and Air**: Kender (RTX 4090) provides fast tensor prefill and high decode throughput suited for **Layer 2 Conductor (Atlas)**. M5 Air provides massive unified memory headroom (131k context) suited for **Layer 3 Worker (Junior)** holding large multi-file ASTs.
+   * **Never Swap Kender and Air**: Kender (RTX 4090) provides fast tensor prefill and high decode throughput suited for **Layer 2 Conductor (Atlas)**. M5 Air provides massive unified memory headroom (131k context with $>20\text{ GB}$ free RAM above model weights) suited for **Layer 3 Worker (Junior)** holding large multi-file ASTs.
    * Swapping them degrades L2 turnaround and risks 24GB CUDA OOM on L3 multi-file diffs.
 
 3. **OpenAgent / Harness Invariant**:
    * All OpenAgent / OpenCode config mappings in `opencode.json` must target:
      * **Node Brain**: `http://192.168.1.46:8002/v1` (Headroom Proxy) rather than raw port 8000.
-     * **Node KENDER**: `http://127.0.0.1:11435/v1` (Kender Thought-Stripping Proxy) rather than raw port 11434.
+     * **Node KENDER**: `http://127.0.0.1:11435/v1` (LiteLLM Gateway) rather than raw port 11434.
 
-### LAB-116: Kender Thought-Stripping Proxy & Silicon Decoupling Protocol
-**Objective**: Intercept and eliminate internal `<think>` reasoning emissions from Qwen 3.8 / local GGUF models on Node KENDER via host-resident FastAPI proxy, eliminating prompt hacks and preventing reasoning loop deadlocks.
+### LAB-116: LiteLLM Kender Gateway & Native Ollama API Protocol
+**Objective**: Intercept and eliminate internal `<think>` reasoning emissions from Qwen 3.8 / local GGUF models on Node KENDER via host-resident LiteLLM gateway, eliminating prompt hacks and preventing reasoning loop deadlocks.
 
 1. **Architecture & Topology**:
    * **Host Workstation (z87-Linux)**: Port `11435` (`http://127.0.0.1:11435/v1`).
-   * **Daemon Unit**: `kender-proxy.service` (Systemd User Unit: `/home/jallred/.config/systemd/user/kender-proxy.service`).
+   * **Daemon Unit**: `litellm-kender.service` (Systemd User Unit: `/home/jallred/.config/systemd/user/litellm-kender.service`).
    * **Upstream Target**: Node KENDER Ollama (`http://192.168.1.26:11434`).
-   * **Implementation**: `HomeLabAI/src/infra/kender_proxy.py` (FastAPI / `httpx.AsyncClient` / `uvicorn`).
+   * **Implementation**: `HomeLabAI/config/litellm_kender.yaml` (LiteLLM proxy routing to `ollama_chat/atlas:27b` and `ollama_chat/hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL`).
 
 2. **Interception & Sanitization Logic**:
-   * **SSE Streaming (`POST /v1/chat/completions`)**: Parses chunks, deletes `reasoning` and `reasoning_content` from choices deltas, and discards empty thinking chunks so OpenCode receives only real content tokens, tool calls, and finish reasons.
-   * **Non-Streaming (`POST /v1/chat/completions`)**: Deletes `reasoning` and `reasoning_content` keys from the message object before returning to client.
-   * **Passthrough**: Forwards `/v1/models` and any `/api/*` endpoints directly to Ollama.
+   * **Gateway Declarative Translation**: Inbound OpenAI `/v1/chat/completions` requests are translated to Ollama's native `/api/chat` endpoint with `extra_body.options.enable_thinking: false` and root `"think": false`.
+   * **Direct JSON & Streaming**: Full transparency preserved: tool calls and structured JSON emit immediately with sub-second TTFT and zero reasoning token exhaustion.
+   * **Passthrough**: Forwards `/v1/models` directly to Ollama.
+
+### LAB-117: M5 Air PQ2_0 Ternary Serving & Headroom Port Routing Standard
+**Objective**: Codify the serving baseline, memory topology, and routing requirements for Node Brain (Apple Silicon M5 Air 32GB).
+
+1. **Hardware & Serving Baseline**:
+   * **Model**: `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` (Bonsai 2, Qwen3.8-27B ternary weights).
+   * **Quantization Format**: PQ2_0 (Power-of-Two 2-Bit Packing). Weights occupy ~7.21 GB RAM with 100% native SIMD32 Metal kernel alignment and 1-cycle GPU instruction bit-shift unpacking.
+   * **Memory Budget**: With `--memory-guard-gb 28`, M5 Air maintains $>20\text{ GB}$ of free unified RAM above model weights.
+   * **Prefill & Cache Tuning**: `--initial-cache-blocks 2048`, `--hot-cache-max-size 2GB`, and 32GB NVMe SSD cache directory (`/Users/jallred/.cache/dflash/prefix_l2`) handle L2 prefix cache spillover.
+
+2. **Routing & Client Invariant**:
+   * Internal orchestrators and sovereign judge nodes (`mlx_judge_node.py`) MUST route requests to port `8002` (`http://192.168.1.46:8002/v1`).
+   * Port 8002 engages `control_api.py` sidecar with transparent Headroom compression (`headroom.compress()`).
+   * **Anti-Truncation Standard**: Client-side prompt lobotomies (arbitrarily clipping prompts to 32k/64k) are strictly forbidden. The combination of PQ2_0 weights, 2048 initial cache blocks, and Headroom compression natively supports full 131,072 token context ingestion.
 
 3. **Resource & Safety Limits**:
    * Configured with `MemoryHigh=250M` and `MemoryMax=500M` to maintain negligible memory footprint (~40MB resident).
