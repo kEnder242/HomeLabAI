@@ -851,8 +851,9 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    - `[SWARM:CLOUD]`: Story is assigned to cloud swarm burst via `delegate.py` directly, skipping local retries.
    - `[SWARM:ORACLE]`: Story is an architectural evaluation, pre-pass plan certification, or post-sprint regression audit executed via high-reasoning oracle nodes without mutating runtime codebase files.
    - `[AGY:PRIMARY]`: Story is architectural scaffolding, protocol governance, and schema bootstrap reserved for the primary orchestrator.
-2. **Anti-Bypass Invariant:** When a story is tagged `[SWARM:*]`, the primary agent (AGY) is **strictly forbidden from directly modifying the story's target codebase files** without first executing delegation attempts via `delegate.py` (including all 3 local diagnostic rounds for `[SWARM:LOCAL]`).
-3. **Escalation Record Required:** AGY direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier (and its required diagnostic retries) has executed, failed, and logged an explicit diagnostic post-mortem in the sprint report. Direct coding on swarm-tagged stories without prior delegation attempts is a high-severity operational violation.
+2. **Local-First Default & The 3-Attempt Invariant:** Stories default to local silicon (`[SWARM:LOCAL]`) for targeted code surgery and unit testing. Under `[SWARM:LOCAL]`, AGY is strictly forbidden from directly modifying the target codebase files and must focus entirely on enabling delegation as L1 orchestrator across all 3 local attempts (Attempt 1a baseline, 1b diagnostic remediation, 1c harness/anchor calibration).
+3. **The Escalation Ladder & Last-Resort Takeover:** Only after local silicon exhausts all 3 diagnostic rounds does a story promote to Cloud Swarm (`[SWARM:CLOUD]`). Direct code takeover (`[AGY:TAKEOVER]`) is strictly the final last resort, permissible only after both local and cloud swarms have executed, failed, and logged an explicit diagnostic post-mortem in the sprint report.
+4. **Anti "Across-the-Board" Review Trigger:** If 100% of the stories in a sprint phase share the identical assignment tag (e.g. all `[AGY:PRIMARY]`, all `[SWARM:LOCAL]`, or all `[SWARM:CLOUD]`), the orchestrator MUST pause during pre-flight planning to review the distribution. Confirm whether tasks were genuinely evaluated by scope or batched out of convenience.
 
 #### 4. Sovereign Local Silicon Topology Invariant (KENDER -> Air)
 1. **The Sovereign Conductor & Leaf Worker Pattern:**
@@ -1592,13 +1593,10 @@ A lettered item only clears from the ledger when one of four explicit gates is s
 3. **Integrated:** The operator directs the item into an active numbered topic (e.g., *"Put A–C into #3"* $\rightarrow$ absorbed into Topic 3's scope).
 4. **Explicitly Dismissed:** The operator explicitly commands *"dismiss A"*, *"drop B"*, or *"not doing C"*. Operator silence or conversational pivots NEVER clear the ledger.
 
-### 4.1 The Zero-Tombstone Pruning Law (No Completed Badges)
-1. **Strictly an Unresolved Queue:** The lettered ledger is exclusively for pending, unaddressed friction. It is NOT a completion changelog or tombstone ledger. Sprints track completions; the ledger tracks unaddressed omissions.
-2. **Immediate Eviction:** The moment an item satisfies an Exit Gate (Addressed, Documented, Integrated, or Dismissed), its letter is released and it is immediately pruned from the turn footer.
-3. **Forbidden Tombstone & Tracking Badges:** Agents are strictly forbidden from rendering exited items in the footer with status badges or cross-reference destinations (e.g. `- **A:** ... — *Addressed*`, `— *Certified*`, `(Tracked in Story 108.xx)`, or `(See Topic N)`). Any narrative reporting of completed or documented threads belongs exclusively in the response body or sprint plan.
-4. **Positive Pre-Emission Native Ownership Check:** Prior to emitting the turn footer, perform a strict binary test: if every candidate thread is actively owned by an active conversational lane ($1 \dots N$), resolved in code, or formally recorded in `SPRINT_PLAN_*.md`, all items are **Natively Owned**. Under Native Ownership, the agent MUST suppress the `### Dropped Threads Ledger` heading completely and emit zero footer characters.
-5. **Instant Integration Dissolution:** When the operator commands *"Put A into #1"* (or an item is absorbed into an active lane), the letter dissolves immediately and must not appear in the ledger footer on that turn.
-6. **Strict Header Omission:** When 0 unresolved threads exist, omit the `### Dropped Threads Ledger` header completely. Never render placeholder text (e.g., `*(None)*`), as placeholder headers trigger prompt-continuation mimicry across turns.
+### 4.1 Thread Graduation & Affirmative Omission
+1. **Graduation Into Primary Scope:** When an item satisfies an Exit Gate (addressed in code, documented into a sprint backlog, integrated into a numbered topic, or dismissed), its lifecycle in the reminder ledger is complete. Because its resolution is already reported in the response body or sprint plan, it graduates out of the ledger immediately.
+2. **Affirmative Permission to Omit:** Omitting graduated items from the footer is the expected, correct behavior. The lettered footer is reserved solely for items that are currently pending and waiting for an exit path.
+3. **Clean Footer Suppression:** When all active items have graduated (or no unaddressed stray findings exist), suppress the reminder header and footer entirely. Emitting no footer confirms that all conversational threads are natively owned by the active work.
 
 ### 5. Format Standard
 When active pending threads exist, render the reminder at the very conclusion of the turn. Format each item using a capital letter with a colon followed by a concise, one-line description (e.g., `A: One-line description`). If no pending threads exist, omit the ledger entirely (do not print the header or placeholder text).
@@ -1628,7 +1626,7 @@ Under `BKM-085`, before modifying any control-plane routing, gate, or subsystem 
 
 #### Phase 2: Git Archaeology (The Code / "What")
 1. **Locate the Pre-Regression Code:** Use `git log -S` and `git blame` to find the exact commit that introduced the divergent behavior.
-2. **Inspect Pre-Regression Baseline:** Check out or inspect the commit immediately *prior* to the divergence (`HEAD~1` relative to the commit). Establish what was already in place, how data flowed, and what baseline contracts were functioning cleanly before the change.
+2. **Inspect Pre-Regression Baseline:** Inspect the commit immediately *prior* to the divergence (using read-only inspection tools like `git show`). Establish what was already in place, how data flowed, and what baseline contracts were functioning cleanly before the change.
 3. **Evaluate the Regressing Commit With Merit:** Inspect the commit that introduced the divergence. Do not dismiss it as a mere mistake—recognize the constraints, missing subsystems, or temporary scaffolding that existed at that specific moment in the project's evolution. Understand the big picture of why the author chose that specific mechanism at that time.
 
 #### Phase 3: DNA Correlation (The Alignment / "How")
@@ -1657,7 +1655,7 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 - **Zero Speculative Editing:** The agent MUST NOT guess or invent requirements. 
 - **The 3-Phase Excavation Mandate:**
   1. *Phase 1 (Sprint Intent)*: Query `sprint_dna` to discover the original technical/business pressures before touching code.
-  2. *Phase 2 (Git Baseline & Post-Commit Merit)*: Check out `HEAD~1` to inspect what worked cleanly before the divergence. Simultaneously, evaluate the regressing commit with merit to understand the historical constraints and temporary scaffolding that existed at that time.
+  2. *Phase 2 (Git Baseline & Post-Commit Merit)*: Inspect the baseline commit immediately prior to the divergence to understand what worked cleanly before the change. Simultaneously, evaluate the regressing commit with merit to understand the historical constraints and temporary scaffolding that existed at that time.
   3. *Phase 3 (DNA Invariant Alignment)*: Compare intent against `FeatureTracker.md` and `Protocols.md` to solve the original requirement using modern shared capabilities rather than ad-hoc bypasses.
 
 #### Pillar 2: Deterministic 4-Anchor Planning & Mistake Prevention (`BKM-030` + `BKM-043` + `BKM-081`)
@@ -1670,11 +1668,11 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 
 #### Pillar 3: Structured Delegation & The Strict Anti-Bypass Guard (`BKM-049` + `BKM-006`)
 - **Conscious Avoidance of the Self-Promotion Trap:**
-  - `[SWARM:LOCAL]` (Atlas on RTX 4090 via port 4097): Preferred for targeted code surgery, parameter plumbing, and unit test assertions.
-  - `[SWARM:CLOUD]` (Sisyphus / Nemotron / DeepSeek): Reserved for heavy cross-subsystem architectural refactoring.
-  - `[AGY:PRIMARY]`: Strictly restricted to orchestrating git boundaries, hot-reloading daemons, and running live verification probes.
-- **THE ANTI-BYPASS INVARIANT (Strictly Enforced):**
-  When a story is tagged `[SWARM:LOCAL]` or `[SWARM:CLOUD]`, AGY:PRIMARY is **STRICTLY FORBIDDEN from directly modifying the story's target codebase files using file-editing tools**. Dispatch MUST execute through the delegation harness (`HomeLabAI/src/tests/delegate.py`). Direct code takeover (`[AGY:TAKEOVER]`) is only permissible after the assigned swarm tier has executed, failed its required diagnostic remediation rounds, and logged a diagnostic post-mortem.
+  - `[SWARM:LOCAL]` (Atlas on RTX 4090 via port 4097): Preferred default for targeted code surgery, parameter plumbing, and unit test assertions. Under `[SWARM:LOCAL]`, AGY is strictly forbidden from taking over code authoring and must focus entirely on enabling delegation as L1 orchestrator across all 3 local attempts.
+  - `[SWARM:CLOUD]` (Sisyphus / Nemotron / DeepSeek): Escalation tier when local silicon exhausts all 3 diagnostic remediation rounds, or for heavy cross-subsystem architectural refactoring.
+  - `[L1 Orchestrator]`: Directs end-to-end task flow, authors 4-anchor specifications, provides diagnostic feedback to local/cloud workers, evaluates live verification probes, and manages daemon lifecycles.
+- **THE ANTI-BYPASS INVARIANT & ESCALATION LADDER (Strictly Enforced):**
+  When a story is tagged `[SWARM:LOCAL]`, dispatch MUST execute through the delegation harness (`HomeLabAI/src/tests/delegate.py`). AGY enables the worker as L1 through 3 diagnosed attempts before promoting to `[SWARM:CLOUD]`. Direct code takeover (`[AGY:TAKEOVER]`) is strictly the final last resort, permissible only after both local and cloud swarm tiers have executed, failed their required diagnostic remediation rounds, and logged an explicit diagnostic post-mortem.
 
 #### Pillar 4: Adversarial Audit & Physical Silicon Certification (`BKM-007` + `BKM-024` + `INS-047`)
 - **Pre-Flight Adversarial Review:** Run Cloud Oracle audit on the sprint plan (`ask_oracle` / `ORACLE_REVIEW_SPRINT_*.md`) to challenge assumptions and expose blind spots before code dispatch.
@@ -1952,7 +1950,7 @@ When a behavioral protocol tension, rule slip, or process violation occurs, the 
 1. **Anti-Apology Pivot**: Acknowledge the empirical reality directly without self-flagellating boilerplate. Treat the friction as an objective protocol calibration opportunity.
 2. **Root Cause Identification**: Locate the exact paragraph, sentence, or ambiguity in `docs/Protocols.md` where the directive broke down, conflicted with another mandate, or failed to anticipate operational reality.
 3. **Positive Guidance Construction**: Draft the replacement rule using positive framing ("Do X because context Y guides this behavior"). Direct the agent toward a concrete operational pipeline rather than describing what not to do.
-4. **Surgical Diff Presentation**: Present the minimal, contiguous `git diff` against `docs/Protocols.md` for explicit operator review and confirmation before committing locally per `BKM-040`.
+4. **Surgical Delta Presentation**: Present the minimal, contiguous changes (preferring sentence-level `[+]` additions and `[-]` deletions over verbose unified diff blocks) against `docs/Protocols.md` for explicit operator review and confirmation before committing locally per `BKM-040`.
 
 ---
 
