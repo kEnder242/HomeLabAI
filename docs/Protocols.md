@@ -2019,6 +2019,30 @@ Nightly operations execute strictly in sequential phases within dedicated time w
 2. **Strict Daemon Process Boundaries**: External batch maintenance scripts must NEVER directly truncate or mutate files actively open and tailed by running daemons (e.g. `foyer_queue.jsonl` under `lab-attendant.service`). Foyer must manage its own queue compaction in-process during idle periods.
 3. **In-Pipeline Serialization**: Tasks within `nightly_forge.py` execute synchronously in a single process thread; dreaming and gem refinement never execute concurrently.
 
+---
+
+## BKM-100: The 4-Tier Epistemic Memory Architecture (Bedrock, Focals, Gems, Raw Notes)
+**Feature Anchor:** `[BKM-100]` / `[FEAT-683]` / `[FEAT-682]` / `[FEAT-540]` / `[FEAT-451]`  
+**Colloquial Alias:** "The 4-Tier Memory Hierarchy", "The Anti-Flattening Invariant"  
+**Tags:** `#epistemic_memory`, `#4_tier_rag`, `#bedrock`, `#focals`, `#gems`, `#raw_notes`, `#ground_truth`  
+**Domain:** Knowledge Architecture, Long-Term Memory, Conversational Triage, Ground Truth Hydration  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. Diagnostic (What Failed)
+Historical quest for low token count flattened the multi-layered knowledge architecture:
+1. Career context was reduced to a truncated `<300` token string (`career_compass.json`), starving conversational triage of verified platform history.
+2. Annual strategic deliverables (Focals) were lost between granular bug logs and broad resume milestones.
+3. Technical gems lost deterministic traceability back to raw note files on disk.
+4. Raw journal context was flooded in-toto into LLM prompts, causing severe prefill lag.
+
+### 2. The 4-Tier Memory Hierarchy
+Memory operations are partitioned into 4 distinct, non-overlapping epistemic tiers:
+1. **Tier 1 (Career Bedrock)**: Authoritative resume milestones and platform eras loaded directly into system prompt triage under the *Completeness of Era Bedrock Standard*.
+2. **Tier 2 (Strategic Focals & Milestones)**: Annual performance reviews (`focal_mesh.json`) embedded in ChromaDB `focal_dna`. Probed sub-20ms by `step_pre_triage` (`[FEAT-540]`) to supply gravitational `vector_hint` anchors for conversational triage before HyDE expansion.
+3. **Tier 3 (Technical Scars & Distilled Gems)**: High-density distilled engineering gems indexed in `long_term_wisdom`. Gems must preserve spatial anchors (`line_start`, `line_end`) referencing physical source files.
+4. **Tier 4 (Physical Raw Notes Ground Truth)**: Un-embedded physical journal `.txt` files in `/home/jallred/knowledge_base/`. Surgically hydrated on-demand into Deep Thought's prompt payload via automated Ripgrep search pivots (`[FEAT-451]`).
+
+
 
 
 

@@ -978,6 +978,9 @@ class FoyerRouter:
                 ),
                 web.post("/timeline/save_card", self.handle_wisdom_save_card),
                 web.post("/attendant/timeline/save_card", self.handle_wisdom_save_card),
+                # [FEAT-059 / FEAT-673 / Story 109.12] Multi-Node Projection Studio Dispatch
+                web.post("/api/projection/dispatch", self.handle_projection_dispatch),
+                web.post("/attendant/api/projection/dispatch", self.handle_projection_dispatch),
                 # [FEAT-632/633/634] Flywheel Closure: human thumbs up/down telemetry
                 web.post("/feedback", self.handle_feedback),
                 web.post("/attendant/feedback", self.handle_feedback),
@@ -1478,6 +1481,135 @@ class FoyerRouter:
         except Exception as e:
             logger.error(f"[FOYER] [FEAT-568] Single-card save failed: {e}")
             return web.json_response({"status": "ERROR", "message": str(e)}, status=500)
+
+    async def handle_projection_dispatch(self, request):
+        """[FEAT-059 / FEAT-673 / Story 109.12] Multi-Node Real-Time Matrix Dispatch Endpoint.
+        Fans out simultaneous inference across physical silicon fleet:
+          - z87-Linux (vLLM on :8088)
+          - Node Brain (MLX Bonsai 27B on :8002)
+          - Node KENDER / Cloud (Ollama 32B on :11434 with timeout guard)
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        prompt = data.get("prompt", "Analyze system performance.")
+        lens = data.get("lens", "technical")
+        max_tokens = min(300, int(data.get("max_tokens", 120)))
+
+        system_prompt = f"You are a specialized projection engine applying the '{lens}' lens. Be concise, technically precise, and adhere to empirical facts."
+
+        async def call_vllm():
+            t0 = time.perf_counter()
+            url = "http://127.0.0.1:8088/v1/chat/completions"
+            payload = {
+                "model": "unified-base",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.2
+            }
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status == 200:
+                            res = await resp.json()
+                            text = res.get("choices", [{}])[0].get("message", {}).get("content", "")
+                            lat = round((time.perf_counter() - t0) * 1000, 1)
+                            tokens = len(text.split())
+                            return {
+                                "node": "z87-Linux (vLLM 3B)",
+                                "status": "ONLINE",
+                                "latency_ms": lat,
+                                "completion": text,
+                                "tokens": tokens
+                            }
+            except Exception as e:
+                return {
+                    "node": "z87-Linux (vLLM 3B)",
+                    "status": "OFFLINE",
+                    "error": str(e)
+                }
+
+        async def call_mlx():
+            t0 = time.perf_counter()
+            url = "http://192.168.1.46:8002/v1/chat/completions"
+            payload = {
+                "model": "bonsai2",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.2
+            }
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status == 200:
+                            res = await resp.json()
+                            text = res.get("choices", [{}])[0].get("message", {}).get("content", "")
+                            lat = round((time.perf_counter() - t0) * 1000, 1)
+                            tokens = len(text.split())
+                            return {
+                                "node": "Node Brain (MLX Bonsai 27B)",
+                                "status": "ONLINE",
+                                "latency_ms": lat,
+                                "completion": text,
+                                "tokens": tokens
+                            }
+            except Exception as e:
+                return {
+                    "node": "Node Brain (MLX Bonsai 27B)",
+                    "status": "OFFLINE",
+                    "error": str(e)
+                }
+
+        async def call_kender():
+            t0 = time.perf_counter()
+            url = "http://192.168.1.185:11434/api/generate"
+            payload = {
+                "model": "qwen2.5:32b",
+                "prompt": f"{system_prompt}\n\n{prompt}",
+                "stream": False
+            }
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4.0)) as session:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status == 200:
+                            res = await resp.json()
+                            text = res.get("response", "")
+                            lat = round((time.perf_counter() - t0) * 1000, 1)
+                            tokens = len(text.split())
+                            return {
+                                "node": "Node KENDER (Ollama 32B)",
+                                "status": "ONLINE",
+                                "latency_ms": lat,
+                                "completion": text,
+                                "tokens": tokens
+                            }
+            except Exception:
+                return {
+                    "node": "Node KENDER (Ollama 32B)",
+                    "status": "OFFLINE",
+                    "error": "Node unreachable or timed out"
+                }
+
+        results = await asyncio.gather(call_vllm(), call_mlx(), call_kender(), return_exceptions=True)
+        clean_results = [
+            r if isinstance(r, dict) else {"node": "Unknown", "status": "ERROR", "error": str(r)}
+            for r in results
+        ]
+
+        return web.json_response({
+            "status": "OK",
+            "prompt": prompt,
+            "lens": lens,
+            "fleet": clean_results
+        })
 
     async def handle_feedback(self, request):
         """[FEAT-632/633/634] Flywheel closure: 👍/👎 telemetry -> ledger.
