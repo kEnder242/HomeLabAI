@@ -3690,29 +3690,44 @@ class CognitiveHub:
             if hasattr(self, "current_vibe") and self.current_vibe
             else "CASUAL"
         )
-        # [STORY 105.10] Hardware entity set for the post-waterfall learning
-        # target queue (also drives the RAG-First expansion branch below).
-        hardware_entities = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC") if e in query]
-        if vibe_now in ("HISTORICAL", "TECHNICAL") and boosted_interest >= 0.35:
-            effective_grounding = bedrock_payload or brain_grounding or ""
-            if len(effective_grounding) < 100 or hardware_entities:
-                try:
-                    from nodes.archive_node import execute_grep_search_pivot
-                except ImportError:
-                    from archive_node import execute_grep_search_pivot
-                expansion = await asyncio.to_thread(
-                    execute_grep_search_pivot, query, 5, hardware_entities or None
+        # [FEAT-451 / Story 109.9] Ripgrep Ground Truth Hydration Bridge
+        # Automatically extract Brain's curated technical anchors and exact hardware tokens
+        # to surgically hydrate physical raw notes line context for Deep Thought.
+        curated_anchors = []
+        if brain_grounding:
+            raw_tokens = re.findall(r"\b(?:0x[0-9a-fA-F]+|[A-Z][a-zA-Z0-9_-]{2,}|\w+\.(?:py|sh|c|h|txt|json))\b", brain_grounding)
+            stop_tokens = {
+                "THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY",
+                "DID", "KEEP", "DROP", "CHUNK", "TRUE", "FALSE", "NONE", "NULL", "NOTE",
+                "PASS", "FAIL", "BRAIN", "PINKY", "DEEP", "THOUGHT", "STATUS", "VERDICT", "VIBE"
+            }
+            curated_anchors = [t for t in raw_tokens if t.upper() not in stop_tokens and not t.startswith("CHUNK-")]
+
+        query_hardware = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC", "Optane", "DCMI", "MCTP", "SIMICS", "ESB2", "VISA") if e.lower() in query.lower()]
+        all_anchors = list(dict.fromkeys(query_hardware + curated_anchors))[:5]
+
+        if (all_anchors or vibe_now in ("HISTORICAL", "TECHNICAL")) and boosted_interest >= 0.35:
+            try:
+                from nodes.archive_node import execute_grep_search_pivot
+            except ImportError:
+                from archive_node import execute_grep_search_pivot
+
+            t_grep_start = time.perf_counter()
+            expansion = await asyncio.to_thread(
+                execute_grep_search_pivot, query, 5, all_anchors or None
+            )
+            t_grep_duration = max(0.001, round(time.perf_counter() - t_grep_start, 3))
+            if expansion:
+                ground_truth_exhaust = f"<ground_truth_exhaust>\n{expansion}\n</ground_truth_exhaust>"
+                bedrock_payload = (
+                    f"{bedrock_payload}\n{ground_truth_exhaust}"
+                    if bedrock_payload
+                    else ground_truth_exhaust
                 )
-                if expansion:
-                    bedrock_payload = (
-                        f"{bedrock_payload}\n[EXPANDED_NOTES]:\n{expansion}"
-                        if bedrock_payload
-                        else f"[EXPANDED_NOTES]:\n{expansion}"
-                    )
-                    logging.info(
-                        f"[STORY 105.6] RAG-first expansion fired for {vibe_now} turn: "
-                        f"anchors={hardware_entities or 'query-derived'}, added {len(expansion)} chars."
-                    )
+                logging.info(
+                    f"[FEAT-451] Ripgrep ground truth hydration completed in {t_grep_duration*1000:.1f}ms: "
+                    f"anchors={all_anchors or 'query-derived'}, added {len(expansion)} chars."
+                )
 
         # Stage 3.2: Deep Thought Strategic Synthesis [FEAT-658 / Story 105.15 Quiescence Gating]
         if boosted_interest < 0.35:

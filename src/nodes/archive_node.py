@@ -900,6 +900,8 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                     str(max_matches),
                     "--no-heading",
                     "-N",
+                    "--glob", "*.txt",
+                    "--glob", "*.json",
                     anchor,
                     d,
                 ]

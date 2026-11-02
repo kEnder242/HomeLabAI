@@ -2196,7 +2196,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
 
                     # Check Node Brain M5 Air (port 8002 / 8000)
                     try:
-                        import subprocess
+                        # Line 2199: subprocess is imported at module top level
                         ss_res = subprocess.run(
                             ["ss", "-t", "-H", "(", "dport", "=", ":8002", "or", "dport", "=", ":8000", ")"],
                             capture_output=True, text=True, timeout=1.0

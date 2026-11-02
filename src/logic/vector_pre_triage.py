@@ -27,6 +27,7 @@ PRE_TRIAGE_COLLECTIONS = [
     "feature_dna",
     "long_term_wisdom",
     "career_ledger",
+    "focal_dna",
     "short_term_stream",
     "lab_journal",
 ]
@@ -172,9 +173,10 @@ def probe_clara_dna_sync(
     # Formulate semantic pre-triage hint for LLM
     hint = ""
     suggested_vibe = "SOCRATIC"
-    if best_dist < 0.55:
+    if best_dist < 0.68:
         topic = (
-            best_meta.get("name")
+            best_meta.get("id")
+            or best_meta.get("name")
             or best_meta.get("bkm_id")
             or best_meta.get("feature_id")
             or best_meta.get("domain")
@@ -190,6 +192,9 @@ def probe_clara_dna_sync(
             suggested_vibe = "SOCRATIC"
         elif best_col in ("long_term_wisdom", "career_ledger"):
             hint += " Contains Historical Milestones & Executive Lore."
+            suggested_vibe = "CHRONICLE"
+        elif best_col == "focal_dna":
+            hint += " Contains Career Strategic Milestones."
             suggested_vibe = "CHRONICLE"
         elif best_col in ("short_term_stream", "lab_journal"):
             hint += " Matches recent conversation history / prior turns."
