@@ -3710,7 +3710,10 @@ class CognitiveHub:
             try:
                 from nodes.archive_node import execute_grep_search_pivot
             except ImportError:
-                from archive_node import execute_grep_search_pivot
+                try:
+                    from src.nodes.archive_node import execute_grep_search_pivot
+                except ImportError:
+                    from archive_node import execute_grep_search_pivot
 
             t_grep_start = time.perf_counter()
             expansion = await asyncio.to_thread(
