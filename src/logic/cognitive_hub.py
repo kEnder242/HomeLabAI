@@ -3759,7 +3759,7 @@ class CognitiveHub:
                 or "without a historical record" in (brain_grounding or "").lower()
             )
         ):
-            queue_post_waterfall_learning_target(query, entities=hardware_entities)
+            queue_post_waterfall_learning_target(query, entities=all_anchors or query_hardware or [])
 
         # Stage 3.3: Pinky Conversational TL;DR (paced by updated boosted_interest)
         # [AR-108-18] Natural Zero-Context via Interest Collapse (no synthetic vibe)
