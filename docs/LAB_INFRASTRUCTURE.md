@@ -577,6 +577,27 @@
   * Backup fallback initrd preserved at `/boot/initrd.img-6.14.0-36-generic.bak`.
   * Sourced into Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Section 25.
 
+---
+
+## LAB-121: Intel Arc B580 Xe Driver & Silicon Verification (16GB ReBAR, Mesa 25.2 Vulkan 1.4, Dual-GPU Topology)
+
+* **Incident / Milestone**: Live Silicon Certification of Intel Arc B580 16GB Resizable BAR, Xe Kernel Driver, and Vulkan 1.4 stack.
+* **Date**: November 4, 2026.
+* **Silicon & Kernel Verification**:
+  * **Kernel Driver**: Native `xe` driver active on kernel `6.14.0-36-generic`.
+  * **Memory Aperture**: BAR2 allocated at physical address `0xc00000000` (48GB line) with full `[size=16G]`.
+  * **Graphics API**: Mesa 25.2.8 active with native Vulkan 1.4 (`apiVersion = 1.4.318`, `BMG G21`).
+  * **DRM Topology**: Mapped to `card0` / `renderD129` with physical HDMI display connected (`card0-HDMI-A-6`).
+* **Software Ecosystem & Inference Readiness**:
+  * **Virtual Environment**: `/home/jallred/intel_ai_venv` staged with `torch 2.8.0+xpu`, `intel_extension_for_pytorch 2.8.0` (IPEX), and `oneccl`.
+  * **Compute Driver Trajectory**: System-level `libze-intel-gpu1` is at legacy version 23.43 (Noble baseline), which precedes Battlemage hardware support. Upgrading oneAPI Level Zero / Compute-Runtime to 24.45+ enables PyTorch XPU / OpenVINO hardware acceleration.
+  * **Dual-GPU Allocation Strategy**:
+    * **Intel Arc B580 (16GB)**: Primary display master, QuickSync AV1/HEVC media transcoding for Jellyfin/streaming, and large-context OpenVINO/IPEX inference (>11GB models).
+    * **NVIDIA RTX 2080 Ti (11GB)**: Headless dedicated CUDA inference host for `vLLM` EngineCore.
+* **Documentation Synchronization**:
+  * Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Section 26.
+
+
 
 
 
