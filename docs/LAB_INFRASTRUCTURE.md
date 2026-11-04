@@ -556,6 +556,28 @@
 * **Documentation Synchronization**:
   * Sourced into Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Sections 24 & 24.5.
 
+---
+
+## LAB-120: Linux Early CPIO ACPI DSDT Override for Haswell ReBAR
+
+* **Incident / Milestone**: Zero-Flash 472GB ACPI DSDT Host Bridge Aperture Injection via Linux Early CPIO Initramfs Upgrade.
+* **Date**: November 4, 2026.
+* **Context & Architectural Discovery**:
+  * Prior motherboard BIOS brick was caused by Haswell 8-series platform DXE limitations: the memory controller GCD does not map MMIO above DRAM during early POST, causing early firmware freeze before GOP (video) initialization when forcing 64-bit BAR allocation.
+  * Historical AML injection failed due to inserting bytecode at offset `0x150F` (inside `Method (_CRS)`), corrupting the AML execution stream (`AE_AML_BAD_OPCODE`).
+  * Motherboard physical flashing permanently avoided: ASUS Z87-PLUS remains on the stable, boot-proven semi-patched BIOS with NVRAM Above 4G Decoding enabled (`0x2FE=01`, `0x2FF=01`).
+* **Implementation Details (Zero-Flash Path A)**:
+  * Extracted live ACPI DSDT from `/sys/firmware/acpi/tables/DSDT`.
+  * Precision-injected 46-byte `QWordMemory` descriptor (Min: `0x0000000A00000000` [40GB], Max: `0x0000007FFFFFFFFF` [512GB], Length: `0x0000007600000000` [472GB aperture]) at offset `0x1509` inside `BUF0` right before `EndTag` (`79 00`).
+  * Recalculated buffer sizes (468 -> 514 bytes), updated package lengths for `BUF0` and `Device (PCI0)`, incremented OEM revision (`0x31 -> 0x32`), and recalculated checksum (`0x51`). Verified with `iasl -d` (0 errors, 0 warnings).
+  * Generated uncompressed CPIO archive `/boot/acpi_override.cpio` containing `kernel/firmware/acpi/DSDT.aml`.
+  * Prepended archive to `/boot/initrd.img-6.14.0-36-generic` alongside Rod Burlamaqui's `arc-rebar` hook.
+* **Verification & Operational Safety**:
+  * GRUB default entry 0 maintained (`Ubuntu 24.04.4 LTS` on `6.14.0-36-generic`).
+  * Backup fallback initrd preserved at `/boot/initrd.img-6.14.0-36-generic.bak`.
+  * Sourced into Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Section 25.
+
+
 
 
 
