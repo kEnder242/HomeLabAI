@@ -493,6 +493,47 @@
    * Configured with `MemoryHigh=250M` and `MemoryMax=500M` to maintain negligible memory footprint (~40MB resident).
    * Upstream timeout configured to 300s to support heavy prefill without premature client dropouts.
 
+### LAB-118: Xorg File Descriptor Starvation, Crash-Recovery GDM Net & PRIME Telemetry
+**Objective**: Prevent desktop crashes and remote RDP lockout caused by file descriptor exhaustion (`EMFILE` = Errno 24) on `DMA_BUF_IOCTL_EXPORT_SYNC_FILE`, establish automated session re-arming via GDM `TimedLogin`, and deploy dedicated FD usage telemetry.
+
+1. **The Forensic Autopsy (The 16:47 Crash Family)**:
+   * **Symptom**: Desktop session terminated after 5+ days uptime, dropping to GDM login greeter on `tty1`. `gnome-remote-desktop` was terminated, disabling remote RDP access.
+   * **RAM vs FD Distinction**: Physical RAM was 51% available (8.1GB free) and swap was 76% free (12GB free). This was **not** a RAM/swap exhaustion incident (`LAB-011`/`LAB-017` cgroups performed as designed).
+   * **The Smoking Gun**:
+     ```log
+     Failed to get prime fd for bo prime/546
+     DMA_BUF_IOCTL_EXPORT_SYNC_FILE ioctl failed (24)
+     ```
+     Errno 24 is `EMFILE` ("Too many open files").
+   * **Mechanism**: In hybrid PRIME offload, the monitor is plugged into the motherboard (Intel HD 4600), while 3D rendering (Steam, games, Chromium) runs on the discrete GPU (RTX 2080 Ti). Rendered frames are passed via DMA-BUF, and in-flight GPU fences are exported as anonymous sync file descriptors (`anon_inode:[sync_file]`). Over 5 days of multi-head rendering, FDs hit the archaic soft limit of `1024`. When Steam closed, mass context unbinding requested FD #1025, returning `EMFILE`. Mesa Gallium (`libgallium-25.2.8`) called `abort()` inside `driUnbindContext()`, throwing `SIGABRT` (Signal 6), crashing Xorg, and dropping the user session.
+
+2. **The 3-Layer Defense & Crash Recovery Net**:
+   * **GDM Timed Login Recovery Net (`FEAT-685`)**: Configured `/etc/gdm3/custom.conf` with:
+     ```ini
+     AutomaticLoginEnable=True
+     AutomaticLogin=jallred
+     TimedLoginEnable=True
+     TimedLogin=jallred
+     TimedLoginDelay=60
+     ```
+     Unlike single-shot `AutomaticLogin` (which stops after first session exit), `TimedLogin` pauses 60s after any crash or logout (safety window to prevent login loops) and automatically re-authenticates `jallred`, re-launching `gnome-remote-desktop` and restoring RDP access.
+   * **File Descriptor Ceiling Elevation**:
+     * `/etc/systemd/system/gdm.service.d/override.conf`: `LimitNOFILE=1048576`
+     * `/etc/systemd/system.conf.d/10-nofile.conf` & `/etc/systemd/user.conf.d/10-nofile.conf`: `DefaultLimitNOFILE=65536:1048576`
+     * `/etc/security/limits.d/99-nofile.conf`: `soft nofile 65536`, `hard nofile 1048576`
+     * Live-elevated active Xorg PID via `prlimit --nofile=65536:1048576`.
+   * **Passive Telemetry Logger (The FD Logger)**:
+     * Script: `HomeLabAI/src/infra/xorg_fd_logger.sh` (executable).
+     * Systemd Timer: `xorg-fd-logger.timer` running every 10 minutes.
+     * Output Ledger: `Dev_Lab/xorg_fd_usage.log`.
+     * Tracks open FDs, soft/hard limits, sync files (`anon_inode:[sync_file]`), DRM devices (`/dev/dri/*`), and sockets. Operates completely out-of-band without touching `status.html`.
+
+3. **Hardware Topology & Root Cause Eradication**:
+   * Physical monitor cable plugged into motherboard (Intel i915) forces cross-GPU DMA-BUF synchronization over PCIe bus.
+   * Moving display cable directly to discrete GPU (2080 Ti or future Intel ARC) makes rendering and display GPU the same device, eliminating cross-GPU sync FDs entirely.
+   * Maintaining dynamic DRM KMS detection (zero hardcoded BusIDs in `xorg.conf`) ensures pulling the GPU for troubleshooting automatically falls back to onboard graphics without breaking boot.
+
+
 
 
 
