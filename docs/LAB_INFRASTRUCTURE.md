@@ -533,6 +533,30 @@
    * Moving display cable directly to discrete GPU (2080 Ti or future Intel ARC) makes rendering and display GPU the same device, eliminating cross-GPU sync FDs entirely.
    * Maintaining dynamic DRM KMS detection (zero hardcoded BusIDs in `xorg.conf`) ensures pulling the GPU for troubleshooting automatically falls back to onboard graphics without breaking boot.
 
+---
+
+## LAB-119: Intel Arc B580 ReBAR Root-Port Rescan Hook & Multi-GPU Topology
+
+* **Incident / Milestone**: Intel Arc Battlemage (B580) Resizable BAR enablement on Haswell Z87 motherboard alongside NVIDIA RTX 2080 Ti.
+* **Date**: November 4, 2026.
+* **Root Cause Convergence**:
+  * Intel Arc GPUs incorporate an integrated PCIe switch (`8086:e2ff`) whose upstream port has an 8MB prefetchable `BAR0`.
+  * The Linux kernel PCI core refuses to expand a root port bridge window that already contains an assigned device BAR (`pcieport ... was not released (still contains assigned resources)`), throwing `-ENOSPC` when the `xe` driver attempts to resize the 16GB `BAR2`.
+  * Removing the root port (`echo 1 > /sys/bus/pci/devices/<RP>/remove`) and rescanning (`echo 1 > /sys/bus/pci/rescan`) in early `initramfs` allows the kernel to allocate both the 8MB switch BAR0 and the 16GB BAR2 simultaneously into the 64-bit MMIO aperture above 4GB.
+* **Firmware & OS Deployment Details**:
+  * **Initramfs Hook**: Installed `/etc/initramfs-tools/scripts/init-premount/arc-rebar` (from Rod Burlamaqui's `Intel-ARC-Rebar`), executable. Non-blocking with automatic safe rollback.
+  * **Safety Net**: Created `/boot/initrd.img-6.14.0-36-generic.bak` prior to `update-initramfs -u`.
+  * **Kernel Cmdline**: `pci=realloc panic=10` verified active in `/etc/default/grub` and `/proc/cmdline`.
+  * **Boot Order Governance**: `GRUB_DEFAULT=0` locked to `Ubuntu 24.04.4 LTS` (entry 0); EFI `BootOrder: 0002,0003,0004` (`Boot0002* ubuntu` active). No boot order mutation.
+* **Physical Hardware & DRM Topology**:
+  * **Slot 1 (Gray, CPU x16 / Root Port 00:01.0)**: Intel Arc B580 (`03:00.0`).
+  * **Slot 2 (Black, CPU x8 / Root Port 00:01.1)**: NVIDIA RTX 2080 Ti (`05:00.0`).
+  * **Root Port Isolation**: Root ports `00:01.0` and `00:01.1` are distinct; resetting `00:01.0` does not affect the 2080 Ti.
+  * **Display Cable Routing**: HDMI cable connected directly to Arc B580 (`card0-HDMI-A-6: connected`), establishing Arc as primary KMS/Xorg display master and freeing the RTX 2080 Ti as a 100% headless CUDA compute device.
+* **Documentation Synchronization**:
+  * Sourced into Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Sections 24 & 24.5.
+
+
 
 
 
