@@ -56,6 +56,17 @@ else
     LORA_ARGS=""
 fi
 
+# Check unified inference engine mode configuration
+ENGINE_MODE=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json')).get('inference_engine', {}).get('mode', 'speculative'))" 2>/dev/null || echo "vllm")
+
+if [[ "$ENGINE_MODE" == "speculative" || "$ENGINE_MODE" == "single-2080ti" ]]; then
+    echo "🚀 [IGNITION] Launching unified inference engine in mode: $ENGINE_MODE"
+    /home/jallred/serve_llm.sh --mode="$ENGINE_MODE" > /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log 2>&1 &
+    PID=$!
+    echo $PID > /home/jallred/Dev_Lab/HomeLabAI/run/vllm.pid
+    exit 0
+fi
+
 CUDA_LIB_PATH="/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib"
 export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
 

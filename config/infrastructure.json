@@ -1,6 +1,31 @@
 {
     "_doc": "HomeLabAI/docs/LAB_INFRASTRUCTURE.md",
     "_comment": "AGENT NOTE: Physical silicon laws, hardware specs, mount points, and multi-engine topology are documented in HomeLabAI/docs/LAB_INFRASTRUCTURE.md. Always read this doc before inferring hardware boundaries or engine capabilities.",
+    "inference_engine": {
+        "mode": "speculative",
+        "supported_modes": ["speculative", "single-2080ti", "vllm"],
+        "speculative": {
+            "target_model": "/speedy/models/gguf/Qwen3.7-Flash-8B-Q8_0.gguf",
+            "target_device": "Vulkan1",
+            "draft_model": "/speedy/models/gguf/Qwen3.7-Flash-4B-Q8_0.gguf",
+            "draft_device": "Vulkan0",
+            "draft_n_max": 4,
+            "ctx_size": 32768,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0"
+        },
+        "single_2080ti": {
+            "model": "/speedy/models/gguf/Qwen3.7-Flash-8B-Q8_0.gguf",
+            "device": "Vulkan0",
+            "ctx_size": 32768,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0"
+        },
+        "vllm": {
+            "model": "/speedy/models/llama-3.2-3b-instruct-awq",
+            "device": "cuda"
+        }
+    },
     "idle_eviction_enabled": false,
     "daytime_node_residency": "PERMANENT_RESIDENT",
     "vram_hibernation_level": 2,
