@@ -1495,7 +1495,7 @@ Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite,
 > Before writing code or dispatching tools, the Agent MUST embed and check off this paper trail directly in the active sprint plan (`SPRINT_PLAN_SPR_*.md`):
 > - [ ] **1. 5-Sprint Lookback**: Reviewed last 5 sprints for traps, anti-patterns, and sentinels (`BKM-082 §2.1`).
 > - [ ] **2. Mistakes-Avoided Ledger**: Enumerate $\ge$ 3 concrete historical mistakes avoided (`BKM-082 §2.4`).
-> - [ ] **3. Oracle Review**: Adversarial audit completed and appended (`BKM-007` / `BKM-080`).
+> - [ ] **3. Oracle Review**: Adversarial audit completed and appended via Cloud Synthesizer (`BKM-007` / `BKM-061` / `delegate.py --mode oracle`).
 > - [ ] **4. Delegation Justification**: Evaluated `LOCAL`/`CLOUD` first; documented rationale for any story assigned to `AGY:PRIMARY` (`Invariant 7` / `BKM-049`).
 > - [ ] **5. Risk Assessment**: Evaluated `LOCAL` tasks for promotion to `CLOUD` based on blast radius, file scale, or refactoring complexity.
 > *An agent MUST NOT mark these `[x]` without citing the corresponding section in the plan. Any unchecked box halts execution.*
@@ -1675,7 +1675,7 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
   When a story is tagged `[SWARM:LOCAL]`, dispatch MUST execute through the delegation harness (`HomeLabAI/src/tests/delegate.py`). AGY enables the worker as L1 through 3 diagnosed attempts before promoting to `[SWARM:CLOUD]`. Direct code takeover (`[AGY:TAKEOVER]`) is strictly the final last resort, permissible only after both local and cloud swarm tiers have executed, failed their required diagnostic remediation rounds, and logged an explicit diagnostic post-mortem.
 
 #### Pillar 4: Adversarial Audit & Physical Silicon Certification (`BKM-007` + `BKM-024` + `INS-047`)
-- **Pre-Flight Adversarial Review:** Run Cloud Oracle audit on the sprint plan (`ask_oracle` / `ORACLE_REVIEW_SPRINT_*.md`) to challenge assumptions and expose blind spots before code dispatch.
+- **Pre-Flight Adversarial Review:** Run Cloud Oracle audit on the sprint plan via the delegation harness (`python3 HomeLabAI/src/tests/delegate.py --mode oracle --dir Portfolio_Dev` $\to$ `ORACLE_REVIEW_SPRINT_*.md`, governed by `[BKM-061]`) to challenge assumptions and expose blind spots before code dispatch. (Note: The FastMCP tool `clara-dna_ask_oracle` under `[BKM-080]` is strictly an L2 worker-to-Tier-1 clean-kill escalation tool, NOT the pre-flight sprint reviewer).
 - **Offline Harness Gate:** Unit and replay test suites (`FEAT-645`) must pass 100% green without mocks masking live behavior.
 - **LIVE IS KING (`BKM-024` / `INS-047`):** Final story and sprint certification mandates testing against the physical running daemon (`lab-attendant.service` matching Git HEAD) and live reachable silicon endpoints via synthetic probe injection. Sandbox unit tests alone are never sufficient for sprint closure.
 
