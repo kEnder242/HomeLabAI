@@ -2,7 +2,7 @@
     "_doc": "HomeLabAI/docs/LAB_INFRASTRUCTURE.md",
     "_comment": "AGENT NOTE: Physical silicon laws, hardware specs, mount points, and multi-engine topology are documented in HomeLabAI/docs/LAB_INFRASTRUCTURE.md. Always read this doc before inferring hardware boundaries or engine capabilities.",
     "inference_engine": {
-        "mode": "speculative",
+        "mode": "single-2080ti",
         "supported_modes": ["speculative", "single-2080ti", "vllm"],
         "speculative": {
             "target_model": "/speedy/models/gguf/Qwen3.7-Flash-8B-Q8_0.gguf",
