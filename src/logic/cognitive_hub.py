@@ -644,6 +644,28 @@ def record_negative_exemplar(
     return entry
 
 
+def should_inject_career_bedrock(vibe: str, domain: str, target_domains: list = None) -> bool:
+    """[FEAT-434 / BKM-085 / SPR-110] Strict Allow/Deny Gate for Just-In-Time Career Bedrock Injection.
+    Preempts BMC/DCMI/validation career hallucinations on operational telemetry queries.
+    """
+    v_clean = str(vibe or "").strip().upper()
+    d_clean = str(domain or "").strip().lower()
+    targets = [str(t).lower() for t in (target_domains or [])]
+
+    # STRICT DENY LIST (Immediate Rejection)
+    if v_clean in ("OPERATIONAL", "CASUAL", "WYWO") or d_clean in ("exp_tlm", "telemetry", "social", "computer architecture", "infra"):
+        return False
+
+    # STRICT ALLOW LIST
+    if v_clean in ("HISTORICAL", "CHRONICLE", "RETROSPECTIVE") or d_clean in ("work_history", "career", "lab_history", "career_timeline"):
+        return True
+
+    if any("career" in t or "history" in t for t in targets):
+        return True
+
+    return False
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -655,6 +677,7 @@ def build_two_mice_stage_prompt(
     brain_bullets: str = "",
     pinky_take: str = "",
     topic_directive: str = "",
+    career_bedrock: str = "",
 ) -> str:
     """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
@@ -698,9 +721,11 @@ def build_two_mice_stage_prompt(
     effective_query = user_query or primer
     node_key = "brain" if stage == 1 else "pinky"
     pacing_line = format_pacing_line(node_key, interest)
+    bedrock_block = f"{career_bedrock}\n\n" if career_bedrock and career_bedrock.strip() else ""
     section = (
         "[PILLAR_1_RECORD]: SHARED BEDROCK LAB FOUNDATION\n"
         f"{TWO_MICE_BEDROCK_FOUNDATION}\n\n"
+        f"{bedrock_block}"
         f"{pacing_line}\n\n"
         "[PILLAR_3_RECORD]: TURN SEQUENCE STAGE\n"
         f"You are executing STAGE {stage} of the Two-Mice sequential handover.\n"
@@ -1009,7 +1034,7 @@ class CognitiveHub:
         return self.bridge_signal_clean(text)
 
     async def _dispatch_vllm_triage(self, query, context, triage_schema, request_id):
-        """[SPR-64_1] Dispatch triage directly to Local vLLM (Lab)."""
+        """[SPR-64_1 / SPR-110] Dispatch triage directly to Local Unified Engine (Lab) with reasoning suppressed and soft token floor."""
         node = self.residents.get("lab")
         if not node:
             return None
@@ -1022,7 +1047,7 @@ class CognitiveHub:
                 "temperature": 0.0,
                 "response_format": triage_schema,
                 "request_id": request_id,
-                "max_tokens": 128,
+                "max_tokens": 350,
                 "internal": False,
             },
         )
@@ -2810,13 +2835,15 @@ class CognitiveHub:
                         "alert Brain in character rather than answering on his behalf (e.g. 'Narf! Brain, Jason is asking for you!')."
                     )
 
-                # Additive Layer 2: Domain/Era Guidance (Consuming triage directly as a data type)
+                # Additive Layer 2: Domain/Era Guidance & JITC Bedrock (Consuming triage directly as a data type)
                 t_domain = str(triage_result.get("domain", "")).lower()
                 t_vibe = str(triage_result.get("vibe", "")).upper()
-                if t_domain in ("work_history", "lab_history", "career") or t_vibe == "HISTORICAL":
+                if should_inject_career_bedrock(t_vibe, t_domain, target_domains):
+                    from nodes.loader import get_career_compass_bedrock
                     active_hyde_prompt += (
                         "\n[ERA_INDEXING_DIRECTIVE]: In 'search_terms', extract specific historical project names, "
-                        "years (2005-2025), and system era markers to ground Brain's archive search."
+                        "years (2005-2025), and system era markers to ground Brain's archive search.\n"
+                        f"{get_career_compass_bedrock()}"
                     )
                 elif t_domain in ("exp_tlm", "infra", "telemetry"):
                     active_hyde_prompt += (
@@ -3353,11 +3380,18 @@ class CognitiveHub:
         pinky_take: str = "",
         shutdown_event=None,
         request_id: str = "default",
+        triage: dict = None,
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.1 / VIBE-006] Brain Gatekeeper: inspects chunks, declares curation, and passes verified anchors."""
         t_tm_brain_start = time.perf_counter()
+        t_data = triage or self.turn_thought_trace.get("triage", {}) or getattr(self, "last_triage", {}) or {}
+        career_bedrock = ""
+        if should_inject_career_bedrock(t_data.get("vibe"), t_data.get("domain"), t_data.get("target_domains")):
+            from nodes.loader import get_career_compass_bedrock
+            career_bedrock = get_career_compass_bedrock()
+
         stage1_prompt = build_two_mice_stage_prompt(
-            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take
+            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take, career_bedrock=career_bedrock
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
@@ -3497,6 +3531,12 @@ class CognitiveHub:
         clean_synthesis = re.sub(r"<thought>.*?</thought>", "", str(synthesis), flags=re.DOTALL | re.IGNORECASE)
         clean_synthesis = re.sub(r"</?thought[^>]*>", "", clean_synthesis, flags=re.IGNORECASE).strip()
         effective_pinky_take = pinky_take or getattr(self, "_last_pinky_greeting", "")
+        t_data = getattr(self, "turn_thought_trace", {}).get("triage", {}) or getattr(self, "last_triage", {}) or {}
+        career_bedrock = ""
+        if should_inject_career_bedrock(vibe or t_data.get("vibe"), t_data.get("domain"), t_data.get("target_domains")):
+            from nodes.loader import get_career_compass_bedrock
+            career_bedrock = get_career_compass_bedrock()
+
         stage2_prompt = build_two_mice_stage_prompt(
             2,
             primer=query,
@@ -3505,6 +3545,7 @@ class CognitiveHub:
             brain_grounding=clean_synthesis,
             pinky_take=effective_pinky_take,
             topic_directive=topic_directive,
+            career_bedrock=career_bedrock,
         )
         pinky_budget = max(200, calculate_pacing_ceiling("pinky", interest))
         pinky_stream_count = 0

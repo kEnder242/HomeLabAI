@@ -1,54 +1,66 @@
-import json
-import os
+# [FEAT-434 / FEAT-075 / BKM-023 / BKM-085 / SPR-110]
+# Unit tests for Decoupled Just-In-Time Career Compass Bedrock & Byte-Parity Verification
 
-from nodes.loader import BicameralNode
-
-COMPASS_PATH = os.path.expanduser(
-    "~/Dev_Lab/Portfolio_Dev/field_notes/data/career_compass.json"
-)
-
-
-def test_career_compass_file_structure():
-    """Verify that career_compass.json exists and contains valid Tier 1 & Tier 2 data."""
-    assert os.path.exists(COMPASS_PATH), f"File not found: {COMPASS_PATH}"
-    with open(COMPASS_PATH) as f:
-        data = json.load(f)
-
-    assert "tier_1_anchor_map" in data
-    assert "tier_2_keyword_mesh" in data
-    tier_1 = data["tier_1_anchor_map"]
-    assert len(tier_1) >= 6, f"Expected at least 6 eras, got {len(tier_1)}"
+import hashlib
+import pytest
+from nodes.loader import BicameralNode, get_career_compass_bedrock
+from logic.cognitive_hub import should_inject_career_bedrock, build_two_mice_stage_prompt
 
 
-def test_bicameral_node_bedrock_injection():
-    """Verify that BicameralNode injects Tier 1 Anchor Map bedrock cleanly."""
-    node = BicameralNode("test_compass_node", "Test prompt")
-    assert "[CAREER_COMPASS_BEDROCK]:" in node.IDENTITY_BEDROCK
-    assert (
-        "Manageability Test Content Lead" in node.IDENTITY_BEDROCK
-        or "Era 2019 2024" in node.IDENTITY_BEDROCK
-    )
+def test_bedrock_byte_parity():
+    """Verify that get_career_compass_bedrock matches the exact immutable SHA256 baseline (zero paraphrasing)."""
+    bedrock = get_career_compass_bedrock()
+    assert len(bedrock) > 0, "Career compass bedrock must not be empty"
+    h = hashlib.sha256(bedrock.encode("utf-8")).hexdigest()
+    expected = "10bbbf8e107428a11d510be0bb637b9a0a65c58141f8ac773c7bf57adf27428b"
+    assert h == expected, f"Paraphrasing/Byte Drift Detected! {h} != {expected}"
 
 
-def test_tier_1_token_ceiling():
-    """Enforce hard ceiling: Tier 1 Anchor Map bedrock MUST NOT exceed 350 tokens (~260 words)."""
-    with open(COMPASS_PATH) as f:
-        data = json.load(f)
-
-    tier_1 = data.get("tier_1_anchor_map", {})
-    full_text = json.dumps(tier_1)
-    word_count = len(full_text.split())
-    # 1.33 tokens per word estimation rule
-    estimated_tokens = int(word_count * 1.33)
-
-    assert estimated_tokens <= 350, (
-        f"HARD CEILING EXCEEDED: Tier 1 Anchor Map estimated tokens = {estimated_tokens} "
-        f"(word count: {word_count}). Must remain <= 350 tokens to prevent prompt bloat!"
-    )
+def test_node_identity_bedrock_omits_career():
+    """Verify that BicameralNode does NOT bake career bedrock statically into IDENTITY_BEDROCK."""
+    node = BicameralNode("test_pinky", "You are Pinky.")
+    assert "[CAREER_COMPASS_BEDROCK]" not in node.IDENTITY_BEDROCK
+    assert "[CAREER_COMPASS_BEDROCK]" not in node.system_prompt
+    assert "Purley" not in node.IDENTITY_BEDROCK
+    assert "DCMI" not in node.IDENTITY_BEDROCK
+    assert "BMC" not in node.IDENTITY_BEDROCK
 
 
-if __name__ == "__main__":
-    test_career_compass_file_structure()
-    test_bicameral_node_bedrock_injection()
-    test_tier_1_token_ceiling()
-    print("✅ All Career Compass Bedrock tests passed cleanly!")
+def test_should_inject_career_bedrock_deny_list():
+    """Verify strict denial on operational, casual, and telemetry turns."""
+    # Operational queries
+    assert not should_inject_career_bedrock("OPERATIONAL", "exp_tlm")
+    assert not should_inject_career_bedrock("OPERATIONAL", "telemetry")
+    assert not should_inject_career_bedrock("OPERATIONAL", "infra")
+    assert not should_inject_career_bedrock("OPERATIONAL", "Computer Architecture")
+
+    # Casual / Banter queries
+    assert not should_inject_career_bedrock("CASUAL", "social")
+    assert not should_inject_career_bedrock("WYWO", "social")
+    assert not should_inject_career_bedrock("", "social")
+
+
+def test_should_inject_career_bedrock_allow_list():
+    """Verify strict allowance on historical, chronicled, and career-specific turns."""
+    assert should_inject_career_bedrock("HISTORICAL", "work_history")
+    assert should_inject_career_bedrock("HISTORICAL", "career")
+    assert should_inject_career_bedrock("HISTORICAL", "lab_history")
+    assert should_inject_career_bedrock("CHRONICLE", "work_history")
+    assert should_inject_career_bedrock("RETROSPECTIVE", "career_timeline")
+    assert should_inject_career_bedrock("SOCRATIC", "career")
+    assert should_inject_career_bedrock("SOCRATIC", "work_history", target_domains=["career_ledger"])
+
+
+def test_build_two_mice_stage_prompt_conditional():
+    """Verify build_two_mice_stage_prompt includes bedrock only when provided."""
+    bedrock = get_career_compass_bedrock()
+
+    # Without bedrock (Operational)
+    prompt_op = build_two_mice_stage_prompt(1, user_query="Audit silicon", career_bedrock="")
+    assert "[CAREER_COMPASS_BEDROCK]" not in prompt_op
+    assert "Era 2005 2008" not in prompt_op
+
+    # With bedrock (Historical)
+    prompt_hist = build_two_mice_stage_prompt(1, user_query="What was my role in 2007?", career_bedrock=bedrock)
+    assert "[CAREER_COMPASS_BEDROCK]" in prompt_hist
+    assert "Era 2005 2008" in prompt_hist
