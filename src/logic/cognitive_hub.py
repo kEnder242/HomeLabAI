@@ -1946,6 +1946,9 @@ class CognitiveHub:
                             "type": "string",
                             "enum": [
                                 "exp_tlm",
+                                "dna",
+                                "forensics",
+                                "exp_dna",
                                 "exp_bkm",
                                 "exp_for",
                                 "standard",

@@ -72,9 +72,9 @@
             "contextual_prompt": "Recount this past hardware epoch with authentic engineering perspective and scars in 2 sentences."
         },
         "OPERATIONAL": {
-            "description": "Operational SRE queries – diagnostics, BKMs, playbooks, point-of-failure analysis, maintenance procedures.",
+            "description": "Operational SRE queries – diagnostics, live telemetry, point-of-failure analysis, maintenance procedures.",
             "enabled": true,
-            "default_domain": "exp_bkm",
+            "default_domain": "exp_tlm",
             "rag": null,
             "importance": 0.85,
             "importance_floor": 0.75,
@@ -85,9 +85,9 @@
         "FORENSIC": {
             "description": "Forensic log analysis – crash dumps, kernel panics, OOM traces, error post-mortems, syslog forensics.",
             "enabled": true,
-            "default_domain": "exp_for",
+            "default_domain": "forensics",
             "rag": {
-                "target_domain": "exp_for",
+                "target_domain": "forensics",
                 "traversal": "TOPIC_FIRST",
                 "allowed_collections": [
                     "behavioral_dna",
@@ -102,17 +102,17 @@
             "contextual_prompt": "Highlight the faulting kernel module or crash signature directly and name the next diagnostic command in 2 sentences."
         },
         "META": {
-            "description": "User is giving supervisory feedback, pointing out bugs/regressions, correcting factual errors, requesting tone/verbosity adjustments, or issuing Fourth-Wall operational commands.",
-            "domain": "feedback",
+            "description": "Lab environment, system architecture, resident runtime, and homelab infrastructure inquiries.",
+            "domain": "lab_internal",
             "addressed_to": "SYSTEM",
             "enabled": true,
-            "default_domain": "feedback",
+            "default_domain": "lab_internal",
             "rag": null,
             "importance": 0.60,
             "importance_floor": 0.50,
             "interest_boost": 0.10,
-            "prompt_mo": "System architecture or Fourth-Wall command; address CLaRa DNA, repo architecture, or operational state adjustment directly without excuses.",
-            "contextual_prompt": "Acknowledge the Fourth-Wall directive or architectural query directly and summarize system state in 1-2 sentences."
+            "prompt_mo": "System architecture inquiry; address CLaRa DNA, repo architecture, resident runtime, or operational lab state directly.",
+            "contextual_prompt": "Address the homelab environment, architecture, or runtime state directly in 1-2 sentences."
         },
         "TECHNICAL": {
             "description": "Technical deep-dive – silicon telemetry, PCIe AER errors, RAPL power/thermal analysis, VRAM utilization, CUDA driver diagnostics.",
@@ -136,9 +136,9 @@
         "SOCRATIC": {
             "description": "Architectural and design dialectics – exploring trade-offs, constraints, and complexity conservation across system layers.",
             "enabled": true,
-            "default_domain": "standard",
+            "default_domain": "dna",
             "rag": {
-                "target_domain": "standard",
+                "target_domain": "dna",
                 "traversal": "TOPIC_FIRST",
                 "allowed_collections": [
                     "philosophy_dna",
@@ -154,15 +154,15 @@
             "contextual_prompt": "Explore the architectural trade-off and complexity conservation behind this design in 2 grounded sentences without reciting code."
         },
         "SUPERVISORY": {
-            "description": "Supervisory feedback loop – user corrections, tone adjustments, preference nudges, persona tuning requests.",
+            "description": "Operational feedback about the lab itself – system performance critique, pipeline suggestions, and lab behavioral tuning.",
             "enabled": true,
             "default_domain": "feedback",
             "rag": null,
             "importance": 0.6,
             "importance_floor": 0.5,
             "interest_boost": 0.1,
-            "prompt_mo": "Supervisory feedback received; confirm behavioral alignment without defensive excuses.",
-            "contextual_prompt": "Acknowledge the supervisory correction directly and confirm how future turns will adapt in 1-2 sentences."
+            "prompt_mo": "Supervisory feedback received about lab behavior; confirm operational alignment directly.",
+            "contextual_prompt": "Acknowledge feedback about lab operations directly and confirm how the lab will adapt in 1-2 sentences."
         },
         "ANALYTICAL": {
             "description": "Comparative, trade-off, architectural analysis with high objectivity.",
