@@ -127,14 +127,15 @@ def extract_judge_score(event_id: str) -> Tuple[float, str]:
     if not matched:
         return 0.0, f"No genuine judge record found for event {event_id}"
 
-    pinky = [e for e in matched if "pinky" in e.get("source", "").lower()]
-    if pinky:
-        target = pinky[-1]
-        return float(target.get("score", 0.0)), target.get("critique") or target.get("status", "VERIFIED")
-
+    # Prioritize Brain (Archive) RAG grounding evaluation score
     brain = [e for e in matched if "brain" in e.get("source", "").lower()]
     if brain:
         target = brain[-1]
+        return float(target.get("score", 0.0)), target.get("critique") or target.get("status", "VERIFIED")
+
+    pinky = [e for e in matched if "pinky" in e.get("source", "").lower()]
+    if pinky:
+        target = pinky[-1]
         return float(target.get("score", 0.0)), target.get("critique") or target.get("status", "VERIFIED")
 
     latest = matched[-1]
@@ -166,7 +167,8 @@ async def probe_3_4_4_live_silicon_replay(session: "aiohttp.ClientSession") -> d
         if os.path.exists(STAGE_LEDGER_PATH):
             with open(STAGE_LEDGER_PATH, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
-                    if event_id in line and ("STAGE_5" in line or "PINKY_VOICE" in line or "DELIBERATION_COMPLETE" in line):
+                    lower_line = line.lower()
+                    if event_id in line and ("stage5" in lower_line or "stage_5" in lower_line or "pinky_voice" in lower_line or "deliberation_complete" in lower_line):
                         stage_done = True
                         break
         if stage_done:
@@ -174,9 +176,13 @@ async def probe_3_4_4_live_silicon_replay(session: "aiohttp.ClientSession") -> d
         await asyncio.sleep(2.0)
 
     elapsed_s = round(time.perf_counter() - start, 2)
-    await asyncio.sleep(4.0)  # Allow Bonsai Judge async scoring to persist
-
-    score, critique = extract_judge_score(event_id)
+    # Poll for Bonsai Judge async scoring to persist (LAN evaluation)
+    score, critique = 0.0, "NO_RECORD"
+    for _ in range(30):
+        score, critique = extract_judge_score(event_id)
+        if score > 0.0:
+            break
+        await asyncio.sleep(2.0)
 
     # Check journal ledger for Pinky's delivered response
     delivered_dialogue = ""
