@@ -835,84 +835,105 @@ def compute_mmr_ranking(
 
 
 def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors: list[str] | None = None) -> str:
-    """[FEAT-451 / Story 58.2] Autonomous Search Pivot Loop via fast Ripgrep.
+    """[FEAT-451 / Story 109.9 / Story 110.15] Autonomous Search Pivot Loop via fast Ripgrep.
     ArXiv: 2601.11888 (Agentic-R).
-    Fires when ChromaDB vector distance is weak (>0.50) or returns 0 matches.
-    Hunts for exact hardware anchors across field_notes/data/ and raw notes.
-    [Story 105.6] Optional curated_anchors lets Brain pass explicit hardware
-    entities (e.g. ["Aurora"]) to bypass stop-word/regex extraction."""
+    Fires in Stage 3 to hydrate exact physical field-note lines for Deep Thought.
+    Extracts high-entropy technical tokens from query, triage, and Brain's bedrock grounding.
+    Uses balanced anchor quotas and word-boundary matching to prevent high-frequency terms
+    from starving specific hardware entities."""
     import re
 
-    if curated_anchors:
-        anchors = [a for a in curated_anchors if a and len(a) > 2]
-        if not anchors:
-            return ""
-    else:
-        tokens = re.findall(
-            r"\b(?:[A-Z0-9_-]{2,}|0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.(?:py|sh|c|h|txt))\b", query
-        )
-        stop_words = {
-            "THE",
-            "AND",
-            "FOR",
-            "WITH",
-            "THAT",
-            "WHAT",
-            "HOW",
-            "WHEN",
-            "WHERE",
-            "WHY",
-            "DID",
-            "JASON",
-            "ARE",
-            "YOU",
-            "HELLO",
-            "TODAY",
-            "THANKS",
-            "PLEASE",
-            "THINGS",
-            "DOING",
-        }
-        anchors = [t for t in tokens if t.upper() not in stop_words and len(t) > 2]
-        if not anchors:
-            anchors = [
-                w
-                for w in query.split()
-                if len(w) > 4
-                and w.lower()
-                not in {"about", "there", "where", "which", "hello", "today", "thanks", "please", "things", "doing"}
-            ]
-        if not anchors:
-            return ""
+    stop_words = {
+        "THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY",
+        "DID", "JASON", "ARE", "YOU", "HELLO", "TODAY", "THANKS", "PLEASE", "THINGS",
+        "DOING", "DESCRIBE", "EXPLAIN", "TELL", "WORK", "WORKED", "ABOUT", "THIS",
+        "FROM", "HAVE", "SOME", "MANY", "YOUR", "MINE", "NAME", "SHOW", "LIST",
+        "ANALYSIS", "BEDROCK", "SELECTION", "INTEL", "ROLE", "EVIDENCE", "SUMMARY",
+        "TEST", "TESTING", "TRUE", "FALSE", "CHUNK", "KEEP", "DROP", "STATUS",
+        "VERDICT", "VIBE", "BRAIN", "PINKY", "DEEP", "THOUGHT", "PASS", "FAIL",
+        "NONE", "NULL", "NOTE", "PROMPT", "QUERY", "CONTEXT", "SOURCE", "SOURCES",
+        "FINDINGS", "TECHNICAL", "GROUNDING"
+    }
 
+    # Extract high-entropy query entities (acronyms, hex codes, script files, capitalized terms)
+    query_tokens = re.findall(
+        r"\b(?:0x[0-9a-fA-F]+|[A-Z]{2,}|[A-Z][a-z0-9_-]{2,}|\w+\.(?:py|sh|c|h|txt|json))\b", query
+    )
+    extracted_query_anchors = [
+        t for t in query_tokens if t.upper() not in stop_words and len(t) > 1
+    ]
+
+    # Combine curated anchors with extracted query anchors (union)
+    curated_clean = [
+        a for a in (curated_anchors or [])
+        if a and a.upper() not in stop_words and len(a) > 1 and not a.startswith("CHUNK-")
+    ]
+
+    # Prioritize: uppercase acronyms / hex / filenames first, then capitalized entities
+    all_candidates = list(dict.fromkeys(extracted_query_anchors + curated_clean))
+    acronyms = [a for a in all_candidates if a.isupper() or a.startswith("0x") or "." in a]
+    entities = [a for a in all_candidates if a not in acronyms]
+    anchors = (acronyms + entities)[:5]
+
+    if not anchors:
+        fallback = [
+            w for w in query.split()
+            if len(w) > 3 and w.upper() not in stop_words
+        ]
+        anchors = fallback[:3]
+
+    if not anchors:
+        return ""
+
+    # Search raw knowledge base first, then curated field notes data
     data_dirs = [
-        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
         os.path.expanduser("~/knowledge_base"),
+        os.path.expanduser("~/Dev_Lab/Portfolio_Dev/field_notes/data"),
+    ]
+
+    exclude_globs = [
+        "!round_table_deltas.json",
+        "!pager_activity.json",
+        "!foyer_*.jsonl",
+        "!journal_ledger.jsonl",
+        "!judge_backpressure.jsonl",
+        "!live_usage_stream.jsonl",
+        "!queue.json",
+        "!status.json",
     ]
 
     hits = []
     seen_lines = set()
-    for anchor in anchors[:3]:
+
+    # Pass 1: Round-robin 1 hit per anchor to ensure full diversity across all entities
+    # (prevents high-frequency terms like 'mailbox' from starving rare anchors like 'HEST'/'MCA')
+    for anchor in anchors:
+        if len(hits) >= max_matches:
+            break
+        is_word_boundary = anchor.isupper() or len(anchor) <= 5
         for d in data_dirs:
             if not os.path.exists(d):
                 continue
             try:
-                cmd = [
-                    "rg",
-                    "-i",
-                    "-m",
-                    str(max_matches),
+                cmd = ["rg", "-i"]
+                if is_word_boundary:
+                    cmd.append("-w")
+                cmd.extend([
+                    "-m", "1",
                     "--no-heading",
                     "-N",
                     "--glob", "*.txt",
                     "--glob", "*.json",
-                    anchor,
-                    d,
-                ]
+                    "--glob", "*.py",
+                    "--glob", "*.sh",
+                ])
+                for eg in exclude_globs:
+                    cmd.extend(["--glob", eg])
+                cmd.extend([anchor, d])
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
                 if res.returncode == 0 and res.stdout.strip():
-                    for line in res.stdout.strip().split("\n"):
-                        clean_line = line.strip()
+                    for raw_line in res.stdout.strip().split("\n"):
+                        clean_line = raw_line.strip()
                         if (
                             clean_line
                             and clean_line not in seen_lines
@@ -920,12 +941,54 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                         ):
                             seen_lines.add(clean_line)
                             hits.append(f"- [{anchor}] {clean_line}")
-                            if len(hits) >= max_matches:
-                                break
+                            break
             except Exception:
                 pass
-        if len(hits) >= max_matches:
-            break
+            if any(h.startswith(f"- [{anchor}]") for h in hits):
+                break
+
+    # Pass 2: If headroom remains, backfill secondary matches up to max_matches
+    if len(hits) < max_matches:
+        for anchor in anchors:
+            if len(hits) >= max_matches:
+                break
+            is_word_boundary = anchor.isupper() or len(anchor) <= 5
+            for d in data_dirs:
+                if not os.path.exists(d):
+                    continue
+                try:
+                    cmd = ["rg", "-i"]
+                    if is_word_boundary:
+                        cmd.append("-w")
+                    cmd.extend([
+                        "-m", "3",
+                        "--no-heading",
+                        "-N",
+                        "--glob", "*.txt",
+                        "--glob", "*.json",
+                        "--glob", "*.py",
+                        "--glob", "*.sh",
+                    ])
+                    for eg in exclude_globs:
+                        cmd.extend(["--glob", eg])
+                    cmd.extend([anchor, d])
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
+                    if res.returncode == 0 and res.stdout.strip():
+                        for raw_line in res.stdout.strip().split("\n"):
+                            clean_line = raw_line.strip()
+                            if (
+                                clean_line
+                                and clean_line not in seen_lines
+                                and len(clean_line) < 300
+                            ):
+                                seen_lines.add(clean_line)
+                                hits.append(f"- [{anchor}] {clean_line}")
+                                if len(hits) >= max_matches:
+                                    break
+                except Exception:
+                    pass
+                if len(hits) >= max_matches:
+                    break
 
     if hits:
         return "[AGENTIC_R_GREP_PIVOT]:\n" + "\n".join(hits)
