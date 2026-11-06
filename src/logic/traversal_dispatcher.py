@@ -66,18 +66,46 @@ _ERA_PATTERN = re.compile(
 
 
 # [FEAT-659] Semantic domain token to ChromaDB collection mapping.
+_KNOWN_CHROMA_COLLECTIONS: set[str] = {
+    "career_ledger",
+    "feature_dna",
+    "behavioral_dna",
+    "long_term_wisdom",
+    "wisdom_dna",
+    "philosophy_dna",
+    "sprint_dna",
+    "artifact_vault",
+    "lab_infrastructure",
+    "lab_journal",
+    "discovery",
+    "rdna",
+    "protocols",
+    "short_term_stream",
+}
+
 _DOMAIN_COLLECTION_MAP: dict[str, list[str]] = {
     "bkm": ["behavioral_dna"],
     "protocol": ["behavioral_dna"],
+    "protocols": ["behavioral_dna"],
+    "behavioral_dna": ["behavioral_dna"],
     "feat": ["feature_dna"],
     "feature": ["feature_dna"],
+    "feature_dna": ["feature_dna"],
     "sprint": ["sprint_dna"],
+    "sprint_dna": ["sprint_dna"],
     "history": ["sprint_dna"],
     "wisdom": ["wisdom_dna", "philosophy_dna"],
+    "wisdom_dna": ["wisdom_dna"],
+    "long_term_wisdom": ["long_term_wisdom", "wisdom_dna"],
     "philosophy": ["philosophy_dna", "wisdom_dna"],
+    "philosophy_dna": ["philosophy_dna"],
     "infra": ["lab_infrastructure", "lab_journal"],
     "lab": ["lab_journal", "lab_infrastructure"],
+    "lab_infrastructure": ["lab_infrastructure"],
+    "lab_journal": ["lab_journal"],
     "career": ["career_ledger"],
+    "career_ledger": ["career_ledger"],
+    "artifact_vault": ["artifact_vault"],
 }
 
 
@@ -381,18 +409,41 @@ def resolve_collection_scope(
             "target_domains_or_domain must be list[str], str, or None"
         )
 
-    # [FEAT-659] Primary path: explicit target_domains from Triage.
+    # [FEAT-659 / Phase 3 #1.1] Primary path: explicit target_domains from Triage.
     if target_domains is not None:
         if not target_domains:
             return []
         candidate_set: set[str] = set()
+        unmapped_tokens: list[str] = []
         for token in target_domains:
             token_lower = token.lower().strip()
-            mapped = _DOMAIN_COLLECTION_MAP.get(token_lower)
-            if mapped:
-                candidate_set.update(mapped)
+            if token_lower in _KNOWN_CHROMA_COLLECTIONS:
+                candidate_set.add(token_lower)
+            elif token_lower in _DOMAIN_COLLECTION_MAP:
+                candidate_set.update(_DOMAIN_COLLECTION_MAP[token_lower])
+            else:
+                unmapped_tokens.append(token)
+
         if not candidate_set:
+            v_upper = vibe.upper() if vibe else ""
+            if v_upper in _VIBE_PRIORITY and v_upper not in ("CASUAL", "UNCLEAR", "SUPERVISORY"):
+                # [Phase 3 #1.1] Inclusive recovery via vibe priority
+                fallback = _VIBE_PRIORITY[v_upper][:3]
+                import logging
+                logging.warning(
+                    f"[CROSSTALK:SCOPE_RECOVERY] Unmapped target_domains {target_domains!r} for vibe '{vibe}'; "
+                    f"recovered scope {fallback} via vibe priority."
+                )
+                return fallback
             return []
+
+        if unmapped_tokens:
+            import logging
+            logging.info(
+                f"[CROSSTALK:SCOPE_RECOVERY] Partially unmapped target_domains {unmapped_tokens!r}; "
+                f"retaining resolved scope: {list(candidate_set)}"
+            )
+
         return _order_collections_by_vibe(list(candidate_set), vibe)
 
     # [LEGACY] Fallback path: preserve exact legacy behavior.

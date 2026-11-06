@@ -507,6 +507,8 @@ def calculate_pacing_range(node_name: str, interest: float) -> tuple[int, int]:
 def format_pacing_line(node_name: str, interest: float) -> str:
     """Format single concise pacing directive for prompt injection."""
     ceiling = calculate_pacing_ceiling(node_name, interest)
+    if ceiling <= 0:
+        return "[BUDGET]: Interest exhausted. Deliver a brief 1-sentence conclusion, then yield."
     return f"[BUDGET]: Headroom ceiling is {ceiling} tokens. Answer concisely within this budget; do not add conversational fluff or filler."
 
 
@@ -1789,7 +1791,9 @@ class CognitiveHub:
         self, turn, shutdown_event=None, request_id=None, trigger_briefing_callback=None
     ):
         """[FEAT-145] Main Reasoning Waterfall."""
+        # [Phase 3 #1.3] Purge intra-turn state so previous turn takes never leak across turns
         self.turn_thought_trace = {}
+        self._last_pinky_greeting = ""
         if request_id is None:
             import uuid
 

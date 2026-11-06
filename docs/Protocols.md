@@ -1343,6 +1343,7 @@ During fast-paced, multi-turn pair-programming dialogues, actionable tasks, bug 
 ### 2. The 3 Lifecycle Phases
 1. **CAPTURE WITH USER (In-Conversation Stage):**
    - Every identified triage item, bug, or design topic is assigned a discrete tracking tag (`ANCHOR-01`, `ANCHOR-02`, ...).
+   - **Operator Numbered Index Priority:** When the operator establishes explicit numbered swim lanes (e.g. `1.1`, `1.2`, `3.3`), the agent MUST adopt those exact operator indices directly (prefixed by the active Phase, e.g. `Phase 3: #1.1`), strictly forbidding arbitrary alphanumeric renaming or compounding prefixes (e.g. forbidding `ANCHOR-110.A`).
    - Inquiries prefixed with `QQ` (`BKM-004`) remain informational lookups and do NOT generate work items unless explicitly converted by the user.
    - Topics remain conversational anchors until verbally aligned and captured into a unified tabular ledger.
 2. **SPRINT CRYSTALLIZATION (The Planning Stage):**
