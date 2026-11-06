@@ -4,11 +4,11 @@
     "anchors": ["vram", "rapl", "thermal", "wattage"]
   },
   "forensic": {
-    "adapter": "exp_for",
+    "adapter": "forensics",
     "anchors": ["history", "search", "crash"]
   },
   "architecture": {
-    "adapter": "exp_bkm",
-    "anchors": ["bkm", "class 1", "architecture"]
+    "adapter": "dna",
+    "anchors": ["bkm", "class 1", "architecture", "dna"]
   }
 }
