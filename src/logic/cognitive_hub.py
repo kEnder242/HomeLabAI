@@ -1583,7 +1583,10 @@ class CognitiveHub:
             multiplier = pacing_cfg.get("token_multiplier", 100)
             max_ceiling = pacing_cfg.get("max_token_ceiling", 1500)
             current_interest = getattr(self, "current_interest", 0.0)
-            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else min(max_ceiling, int(current_interest * multiplier)))
+            # [BKM-015 / FEAT-523] Never chop output generation at the API level.
+            # When max_tokens is None, grant full context headroom (max_ceiling=1500) so the engine
+            # never cuts off thoughts mid-sentence. Pacing guidance in the prompt directs density.
+            token_budget = max_tokens if max_tokens is not None else (128 if is_triage else max_ceiling)
             call_task = asyncio.create_task(
                 node.call_tool(
                     "think",
@@ -3491,7 +3494,7 @@ class CognitiveHub:
             tools=brain_tools,
             temperature=0.2,
             request_id=request_id,
-            max_tokens=brain_budget,
+            max_tokens=None,
         ):
             brain_grounding += token
             if shutdown_event and shutdown_event.is_set():
@@ -3631,7 +3634,7 @@ class CognitiveHub:
             topic_directive=topic_directive,
             career_bedrock=career_bedrock,
         )
-        pinky_budget = max(200, calculate_pacing_ceiling("pinky", interest))
+        pinky_budget = calculate_pacing_ceiling("pinky", interest)
         pinky_stream_count = 0
         pinky_tldr = ""
         async for token in self._process_node_stream(
@@ -3642,7 +3645,7 @@ class CognitiveHub:
             tools=[],
             temperature=0.7,
             request_id=request_id,
-            max_tokens=pinky_budget,
+            max_tokens=None,
         ):
             pinky_stream_count += 1
             pinky_tldr += token
