@@ -666,6 +666,49 @@ def should_inject_career_bedrock(vibe: str, domain: str, target_domains: list = 
     return False
 
 
+_VIBE_INTENT_MAP = {
+    "TECHNICAL": "Jason is analyzing technical specifications and codebase mechanics.",
+    "HISTORICAL": "Jason is exploring past work history and chronological archives.",
+    "OPERATIONAL": "Jason is inspecting live physical hardware state and telemetry.",
+    "ANALYTICAL": "Jason is conducting high-level quantitative analysis or data breakdown.",
+    "FORENSIC": "Jason is investigating crash dumps, anomalies, or stack traces.",
+    "CASUAL": "Jason is conversing informally or exchanging greetings.",
+    "META": "Jason is discussing the lab environment, resident runtime, and homelab architecture.",
+    "WYWO": "Jason is requesting an overnight standup or dream stream synthesis.",
+    "SUPERVISORY": "Jason is providing operational feedback and guidance regarding lab behavior.",
+}
+
+_DOMAIN_INTENT_MAP = {
+    "exp_tlm": "Subject matter is live physical telemetry, temperatures, and GPU hardware metrics.",
+    "tlm": "Subject matter is live physical telemetry, temperatures, and GPU hardware metrics.",
+    "dna": "Subject matter is CLaRa-DNA behavioral cards, architectural principles, and lab wisdom.",
+    "exp_dna": "Subject matter is CLaRa-DNA behavioral cards, architectural principles, and lab wisdom.",
+    "exp_bkm": "Subject matter is CLaRa-DNA behavioral cards, architectural principles, and lab wisdom.",
+    "forensics": "Subject matter is post-mortem debugging, crash logs, and panic tracebacks.",
+    "exp_for": "Subject matter is post-mortem debugging, crash logs, and panic tracebacks.",
+    "work_history": "Subject matter is Jason's career journey, companies, and roles (2006-present).",
+    "acme_lab_history": "Subject matter is historical homelab developments and legacy architectural decisions.",
+    "lab_history": "Subject matter is homelab operational history and sprint progressions.",
+    "lab_internal": "Subject matter is internal agent configurations, resident schemas, and prompt internals.",
+    "dream_stream": "Subject matter is background memory consolidation and dream reflections.",
+    "feedback": "Subject matter is operational feedback, critique, and behavioral tuning.",
+    "social": "Subject matter is interpersonal dialogue and conversational banter.",
+    "unknown": "Subject matter is unspecified; rely on general context.",
+}
+
+
+def format_context_intent(vibe: str, domain: str) -> str:
+    """[FEAT-678 / BKM-015] Formats terse, informing-only context intent for Brain's Stage 1 Gatekeeper."""
+    v_clean = str(vibe or "").strip().upper()
+    d_clean = str(domain or "").strip().lower()
+    parts = []
+    if v_clean in _VIBE_INTENT_MAP:
+        parts.append(_VIBE_INTENT_MAP[v_clean])
+    if d_clean in _DOMAIN_INTENT_MAP:
+        parts.append(_DOMAIN_INTENT_MAP[d_clean])
+    return " ".join(parts).strip()
+
+
 def build_two_mice_stage_prompt(
     stage: int,
     *,
@@ -678,6 +721,7 @@ def build_two_mice_stage_prompt(
     pinky_take: str = "",
     topic_directive: str = "",
     career_bedrock: str = "",
+    context_intent: str = "",
 ) -> str:
     """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
@@ -734,11 +778,13 @@ def build_two_mice_stage_prompt(
     if stage == 1:
         historical = format_rag_chunks_for_prompt(context)
         pinky_block = f"[PINKY_STANCE]: {pinky_take.strip()}\n" if pinky_take and pinky_take.strip() else ""
+        intent_block = f"[CONTEXT_INTENT]: {context_intent.strip()}\n" if context_intent and context_intent.strip() else ""
 
         return (
             section
             + "[STAGE_1_INSTRUCTIONS]: You are Brain, the Information Gatekeeper — a line-by-line EVIDENCE FILTER, not an essayist.\n"
             "Jason talked to the lab.\n"
+            f"{intent_block}"
             f"{pinky_block}"
             "[GATEKEEPER SCOPE]: Each candidate archive record is keyed [CHUNK-N]. Do NOT re-type, summarize, or paraphrase any chunk.\n"
             "Your job is to evaluate each [CHUNK-N] line-by-line against Jason's query and decide KEEP or DROP.\n"
@@ -1027,7 +1073,7 @@ class CognitiveHub:
                 "response_format": triage_schema,
                 "request_id": request_id,
                 "max_tokens": 128,
-                "internal": False,
+                "internal": True,
             },
         )
         text = res.content[0].text if hasattr(res, "content") and res.content else str(res)
@@ -1048,7 +1094,7 @@ class CognitiveHub:
                 "response_format": triage_schema,
                 "request_id": request_id,
                 "max_tokens": 350,
-                "internal": False,
+                "internal": True,
             },
         )
         text = res.content[0].text if hasattr(res, "content") and res.content else str(res)
@@ -1524,14 +1570,8 @@ class CognitiveHub:
             # [Task 1.1] Spark the node and wait for full block
             node = self.residents[node_id]
 
-            # [Task 9.1] Isolated Buffer Key
-            name_map = {
-                "lab": "lab",
-                "pinky": "pinky",
-                "brain": "brain",
-                "thought": "deep thought",
-            }
-            src_key = name_map.get(node_id, node_id)
+            # [Task 9.1] Isolated Buffer Key (Strict raw node_id match with loader/foyer stream_ingest)
+            src_key = node_id.lower()
             buf_key = f"{request_id}_{src_key}"
             self.session_buffers[buf_key] = ""
 
@@ -3067,13 +3107,6 @@ class CognitiveHub:
                 f"[HUB] [FEAT-541] Two-Stage RAG Cache Hit (0ms): {cache_key[:8]}"
             )
             result_text = self._rag_cache[cache_key]
-        elif hasattr(self, "_last_pre_triage_doc") and self._last_pre_triage_doc:
-            # Stage 1 Pre-Triage Seed: If pre-triage extracted a high-relevance document chunk, use it directly
-            result_text = self._last_pre_triage_doc
-            self._rag_cache[cache_key] = result_text
-            logging.info(
-                f"[HUB] [FEAT-541] Two-Stage RAG Cache Pre-Seeded from Vector Pre-Triage (0ms): {cache_key[:8]}"
-            )
         else:
             try:
                 vibe_val = str(t_parsed.get("vibe", ""))
@@ -3144,6 +3177,27 @@ class CognitiveHub:
                     )
             except Exception as ex:
                 logging.warning(f"[FEAT-454] RAG eval broadcast warning: {ex}")
+        elif hyde:
+            try:
+                broadcast_sig = f"{turn}_zero_rag_{len(hyde)}"
+                if getattr(self, "_last_rag_eval_sig", None) != broadcast_sig:
+                    self._last_rag_eval_sig = broadcast_sig
+                    await self.broadcast(
+                        {
+                            "type": "rag_eval",
+                            "query": turn,
+                            "hyde": hyde,
+                            "tier": str(hyde_tier),
+                            "doc_id": "zero_rag",
+                            "channel": "chat",
+                            "brain_source": "Pinky (Scout)",
+                            "snippet": "No documents retrieved (0 RAG matches).",
+                            "full_context": "",
+                            "n_results": 0,
+                        }
+                    )
+            except Exception as ex:
+                logging.warning(f"[FEAT-454] RAG zero-match eval broadcast warning: {ex}")
 
         return result_text
 
@@ -3200,12 +3254,7 @@ class CognitiveHub:
     async def step_pre_triage(self, query: str) -> dict:
         """[FEAT-540 / BKM-083 Stage 1] Runs sub-20ms CLaRa-DNA vector similarity probe across ChromaDB collections."""
         clean_user_query = extract_latest_user_query(query)
-        pre_triage_res = probe_clara_dna_sync(clean_user_query)
-        if pre_triage_res.get("min_distance", 1.0) < 0.55 and pre_triage_res.get("best_doc"):
-            self._last_pre_triage_doc = pre_triage_res["best_doc"]
-        else:
-            self._last_pre_triage_doc = ""
-        return pre_triage_res
+        return probe_clara_dna_sync(clean_user_query)
 
     async def step_triage(self, query: str, pre_triage: dict, request_id: str = "default") -> dict:
         """[FEAT-534 / BKM-083 Stage 2] Executes speculative triage relay across available fast silicon endpoints."""
@@ -3242,9 +3291,8 @@ class CognitiveHub:
                             "type": "string",
                             "enum": [
                                 "exp_tlm",
-                                "exp_bkm",
-                                "exp_for",
-                                "standard",
+                                "dna",
+                                "forensics",
                                 "work_history",
                                 "acme_lab_history",
                                 "lab_history",
@@ -3286,12 +3334,14 @@ class CognitiveHub:
             '  - "BRAIN": User explicitly calls out Brain or Deep Thought.\n'
             '  - "MICE": User explicitly addresses both/group.\n'
             '  - "SYSTEM": User addresses meta/supervisor engine.\n'
-            "• 6 CORE ARCHETYPES (vibe & domain):\n"
-            '  2. WYWO: Standup briefs or overnight activity inquiries -> vibe="WYWO", domain="acme_lab_history".\n'
-            '  3. META: Supervisory feedback, prompt engineering discussions -> vibe="META", domain="feedback" or "lab_internal".\n'
+            "• CORE ARCHETYPES (vibe & domain):\n"
+            '  1. META: Discussions about our homelab environment, system architecture, and resident runtime -> vibe="META", domain="lab_internal".\n'
+            '  2. SUPERVISORY: Operational feedback and critique about the lab itself -> vibe="SUPERVISORY", domain="feedback".\n'
+            '  3. WYWO: Standup briefs or overnight activity inquiries -> vibe="WYWO", domain="acme_lab_history".\n'
             '  4. HISTORICAL: Questions on past career / hardware projects or specific years -> vibe="HISTORICAL", domain="work_history".\n'
             '  5. OPERATIONAL: Live system metrics, GPU VRAM, power caps, temperatures -> vibe="OPERATIONAL", domain="exp_tlm".\n'
-            '  6. FORENSIC: Crash dumps, stack traces, kernel panics -> vibe="FORENSIC", domain="exp_for".\n'
+            '  6. FORENSIC: Crash dumps, stack traces, kernel panics, bug post-mortems -> vibe="FORENSIC", domain="forensics".\n'
+            '  7. TECHNICAL: Engineering specs, CLaRa-DNA, behavioral cards, and lab protocols -> vibe="TECHNICAL", domain="dna".\n'
             "• SCALAR RUBRIC:\n"
             "  - casual (0.0-1.0: 0.8+ greeting/banter, 0.4-0.7 conversational/meta, 0.0-0.3 direct technical/command).\n"
             "  - intrigue (0.0-1.0: 0.7+ architectural/systemic exploration, 0.4-0.6 standard tech, 0.0-0.2 routine).\n"
@@ -3364,6 +3414,37 @@ class CognitiveHub:
             t_parsed["_console_source"] = routing_meta.get("source", "Triage")
             t_parsed["_console_target"] = routing_meta.get("console", "right")
 
+        # [Story 108.38 / BKM-095 / BKM-098] Single Delivery Authority: Broadcast Raw Triage Paragraph Pop
+        if self.broadcast:
+            c_meta = (
+                self.triage_relay.get_console_metadata(winner)
+                if hasattr(self, "triage_relay") and self.triage_relay and winner
+                else {"channel": "chat", "source": "Lab (Triage)", "console": "Left"}
+            )
+            public_triage = {
+                "inferred_intent": t_parsed.get("inferred_intent", ""),
+                "addressed_to": t_parsed.get("addressed_to", "NONE"),
+                "vibe": t_parsed.get("vibe", ""),
+                "domain": t_parsed.get("domain", ""),
+                "casual": round(float(t_parsed.get("casual", 0.5)), 2),
+                "intrigue": round(float(t_parsed.get("intrigue", 0.5)), 2),
+                "importance": round(float(t_parsed.get("importance", 0.5)), 2),
+                "target_domains": t_parsed.get("target_domains", []),
+                "winner": winner or t_parsed.get("winner", "local"),
+                "duration_ms": t_parsed.get("duration_ms", 0),
+            }
+            await self.broadcast(
+                build_two_mice_stream_packet(
+                    source=c_meta.get("source", "Lab (Triage)"),
+                    channel=c_meta.get("channel", "chat"),
+                    console=c_meta.get("console", "Left"),
+                    token=json.dumps(public_triage, indent=2),
+                    final=True,
+                    request_id=request_id,
+                    interest=t_parsed.get("calculated_interest", 0.5),
+                )
+            )
+
         return t_parsed
 
     async def step_hyde_rag(self, query: str, triage: dict, request_id: str = "default") -> tuple[str, str]:
@@ -3390,8 +3471,12 @@ class CognitiveHub:
             from nodes.loader import get_career_compass_bedrock
             career_bedrock = get_career_compass_bedrock()
 
+        vibe_val = str(t_data.get("vibe", "")).upper()
+        domain_val = str(t_data.get("domain", "")).lower()
+        context_intent = format_context_intent(vibe_val, domain_val)
+
         stage1_prompt = build_two_mice_stage_prompt(
-            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take, career_bedrock=career_bedrock
+            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take, career_bedrock=career_bedrock, context_intent=context_intent
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
@@ -3474,10 +3559,9 @@ class CognitiveHub:
                 "Do not repeat prompt instructions or form headings."
             )
             dt_prompt = "\n\n".join(prompt_parts)
-            dt_high = calculate_pacing_ceiling("thought", interest)
-            dt_budget = dt_high
             try:
-                async with asyncio.timeout(20.0):
+                # [FEAT-582] Align timeout with Foyer 45s stage deadline for remote Bonsai-27B headroom
+                async with asyncio.timeout(45.0):
                     async for token in self._process_node_stream(
                         "thought",
                         dt_prompt,
@@ -3486,14 +3570,14 @@ class CognitiveHub:
                         tools=[],
                         temperature=0.2,
                         request_id=request_id,
-                        max_tokens=dt_budget,
+                        max_tokens=None,
                     ):
                         dt_synthesis += token
                         if shutdown_event and shutdown_event.is_set():
                             break
             except (asyncio.TimeoutError, TimeoutError):
                 logging.warning(
-                    f"[FEAT-582] Deep Thought remote synthesis timed out (>20.0s). Preserving available synthesis."
+                    f"[FEAT-582] Deep Thought remote synthesis timed out (>45.0s). Preserving available synthesis."
                 )
             if self.broadcast and dt_synthesis:
                 await self.broadcast(
