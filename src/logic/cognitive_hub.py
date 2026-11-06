@@ -2550,11 +2550,12 @@ class CognitiveHub:
         shutdown_event=None,
         request_id="default",
         rag_context="",
+        user_query="",
     ):
         """
         [FEAT-227] The Grounding Gate (V5).
         Restores character balance by prompting Pinky to critique or conversationally
-        summarize Deep Thought's technical output directly into the Chat pane.
+        react to Brain's technical output directly into the Chat pane.
         """
         if "pinky" not in self.residents or source.lower().startswith("pinky"):
             return
@@ -2574,14 +2575,15 @@ class CognitiveHub:
             f"[HUB] Grounding Gate triggered for {source} (Interest/Importance: {importance:.2f} > 0.5)."
         )
         try:
-            # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Summary Blend
+            # [FEAT-356/470] Pinky as Coherence Judge with Cartoon Persona + Grounding Blend
             evidence_block = (
                 f"[UNDERLYING TECHNICAL EVIDENCE]:\n{rag_context}\n\n"
                 if rag_context
                 else ""
             )
+            effective_query = user_query.strip() if user_query and user_query.strip() else text
             critique_query = build_critic_prompt(
-                user_query=text,
+                user_query=effective_query,
                 technical_summary=evidence_block or text,
                 persona_name="Pinky",
             )
@@ -2594,9 +2596,9 @@ class CognitiveHub:
                         "type": "object",
                         "properties": {
                             "score": {"type": "integer", "minimum": 1, "maximum": 5},
-                            "reasoning": {"type": "string"},
+                            "reasoning": {"type": "string", "description": "Grounded technical WHY of the score (internal audit telemetry only)"},
                             "slop_found": {"type": "boolean"},
-                            "retort": {"type": "string"},
+                            "retort": {"type": "string", "description": "Pinky's authentic spoken reaction to Jason or banter with Brain, acknowledging the technical findings with character rather than repeating them verbatim"},
                         },
                         "required": ["score", "reasoning", "slop_found", "retort"],
                     },
@@ -2633,10 +2635,15 @@ class CognitiveHub:
             critic_budget = max(critic_high, 300)
             critic_pacing = f"[BUDGET]: Headroom ceiling is {critic_budget} tokens. Answer concisely within this budget; do not add conversational fluff or filler."
             eval_text = ""
+            eval_input = (
+                f"Jason's Query:\n{effective_query}\n\nTechnical Output from Brain to evaluate:\n{text}"
+                if user_query and user_query.strip()
+                else f"Technical Output from Brain to evaluate:\n{text}"
+            )
             async for token in self._process_node_stream(
                 "pinky",
                 critique_query,
-                f"Technical Output from Brain to evaluate:\n{text}",
+                eval_input,
                 "Pinky (Coherence Critic)",
                 tools=[],
                 temperature=0.2,
@@ -2645,9 +2652,8 @@ class CognitiveHub:
                 max_tokens=critic_budget,
                 behavioral_guidance=(
                     f"{critic_pacing}\n"
-                    f"You are Pinky. Brain and Deep Thought have established the technical stance above. "
-                    f"Deliver your final spoken verdict directly to Jason in your authentic lively voice, "
-                    f"confirming the technical reality and offering a natural conversational follow-up. Never speak about yourself in the third person. {vibe_tone}"
+                    f"You are Pinky. Brain (through his technical compute hemisphere) has established the findings above. "
+                    f"Deliver your authentic spoken reaction directly to Jason (or banter with Brain), acknowledging Brain's technical discovery with your lively personality rather than repeating it verbatim. Never speak about yourself in the third person. {vibe_tone}"
                 ),
             ):
                 eval_text += token
@@ -2702,10 +2708,11 @@ class CognitiveHub:
                     }
                 )
 
-            # [FEAT-470] Blend cartoon quip + agreed summary for out-loud delivery (banning robotic boilerplate)
+            # [FEAT-470] Demarcate internal diagnostic scorecard reasoning to CROSSTALK / telemetry only.
+            # Never append 3rd-person meta-reasoning to user-facing chat. Deliver authentic spoken retort.
             chat_delivery = format_chat_delivery(
                 cartoon_retort=critic_res.cartoon_retort,
-                technical_summary=critic_res.reasoning,
+                technical_summary="",
             )
             if chat_delivery:
                 self.turn_thought_trace["audit"] = chat_delivery  # [STORY 108.2] Primary entailment-audit key
@@ -3696,6 +3703,7 @@ class CognitiveHub:
             shutdown_event=shutdown_event,
             request_id=request_id,
             rag_context=focus_context,
+            user_query=query,
         )
         curr_dt = getattr(self, "_last_thought_duration", 0.0)
         self._last_thought_duration = curr_dt + max(

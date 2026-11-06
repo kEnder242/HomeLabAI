@@ -133,10 +133,10 @@ def build_critic_prompt(
         "critique_dimensions": dimensions,
         "banned_phrases": _BANNED_PHRASES,
         "output_schema": {
-            "reasoning": "string — grounded technical WHY of the score",
+            "reasoning": "string — grounded technical WHY of the score (internal audit telemetry only)",
             "score": "integer 1-5 — coherence score scalar (debug telemetry only)",
             "slop_found": "boolean — true if AI-slop boilerplate detected",
-            "retort": "string — Pinky's final spoken verdict to Jason, confirming the technical reality and offering a natural conversational follow-up",
+            "retort": "string — Pinky's final spoken verdict to Jason, confirming the technical reality and offering a natural conversational follow-up (or banter with Brain acknowledging technical findings with character rather than repeating verbatim)",
         },
     }
     return json.dumps(payload, indent=2)
