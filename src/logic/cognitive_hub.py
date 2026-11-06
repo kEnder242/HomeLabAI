@@ -2850,7 +2850,7 @@ class CognitiveHub:
             try:
                 target = str(triage_result.get("addressed_to", "")).upper()
                 pinky_high = calculate_pacing_ceiling("pinky", interest)
-                # [FEAT-470 / FEAT-523 / FEAT-657] Decouple structured schema budget from conversational fuel starvation:
+                # [FEAT-470 / FEAT-523 / FEAT-657] Task-level schema budget decoupled from conversational pacing:
                 # Pinky triage outputs a 3-field JSON schema (spoken_take, search_terms, upvote) that requires
                 # a minimum functional floor (250 tokens) to avoid mid-string truncation on low-interest turns.
                 pinky_budget = max(pinky_high, 250)
@@ -3242,7 +3242,7 @@ class CognitiveHub:
                 temperature=0.2,
                 request_id=request_id,
                 behavioral_guidance=brain_guidance,
-                max_tokens=250,
+                max_tokens=None,
             ):
                 brain_response += token
                 if shutdown_event and shutdown_event.is_set():
