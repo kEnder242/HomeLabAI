@@ -3577,8 +3577,8 @@ class CognitiveHub:
             )
             dt_prompt = "\n\n".join(prompt_parts)
             try:
-                # [FEAT-582] Align timeout with Foyer 45s stage deadline for remote Bonsai-27B headroom
-                async with asyncio.timeout(45.0):
+                # [FEAT-582] Align timeout with Foyer stage deadline for headroom expansion
+                async with asyncio.timeout(60.0):
                     async for token in self._process_node_stream(
                         "thought",
                         dt_prompt,

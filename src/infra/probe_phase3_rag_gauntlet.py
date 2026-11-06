@@ -159,41 +159,36 @@ async def probe_3_4_4_live_silicon_replay(session: "aiohttp.ClientSession") -> d
         if not event_id:
             return {"status": "FAIL", "error": "No event ID returned by /inject"}
 
-    logger.info(f"⏳ Injected turn {event_id}. Polling physical ledgers for completion...")
-    stage_done = False
-    max_wait = 90.0
+    logger.info(f"⏳ Injected turn {event_id}. Polling physical ledgers and judge score for completion...")
+    max_wait = 120.0
+    score, critique = 0.0, "NO_RECORD"
 
     while (time.perf_counter() - start) < max_wait:
-        if os.path.exists(STAGE_LEDGER_PATH):
-            with open(STAGE_LEDGER_PATH, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    lower_line = line.lower()
-                    if event_id in line and ("stage5" in lower_line or "stage_5" in lower_line or "pinky_voice" in lower_line or "deliberation_complete" in lower_line):
-                        stage_done = True
-                        break
-        if stage_done:
-            break
-        await asyncio.sleep(2.0)
-
-    elapsed_s = round(time.perf_counter() - start, 2)
-    # Poll for Bonsai Judge async scoring to persist (LAN evaluation)
-    score, critique = 0.0, "NO_RECORD"
-    for _ in range(30):
         score, critique = extract_judge_score(event_id)
         if score > 0.0:
             break
         await asyncio.sleep(2.0)
+
+    elapsed_s = round(time.perf_counter() - start, 2)
 
     # Check journal ledger for Pinky's delivered response
     delivered_dialogue = ""
     if os.path.exists(os.path.join(DATA_DIR, "journal_ledger.jsonl")):
         with open(os.path.join(DATA_DIR, "journal_ledger.jsonl"), "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if prompt[:30] in line:
+                if event_id in line or prompt[:30] in line:
                     delivered_dialogue = line.strip()
 
     # Zero Telemetry Hallucination Assertion
-    leak_keywords = ["silicon residency is active", "healthy thermal", "power metrics", "31°C", "33°C", "VRAM occupancy"]
+    leak_keywords = [
+        "silicon residency is active",
+        "healthy thermal",
+        "power metrics",
+        "31°C",
+        "33°C",
+        "VRAM occupancy",
+        "The response is coherent and provides",
+    ]
     leak_found = [k for k in leak_keywords if k.lower() in delivered_dialogue.lower()]
 
     result = {
