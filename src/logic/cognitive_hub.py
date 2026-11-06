@@ -3833,21 +3833,44 @@ class CognitiveHub:
             if hasattr(self, "current_vibe") and self.current_vibe
             else "CASUAL"
         )
-        # [FEAT-451 / Story 109.9] Ripgrep Ground Truth Hydration Bridge
-        # Automatically extract Brain's curated technical anchors and exact hardware tokens
-        # to surgically hydrate physical raw notes line context for Deep Thought.
+        # [FEAT-451 / Story 109.9 / Story 110.15] Ripgrep Ground Truth Hydration Bridge
+        # Multi-source anchor harvesting: extract high-entropy technical hardware tokens directly from
+        # the user query, triage domain context, and Brain's filtered bedrock grounding.
+        stop_tokens = {
+            "THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY",
+            "DID", "KEEP", "DROP", "CHUNK", "TRUE", "FALSE", "NONE", "NULL", "NOTE",
+            "PASS", "FAIL", "BRAIN", "PINKY", "DEEP", "THOUGHT", "STATUS", "VERDICT", "VIBE",
+            "ANALYSIS", "BEDROCK", "SELECTION", "JASON", "INTEL", "THIS", "THESE", "THOSE",
+            "ROLE", "EVIDENCE", "SUMMARY", "TEST", "TESTING", "WORK", "WORKED", "USER",
+            "PROMPT", "QUERY", "CONTEXT", "SOURCE", "SOURCES", "FINDINGS", "TECHNICAL",
+            "GROUNDING", "DESCRIBE", "EXPLAIN", "TELL", "PLEASE", "ABOUT", "FROM", "HAVE"
+        }
+
+        # 1. Query-derived technical tokens & acronyms (primary operator intent)
+        query_tech_tokens = re.findall(
+            r"\b(?:0x[0-9a-fA-F]+|[A-Z]{2,}|[A-Z][a-z0-9_-]{2,}|\w+\.(?:py|sh|c|h|txt|json))\b", query
+        )
+        query_anchors = [
+            t for t in query_tech_tokens if t.upper() not in stop_tokens and len(t) > 1
+        ]
+        query_hardware = [
+            e for e in ("Aurora", "PECI", "RAPL", "OpenBMC", "Optane", "DCMI", "MCTP", "SIMICS", "ESB2", "VISA", "HEST", "BERT", "MCA", "RAS", "WHEA")
+            if e.lower() in query.lower()
+        ]
+
+        # 2. Brain bedrock-derived anchors
         curated_anchors = []
         if brain_grounding:
-            raw_tokens = re.findall(r"\b(?:0x[0-9a-fA-F]+|[A-Z][a-zA-Z0-9_-]{2,}|\w+\.(?:py|sh|c|h|txt|json))\b", brain_grounding)
-            stop_tokens = {
-                "THE", "AND", "FOR", "WITH", "THAT", "WHAT", "HOW", "WHEN", "WHERE", "WHY",
-                "DID", "KEEP", "DROP", "CHUNK", "TRUE", "FALSE", "NONE", "NULL", "NOTE",
-                "PASS", "FAIL", "BRAIN", "PINKY", "DEEP", "THOUGHT", "STATUS", "VERDICT", "VIBE"
-            }
-            curated_anchors = [t for t in raw_tokens if t.upper() not in stop_tokens and not t.startswith("CHUNK-")]
+            raw_tokens = re.findall(
+                r"\b(?:0x[0-9a-fA-F]+|[A-Z]{2,}|[A-Z][a-z0-9_-]{2,}|\w+\.(?:py|sh|c|h|txt|json))\b", brain_grounding
+            )
+            curated_anchors = [
+                t for t in raw_tokens if t.upper() not in stop_tokens and not t.startswith("CHUNK-") and len(t) > 1
+            ]
 
-        query_hardware = [e for e in ("Aurora", "PECI", "RAPL", "OpenBMC", "Optane", "DCMI", "MCTP", "SIMICS", "ESB2", "VISA") if e.lower() in query.lower()]
-        all_anchors = list(dict.fromkeys(query_hardware + curated_anchors))[:5]
+        # Prioritize high-specificity acronyms and query entities over generic bedrock text
+        primary_anchors = list(dict.fromkeys(query_hardware + query_anchors))
+        all_anchors = list(dict.fromkeys(primary_anchors + curated_anchors))[:5]
 
         if (all_anchors or vibe_now in ("HISTORICAL", "TECHNICAL")) and boosted_interest >= 0.35:
             try:
