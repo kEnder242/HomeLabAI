@@ -44,8 +44,11 @@ class TestCalculatePacingCeiling(unittest.TestCase):
         self.assertEqual(calculate_pacing_ceiling("thought", 0.1), 100)
         self.assertEqual(calculate_pacing_ceiling("pinky", 0.1), 100)
 
-    def test_interest_clamping_above_1(self):
-        self.assertEqual(calculate_pacing_ceiling("pinky", 1.5), 1000)
+    def test_interest_uncapped_above_1(self):
+        # [Option A / FEAT-523] Interest is unbounded above 1.0; peer boosts scale proportionally
+        self.assertEqual(calculate_pacing_ceiling("pinky", 1.2), 1200)
+        self.assertEqual(calculate_pacing_ceiling("pinky", 1.5), 1500)
+        self.assertEqual(calculate_pacing_ceiling("thought", 2.0), 2000)
 
     def test_interest_clamping_below_0(self):
         self.assertEqual(calculate_pacing_ceiling("pinky", -0.5), 0)
