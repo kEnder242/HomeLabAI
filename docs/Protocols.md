@@ -1446,6 +1446,9 @@ The `BKM-080` protocol equips conductors with an authoritative psychological saf
 ---
 
 ## BKM-081: The Sprint Append Ledger Protocol (The "Sprint Log")
+**Objective**: Prevent context fragmentation and multi-session amnesia by mandating that all sprint execution history, chronicles, and milestones are appended directly to the active sprint plan rather than detached files.
+**Trigger / Aliases**: "Sprint Log", "The Sprint Log", "Update the Sprint Log", "Log to the Sprint", "Save to Sprint Log", "Add to Sprint Log", "Roll up Sprint Log", "Sprint Append Ledger", "Active Plan Append Invariant".
+**Description**: Governs the single-file ground-truth lifecycle for active sprints. Whenever the operator or any agent says "sprint log", it strictly and exclusively mandates appending the running chronological execution narrative, friction points, breakthroughs, and verification evidence directly to the active `SPRINT_PLAN_SPR_*.md` file. Agents are strictly forbidden from creating separate, detached `SPRINT_LOG_*.md` satellite files.
 **Feature Anchor:** `[BKM-081]` / `[BKM-020]` / `[BKM-023]` / `[BKM-077]`  
 **Colloquial Alias:** "The Sprint Log / Active Plan Append Invariant"  
 **Domain:** Sprint Documentation, Real-Time Ledgers, Intent Preservation, Unified Artifacts  
